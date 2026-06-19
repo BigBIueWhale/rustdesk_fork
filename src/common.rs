@@ -949,7 +949,16 @@ fn get_api_server_(api: String, custom: String) -> String {
             return format!("http://{}", s);
         }
     }
-    "https://admin.rustdesk.com".to_owned()
+    // R-SV6(d) / R-D6 / §18: NO global-host default. Upstream returned the hardcoded
+    // "https://admin.rustdesk.com" here, and the only thing that kept the audit POSTs
+    // (post_conn_audit etc.) silent was get_audit_server's `is_public(&url)` string-
+    // match on "rustdesk.com" — a fragile silencing the spec forbids ("the silencing
+    // MUST NOT rest on is_public()'s hostname string-match"). With api-server and
+    // custom-rendezvous-server pinned empty (R-S16) the fork reaches this fallback, so
+    // returning "" makes get_audit_server short-circuit on url.is_empty() — no global
+    // host can ever resolve, independent of is_public(). (BUILTIN_SETTINGS is asserted
+    // empty by R-A4, so no_register_device() is false and this path IS reached.)
+    String::new()
 }
 
 #[inline]

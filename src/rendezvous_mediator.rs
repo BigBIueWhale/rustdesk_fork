@@ -104,6 +104,7 @@ impl RendezvousMediator {
     }
 
     pub async fn start_all() {
+        assert_startup_invariants();
         crate::test_nat_type();
         if config::is_outgoing_only() {
             loop {
@@ -846,6 +847,39 @@ fn get_direct_port() -> i32 {
     // constant; a different port is a build-time change to config::DIRECT_PORT.
     config::DIRECT_PORT
 }
+
+/// R-A4 startup self-check: refuse to listen unless the controlled-side runtime
+/// invariants hold. Defense-in-depth over the R-S16 funnel — confirm the policy
+/// reads back pinned (verification-method/approve-mode) through Config::get_option
+/// and that a usable permanent-password credential exists (R-S9). A violation is
+/// fail-closed: the process exits rather than serve insecure. (The full R-A4 also
+/// asserts the bound-socket surface — exactly one TCP listener on 21118, zero UDP
+/// — and the empty BUILTIN/HARD funnels; those follow.)
+#[cfg(feature = "lockdown")]
+fn assert_startup_invariants() {
+    let mut ok = true;
+    if Config::get_option(hbb_common::config::keys::OPTION_VERIFICATION_METHOD)
+        != "use-permanent-password"
+    {
+        log::error!("R-A4: verification-method is not pinned to use-permanent-password");
+        ok = false;
+    }
+    if Config::get_option(hbb_common::config::keys::OPTION_APPROVE_MODE) != "password" {
+        log::error!("R-A4: approve-mode is not pinned to password");
+        ok = false;
+    }
+    if Config::get_permanent_password_prs().is_empty() {
+        log::error!("R-A4/R-S9: no permanent password is set — refusing to listen");
+        ok = false;
+    }
+    if !ok {
+        log::error!("R-A4: startup invariants violated — the box refuses to run insecure");
+        std::process::exit(1);
+    }
+}
+
+#[cfg(not(feature = "lockdown"))]
+fn assert_startup_invariants() {}
 
 async fn direct_server(server: ServerPtr) {
     let mut listener = None;

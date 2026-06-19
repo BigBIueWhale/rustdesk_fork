@@ -2136,26 +2136,17 @@ impl Connection {
         false
     }
 
-    fn is_recent_session(&mut self, tfa: bool) -> bool {
+    fn is_recent_session(&mut self, _tfa: bool) -> bool {
+        // R-S2 / R-A2: no resume without a fresh handshake. CPace re-keys every
+        // connection at the choke point (R-P14), so the inherited 30-s reconnect
+        // cache MUST NOT short-circuit authentication — authorization is the CPace
+        // KEYED edge, on this exact stream, every time. The cache is still pruned
+        // (bounded memory) but never authorizes a resume; the stored-password
+        // re-validation that re-opened the deleted Hash oracle is gone.
         SESSIONS
             .lock()
             .unwrap()
             .retain(|_, s| s.last_recv_time.lock().unwrap().elapsed() < SESSION_TIMEOUT);
-        let session = SESSIONS
-            .lock()
-            .unwrap()
-            .get(&self.session_key())
-            .map(|s| s.to_owned());
-        // last_recv_time is a mutex variable shared with connection, can be updated lively.
-        if let Some(session) = session {
-            if !self.lr.password.is_empty()
-                && (tfa && session.tfa
-                    || !tfa && self.validate_password_plain(&session.random_password))
-            {
-                log::info!("is recent session");
-                return true;
-            }
-        }
         false
     }
 
@@ -2589,33 +2580,14 @@ impl Connection {
                 }
             }
         } else if let Some(message::Union::SwitchSidesResponse(_s)) = msg.union {
-            #[cfg(feature = "flutter")]
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            if let Some(lr) = _s.lr.clone().take() {
-                self.handle_login_request_without_validation(&lr).await;
-                SWITCH_SIDES_UUID
-                    .lock()
-                    .unwrap()
-                    .retain(|_, v| v.0.elapsed() < Duration::from_secs(10));
-                let uuid_old = SWITCH_SIDES_UUID.lock().unwrap().remove(&lr.my_id);
-                if let Ok(uuid) = uuid::Uuid::from_slice(_s.uuid.to_vec().as_ref()) {
-                    if let Some((_instant, uuid_old)) = uuid_old {
-                        if uuid == uuid_old {
-                            self.from_switch = true;
-                            if !self.send_logon_response_and_keep_alive().await {
-                                return false;
-                            }
-                            self.try_start_cm(
-                                lr.my_id.clone(),
-                                lr.my_name.clone(),
-                                self.authorized,
-                            );
-                            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                            self.try_start_cm_ipc();
-                        }
-                    }
-                }
-            }
+            // R-S2 / R-A2: the switch-sides resume authorized the peer via
+            // handle_login_request_without_validation — i.e. it set `authorized`
+            // WITHOUT a fresh keyed handshake. CPace re-keys every connection at the
+            // single choke point (R-P14), so a resume that bypasses keying is
+            // rejected: the responder ignores SwitchSidesResponse and the peer must
+            // reconnect and re-run CPace. (handle_login_request_without_validation,
+            // its sole caller now gone, is the dead Hash-oracle remnant R-S2 removes.)
+            log::warn!("R-S2: ignoring SwitchSidesResponse — resume without re-keying is rejected");
         } else if self.authorized {
             if self.port_forward_socket.is_some() {
                 return true;

@@ -5939,6 +5939,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pake"
+version = "0.1.0"
+dependencies = [
+ "curve25519-dalek",
+ "getrandom 0.2.15",
+ "hkdf",
+ "hmac",
+ "sha2",
+ "subtle",
+ "unicode-normalization",
+ "zeroize",
+]
+
+[[package]]
 name = "pam"
 version = "0.7.0"
 source = "git+https://github.com/rustdesk-org/pam#7bfd25510202cd269292cbdd7c71f3977a6fd762"

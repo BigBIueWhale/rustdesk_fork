@@ -1,0 +1,20 @@
+[package]
+name = "pake"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0"
+description = "In-tree balanced CPace (draft-irtf-cfrg-cpace-21, CPACE-RISTR255-SHA512) for the hardened RustDesk fork. Byte-pinned to requirements.html §10.4; gated on the published draft vectors and the fork KAT anchors."
+
+# This crate is intentionally protobuf-agnostic and free of any native/OpenSSL
+# dependency: every primitive it needs is already in the 1.4.7 workspace lock
+# (§10.1), so it adds no new external crate, and it builds + KAT-tests as pure
+# Rust independent of the OpenSSL-linked workspace crates.
+[dependencies]
+curve25519-dalek = { version = "4.1.3", features = ["zeroize"] }
+sha2 = "0.10"
+hkdf = "0.12"
+hmac = "0.12"
+subtle = "2.6"
+zeroize = "1.8"
+getrandom = "0.2"
+unicode-normalization = "0.1"

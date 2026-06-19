@@ -70,7 +70,8 @@ compile/test loop) · `BLOCK-CARGO` (needs a lockfile regen) · `RISK-SILENT`
 | R-S16 controlled-policy `PINNED_SETTINGS` funnel | **RISK-SILENT** | modifies core `config.rs` `get_option`/`is_option_can_save`; a wrong funnel is fail-open and looks fine. Mechanism understood (funnel read), deferred for verification |
 | R-S2 FSM collapse · R-S5 `set_raw` seal · R-S9 PRS-at-rest · R-S10 limiter re-key · R-S13 initiator bar · R-S17 host-key pin · R-S18 OS-credential delete | **DEFER-BUILD** | all PAKE-downstream or core-logic |
 | R-R2b viewer / controlled-only build split (`decode`/`hwcodec`/`vram`/`flutter` features, `mod client` gating) | **DEFER-BUILD / BLOCK-CARGO** | feature-graph surgery; CI must assert the resolved feature set |
-| R-D1–D8 deployment (systemd, v4-only, silent egress, direct-only) | **DEFER-BUILD** | overlaps R-D4 mediator refactor + R-S16 pins |
+| R-D3a systemd confinement of the root service | **DONE** | `64e11b4`; the exact R-D3a directive set (CapabilityBoundingSet, RestrictAddressFamilies=AF_UNIX AF_INET, ProtectKernel*, SystemCallFilter, …), NoNewPrivileges deliberately omitted, MemoryDenyWriteExecute documented-but-disabled pending runtime validation |
+| R-D1/D2/D4–D8 deployment (direct-only build, v4-only, silent egress, config pins) | **DEFER-BUILD** | R-D4 is the mediator refactor (lift `direct_server`→`start_direct_only`); overlaps R-S16 pins + R-R2b build split |
 | §18 R-SV* sovereignty (kill version-check egress + `test_nat_type` probe) | **DEFER-BUILD** | shared `common.rs`/`socket_client.rs`; call-graph (not grep) removal |
 | §19 R-G* GUI/UX conformance (remove selectors/toggles/dead assets/links the core no longer honors) | **TODO** | partly unblocked by the deep-link work; large Dart sweep |
 | R-R3 dependency audit (Appendix D bumps) | **BLOCK-CARGO** | every fix is a lockfile change |

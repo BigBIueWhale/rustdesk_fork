@@ -45,7 +45,7 @@ structural, not aspirational.
 |---|---|---|
 | `pins.env` | Single version manifest (machine-readable §3.2). | **Done** — versions verified in-tree; SHA-256 artifact digests pending R-B12 (see below). |
 | `lib.sh` | Shared helpers: source `pins.env`, fail-loud asserts (`die`/`require_cmd`/`assert_version`), SHA-256 verify (rejects the R-B12 sentinel), offline guards, repo-state asserts. | **Done** |
-| `online-fetch.sh` | The one networked script → git-ignored `./online`, every artifact SHA-256-checked (R-B10). | TODO |
+| `online-fetch.sh` | The one networked script → git-ignored `./online`, every artifact SHA-256-checked (R-B10): `cargo vendor --locked`, the toolchains/SDKs/vcpkg/FRB, digest-pinned base images. Idempotent; aborts on the R-B12 sentinel. | **Done** |
 | `host-provision.sh` | Additive, idempotent host runtimes (docker; qemu-kvm/libvirt/swtpm/OVMF for the Win VM). Installs only what's absent; records to `.harness-state/provisioned` (outside `./online`, per R-B11's parenthetical). | **Done** |
 | `cleanup.sh` | Reversible-only teardown — default removes only harness-created artifacts (prefix `rustdesk-fork-harness`); `--reverse-host` removes only recorded packages, fail-closed if the manifest is absent (R-B11). | **Done** |
 | `build-debian.sh` | Debian x86_64 `.deb` (controlled-only + full viewer), in a digest-pinned `ubuntu:18.04` image. | TODO |

@@ -37,7 +37,14 @@ pub fn signal_receiver() -> broadcast::Receiver<Vec<i32>> {
 #[cfg(not(any(target_os = "ios")))]
 fn start_hbbs_sync() -> broadcast::Sender<Vec<i32>> {
     let (tx, _rx) = broadcast::channel::<Vec<i32>>(16);
-    std::thread::spawn(move || start_hbbs_sync_async());
+    // R-SV3 / §18 (sovereignty — universal): no api-server heartbeat / sysinfo
+    // phone-home. The HBBS sync loop POSTed a heartbeat and uploaded host system
+    // info to `<api-server>/api/heartbeat`; on the direct-only build there is no
+    // api server (and the R-S16 api-server="" pin alone does not stop it, since
+    // get_api_server can fall back to a default), so the loop is not started. Only
+    // the local broadcast channel is created — `signal_receiver` consumers (all on
+    // the now-neutralized rendezvous path, 6920db9) still resolve.
+    let _ = start_hbbs_sync_async; // keep the symbol; the loop is intentionally unspawned
     return tx;
 }
 

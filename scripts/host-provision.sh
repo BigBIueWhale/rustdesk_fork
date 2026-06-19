@@ -50,14 +50,35 @@ provision_pkg() {
     grep -qxF "$pkg" "$PROVISIONED_FILE" 2>/dev/null || echo "$pkg" >> "$PROVISIONED_FILE"
 }
 
+# require_container_engine: the container engine is a PRE-EXISTING host requirement,
+# NOT something this provisioner installs (R-B9: validate, then abort — no fallbacks,
+# one mode). The build host runs Docker's OFFICIAL engine, installed per
+# personal_server/README.md: `docker-ce` + `containerd.io` from download.docker.com,
+# user in the `docker` group. We MUST NOT install (or fall back to) Ubuntu's
+# `docker.io` — it Depends on `containerd`, which Conflicts with the host's
+# `containerd.io`, aborting apt. So assert the expected engine and fail loud if it is
+# absent, rather than guess-install a conflicting one.
+require_container_engine() {
+    pkg_installed docker-ce \
+        || die "docker-ce is not installed. The build host MUST already run Docker's OFFICIAL engine (docker-ce + containerd.io) per personal_server/README.md. This provisioner does NOT install a container engine — Ubuntu's docker.io Conflicts with containerd.io. Install Docker per that README, then re-run."
+    pkg_installed containerd.io \
+        || die "docker-ce is present but containerd.io is not — the host's Docker install diverges from personal_server/README.md (official docker-ce ships containerd.io). Reconcile it, then re-run."
+    command -v docker >/dev/null 2>&1 \
+        || die "docker-ce is installed but the 'docker' CLI is not on PATH — check the install (personal_server/README.md)."
+    docker version --format '{{.Server.Version}}' >/dev/null 2>&1 \
+        || die "the docker daemon is unreachable — ensure it is running and this user is in the 'docker' group (personal_server/README.md: 'usermod -aG docker'; then re-login), then re-run."
+    log "container engine OK (pre-existing, not provisioned): docker-ce $(dpkg-query -W -f='${Version}' docker-ce 2>/dev/null) / daemon $(docker version --format '{{.Server.Version}}' 2>/dev/null)"
+}
+
 main() {
     assert_host
     log "additive host provisioning (only the absent packages are installed + recorded)"
     sudo apt-get update
 
-    # Container engine for the Debian .deb and Android .apk builds (R-B8/§12.1).
-    # Docker is upstream's path; podman is an acceptable drop-in (choose one).
-    provision_pkg docker.io
+    # The container engine for the Debian .deb and Android .apk builds (R-B8/§12.1)
+    # is a PRE-EXISTING host requirement, REQUIRED not installed (R-B9: validate the
+    # environment, then abort — one mode, no fallbacks). See require_container_engine.
+    require_container_engine
 
     # Windows x86_64 .exe/.msi build runs in an ephemeral KVM Windows 11 guest on
     # this same host (§12.2). The hypervisor stack, all host-level.

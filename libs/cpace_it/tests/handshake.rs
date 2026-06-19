@@ -98,6 +98,22 @@ async fn wrong_password_aborts_at_confirmation() {
     assert!(ji.await.unwrap().is_err(), "initiator also fails closed");
 }
 
+#[test]
+fn directional_cipher_refuses_identical_keys() {
+    // R-A5: the secretbox layer must refuse to engage a single shared key in
+    // both directions (the inherited catastrophic reuse). A real handshake never
+    // produces this — HKDF's c2s/s2c labels differ — but a keying-mis-wire
+    // regression must fail closed.
+    let same = pake::DirectionalKeys {
+        send: [0x42; 32],
+        recv: [0x42; 32],
+    };
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = DirectionalCipher::new(&same);
+    }));
+    assert!(result.is_err(), "R-A5: identical send/recv keys must abort");
+}
+
 #[tokio::test]
 async fn responder_rejects_out_of_order_first_frame() {
     let (si, sr) = loopback_pair().await;

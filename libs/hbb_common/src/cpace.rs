@@ -235,7 +235,18 @@ pub struct DirectionalCipher {
 
 impl DirectionalCipher {
     /// Install the role-oriented keys from a completed handshake (R-P2).
+    ///
+    /// R-A5: the secretbox layer MUST have two **distinct** per-direction keys
+    /// engaged — never one shared key both ways (the inherited catastrophic
+    /// `(key, nonce)` reuse). HKDF's distinct c2s/s2c labels guarantee this by
+    /// construction; the assertion fail-closes on a keying-mis-wire *regression*
+    /// — exactly the case the wire-capture test (R-A9) would not catch, since the
+    /// keys are derived internally and never attacker-influenced.
     pub fn new(keys: &DirectionalKeys) -> Self {
+        assert_ne!(
+            keys.send, keys.recv,
+            "R-A5: identical send/recv keys — refusing to engage single-key reuse"
+        );
         // `[u8; 32]` is Copy, so this copies out of the zeroize-on-drop keys.
         Self {
             send_key: Key(keys.send),

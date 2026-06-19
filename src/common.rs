@@ -658,13 +658,13 @@ async fn test_nat_type_() -> ResultType<bool> {
                 } else {
                     port2 = tnr.port;
                 }
-                if let Some(cu) = tnr.cu.as_ref() {
-                    Config::set_option(
-                        "rendezvous-servers".to_owned(),
-                        cu.rendezvous_servers.join(","),
-                    );
-                    Config::set_serial(cu.serial);
-                }
+                // R-X3: the probe reply's `cu` (config-update) field let an
+                // UNAUTHENTICATED response rewrite `rendezvous-servers` + the config
+                // serial — re-homing the client to attacker infrastructure. This
+                // re-home twin (distinct from the mediator's config-rewrite arm) is
+                // excised: the fork's server list is fixed by local config and is
+                // never adopted from a probe reply. (The whole NAT-probe subtree is
+                // additionally made cfg-absent on shipped builds, R-D4/§18.)
             }
         } else {
             break;

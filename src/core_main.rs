@@ -397,6 +397,21 @@ pub fn core_main() -> Option<Vec<String>> {
         } else if args[0] == "--get-id" {
             println!("{}", crate::ipc::get_id());
             return None;
+        } else if args[0] == "--get-fingerprint" {
+            // R-S17: print the box's self-generated Ed25519 host-key fingerprint
+            // so the operator can learn it OUT-OF-BAND (over the trusted
+            // SSH/console channel they deployed through) and dictate it into the
+            // viewer's first-connect known_hosts seed — SSH's "the key
+            // fingerprint is …". Computed directly from the persisted local key
+            // pair (Config::get_key_pair().1 — stable, the same key the host-proof
+            // signature uses), so it needs no running daemon and no network and
+            // works headless on the controlled-only box, whose GUI/FFI
+            // get_fingerprint is compiled out (R-R2b). Read-only, like --get-id.
+            println!(
+                "{}",
+                crate::common::pk_to_fingerprint(config::Config::get_key_pair().1)
+            );
+            return None;
         // R-X4: the `--set-id` (rendezvous-ID change) and `--config` (trust-anchor +
         // server adoption) CLI paths are excised — both presuppose the rendezvous
         // account / anchor this serverless fork removes; the larger account

@@ -197,3 +197,51 @@ async fn responder_rejects_out_of_order_first_frame() {
     assert_eq!(err_of(jr.await.unwrap()), HandshakeError::Protocol);
     drop(si);
 }
+
+/// R-S17: the responder's HostIdentity host-proof binds the box's Ed25519 public
+/// key to THIS PAKE session. Both sides reconstruct the same transcript; the box
+/// signs `DSI ‖ sid ‖ CI ‖ Ya ‖ Yb`; the viewer verifies it and recovers pk for
+/// its pin compare. A different-session signature, a tampered frame, and garbage
+/// all fail closed — so the proof cannot be relayed/replayed and a substitute
+/// that knows the password but not the private key is caught.
+#[tokio::test]
+async fn r_s17_host_proof_binds_pk_to_the_session() {
+    use hbb_common::cpace::{
+        build_host_identity, run_initiator_with_transcript, run_responder_with_transcript,
+        verify_host_identity, Transcript,
+    };
+    let (mut si, mut sr) = loopback_pair().await;
+    let pw = "host-proof-pw";
+    let (ri, rr) = tokio::join!(
+        run_initiator_with_transcript(&mut si, pw),
+        run_responder_with_transcript(&mut sr, pw)
+    );
+    let (_ki, ti) = ri.expect("initiator keys+transcript");
+    let (_kr, tr) = rr.expect("responder keys+transcript");
+    // Both sides reconstruct the SAME transcript (sid/Ya/Yb).
+    assert_eq!(ti, tr);
+
+    // The box (responder) signs with its Ed25519 keypair; the viewer (initiator)
+    // verifies against its own transcript and recovers pk.
+    let (pk, sk) = hbb_common::sodiumoxide::crypto::sign::gen_keypair();
+    let frame = build_host_identity(&tr, &pk.0, &sk.0).expect("build host-proof");
+    let recovered = verify_host_identity(&ti, &frame).expect("verify host-proof");
+    assert_eq!(recovered, pk.0.to_vec());
+
+    // Negative — a signature welded to a DIFFERENT session (mutated sid) fails.
+    let other = Transcript {
+        sid: [0x5a; 32],
+        ya: ti.ya,
+        yb: ti.yb,
+    };
+    assert!(verify_host_identity(&other, &frame).is_err());
+
+    // Negative — a tampered frame (flip a byte in the trailing signature) fails.
+    let mut bad = frame.clone();
+    let last = bad.len() - 1;
+    bad[last] ^= 0x01;
+    assert!(verify_host_identity(&ti, &bad).is_err());
+
+    // Negative — garbage fails closed rather than panicking.
+    assert!(verify_host_identity(&ti, b"not a HostIdentity frame").is_err());
+}

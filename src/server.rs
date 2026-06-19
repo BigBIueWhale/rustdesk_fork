@@ -223,8 +223,26 @@ pub async fn create_tcp_connection(
         let Some(fs) = stream.as_framed_tcp_mut() else {
             bail!("CPace handshake requires a TCP stream at the choke point");
         };
-        match hbb_common::cpace::run_responder(fs, &prs).await {
-            Ok(keys) => fs.set_session_keys(keys),
+        match hbb_common::cpace::run_responder_with_transcript(fs, &prs).await {
+            Ok((keys, transcript)) => {
+                fs.set_session_keys(keys);
+                // R-S17: the controlled box is always the responder, so the
+                // HostIdentity host-proof obligation lands on this headless
+                // artifact (R-R2b). Emit it as the FIRST frame after keying
+                // (encrypted by the session key), before any Message is read or
+                // acted on. The viewer verifies the Ed25519 signature over this
+                // session's transcript against its pinned key (SSH known_hosts);
+                // a substitute that knows the password but not the box's private
+                // key cannot forge it. The pk/sk are the box's stable
+                // self-generated keypair (.1 public / .0 secret), the same key
+                // --get-fingerprint prints.
+                let kp = Config::get_key_pair();
+                let hi = match hbb_common::cpace::build_host_identity(&transcript, &kp.1, &kp.0) {
+                    Ok(hi) => hi,
+                    Err(_) => bail!("R-S17: failed to build the HostIdentity host-proof"),
+                };
+                fs.send_raw(hi).await?;
+            }
             Err(e) => {
                 if e.is_password_guess() {
                     // R-P14c: ONLY a key-confirmation tag mismatch is an online

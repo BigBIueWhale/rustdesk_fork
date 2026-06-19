@@ -753,6 +753,19 @@ message Cpace {
   }
 }
 
+// R-S17: the post-KEYED host-key proof frame — the controlled box's
+// identity-continuity check (SSH known_hosts). Sent encrypted as the FIRST frame
+// after keying, before any Message is parsed; the viewer verifies `sig` over the
+// reconstructed transcript ("rustdesk-fork/host-proof/v1" + sid + CI + Ya + Yb)
+// against `pk`, then compares `pk` to its local pin. NOT a Message-union arm (the
+// union is not parsed until after this check, R-S7/R-P14). `sig` proves
+// possession of the Ed25519 private key bound to THIS PAKE session — only the
+// holder of sk can produce it; a password-knower who has merely seen pk cannot.
+message HostIdentity {
+  bytes pk = 1;  // the box's self-generated Ed25519 public key (get_key_pair().1)
+  bytes sig = 2; // Ed25519_sign(sk, host-proof DSI + sid + CI + Ya + Yb), 64B
+}
+
 message AudioFormat {
   uint32 sample_rate = 1;
   uint32 channels = 2;

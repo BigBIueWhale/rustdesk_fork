@@ -237,8 +237,23 @@ pub fn gen_version() {
             break;
         }
     }
-    // generate build date
-    let build_date = format!("{}", chrono::Local::now().format("%Y-%m-%d %H:%M"));
+    // generate build date — honor SOURCE_DATE_EPOCH for reproducible builds (R-B2).
+    // Upstream's wall-clock chrono::Local::now() bakes a different BUILD_DATE into
+    // every build, so two builds of identical source on the identical pinned image
+    // differ — turning the operator's rebuild-and-compare into a guaranteed
+    // mismatch and the recorded-SHA bar (R-B2) into something unfalsifiable. When
+    // SOURCE_DATE_EPOCH is set (scripts/build-debian.sh pins it to the release
+    // commit's date), derive BUILD_DATE from it in UTC; otherwise fall back to the
+    // local wall clock for an ordinary developer build.
+    println!("cargo:rerun-if-env-changed=SOURCE_DATE_EPOCH");
+    let build_date = match std::env::var("SOURCE_DATE_EPOCH")
+        .ok()
+        .and_then(|s| s.parse::<i64>().ok())
+        .and_then(|epoch| chrono::DateTime::<chrono::Utc>::from_timestamp(epoch, 0))
+    {
+        Some(dt) => dt.format("%Y-%m-%d %H:%M").to_string(),
+        None => format!("{}", chrono::Local::now().format("%Y-%m-%d %H:%M")),
+    };
     file.write_all(
         format!("#[allow(dead_code)]\npub const BUILD_DATE: &str = \"{build_date}\";\n").as_bytes(),
     )

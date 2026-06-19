@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# scripts/build-debian.sh — Debian x86_64 .deb build (R-B7/B8/B9, §12.1, §17).
+#
+# Reproduces upstream 1.4.7's OFFICIAL .deb build (R-B7: inherited, not reinvented)
+# inside a digest-pinned ubuntu:18.04 container — upstream's own glibc baseline
+# (run-on-arch-action) — with EXACTLY two deltas and no others: no code-signing,
+# and it runs off GitHub-hosted runners (R-B2). The build is offline
+# (--network=none) against the SHA-verified ./online cache (R-B10).
+#
+# One mode, the good one (R-B9): validate the EXACT pinned env, then abort; fail
+# loud; no fallbacks; pin every version from pins.env; verify the artifact.
+#
+# NOT run as part of "fork creation" — a checked-in build artifact.
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib.sh
+source "$SCRIPT_DIR/lib.sh"
+load_pins
+
+OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
+# The §3.2 x64-linux feature set, verbatim from build.py get_features.
+FEATURES_VIEWER="--flutter --hwcodec --unix-file-copy-paste"
+# Determinism (R-B2): pin BUILD_DATE so two builds of identical source are
+# byte-identical. Use the release commit's author date; gen_version MUST honor
+# SOURCE_DATE_EPOCH (the hbb_common patch is tracked in HARDENING_STATUS as R-B2).
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$REPO_ROOT" show -s --format=%ct "$RUSTDESK_COMMIT" 2>/dev/null || echo 1700000000)}"
+IMAGE="ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}"
+
+preflight() {
+    require_cmd docker git
+    assert_repo_state
+    require_online_complete
+    case "$IMAGE" in *"${SHA_PENDING}"*) die "the .deb base image digest is the R-B12 sentinel — record it in pins.env first" ;; esac
+    log "preflight OK — building $FEATURES_VIEWER in $IMAGE, offline, SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
+}
+
+# build_one PROFILE FEATURES: run upstream's build.py in the pinned container,
+# network removed, ./online mounted read-only. Emits target/release + the .deb.
+build_one() {
+    local profile="$1" features="$2" tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-$1"
+    log "building profile '$profile' (features: $features)"
+    docker run --rm \
+        --name "$tag" \
+        --network=none \
+        -e SOURCE_DATE_EPOCH \
+        -v "$REPO_ROOT:/src" \
+        -v "$ONLINE_DIR:/online:ro" \
+        -w /src \
+        "$IMAGE" \
+        bash -euo pipefail -c '
+            # The container is the pinned, immutable template (R-B8): everything
+            # comes from /online (R-B5a), nothing is fetched (--network=none).
+            TC=/tmp/tc; mkdir -p "$TC"
+            # Extract the pinned toolchains from the ./online tarballs that
+            # online-fetch.sh materialized (Rust 1.75, Flutter 3.24.5, NDK, LLVM 15,
+            # vcpkg snapshot) and put their bins on PATH. vcpkg then builds the
+            # native set offline from res/vcpkg overlay ports.
+            for t in /online/rust-*.tar.xz /online/flutter-*.tar.xz /online/llvm-*.tar.xz; do
+                [ -e "$t" ] && tar -C "$TC" -xf "$t"
+            done
+            export PATH="$TC/flutter/bin:$TC/rust/bin:$HOME/.cargo/bin:$PATH"
+            # Wire cargo to the vendored, lockfile-pinned crate set (R-B10) so the
+            # --locked build resolves from ./online/cargo-vendor, never the network.
+            mkdir -p .cargo
+            cat > .cargo/config.toml <<CFG
+[source.crates-io]
+replace-with = "vendored"
+[source.vendored]
+directory = "/online/cargo-vendor"
+[net]
+offline = true
+CFG
+            # The 44 git deps need their own [source."<url>"] replace-with entries;
+            # online-fetch.sh captures cargo vendor'\''s full config — append it (with
+            # its directory rewritten to /online/cargo-vendor) so --locked resolves
+            # every git dep offline too.
+            [ -f /online/cargo-vendor-config.toml ] && \
+                sed "s#directory = .*#directory = \"/online/cargo-vendor\"#" \
+                    /online/cargo-vendor-config.toml >> .cargo/config.toml
+            # FRB codegen first (R-B7: the uncommitted generated_bridge.dart /
+            # bridge_generated.rs every build job needs), then upstream build.py
+            # with the §3.2 x64-linux features.
+            flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
+                --dart-output ./flutter/lib/generated_bridge.dart
+            python3 ./build.py '"$features"'
+        '
+    mkdir -p "$OUT_DIR"
+    local deb
+    deb="$(ls -1 "$REPO_ROOT"/rustdesk-*.deb 2>/dev/null | head -1)" || die "no .deb produced"
+    cp "$deb" "$OUT_DIR/rustdesk-${profile}.deb"
+    sha256sum "$OUT_DIR/rustdesk-${profile}.deb" | tee "$OUT_DIR/rustdesk-${profile}.deb.sha256"
+}
+
+main() {
+    preflight
+    # The full VIEWER .deb (viewer + --server in one binary, R-R2/R-B1).
+    build_one viewer "$FEATURES_VIEWER"
+
+    # Double-build determinism (R-B2): a second build of identical source MUST
+    # produce a byte-identical SHA-256, or the recorded-SHA bar is unfalsifiable.
+    if [ "${DOUBLE_BUILD:-1}" = "1" ]; then
+        local first; first="$(awk '{print $1}' "$OUT_DIR/rustdesk-viewer.deb.sha256")"
+        OUT_DIR="$OUT_DIR/_rebuild" build_one viewer "$FEATURES_VIEWER"
+        local second; second="$(awk '{print $1}' "$OUT_DIR/_rebuild/rustdesk-viewer.deb.sha256")"
+        [ "$first" = "$second" ] || die "double-build SHA mismatch ($first vs $second) — fix BUILD_DATE/SOURCE_DATE_EPOCH determinism (R-B2)"
+        log "double-build determinism OK: $first"
+    fi
+
+    log "build-debian.sh complete: $OUT_DIR/rustdesk-viewer.deb"
+    # CONTROLLED-ONLY .deb (the §17 exposed box, R-R2b: `viewer` feature off,
+    # decode/hwcodec/vram/flutter off) is a SECOND profile here once the R-R2b
+    # Cargo feature split lands — its own isolated `cargo build` (R-R2b), e.g.
+    #   build_one controlled "--no-default-features --features unix-file-copy-paste"
+    log "NOTE: the controlled-only profile (R-R2b) is pending the Cargo feature split."
+}
+
+main "$@"

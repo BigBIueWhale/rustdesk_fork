@@ -54,9 +54,12 @@ fetch_verify() {
 # It is itself a network step and belongs here, not in the offline build.
 vendor_cargo() {
     require_cmd cargo
-    log "cargo vendor (--locked) -> ./online/cargo-vendor"
-    ( cd "$REPO_ROOT" && cargo vendor --locked --versioned-dirs "$ONLINE_DIR/cargo-vendor" >/dev/null )
-    log "cargo vendor done — wire it via .cargo/config.toml [source] redirection at build time"
+    log "cargo vendor (--locked) -> ./online/cargo-vendor (+ its [source] config)"
+    # Capture the printed [source] config (crates-io + each of the 44 git deps) so
+    # the offline build can replay it; build-debian.sh rewrites its directory path.
+    ( cd "$REPO_ROOT" && cargo vendor --locked --versioned-dirs "$ONLINE_DIR/cargo-vendor" \
+        > "$ONLINE_DIR/cargo-vendor-config.toml" )
+    log "cargo vendor done — config at ./online/cargo-vendor-config.toml"
 }
 
 # ── Toolchains / SDKs (each SHA-pinned in pins.env, R-B5a/§3.2) ────────────────

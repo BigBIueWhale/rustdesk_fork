@@ -1,5 +1,12 @@
 name: Build the flutter version of the RustDesk
 
+# TODO(one-binary): this is upstream's full CI matrix. The fork builds OFF GitHub-hosted
+# runners via scripts/ (R-B2) and ships exactly three targets (R-R2): Debian x86_64,
+# Windows x86_64, Android aarch64. Prune to those three jobs; delete the iOS / macOS /
+# 32-bit Sciter (i686) / fdroid / nightly / playground jobs; and drop --hwcodec/--vram
+# everywhere (software codec only, R-R2b). Until then the --hwcodec/--vram flags below
+# are stale leftovers, not the fork's build.
+
 on:
   workflow_call:
     inputs:

@@ -39,7 +39,7 @@ preflight() {
 }
 
 build_apk() {
-    log "building unsigned aarch64 .apk (features flutter,hwcodec — §3.2 arm64-android)"
+    log "building unsigned aarch64 .apk (features flutter — software codec, §3.2 arm64-android)"
     docker run --rm \
         --name "${HARNESS_PREFIX:-rustdesk-fork-harness}-apk" \
         --network=none \
@@ -71,8 +71,8 @@ CFG
                     /online/cargo-vendor-config.toml >> .cargo/config.toml
             flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
                 --dart-output ./flutter/lib/generated_bridge.dart
-            # The Rust JNI lib (R-D7a controlled-side direct-only hardening applies
-            # WITHIN this build), then the Flutter APK — verbatim from upstream.
+            # The Rust JNI lib (R-D7a controlled-side hardening applies WITHIN this
+            # build), then the Flutter APK — the upstream flow, minus hwcodec (R-R2b).
             ./flutter/ndk_arm64.sh
             cd flutter && flutter build apk --release \
                 --target-platform android-arm64 --split-per-abi

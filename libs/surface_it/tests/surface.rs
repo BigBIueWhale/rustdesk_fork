@@ -71,7 +71,7 @@ fn parser_empty_and_header_only() {
 #[test]
 fn udp_counter_counts_every_socket() {
     // Both a :53 (DNS) and a :5353 (mDNS) row count — listening or not, any UDP
-    // socket trips R-A4 on the controlled-only build.
+    // socket trips R-A4 on the --server box.
     assert_eq!(count_udp_sockets(UDP_TABLE_TWO), 2);
 }
 

@@ -405,8 +405,8 @@ pub fn core_main() -> Option<Vec<String>> {
             // fingerprint is …". Computed directly from the persisted local key
             // pair (Config::get_key_pair().1 — stable, the same key the host-proof
             // signature uses), so it needs no running daemon and no network and
-            // works headless on the controlled-only box, whose GUI/FFI
-            // get_fingerprint is compiled out (R-R2b). Read-only, like --get-id.
+            // works headless on the --server box, where no GUI/FFI is shown to
+            // reach get_fingerprint (R-R2b). Read-only, like --get-id.
             println!(
                 "{}",
                 crate::common::pk_to_fingerprint(config::Config::get_key_pair().1)

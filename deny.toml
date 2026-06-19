@@ -56,18 +56,18 @@ ignore = [
   { id = "RUSTSEC-2025-0124", reason = "rand_os unmaintained (legacy rand 0.6 OS-RNG shim). Transitive; the live CSPRNG path is rand 0.8.6 (fixed above)." },
 
   # ── gtk-rs 0.18 cluster: GUI bindings, unmaintained (gtk3 EOL). All build/UI ──
-  # only, no known exploitable path; leaves the controlled-only build with the
-  # GUI compile-out (R-R2b/§13) and the eventual gtk4 migration. Radio-silence.
-  { id = "RUSTSEC-2024-0411", reason = "gdkwayland-sys (gtk-rs 0.18 gtk3-EOL cluster) — UI-only, controlled build compiles the GUI out (R-R2b)." },
-  { id = "RUSTSEC-2024-0412", reason = "gdk (gtk-rs 0.18 gtk3-EOL cluster) — UI-only, R-R2b GUI compile-out." },
-  { id = "RUSTSEC-2024-0413", reason = "atk (gtk-rs 0.18 gtk3-EOL cluster) — UI-only, R-R2b GUI compile-out." },
-  { id = "RUSTSEC-2024-0414", reason = "gdkx11-sys (gtk-rs 0.18 gtk3-EOL cluster) — UI-only, R-R2b GUI compile-out." },
-  { id = "RUSTSEC-2024-0415", reason = "gtk (gtk-rs 0.18 gtk3-EOL cluster) — UI-only, R-R2b GUI compile-out." },
-  { id = "RUSTSEC-2024-0416", reason = "atk-sys (gtk-rs 0.18 gtk3-EOL cluster) — UI-only, R-R2b GUI compile-out." },
-  { id = "RUSTSEC-2024-0418", reason = "gdk-sys (gtk-rs 0.18 gtk3-EOL cluster) — UI-only, R-R2b GUI compile-out." },
+  # only, no known exploitable path; the GUI is unreachable from the headless
+  # --server entry (R-A6 call-graph), with the eventual gtk4 migration. Radio-silence.
+  { id = "RUSTSEC-2024-0411", reason = "gdkwayland-sys (gtk-rs 0.18 gtk3-EOL cluster) — UI-only; unreachable from the headless --server entry (R-A6)." },
+  { id = "RUSTSEC-2024-0412", reason = "gdk (gtk-rs 0.18 gtk3-EOL cluster) — UI-only; unreachable from the headless --server entry (R-A6)." },
+  { id = "RUSTSEC-2024-0413", reason = "atk (gtk-rs 0.18 gtk3-EOL cluster) — UI-only; unreachable from the headless --server entry (R-A6)." },
+  { id = "RUSTSEC-2024-0414", reason = "gdkx11-sys (gtk-rs 0.18 gtk3-EOL cluster) — UI-only; unreachable from the headless --server entry (R-A6)." },
+  { id = "RUSTSEC-2024-0415", reason = "gtk (gtk-rs 0.18 gtk3-EOL cluster) — UI-only; unreachable from the headless --server entry (R-A6)." },
+  { id = "RUSTSEC-2024-0416", reason = "atk-sys (gtk-rs 0.18 gtk3-EOL cluster) — UI-only; unreachable from the headless --server entry (R-A6)." },
+  { id = "RUSTSEC-2024-0418", reason = "gdk-sys (gtk-rs 0.18 gtk3-EOL cluster) — UI-only; unreachable from the headless --server entry (R-A6)." },
   { id = "RUSTSEC-2024-0419", reason = "gtk3-macros (gtk-rs 0.18 gtk3-EOL cluster) — compile-time macro, UI-only." },
-  { id = "RUSTSEC-2024-0420", reason = "gtk-sys (gtk-rs 0.18 gtk3-EOL cluster) — UI-only, R-R2b GUI compile-out." },
-  { id = "RUSTSEC-2024-0429", reason = "glib unsound VariantStrIter (gtk-rs 0.18 cluster) — UI-only, R-R2b GUI compile-out." },
+  { id = "RUSTSEC-2024-0420", reason = "gtk-sys (gtk-rs 0.18 gtk3-EOL cluster) — UI-only; unreachable from the headless --server entry (R-A6)." },
+  { id = "RUSTSEC-2024-0429", reason = "glib unsound VariantStrIter (gtk-rs 0.18 cluster) — UI-only; unreachable from the headless --server entry (R-A6)." },
 
   # ── unic 0.9 cluster: unmaintained Unicode tables, transitive, build data ──
   # only; no exploitable path. Radio-silence class.

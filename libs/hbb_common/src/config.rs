@@ -2802,8 +2802,8 @@ fn get_or(
 }
 
 /// R-S16(b)/(c): the pinned value for `k`, if it is in the compile-time policy
-/// table ([`keys::PINNED_SETTINGS`]). Always `None` when `lockdown` is off (the
-/// table is empty then), so the funnel is a no-op on non-controlled builds.
+/// table ([`keys::PINNED_SETTINGS`]). `None` only when that table is empty, so
+/// the funnel is then a no-op.
 #[inline]
 fn pinned_setting(k: &str) -> Option<&'static str> {
     keys::PINNED_SETTINGS
@@ -3258,9 +3258,9 @@ pub mod keys {
     /// server-pushed config merge. Pins only `Config` server-settings keys; the
     /// parallel `LocalConfig` viewer-UI map is untouched.
     ///
-    /// Empty when `lockdown` is off, so a non-controlled build is byte-for-byte
-    /// unchanged. An operator who needs a different policy edits this table and
-    /// rebuilds (the R-F4 build-time-choice discipline) — never a runtime knob.
+    /// Empty when `lockdown` is off (the funnel is then a no-op). An operator who needs
+    /// a different policy edits this table and rebuilds (the R-F4 build-time-choice
+    /// discipline) — never a runtime knob.
     // TODO(one-binary): make PINNED_SETTINGS UNCONDITIONAL — drop this `lockdown` cfg
     // and the empty `not(lockdown)` const below, and the "Empty when lockdown is off"
     // line in the doc-comment. The policy is enforced by every artifact, never behind a

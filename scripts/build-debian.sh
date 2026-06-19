@@ -18,8 +18,8 @@ source "$SCRIPT_DIR/lib.sh"
 load_pins
 
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
-# The §3.2 x64-linux feature set, verbatim from build.py get_features.
-FEATURES_VIEWER="--flutter --hwcodec --unix-file-copy-paste"
+# The §3.2 x64-linux feature set minus hwcodec — CPU-only, software vpx/aom (R-R2b).
+FEATURES="--flutter --unix-file-copy-paste"
 # Determinism (R-B2): pin BUILD_DATE so two builds of identical source are
 # byte-identical. Use the release commit's author date; gen_version MUST honor
 # SOURCE_DATE_EPOCH (the hbb_common patch is tracked in HARDENING_STATUS as R-B2).
@@ -31,7 +31,7 @@ preflight() {
     assert_repo_state
     require_online_complete
     case "$IMAGE" in *"${SHA_PENDING}"*) die "the .deb base image digest is the R-B12 sentinel — record it in pins.env first" ;; esac
-    log "preflight OK — building $FEATURES_VIEWER in $IMAGE, offline, SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
+    log "preflight OK — building $FEATURES in $IMAGE, offline, SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
 }
 
 # build_one PROFILE FEATURES: run upstream's build.py in the pinned container,
@@ -93,25 +93,20 @@ CFG
 
 main() {
     preflight
-    # The full VIEWER .deb (viewer + --server in one binary, R-R2/R-B1).
-    build_one viewer "$FEATURES_VIEWER"
+    # The one .deb — viewer and --server in a single binary, role by argv (R-R2b/R-B1).
+    build_one x86_64 "$FEATURES"
 
     # Double-build determinism (R-B2): a second build of identical source MUST
     # produce a byte-identical SHA-256, or the recorded-SHA bar is unfalsifiable.
     if [ "${DOUBLE_BUILD:-1}" = "1" ]; then
-        local first; first="$(awk '{print $1}' "$OUT_DIR/rustdesk-viewer.deb.sha256")"
-        OUT_DIR="$OUT_DIR/_rebuild" build_one viewer "$FEATURES_VIEWER"
-        local second; second="$(awk '{print $1}' "$OUT_DIR/_rebuild/rustdesk-viewer.deb.sha256")"
+        local first; first="$(awk '{print $1}' "$OUT_DIR/rustdesk-x86_64.deb.sha256")"
+        OUT_DIR="$OUT_DIR/_rebuild" build_one x86_64 "$FEATURES"
+        local second; second="$(awk '{print $1}' "$OUT_DIR/_rebuild/rustdesk-x86_64.deb.sha256")"
         [ "$first" = "$second" ] || die "double-build SHA mismatch ($first vs $second) — fix BUILD_DATE/SOURCE_DATE_EPOCH determinism (R-B2)"
         log "double-build determinism OK: $first"
     fi
 
-    log "build-debian.sh complete: $OUT_DIR/rustdesk-viewer.deb"
-    # CONTROLLED-ONLY .deb (the §17 exposed box, R-R2b: `viewer` feature off,
-    # decode/hwcodec/vram/flutter off) is a SECOND profile here once the R-R2b
-    # Cargo feature split lands — its own isolated `cargo build` (R-R2b), e.g.
-    #   build_one controlled "--no-default-features --features unix-file-copy-paste"
-    log "NOTE: the controlled-only profile (R-R2b) is pending the Cargo feature split."
+    log "build-debian.sh complete: $OUT_DIR/rustdesk-x86_64.deb"
 }
 
 main "$@"

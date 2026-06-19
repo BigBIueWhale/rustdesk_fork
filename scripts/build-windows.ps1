@@ -3,7 +3,7 @@
 # Runs INSIDE the ephemeral KVM Windows 11 guest (provisioned by
 # provision-windows-vm.sh) — Windows cannot be cross-built from Linux (MSVC + WiX
 # are Windows-only). Reproduces upstream 1.4.7's official Windows build (R-B7:
-# python build.py --flutter --hwcodec --vram, verbatim) with exactly two deltas:
+# python build.py --flutter; hwcodec/vram dropped — CPU-only software codec, R-R2b) with these deltas:
 # the artifacts ship UNSIGNED (the pinned SHA-256 is the integrity anchor, R-B2),
 # and the build runs off GitHub-hosted runners. The guest has no network during the
 # build; all inputs were staged offline by provision-windows-vm.sh.
@@ -34,7 +34,7 @@ function Preflight {
     Assert-Version $FLUTTER_VERSION (flutter --version)            'flutter'
     Assert-Version $LLVM_VERSION    (clang --version)              'clang/LLVM'
     # WiX, MSVC and vcpkg are provisioned by provision-windows-vm.sh to the pins.
-    Write-Host "[harness] preflight OK — Windows x64, offline, features hwcodec,vram,flutter (§3.2)"
+    Write-Host "[harness] preflight OK — Windows x64, offline, features flutter — software codec (§3.2)"
 }
 
 function Build {
@@ -56,9 +56,9 @@ offline = true
 "@ | Set-Content "$SRC\.cargo\config.toml"
 
     # FRB codegen (R-B7: the uncommitted generated_bridge.dart / bridge_generated.rs),
-    # then upstream build.py with the §3.2 x64-windows features.
+    # then build.py with the §3.2 x64-windows features minus hwcodec/vram (R-R2b).
     flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs --dart-output ./flutter/lib/generated_bridge.dart
-    python build.py --flutter --hwcodec --vram
+    python build.py --flutter
 }
 
 function Emit-Artifacts {

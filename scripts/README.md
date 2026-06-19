@@ -27,7 +27,7 @@ Every script is held to the same bar as the rest of the spec:
 ```
 host-provision.sh   # once  — additive host runtimes only (R-B11)
 online-fetch.sh     # once, or on a pins.env change — the ONLY networked step (R-B10)
-build-debian.sh     # per build, offline (--network=none) — controlled-only + full viewer .deb
+build-debian.sh     # per build, offline (--network=none) — the one x86_64 .deb
 build-android.sh    # per build, offline — .apk (self-signed local key, R-B2)
 provision-windows-vm.sh + build-windows.ps1   # KVM Win11 guest (§12.2) — .exe/.msi
 cleanup.sh          # reversible-only teardown (R-B11)
@@ -48,10 +48,10 @@ structural, not aspirational.
 | `online-fetch.sh` | The one networked script → git-ignored `./online`, every artifact SHA-256-checked (R-B10): `cargo vendor --locked`, the toolchains/SDKs/vcpkg/FRB, digest-pinned base images. Idempotent; aborts on the R-B12 sentinel. | **Done** |
 | `host-provision.sh` | Additive, idempotent host runtimes (docker; qemu-kvm/libvirt/swtpm/OVMF for the Win VM). Installs only what's absent; records to `.harness-state/provisioned` (outside `./online`, per R-B11's parenthetical). | **Done** |
 | `cleanup.sh` | Reversible-only teardown — default removes only harness-created artifacts (prefix `rustdesk-fork-harness`); `--reverse-host` removes only recorded packages, fail-closed if the manifest is absent (R-B11). | **Done** |
-| `build-debian.sh` | Debian x86_64 `.deb` in a digest-pinned `ubuntu:18.04` image, `--network=none`, wrapping upstream `build.py --flutter --hwcodec --unix-file-copy-paste` (R-B7). Env-validates, vendored-offline, SHA-256 + double-build determinism (R-B2). Full viewer profile done; controlled-only awaits the R-R2b feature split. | **Done (viewer)** |
-| `build-android.sh` | Android aarch64 `.apk` in digest-pinned `ubuntu:24.04`, offline: cargo-ndk (ndk_arm64.sh, features flutter,hwcodec) + `flutter build apk`, then apksigner v2 with the stable RSA-4096 local key (password via file, R-B2). | **Done** |
+| `build-debian.sh` | Debian x86_64 `.deb` in a digest-pinned `ubuntu:18.04` image, `--network=none`, wrapping `build.py --flutter --unix-file-copy-paste` (software codec, R-R2b). Env-validates, vendored-offline, SHA-256 + double-build determinism (R-B2). One binary — viewer + `--server` by argv. | **Done** |
+| `build-android.sh` | Android aarch64 `.apk` in digest-pinned `ubuntu:24.04`, offline: cargo-ndk (ndk_arm64.sh, features flutter — software codec) + `flutter build apk`, then apksigner v2 with the stable RSA-4096 local key (password via file, R-B2). | **Done** |
 | `provision-windows-vm.sh` | Golden Win11 KVM template (R-B8/§12.2): swtpm vTPM 2.0 + OVMF UEFI, unattended install to the pinned toolchain, evergreen ISO/VS-BuildTools SHA-pinned offline layout (R-B12c). Per-build = CoW overlay. | **Done** |
-| `build-windows.ps1` | Windows x86_64 `.exe`/`.msi` inside the KVM guest (PowerShell, $ErrorActionPreference=Stop): asserts pinned versions, vendored-offline, wraps `build.py --flutter --hwcodec --vram` + WiX v4 MSI, unsigned + SHA-256 (R-B2). | **Done** |
+| `build-windows.ps1` | Windows x86_64 `.exe`/`.msi` inside the KVM guest (PowerShell, $ErrorActionPreference=Stop): asserts pinned versions, vendored-offline, wraps `build.py --flutter` (software codec, R-R2b) + WiX v4 MSI, unsigned + SHA-256 (R-B2). | **Done** |
 
 The build-script *bodies* encode upstream's exact 1.4.7 build commands (taken
 verbatim from `build.py` / `flutter-build.yml`, R-B7) and are authored in a

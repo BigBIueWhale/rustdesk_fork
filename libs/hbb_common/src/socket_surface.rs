@@ -84,7 +84,7 @@ pub fn parse_tcp_listen_ports(contents: &str) -> Vec<u16> {
 
 /// Count data rows (sockets) in a `/proc/self/net/{udp,udp6}` table — every data
 /// row is a UDP socket, listening or not. The header line and blank lines are
-/// skipped. R-A4 (controlled-only) requires this total to be zero.
+/// skipped. R-A4 requires this total to be zero on the --server process.
 pub fn count_udp_sockets(contents: &str) -> usize {
     contents
         .lines()
@@ -105,7 +105,7 @@ fn parse_local_port(local: &str) -> Option<u16> {
     u16::from_str_radix(port_hex, 16).ok()
 }
 
-/// The R-A4 surface policy for the controlled-only (lockdown) build: **exactly
+/// The R-A4 surface policy for the --server process: **exactly
 /// one** TCP listener, on the pinned **v4** port (R-D5 makes the bind v4-only),
 /// and **zero** UDP sockets of any kind. Returns a human-readable violation
 /// description on failure — the caller refuses to listen (fail-closed).
@@ -134,7 +134,7 @@ pub fn check_controlled_surface(s: &SocketSurface, expected_tcp_port: u16) -> Re
     }
     if s.udp_sockets != 0 {
         return Err(format!(
-            "found {} UDP socket(s); R-A4 (controlled-only) requires zero UDP of any kind — a \
+            "found {} UDP socket(s); R-A4 requires zero UDP of any kind — a \
              stray UDP means LAN/probe leaked back in (R-D4/R-X5) or a dependency opened an \
              egress UDP socket",
             s.udp_sockets

@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# TODO(one-binary): F-Droid is NOT a shipped target — the fork ships exactly three
+# (Debian x86_64, Windows x86_64, Android aarch64; R-R2). Delete this script with the
+# target-pruning. If kept, drop hwcodec from RUSTDESK_FEATURES (software codec, R-R2b).
+
 #
 # Script to build F-Droid release of RustDesk
 #

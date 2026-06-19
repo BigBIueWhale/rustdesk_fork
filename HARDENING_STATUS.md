@@ -22,9 +22,14 @@ and never listen on `0.0.0.0`). Empirically:
 - The **full workspace** still needs native system libs (OpenSSL, libsodium,
   libvpx/yuv/aom, …) that aren't on the host (no passwordless sudo) — but those
   install with `apt` **inside a container**, so the OpenSSL-linked crates
-  (`hbb_common` and the two-key secretbox rewrite) are now build-verifiable there
-  too. A *full app* build (Flutter + all codecs) remains heavy but the Rust
-  `cargo check`/test of the security-relevant crates is in reach.
+  (`hbb_common` and the two-key secretbox rewrite) are build-verifiable there.
+- **The FULL main crate now `cargo check`s in docker** (`scripts/Dockerfile.devcheck`,
+  `cargo check --features linux-pkg-config` — distro libvpx/aom/yuv via scrap's
+  pkg-config path + a synthesized `libyuv.pc`). This **re-classifies every
+  DEFER-BUILD main-crate item below as now-verifiable** — the choke-point cutover,
+  the §8 excisions (R-X5/7/8/9/10/11/13/14, R-D4), the §9 main-crate asserts. Only
+  the **flutter** build (FRB codegen) and the two-host R-A8/A9 wire tests remain
+  out of this loop.
 
 What stays genuinely deferred is only what needs the heavy full-app pipeline or a
 real two-host network (the active-attacker R-A8/A9 wire tests), and the items not
@@ -99,7 +104,7 @@ compile/test loop) · `BLOCK-CARGO` (needs a lockfile regen) · `RISK-SILENT`
 | Area | Status | Notes |
 |---|---|---|
 | §9 R-A1–R-A10 runtime/build/test assertions | **DEFER-BUILD** | most presuppose the PAKE; the CI greps (R-A6) and KATs (R-A10) are the "secure by assertion" gates that must *run* |
-| R-S16 controlled-policy `PINNED_SETTINGS` funnel | **PARTIAL — config funnel VERIFIED** | `675514b`; (a) `keys::PINNED_SETTINGS` table + (b) `get_option` read funnel + (c) `is_option_can_save` write guard, behind a new `lockdown` feature (empty/no-op when off). **Tested on the pinned 1.75 toolchain** (`config_it` crate, lockdown on): every pinned key returns its policy value and resists override, non-pinned keys unaffected. Was RISK-SILENT (fail-open if wrong) — now behavior-pinned. REMAINING (main crate): R-S16(d) the `permission()` early-return closing the `control_permissions` server-push bypass, and `get_builtin_option` (d)(iv) |
+| R-S16 controlled-policy `PINNED_SETTINGS` funnel | **PARTIAL — config funnel VERIFIED** | `675514b`; (a) `keys::PINNED_SETTINGS` table + (b) `get_option` read funnel + (c) `is_option_can_save` write guard, behind a new `lockdown` feature (empty/no-op when off). **Tested on the pinned 1.75 toolchain** (`config_it` crate, lockdown on): every pinned key returns its policy value and resists override, non-pinned keys unaffected. Was RISK-SILENT (fail-open if wrong) — now behavior-pinned. **R-S16(d)(i) done** (`af15880`): the main-crate `lockdown` feature + `Connection::permission` early-return skipping the `control_permissions` server-push bypass — compile-verified both lockdown on/off. REMAINING: `get_builtin_option` (d)(iv) mirror (only if a KEYS_BUILDIN value is ever pinned), and R-S16's password-storage twin (PRS-at-rest, part of the choke-point cutover) |
 | R-S2 FSM collapse · R-S5 `set_raw` seal · R-S9 PRS-at-rest · R-S10 limiter re-key · R-S13 initiator bar · R-S17 host-key pin · R-S18 OS-credential delete | **DEFER-BUILD** | all PAKE-downstream or core-logic |
 | R-R2b viewer / controlled-only build split (`decode`/`hwcodec`/`vram`/`flutter` features, `mod client` gating) | **DEFER-BUILD / BLOCK-CARGO** | feature-graph surgery; CI must assert the resolved feature set |
 | R-F4 direct port pinned to compile-time `21118` | **DONE** | `128d838`; new `config::DIRECT_PORT = 21118`, `get_direct_port` returns it unconditionally (no config read, no rendezvous+2 derivation) — load-bearing for the §10.4 CPace `CI` KAT be16(21118)=527e. The orphaned `direct-access-port` UI setting is a §19 cleanup |

@@ -391,16 +391,15 @@ impl RendezvousMediator {
                     allow_err!(rz.handle_intranet(fla, server).await);
                 });
             }
-            Some(rendezvous_message::Union::ConfigureUpdate(cu)) => {
-                let v0 = Config::get_rendezvous_servers();
-                Config::set_option(
-                    "rendezvous-servers".to_owned(),
-                    cu.rendezvous_servers.join(","),
-                );
-                Config::set_serial(cu.serial);
-                if v0 != Config::get_rendezvous_servers() {
-                    Self::restart();
-                }
+            Some(rendezvous_message::Union::ConfigureUpdate(_cu)) => {
+                // R-X3: a malicious rendezvous server could rewrite the client's
+                // `rendezvous-servers` list (and bump the serial, then restart) —
+                // re-homing the client to arbitrary infrastructure. The serverless
+                // fork's server list is fixed by local config; the server-supplied
+                // update is IGNORED (no rewrite, no restart). The mediator itself is
+                // excised from every shipped artifact (R-D4); this no-op is
+                // defense-in-depth for any interim server-assisted build, completing
+                // the third of R-X3's three server-list re-home twins.
             }
             _ => {}
         }

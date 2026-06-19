@@ -34,8 +34,8 @@ docker volume create rd-git-cache    >/dev/null
 docker volume create rd-verify-target >/dev/null
 docker build -q -t "$IMG" -f scripts/Dockerfile.devcheck scripts >/dev/null
 
-echo "== (1-3) KAT + handshake + lockdown tests (pinned 1.75) =="
-"${RUN[@]}" cargo test -p pake -p cpace_it -p config_it --color never
+echo "== (1-3) KAT + handshake + lockdown + R-A4 socket-surface tests (pinned 1.75) =="
+"${RUN[@]}" cargo test -p pake -p cpace_it -p config_it -p surface_it --color never
 
 echo "== (4) main crate compile check — lockdown OFF then ON =="
 "${RUN[@]}" cargo check --features linux-pkg-config --color never

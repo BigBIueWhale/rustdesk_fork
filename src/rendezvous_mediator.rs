@@ -852,9 +852,11 @@ fn get_direct_port() -> i32 {
 /// invariants hold. Defense-in-depth over the R-S16 funnel — confirm the policy
 /// reads back pinned (verification-method/approve-mode) through Config::get_option
 /// and that a usable permanent-password credential exists (R-S9). A violation is
-/// fail-closed: the process exits rather than serve insecure. (The full R-A4 also
-/// asserts the bound-socket surface — exactly one TCP listener on 21118, zero UDP
-/// — and the empty BUILTIN/HARD funnels; those follow.)
+/// fail-closed: the process exits rather than serve insecure. The empty
+/// BUILTIN/HARD funnels are checked below; the companion bound-socket-surface
+/// assertion (exactly one TCP v4 listener on the pinned port, zero UDP of any
+/// kind) runs post-listen in `assert_socket_surface` — it needs the listener up
+/// first, so it lives at the bind site rather than here.
 #[cfg(feature = "lockdown")]
 fn assert_startup_invariants() {
     let mut ok = true;
@@ -894,6 +896,36 @@ fn assert_startup_invariants() {
 #[cfg(not(feature = "lockdown"))]
 fn assert_startup_invariants() {}
 
+/// R-A4 (§9) post-listen socket-surface assertion. Once the direct listener is
+/// bound, the controlled box's reachable surface MUST equal exactly one TCP
+/// listener on the pinned v4 port and ZERO UDP sockets of any kind (ephemeral
+/// egress UDP included — a STUN probe or a dependency phoning home would slip
+/// past a listener-only check). A violation is fail-closed (refuse to serve); a
+/// platform without `/proc/self/net` (non-Linux) is recorded as unavailable and
+/// the surface then rests on the §18 compile-out + the R-B4 build smoke-test.
+/// This is a bind/listener-surface check only — it does NOT catch TCP egress
+/// (an outbound connect has no listener row), which rests on R-D6 + firewall.
+#[cfg(feature = "lockdown")]
+fn assert_socket_surface(port: u16) {
+    use hbb_common::socket_surface::{check_surface, SurfaceCheck};
+    match check_surface(port) {
+        SurfaceCheck::Ok => {
+            log::info!("R-A4: socket surface verified — exactly one TCP v4:{port}, zero UDP")
+        }
+        SurfaceCheck::Unavailable(why) => log::warn!(
+            "R-A4: runtime socket-surface check unavailable ({why}); surface rests on the \
+             §18 compile-out + the build smoke-test (R-B4)"
+        ),
+        SurfaceCheck::Violation(why) => {
+            log::error!("R-A4: socket-surface violation — {why}; refusing to serve");
+            std::process::exit(1);
+        }
+    }
+}
+
+#[cfg(not(feature = "lockdown"))]
+fn assert_socket_surface(_port: u16) {}
+
 async fn direct_server(server: ServerPtr) {
     let mut listener = None;
     let mut port = 0;
@@ -908,13 +940,17 @@ async fn direct_server(server: ServerPtr) {
         let disabled = option2bool("stop-service", &Config::get_option("stop-service"));
         if !disabled && listener.is_none() {
             port = get_direct_port();
-            match hbb_common::tcp::listen_any(port as _).await {
+            match hbb_common::tcp::listen_any_v4(port as _).await {
                 Ok(l) => {
                     listener = Some(l);
                     log::info!(
                         "Direct server listening on: {:?}",
                         listener.as_ref().map(|l| l.local_addr())
                     );
+                    // R-A4: the listener is up — assert the live socket surface
+                    // (exactly one TCP v4 listener on the pinned port, zero UDP
+                    // of any kind) now, before accepting any connection.
+                    assert_socket_surface(port as u16);
                 }
                 Err(err) => {
                     // to-do: pass to ui

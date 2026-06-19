@@ -331,6 +331,21 @@ pub async fn listen_any(port: u16) -> ResultType<TcpListener> {
     .listen(DEFAULT_BACKLOG)?)
 }
 
+/// R-D5: bind the direct listener **v4-only**. This is exactly the v4 body of
+/// `listen_any` (above) used unconditionally — `0.0.0.0:port`, no dual-stack v6
+/// face — so IPv6 unreachability is a *property of the binary*, not of a host
+/// sysctl or an `ip6tables` rule that can drift ("structural > config" applied
+/// to address families). The fork's only inbound listener (the lifted
+/// `direct_server`, R-D4) calls this; a v4-only box also retires the
+/// connection.rs IPv6-prefix limiter (R-S10) as dead code by construction.
+pub async fn listen_any_v4(port: u16) -> ResultType<TcpListener> {
+    Ok(new_socket(
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port),
+        true,
+    )?
+    .listen(DEFAULT_BACKLOG)?)
+}
+
 impl Unpin for DynTcpStream {}
 
 impl AsyncRead for DynTcpStream {

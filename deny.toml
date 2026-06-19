@@ -1,0 +1,83 @@
+# R-R3 / R-A7 — dependency-advisory policy for `cargo deny check advisories`.
+#
+# R-A7 requires `cargo audit`/`cargo deny` GREEN with the build `--locked`, and
+# R-R3 requires the inherited lockfile to pass the audit it currently fails. The
+# split is: FIX by in-range lockfile bump where the pinned 1.75 toolchain (R-B5a)
+# allows it; otherwise consciously ACCEPT with a reason (this file). Each ignore
+# below is a deliberate, reasoned accept — not a blanket suppression.
+#
+# ── FIXED this pass by in-range lockfile bumps (NOT ignored — resolved) ──
+#   RUSTSEC-2024-0421  idna 0.5.0  -> url 2.5.4 (idna 1.0.3, unicode-rs backend —
+#                      avoids icu 2.x which needs edition2024/rustc 1.85). Punycode
+#                      mixed-label confusable, the one named code-vuln.
+#   RUSTSEC-2026-0097  rand 0.8.5  -> rand 0.8.6. thread_rng aliased-&mut UB in the
+#                      server-side CSPRNG (password/salt/id gen + the CPace
+#                      ephemeral scalars, R-P12) — security-relevant, non-breaking.
+#   RUSTSEC-2025-0024  crossbeam-channel 0.5.13 -> 0.5.15. Double-free on Drop.
+#   RUSTSEC-2025-0055  tracing-subscriber 0.3.19 -> 0.3.20. ANSI-escape log poison.
+# All four compile-verified on the pinned 1.75 toolchain (lockdown on + off).
+#
+# This config targets `cargo deny check advisories`. The cargo-audit twin
+# (`audit.toml` with the same ignore IDs) and the Dart `osv-scanner` gate are
+# the remaining R-R3 wiring. The audit MUST run against a PINNED advisory-db
+# snapshot recorded in the build provenance (R-B10/R-B12): cargo-audit 0.21.1
+# is the last release supporting rustc 1.74/1.75, and it cannot parse the newest
+# (2026-schema) advisory-db entries — so the snapshot and the tool version are
+# themselves pins.
+
+[advisories]
+db-urls = ["https://github.com/RustSec/advisory-db"]
+yanked = "warn"
+ignore = [
+  # ── code-vulns that the R-B5a 1.75 pin or "no upstream fix" blocks ──
+  { id = "RUSTSEC-2025-0022", reason = "openssl 0.10.68 Md::fetch/Cipher::fetch UAF. The fix (>=0.10.72) drags openssl-sys 0.9.117, which requires rustc 1.80 and breaks the R-B5a 1.75 pin. UNREACHABLE: RustDesk never calls the explicit-fetch provider API (Appendix D). Revisit only if the toolchain pin moves." },
+  { id = "RUSTSEC-2025-0004", reason = "openssl 0.10.68 ssl::select_next_proto UAF — same openssl-sys 1.80 MSRV wall as 2025-0022 (fix needs >=0.10.70). ALPN-negotiation path. Accepted on the 1.75 build; revisit with the toolchain bump." },
+  { id = "RUSTSEC-2020-0071", reason = "time 0.1.45 potential segfault (localtime_r). Pulled ONLY on macOS (the chrono oldtime path); the controlled box is Linux and R-R2 drops the macOS target, so it leaves the graph there. The v4-only Linux build never compiles it." },
+  { id = "RUSTSEC-2024-0013", reason = "libgit2-sys 0.14.2 memory-corruption. Build/dev-time transitive only (git2 tooling), NOT in the controlled runtime binary; the fix is a major bump (>=0.16.2) cascading git2. Tracked for the build-tooling bump." },
+  { id = "RUSTSEC-2025-0040", reason = "users 0.10/0.11 'root appended to group listings'. No upstream fix exists; remediated by the users->uzers fork edit decided in Appendix D, pending the live build." },
+
+  # ── unmaintained/unsound cleared by the Appendix D fork-bumps (pending) ──
+  { id = "RUSTSEC-2021-0145", reason = "atty unsound unaligned read. Build-time only; leaves with the bindgen 0.59->0.69 fork bump (Appendix D)." },
+  { id = "RUSTSEC-2024-0375", reason = "atty unmaintained — same bindgen fork bump as 2021-0145." },
+  { id = "RUSTSEC-2021-0139", reason = "ansi_term unmaintained. Build/CLI-color only; leaves with the bindgen fork bump (drops ansi_term together with atty)." },
+  { id = "RUSTSEC-2023-0040", reason = "users unmaintained — users->uzers fork edit (Appendix D)." },
+  { id = "RUSTSEC-2023-0059", reason = "users unsound unaligned read — users->uzers fork edit (Appendix D)." },
+
+  # ── unmaintained, no drop-in / no exploitable path: documented accepts ──
+  { id = "RUSTSEC-2021-0137", reason = "sodiumoxide deprecated. It IS the libsodium secretbox session layer (R-P2/R-P10) and the §3.2-pinned crypto; no maintained drop-in. Accepted (Appendix D); the construction is KAT-pinned and R-V3-audited." },
+  { id = "RUSTSEC-2024-0436", reason = "paste unmaintained. Compile-time proc-macro (token pasting), no runtime surface, no drop-in. Accepted (Appendix D)." },
+  { id = "RUSTSEC-2022-0056", reason = "clipboard unmaintained. The clipboard feature is policy-gated and the payloads are R-S7-bounded; no maintained pristine drop-in (successors are different crates). Radio-silence class." },
+  { id = "RUSTSEC-2023-0051", reason = "dlopen_derive unmaintained. Compile-time derive for dlopen; build-time, no runtime surface." },
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained. Compile-time only (macro diagnostics), no runtime surface." },
+  { id = "RUSTSEC-2024-0384", reason = "instant unmaintained (wasm-era Instant shim). Transitive; native build uses std::time. No exploitable path." },
+  { id = "RUSTSEC-2024-0388", reason = "derivative unmaintained. Compile-time derive macro, no runtime surface." },
+  { id = "RUSTSEC-2017-0008", reason = "serial unmaintained. Transitive; no reachable use on the controlled box. Radio-silence class." },
+  { id = "RUSTSEC-2021-0154", reason = "fuser unsound. FUSE binding; not mounted by the controlled box. Transitive, no reachable path." },
+  { id = "RUSTSEC-2025-0124", reason = "rand_os unmaintained (legacy rand 0.6 OS-RNG shim). Transitive; the live CSPRNG path is rand 0.8.6 (fixed above)." },
+
+  # ── gtk-rs 0.18 cluster: GUI bindings, unmaintained (gtk3 EOL). All build/UI ──
+  # only, no known exploitable path; leaves the controlled-only build with the
+  # GUI compile-out (R-R2b/§13) and the eventual gtk4 migration. Radio-silence.
+  { id = "RUSTSEC-2024-0411", reason = "gdkwayland-sys (gtk-rs 0.18 gtk3-EOL cluster) — UI-only, controlled build compiles the GUI out (R-R2b)." },
+  { id = "RUSTSEC-2024-0412", reason = "gdk (gtk-rs 0.18 gtk3-EOL cluster) — UI-only, R-R2b GUI compile-out." },
+  { id = "RUSTSEC-2024-0413", reason = "atk (gtk-rs 0.18 gtk3-EOL cluster) — UI-only, R-R2b GUI compile-out." },
+  { id = "RUSTSEC-2024-0414", reason = "gdkx11-sys (gtk-rs 0.18 gtk3-EOL cluster) — UI-only, R-R2b GUI compile-out." },
+  { id = "RUSTSEC-2024-0415", reason = "gtk (gtk-rs 0.18 gtk3-EOL cluster) — UI-only, R-R2b GUI compile-out." },
+  { id = "RUSTSEC-2024-0416", reason = "atk-sys (gtk-rs 0.18 gtk3-EOL cluster) — UI-only, R-R2b GUI compile-out." },
+  { id = "RUSTSEC-2024-0418", reason = "gdk-sys (gtk-rs 0.18 gtk3-EOL cluster) — UI-only, R-R2b GUI compile-out." },
+  { id = "RUSTSEC-2024-0419", reason = "gtk3-macros (gtk-rs 0.18 gtk3-EOL cluster) — compile-time macro, UI-only." },
+  { id = "RUSTSEC-2024-0420", reason = "gtk-sys (gtk-rs 0.18 gtk3-EOL cluster) — UI-only, R-R2b GUI compile-out." },
+  { id = "RUSTSEC-2024-0429", reason = "glib unsound VariantStrIter (gtk-rs 0.18 cluster) — UI-only, R-R2b GUI compile-out." },
+
+  # ── unic 0.9 cluster: unmaintained Unicode tables, transitive, build data ──
+  # only; no exploitable path. Radio-silence class.
+  { id = "RUSTSEC-2025-0075", reason = "unic-char-range unmaintained (unic 0.9 cluster) — transitive Unicode tables, no exploitable path." },
+  { id = "RUSTSEC-2025-0080", reason = "unic-common unmaintained (unic 0.9 cluster) — transitive, no exploitable path." },
+  { id = "RUSTSEC-2025-0081", reason = "unic-char-property unmaintained (unic 0.9 cluster) — transitive, no exploitable path." },
+  { id = "RUSTSEC-2025-0083", reason = "unic-ucd-bidi unmaintained (unic 0.9 cluster) — transitive, no exploitable path." },
+  { id = "RUSTSEC-2025-0096", reason = "unic-bidi unmaintained (unic 0.9 cluster) — transitive, no exploitable path." },
+  { id = "RUSTSEC-2025-0098", reason = "unic-ucd-version unmaintained (unic 0.9 cluster) — transitive, no exploitable path." },
+
+  # ── transitive unmaintained, leaves with its puller ──
+  { id = "RUSTSEC-2025-0056", reason = "adler unmaintained (use adler2). Transitive (miniz_oxide/png path), build/data only, no exploitable surface." },
+]

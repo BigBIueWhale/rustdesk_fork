@@ -2298,7 +2298,15 @@ impl Connection {
             }
         }
         // After handling CloseReason messages, proceed to process other message types
-        if let Some(message::Union::LoginRequest(lr)) = msg.union {
+        if let Some(message::Union::LoginRequest(mut lr)) = msg.union {
+            // R-X14 / R-S18: the peer MUST NOT select an OS user or trigger a PAM
+            // os-login (the second OS-credential subsystem — try_start_x_session /
+            // pam::Client). CPace's password is the sole credential (R-P1), so strip
+            // any os_login the LoginRequest carries: no PAM / X-session login runs on
+            // the peer's behalf, and the session uses the box's local desktop context
+            // only. (allow-linux-headless=N pins the headless path off; this closes
+            // the peer-driven trigger by construction.)
+            lr.os_login.clear();
             self.handle_login_request_without_validation(&lr).await;
             if self.authorized {
                 return true;

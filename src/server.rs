@@ -21,7 +21,6 @@ use hbb_common::{
     protobuf::{Enum, Message as _},
     rendezvous_proto::*,
     socket_client,
-    sodiumoxide::crypto::{box_, sign},
     timeout, tokio, ResultType, Stream,
 };
 use scrap::camera;
@@ -196,57 +195,15 @@ pub async fn create_tcp_connection(
 ) -> ResultType<()> {
     let mut stream = stream;
     let id = server.write().unwrap().get_new_id();
-    let (sk, pk) = Config::get_key_pair();
-    if secure && pk.len() == sign::PUBLICKEYBYTES && sk.len() == sign::SECRETKEYBYTES {
-        let mut sk_ = [0u8; sign::SECRETKEYBYTES];
-        sk_[..].copy_from_slice(&sk);
-        let sk = sign::SecretKey(sk_);
-        let mut msg_out = Message::new();
-        let (our_pk_b, our_sk_b) = box_::gen_keypair();
-        msg_out.set_signed_id(SignedId {
-            id: sign::sign(
-                &IdPk {
-                    id: Config::get_id(),
-                    pk: Bytes::from(our_pk_b.0.to_vec()),
-                    ..Default::default()
-                }
-                .write_to_bytes()
-                .unwrap_or_default(),
-                &sk,
-            )
-            .into(),
-            ..Default::default()
-        });
-        timeout(CONNECT_TIMEOUT, stream.send(&msg_out)).await??;
-        match timeout(CONNECT_TIMEOUT, stream.next()).await? {
-            Some(res) => {
-                let bytes = res?;
-                if let Ok(msg_in) = Message::parse_from_bytes(&bytes) {
-                    if let Some(message::Union::PublicKey(pk)) = msg_in.union {
-                        if pk.asymmetric_value.len() == box_::PUBLICKEYBYTES {
-                            stream.set_key(tcp::Encrypt::decode(
-                                &pk.symmetric_value,
-                                &pk.asymmetric_value,
-                                &our_sk_b,
-                            )?);
-                        } else if pk.asymmetric_value.is_empty() {
-                            Config::set_key_confirmed(false);
-                            log::info!("Force to update pk");
-                        } else {
-                            bail!("Handshake failed: invalid public sign key length from peer");
-                        }
-                    } else {
-                        log::error!("Handshake failed: invalid message type");
-                    }
-                } else {
-                    bail!("Handshake failed: invalid message format");
-                }
-            }
-            None => {
-                bail!("Failed to receive public key");
-            }
-        }
-    } else {
+    // R-P5 / R-P14 / §8: keying is the single mandatory CPace handshake, run
+    // UNCONDITIONALLY. The inherited secure-gated SignedId <-> PublicKey
+    // device-identity bootstrap — its box_/sign keypair, the IdPk signature, the
+    // symmetric-key unwrap (tcp::Encrypt::decode) — is removed: there are no
+    // identity keys (R-P5), no `secure` keying path to select, and no downgrade
+    // (R-P11). With the rendezvous/relay paths neutralized (6920db9) the box only
+    // serves direct connections, which always key via CPace below.
+    let _ = secure;
+    {
         // R-P14 / R-S1: the single mandatory CPace handshake at the choke point.
         // The flagship direct path (secure=false) ran no keying here before, so it
         // GAINS the keying it never had — every transport is mutually

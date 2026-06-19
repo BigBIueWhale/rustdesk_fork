@@ -268,16 +268,12 @@ pub async fn create_tcp_connection(
         }
         log::info!("wake up macos");
     }
-    // R-A1: no application message is processed on an unkeyed stream. By here the
-    // direct path has run CPace (keyed, or bailed fail-closed) and the secure path
-    // has installed its key; any residual unkeyed path (the inherited pk-update /
-    // invalid-message fall-throughs) MUST terminate rather than reach the message
-    // loop. Enforced on the controlled-side (lockdown) profile, where CPace is the
-    // only keying — makes the unkeyed-direct-path bug unreachable by construction.
-    // TODO(one-binary): make this R-A1 guard UNCONDITIONAL — drop the `lockdown` cfg and
-    // fix the "controlled-side (lockdown) profile" comment above. R-A1 is a MUST: no
-    // message is ever processed on an unkeyed stream, on every build (R-R2b).
-    #[cfg(feature = "lockdown")]
+    // R-A1: no application message is processed on an unkeyed stream, on every build
+    // (R-R2b — unconditional, not behind a flag). By here the single mandatory CPace
+    // handshake above has run UNCONDITIONALLY (keyed, or bailed fail-closed) — CPace is
+    // the only keying — so any residual unkeyed path (the inherited pk-update /
+    // invalid-message fall-throughs) MUST terminate rather than reach the message loop.
+    // Makes the unkeyed-direct-path bug unreachable by construction.
     if !stream.is_secured() {
         bail!("R-A1: refusing to start a connection on an unkeyed stream");
     }

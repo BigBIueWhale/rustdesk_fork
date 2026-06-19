@@ -857,11 +857,8 @@ fn get_direct_port() -> i32 {
 /// assertion (exactly one TCP v4 listener on the pinned port, zero UDP of any
 /// kind) runs post-listen in `assert_socket_surface` — it needs the listener up
 /// first, so it lives at the bind site rather than here.
-// TODO(one-binary): make both R-A4 asserts (assert_startup_invariants AND
-// assert_socket_surface below) UNCONDITIONAL — drop the `lockdown` cfgs and delete the
-// two empty `not(lockdown)` stubs. R-A4 is a MUST: every shipped binary refuses to
-// listen unless the pinned policy + the one-TCP/zero-UDP surface verify (R-R2b).
-#[cfg(feature = "lockdown")]
+// R-A4 is UNCONDITIONAL (R-R2b): every shipped binary refuses to listen unless the
+// pinned policy + the one-TCP/zero-UDP surface verify — never behind a feature flag.
 fn assert_startup_invariants() {
     let mut ok = true;
     if Config::get_option(hbb_common::config::keys::OPTION_VERIFICATION_METHOD)
@@ -897,9 +894,6 @@ fn assert_startup_invariants() {
     }
 }
 
-#[cfg(not(feature = "lockdown"))]
-fn assert_startup_invariants() {}
-
 /// R-A4 (§9) post-listen socket-surface assertion. Once the direct listener is
 /// bound, the controlled box's reachable surface MUST equal exactly one TCP
 /// listener on the pinned v4 port and ZERO UDP sockets of any kind (ephemeral
@@ -909,7 +903,6 @@ fn assert_startup_invariants() {}
 /// the surface then rests on the §18 compile-out + the R-B4 build smoke-test.
 /// This is a bind/listener-surface check only — it does NOT catch TCP egress
 /// (an outbound connect has no listener row), which rests on R-D6 + firewall.
-#[cfg(feature = "lockdown")]
 fn assert_socket_surface(port: u16) {
     use hbb_common::socket_surface::{check_surface, SurfaceCheck};
     match check_surface(port) {
@@ -926,9 +919,6 @@ fn assert_socket_surface(port: u16) {
         }
     }
 }
-
-#[cfg(not(feature = "lockdown"))]
-fn assert_socket_surface(_port: u16) {}
 
 async fn direct_server(server: ServerPtr) {
     let mut listener = None;

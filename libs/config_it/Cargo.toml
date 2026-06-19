@@ -3,10 +3,10 @@ name = "config_it"
 version = "0.1.0"
 edition = "2021"
 publish = false
-description = "Integration test for the R-S16 lockdown PINNED_SETTINGS funnel — depends on hbb_common's library with the lockdown feature (no dev-deps ⇒ no webrtc, compiles on the pinned 1.75 toolchain)."
+description = "Integration test for the R-S16 PINNED_SETTINGS policy funnel (now UNCONDITIONAL — the lockdown build-split feature was retired, R-R2b). Depends on hbb_common's library with no dev-deps ⇒ no webrtc, compiles on the pinned 1.75 toolchain."
 
 [lib]
 path = "src/lib.rs"
 
 [dev-dependencies]
-hbb_common = { path = "../hbb_common", features = ["lockdown"] }
+hbb_common = { path = "../hbb_common" }

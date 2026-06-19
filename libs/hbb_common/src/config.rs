@@ -1263,8 +1263,8 @@ impl Config {
         // single source of truth — a pinned key returns its compile-time value
         // before any overwrite/stored/default lookup, so every config-driven
         // resolver (verification_method, approve_mode, option2bool("enable-*"),
-        // the egress reads) returns the policy with no per-call-site edit. A
-        // no-op when `lockdown` is off (PINNED_SETTINGS is empty).
+        // the egress reads) returns the policy with no per-call-site edit. The
+        // pin is UNCONDITIONAL (R-R2b): PINNED_SETTINGS is enforced on every build.
         if let Some(v) = pinned_setting(k) {
             return v.to_string();
         }
@@ -2802,8 +2802,8 @@ fn get_or(
 }
 
 /// R-S16(b)/(c): the pinned value for `k`, if it is in the compile-time policy
-/// table ([`keys::PINNED_SETTINGS`]). `None` only when that table is empty, so
-/// the funnel is then a no-op.
+/// table ([`keys::PINNED_SETTINGS`]). `None` when `k` is not a pinned key (the
+/// table itself is unconditional and non-empty on every build — R-R2b).
 #[inline]
 fn pinned_setting(k: &str) -> Option<&'static str> {
     keys::PINNED_SETTINGS
@@ -3258,14 +3258,10 @@ pub mod keys {
     /// server-pushed config merge. Pins only `Config` server-settings keys; the
     /// parallel `LocalConfig` viewer-UI map is untouched.
     ///
-    /// Empty when `lockdown` is off (the funnel is then a no-op). An operator who needs
-    /// a different policy edits this table and rebuilds (the R-F4 build-time-choice
-    /// discipline) — never a runtime knob.
-    // TODO(one-binary): make PINNED_SETTINGS UNCONDITIONAL — drop this `lockdown` cfg
-    // and the empty `not(lockdown)` const below, and the "Empty when lockdown is off"
-    // line in the doc-comment. The policy is enforced by every artifact, never behind a
-    // feature flag (spec R-S16(a), R-R2b). This is the policy core of the build-split.
-    #[cfg(feature = "lockdown")]
+    /// UNCONDITIONAL: this table is the controlled-side security policy on every
+    /// shipped artifact, never behind a feature flag (spec R-S16(a), R-R2b). An
+    /// operator who needs a different policy edits this table and rebuilds (the
+    /// R-F4 build-time-choice discipline) — never a runtime knob.
     pub const PINNED_SETTINGS: &[(&str, &str)] = &[
         // Credential & approval: the CPace PRS is the permanent password; no
         // one-time-password path, no silent click-to-accept (R-S16, R-X7).
@@ -3306,9 +3302,6 @@ pub mod keys {
         ("stop-service", "N"),
         (OPTION_ALLOW_ONLY_CONN_WINDOW_OPEN, ""),
     ];
-
-    #[cfg(not(feature = "lockdown"))]
-    pub const PINNED_SETTINGS: &[(&str, &str)] = &[];
 
     // BUILDIN_SETTINGS
     pub const KEYS_BUILDIN_SETTINGS: &[&str] = &[

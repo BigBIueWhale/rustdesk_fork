@@ -2172,44 +2172,11 @@ impl Connection {
         enable_prefix_option: &str,
         control_permissions: &Option<ControlPermissions>,
     ) -> bool {
-        // R-S16(d)(i): under lockdown the controlled-side policy (the pinned
-        // PINNED_SETTINGS funnel) is the single source of truth — skip the
-        // rendezvous-server `control_permissions` branch entirely, closing the
-        // server-push capability vector by construction, not merely by the
-        // mediator's absence under R-D4.
-        // TODO(one-binary): delete this whole `not(lockdown)` control_permissions block
-        // and the `#[cfg(feature="lockdown")] let _ = control_permissions;` below — make
-        // `is_permission_enabled_locally` the only path UNCONDITIONALLY (R-S16(d)(i)):
-        // never consult a rendezvous-server-pushed capability bit. One binary, no flag.
-        #[cfg(not(feature = "lockdown"))]
-        {
-            use hbb_common::rendezvous_proto::control_permissions::Permission;
-            if let Some(control_permissions) = control_permissions {
-                let permission = match enable_prefix_option {
-                    keys::OPTION_ENABLE_KEYBOARD => Some(Permission::keyboard),
-                    keys::OPTION_ENABLE_REMOTE_PRINTER => Some(Permission::remote_printer),
-                    keys::OPTION_ENABLE_CLIPBOARD => Some(Permission::clipboard),
-                    keys::OPTION_ENABLE_FILE_TRANSFER => Some(Permission::file),
-                    keys::OPTION_ENABLE_AUDIO => Some(Permission::audio),
-                    keys::OPTION_ENABLE_CAMERA => Some(Permission::camera),
-                    keys::OPTION_ENABLE_TERMINAL => Some(Permission::terminal),
-                    keys::OPTION_ENABLE_TUNNEL => Some(Permission::tunnel),
-                    keys::OPTION_ENABLE_REMOTE_RESTART => Some(Permission::restart),
-                    keys::OPTION_ENABLE_RECORD_SESSION => Some(Permission::recording),
-                    keys::OPTION_ENABLE_BLOCK_INPUT => Some(Permission::block_input),
-                    keys::OPTION_ENABLE_PRIVACY_MODE => Some(Permission::privacy_mode),
-                    _ => None,
-                };
-                if let Some(permission) = permission {
-                    if let Some(enabled) =
-                        crate::get_control_permission(control_permissions.permissions, permission)
-                    {
-                        return enabled;
-                    }
-                }
-            }
-        }
-        #[cfg(feature = "lockdown")]
+        // R-S16(d)(i): the controlled-side policy (the pinned PINNED_SETTINGS funnel)
+        // is the single source of truth — UNCONDITIONALLY on every build (R-R2b). The
+        // rendezvous-server-pushed `control_permissions` capability bits are never
+        // consulted, closing that server-push vector by construction (not merely by the
+        // mediator's absence under R-D4): `is_permission_enabled_locally` is the only path.
         let _ = control_permissions;
         Self::is_permission_enabled_locally(enable_prefix_option)
     }
@@ -2337,13 +2304,17 @@ impl Connection {
                     }
                     self.view_camera = true;
                 }
-                // TODO(one-binary): make THIS permission-gated arm unconditional and
-                // delete the `#[cfg(feature="lockdown")]` refusal arm below. The terminal
-                // is runtime-locked, not compiled out (R-X8/R-R2b): the enable-terminal=N
-                // pin (R-S16) makes `Self::permission(OPTION_ENABLE_TERMINAL)` return false,
-                // so this arm already refuses it on the box — the separate lockdown refusal
-                // is redundant. Also delete the SwitchPermission widener (R-S16(d)(ii)).
-                #[cfg(not(feature = "lockdown"))]
+                // R-X8/R-R2b: the terminal session-type CODE stays in the one binary
+                // (its existence is a non-goal to remove, §14 — an operator who needs an
+                // attended terminal edits the enable-terminal pin and rebuilds, R-F4),
+                // but it is runtime-LOCKED on the box. The pinned enable-terminal=N
+                // (R-S16, UNCONDITIONAL since the lockdown feature was retired) makes
+                // Self::permission(OPTION_ENABLE_TERMINAL) resolve false, so this arm
+                // refuses the LoginRequest.Terminal below — self.terminal is never set,
+                // so the root PTY is unreachable. The pin is the closure (R-A6 CI-proves
+                // it); no separate compiled-out refusal arm is needed. (handle_terminal_action
+                // also bails fail-closed when terminal_user_token is None, which it stays
+                // when no Terminal session was authorized.)
                 Some(login_request::Union::Terminal(terminal)) => {
                     if !Self::permission(keys::OPTION_ENABLE_TERMINAL, &self.control_permissions) {
                         self.send_login_error("No permission of terminal").await;
@@ -2364,19 +2335,6 @@ impl Connection {
                             o.terminal_persistent.enum_value() == Ok(BoolOption::Yes);
                     }
                     self.terminal_service_id = terminal.service_id;
-                }
-                #[cfg(feature = "lockdown")]
-                Some(login_request::Union::Terminal(_)) => {
-                    // R-X8: the terminal root-PTY is absent from the controlled
-                    // (lockdown) build — refuse it STRUCTURALLY here, not merely
-                    // via the enable-terminal pin. This is the belt; compiling out
-                    // terminal_service/terminal_helper themselves is the primary
-                    // closure (a follow-on). One PAKE password must never buy a
-                    // root shell on the exposed box.
-                    self.send_login_error("Terminal is not available on this host")
-                        .await;
-                    sleep(1.).await;
-                    return false;
                 }
                 Some(login_request::Union::PortForward(mut pf)) => {
                     if !Self::permission(keys::OPTION_ENABLE_TUNNEL, &self.control_permissions) {
@@ -2537,9 +2495,11 @@ impl Connection {
                 // PAKE. When the stream is CPace-keyed the peer is already mutually
                 // password-authenticated (R-P14; R-A1 asserts keying before this
                 // runs), so the login-time salted-hash re-check — the deleted Hash
-                // oracle — is skipped, and authorization IS the keyed edge. On an
-                // unkeyed stream (the non-lockdown transition) the legacy check
-                // still applies; no PRS material is re-validated over the wire.
+                // oracle — is skipped, and authorization IS the keyed edge. The
+                // unkeyed fallback below is defensive only: R-A1 (now unconditional,
+                // R-R2b) refuses unkeyed streams before Connection::start, so on the
+                // responder this branch is unreachable; no PRS material is ever
+                // re-validated over the wire.
                 if !self.stream.is_secured()
                     && !self.validate_password(allow_logon_screen_password)
                 {
@@ -3428,20 +3388,18 @@ impl Connection {
                     }
                 }
                 Some(message::Union::TerminalAction(action)) => {
-                    // TODO(one-binary): drop the `lockdown` cfg here, keep only the
-                    // android/ios platform cfg. The handler stays compiled (one binary,
-                    // R-X8); it is unreachable simply because the enable-terminal=N pin
-                    // never authorizes a Terminal session — not because it's compiled out.
-                    #[cfg(all(
-                        not(any(target_os = "android", target_os = "ios")),
-                        not(feature = "lockdown")
-                    ))]
+                    // R-X8/R-R2b: the handler stays compiled into the one binary (the
+                    // terminal session-type code's existence is a non-goal to remove,
+                    // §14) and is gated only by platform. On the box it is unreachable at
+                    // RUNTIME because the enable-terminal=N pin never authorizes a Terminal
+                    // session (so self.terminal stays false and terminal_user_token None,
+                    // and handle_terminal_action bails fail-closed on that) — not because
+                    // it is compiled out.
+                    #[cfg(not(any(target_os = "android", target_os = "ios")))]
                     allow_err!(self.handle_terminal_action(action).await);
-                    #[cfg(any(target_os = "android", target_os = "ios", feature = "lockdown"))]
+                    #[cfg(any(target_os = "android", target_os = "ios"))]
                     {
-                        // R-X8: terminal is absent from the controlled (lockdown)
-                        // build (and unsupported on mobile) — the action handler is
-                        // unreachable here, so a TerminalAction is ignored.
+                        // Terminal is unsupported on mobile — a TerminalAction is ignored.
                         let _ = action;
                         log::warn!("Terminal action ignored — terminal not available on this build");
                     }

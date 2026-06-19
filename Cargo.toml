@@ -26,21 +26,17 @@ use_samplerate = ["samplerate"]
 use_rubato = ["rubato"]
 use_dasp = ["dasp"]
 flutter = ["flutter_rust_bridge"]
-# TODO(one-binary): REMOVE the `lockdown` feature — it is the build-split leftover.
-# The fork is ONE binary, both roles, hardening UNCONDITIONAL (spec R-R2b; R-S16(a):
-# the policy is "enforced by every artifact, never behind a feature flag"). To retire
-# it: make every `#[cfg(feature="lockdown")]` block unconditional and DELETE every
-# `#[cfg(not(feature="lockdown"))]` branch + empty stub. Gate sites:
-#   libs/hbb_common/src/config.rs   — PINNED_SETTINGS table          (R-S16(a))
-#   src/server/connection.rs        — control_permissions skip       (R-S16(d)(i))
-#                                     terminal login arm             (R-X8)
-#                                     TerminalAction handler         (R-X8)
-#   src/rendezvous_mediator.rs      — R-A4 startup + socket-surface asserts
-#   src/server.rs                   — R-A1 unkeyed-stream guard
-#   libs/hbb_common/src/tcp.rs      — R-A3 set_raw assert
-# Also delete the runtime SwitchPermission widener (connection.rs) per R-S16(d)(ii),
-# so the enable-terminal=N lock can never be re-widened mid-session.
-lockdown = ["hbb_common/lockdown"]
+# The `lockdown` build-split feature has been RETIRED (spec R-R2b; R-S16(a): the
+# controlled-side policy is "enforced by every artifact, never behind a feature
+# flag"). The fork is ONE binary, both roles, hardening UNCONDITIONAL: the
+# PINNED_SETTINGS funnel (config.rs), the R-A1 unkeyed-stream guard (server.rs),
+# the R-A3 set_raw assert (tcp.rs), the R-A4 startup + socket-surface asserts
+# (rendezvous_mediator.rs), and the R-X8 terminal-refusal-by-pin (connection.rs)
+# all compile into every shipped artifact, never behind a flag.
+# REMAINING one-binary follow-on: delete the runtime SwitchPermission widener
+# (connection.rs) per R-S16(d)(ii), so a mid-session re-widen of a content
+# capability has no path (orthogonal to the terminal pin — SwitchPermission does
+# not cover terminal/tunnel).
 default = ["use_dasp"]
 # TODO(one-binary): the fork ships SOFTWARE codec only — CPU-only vpx/aom (spec R-R2b,
 # user directive: fewer C codecs linked, no GPU/VRAM). Never select `hwcodec`/`vram`

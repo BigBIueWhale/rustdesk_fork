@@ -186,15 +186,12 @@ impl FramedStream {
     }
 
     pub fn set_raw(&mut self) {
-        // R-A3 / R-S5: under lockdown a keyed session stream MUST NOT be downgraded
-        // to raw — stripping the engaged secretbox would leak plaintext, and keeping
-        // it would break framing (raw mode cannot delimit framed secretbox output).
-        // The only caller is the port-forward/tunnel, which is policy-disabled on the
-        // box (enable-tunnel=N, R-S16), so a keyed stream must never reach here;
-        // assert it fail-closed rather than silently downgrade.
-        // TODO(one-binary): make this R-A3 assert UNCONDITIONAL — drop the `lockdown` cfg.
-        // set_raw must never strip a keyed session stream, on every build (R-A3/R-R2b).
-        #[cfg(feature = "lockdown")]
+        // R-A3 / R-S5: a keyed session stream MUST NOT be downgraded to raw — stripping
+        // the engaged secretbox would leak plaintext, and keeping it would break framing
+        // (raw mode cannot delimit framed secretbox output). The only caller is the
+        // port-forward/tunnel, which is policy-disabled on the box (enable-tunnel=N,
+        // R-S16, now unconditional), so a keyed stream must never reach here; assert it
+        // fail-closed on every build (R-A3/R-R2b) rather than silently downgrade.
         assert!(
             self.2.is_none(),
             "R-A3: set_raw on a keyed session stream — refusing to downgrade"

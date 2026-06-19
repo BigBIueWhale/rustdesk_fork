@@ -1,9 +1,10 @@
-//! R-S16 lockdown funnel: with the `lockdown` feature on, the controlled-side
-//! PINNED_SETTINGS policy is the single source of truth — pinned keys return
-//! their compile-time values (read funnel, R-S16b) and cannot be written
-//! (write guard, R-S16c), so no local/IPC/server-pushed write can defaulted-
-//! permissive or re-enable them. A wrong funnel here is fail-open and "looks
-//! fine", so this test pins the behavior exactly.
+//! R-S16 policy funnel (UNCONDITIONAL — the lockdown build-split feature was
+//! retired, R-R2b): the controlled-side PINNED_SETTINGS policy is the single
+//! source of truth on every artifact — pinned keys return their compile-time
+//! values (read funnel, R-S16b) and cannot be written (write guard, R-S16c), so
+//! no local/IPC/server-pushed write can default-permissive or re-enable them. A
+//! wrong funnel here is fail-open and "looks fine", so this test pins the
+//! behavior exactly.
 
 use hbb_common::config::Config;
 

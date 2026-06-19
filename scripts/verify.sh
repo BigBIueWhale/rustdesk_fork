@@ -6,8 +6,8 @@
 # pinned 1.75 toolchain:
 #   1. the §10.4 PAKE KATs + the R-P3 self-consistency / negative KATs (R-A10);
 #   2. the wire-level CPace handshake + two-key-cipher integration tests;
-#   3. the R-S16 lockdown PINNED_SETTINGS funnel test;
-#   4. a compile check of the whole main crate, lockdown off AND on;
+#   3. the R-S16 PINNED_SETTINGS policy funnel test (now unconditional, R-R2b);
+#   4. a compile check of the whole main crate (hardening unconditional);
 #   5. the R-A6 build-time greps — forbidden tokens of the COMPLETED excisions
 #      MUST be absent; tokens of the not-yet-excised paths are reported as TODO.
 #
@@ -39,12 +39,11 @@ docker volume create rd-git-cache    >/dev/null
 docker volume create rd-verify-target >/dev/null
 docker build -q -t "$IMG" -f scripts/Dockerfile.devcheck scripts >/dev/null
 
-echo "== (1-3) KAT + handshake + lockdown + R-A4 surface + R-S7 frame/decompress (pinned 1.75) =="
+echo "== (1-3) KAT + handshake + policy funnel + R-A4 surface + R-S7 frame/decompress (pinned 1.75) =="
 "${RUN[@]}" cargo test -p pake -p cpace_it -p config_it -p surface_it -p compress_it -p address_it --color never
 
-echo "== (4) main crate compile check — lockdown OFF then ON =="
+echo "== (4) main crate compile check (hardening is UNCONDITIONAL — one binary, R-R2b) =="
 "${RUN[@]}" cargo check --features linux-pkg-config --color never
-"${RUN[@]}" cargo check --features linux-pkg-config,lockdown --color never
 
 echo "== (5) R-A6 forbidden-token greps =="
 # Greps run over the Rust source only, never requirements.html / the status docs
@@ -82,4 +81,4 @@ done
 if [ "$rc" -ne 0 ]; then
   echo "VERIFY: FAILED (a completed-excision R-A6 gate regressed)"; exit 1
 fi
-echo "VERIFY: all gates green (KATs + handshake + lockdown + main-crate compile + R-A6 done-set)"
+echo "VERIFY: all gates green (KATs + handshake + policy funnel + main-crate compile + R-A6 done-set)"

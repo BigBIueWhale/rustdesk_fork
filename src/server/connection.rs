@@ -2177,6 +2177,10 @@ impl Connection {
         // rendezvous-server `control_permissions` branch entirely, closing the
         // server-push capability vector by construction, not merely by the
         // mediator's absence under R-D4.
+        // TODO(one-binary): delete this whole `not(lockdown)` control_permissions block
+        // and the `#[cfg(feature="lockdown")] let _ = control_permissions;` below — make
+        // `is_permission_enabled_locally` the only path UNCONDITIONALLY (R-S16(d)(i)):
+        // never consult a rendezvous-server-pushed capability bit. One binary, no flag.
         #[cfg(not(feature = "lockdown"))]
         {
             use hbb_common::rendezvous_proto::control_permissions::Permission;
@@ -2333,6 +2337,12 @@ impl Connection {
                     }
                     self.view_camera = true;
                 }
+                // TODO(one-binary): make THIS permission-gated arm unconditional and
+                // delete the `#[cfg(feature="lockdown")]` refusal arm below. The terminal
+                // is runtime-locked, not compiled out (R-X8/R-R2b): the enable-terminal=N
+                // pin (R-S16) makes `Self::permission(OPTION_ENABLE_TERMINAL)` return false,
+                // so this arm already refuses it on the box — the separate lockdown refusal
+                // is redundant. Also delete the SwitchPermission widener (R-S16(d)(ii)).
                 #[cfg(not(feature = "lockdown"))]
                 Some(login_request::Union::Terminal(terminal)) => {
                     if !Self::permission(keys::OPTION_ENABLE_TERMINAL, &self.control_permissions) {
@@ -3418,6 +3428,10 @@ impl Connection {
                     }
                 }
                 Some(message::Union::TerminalAction(action)) => {
+                    // TODO(one-binary): drop the `lockdown` cfg here, keep only the
+                    // android/ios platform cfg. The handler stays compiled (one binary,
+                    // R-X8); it is unreachable simply because the enable-terminal=N pin
+                    // never authorizes a Terminal session — not because it's compiled out.
                     #[cfg(all(
                         not(any(target_os = "android", target_os = "ios")),
                         not(feature = "lockdown")

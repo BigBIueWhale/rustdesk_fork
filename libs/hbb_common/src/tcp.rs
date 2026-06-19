@@ -192,6 +192,8 @@ impl FramedStream {
         // The only caller is the port-forward/tunnel, which is policy-disabled on the
         // box (enable-tunnel=N, R-S16), so a keyed stream must never reach here;
         // assert it fail-closed rather than silently downgrade.
+        // TODO(one-binary): make this R-A3 assert UNCONDITIONAL — drop the `lockdown` cfg.
+        // set_raw must never strip a keyed session stream, on every build (R-A3/R-R2b).
         #[cfg(feature = "lockdown")]
         assert!(
             self.2.is_none(),

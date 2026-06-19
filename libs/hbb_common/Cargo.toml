@@ -9,9 +9,11 @@ edition = "2018"
 [features]
 default = []
 webrtc = ["dep:webrtc"]
-# R-S16: compile in the controlled-side PINNED_SETTINGS policy table and the
-# get_option/is_option_can_save funnel. On for every shipped controlled-side
-# profile; off ⇒ PINNED_SETTINGS is empty and the funnel is a no-op.
+# TODO(one-binary): REMOVE this `lockdown` feature (build-split leftover). The
+# PINNED_SETTINGS policy + the get_option/is_option_can_save funnel are UNCONDITIONAL —
+# enforced by every artifact, never behind a feature flag (spec R-S16(a), R-R2b). Make
+# the gated items in src/config.rs / src/tcp.rs unconditional, then delete this def and
+# the `hbb_common/lockdown` ref in the root Cargo.toml. See the root Cargo.toml TODO.
 lockdown = []
 
 [dependencies]

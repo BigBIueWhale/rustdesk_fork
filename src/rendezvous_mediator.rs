@@ -857,6 +857,10 @@ fn get_direct_port() -> i32 {
 /// assertion (exactly one TCP v4 listener on the pinned port, zero UDP of any
 /// kind) runs post-listen in `assert_socket_surface` — it needs the listener up
 /// first, so it lives at the bind site rather than here.
+// TODO(one-binary): make both R-A4 asserts (assert_startup_invariants AND
+// assert_socket_surface below) UNCONDITIONAL — drop the `lockdown` cfgs and delete the
+// two empty `not(lockdown)` stubs. R-A4 is a MUST: every shipped binary refuses to
+// listen unless the pinned policy + the one-TCP/zero-UDP surface verify (R-R2b).
 #[cfg(feature = "lockdown")]
 fn assert_startup_invariants() {
     let mut ok = true;

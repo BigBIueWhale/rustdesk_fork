@@ -1,0 +1,28 @@
+# In-tree Rust toolchain pin — the one pin upstream omits (R-R1, §3.2, §16).
+#
+# Upstream fixes the Rust version only in CI (.github/workflows/flutter-build.yml
+# `RUST_VERSION`). The hardened fork commits it in-tree so a `--locked` build is
+# reproducible from the repository alone, never from CI env vars.
+#
+# Pinned to 1.75 — the exact version upstream verified for all shipped targets
+# (flutter-build.yml `RUST_VERSION`/`SCITER_RUST_VERSION`). macOS's 1.81
+# (`MAC_RUST_VERSION`) leaves with the macOS target (R-R2), so it is not pinned
+# here.
+#
+# NOTE (R-B6): 1.75 is forced by the 32-bit Sciter path (Rust 1.78's i128 ABI
+# change breaks Sciter). Once Sciter is dropped (R-B6) this channel SHOULD be
+# bumped past 1.75 to unblock a modern Rust. Bump deliberately, re-run the
+# committed `--locked` build, and keep this file the single source of truth.
+
+[toolchain]
+channel = "1.75"
+profile = "minimal"
+components = ["rustfmt", "clippy"]
+targets = [
+    # The three shipped build targets (R-R2). Apple check-only triples
+    # (x86_64/aarch64-apple-darwin, aarch64-apple-ios) are added by the
+    # dedicated R-R2 `cargo check` CI job, not installed on every host.
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-linux-android",
+]

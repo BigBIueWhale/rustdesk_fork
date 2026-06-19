@@ -38,26 +38,42 @@ work (crypto/policy) is now **verified in-container, not committed blind**.
 
 ## Landed vs. remaining (quick read)
 
-**Landed and inspection-verified** (the structured-creation pass, ~45 commits):
-the structural monorepo (1.4.7 + absorbed `hbb_common`, `.git` stripped); the
-toolchain/version pinning + `rust-toolchain.toml`; the **complete build harness**
-(9 scripts) + the R-B2 determinism patch; the `Cpace` PAKE wire format; the §8
-excisions **R-X1** (updater RCE), **R-X2** (plugin loader), **R-X3** (all 3 re-home
-twins), **R-X4** (CLI gadgets + `get_key` trust-anchor pin), **R-X6** (Android +
-deep-link writes), **R-X12** (display-server env knob); **R-F4** (direct-port pin);
-**R-D3a** (systemd confinement); **R-SV8** (iOS entitlements).
+**Landed — compile/test-verified in docker** (the structured-creation pass plus
+the docker-build phase that overturned the false "no-build" premise; pinned 1.75
+toolchain, `scripts/verify.sh` is the running gate): the structural monorepo
+(1.4.7 + absorbed `hbb_common`, `.git` stripped); the toolchain/version pinning +
+`rust-toolchain.toml`; the **complete build harness** (9 scripts) + the R-B2
+determinism patch.
+- **The CPace PAKE is real, not just a wire format:** the **§10.4 construction**
+  (`libs/pake`, 16 KATs — the published draft-21 vector + the fork anchors,
+  KAT-VERIFIED); the **two-key secretbox** (`DirectionalCipher`, R-P10) + the
+  **choke-point integration** (`server.rs create_tcp_connection` runs
+  `run_responder` **unconditionally** — the responder authenticates purely by
+  CPace; SignedId/`box_` gone); the per-IP **R-S10** online-guess limiter — all
+  wire-tested over loopback (`cpace_it`).
+- **§9 assertions:** **R-A1** (keyed-stream-only), **R-A2** (no resume), **R-A3**
+  (`set_raw` seal), **R-A4** (startup self-check — policy reads back pinned, PRS
+  non-empty, empty BUILTIN/HARD funnels, **and now the live socket surface:
+  1×TCP v4:21118, 0×UDP**), **R-A5** (engaged-keys) — all fail-closed,
+  lockdown-gated. **R-S16** policy funnel (`PINNED_SETTINGS`, `config_it`-tested);
+  **R-S2/S5/S6/S9** as noted below.
+- **Direct-only + sovereign:** **R-D4 behavior** (rendezvous loop + LAN emptied),
+  **R-D5** (v4-only bind — `listen_any_v4`), **R-SV3/SV4** (version/NAT/heartbeat
+  phone-home deleted), **R-F4** (direct-port pin); **R-D3a** (systemd
+  confinement); the §8 excisions **R-X1/X2/X3/X4/X6/X12/X14**; **R-SV8** (iOS).
 
-**NOT done** (and why) — this is the load-bearing honesty: the **CPace
-construction** (§10.4, RISK-SILENT — gated on KATs that can't run here), the
-**two-key secretbox rewrite + choke-point integration** (§10/R-P14), the **§9
-assertions**, the **R-S16 policy funnel** (RISK-SILENT, fail-open if wrong), the
-**R-R2b role split**, the **R-S18/R-D4/R-B6-coordinated excisions** (R-X5/7/8/9/10/
-11/13/14, Sciter, mediator), and the **R-R3 dependency audit** (BLOCK-CARGO). These
-are the *majority* of the security spec by substance, and they require a
-build/test loop — which the "no running of code" constraint precludes — to do
-*correctly and verifiably*. **The project is therefore NOT "implemented in full,
-correctly."** Doing the fail-silent work (crypto/policy) blind would be the opposite
-of the spec's secure-by-assertion intent, so it is deferred, not faked.
+**NOT done** (and why — the load-bearing honesty): the entire **viewer/initiator
+side** (`client.rs run_initiator` + the R-S16 viewer-twin) and the **§19 GUI** are
+**flutter-gated** (the FRB-generated bridge needs the heavy flutter SDK — installs
+but version-skewed, deferred); **R-B6** (Sciter→flutter) and the **R-R2b** role
+split sit behind the same gate; the *token-absent* completion of the excisions
+(**R-X5/7/8/9/10/11/13**, the SignedId proto removal) is entangled with R-B6/R-D4;
+**R-R3** dependency audit (cargo-audit); **R-S13** viewer bar, **R-S17** host-key
+pin; **R-D6** silent TCP egress (rests on the firewall, not a runtime check); and
+the **R-A8/A9 two-host tests + the R-V3 independent audit**, which need real hosts
+and an outside auditor. **The project is therefore NOT "implemented in full,
+correctly"** — the responder (the exposed box) is comprehensively done and
+verified, but the viewer, the GUI, the build split, and the external audit remain.
 
 ## Status legend
 
@@ -103,15 +119,15 @@ compile/test loop) · `BLOCK-CARGO` (needs a lockfile regen) · `RISK-SILENT`
 
 | Area | Status | Notes |
 |---|---|---|
-| §9 R-A1–R-A10 runtime/build/test assertions | **PARTIAL — gate RUNS** | `a583fd9` `scripts/verify.sh` is the executable §9.3/R-V3 assurance basis: it RUNS the R-A10 KATs (pake 16 + cpace_it 5 + config_it), compile-checks the main crate (lockdown off/on), and hard-gates the **R-A6** greps for the completed excisions (R-X1/X2/X4-CLI/X6/X12 = 0 tokens) — all green. **R-A5** done (`7394561`); **R-A1 done** (`3e97f37`, lockdown-gated `is_secured()` assert before `Connection::start`); **R-A4 PARTIAL** (`2957396`/`5140124`): `assert_startup_invariants()` at the service entry refuses to listen unless the policy reads back pinned (verification-method/approve-mode via `get_option`), a permanent password exists (R-S9), AND the BUILTIN_SETTINGS / HARD_SETTINGS funnels are empty (no managed override / preset, R-S16(d)(iv)(v)) — all fail-closed. Only the live bound-socket-surface check (1×TCP:21118, 0×UDP, post-listen) remains. REMAINING: R-A4's bound-socket-surface check (1×TCP:21118, 0×UDP — now true) + empty BUILTIN/HARD funnels; **R-A2 done** (`2cf3ad6`): the is_recent_session 30-s reconnect and the SwitchSidesResponse resume — both set `authorized` without a fresh handshake — are removed, so authorization coincides with the CPace KEYED edge; **R-A3 done** (`ddb5c05`): a lockdown-gated assert seals `set_raw` so a keyed stream can't be downgraded to raw. REMAINING: R-A6 turns red→green per excision; R-A8/A9 are the two-host tests |
+| §9 R-A1–R-A10 runtime/build/test assertions | **PARTIAL — gate RUNS** | `a583fd9` `scripts/verify.sh` is the executable §9.3/R-V3 assurance basis: it RUNS the R-A10 KATs (pake 16 + cpace_it 5 + config_it), compile-checks the main crate (lockdown off/on), and hard-gates the **R-A6** greps for the completed excisions (R-X1/X2/X4-CLI/X6/X12 = 0 tokens) — all green. **R-A5** done (`7394561`); **R-A1 done** (`3e97f37`, lockdown-gated `is_secured()` assert before `Connection::start`); **R-A4 DONE** (`2957396`/`5140124`/`b6df149`): `assert_startup_invariants()` at the service entry refuses to listen unless the policy reads back pinned (verification-method/approve-mode via `get_option`), a permanent password exists (R-S9), AND the BUILTIN_SETTINGS / HARD_SETTINGS funnels are empty (R-S16(d)(iv)(v)); and post-listen `assert_socket_surface()` confirms the live bound-socket surface — exactly **1×TCP v4:21118, 0×UDP of any kind** (a pure `/proc/self/net` parser + policy, unit-tested in `surface_it`; counts LISTEN-state only so a session's ESTABLISHED row never miscounts; the any-UDP rule closes the ephemeral-egress blind spot; non-Linux records *unavailable* per R-A4's Darwin clause) — all fail-closed. REMAINING: only the R-A8/A9 two-host exercise of these asserts; **R-A2 done** (`2cf3ad6`): the is_recent_session 30-s reconnect and the SwitchSidesResponse resume — both set `authorized` without a fresh handshake — are removed, so authorization coincides with the CPace KEYED edge; **R-A3 done** (`ddb5c05`): a lockdown-gated assert seals `set_raw` so a keyed stream can't be downgraded to raw. REMAINING: R-A6 turns red→green per excision; R-A8/A9 are the two-host tests |
 | R-S16 controlled-policy `PINNED_SETTINGS` funnel | **PARTIAL — config funnel VERIFIED** | `675514b`; (a) `keys::PINNED_SETTINGS` table + (b) `get_option` read funnel + (c) `is_option_can_save` write guard, behind a new `lockdown` feature (empty/no-op when off). **Tested on the pinned 1.75 toolchain** (`config_it` crate, lockdown on): every pinned key returns its policy value and resists override, non-pinned keys unaffected. Was RISK-SILENT (fail-open if wrong) — now behavior-pinned. **R-S16(d)(i) done** (`af15880`): the main-crate `lockdown` feature + `Connection::permission` early-return skipping the `control_permissions` server-push bypass — compile-verified both lockdown on/off. REMAINING: `get_builtin_option` (d)(iv) mirror (only if a KEYS_BUILDIN value is ever pinned), and R-S16's password-storage twin (PRS-at-rest, part of the choke-point cutover) |
 | R-S2 FSM collapse · R-S5 `set_raw` seal · R-S9 PRS-at-rest · R-S10 limiter re-key · R-S13 initiator bar · R-S17 host-key pin · R-S18 OS-credential delete | **PARTIAL** | **R-S2 resume paths removed** (`2cf3ad6`, see R-A2); **R-S9 PRS-at-rest** done (`ef8fa72` plaintext-PRS storage + the R-A4 non-empty check). **R-S10 limiter** done (`89bc4e9`): per-IP online-guess limiter in `hbb_common::cpace` (60-s window, ≤10 confirmation failures), checked before the scalar-mult and fed ONLY by R-P3 confirmation mismatches (R-P14c) — wired at the choke point, unit-tested. **R-S6** done (`ab5083a`): the redundant login-time password proof collapses into the PAKE — skipped when CPace-keyed. With SignedId gone (`9e65a5b`), the responder authenticates purely by CPace. **R-S5** set_raw seal done (`ddb5c05`). REMAINING: R-S13 viewer bar (viewer side), R-S17 host-key pin, R-S18 OS-credential delete (Windows/PAM) |
 | R-R2b viewer / controlled-only build split (`decode`/`hwcodec`/`vram`/`flutter` features, `mod client` gating) | **DEFER-BUILD / BLOCK-CARGO** | feature-graph surgery; CI must assert the resolved feature set |
 | R-F4 direct port pinned to compile-time `21118` | **DONE** | `128d838`; new `config::DIRECT_PORT = 21118`, `get_direct_port` returns it unconditionally (no config read, no rendezvous+2 derivation) — load-bearing for the §10.4 CPace `CI` KAT be16(21118)=527e. The orphaned `direct-access-port` UI setting is a §19 cleanup |
 | R-D3a systemd confinement of the root service | **DONE** | `64e11b4`; the exact R-D3a directive set (CapabilityBoundingSet, RestrictAddressFamilies=AF_UNIX AF_INET, ProtectKernel*, SystemCallFilter, …), NoNewPrivileges deliberately omitted, MemoryDenyWriteExecute documented-but-disabled pending runtime validation |
-| R-D1/D2/D4–D8 deployment (direct-only build, v4-only, silent egress, config pins) | **PARTIAL — direct-only BEHAVIOR live (VERIFIED)** | `6920db9`; `start_all` no longer connects to any rendezvous server (rendezvous loop emptied — closes the phone-home that the R-S16 `custom-rendezvous-server=""` pin alone could NOT, since `get_rendezvous_servers()` defaults to the built-in upstream) and no longer starts LAN discovery. The box is reachable only by direct connection. `59d4983`: the direct listener is now **unconditional** — no longer gated on the `direct-server` option, so the box's only inbound path (and the CPace responder) reliably starts (R-D4/R-F4; the spec keeps direct-server out of PINNED_SETTINGS for this). Compile-verified. REMAINING: the full R-D4 token-absent mediator removal (lift `direct_server`→`start_direct_only`), v4-only socket bind (R-D5 — `listen_any` is dual-stack; relies on the systemd AF_INET fallback for now), the R-R2b build split |
+| R-D1/D2/D4–D8 deployment (direct-only build, v4-only, silent egress, config pins) | **PARTIAL — direct-only BEHAVIOR live (VERIFIED)** | `6920db9`; `start_all` no longer connects to any rendezvous server (rendezvous loop emptied — closes the phone-home that the R-S16 `custom-rendezvous-server=""` pin alone could NOT, since `get_rendezvous_servers()` defaults to the built-in upstream) and no longer starts LAN discovery. The box is reachable only by direct connection. `59d4983`: the direct listener is now **unconditional** — no longer gated on the `direct-server` option, so the box's only inbound path (and the CPace responder) reliably starts (R-D4/R-F4; the spec keeps direct-server out of PINNED_SETTINGS for this). Compile-verified. **R-D5 done** (`b6df149`): the direct listener now binds **v4-only** via `listen_any_v4` (the v4 body used unconditionally, not the dual-stack `[::]:21118` socket) — IPv6 unreachability is a property of the binary, not a host sysctl / `ip6tables` rule that can drift, and R-A4 asserts it post-listen. REMAINING: the full R-D4 token-absent mediator removal (lift `direct_server`→`start_direct_only`), the R-R2b build split |
 | R-SV8 iOS entitlements (APNs push + wifi-info) | **DONE** | `dd3be96`; both removed (no-phone-home), `associated-domains` confirmed absent (R-X6). macOS entitlements left (functionally required, retain-and-check); iOS `SDWebImage` pod = finding, removal pod-regen-blocked; no Firebase/analytics pod (R-SV8 holds) |
-| §18 R-SV3/SV4 sovereignty — no phone-home (universal) | **PARTIAL — egress CLOSED (VERIFIED)** | The box's entire outbound surface is now closed at the behavior level: `fa56d66` deleted `do_check_software_update` (version API, R-SV3) + `test_nat_type_` (rendezvous NAT probe + `cu` re-home, R-SV4); `6920db9` emptied the rendezvous-registration loop (no register_pk/heartbeat to the rendezvous, closing the default-server fallback the R-S16 pin missed); `56e2ad2` unspawned the HBBS sync loop (no `<api-server>/api/heartbeat` heartbeat + sysinfo upload). Auto-updater was R-X1. All compile-verified. REMAINING: token-absent removal of the neutralized workers/callers (with R-D4), and v4-only socket pins (R-D5) |
+| §18 R-SV3/SV4 sovereignty — no phone-home (universal) | **PARTIAL — egress CLOSED (VERIFIED)** | The box's entire outbound surface is now closed at the behavior level: `fa56d66` deleted `do_check_software_update` (version API, R-SV3) + `test_nat_type_` (rendezvous NAT probe + `cu` re-home, R-SV4); `6920db9` emptied the rendezvous-registration loop (no register_pk/heartbeat to the rendezvous, closing the default-server fallback the R-S16 pin missed); `56e2ad2` unspawned the HBBS sync loop (no `<api-server>/api/heartbeat` heartbeat + sysinfo upload). Auto-updater was R-X1. All compile-verified. REMAINING: token-absent removal of the neutralized workers/callers (with R-D4); R-D5 v4-only bind is now done (`b6df149`) |
 | §19 R-G* GUI/UX conformance (remove selectors/toggles/dead assets/links the core no longer honors) | **TODO** | partly unblocked by the deep-link work; large Dart sweep |
 | R-R3 dependency audit (Appendix D bumps) | **TODO (lock-regen now possible in docker)** | lock can be regenerated under cargo in-container, so bumps are no longer blocked. **New finding:** the `webrtc` 0.14 dev-dependency pulls `sdp` 0.10.0, which calls `usize::is_multiple_of` (unstable on the pinned 1.75 **and** on 1.96) — so `cargo test -p hbb_common` does not compile on the pinned toolchain, blocking the inherited tests + the §9 R-A8/A9/A10 gates that live in hbb_common. Worked around for the PAKE via the isolated `cpace_it` crate (depends on hbb_common's library only, no dev-deps); a real fix is an R-R3 bump of `sdp`/`webrtc` (or dropping the webrtc transport under R-R2). |
 

@@ -12,10 +12,9 @@ rust-version = "1.75"
 name = "librustdesk"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
-[[bin]]
-name = "naming"
-path = "src/naming.rs"
-
+# R-X4: the `naming` bin generated the exe-name branding (rustdesk-host=... .exe)
+# that the inherited get_license_from_exe_name trust-anchor override parsed; it is
+# excised — the fork's trust anchor is the baked RS_PUB_KEY only (get_key, 59750e7).
 [[bin]]
 name = "service"
 path = "src/service.rs"

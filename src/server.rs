@@ -286,6 +286,16 @@ pub async fn create_tcp_connection(
         }
         log::info!("wake up macos");
     }
+    // R-A1: no application message is processed on an unkeyed stream. By here the
+    // direct path has run CPace (keyed, or bailed fail-closed) and the secure path
+    // has installed its key; any residual unkeyed path (the inherited pk-update /
+    // invalid-message fall-throughs) MUST terminate rather than reach the message
+    // loop. Enforced on the controlled-side (lockdown) profile, where CPace is the
+    // only keying — makes the unkeyed-direct-path bug unreachable by construction.
+    #[cfg(feature = "lockdown")]
+    if !stream.is_secured() {
+        bail!("R-A1: refusing to start a connection on an unkeyed stream");
+    }
     Connection::start(
         addr,
         stream,

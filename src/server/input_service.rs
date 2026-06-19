@@ -2316,13 +2316,21 @@ async fn send_sas() -> ResultType<()> {
 #[inline]
 #[cfg(target_os = "linux")]
 pub fn wayland_use_uinput() -> bool {
-    !crate::platform::is_x11() && crate::is_server()
+    // R-X13/R-X12: X11 is the pinned capture+injection backend on this fork, so
+    // the Wayland uinput injection path is structurally disabled — XTEST/enigo
+    // is the sole injector. (Was `!is_x11() && is_server()`; on the Xorg box
+    // is_x11() is already true so this was false at runtime — now false by
+    // construction, and with the service-entry uinput listener removed the
+    // dormant _uinput_* cross-uid sockets are never stood up, R-S11a.)
+    false
 }
 
 #[inline]
 #[cfg(target_os = "linux")]
 pub fn wayland_use_rdp_input() -> bool {
-    !crate::platform::is_x11() && !crate::is_server()
+    // R-X13/R-X12: the Wayland-portal RDP injection path is likewise disabled —
+    // XTEST is the sole backend on the pinned-X11 fork.
+    false
 }
 
 #[cfg(target_os = "linux")]

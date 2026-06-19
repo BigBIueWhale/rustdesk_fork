@@ -431,18 +431,6 @@ pub fn get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
     }
 }
 
-fn start_uinput_service() {
-    use crate::server::uinput::service;
-    std::thread::spawn(|| {
-        service::start_service_control();
-    });
-    std::thread::spawn(|| {
-        service::start_service_keyboard();
-    });
-    std::thread::spawn(|| {
-        service::start_service_mouse();
-    });
-}
 
 /// Suggests the best terminal type based on the environment.
 ///
@@ -794,7 +782,10 @@ pub fn start_os_service() {
     check_if_stop_service();
     stop_rustdesk_servers();
     stop_subprocess();
-    start_uinput_service();
+    // R-X13: the dormant uinput IPC listener is NOT stood up — on the pinned-X11
+    // fork XTEST/enigo is the sole injection backend, so the world-mode _uinput_*
+    // cross-uid sockets the X11 --server never connects to are absent (shrinking
+    // the R-S11a cross-uid socket surface to _service alone).
 
     std::thread::spawn(|| {
         allow_err!(crate::ipc::start(crate::POSTFIX_SERVICE));

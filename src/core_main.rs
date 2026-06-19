@@ -364,14 +364,9 @@ pub fn core_main() -> Option<Vec<String>> {
                 return None;
             }
         }
-        if args[0] == "--remove" {
-            if args.len() == 2 {
-                // sleep a while so that process of removed exe exit
-                std::thread::sleep(std::time::Duration::from_secs(1));
-                std::fs::remove_file(&args[1]).ok();
-                return None;
-            }
-        } else if args[0] == "--tray" {
+        // R-X4: the ungated `--remove <path>` file-delete gadget is excised — it
+        // deleted any path with no install/root gate.
+        if args[0] == "--tray" {
             if !crate::check_process("--tray", true) {
                 crate::tray::start_tray();
             }
@@ -414,20 +409,8 @@ pub fn core_main() -> Option<Vec<String>> {
                 hbb_common::allow_err!(handler.join());
             }
             return None;
-        } else if args[0] == "--import-config" {
-            if args.len() == 2 {
-                let filepath;
-                let path = std::path::Path::new(&args[1]);
-                if !path.is_absolute() {
-                    let mut cur = std::env::current_dir().unwrap();
-                    cur.push(path);
-                    filepath = cur.to_str().unwrap().to_string();
-                } else {
-                    filepath = path.to_str().unwrap().to_string();
-                }
-                import_config(&filepath);
-            }
-            return None;
+        // R-X4: `--import-config <path>` overwrote the entire config (trust anchor +
+        // servers) from an attacker-suppliable file with no is_root gate — excised.
         } else if args[0] == "--password" {
             if is_cli_setting_change_disabled() {
                 println!("Settings are disabled!");
@@ -492,31 +475,9 @@ pub fn core_main() -> Option<Vec<String>> {
                 }
             }
             return None;
-        } else if args[0] == "--config" {
-            if args.len() == 2 && !args[0].contains("host=") {
-                if crate::platform::is_installed() && is_root() {
-                    // encrypted string used in renaming exe.
-                    let name = if args[1].ends_with(".exe") {
-                        args[1].to_owned()
-                    } else {
-                        format!("{}.exe", args[1])
-                    };
-                    if let Ok(lic) = crate::custom_server::get_custom_server_from_string(&name) {
-                        if !lic.host.is_empty() {
-                            crate::ui_interface::set_option("key".into(), lic.key);
-                            crate::ui_interface::set_option(
-                                "custom-rendezvous-server".into(),
-                                lic.host,
-                            );
-                            crate::ui_interface::set_option("api-server".into(), lic.api);
-                            crate::ui_interface::set_option("relay-server".into(), lic.relay);
-                        }
-                    }
-                } else {
-                    println!("Installation and administrative privileges required!");
-                }
-            }
-            return None;
+        // R-X4: `--config <name>` adopted a trust anchor (the public `key`) plus the
+        // rendezvous/api/relay servers from a license/exe-name lookup — this
+        // trust-anchor override is excised; the fork bakes its own values.
         } else if args[0] == "--option" {
             if is_cli_setting_change_disabled() {
                 println!("Settings are disabled!");
@@ -737,32 +698,6 @@ pub fn core_main() -> Option<Vec<String>> {
     return Some(args);
 }
 
-fn import_config(path: &str) {
-    use hbb_common::{config::*, get_exe_time, get_modified_time};
-    let path2 = path.replace(".toml", "2.toml");
-    let path2 = std::path::Path::new(&path2);
-    let path = std::path::Path::new(path);
-    log::info!("import config from {:?} and {:?}", path, path2);
-    let config: Config = load_path(path.into());
-    if config.is_empty() {
-        log::info!("Empty source config, skipped");
-        return;
-    }
-    if get_modified_time(&path) > get_modified_time(&Config::file())
-        && get_modified_time(&path) < get_exe_time()
-    {
-        if store_path(Config::file(), config).is_err() {
-            log::info!("config written");
-        }
-    }
-    let config2: Config2 = load_path(path2.into());
-    if get_modified_time(&path2) > get_modified_time(&Config2::file()) {
-        if store_path(Config2::file(), config2).is_err() {
-            log::info!("config2 written");
-        }
-    }
-}
-
 /// invoke a new connection
 ///
 /// [Note]
@@ -882,7 +817,6 @@ fn is_user_main_ipc_scope_cli_command(args: &[String]) -> bool {
             | Some("--set-unlock-pin")
             | Some("--get-id")
             | Some("--set-id")
-            | Some("--config")
             | Some("--option")
             | Some("--assign")
             | Some("--deploy")
@@ -912,7 +846,6 @@ mod tests {
             "--set-unlock-pin",
             "--get-id",
             "--set-id",
-            "--config",
             "--option",
             "--assign",
             "--deploy",

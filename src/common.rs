@@ -1802,26 +1802,16 @@ pub fn decode64<T: AsRef<[u8]>>(input: T) -> Result<Vec<u8>, base64::DecodeError
     base64::decode(input)
 }
 
-pub async fn get_key(sync: bool) -> String {
-    #[cfg(windows)]
-    if let Ok(lic) = crate::platform::windows::get_license_from_exe_name() {
-        if !lic.key.is_empty() {
-            return lic.key;
-        }
-    }
-    #[cfg(target_os = "ios")]
-    let mut key = Config::get_option("key");
-    #[cfg(not(target_os = "ios"))]
-    let mut key = if sync {
-        Config::get_option("key")
-    } else {
-        let mut options = crate::ipc::get_options_async().await;
-        options.remove("key").unwrap_or_default()
-    };
-    if key.is_empty() {
-        key = config::RS_PUB_KEY.to_owned();
-    }
-    key
+pub async fn get_key(_sync: bool) -> String {
+    // R-X4: the rendezvous trust anchor is the fork's baked constant,
+    // unconditionally. Every runtime override is IGNORED — the config option (all
+    // platforms, including iOS), the async IPC options blob, and the Windows
+    // license/exe-name (renamed-exe / RUSTDESK_APPNAME) spoof — so a malicious
+    // installer name or a shared "config string" can never re-point the client at
+    // attacker infrastructure under the attacker's key. RS_PUB_KEY remains only as
+    // this baked default; the override path is gone (the macOS/iOS source obeys the
+    // same rule, R-X4).
+    config::RS_PUB_KEY.to_owned()
 }
 
 pub fn pk_to_fingerprint(pk: Vec<u8>) -> String {

@@ -50,8 +50,8 @@ structural, not aspirational.
 | `cleanup.sh` | Reversible-only teardown — default removes only harness-created artifacts (prefix `rustdesk-fork-harness`); `--reverse-host` removes only recorded packages, fail-closed if the manifest is absent (R-B11). | **Done** |
 | `build-debian.sh` | Debian x86_64 `.deb` in a digest-pinned `ubuntu:18.04` image, `--network=none`, wrapping upstream `build.py --flutter --hwcodec --unix-file-copy-paste` (R-B7). Env-validates, vendored-offline, SHA-256 + double-build determinism (R-B2). Full viewer profile done; controlled-only awaits the R-R2b feature split. | **Done (viewer)** |
 | `build-android.sh` | Android aarch64 `.apk` in digest-pinned `ubuntu:24.04`, offline: cargo-ndk (ndk_arm64.sh, features flutter,hwcodec) + `flutter build apk`, then apksigner v2 with the stable RSA-4096 local key (password via file, R-B2). | **Done** |
-| `provision-windows-vm.sh` | Golden Win11 KVM template (§12.2). | TODO |
-| `build-windows.ps1` | Windows x86_64 `.exe`/`.msi` in an ephemeral KVM guest. | TODO |
+| `provision-windows-vm.sh` | Golden Win11 KVM template (R-B8/§12.2): swtpm vTPM 2.0 + OVMF UEFI, unattended install to the pinned toolchain, evergreen ISO/VS-BuildTools SHA-pinned offline layout (R-B12c). Per-build = CoW overlay. | **Done** |
+| `build-windows.ps1` | Windows x86_64 `.exe`/`.msi` inside the KVM guest (PowerShell, $ErrorActionPreference=Stop): asserts pinned versions, vendored-offline, wraps `build.py --flutter --hwcodec --vram` + WiX v4 MSI, unsigned + SHA-256 (R-B2). | **Done** |
 
 The build-script *bodies* encode upstream's exact 1.4.7 build commands (taken
 verbatim from `build.py` / `flutter-build.yml`, R-B7) and are authored in a

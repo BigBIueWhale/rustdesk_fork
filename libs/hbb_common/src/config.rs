@@ -27,8 +27,9 @@ pub use permanent_password::{
     preset_permanent_password_storage_is_usable_for_auth, ENCRYPT_MAX_LEN,
 };
 use permanent_password::{
-    decode_permanent_password_h1_from_hashed_storage, decrypt_permanent_password_str_or_original,
-    encode_permanent_password_encrypted_storage_from_h1, password_is_empty_or_not_hashed,
+    decode_permanent_password_h1_from_hashed_storage, decrypt_permanent_password_prs_storage,
+    decrypt_permanent_password_str_or_original, encode_permanent_password_encrypted_storage_from_h1,
+    encrypt_permanent_password_prs_storage, password_is_empty_or_not_hashed,
     preset_permanent_password_storage_matches_plain, DEFAULT_SALT_LEN, PASSWORD_ENC_VERSION,
 };
 
@@ -226,6 +227,13 @@ pub struct Config {
     enc_id: String, // store
     #[serde(default, deserialize_with = "deserialize_string")]
     password: String,
+    // R-P1/R-S16: the permanent password held as PRS-usable material at rest — the
+    // NFC-derivable plaintext, encrypted under the same machine-UUID wrapper as
+    // `password`, NOT a one-way salted hash. The balanced CPace handshake reads it
+    // live on every connection (no cached PRS). Set alongside the legacy h1
+    // `password` by set_permanent_password until the salted-hash auth is deleted.
+    #[serde(default, deserialize_with = "deserialize_string")]
+    password_prs: String,
     #[serde(default, deserialize_with = "deserialize_string")]
     salt: String,
     #[serde(default, deserialize_with = "deserialize_keypair")]
@@ -1330,13 +1338,33 @@ impl Config {
             log::error!("Failed to compute permanent password storage; refusing update");
             return false;
         };
-        if stored == config.password {
+        // R-P1: keep the PRS-usable plaintext credential in sync with the hashed
+        // storage, so the CPace handshake can read it live (R-S16). Empty password
+        // clears it.
+        let prs = if password.is_empty() {
+            String::new()
+        } else {
+            encrypt_permanent_password_prs_storage(password).unwrap_or_default()
+        };
+        if stored == config.password && prs == config.password_prs {
             return true;
         }
         config.password = stored;
+        config.password_prs = prs;
         config.store();
         Self::clear_trusted_devices();
         true
+    }
+
+    /// R-P1: the live, NFC-normalizable plaintext permanent password used as the
+    /// CPace PRS (R-S16). Empty when no PRS-usable credential is stored — the
+    /// handshake then has no shared secret and fails closed. Read fresh on every
+    /// connection (no caching), so a `--password` change (R-D2) takes effect on
+    /// the next handshake. The CPace layer applies NFC and the non-empty check
+    /// (R-P1/R-S9), so the stored value may be the password exactly as entered.
+    pub fn get_permanent_password_prs() -> String {
+        decrypt_permanent_password_prs_storage(&CONFIG.read().unwrap().password_prs)
+            .unwrap_or_default()
     }
 
     fn compute_permanent_password_storage_for_update(

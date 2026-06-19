@@ -84,3 +84,26 @@ fn pinned_policy_is_the_single_source_of_truth() {
     Config::set_option("a-non-pinned-ui-key".into(), "hello".into());
     assert_eq!(Config::get_option("a-non-pinned-ui-key"), "hello");
 }
+
+/// R-P1/R-S16: the permanent password is held as PRS-usable plaintext at rest
+/// (not a one-way salted hash), read live on every connection, so a change takes
+/// effect on the next handshake.
+#[test]
+fn permanent_password_is_prs_usable_plaintext() {
+    assert!(Config::set_permanent_password("hunter2-correct-horse"));
+    assert_eq!(Config::get_permanent_password_prs(), "hunter2-correct-horse");
+
+    // A change takes effect immediately — no cached PRS.
+    assert!(Config::set_permanent_password("a-new-password"));
+    assert_eq!(Config::get_permanent_password_prs(), "a-new-password");
+
+    // The legacy hashed storage stays a hash (not the plaintext) — the PRS lives
+    // in its own at-rest slot, so this is additive, not a downgrade of the hash.
+    let (h1_storage, _) = Config::get_local_permanent_password_storage_and_salt();
+    assert_ne!(h1_storage, "a-new-password");
+    assert!(!h1_storage.is_empty());
+
+    // Clearing the password clears the PRS (no shared secret ⇒ handshake fails closed).
+    assert!(Config::set_permanent_password(""));
+    assert_eq!(Config::get_permanent_password_prs(), "");
+}

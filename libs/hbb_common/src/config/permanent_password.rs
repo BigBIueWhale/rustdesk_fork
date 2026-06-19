@@ -96,6 +96,26 @@ pub(super) fn decrypt_permanent_password_str_or_original(storage: &str) -> (Stri
     (storage.to_owned(), false, !storage.is_empty())
 }
 
+/// R-P1: store the permanent password as PRS-usable plaintext at rest — encrypted
+/// under the same machine-UUID wrapper as the hashed storage (R-S9), NOT a salted
+/// hash. The CPace handshake reads it live and NFC-normalizes it; an empty result
+/// means there is no usable plaintext credential.
+pub(super) fn encrypt_permanent_password_prs_storage(plaintext: &str) -> Option<String> {
+    encrypt_permanent_password_storage(plaintext)
+}
+
+pub(super) fn decrypt_permanent_password_prs_storage(storage: &str) -> Option<String> {
+    if storage.is_empty() {
+        return None;
+    }
+    let (plaintext, decrypted, _) = decrypt_permanent_password_str_or_original(storage);
+    if decrypted {
+        Some(plaintext)
+    } else {
+        None
+    }
+}
+
 pub fn local_permanent_password_storage_is_usable_for_auth(storage: &str, salt: &str) -> bool {
     if storage.is_empty() {
         return false;

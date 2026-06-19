@@ -11,6 +11,9 @@ default = []
 webrtc = ["dep:webrtc"]
 
 [dependencies]
+# In-tree balanced CPace PAKE (§10). Pure-Rust, no native dep; reuses crates
+# already in the lock, so this edge adds no new external crate (R-P14/§10.1).
+pake = { path = "../pake" }
 # new flexi_logger failed on rustc 1.75
 flexi_logger = { version = "0.27", features = ["async"] }
 protobuf = { version = "3.7", features = ["with-bytes"] }

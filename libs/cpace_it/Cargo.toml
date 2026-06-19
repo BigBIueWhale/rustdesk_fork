@@ -1,0 +1,17 @@
+[package]
+name = "cpace_it"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "In-process wire-level integration tests for the CPace choke-point handshake (R-P14, R-A8/A9-style), isolated from hbb_common's webrtc dev-dependency (whose sdp crate does not compile on the pinned 1.75 toolchain)."
+
+[lib]
+path = "src/lib.rs"
+
+# Depending on hbb_common's *library* here (not testing hbb_common itself) does
+# not pull hbb_common's dev-dependencies, so the broken `webrtc`/`sdp` dev-dep is
+# excluded and these tests compile + run on the pinned 1.75 toolchain.
+[dev-dependencies]
+hbb_common = { path = "../hbb_common" }
+pake = { path = "../pake" }
+tokio = { version = "1.44", features = ["full"] }

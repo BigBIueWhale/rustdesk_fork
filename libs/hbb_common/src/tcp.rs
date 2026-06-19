@@ -145,6 +145,13 @@ impl FramedStream {
         self.2 = None;
     }
 
+    /// Cap the inbound frame length before the first byte is read. Used to bound
+    /// the attacker-reachable pre-key parser to the small CPace handshake frames
+    /// (R-S7 / R-P14b): an oversize frame then aborts fail-closed at the codec.
+    pub fn set_max_packet_length(&mut self, n: usize) {
+        self.0.codec_mut().set_max_packet_length(n);
+    }
+
     pub fn is_secured(&self) -> bool {
         self.2.is_some()
     }

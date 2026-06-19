@@ -97,6 +97,35 @@ compile/test loop) · `BLOCK-CARGO` (needs a lockfile regen) · `RISK-SILENT`
 | R-R2/R-R2a prune CI to 3 targets; drop appimage/flatpak/non-Debian | **PARTIAL** | `01bb8a8` deleted fdroid/nightly/playground/clear-cache. `flutter-build.yml` 14-job matrix prune + appimage/flatpak dir removal (coupled to `build.py`+`bump.sh`) = TODO |
 | R-B6 drop Sciter | **DEFER-BUILD / BLOCK-CARGO** | non-flutter path is the *default* build (58 `not(feature="flutter")` blocks + the inherited tests run default-features), so a clean cut means making flutter the default/test path — a build-process change; and `sciter-rs` removal is `BLOCK-CARGO` |
 
+### Build-host provisioning — done on THIS machine (the `cte` box we develop on)
+
+The §12.2 Windows-11 KVM build host has been provisioned **on this box** (Ubuntu
+24.04.4, the one Linux x86_64 build host of R-B8). State recorded here because it is
+host state, not in git:
+
+- **host-provision.sh ran clean** (commits `109e493` + `b82ffb3` made it actually
+  work on 24.04): recorded installs = `qemu-system-x86 qemu-utils
+  libvirt-daemon-system virtinst swtpm ovmf` (+ `libvirt-clients`/`osinfo-db` as
+  deps); the official `docker-ce`/`containerd.io` is REQUIRED (pre-existing per
+  `personal_server/README.md`), never `docker.io` (which conflicts). The user was
+  added to the `libvirt`+`kvm` groups. All tools verified functional (virt-install
+  4.1.0, qemu-img 8.2.2, swtpm 0.7.3, virsh 10.0.0; OVMF incl. Secure-Boot `.ms`
+  firmware; `--osinfo win11` resolves via `win-11.xml`).
+- **Win11 ISO staged**: `online/win11.iso` (Win11 22H2 x64, 5.2 GB, operator scp'd),
+  SHA-256 pinned in `pins.env` (`SHA256_WIN11_ISO=0df2f173…dab22`, R-B12c). It is
+  git-ignored (`/online/` + the new `*.iso` guard).
+- **STILL BLOCKING a Windows build (two things):** (1) the **VS 2022 Build Tools
+  offline layout** (`online/vs-buildtools.layout.tar`, `SHA256_VS_BUILDTOOLS` still
+  `$SHA_PENDING`) — operator-supplied; and (2) **provision-windows-vm.sh is a
+  skeleton** — audit found it mounts only the ISO (no autounattend / no `./online` /
+  no VS-layout mount → an *interactive* install with no offline toolchain path), it
+  references a non-existent `autounattend.xml` + guest-setup script, and it omits
+  the §12.2-mandated golden-image SHA recording + the VM SSH host-key pin. The guest
+  automation must be built (best with the ISO present, now that it is).
+
+The **Debian `.deb`** + **Android `.apk`** builds need none of this (Docker only,
+already on the host); the responder-side `verify.sh` gate runs there today.
+
 ## The PAKE (§10) — the core
 
 | Area | Status | Notes |

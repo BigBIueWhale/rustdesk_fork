@@ -58,8 +58,15 @@ libsciter.dylib
 flutter/web/
 # === Hardened-fork additions ===
 # The SHA-256-verified online fetch cache — pinned, NOT vendored; re-made by
-# scripts/online-fetch.sh (R-B10, §16). Pinning != vendoring (R-R1).
+# scripts/online-fetch.sh (R-B10, §16). Pinning != vendoring (R-R1). The big
+# operator-supplied artifacts live here (e.g. online/win11.iso, the VS Build
+# Tools layout); they are SHA-pinned in pins.env, never committed.
 /online/
+# Belt-and-suspenders: large build/VM artifacts MUST never be committed even if a
+# stray one lands OUTSIDE ./online (e.g. an ISO scp'd to the repo root by mistake,
+# or the golden qcow2 / a CoW overlay). Multi-GB binaries have no place in git.
+*.iso
+*.qcow2
 # Built artifacts from scripts/build-*.sh (the .deb/.apk/.exe + their SHA-256).
 /dist/
 # Build STATE (not cache): what host-provision.sh installed, so cleanup.sh can

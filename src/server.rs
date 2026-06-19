@@ -246,6 +246,32 @@ pub async fn create_tcp_connection(
                 bail!("Failed to receive public key");
             }
         }
+    } else {
+        // R-P14 / R-S1: the single mandatory CPace handshake at the choke point.
+        // The flagship direct path (secure=false) ran no keying here before, so it
+        // GAINS the keying it never had — every transport is mutually
+        // password-authenticated and keyed before any application message. The PRS
+        // is the live permanent password read fresh per connection (R-P1/R-S16);
+        // an empty PRS fails closed (R-S9). Note: the matching viewer must run the
+        // CPace initiator (client.rs) — fork peers only, no downgrade (R-P11).
+        let prs = Config::get_permanent_password_prs();
+        if prs.is_empty() {
+            bail!("Refusing connection: no permanent password set (R-S9)");
+        }
+        let Some(fs) = stream.as_framed_tcp_mut() else {
+            bail!("CPace handshake requires a TCP stream at the choke point");
+        };
+        match hbb_common::cpace::run_responder(fs, &prs).await {
+            Ok(keys) => fs.set_session_keys(keys),
+            Err(e) => {
+                // R-P14c: ONLY a key-confirmation tag mismatch is an online password
+                // guess and may feed the per-source limiter (R-S10); decode / order /
+                // AD / identity / timeout aborts MUST NOT, or a malformed-frame flood
+                // would trip the owner's own block.
+                let _is_online_guess = e.is_password_guess(); // TODO(R-S10): wire the limiter
+                bail!("CPace handshake failed: fail-closed");
+            }
+        }
     }
 
     #[cfg(target_os = "macos")]

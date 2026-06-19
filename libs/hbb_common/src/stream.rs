@@ -87,6 +87,17 @@ impl Stream {
         }
     }
 
+    /// The inner TCP `FramedStream`, if this is a TCP stream — the choke point's
+    /// CPace handshake runs over it (the flagship direct path is always TCP).
+    #[inline]
+    pub fn as_framed_tcp_mut(&mut self) -> Option<&mut tcp::FramedStream> {
+        match self {
+            Stream::Tcp(s) => Some(s),
+            #[allow(unreachable_patterns)]
+            _ => None,
+        }
+    }
+
     #[inline]
     pub async fn next_timeout(
         &mut self,

@@ -582,106 +582,18 @@ impl Drop for CheckTestNatType {
 
 pub fn test_nat_type() {
     test_ipv6_sync();
-    use std::sync::atomic::{AtomicBool, Ordering};
-    std::thread::spawn(move || {
-        static IS_RUNNING: AtomicBool = AtomicBool::new(false);
-        if IS_RUNNING.load(Ordering::SeqCst) {
-            return;
-        }
-        IS_RUNNING.store(true, Ordering::SeqCst);
-
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        crate::ipc::get_socks_ws();
-        let is_direct = Config::get_socks().is_none() && !config::use_ws();
-        if !is_direct {
-            Config::set_nat_type(NatType::SYMMETRIC as _);
-            IS_RUNNING.store(false, Ordering::SeqCst);
-            return;
-        }
-
-        let mut i = 0;
-        loop {
-            match test_nat_type_() {
-                Ok(true) => break,
-                Err(err) => {
-                    log::error!("test nat: {}", err);
-                }
-                _ => {}
-            }
-            if Config::get_nat_type() != 0 {
-                break;
-            }
-            i = i * 2 + 1;
-            if i > 300 {
-                i = 300;
-            }
-            std::thread::sleep(std::time::Duration::from_secs(i));
-        }
-
-        IS_RUNNING.store(false, Ordering::SeqCst);
-    });
+    // R-SV4 / §18 (sovereignty — universal: every artifact, every platform, every
+    // code path): NO NAT-type probe phone-home. The probe connected to the
+    // rendezvous server to classify NAT; the fork keys at the choke point and
+    // ships direct-only (R-D4), so it is moot. The egress worker test_nat_type_ is
+    // excised (below) — removed, not policy-gated. Local IPv6 detection
+    // (test_ipv6_sync, above) carries no egress and is kept.
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn test_nat_type_() -> ResultType<bool> {
-    log::info!("Testing nat ...");
-    let start = std::time::Instant::now();
-    let server1 = Config::get_rendezvous_server();
-    let server2 = crate::increase_port(&server1, -1);
-    let mut msg_out = RendezvousMessage::new();
-    let serial = Config::get_serial();
-    msg_out.set_test_nat_request(TestNatRequest {
-        serial,
-        ..Default::default()
-    });
-    let mut port1 = 0;
-    let mut port2 = 0;
-    let mut local_addr = None;
-    for i in 0..2 {
-        let server = if i == 0 { &*server1 } else { &*server2 };
-        let mut socket =
-            socket_client::connect_tcp_local(server, local_addr, CONNECT_TIMEOUT).await?;
-        if i == 0 {
-            // reuse the local addr is required for nat test
-            local_addr = Some(socket.local_addr());
-            Config::set_option(
-                "local-ip-addr".to_owned(),
-                socket.local_addr().ip().to_string(),
-            );
-        }
-        socket.send(&msg_out).await?;
-        if let Some(msg_in) = get_next_nonkeyexchange_msg(&mut socket, None).await {
-            if let Some(rendezvous_message::Union::TestNatResponse(tnr)) = msg_in.union {
-                log::debug!("Got nat response from {}: port={}", server, tnr.port);
-                if i == 0 {
-                    port1 = tnr.port;
-                } else {
-                    port2 = tnr.port;
-                }
-                // R-X3: the probe reply's `cu` (config-update) field let an
-                // UNAUTHENTICATED response rewrite `rendezvous-servers` + the config
-                // serial — re-homing the client to attacker infrastructure. This
-                // re-home twin (distinct from the mediator's config-rewrite arm) is
-                // excised: the fork's server list is fixed by local config and is
-                // never adopted from a probe reply. (The whole NAT-probe subtree is
-                // additionally made cfg-absent on shipped builds, R-D4/§18.)
-            }
-        } else {
-            break;
-        }
-    }
-    let ok = port1 > 0 && port2 > 0;
-    if ok {
-        let t = if port1 == port2 {
-            NatType::ASYMMETRIC
-        } else {
-            NatType::SYMMETRIC
-        };
-        Config::set_nat_type(t as _);
-        log::info!("Tested nat type: {:?} in {:?}", t, start.elapsed());
-    }
-    Ok(ok)
-}
+// R-SV4 / R-X3 / §18: test_nat_type_ — the NAT-type probe that connected to the
+// rendezvous server (and whose reply's `cu` field could re-home the client) — is
+// excised. The fork keys at the choke point and ships direct-only (R-D4); there is
+// no rendezvous probe and no probe-reply config adoption.
 
 pub async fn get_rendezvous_server(ms_timeout: u64) -> (String, Vec<String>, bool) {
     #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -940,64 +852,12 @@ pub fn is_modifier(evt: &KeyEvent) -> bool {
 }
 
 pub fn check_software_update() {
-    if is_custom_client() {
-        return;
-    }
-    let opt = LocalConfig::get_option(keys::OPTION_ENABLE_CHECK_UPDATE);
-    if config::option2bool(keys::OPTION_ENABLE_CHECK_UPDATE, &opt) {
-        std::thread::spawn(move || allow_err!(do_check_software_update()));
-    }
-}
-
-// No need to check `danger_accept_invalid_cert` for now.
-// Because the url is always `https://api.rustdesk.com/version/latest`.
-#[tokio::main(flavor = "current_thread")]
-pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
-    let (request, url) =
-        hbb_common::version_check_request(hbb_common::VER_TYPE_RUSTDESK_CLIENT.to_string());
-    let proxy_conf = Config::get_socks();
-    let tls_url = get_url_for_tls(&url, &proxy_conf);
-    let tls_type = get_cached_tls_type(tls_url);
-    let is_tls_not_cached = tls_type.is_none();
-    let tls_type = tls_type.unwrap_or(TlsType::Rustls);
-    let client = create_http_client_async(tls_type, false);
-    let latest_release_response = match client.post(&url).json(&request).send().await {
-        Ok(resp) => {
-            upsert_tls_cache(tls_url, tls_type, false);
-            resp
-        }
-        Err(err) => {
-            if is_tls_not_cached && err.is_request() {
-                let tls_type = TlsType::NativeTls;
-                let client = create_http_client_async(tls_type, false);
-                let resp = client.post(&url).json(&request).send().await?;
-                upsert_tls_cache(tls_url, tls_type, false);
-                resp
-            } else {
-                return Err(err.into());
-            }
-        }
-    };
-    let bytes = latest_release_response.bytes().await?;
-    let resp: hbb_common::VersionCheckResponse = serde_json::from_slice(&bytes)?;
-    let response_url = resp.url;
-    let latest_release_version = response_url.rsplit('/').next().unwrap_or_default();
-
-    if get_version_number(&latest_release_version) > get_version_number(crate::VERSION) {
-        #[cfg(feature = "flutter")]
-        {
-            let mut m = HashMap::new();
-            m.insert("name", "check_software_update_finish");
-            m.insert("url", &response_url);
-            if let Ok(data) = serde_json::to_string(&m) {
-                let _ = crate::flutter::push_global_event(crate::flutter::APP_TYPE_MAIN, data);
-            }
-        }
-        *SOFTWARE_UPDATE_URL.lock().unwrap() = response_url;
-    } else {
-        *SOFTWARE_UPDATE_URL.lock().unwrap() = "".to_string();
-    }
-    Ok(())
+    // R-SV3 / §18 (sovereignty — universal: every artifact, every platform, every
+    // code path): NO version-check phone-home. The fork never queries an external
+    // version endpoint; the egress worker that POSTed to the upstream version API
+    // is removed, not merely policy-gated. (The fetch-and-run auto-updater is
+    // excised separately, R-X1.) The update URL therefore stays empty.
+    *SOFTWARE_UPDATE_URL.lock().unwrap() = String::new();
 }
 
 #[inline]

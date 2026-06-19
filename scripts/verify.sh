@@ -68,6 +68,12 @@ ra6_clean 'DEBUG_BOOT_COMPLETED'                                          'R-X6 
 ra6_clean 'RUSTDESK_FORCED_DISPLAY_SERVER'                                'R-X12 display-server knob' || rc=1
 ra6_clean 'gtk_sudo|run_cmds_privileged|"-gtk-sudo"'                      'R-X11 gtk_sudo elevation'  || rc=1
 ra6_clean 'start_uinput_service'                                         'R-X13 dormant uinput listener' || rc=1
+# R-S16(d)(ii): the runtime SwitchPermission widener (the conn-side handler that
+# re-assigned conn.keyboard/clipboard/audio/... bypassing the pinned policy) is
+# removed. The qualified `ipc::Data::SwitchPermission` token was unique to that
+# handler arm; the CM-side senders use the unqualified `Data::SwitchPermission`
+# (R-G7 GUI surface), so this gate is specific to the widener.
+ra6_clean 'ipc::Data::SwitchPermission'                                  'R-S16(d)(ii) SwitchPermission widener' || rc=1
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod auth_2fa:R-X7 2FA/TOTP' 'mod lan:R-X5 LAN discovery' \

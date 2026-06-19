@@ -609,117 +609,22 @@ impl Connection {
                             conn.send(msg_out).await;
                             conn.chat_unanswered = false;
                         }
-                        ipc::Data::SwitchPermission{name, enabled} => {
-                            log::info!("Change permission {} -> {}", name, enabled);
-                            if &name == "keyboard" {
-                                conn.keyboard = enabled;
-                                conn.send_permission(Permission::Keyboard, enabled).await;
-                                if let Some(s) = conn.server.upgrade() {
-                                    s.write().unwrap().subscribe(
-                                        super::clipboard_service::NAME,
-                                        conn.inner.clone(), conn.can_sub_clipboard_service());
-                                    #[cfg(feature = "unix-file-copy-paste")]
-                                    s.write().unwrap().subscribe(
-                                        super::clipboard_service::FILE_NAME,
-                                        conn.inner.clone(),
-                                        conn.can_sub_file_clipboard_service(),
-                                    );
-                                    s.write().unwrap().subscribe(
-                                        NAME_CURSOR,
-                                        conn.inner.clone(), enabled || conn.show_remote_cursor);
-                                }
-                            } else if &name == "clipboard" {
-                                conn.clipboard = enabled;
-                                conn.send_permission(Permission::Clipboard, enabled).await;
-                                if let Some(s) = conn.server.upgrade() {
-                                    s.write().unwrap().subscribe(
-                                        super::clipboard_service::NAME,
-                                        conn.inner.clone(), conn.can_sub_clipboard_service());
-                                }
-                            } else if &name == "audio" {
-                                conn.audio = enabled;
-                                conn.send_permission(Permission::Audio, enabled).await;
-                                if conn.authorized {
-                                    if let Some(s) = conn.server.upgrade() {
-                                        if conn.is_authed_view_camera_conn() {
-                                            if conn.voice_calling || !conn.audio_enabled() {
-                                                s.write().unwrap().subscribe(
-                                                    super::audio_service::NAME,
-                                                    conn.inner.clone(), conn.audio_enabled());
-                                            }
-                                        } else {
-                                            s.write().unwrap().subscribe(
-                                                super::audio_service::NAME,
-                                                conn.inner.clone(), conn.audio_enabled());
-                                        }
-                                    }
-                                }
-                            } else if &name == "file" {
-                                conn.file = enabled;
-                                conn.send_permission(Permission::File, enabled).await;
-                                #[cfg(feature = "unix-file-copy-paste")]
-                                if !enabled {
-                                    conn.try_empty_file_clipboard();
-                                }
-                                #[cfg(feature = "unix-file-copy-paste")]
-                                if let Some(s) = conn.server.upgrade() {
-                                    s.write().unwrap().subscribe(
-                                        super::clipboard_service::FILE_NAME,
-                                        conn.inner.clone(),
-                                        conn.can_sub_file_clipboard_service(),
-                                    );
-                                }
-                            } else if &name == "restart" {
-                                conn.restart = enabled;
-                                conn.send_permission(Permission::Restart, enabled).await;
-                            } else if &name == "recording" {
-                                conn.recording = enabled;
-                                conn.send_permission(Permission::Recording, enabled).await;
-                            } else if &name == "block_input" {
-                                conn.block_input = enabled;
-                                conn.send_permission(Permission::BlockInput, enabled).await;
-                            } else if &name == "privacy_mode" {
-                                // Keep permission state and runtime state consistent:
-                                // when revoking the permission, try to leave privacy mode first.
-                                // Otherwise we could end up in an inconsistent state where
-                                // permission looks disabled while privacy mode is still active.
-                                if !enabled && privacy_mode::is_in_privacy_mode() {
-                                    if let Some(conn_id) = privacy_mode::get_privacy_mode_conn_id() {
-                                        if conn_id == conn.inner.id() {
-                                            let impl_key =
-                                                privacy_mode::get_cur_impl_key().unwrap_or_default();
-                                            let turn_off_res =
-                                                privacy_mode::turn_off_privacy(conn_id, None);
-                                            match turn_off_res {
-                                                Some(Ok(_)) => {
-                                                    let msg_out = crate::common::make_privacy_mode_msg(
-                                                        back_notification::PrivacyModeState::PrvOffByPeer,
-                                                        impl_key.clone(),
-                                                    );
-                                                    conn.send(msg_out).await;
-                                                }
-                                                _ => {
-                                                    let msg_out = Self::turn_off_privacy_result_to_msg(
-                                                        turn_off_res,
-                                                        impl_key,
-                                                    );
-                                                    conn.send(msg_out).await;
-                                                    // Turn-off failed, so revert CM's optimistic toggle
-                                                    // and keep the previous permission value.
-                                                    conn.send_to_cm(ipc::Data::SwitchPermission {
-                                                        name: "privacy_mode".to_owned(),
-                                                        enabled: conn.privacy_mode,
-                                                    });
-                                                    continue;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                conn.privacy_mode = enabled;
-                                conn.send_permission(Permission::PrivacyMode, enabled).await;
-                            }
-                        }
+                        // R-S16(d)(ii): the runtime `SwitchPermission` widener is REMOVED.
+                        // Inherited, this CM-driven IPC arm reassigned conn.keyboard /
+                        // clipboard / audio / file / restart / recording / block_input /
+                        // privacy_mode at runtime, BYPASSING `permission()` (and thus the
+                        // pinned policy). Once the policy is fixed at the config funnel
+                        // (PINNED_SETTINGS, UNCONDITIONAL — R-S16/R-R2b) a mid-session
+                        // re-widener has no place: it could re-grant a capability the pin
+                        // resolved off. The arm is deleted structurally (not merely covered
+                        // by R-S11's allowlist), so a CM-sent `Data::SwitchPermission` now
+                        // falls through to the catch-all `_ => {}` and is IGNORED — and the
+                        // headless `--service` has no CM to send it anyway. R-A6 asserts the
+                        // widener is absent. (The peer's inbound `disable_*` overlays only
+                        // ever RESTRICT the cached booleans, so they are unaffected — R-S16(d)(ii).
+                        // The CM-side senders / permission chips that drove this are the
+                        // attended-UI surface R-G7 removes in the §19 GUI sweep; on the box
+                        // they are moot.)
                         ipc::Data::RawMessage(bytes) => {
                             allow_err!(conn.stream.send_raw(bytes).await);
                         }

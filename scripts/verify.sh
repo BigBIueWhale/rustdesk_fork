@@ -15,6 +15,11 @@
 # "secure by assertion" gates rest on. It is NOT the release build (that is the
 # vcpkg flow in build-debian.sh). Exit non-zero if any gate fails.
 #
+# COMPANION GATE: scripts/audit.sh runs the R-R3/R-A7 dependency-advisory check
+# (cargo-audit against deny.toml + a pinned advisory-db). It is kept separate
+# because it needs the advisory-db + a cargo-audit compile — slower, and run in
+# CI / before a release rather than on every inner-loop edit.
+#
 # Usage:  scripts/verify.sh
 set -euo pipefail
 

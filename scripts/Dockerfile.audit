@@ -1,0 +1,24 @@
+# scripts/Dockerfile.audit — the R-R3 / R-A7 dependency-advisory gate image.
+#
+# Bakes cargo-audit 0.21.1 (the LAST release supporting the pinned rustc 1.75 —
+# 0.22+ requires rustc 1.88) and the RustSec advisory-db pinned at a recorded
+# commit. The pin is load-bearing (R-B10/R-B12 provenance): the audit result is
+# reproducible only against a fixed snapshot, and 0.21.1 cannot parse the newest
+# (2026-schema) advisory-db entries — so the snapshot commit is itself a pin and
+# MUST predate that schema change. scripts/audit.sh runs cargo-audit from this
+# image against the repo's --locked Cargo.lock with the deny.toml accept-list.
+FROM rust:1.75-slim
+
+# git for the advisory-db clone; cargo-audit needs no extra native deps.
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+# The last cargo-audit that supports rustc 1.74/1.75.
+RUN cargo install cargo-audit --version 0.21.1 --locked
+
+# Pinned advisory-db snapshot (2025-11-30; pre-2026 so 0.21.1 can parse it).
+# Bump deliberately (and re-review the deny.toml accepts) — never silently.
+ARG ADVISORY_DB_SHA=4ea955aed4d1b1214badc01f9d029bb12ef9e8e4
+RUN git clone https://github.com/RustSec/advisory-db /opt/advisory-db \
+    && git -C /opt/advisory-db checkout -q "$ADVISORY_DB_SHA"
+ENV ADVISORY_DB=/opt/advisory-db

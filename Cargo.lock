@@ -1449,6 +1449,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "compress_it"
+version = "0.1.0"
+dependencies = [
+ "hbb_common",
+]
+
+[[package]]
 name = "compression-codecs"
 version = "0.4.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"

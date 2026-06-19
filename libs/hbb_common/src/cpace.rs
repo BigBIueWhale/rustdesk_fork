@@ -31,6 +31,13 @@ const HANDSHAKE_STEP_TIMEOUT_MS: u64 = 18_000;
 /// The pre-key frame cap (R-S7 / R-P14b). Each CPace step is ≤ ~120 B; this bounds
 /// the only attacker-reachable parser before keying.
 const MAX_CPACE_PACKET: usize = 4096;
+/// The post-key session frame ceiling (R-S7). Once the PAKE completes the cap is
+/// raised from the pre-auth 4 KiB to this sane ceiling — far below the variable-
+/// length header's 1 GiB max, well above the 128 KiB file block (`fs.rs`) and any
+/// realistic video keyframe. Leaving the cap at 4 KiB would reject every legit
+/// session frame; not raising it at all (the inherited `usize::MAX`) would
+/// re-open the ~1 GiB/connection pre-auth amplification this control closes.
+const MAX_SESSION_PACKET: usize = 32 * 1024 * 1024;
 
 /// A fail-closed handshake abort. Per **R-P14c**, only [`HandshakeError::Confirmation`]
 /// is an online password guess and may feed the per-source limiter (R-S10); every
@@ -192,6 +199,9 @@ pub async fn run_responder(stream: &mut FramedStream, password: &str) -> HResult
     // recv_step3 verifies the initiator's tag (R-P3) before producing step ④.
     let (keys, step4) = responder.recv_step3(&step3)?;
     send_cpace(stream, from_step4(&step4)).await?;
+    // R-S7: keying done — raise the frame cap from the pre-auth 4 KiB to the
+    // session ceiling so legit large frames (file blocks, keyframes) flow.
+    stream.set_max_packet_length(MAX_SESSION_PACKET);
     Ok(keys)
 }
 
@@ -216,6 +226,9 @@ pub async fn run_initiator(stream: &mut FramedStream, password: &str) -> HResult
         _ => return Err(HandshakeError::Protocol),
     };
     let keys = initiator.recv_step4(&step4)?;
+    // R-S7: keying done — raise the frame cap to the session ceiling (see
+    // run_responder); both peers must agree, so the initiator raises too.
+    stream.set_max_packet_length(MAX_SESSION_PACKET);
     Ok(keys)
 }
 

@@ -101,6 +101,26 @@ async fn framed_stream_encrypts_after_session_keys_installed() {
     assert_eq!(&got2[..], b"reply from the controlled host");
 }
 
+/// R-S7: the handshake caps frames at 4 KiB pre-PAKE (the only attacker-reachable
+/// parser before keying), then RAISES the cap to the session ceiling on success.
+/// A 100 KiB frame — far over the pre-auth cap — therefore flows only because
+/// keying raised it; if the reset were missing the receiver's decode would reject
+/// it as "Too big packet". This pins the post-key half of the frame-cap control.
+#[tokio::test]
+async fn r_s7_large_frame_flows_only_after_keying_raises_the_cap() {
+    let (mut si, mut sr) = loopback_pair().await;
+    let pw = "frame-cap-test";
+    let (ri, rr) = tokio::join!(run_initiator(&mut si, pw), run_responder(&mut sr, pw));
+    si.set_session_keys(ri.expect("initiator keys"));
+    sr.set_session_keys(rr.expect("responder keys"));
+
+    let big = vec![0xABu8; 100 * 1024]; // 100 KiB ≫ the 4 KiB pre-auth cap
+    si.send_raw(big.clone()).await.unwrap();
+    let got = sr.next().await.unwrap().unwrap();
+    assert_eq!(got.len(), big.len());
+    assert_eq!(&got[..], &big[..]);
+}
+
 #[tokio::test]
 async fn wrong_password_aborts_at_confirmation() {
     let (si, sr) = loopback_pair().await;

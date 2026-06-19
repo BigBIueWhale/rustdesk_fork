@@ -105,7 +105,16 @@ impl RendezvousMediator {
 
     pub async fn start_all() {
         assert_startup_invariants();
-        crate::test_nat_type();
+        // R-SV4(d) / R-D6 / R-A4: NO STUN/NAT/IPv6 probe at the service entry. The
+        // inherited `crate::test_nat_type()` call here reached test_ipv6_sync ->
+        // test_ipv6 -> test_bind_ipv6, which RESOLVES a public STUN hostname via DNS
+        // (STUNS_V6[0] = "stun.l.google.com:19302") and binds+connects a UDP6 socket
+        // — a startup phone-home AND a stray UDP socket, both forbidden on the
+        // v4-only (R-D5), direct-only (R-D4) exposed box, which has no rendezvous to
+        // register a public address with. Removed, not gated: the controlled box
+        // dials nobody (R-D6). (The remaining test_nat_type/test_ipv6/STUNS_* subtree
+        // and its viewer-side callers — main.rs/cli/flutter_ffi/client.rs — are the
+        // R-SV4(d) token-absent follow-on, entangled with the viewer/flutter side.)
         if config::is_outgoing_only() {
             loop {
                 sleep(1.).await;

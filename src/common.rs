@@ -581,13 +581,21 @@ impl Drop for CheckTestNatType {
 }
 
 pub fn test_nat_type() {
-    test_ipv6_sync();
-    // R-SV4 / §18 (sovereignty — universal: every artifact, every platform, every
-    // code path): NO NAT-type probe phone-home. The probe connected to the
-    // rendezvous server to classify NAT; the fork keys at the choke point and
-    // ships direct-only (R-D4), so it is moot. The egress worker test_nat_type_ is
-    // excised (below) — removed, not policy-gated. Local IPv6 detection
-    // (test_ipv6_sync, above) carries no egress and is kept.
+    // R-SV4 / R-D6 / §18 (sovereignty — universal: every artifact, every platform,
+    // every code path): this startup probe is now a NO-OP. The inherited body ran
+    // two egressing probes, BOTH removed (not policy-gated):
+    //   - test_nat_type_ — a NAT-type probe that connected to the rendezvous server
+    //     (and whose reply could re-home the client); excised (below).
+    //   - test_ipv6_sync -> test_ipv6 -> test_bind_ipv6 — which RESOLVES a public
+    //     STUN hostname via DNS (STUNS_V6[0] = "stun.l.google.com:19302") and binds
+    //     a UDP6 socket. That is a startup phone-home + a stray UDP socket, NOT the
+    //     "local, no-egress" detection a stale comment once claimed. Removed here.
+    // The fork keys at the choke point and ships direct-only (R-D4) + v4-only (R-D5),
+    // so no NAT/IPv6 discovery is needed in either role. This startup entry
+    // (main.rs/cli/flutter_ffi; the controlled-service start_all no longer calls it
+    // at all) now dials nobody. The connect-time test_ipv6 caller in client.rs and
+    // the cfg-absent excision of test_nat_type/test_ipv6/STUNS_* are the R-SV4(d)
+    // token-absent follow-on, entangled with the viewer/flutter side.
 }
 
 // R-SV4 / R-X3 / §18: test_nat_type_ — the NAT-type probe that connected to the
@@ -2401,15 +2409,12 @@ pub async fn punch_udp(
     }
 }
 
-fn test_ipv6_sync() {
-    #[tokio::main(flavor = "current_thread")]
-    async fn func() {
-        if let Some(job) = test_ipv6().await {
-            job.await.ok();
-        }
-    }
-    std::thread::spawn(func);
-}
+// R-SV4 / R-D6: test_ipv6_sync (the synchronous wrapper that spawned test_ipv6 at
+// process startup) is REMOVED — it was the only reach to the STUN-resolving
+// test_bind_ipv6 from the startup path (test_nat_type), and that DNS resolution +
+// UDP6 bind is a startup phone-home the sovereign fork forbids. The async test_ipv6
+// remains for now (the connect-time client.rs caller), excised in the R-SV4(d)
+// token-absent follow-on.
 
 pub async fn get_ipv6_socket() -> Option<(Arc<UdpSocket>, bytes::Bytes)> {
     let Some(addr) = PUBLIC_IPV6_ADDR.lock().unwrap().0 else {

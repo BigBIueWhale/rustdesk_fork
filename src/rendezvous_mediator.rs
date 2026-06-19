@@ -834,13 +834,12 @@ impl RendezvousMediator {
 }
 
 fn get_direct_port() -> i32 {
-    let mut port = Config::get_option("direct-access-port")
-        .parse::<i32>()
-        .unwrap_or(0);
-    if port <= 0 {
-        port = RENDEZVOUS_PORT + 2;
-    }
-    port
+    // R-F4: the direct port is the single PINNED compile-time constant 21118 — never
+    // a runtime port option read from config (an override R-S12 forbids) and never
+    // the inherited rendezvous-port-plus-two derivation (which would silently shift
+    // the port and desync the §10.4 CPace `CI` KAT be16(21118)=527e). One mode, one
+    // constant; a different port is a build-time change to config::DIRECT_PORT.
+    config::DIRECT_PORT
 }
 
 async fn direct_server(server: ServerPtr) {

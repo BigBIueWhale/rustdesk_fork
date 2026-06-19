@@ -123,6 +123,14 @@ pub const RS_PUB_KEY: &str = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=";
 pub const RENDEZVOUS_PORT: i32 = 21116;
 pub const RELAY_PORT: i32 = 21117;
 pub const WS_RENDEZVOUS_PORT: i32 = 21118;
+// R-F4: the serverless direct-IP listener binds a SINGLE pinned compile-time
+// constant. Deliberately a literal, NOT a rendezvous-port-plus-two derivation —
+// that would silently shift the port (and desync the §10.4 CPace `CI` KAT,
+// be16(21118)=527e) if the rendezvous port ever changed. Never a runtime option,
+// env var, or config key (the direct-port config read is removed); an operator who
+// needs a different port changes this constant and rebuilds (a build-time choice,
+// never a runtime mode). It folds into the PAKE channel binding `CI` (R-P1).
+pub const DIRECT_PORT: i32 = 21118;
 pub const WS_RELAY_PORT: i32 = 21119;
 
 #[inline]

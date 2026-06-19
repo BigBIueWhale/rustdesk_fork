@@ -284,23 +284,17 @@ fn heartbeat_url() -> String {
     format!("{}/api/heartbeat", url)
 }
 
-fn handle_config_options(config_options: HashMap<String, String>) {
-    let mut options = Config::get_options();
-    let default_settings = config::DEFAULT_SETTINGS.read().unwrap().clone();
-    config_options
-        .iter()
-        .map(|(k, v)| {
-            // Priority: user config > default advanced options.
-            // Only when default advanced options are also empty, remove user option (fallback to built-in default);
-            // otherwise insert an empty value so user config remains present.
-            if v.is_empty() && default_settings.get(k).map_or("", |v| v).is_empty() {
-                options.remove(k);
-            } else {
-                options.insert(k.to_string(), v.to_string());
-            }
-        })
-        .count();
-    Config::set_options(options);
+fn handle_config_options(_config_options: HashMap<String, String>) {
+    // R-X3: upstream wrote ARBITRARY config keys from a server /api/heartbeat
+    // strategy.config_options response straight into Config::set_options with NO
+    // key allowlist — so a malicious rendezvous/api server could rewrite the trust
+    // anchor (`key`), custom-rendezvous-server, api-server, even direct-access-port
+    // from inside an unauthenticated heartbeat. The serverless fork takes NO config
+    // from a server (api-server pinned empty, R-D6; the rendezvous mediator excised,
+    // R-D4), so the server-supplied options are IGNORED entirely. This path is inert
+    // anyway once those pins land, but neutralized here so it cannot rewrite the §8
+    // excisions / §9 hard-pins from a server response if ever reached (defense in
+    // depth; R-A6 greps handle_config_options as one of R-X3's three re-home twins).
 }
 
 #[allow(unused)]

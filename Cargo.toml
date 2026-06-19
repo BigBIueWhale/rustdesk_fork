@@ -27,6 +27,10 @@ use_samplerate = ["samplerate"]
 use_rubato = ["rubato"]
 use_dasp = ["dasp"]
 flutter = ["flutter_rust_bridge"]
+# R-S16: the controlled-side lockdown policy. Propagates to hbb_common's
+# PINNED_SETTINGS funnel and gates the connection.rs control_permissions bypass
+# closure (R-S16(d)). On for every shipped controlled-side profile.
+lockdown = ["hbb_common/lockdown"]
 default = ["use_dasp"]
 hwcodec = ["scrap/hwcodec"]
 vram = ["scrap/vram"]

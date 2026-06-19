@@ -2181,31 +2181,41 @@ impl Connection {
         enable_prefix_option: &str,
         control_permissions: &Option<ControlPermissions>,
     ) -> bool {
-        use hbb_common::rendezvous_proto::control_permissions::Permission;
-        if let Some(control_permissions) = control_permissions {
-            let permission = match enable_prefix_option {
-                keys::OPTION_ENABLE_KEYBOARD => Some(Permission::keyboard),
-                keys::OPTION_ENABLE_REMOTE_PRINTER => Some(Permission::remote_printer),
-                keys::OPTION_ENABLE_CLIPBOARD => Some(Permission::clipboard),
-                keys::OPTION_ENABLE_FILE_TRANSFER => Some(Permission::file),
-                keys::OPTION_ENABLE_AUDIO => Some(Permission::audio),
-                keys::OPTION_ENABLE_CAMERA => Some(Permission::camera),
-                keys::OPTION_ENABLE_TERMINAL => Some(Permission::terminal),
-                keys::OPTION_ENABLE_TUNNEL => Some(Permission::tunnel),
-                keys::OPTION_ENABLE_REMOTE_RESTART => Some(Permission::restart),
-                keys::OPTION_ENABLE_RECORD_SESSION => Some(Permission::recording),
-                keys::OPTION_ENABLE_BLOCK_INPUT => Some(Permission::block_input),
-                keys::OPTION_ENABLE_PRIVACY_MODE => Some(Permission::privacy_mode),
-                _ => None,
-            };
-            if let Some(permission) = permission {
-                if let Some(enabled) =
-                    crate::get_control_permission(control_permissions.permissions, permission)
-                {
-                    return enabled;
+        // R-S16(d)(i): under lockdown the controlled-side policy (the pinned
+        // PINNED_SETTINGS funnel) is the single source of truth — skip the
+        // rendezvous-server `control_permissions` branch entirely, closing the
+        // server-push capability vector by construction, not merely by the
+        // mediator's absence under R-D4.
+        #[cfg(not(feature = "lockdown"))]
+        {
+            use hbb_common::rendezvous_proto::control_permissions::Permission;
+            if let Some(control_permissions) = control_permissions {
+                let permission = match enable_prefix_option {
+                    keys::OPTION_ENABLE_KEYBOARD => Some(Permission::keyboard),
+                    keys::OPTION_ENABLE_REMOTE_PRINTER => Some(Permission::remote_printer),
+                    keys::OPTION_ENABLE_CLIPBOARD => Some(Permission::clipboard),
+                    keys::OPTION_ENABLE_FILE_TRANSFER => Some(Permission::file),
+                    keys::OPTION_ENABLE_AUDIO => Some(Permission::audio),
+                    keys::OPTION_ENABLE_CAMERA => Some(Permission::camera),
+                    keys::OPTION_ENABLE_TERMINAL => Some(Permission::terminal),
+                    keys::OPTION_ENABLE_TUNNEL => Some(Permission::tunnel),
+                    keys::OPTION_ENABLE_REMOTE_RESTART => Some(Permission::restart),
+                    keys::OPTION_ENABLE_RECORD_SESSION => Some(Permission::recording),
+                    keys::OPTION_ENABLE_BLOCK_INPUT => Some(Permission::block_input),
+                    keys::OPTION_ENABLE_PRIVACY_MODE => Some(Permission::privacy_mode),
+                    _ => None,
+                };
+                if let Some(permission) = permission {
+                    if let Some(enabled) =
+                        crate::get_control_permission(control_permissions.permissions, permission)
+                    {
+                        return enabled;
+                    }
                 }
             }
         }
+        #[cfg(feature = "lockdown")]
+        let _ = control_permissions;
         Self::is_permission_enabled_locally(enable_prefix_option)
     }
 

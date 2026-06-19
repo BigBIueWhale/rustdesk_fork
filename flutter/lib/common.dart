@@ -2374,51 +2374,15 @@ List<String>? urlLinkToCmdArgs(Uri uri) {
     // For compatibility
     command = '--connect';
     id = uri.path.substring("/new/".length);
-  } else if (uri.authority == "config") {
-    if (isAndroid || isIOS) {
-      final allowDeepLinkServerSettings =
-          bind.mainGetBuildinOption(key: kOptionAllowDeepLinkServerSettings) ==
-              'Y';
-      if (!allowDeepLinkServerSettings) {
-        debugPrint(
-            "Ignore rustdesk://config because $kOptionAllowDeepLinkServerSettings is not enabled.");
-        // Keep the user-facing error generic; detailed rejection reason is in debug logs.
-        // Delay toast to avoid missing overlay during cold-start deeplink handling.
-        Timer(Duration(seconds: 1), () {
-          showToast(translate('Failed'));
-        });
-        return null;
-      }
-      final config = uri.path.substring("/".length);
-      // add a timer to make showToast work
-      Timer(Duration(seconds: 1), () {
-        importConfig(null, null, config);
-      });
-    }
+  } else if (["config", "password"].contains(uri.authority)) {
+    // R-X6: the server/key (trust-anchor) and permanent-password deep-link WRITE
+    // authorities are removed entirely. A web page, QR code, or co-installed app
+    // must never set this box's trust anchor, server list, or credential
+    // pre-authentication; the rustdesk:// scheme is connect-only now. The
+    // build-time allow flags and the Rust-side ?key= adoption are closed
+    // separately (see R-X6 / R-X4).
+    debugPrint("Ignoring rustdesk:// server/credential write authority (R-X6).");
     return null;
-  } else if (uri.authority == "password") {
-    if (isAndroid || isIOS) {
-      final allowDeepLinkPassword =
-          bind.mainGetBuildinOption(key: kOptionAllowDeepLinkPassword) == 'Y';
-      if (!allowDeepLinkPassword) {
-        debugPrint(
-            "Ignore rustdesk://password because $kOptionAllowDeepLinkPassword is not enabled.");
-        // Keep the user-facing error generic; detailed rejection reason is in debug logs.
-        // Delay toast to avoid missing overlay during cold-start deeplink handling.
-        Timer(Duration(seconds: 1), () {
-          showToast(translate('Failed'));
-        });
-        return null;
-      }
-      final password = uri.path.substring("/".length);
-      if (password.isNotEmpty) {
-        Timer(Duration(seconds: 1), () async {
-          final ok =
-              await bind.mainSetPermanentPasswordWithResult(password: password);
-          showToast(translate(ok ? 'Successful' : 'Failed'));
-        });
-      }
-    }
   } else if (options.contains(uri.authority)) {
     command = '--${uri.authority}';
     if (uri.path.length > 1) {

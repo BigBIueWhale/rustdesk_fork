@@ -712,6 +712,47 @@ message PublicKey {
 
 message SignedId { bytes id = 1; }
 
+// CPace PAKE handshake (requirements.html §10, R-P14). A dedicated TOP-LEVEL
+// message — deliberately NOT a variant of the `Message` union — so the pre-key
+// decoder on the still-unkeyed stream reaches ONLY these fixed handshake fields
+// (R-S7), parsed on its own via parse_from_bytes::<Cpace>, never
+// Message::parse_from_bytes. It replaces the removed `secure`-gated
+// SignedId <-> PublicKey key bootstrap (R-P5). Fixed roles (viewer = initiator,
+// controlled = responder), two round trips:
+//   (1) initiator -> responder : { sid_a(16B), ADa = b"viewer" }
+//   (2) responder -> initiator : { sid_b(16B), ADb = b"server", Yb(32B) }
+//   (3) initiator -> responder : { Ya(32B), Ta(64B HMAC-SHA512 tag) }
+//   (4) responder -> initiator : { Tb(64B) }
+// The oneof carries NO version/suite/capability field — those live only in the
+// never-sent channel identifier CI (R-P1/R-P11) — so there is nothing on the
+// wire to downgrade; an unset/unknown case is a decode abort, not a fallback
+// (R-P14c). Strict per-role step ordering and no-duplicate handling are enforced
+// by the Rust state machine (R-P14a), not the schema.
+message CpaceStep1 {
+  bytes sid_a = 1; // initiator's fresh 16-byte sid nonce (R-P1/R-P8)
+  bytes ad_a = 2;  // associated data, fixed b"viewer" — sender-bound (R-P5)
+}
+message CpaceStep2 {
+  bytes sid_b = 1; // responder's fresh 16-byte sid nonce
+  bytes ad_b = 2;  // associated data, fixed b"server" (R-P5)
+  bytes yb = 3;    // responder CPace element: compressed ristretto255 (32B)
+}
+message CpaceStep3 {
+  bytes ya = 1; // initiator CPace element: compressed ristretto255 (32B)
+  bytes ta = 2; // initiator key-confirmation tag, HMAC-SHA512 (64B) (R-P3)
+}
+message CpaceStep4 {
+  bytes tb = 1; // responder key-confirmation tag, HMAC-SHA512 (64B) (R-P3)
+}
+message Cpace {
+  oneof union {
+    CpaceStep1 step1 = 1;
+    CpaceStep2 step2 = 2;
+    CpaceStep3 step3 = 3;
+    CpaceStep4 step4 = 4;
+  }
+}
+
 message AudioFormat {
   uint32 sample_rate = 1;
   uint32 channels = 2;

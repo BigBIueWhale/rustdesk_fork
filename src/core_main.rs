@@ -397,31 +397,10 @@ pub fn core_main() -> Option<Vec<String>> {
         } else if args[0] == "--get-id" {
             println!("{}", crate::ipc::get_id());
             return None;
-        } else if args[0] == "--set-id" {
-            if is_cli_setting_change_disabled() {
-                println!("Settings are disabled!");
-                return None;
-            }
-            if config::Config::is_disable_change_id() {
-                println!("Changing ID is disabled!");
-                return None;
-            }
-            if args.len() == 2 {
-                if crate::platform::is_installed() && is_root() {
-                    let old_id = crate::ipc::get_id();
-                    let mut res = crate::ui_interface::change_id_shared(args[1].to_owned(), old_id);
-                    if res.is_empty() {
-                        res = "Done!".to_owned();
-                    }
-                    println!("{}", res);
-                } else {
-                    println!("Installation and administrative privileges required!");
-                }
-            }
-            return None;
-        // R-X4: `--config <name>` adopted a trust anchor (the public `key`) plus the
-        // rendezvous/api/relay servers from a license/exe-name lookup — this
-        // trust-anchor override is excised; the fork bakes its own values.
+        // R-X4: the `--set-id` (rendezvous-ID change) and `--config` (trust-anchor +
+        // server adoption) CLI paths are excised — both presuppose the rendezvous
+        // account / anchor this serverless fork removes; the larger account
+        // `--assign`/`--deploy` argv-token paths go with the R-D4 account removal.
         } else if args[0] == "--option" {
             if is_cli_setting_change_disabled() {
                 println!("Settings are disabled!");
@@ -760,7 +739,6 @@ fn is_user_main_ipc_scope_cli_command(args: &[String]) -> bool {
         Some("--password")
             | Some("--set-unlock-pin")
             | Some("--get-id")
-            | Some("--set-id")
             | Some("--option")
             | Some("--assign")
             | Some("--deploy")
@@ -789,7 +767,6 @@ mod tests {
             "--password",
             "--set-unlock-pin",
             "--get-id",
-            "--set-id",
             "--option",
             "--assign",
             "--deploy",

@@ -36,7 +36,7 @@ compile/test loop) · `BLOCK-CARGO` (needs a lockfile regen) · `RISK-SILENT`
 |---|---|---|
 | §16 monorepo: clone 1.4.7 (`0c86d46`), absorb `hbb_common` (`df6badc`) in-tree, strip `.git`, drop `.gitmodules` | **DONE** | `c2abd3b`; 279→264 Rust files (−15 plugin); no nested repos |
 | R-R1 committed `rust-toolchain.toml` (the one pin upstream omits) | **DONE** | `f67a744`; pinned 1.75 |
-| R-B9/B10 `scripts/pins.env` manifest + harness design | **PARTIAL** | `fb4f4c7`; every version verified in-tree. SHA-256 digests = fail-closed sentinel (R-B12 audited dual-source bootstrap is online/`DEFER-BUILD`). Script *bodies* TODO. |
+| R-B9/B10 build harness — `pins.env` manifest, `lib.sh` helpers, design | **PARTIAL** | `fb4f4c7` (pins.env, every version verified in-tree; SHA-256 digests = fail-closed R-B12 sentinel) + `lib.sh` fail-loud helpers (load_pins / assert_version / verify_sha256 / offline guards / repo-state). The build-script *bodies* (build-debian.sh etc., upstream's exact 1.4.7 commands) + online-fetch.sh = TODO/`DEFER-BUILD` |
 | R-R1 keep deps pinned-not-vendored | **DONE** | `Cargo.lock`/`pubspec.lock`/`vcpkg.json` untouched; nothing vendored |
 | R-R2/R-R2a prune CI to 3 targets; drop appimage/flatpak/non-Debian | **PARTIAL** | `01bb8a8` deleted fdroid/nightly/playground/clear-cache. `flutter-build.yml` 14-job matrix prune + appimage/flatpak dir removal (coupled to `build.py`+`bump.sh`) = TODO |
 | R-B6 drop Sciter | **DEFER-BUILD / BLOCK-CARGO** | non-flutter path is the *default* build (58 `not(feature="flutter")` blocks + the inherited tests run default-features), so a clean cut means making flutter the default/test path — a build-process change; and `sciter-rs` removal is `BLOCK-CARGO` |

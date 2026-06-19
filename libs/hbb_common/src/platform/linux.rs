@@ -133,10 +133,12 @@ pub fn is_x11_or_headless() -> bool {
 const INVALID_SESSION: &str = "4294967295";
 
 pub fn get_display_server() -> String {
-    // Check for forced display server environment variable first
-    if let Ok(forced_display) = std::env::var("RUSTDESK_FORCED_DISPLAY_SERVER") {
-        return forced_display;
-    }
+    // R-X12: the forced-display-server env override is removed — a runtime knob that
+    // re-selects the security-relevant capture/input backend (X11 vs Wayland/
+    // pipewire) is exactly the R-S12 "control removed, not defaulted off" case. The
+    // §17 box is Xorg; the backend is determined by detection below, and the fork
+    // additionally drops the `wayland` scrap feature so the Wayland path is compiled
+    // out (and pins is_x11() — R-X12 — making this determinism a binary property).
 
     // Check if `loginctl` can be called successfully
     if run_loginctl(None).is_err() {

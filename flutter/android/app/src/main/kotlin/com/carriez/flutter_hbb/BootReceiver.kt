@@ -1,7 +1,6 @@
 package com.carriez.flutter_hbb
 
 import android.Manifest.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-import android.Manifest.permission.SYSTEM_ALERT_WINDOW
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -24,9 +23,10 @@ class BootReceiver : BroadcastReceiver() {
                 Log.d(logTag, "KEY_START_ON_BOOT_OPT is false")
                 return
             }
-            // check pre-permission
-            if (!XXPermissions.isGranted(context, REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, SYSTEM_ALERT_WINDOW)){
-                Log.d(logTag, "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS or SYSTEM_ALERT_WINDOW is not granted")
+            // check pre-permission (R-X6: SYSTEM_ALERT_WINDOW dropped with the floating
+            // window; boot-auto-start needs only the battery-optimization exemption)
+            if (!XXPermissions.isGranted(context, REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)){
+                Log.d(logTag, "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS is not granted")
                 return
             }
 

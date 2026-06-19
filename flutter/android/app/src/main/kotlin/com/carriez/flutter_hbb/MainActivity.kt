@@ -401,14 +401,13 @@ class MainActivity : FlutterActivity() {
 
     override fun onStop() {
         super.onStop()
-        val disableFloatingWindow = FFI.getLocalOption("disable-floating-window") == "Y"
-        if (!disableFloatingWindow && MainService.isReady) {
-            startService(Intent(this, FloatingWindowService::class.java))
-        }
+        // R-X6: the floating overlay window is cut — the controlled-status surface
+        // is the mandatory foreground-service notification, not a
+        // TYPE_APPLICATION_OVERLAY window (a tapjacking primitive a single-purpose
+        // box does not need). SYSTEM_ALERT_WINDOW is dropped with it.
     }
 
     override fun onStart() {
         super.onStart()
-        stopService(Intent(this, FloatingWindowService::class.java))
     }
 }

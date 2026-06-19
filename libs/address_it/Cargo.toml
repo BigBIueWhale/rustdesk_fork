@@ -1,0 +1,12 @@
+[package]
+name = "address_it"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Frozen KAT for the R-S17/R-SV5 pinned address normalization (hbb_common::address::normalize_address). Depends on hbb_common's library only (no dev-deps ⇒ no webrtc/sdp), so it compiles + runs on the pinned 1.75 toolchain. A normalization mismatch is a substitution blind spot, so this KAT is normative."
+
+[lib]
+path = "src/lib.rs"
+
+[dev-dependencies]
+hbb_common = { path = "../hbb_common" }

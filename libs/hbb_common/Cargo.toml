@@ -42,6 +42,9 @@ dirs-next = "2.0"
 filetime = "0.2"
 sodiumoxide = "0.2"
 regex = "1.11"
+# R-S17/R-SV5: IDNA to_ascii for the pinned address normalization (address.rs).
+# Already in the lock transitively (via url), so this edge adds no new crate.
+idna = "1.0"
 tokio-socks = { git = "https://github.com/rustdesk-org/tokio-socks" }
 chrono = "0.4"
 backtrace = "0.3"

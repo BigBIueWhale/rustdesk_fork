@@ -28,6 +28,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "address_it"
+version = "0.1.0"
+dependencies = [
+ "hbb_common",
+]
+
+[[package]]
 name = "adler"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3788,6 +3795,7 @@ dependencies = [
  "futures",
  "futures-util",
  "httparse",
+ "idna",
  "lazy_static",
  "libc",
  "libloading 0.8.4",

@@ -24,6 +24,29 @@ constraints:
   CI greps, double-build, runtime asserts, the 206 inherited tests) cannot be
   *shown to pass* here, which is the bar the completion criterion sets.
 
+## Landed vs. remaining (quick read)
+
+**Landed and inspection-verified** (the structured-creation pass, ~45 commits):
+the structural monorepo (1.4.7 + absorbed `hbb_common`, `.git` stripped); the
+toolchain/version pinning + `rust-toolchain.toml`; the **complete build harness**
+(9 scripts) + the R-B2 determinism patch; the `Cpace` PAKE wire format; the §8
+excisions **R-X1** (updater RCE), **R-X2** (plugin loader), **R-X3** (all 3 re-home
+twins), **R-X4** (CLI gadgets + `get_key` trust-anchor pin), **R-X6** (Android +
+deep-link writes), **R-X12** (display-server env knob); **R-F4** (direct-port pin);
+**R-D3a** (systemd confinement); **R-SV8** (iOS entitlements).
+
+**NOT done** (and why) — this is the load-bearing honesty: the **CPace
+construction** (§10.4, RISK-SILENT — gated on KATs that can't run here), the
+**two-key secretbox rewrite + choke-point integration** (§10/R-P14), the **§9
+assertions**, the **R-S16 policy funnel** (RISK-SILENT, fail-open if wrong), the
+**R-R2b role split**, the **R-S18/R-D4/R-B6-coordinated excisions** (R-X5/7/8/9/10/
+11/13/14, Sciter, mediator), and the **R-R3 dependency audit** (BLOCK-CARGO). These
+are the *majority* of the security spec by substance, and they require a
+build/test loop — which the "no running of code" constraint precludes — to do
+*correctly and verifiably*. **The project is therefore NOT "implemented in full,
+correctly."** Doing the fail-silent work (crypto/policy) blind would be the opposite
+of the spec's secure-by-assertion intent, so it is deferred, not faked.
+
 ## Status legend
 
 `DONE` · `PARTIAL` (clean part landed, rest noted) · `DEFER-BUILD` (needs a
@@ -36,7 +59,7 @@ compile/test loop) · `BLOCK-CARGO` (needs a lockfile regen) · `RISK-SILENT`
 |---|---|---|
 | §16 monorepo: clone 1.4.7 (`0c86d46`), absorb `hbb_common` (`df6badc`) in-tree, strip `.git`, drop `.gitmodules` | **DONE** | `c2abd3b`; 279→264 Rust files (−15 plugin); no nested repos |
 | R-R1 committed `rust-toolchain.toml` (the one pin upstream omits) | **DONE** | `f67a744`; pinned 1.75 |
-| R-B7/B9/B10/B11 build harness — manifest, helpers, provision/cleanup, online-fetch, build-debian | **PARTIAL** | `pins.env` + `lib.sh` + `host-provision.sh`/`cleanup.sh` (R-B11) + `online-fetch.sh` (R-B10) + `build-debian.sh` (R-B7/B9: wraps upstream `build.py` in the digest-pinned `ubuntu:18.04` container, offline, double-build determinism). + the **R-B2 `gen_version` determinism patch** (`c5429a4`: BUILD_DATE honors SOURCE_DATE_EPOCH, making the double-build/recorded-SHA bar achievable). + `build-android.sh` (R-B7/B9/B2: cargo-ndk + `flutter build apk` + apksigner v2 with the stable local key). REMAINING: `build-windows.ps1`, `provision-windows-vm.sh`; the R-R2b controlled-only profile. SHA-256 digests stay the fail-closed R-B12 sentinel |
+| R-B7/B9/B10/B11/B12 build harness — all 9 scripts + determinism patch | **DONE** (structure) | `pins.env` + `lib.sh` + `host-provision`/`cleanup` (R-B11) + `online-fetch` (R-B10) + `build-debian`/`build-android`/`build-windows.ps1` + `provision-windows-vm.sh` (R-B7/B8/B9/§12.1/§12.2) + the R-B2 `gen_version` SOURCE_DATE_EPOCH patch (`c5429a4`). Every version pinned + verified in-tree. **Cannot be run/verified under no-run**; SHA-256 digests stay the fail-closed R-B12 sentinel (audited bootstrap is online); the R-R2b controlled-only build profile awaits the Cargo feature split |
 | R-R1 keep deps pinned-not-vendored | **DONE** | `Cargo.lock`/`pubspec.lock`/`vcpkg.json` untouched; nothing vendored |
 | R-R2/R-R2a prune CI to 3 targets; drop appimage/flatpak/non-Debian | **PARTIAL** | `01bb8a8` deleted fdroid/nightly/playground/clear-cache. `flutter-build.yml` 14-job matrix prune + appimage/flatpak dir removal (coupled to `build.py`+`bump.sh`) = TODO |
 | R-B6 drop Sciter | **DEFER-BUILD / BLOCK-CARGO** | non-flutter path is the *default* build (58 `not(feature="flutter")` blocks + the inherited tests run default-features), so a clean cut means making flutter the default/test path — a build-process change; and `sciter-rs` removal is `BLOCK-CARGO` |

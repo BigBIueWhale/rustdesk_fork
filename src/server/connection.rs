@@ -2333,6 +2333,7 @@ impl Connection {
                     }
                     self.view_camera = true;
                 }
+                #[cfg(not(feature = "lockdown"))]
                 Some(login_request::Union::Terminal(terminal)) => {
                     if !Self::permission(keys::OPTION_ENABLE_TERMINAL, &self.control_permissions) {
                         self.send_login_error("No permission of terminal").await;
@@ -2353,6 +2354,19 @@ impl Connection {
                             o.terminal_persistent.enum_value() == Ok(BoolOption::Yes);
                     }
                     self.terminal_service_id = terminal.service_id;
+                }
+                #[cfg(feature = "lockdown")]
+                Some(login_request::Union::Terminal(_)) => {
+                    // R-X8: the terminal root-PTY is absent from the controlled
+                    // (lockdown) build — refuse it STRUCTURALLY here, not merely
+                    // via the enable-terminal pin. This is the belt; compiling out
+                    // terminal_service/terminal_helper themselves is the primary
+                    // closure (a follow-on). One PAKE password must never buy a
+                    // root shell on the exposed box.
+                    self.send_login_error("Terminal is not available on this host")
+                        .await;
+                    sleep(1.).await;
+                    return false;
                 }
                 Some(login_request::Union::PortForward(mut pf)) => {
                     if !Self::permission(keys::OPTION_ENABLE_TUNNEL, &self.control_permissions) {
@@ -3404,10 +3418,19 @@ impl Connection {
                     }
                 }
                 Some(message::Union::TerminalAction(action)) => {
-                    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                    #[cfg(all(
+                        not(any(target_os = "android", target_os = "ios")),
+                        not(feature = "lockdown")
+                    ))]
                     allow_err!(self.handle_terminal_action(action).await);
-                    #[cfg(any(target_os = "android", target_os = "ios"))]
-                    log::warn!("Terminal action received but not supported on this platform");
+                    #[cfg(any(target_os = "android", target_os = "ios", feature = "lockdown"))]
+                    {
+                        // R-X8: terminal is absent from the controlled (lockdown)
+                        // build (and unsupported on mobile) — the action handler is
+                        // unreachable here, so a TerminalAction is ignored.
+                        let _ = action;
+                        log::warn!("Terminal action ignored — terminal not available on this build");
+                    }
                 }
                 _ => {}
             }

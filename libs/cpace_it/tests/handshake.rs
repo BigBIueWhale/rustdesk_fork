@@ -120,6 +120,26 @@ async fn wrong_password_aborts_at_confirmation() {
 }
 
 #[test]
+fn guess_limiter_blocks_after_threshold() {
+    // R-S10 / R-P14c: a source is shed after too many online-guess (confirmation)
+    // failures within the window; other sources are unaffected (a per-IP block,
+    // not a global one — so a flood from one IP can't lock everyone out).
+    use hbb_common::cpace::{guess_limiter_allows, record_guess_failure};
+    use std::net::IpAddr;
+    let ip: IpAddr = "198.51.100.7".parse().unwrap(); // TEST-NET-2, unique to this test
+    let other: IpAddr = "198.51.100.8".parse().unwrap();
+    assert!(guess_limiter_allows(ip), "a fresh source is allowed");
+    for _ in 0..10 {
+        record_guess_failure(ip);
+    }
+    assert!(!guess_limiter_allows(ip), "blocked after 10 online-guess failures");
+    assert!(
+        guess_limiter_allows(other),
+        "a different source is independent (R-P14c)"
+    );
+}
+
+#[test]
 fn directional_cipher_refuses_identical_keys() {
     // R-A5: the secretbox layer must refuse to engage a single shared key in
     // both directions (the inherited catastrophic reuse). A real handshake never

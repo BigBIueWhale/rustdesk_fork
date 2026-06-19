@@ -258,17 +258,24 @@ pub async fn create_tcp_connection(
         if prs.is_empty() {
             bail!("Refusing connection: no permanent password set (R-S9)");
         }
+        // R-S10 / R-P14c: shed a source that has exceeded the online-guess rate
+        // BEFORE the expensive scalar-mult — checked here, before run_responder.
+        if !hbb_common::cpace::guess_limiter_allows(addr.ip()) {
+            bail!("R-S10: source rate-limited after too many failed password attempts");
+        }
         let Some(fs) = stream.as_framed_tcp_mut() else {
             bail!("CPace handshake requires a TCP stream at the choke point");
         };
         match hbb_common::cpace::run_responder(fs, &prs).await {
             Ok(keys) => fs.set_session_keys(keys),
             Err(e) => {
-                // R-P14c: ONLY a key-confirmation tag mismatch is an online password
-                // guess and may feed the per-source limiter (R-S10); decode / order /
-                // AD / identity / timeout aborts MUST NOT, or a malformed-frame flood
-                // would trip the owner's own block.
-                let _is_online_guess = e.is_password_guess(); // TODO(R-S10): wire the limiter
+                if e.is_password_guess() {
+                    // R-P14c: ONLY a key-confirmation tag mismatch is an online
+                    // password guess and feeds the per-source limiter (R-S10);
+                    // decode / order / AD / identity / timeout aborts MUST NOT, or a
+                    // malformed-frame flood would trip the owner's own block.
+                    hbb_common::cpace::record_guess_failure(addr.ip());
+                }
                 bail!("CPace handshake failed: fail-closed");
             }
         }

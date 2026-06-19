@@ -276,6 +276,56 @@ impl DirectionalCipher {
     }
 }
 
+// ── per-source online-guess limiter (R-S10 / R-P14c) ─────────────────────────
+//
+// The PAKE permits exactly one online password guess per connection, so an
+// attacker's only lever is connection volume. This per-IP limiter caps the rate
+// of *key-confirmation failures* (the sole online-guess event, R-P14c) — checked
+// before the expensive scalar-mult so a blocked source is shed cheaply, and fed
+// ONLY by a confirmation mismatch (decode/order/AD/identity/timeout aborts MUST
+// NOT increment it, or a malformed-frame flood would trip the owner's own block).
+
+use std::collections::HashMap;
+use std::net::IpAddr;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+/// Sliding window for the online-guess limiter.
+const GUESS_WINDOW: Duration = Duration::from_secs(60);
+/// Confirmation failures allowed from one source within a window before it is shed.
+const MAX_GUESSES_PER_WINDOW: u32 = 10;
+
+lazy_static::lazy_static! {
+    static ref GUESS_FAILURES: Mutex<HashMap<IpAddr, (u32, Instant)>> =
+        Mutex::new(HashMap::new());
+}
+
+/// True if `source` may attempt a handshake; false if it has exceeded the online-
+/// guess rate within the current window (R-S10). MUST be called before the
+/// scalar-mult (R-P14c) so a blocked source costs almost nothing.
+pub fn guess_limiter_allows(source: IpAddr) -> bool {
+    let map = GUESS_FAILURES.lock().unwrap();
+    match map.get(&source) {
+        Some(&(count, start)) if start.elapsed() < GUESS_WINDOW => count < MAX_GUESSES_PER_WINDOW,
+        _ => true, // no record, or the window has expired
+    }
+}
+
+/// Record one online-guess failure for `source`. Per R-P14c the caller invokes
+/// this ONLY on an R-P3 key-confirmation mismatch, never on any other abort.
+pub fn record_guess_failure(source: IpAddr) {
+    let mut map = GUESS_FAILURES.lock().unwrap();
+    let now = Instant::now();
+    match map.get_mut(&source) {
+        Some(entry) if entry.1.elapsed() < GUESS_WINDOW => entry.0 = entry.0.saturating_add(1),
+        _ => {
+            map.insert(source, (1, now));
+        }
+    }
+    // Bounded memory: drop entries whose window has long since lapsed.
+    map.retain(|_, (_, start)| start.elapsed() < GUESS_WINDOW.saturating_mul(2));
+}
+
 // The wire-level round-trip / adversarial tests live in the dedicated `cpace_it`
 // crate (libs/cpace_it): hbb_common's own test build links the `webrtc` dev-
 // dependency, whose `sdp` crate does not compile on the pinned 1.75 toolchain, so

@@ -5,24 +5,31 @@ This fork is being built **into** the hardened RustDesk specified by
 how far the implementation has progressed against that normative spec, and what
 each unfinished item needs.
 
-## Working constraints (why some items are deferred, not skipped)
+## Working constraints (updated — a build/test loop IS available, in docker)
 
-The fork is assembled under two hard constraints: **no running of code** and **no
-installations**. Every change here is therefore made by source edit + static
-analysis and is **build-unverified**. That is safe for *fail-loud* changes (a Rust
-/ Kotlin / Dart / XML slip surfaces at the first compile) but **not** for
-*fail-silent* ones — cryptographic construction and security-policy funnels can be
-subtly wrong while still "working", so those are deferred to a build/test-capable
-pass rather than committed unverified. Two structural blockers follow from the
-constraints:
+Earlier iterations assumed **no running of code / no installations** and deferred
+everything fail-silent. That premise was **wrong** and has been corrected: a
+build/test loop is available **inside disposable docker containers** (the operator
+mandate is: compile, install packages, and test *only* in temporary containers,
+and never listen on `0.0.0.0`). Empirically:
 
-- **No `cargo` ⇒ no `Cargo.lock` regen.** Dependencies cannot be added or removed
-  and new crates cannot be wired into the workspace without invalidating the
-  committed lockfile (`--locked`, R-R1/R-A7). This blocks every "remove the X
-  crate" / "add `libs/pake` as a member" step.
-- **No build/test loop** ⇒ the spec's "secure by assertion" gates (KAT vectors,
-  CI greps, double-build, runtime asserts, the 206 inherited tests) cannot be
-  *shown to pass* here, which is the bar the completion criterion sets.
+- **`cargo` 1.75 (the pinned toolchain) + network work**; pure-Rust crates build
+  and test directly. The `libs/pake` PAKE — the spec's core, long deferred as
+  "RISK-SILENT because the KATs can't run here" — is now **KAT-verified** this way
+  (16/16, incl. the published CFRG vector + both fork anchors). The `Cargo.lock`
+  **was regenerated via cargo** (the additive `pake` member), so the R-R1/R-A7
+  `--locked` invariant is *maintained*, not blocked.
+- The **full workspace** still needs native system libs (OpenSSL, libsodium,
+  libvpx/yuv/aom, …) that aren't on the host (no passwordless sudo) — but those
+  install with `apt` **inside a container**, so the OpenSSL-linked crates
+  (`hbb_common` and the two-key secretbox rewrite) are now build-verifiable there
+  too. A *full app* build (Flutter + all codecs) remains heavy but the Rust
+  `cargo check`/test of the security-relevant crates is in reach.
+
+What stays genuinely deferred is only what needs the heavy full-app pipeline or a
+real two-host network (the active-attacker R-A8/A9 wire tests), and the items not
+yet implemented. Fail-loud source edits still surface at first compile; fail-silent
+work (crypto/policy) is now **verified in-container, not committed blind**.
 
 ## Landed vs. remaining (quick read)
 
@@ -69,7 +76,7 @@ compile/test loop) · `BLOCK-CARGO` (needs a lockfile regen) · `RISK-SILENT`
 | Area | Status | Notes |
 |---|---|---|
 | R-P14 `Cpace` wire message (dedicated top-level, not in `Message` union) | **DONE** | `7931abc`; additive proto |
-| §10.1–10.4 CPace construction in `libs/pake` (draft-21 CPACE-RISTR255-SHA512) | **RISK-SILENT / BLOCK-CARGO** | the §10.4 KAT anchors gate correctness (R-A7/R-A10) and cannot be run here; an off-by-one in `lv_cat`/generator/ISK is silent. Crate also can't be wired without a lock regen. Full byte-level construction is captured in `.claude/ralph-progress.md` for a build pass |
+| §10.1–10.4 CPace construction in `libs/pake` (draft-21 CPACE-RISTR255-SHA512) | **DONE — KAT-VERIFIED** | `339b3dd`; construction (lv_cat/o_cat/generator_string/ISK/HKDF/MACs) + R-P14a type-state machine (both roles) + R-P1/2/3/5/6/7/8/9/11/12/14c. **Built & tested in a disposable `rust:1.75-slim` container under the pinned toolchain + pinned lock — all 16 KATs pass**: the CFRG draft-21 published ristretto255 vector (g=`222b6b19…`/ISK_SY=`544199d7…`), fork anchor A (16B sid) and anchor B (32B sid, driven through the full state machine), plus the adversarial set (AD-mismatch, identity, decode, wrong-password→Confirmation, empty-PRS, replay-abort, NFC cross-spelling). No new external crate; lock regen is the single additive `pake` entry (1059→1060, R-R1/R-A7 held). Constraint correction: the "KATs can't run here" premise was false — pure-Rust crates build+test in docker (see memory). |
 | R-P2/R-P10 two-key `secretbox` rewrite (`tcp.rs`/`stream.rs`/`websocket.rs`) | **DEFER-BUILD** | ripples the public `Encrypt`/`set_key` signature; `RISK-SILENT` (single-key regression is the catastrophic bug) |
 | R-S1/R-P4/R-P14 choke-point integration in `create_tcp_connection` | **DEFER-BUILD** | depends on the construction above |
 

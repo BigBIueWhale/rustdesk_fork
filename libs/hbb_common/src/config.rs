@@ -1251,6 +1251,15 @@ impl Config {
     }
 
     pub fn get_option(k: &str) -> String {
+        // R-S16(b): pin the read funnel. The controlled-side policy table is the
+        // single source of truth — a pinned key returns its compile-time value
+        // before any overwrite/stored/default lookup, so every config-driven
+        // resolver (verification_method, approve_mode, option2bool("enable-*"),
+        // the egress reads) returns the policy with no per-call-site edit. A
+        // no-op when `lockdown` is off (PINNED_SETTINGS is empty).
+        if let Some(v) = pinned_setting(k) {
+            return v.to_string();
+        }
         get_or(
             &OVERWRITE_SETTINGS,
             &CONFIG2.read().unwrap().options,
@@ -2764,6 +2773,17 @@ fn get_or(
         .cloned()
 }
 
+/// R-S16(b)/(c): the pinned value for `k`, if it is in the compile-time policy
+/// table ([`keys::PINNED_SETTINGS`]). Always `None` when `lockdown` is off (the
+/// table is empty then), so the funnel is a no-op on non-controlled builds.
+#[inline]
+fn pinned_setting(k: &str) -> Option<&'static str> {
+    keys::PINNED_SETTINGS
+        .iter()
+        .find(|(key, _)| *key == k)
+        .map(|(_, v)| *v)
+}
+
 #[inline]
 fn is_option_can_save(
     overwrite: &RwLock<HashMap<String, String>>,
@@ -2771,6 +2791,15 @@ fn is_option_can_save(
     defaults: &RwLock<HashMap<String, String>>,
     v: &str,
 ) -> bool {
+    // R-S16(c): pin the write funnel. A pinned policy key is never writable — by
+    // a local set, an IPC Options/SyncConfig write (R-S11), or a server-pushed
+    // config merge (R-X3) — so the persisted file cannot shadow or disable the
+    // compile-time policy. The callers already drop-and-purge it from the file.
+    // Pinned keys are Config server-settings keys only, so the LocalConfig /
+    // DisplaySettings callers of this shared guard are unaffected (no collision).
+    if pinned_setting(k).is_some() {
+        return false;
+    }
     if overwrite.read().unwrap().contains_key(k)
         || defaults.read().unwrap().get(k).map_or(false, |x| x == v)
     {
@@ -3192,6 +3221,62 @@ pub mod keys {
         OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS,
         OPTION_ALLOW_AUTO_UPDATE,
     ];
+
+    /// R-S16(a): the controlled side's entire security policy, pinned at compile
+    /// time — one auditable source of truth. `Config::get_option` returns these
+    /// verbatim (R-S16(b)) and `is_option_can_save` rejects any write to them
+    /// (R-S16(c)), so no key here can be defaulted-permissive or written back on
+    /// — by a local process, an IPC `Options`/`SyncConfig` write, or a
+    /// server-pushed config merge. Pins only `Config` server-settings keys; the
+    /// parallel `LocalConfig` viewer-UI map is untouched.
+    ///
+    /// Empty when `lockdown` is off, so a non-controlled build is byte-for-byte
+    /// unchanged. An operator who needs a different policy edits this table and
+    /// rebuilds (the R-F4 build-time-choice discipline) — never a runtime knob.
+    #[cfg(feature = "lockdown")]
+    pub const PINNED_SETTINGS: &[(&str, &str)] = &[
+        // Credential & approval: the CPace PRS is the permanent password; no
+        // one-time-password path, no silent click-to-accept (R-S16, R-X7).
+        (OPTION_VERIFICATION_METHOD, "use-permanent-password"),
+        (OPTION_APPROVE_MODE, "password"),
+        // Neutralize the access-mode "full" → grant-every-capability shortcut.
+        (OPTION_ACCESS_MODE, "custom"),
+        // The content channels a remote-control + file-transfer box needs (§4.3).
+        (OPTION_ENABLE_KEYBOARD, "Y"),
+        (OPTION_ENABLE_CLIPBOARD, "Y"),
+        (OPTION_ENABLE_FILE_TRANSFER, "Y"),
+        (OPTION_ENABLE_AUDIO, "Y"),
+        (OPTION_ENABLE_CAMERA, "Y"),
+        // Escalation + outbound-proxy vectors (R-X8, R-D6).
+        (OPTION_ENABLE_TERMINAL, "N"),
+        (OPTION_ENABLE_TUNNEL, "N"),
+        // Meaningless on a headless root box, or better done out-of-band.
+        (OPTION_ENABLE_REMOTE_RESTART, "N"),
+        (OPTION_ENABLE_RECORD_SESSION, "N"),
+        (OPTION_ENABLE_BLOCK_INPUT, "N"),
+        (OPTION_ENABLE_PRIVACY_MODE, "N"),
+        (OPTION_ENABLE_REMOTE_PRINTER, "N"),
+        // No 2FA-bypass devices, no TOTP, no Telegram-bot push (R-X7, R-D6).
+        (OPTION_ENABLE_TRUSTED_DEVICES, "N"),
+        ("2fa", ""),
+        ("bot", ""),
+        // Egress-silent: no rendezvous / relay / api / proxy (R-D6); the proxy
+        // pin uses the proxy-url key.
+        (OPTION_API_SERVER, ""),
+        (OPTION_CUSTOM_RENDEZVOUS_SERVER, ""),
+        (OPTION_RELAY_SERVER, ""),
+        (OPTION_PROXY_URL, ""),
+        // Transport / fallback hardening (R-D6, R-X14).
+        (OPTION_ALLOW_WEBSOCKET, "N"),
+        (OPTION_ALLOW_INSECURE_TLS_FALLBACK, "N"),
+        (OPTION_ALLOW_LINUX_HEADLESS, "N"),
+        // Service un-killable by a local write (R-X9); never self-DoS a headless box.
+        ("stop-service", "N"),
+        (OPTION_ALLOW_ONLY_CONN_WINDOW_OPEN, ""),
+    ];
+
+    #[cfg(not(feature = "lockdown"))]
+    pub const PINNED_SETTINGS: &[(&str, &str)] = &[];
 
     // BUILDIN_SETTINGS
     pub const KEYS_BUILDIN_SETTINGS: &[&str] = &[

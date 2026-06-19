@@ -9,6 +9,10 @@ edition = "2018"
 [features]
 default = []
 webrtc = ["dep:webrtc"]
+# R-S16: compile in the controlled-side PINNED_SETTINGS policy table and the
+# get_option/is_option_can_save funnel. On for every shipped controlled-side
+# profile; off ⇒ PINNED_SETTINGS is empty and the funnel is a no-op.
+lockdown = []
 
 [dependencies]
 # In-tree balanced CPace PAKE (§10). Pure-Rust, no native dep; reuses crates

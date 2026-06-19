@@ -1475,6 +1475,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "config_it"
+version = "0.1.0"
+dependencies = [
+ "hbb_common",
+]
+
+[[package]]
 name = "confy"
 version = "0.4.0-2"
 source = "git+https://github.com/rustdesk-org/confy#83db9ec19a2f97e9718aef69e4fc5611bb382479"

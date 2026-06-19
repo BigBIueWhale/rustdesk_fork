@@ -1,7 +1,7 @@
 [Unit]
-Description=RustDesk
+Description=RustDesk (hardened fork — headless controlled-only direct-IP service, §17)
 Requires=network.target
-After=systemd-user-sessions.service
+After=systemd-user-sessions.service network.target
 
 [Service]
 Type=simple
@@ -17,6 +17,34 @@ TimeoutStopSec=30
 User=root
 LimitNOFILE=100000
 Environment="PULSE_LATENCY_MSEC=60" "PIPEWIRE_LATENCY=1024/48000"
+
+# ── R-D3a: systemd confinement the upstream unit lacked ───────────────────────
+# The service MUST run as root — input injection, virtual display, login-screen
+# capture, and the sudo -u drop to the --server child all need it (R-D3). So
+# NoNewPrivileges is DELIBERATELY NOT set (it would break that drop). The §8
+# excisions remove the reachable escalation paths; these directives shrink the
+# blast radius of anything missed, each compatible with the root + capture reality.
+#
+# Drop capabilities the service never uses (the spec's named set + obvious peers).
+CapabilityBoundingSet=~CAP_SYS_MODULE CAP_SYS_BOOT CAP_SYS_RAWIO CAP_NET_ADMIN CAP_AUDIT_CONTROL CAP_AUDIT_READ CAP_AUDIT_WRITE CAP_MAC_ADMIN CAP_MAC_OVERRIDE
+# v4-only at the kernel-policy layer — the twin of R-D5's v4-only bind. Keep
+# AF_UNIX (local IPC) and AF_INET (the one direct port, 21118); drop AF_INET6 and
+# AF_NETLINK.
+RestrictAddressFamilies=AF_UNIX AF_INET
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+# @system-service minus the swap/mount/reboot classes a desktop-capture service
+# never needs.
+SystemCallFilter=@system-service
+SystemCallFilter=~@mount @reboot @swap
+# MemoryDenyWriteExecute: R-D3a gates this on validating the JIT-free codec path
+# (libvpx/aom/ffmpeg) maps no W+X memory. Left disabled pending that RUNTIME
+# validation (cannot be checked under the no-run constraint); enable once
+# confirmed it does not break the software encode/decode path.
+#MemoryDenyWriteExecute=yes
 
 [Install]
 WantedBy=multi-user.target

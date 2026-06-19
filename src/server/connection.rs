@@ -2501,7 +2501,16 @@ impl Connection {
                 if !res {
                     return true;
                 }
-                if !self.validate_password(allow_logon_screen_password) {
+                // R-S6 / R-S2: the redundant password proof collapses into the
+                // PAKE. When the stream is CPace-keyed the peer is already mutually
+                // password-authenticated (R-P14; R-A1 asserts keying before this
+                // runs), so the login-time salted-hash re-check — the deleted Hash
+                // oracle — is skipped, and authorization IS the keyed edge. On an
+                // unkeyed stream (the non-lockdown transition) the legacy check
+                // still applies; no PRS material is re-validated over the wire.
+                if !self.stream.is_secured()
+                    && !self.validate_password(allow_logon_screen_password)
+                {
                     self.update_failure_with_scope(failure, false, 0, FailureScope::Default);
                     self.check_update_temporary_password(false);
                     if err_msg.is_empty() {

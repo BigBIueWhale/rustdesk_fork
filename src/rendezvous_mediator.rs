@@ -121,15 +121,12 @@ impl RendezvousMediator {
         tokio::spawn(async move {
             direct_server(server_cloned).await;
         });
-        #[cfg(target_os = "android")]
-        let start_lan_listening = true;
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        let start_lan_listening = crate::platform::is_installed();
-        if start_lan_listening {
-            std::thread::spawn(move || {
-                allow_err!(super::lan::start_listening());
-            });
-        }
+        // R-X5 / §18: no LAN discovery. The UDP 21119 LAN-discovery listener was a
+        // pre-auth, unauthenticated broadcast surface (and a stray UDP listener the
+        // R-A4 startup self-check forbids); it is not started. The box is reached
+        // only by deliberate direct connection (§17). Full token-absent removal of
+        // `mod lan` comes with the UI sweep (it is still referenced by ui.rs/
+        // flutter_ffi).
         // It is ok to run xdesktop manager when the headless function is not allowed.
         #[cfg(target_os = "linux")]
         if crate::is_server() {
@@ -145,7 +142,15 @@ impl RendezvousMediator {
                 && !crate::platform::installing_service()
             {
                 let mut futs = Vec::new();
-                let servers = Config::get_rendezvous_servers();
+                // R-D4 / §17 / §18: direct-only. The box is reachable ONLY via the
+                // direct listener (direct_server, spawned above) and NEVER connects
+                // to a rendezvous server — no register_pk, no heartbeat, no
+                // phone-home. The R-S16 custom-rendezvous-server="" pin alone is
+                // insufficient: get_rendezvous_servers() falls back to the built-in
+                // default, so the rendezvous loop is emptied here. (Full token-absent
+                // removal of the mediator/register_pk comes with the R-D4 lift of
+                // direct_server -> start_direct_only.)
+                let servers: Vec<String> = Vec::new();
                 SHOULD_EXIT.store(false, Ordering::SeqCst);
                 MANUAL_RESTARTED.store(false, Ordering::SeqCst);
                 for host in servers.clone() {

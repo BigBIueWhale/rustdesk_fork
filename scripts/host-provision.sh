@@ -60,10 +60,25 @@ main() {
     provision_pkg docker.io
 
     # Windows x86_64 .exe/.msi build runs in an ephemeral KVM Windows 11 guest on
-    # this same host (§12.2). The hypervisor stack, all host-level:
-    provision_pkg qemu-kvm
-    provision_pkg libvirt-daemon-system
-    provision_pkg libvirt-clients
+    # this same host (§12.2). The hypervisor stack, all host-level.
+    #
+    # Package names verified against the build host, Ubuntu 24.04 LTS (R-B8). Two
+    # correctness notes that a spec-literal "qemu-kvm + libvirt + swtpm + OVMF"
+    # (R-B11) misses on a real 24.04 box:
+    #   1. `qemu-kvm` was REMOVED in Ubuntu 24.04 — `apt-cache policy qemu-kvm`
+    #      has no candidate, so the old line aborted the whole script under set -e.
+    #      The KVM-capable system emulator is `qemu-system-x86`.
+    #   2. This installer uses --no-install-recommends, so a package that is only a
+    #      Recommends (qemu-utils) or no dependency at all (virtinst, osinfo-db) is
+    #      NOT pulled transitively and MUST be listed explicitly — otherwise
+    #      provision-windows-vm.sh's `require_cmd virt-install virsh qemu-img swtpm`
+    #      fails preflight even though the apt step "succeeded".
+    provision_pkg qemu-system-x86       # the KVM hypervisor (the 24.04 name for ex-`qemu-kvm`)
+    provision_pkg qemu-utils            # qemu-img — golden qcow2 + CoW overlays (only a Recommends of virtinst)
+    provision_pkg libvirt-daemon-system # libvirtd (systemd auto-enables + starts it on install)
+    provision_pkg libvirt-clients       # virsh
+    provision_pkg virtinst              # virt-install — builds the golden image (not pulled transitively)
+    provision_pkg osinfo-db             # the OS database `virt-install --osinfo win11` needs (not a hard dep)
     provision_pkg swtpm                 # vTPM 2.0 the Win11 guest requires
     provision_pkg ovmf                  # UEFI firmware for the guest
 

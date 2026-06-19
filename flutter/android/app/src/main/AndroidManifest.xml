@@ -5,8 +5,8 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- R-X6: READ/WRITE_EXTERNAL_STORAGE dropped — superseded by MANAGE_EXTERNAL_STORAGE
+         on the pinned targetSdk 33; requestLegacyExternalStorage removed below. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -24,21 +24,27 @@
 
     <application
         android:name=".MainApplication"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="RustDesk"
-        android:requestLegacyExternalStorage="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:roundIcon="@mipmap/ic_launcher"
-        android:supportsRtl="true">
+        android:supportsRtl="true"><!-- R-X6: allowBackup=false (the UUID-obfuscated
+        config holds the password-equivalent PRS — block adb-backup exfil);
+        networkSecurityConfig denies cleartext (defense-in-depth, §18); the upstream
+        requestLegacyExternalStorage is removed (targetSdk 33 scoped storage). -->
 
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
-            android:exported="true">
+            android:exported="false">
+            <!-- R-X6: exported=false (BOOT_COMPLETED is a protected system broadcast,
+                 still delivered to a non-exported receiver) and the upstream
+                 debug-boot test broadcast action removed, so no installed app can
+                 fake a boot to auto-start the controlled side. -->
             <intent-filter android:priority="1000">
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-                <!--ACTION_BOOT_COMPLETED for debug test on no root device-->
-                <action android:name="com.carriez.flutter_hbb.DEBUG_BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
 

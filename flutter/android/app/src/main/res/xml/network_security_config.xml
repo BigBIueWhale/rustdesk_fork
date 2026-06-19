@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- R-X6 / §18: deny cleartext (HTTP) traffic app-wide. The fork's own transport
+     is a raw TCP socket carrying the PAKE-keyed secretbox layer (§10) — it does not
+     use the platform HTTP/WebView stack, so it is unaffected. This setting blocks
+     any accidental cleartext HTTP egress, reinforcing the no-phone-home sovereignty
+     posture (§18). -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

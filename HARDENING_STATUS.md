@@ -72,7 +72,8 @@ compile/test loop) · `BLOCK-CARGO` (needs a lockfile regen) · `RISK-SILENT`
 | R-R2b viewer / controlled-only build split (`decode`/`hwcodec`/`vram`/`flutter` features, `mod client` gating) | **DEFER-BUILD / BLOCK-CARGO** | feature-graph surgery; CI must assert the resolved feature set |
 | R-D3a systemd confinement of the root service | **DONE** | `64e11b4`; the exact R-D3a directive set (CapabilityBoundingSet, RestrictAddressFamilies=AF_UNIX AF_INET, ProtectKernel*, SystemCallFilter, …), NoNewPrivileges deliberately omitted, MemoryDenyWriteExecute documented-but-disabled pending runtime validation |
 | R-D1/D2/D4–D8 deployment (direct-only build, v4-only, silent egress, config pins) | **DEFER-BUILD** | R-D4 is the mediator refactor (lift `direct_server`→`start_direct_only`); overlaps R-S16 pins + R-R2b build split |
-| §18 R-SV* sovereignty (kill version-check egress + `test_nat_type` probe) | **DEFER-BUILD** | shared `common.rs`/`socket_client.rs`; call-graph (not grep) removal |
+| R-SV8 iOS entitlements (APNs push + wifi-info) | **DONE** | `dd3be96`; both removed (no-phone-home), `associated-domains` confirmed absent (R-X6). macOS entitlements left (functionally required, retain-and-check); iOS `SDWebImage` pod = finding, removal pod-regen-blocked; no Firebase/analytics pod (R-SV8 holds) |
+| §18 R-SV3/SV4 sovereignty (kill version-check egress + `test_nat_type` probe) | **DEFER-BUILD** | shared `common.rs`/`socket_client.rs`; call-graph (not grep) removal, R-D4-tied |
 | §19 R-G* GUI/UX conformance (remove selectors/toggles/dead assets/links the core no longer honors) | **TODO** | partly unblocked by the deep-link work; large Dart sweep |
 | R-R3 dependency audit (Appendix D bumps) | **BLOCK-CARGO** | every fix is a lockfile change |
 

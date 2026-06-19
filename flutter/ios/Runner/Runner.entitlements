@@ -2,9 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>aps-environment</key>
-	<string>development</string>
-	<key>com.apple.developer.networking.wifi-info</key>
-	<true/>
+	<!-- R-SV8 / §18 (sovereignty): the serverless, no-phone-home fork needs neither
+	     APNs remote push (aps-environment) nor Wi-Fi SSID/BSSID access
+	     (com.apple.developer.networking.wifi-info) — both removed from the Apple
+	     source so a future iOS build inherits the hardening (R-R2 retain-and-check:
+	     the file is kept and hardened, not deleted). associated-domains stays ABSENT
+	     (R-X6) — no Universal-Links deep-link path. -->
 </dict>
 </plist>

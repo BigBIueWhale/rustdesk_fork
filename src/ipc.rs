@@ -995,8 +995,9 @@ async fn handle(data: Data, stream: &mut Connection) {
             feature = "flutter",
             not(any(target_os = "android", target_os = "ios"))
         ))]
-        Data::ControllingSessionCount(count) => {
-            crate::updater::update_controlling_session_count(count);
+        Data::ControllingSessionCount(_count) => {
+            // R-X1: updater excised — the controlling-session count was only read to
+            // defer an in-progress auto-update; with no updater it is ignored.
         }
         #[cfg(target_os = "linux")]
         Data::TerminalSessionCount(_) => {

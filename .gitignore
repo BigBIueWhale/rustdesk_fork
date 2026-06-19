@@ -60,5 +60,9 @@ flutter/web/
 # The SHA-256-verified online fetch cache — pinned, NOT vendored; re-made by
 # scripts/online-fetch.sh (R-B10, §16). Pinning != vendoring (R-R1).
 /online/
+# Build STATE (not cache): what host-provision.sh installed, so cleanup.sh can
+# reverse exactly that (R-B11). Lives outside ./online so a cache wipe cannot
+# strand the reversal.
+/.harness-state/
 # Loop-local Claude Code working state (not part of the fork itself).
 .claude/

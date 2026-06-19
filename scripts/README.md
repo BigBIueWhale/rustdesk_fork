@@ -44,7 +44,7 @@ structural, not aspirational.
 | File | Role | Status |
 |---|---|---|
 | `pins.env` | Single version manifest (machine-readable §3.2). | **Done** — versions verified in-tree; SHA-256 artifact digests pending R-B12 (see below). |
-| `lib.sh` | Shared helpers: source `pins.env`, fail-loud asserts, SHA-256 verify, version pinning. | TODO |
+| `lib.sh` | Shared helpers: source `pins.env`, fail-loud asserts (`die`/`require_cmd`/`assert_version`), SHA-256 verify (rejects the R-B12 sentinel), offline guards, repo-state asserts. | **Done** |
 | `online-fetch.sh` | The one networked script → git-ignored `./online`, every artifact SHA-256-checked (R-B10). | TODO |
 | `host-provision.sh` | Additive host runtimes (container engine; qemu-kvm/libvirt/swtpm/OVMF for the Win VM). Records to `./online/.provisioned`. | TODO |
 | `cleanup.sh` | Reversible-only teardown; never touches pre-existing host packages (R-B11). | TODO |

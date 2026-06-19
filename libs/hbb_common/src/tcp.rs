@@ -1,4 +1,8 @@
-use crate::{bail, bytes_codec::BytesCodec, ResultType, config::Socks5Server, proxy::Proxy};
+use crate::{
+    bail, bytes_codec::BytesCodec, config::Socks5Server,
+    cpace::{DirectionalCipher, DirectionalKeys},
+    proxy::Proxy, ResultType,
+};
 use anyhow::Context as AnyhowCtx;
 use bytes::{BufMut, Bytes, BytesMut};
 use futures::{SinkExt, StreamExt};
@@ -27,10 +31,51 @@ pub struct DynTcpStream(pub Box<dyn TcpStreamTrait + Send + Sync>);
 #[derive(Clone)]
 pub struct Encrypt(pub Key, pub u64, pub u64);
 
+/// The cipher engaged on a stream after keying. Either the inherited single-key
+/// secretbox ([`Encrypt`], from the legacy `SignedId`/`box_` bootstrap) or the
+/// CPace two-key per-direction cipher ([`DirectionalCipher`], R-P2/R-P10). The
+/// single-key form is retained only until the choke-point cutover moves every
+/// caller to [`FramedStream::set_session_keys`]; R-A6 then removes it.
+pub enum StreamCipher {
+    Single(Encrypt),
+    Dual(DirectionalCipher),
+}
+
+impl StreamCipher {
+    #[inline]
+    pub fn enc(&mut self, data: &[u8]) -> Vec<u8> {
+        match self {
+            StreamCipher::Single(e) => e.enc(data),
+            StreamCipher::Dual(d) => d.seal(data),
+        }
+    }
+
+    #[inline]
+    pub fn dec(&mut self, bytes: &mut BytesMut) -> Result<(), Error> {
+        match self {
+            StreamCipher::Single(e) => e.dec(bytes),
+            StreamCipher::Dual(d) => {
+                // Mirror Encrypt::dec: pass through tiny (<=1 byte) control frames.
+                if bytes.len() <= 1 {
+                    return Ok(());
+                }
+                match d.open(bytes) {
+                    Ok(res) => {
+                        bytes.clear();
+                        bytes.put_slice(&res);
+                        Ok(())
+                    }
+                    Err(()) => Err(Error::new(ErrorKind::Other, "decryption error")),
+                }
+            }
+        }
+    }
+}
+
 pub struct FramedStream(
     pub Framed<DynTcpStream, BytesCodec>,
     pub SocketAddr,
-    pub Option<Encrypt>,
+    pub Option<StreamCipher>,
     pub u64,
 );
 
@@ -204,7 +249,14 @@ impl FramedStream {
     }
 
     pub fn set_key(&mut self, key: Key) {
-        self.2 = Some(Encrypt::new(key));
+        self.2 = Some(StreamCipher::Single(Encrypt::new(key)));
+    }
+
+    /// Engage the CPace two-key per-direction cipher after a confirmed handshake
+    /// (R-P2/R-P10). The keys are role-oriented (the caller's send/recv slots),
+    /// so a single key can never end up engaged in both directions.
+    pub fn set_session_keys(&mut self, keys: DirectionalKeys) {
+        self.2 = Some(StreamCipher::Dual(DirectionalCipher::new(&keys)));
     }
 
     fn get_nonce(seqnum: u64) -> Nonce {

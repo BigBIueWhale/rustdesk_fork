@@ -81,6 +81,27 @@ async fn matching_password_streams_can_exchange_after_keying() {
 }
 
 #[tokio::test]
+async fn framed_stream_encrypts_after_session_keys_installed() {
+    let (mut si, mut sr) = loopback_pair().await;
+    let pw = "stream-key-test";
+    let (ri, rr) = tokio::join!(run_initiator(&mut si, pw), run_responder(&mut sr, pw));
+    // Engage the two-key cipher on each FramedStream — the choke-point keying call
+    // that the cutover will make after a confirmed handshake.
+    si.set_session_keys(ri.expect("initiator keys"));
+    sr.set_session_keys(rr.expect("responder keys"));
+    assert!(si.is_secured() && sr.is_secured());
+
+    // An application frame now travels encrypted and decrypts on the peer, in both
+    // directions (each uses the mirrored per-direction key, R-P2/R-P10).
+    si.send_raw(b"keyed application payload".to_vec()).await.unwrap();
+    let got = sr.next().await.unwrap().unwrap();
+    assert_eq!(&got[..], b"keyed application payload");
+    sr.send_raw(b"reply from the controlled host".to_vec()).await.unwrap();
+    let got2 = si.next().await.unwrap().unwrap();
+    assert_eq!(&got2[..], b"reply from the controlled host");
+}
+
+#[tokio::test]
 async fn wrong_password_aborts_at_confirmation() {
     let (si, sr) = loopback_pair().await;
     // Spawn so the responder's abort drops its stream and frees the initiator

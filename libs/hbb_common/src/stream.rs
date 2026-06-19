@@ -64,6 +64,19 @@ impl Stream {
         }
     }
 
+    /// Engage the CPace two-key per-direction cipher after a confirmed handshake
+    /// (R-P2/R-P10) — the keying call that carries role/direction, replacing the
+    /// symmetric single-key `set_key` at the choke point.
+    #[inline]
+    pub fn set_session_keys(&mut self, keys: crate::cpace::DirectionalKeys) {
+        match self {
+            #[cfg(feature = "webrtc")]
+            Stream::WebRTC(s) => s.set_session_keys(keys),
+            Stream::WebSocket(s) => s.set_session_keys(keys),
+            Stream::Tcp(s) => s.set_session_keys(keys),
+        }
+    }
+
     #[inline]
     pub fn is_secured(&self) -> bool {
         match self {

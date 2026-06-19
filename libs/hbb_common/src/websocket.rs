@@ -4,8 +4,9 @@ use crate::{
     },
     protobuf::Message,
     socket_client::split_host_port,
+    cpace::{DirectionalCipher, DirectionalKeys},
     sodiumoxide::crypto::secretbox::Key,
-    tcp::Encrypt,
+    tcp::{Encrypt, StreamCipher},
     tls::{get_cached_tls_accept_invalid_cert, get_cached_tls_type, upsert_tls_cache, TlsType},
     ResultType,
 };
@@ -31,7 +32,7 @@ use tungstenite::protocol::Role;
 pub struct WsFramedStream {
     stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
     addr: SocketAddr,
-    encrypt: Option<Encrypt>,
+    encrypt: Option<StreamCipher>,
     send_timeout: u64,
 }
 
@@ -229,7 +230,14 @@ impl WsFramedStream {
 
     #[inline]
     pub fn set_key(&mut self, key: Key) {
-        self.encrypt = Some(Encrypt::new(key));
+        self.encrypt = Some(StreamCipher::Single(Encrypt::new(key)));
+    }
+
+    /// Engage the CPace two-key per-direction cipher after a confirmed handshake
+    /// (R-P2/R-P10).
+    #[inline]
+    pub fn set_session_keys(&mut self, keys: DirectionalKeys) {
+        self.encrypt = Some(StreamCipher::Dual(DirectionalCipher::new(&keys)));
     }
 
     #[inline]

@@ -420,6 +420,11 @@ impl WebRTCStream {
     }
 
     #[inline]
+    pub fn set_session_keys(&mut self, _keys: crate::cpace::DirectionalKeys) {
+        // not-supported — WebRTC carries its own DTLS keying (see set_key).
+    }
+
+    #[inline]
     pub fn is_secured(&self) -> bool {
         true
     }

@@ -18,7 +18,8 @@ use crate::{
     tcp::FramedStream,
 };
 use bytes::Bytes;
-use pake::{DirectionalKeys, Initiator, PakeError, Responder, Step1, Step2, Step3, Step4, CI_PORT};
+pub use pake::DirectionalKeys;
+use pake::{Initiator, PakeError, Responder, Step1, Step2, Step3, Step4, CI_PORT};
 use protobuf::Message as _;
 use sodiumoxide::crypto::secretbox::{self, Key, Nonce};
 

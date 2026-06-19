@@ -1,4 +1,4 @@
-use super::{gtk_sudo, CursorData, ResultType};
+use super::{CursorData, ResultType};
 use desktop::Desktop;
 pub use hbb_common::platform::linux::*;
 use hbb_common::{
@@ -1407,8 +1407,11 @@ pub fn exec_privileged(args: &[&str]) -> ResultType<Child> {
 */
 
 pub fn check_super_user_permission() -> ResultType<bool> {
-    gtk_sudo::run(vec!["echo"])?;
-    Ok(true)
+    // R-X11: no in-process interactive elevation — the GTK sudo/su
+    // password-driver front-end is excised. The sanctioned model is the installed root
+    // systemd service (R-D1/R-D3/R-X10), so "super-user permission" is whether
+    // this process already holds root, never an elevation prompt.
+    Ok(is_root())
 }
 
 /*
@@ -1995,8 +1998,19 @@ fn has_cmd(cmd: &str) -> bool {
         .unwrap_or_default()
 }
 
-pub fn run_cmds_privileged(cmds: &str) -> bool {
-    crate::platform::gtk_sudo::run(vec![cmds]).is_ok()
+// R-X11: the non-elevated, status-aware replacement for the excised
+// privileged-command runner. The interactive GTK sudo/su password-driver is
+// gone; the sanctioned privilege model is the installed root systemd service plus the
+// single `sudo -u` drop (R-D3a/R-X10), so a lifecycle command runs as the
+// CURRENT user — effective only in the root service context, a no-op on the
+// per-user UI, where the .deb postinst/prerm + systemctl own the service
+// lifecycle (R-X11/R-D1). Returns whether the command exited 0.
+fn run_cmds_status(cmds: &str) -> bool {
+    Command::new(CMD_SH.as_str())
+        .args(["-c", cmds])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 
 /// Spawn the current executable after a delay.
@@ -2064,7 +2078,7 @@ pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
     let cp = switch_service(true);
     let app_name = crate::get_app_name().to_lowercase();
     // systemctl kill rustdesk --tray, execute cp first
-    if !run_cmds_privileged(&format!(
+    if !run_cmds_status(&format!(
         "{cp} systemctl disable {app_name}; systemctl stop {app_name};"
     )) {
         Config::set_option("stop-service".into(), "".into());
@@ -2085,7 +2099,7 @@ pub fn install_service() -> bool {
     log::info!("Installing service...");
     let cp = switch_service(false);
     let app_name = crate::get_app_name().to_lowercase();
-    if !run_cmds_privileged(&format!(
+    if !run_cmds_status(&format!(
         "{cp} systemctl enable {app_name}; systemctl start {app_name};"
     )) {
         Config::set_option("stop-service".into(), "Y".into());

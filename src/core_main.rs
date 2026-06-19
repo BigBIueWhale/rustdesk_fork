@@ -605,13 +605,6 @@ pub fn core_main() -> Option<Vec<String>> {
                 crate::whiteboard::run();
             }
             return None;
-        } else if args[0] == "-gtk-sudo" {
-            // rustdesk service kill `rustdesk --` processes
-            #[cfg(target_os = "linux")]
-            if args.len() > 2 {
-                crate::platform::gtk_sudo::exec();
-            }
-            return None;
         }
     }
     //_async_logger_holder.map(|x| x.flush());

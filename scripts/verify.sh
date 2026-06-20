@@ -90,6 +90,12 @@ ra6_clean 'api/devices/deploy' 'R-SV6(c) device-deploy egress' || rc=1
 # path). These worker symbols were mediator-internal and are now tree-wide absent — the
 # direct-only service entry (start_direct_only -> direct_server) is all that remains.
 ra6_clean 'handle_request_relay|handle_punch_hole|udp_nat_listen|punch_udp_hole|KcpStream::accept' 'R-D4 Stage 2 mediator relay/punch/KCP protocol' || rc=1
+# R-SV6(b)/R-SV3/R-X3 / §18: the HBBS heartbeat/sysinfo POST loop (start_hbbs_sync_async)
+# is excised — it POSTed get_sysinfo() to <api-server>/api/{heartbeat,sysinfo} and adopted
+# server `strategy` config via handle_config_options (R-X3's heartbeat re-home twin). The
+# endpoints + the worker + the re-home handler are gone; only the local broadcast channel
+# (signal_receiver/is_pro) survives in mod hbbs_http::sync.
+ra6_clean 'api/heartbeat|api/sysinfo|heartbeat_url|handle_config_options|start_hbbs_sync_async' 'R-SV6(b) HBBS heartbeat/sysinfo egress' || rc=1
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod auth_2fa:R-X7 2FA/TOTP' 'mod lan:R-X5 LAN discovery' \

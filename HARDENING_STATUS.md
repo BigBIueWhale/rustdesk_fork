@@ -136,6 +136,41 @@ already on the host); the responder-side `verify.sh` gate runs there today.
 | R-P2/R-P10 two-key `secretbox` rewrite | **PARTIAL — keying engaged & VERIFIED** | `5ec40de` `DirectionalCipher` (R-P10 fix) + `0108349` `tcp::StreamCipher{Single,Dual}` now backs `FramedStream`/`WsFramedStream`/`Stream` with `set_session_keys(DirectionalKeys)`. **Verified end-to-end on the pinned toolchain**: a CPace handshake over a loopback socket → `set_session_keys` → an app frame travels encrypted and decrypts on the peer both directions (cpace_it, 6 tests). Non-breaking (legacy `set_key` kept for the not-yet-cut SignedId/box_ callers). REMAINING: the choke point calls `set_session_keys` (cutover below), then remove the single-key `set_key`/`Encrypt`/`box_` (R-A6) |
 | R-S1/R-P4/R-P14 choke-point integration in `create_tcp_connection` | **PARTIAL — responder WIRED (fail-closed); viewer next** | drivers `5ec40de` + foundations `0108349`/`ef8fa72`, then **`c005da3`: the controlled side now runs `cpace::run_responder` on the direct path** (the `else` of the `if secure` block) with the live PRS, `set_session_keys` on success, fail-closed otherwise (R-A1/R-S1/R-P14c). Compile-verified; the handshake is the cpace_it-proven driver. So the **box refuses unkeyed direct connections** instead of accepting plaintext. `9e65a5b`: **the SignedId↔PublicKey device-identity bootstrap is removed** — CPace now keys UNCONDITIONALLY (no `secure`-gated path, no box_/sign keypair), so the responder side of R-P14/R-P5/§8 is done. `2cf3ad6` did R-S2/R-A2 (authorized only on the keyed edge). REMAINING (viewer = operator's device, intricate + needs a two-host test): `client.rs secure_connection`'s direct branch → `run_initiator` with the entered plaintext password **+ the R-S16 viewer twin** (PeerConfig.password as plaintext PRS), the client-side SignedId send removal, the proto SignedId/PublicKey message removal, and `validate_password` deletion (R-S6). **Verified this session — the precise shape of the viewer gap (the load-bearing entanglement):** `Client::_start`'s direct-IP early-returns (`is_ip_str`/`is_domain_port_str`, client.rs:257/272) return an **UNKEYED** `Stream` — NO `secure_connection`, NO `run_initiator` (§4.4 / Appendix C #2 confirmed live); and `secure_connection` (rendezvous-path-only) is STILL the inherited old-SignedId + single-key `set_key` keying (Appendix C #1's bidirectional-reuse bug), with zero CPace. **So a fork viewer cannot key with a fork responder today** (responder runs CPace + emits the R-S17 HostIdentity frame, 5fb04fc; the viewer does neither). Why it is NOT a bounded compile-verifiable wiring: `_start` has **no password parameter** — the inherited flow connects unkeyed, the responder then sends `Hash{salt,challenge}`, and the viewer prompts for the password **AFTER** connecting (`msgbox("input-password")` → `Data::Login`, the flutter substrate). CPace needs the PRS **BEFORE** keying, so the initiator wiring requires **restructuring the viewer password flow to prompt-before-keying** (a flutter-GUI change) on top of the R-S16 viewer-PRS storage, the R-S17 pin-verify + HostIdentity-frame consume, and the proto removal — one interconnected flutter-entangled feature needing the flutter toolchain + a two-host test, hence the deferral. The responder/sovereignty/mediator side is, by contrast, comprehensively done and docker-verified. |
 
+### Viewer CPace handshake — staged implementation recipe (next, now flutter-verifiable)
+
+The flutter compile-check (`scripts/flutter-verify.sh`, `cargo check --features flutter,linux-pkg-config`)
+now verifies the viewer Rust, so the gap above is implementable. Structure confirmed by read:
+- **Keying point = `Client::start` (client.rs:191)** — it has BOTH `interface` (→ `get_lch()` →
+  the per-peer password) AND `Self::_start`'s returned stream. `_start`'s direct-IP branches
+  (257/272) return an **UNKEYED** stream, so CPace wiring there is **additive** (no old keying
+  to fight — `secure_connection`/SignedId is rendezvous-path-only, and the rendezvous path is
+  R-SV4(b)-removed).
+- **cpace API** (mirror of the responder, server.rs:214-235): `run_initiator_with_transcript(fs,
+  &prs) -> (DirectionalKeys, Transcript)` → `fs.set_session_keys(keys)` → read the responder's
+  FIRST post-key frame and `verify_host_identity(&transcript, bytes) -> pk_B` (server.rs emits
+  HostIdentity first, 5fb04fc). `fs = stream.as_framed_tcp_mut()`.
+
+Ordered stages (each `cargo check --features flutter,linux-pkg-config` green; behavior needs the
+R-A8/A9 two-host test, deferred):
+1. **R-S16 viewer-PRS storage twin** (prerequisite): the viewer stores the NFC-normalized
+   PLAINTEXT password as the per-peer PRS (PeerConfig.password / `self.password`), not the h1
+   hash. `handle_login_from_ui` (client.rs:3620) currently hashes — capture the plaintext (the
+   shared `address::normalize`-adjacent NFC) for the PRS. Old-h1 peers just fail to key → re-prompt.
+2. **Direct-path keying** in `Client::start`: after `_start` returns a direct stream, get the PRS
+   from `interface.get_lch()`; if non-empty, `run_initiator_with_transcript` → `set_session_keys`,
+   fail-closed (the R-A1/R-S13(b) initiator analog — no unkeyed `Message` dispatch; promote the
+   `io_loop.rs is_secured()` UI-icon check to an abort).
+3. **R-S17 viewer verify + pin**: post-key, read the HostIdentity frame, `verify_host_identity`
+   → pk_B; compare to a per-address pin store (NEW local file, `normalize_address`-keyed, shared
+   w/ R-SV5); first-connect = seed (GUI dialog via the msgbox/`Data` round-trip), mismatch = abort,
+   headless = fail-closed.
+4. **Prompt-before-keying restructure** (the flutter-GUI part): for a NEW peer (no remembered PRS),
+   prompt for the password BEFORE keying (since CPace needs the PRS upfront), vs the inherited
+   prompt-AFTER-`Hash` flow.
+5. **Cleanup**: delete the old `secure_connection` SignedId keying + `validate_password` (R-S6) +
+   the `SignedId`/`PublicKey` proto messages (R-P5/R-S18), and the rendezvous/relay/KCP `_start`
+   branches + `udp_nat_connect` (R-SV4(b)/R-S13(d), which also lets `mod kcp_stream` go).
+
 ## Excisions (§8)
 
 | Req | Status | Notes |

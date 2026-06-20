@@ -93,5 +93,11 @@ dg_clean 'Download new version|Check for software update on startup' 'R-G4 updat
 # a no-egress stub (cebfdf2). The `bind.queryOnlines` calls are gone (peers_view) and the online
 # dot (`getOnline`) renders nothing; no `bind.queryOnlines` call may reappear.
 dg_clean 'bind\.queryOnlines' 'R-G/R-D online-status query trigger'
+# R-G8 / §19 (de-brand): a sovereign fork advertises no upstream brand — the user-facing
+# rustdesk.com links are removed (the About/website "rustdesk.com" + "powered by" badge, the
+# Privacy Statement / EULA privacy.html links, the macOS/Linux permission-card docs "Help"
+# links). Gate the privacy + docs URL paths (the `rustdesk.com/pricing` in the dead
+# "use public server" guide goes with the R-G2 server-UI removal). Only `//` comments name them.
+dg_clean 'rustdesk\.com/privacy|rustdesk\.com/docs' 'R-G8 rustdesk.com privacy/docs links'
 
 echo "DART-VERIFY: flutter analyze lib/ is GREEN (zero errors) + §19 Dart-layer greps clean"

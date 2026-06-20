@@ -3172,33 +3172,14 @@ pub trait Interface: Send + Clone + 'static + Sized {
             self.msgbox("host-not-pinned-prompt", "Unknown host", &text, "");
             return;
         }
-        let lc = self.get_lch();
-        let direct = lc.read().unwrap().direct;
-        let received = lc.read().unwrap().received;
-
-        let mut relay_hint = false;
-        let mut relay_hint_type = "relay-hint";
-        // force relay
+        // R-G6/R-SV4: a direct connection that fails is TERMINAL — there is no relay to
+        // fall back to (the rendezvous/relay path is excised, R-SV4/R-D4). The inherited
+        // relay-hint advice (the "/r" suffix, the "Always connect via relay" peer option)
+        // is removed as dead and misdirecting: an unreachable peer means the address is
+        // wrong or :21118 is not port-forwarded, never "retry via relay".
         let errno = errno::errno().0;
         log::error!("Connection closed: {err}({errno})");
-        if direct == Some(true)
-            && ((cfg!(windows) && (errno == 10054 || err.contains("10054")))
-                || (!cfg!(windows) && (errno == 104 || err.contains("104")))
-                || (!err.contains("Failed") && err.contains("deadline")))
-        // deadline: https://github.com/rustdesk/rustdesk-server-pro/discussions/325, most likely comes from secure tcp timeout
-        {
-            relay_hint = true;
-            if !received {
-                relay_hint_type = "relay-hint2"
-            }
-        }
-
-        // relay-hint
-        if cfg!(feature = "flutter") && relay_hint {
-            self.msgbox(relay_hint_type, title, &text, "");
-        } else {
-            self.msgbox("error", title, &text, "");
-        }
+        self.msgbox("error", title, &text, "");
     }
 }
 

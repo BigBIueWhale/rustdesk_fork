@@ -177,6 +177,12 @@ ra6_clean 'api/oidc|fn auth_task' 'R-SV6(b)/R-G4 OIDC account-login egress' || r
 # `webrtc` feature is never enabled in the fork, so that module is not compiled; removing the
 # whole webrtc transport is an un-verifiable-here follow-on, like the Windows/sciter excisions.)
 ra6_clean 'STUNS_V4|STUNS_V6|stunclient|stun_ipv4_test|stun_ipv6_test|test_nat_ipv4|stun\.l\.google' 'R-SV4(b) common.rs STUN NAT-probes' || rc=1
+# R-G6 / R-SV4: the direct-only fork has no relay to fall back to, so the inherited
+# connection-failure "relay-hint" advice (try a relay / add the "/r" suffix) is dead and
+# misdirecting. on_establish_connection_error now always surfaces the plain error msgbox;
+# the "relay-hint"/"relay-hint2" emission is removed. (The hyphenated token is distinct from
+# the lang key `relay_hint_tip` (underscore), whose 51-file sweep is a deferred lang cleanup.)
+ra6_clean 'relay-hint' 'R-G6 relay-fallback hint emission' || rc=1
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod auth_2fa:R-X7 2FA/TOTP' 'mod lan:R-X5 LAN discovery' \

@@ -1585,8 +1585,7 @@ bool option2bool(String option, String value) {
   if (option.startsWith("enable-")) {
     res = value != "N";
   } else if (option.startsWith("allow-") ||
-      option == kOptionStopService ||
-      option == kOptionForceAlwaysRelay) {
+      option == kOptionStopService) {
     res = value == "Y";
   } else {
     // "" is true
@@ -1600,8 +1599,7 @@ String bool2option(String option, bool b) {
   if (option.startsWith('enable-')) {
     res = b ? defaultOptionYes : 'N';
   } else if (option.startsWith('allow-') ||
-      option == kOptionStopService ||
-      option == kOptionForceAlwaysRelay) {
+      option == kOptionStopService) {
     res = b ? 'Y' : defaultOptionNo;
   } else {
     res = b ? 'Y' : 'N';

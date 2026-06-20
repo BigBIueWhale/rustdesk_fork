@@ -135,5 +135,10 @@ dg_clean 'rustdesk\.com/privacy|rustdesk\.com/docs' 'R-G8 rustdesk.com privacy/d
 # are deleted — the responder strips os_login (R-X14/0685c28) and create_login_msg no longer
 # sends it (R-S18), so the UI that collected the operator's OS creds is structurally gone.
 dg_clean 'enterUserLoginDialog|enterUserLoginAndPasswordDialog|osUsernameController|osPasswordController' 'R-S18/R-X8 viewer os-login dialog (OS-credential push UI)'
+# R-G6 / R-SV4: the relay-fallback peer-card actions ("Always connect via relay", its
+# force-always-relay option) and the Wake-on-LAN action are dead on a direct-only fork (no
+# relay; WoL is the R-SV4(c) accepted loss). The relay-hint dialog the Rust core fed is gone
+# too (the core now emits a plain error, R-G6). All removed at the widget, not greyed (R-G1).
+dg_clean '_forceAlwaysRelayAction|_isForceAlwaysRelay|kOptionForceAlwaysRelay|_wolAction|showRelayHintDialog' 'R-G6 relay-fallback + WoL peer-card actions'
 
 echo "DART-VERIFY: flutter analyze lib/ is GREEN (zero errors) + §19 Dart-layer greps clean"

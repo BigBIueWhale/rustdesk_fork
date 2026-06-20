@@ -87,7 +87,6 @@ const String kOptionTextureRender = "use-texture-render";
 const String kOptionD3DRender = "allow-d3d-render";
 const String kOptionOpenInTabs = "allow-open-in-tabs";
 const String kOptionOpenInWindows = "allow-open-in-windows";
-const String kOptionForceAlwaysRelay = "force-always-relay";
 const String kOptionViewOnly = "view_only";
 const String kOptionWhitelist = "whitelist";
 const String kOptionEnableAbr = "enable-abr";

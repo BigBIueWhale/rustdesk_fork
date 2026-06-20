@@ -2972,8 +2972,10 @@ pub mod keys {
         "enable-open-new-connections-in-tabs";
     pub const OPTION_TEXTURE_RENDER: &str = "use-texture-render";
     pub const OPTION_ALLOW_D3D_RENDER: &str = "allow-d3d-render";
-    pub const OPTION_ENABLE_CHECK_UPDATE: &str = "enable-check-update";
-    pub const OPTION_ALLOW_AUTO_UPDATE: &str = "allow-auto-update";
+    // R-G4 / R-SV3 / R-X1 / §18: OPTION_ENABLE_CHECK_UPDATE ("enable-check-update") and
+    // OPTION_ALLOW_AUTO_UPDATE ("allow-auto-update") are removed — the version-check (R-SV3)
+    // and the fetch-and-run updater (R-X1) are excised, so no key gates a removed feature.
+    // The latter is also dropped from KEYS_SETTINGS below (no longer DEFAULT/OVERWRITE-settable).
     pub const OPTION_SYNC_AB_WITH_RECENT_SESSIONS: &str = "sync-ab-with-recent-sessions";
     pub const OPTION_SYNC_AB_TAGS: &str = "sync-ab-tags";
     pub const OPTION_FILTER_AB_BY_INTERSECTION: &str = "filter-ab-by-intersection";
@@ -3264,7 +3266,7 @@ pub mod keys {
         OPTION_DISABLE_UDP,
         OPTION_ALLOW_INSECURE_TLS_FALLBACK,
         OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS,
-        OPTION_ALLOW_AUTO_UPDATE,
+        // R-G4/R-X1: OPTION_ALLOW_AUTO_UPDATE removed (the updater is excised — nothing to set).
     ];
 
     /// R-S16(a): the controlled side's entire security policy, pinned at compile

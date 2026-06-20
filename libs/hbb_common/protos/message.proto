@@ -705,12 +705,10 @@ message TestDelay {
   uint32 target_bitrate = 4;
 }
 
-message PublicKey {
-  bytes asymmetric_value = 1;
-  bytes symmetric_value = 2;
-}
-
-message SignedId { bytes id = 1; }
+// R-P5: the SignedId <-> PublicKey device-identity key bootstrap is REMOVED. The fork keys
+// ONLY via the CPace balanced PAKE (§10) — there is no rendezvous-signed device identity, no
+// `secure`-gated keying path, and no symmetric-key unwrap. Both the viewer's `secure_connection`
+// (which sent these) and the responder's handling are excised, so these messages have zero refs.
 
 // CPace PAKE handshake (requirements.html §10, R-P14). A dedicated TOP-LEVEL
 // message — deliberately NOT a variant of the `Message` union — so the pre-key
@@ -1004,9 +1002,8 @@ message TerminalResponse {
 }
 
 message Message {
+  reserved 3, 4; // R-P5: signed_id (3) + public_key (4) excised — CPace (§10) replaces the keying
   oneof union {
-    SignedId signed_id = 3;
-    PublicKey public_key = 4;
     TestDelay test_delay = 5;
     VideoFrame video_frame = 6;
     LoginRequest login_request = 7;

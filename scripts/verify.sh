@@ -102,11 +102,19 @@ ra6_clean 'api/heartbeat|api/sysinfo|heartbeat_url|handle_config_options|start_h
 # peer (R-S17) harvested the operator's stored OS creds with no interaction. The responder
 # already ignores os_login (0685c28); deleting the sender completes the symmetric removal.
 ra6_clean 'Some\(OSLogin|\.set_logon\(' 'R-S18 viewer os_login + elevation-with-logon senders' || rc=1
+# R-P5 / R-SV4(b): the SignedId <-> PublicKey device-identity key bootstrap is removed. The
+# viewer's `secure_connection` (the only SignedId user) + the whole initiator-side
+# rendezvous/relay/NAT-punch cluster it lived in (_start_inner/connect/request_relay/
+# create_relay) are deleted (Client::_start is now direct-only, fail-closed); the responder's
+# handling went earlier (9e65a5b); and the `SignedId`/`PublicKey` proto messages are deleted
+# (reserved 3,4). Gate the proto keying types — `SignedId`, the `set_public_key` setter, and the
+# `Union::PublicKey` arm — NOT the sodiumoxide `sign::PublicKey`/`box_::PublicKey` crypto types,
+# which legitimately remain. Only `//` doc comments naming SignedId survive (filtered above).
+ra6_clean 'SignedId|set_public_key|message::Union::PublicKey' 'R-P5 SignedId/PublicKey device-identity keying' || rc=1
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod auth_2fa:R-X7 2FA/TOTP' 'mod lan:R-X5 LAN discovery' \
-         'terminal_helper:R-X8 terminal' 'mod custom_server:R-X4 custom_server module' \
-         'SignedId:R-P5 device-identity bootstrap'; do
+         'terminal_helper:R-X8 terminal' 'mod custom_server:R-X4 custom_server module'; do
   tok=${t%%:*}; lbl=${t#*:}
   n=$(grep -RIl "$tok" src libs --include='*.rs' 2>/dev/null | grep -v 'libs/pake' | wc -l | tr -d ' ')
   echo "  TODO $lbl — still referenced in $n file(s)"

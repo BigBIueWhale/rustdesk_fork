@@ -332,87 +332,16 @@ impl Client {
             ));
         }
 
-        let other_server = interface.get_lch().read().unwrap().other_server.clone();
-        let (peer, other_server, key, token) = if let Some((a, b, c)) = other_server.as_ref() {
-            (a.as_ref(), b.as_ref(), c.as_ref(), "")
-        } else {
-            (peer, "", key, token)
-        };
-        let (rendezvous_server, servers, contained) = if other_server.is_empty() {
-            crate::get_rendezvous_server(1_000).await
-        } else {
-            if other_server == PUBLIC_SERVER {
-                (
-                    check_port(RENDEZVOUS_SERVERS[0], RENDEZVOUS_PORT),
-                    RENDEZVOUS_SERVERS[1..]
-                        .iter()
-                        .map(|x| x.to_string())
-                        .collect(),
-                    true,
-                )
-            } else {
-                (check_port(other_server, RENDEZVOUS_PORT), Vec::new(), true)
-            }
-        };
-
-        if crate::get_ipv6_punch_enabled() {
-            crate::test_ipv6().await;
-        }
-
-        let (stop_udp_tx, stop_udp_rx) = oneshot::channel::<()>();
-        let udp =
-        // no need to care about multiple rendezvous servers case, since it is acutally not used any more.
-        // Shared state for UDP NAT test result
-        if crate::get_udp_punch_enabled() && !interface.is_force_relay() {
-            if let Ok((socket, addr)) = new_direct_udp_for(&rendezvous_server).await {
-                let udp_port = Arc::new(Mutex::new(0));
-                let up_cloned = udp_port.clone();
-                let socket_cloned = socket.clone();
-                let func = async move {
-                    allow_err!(test_udp_uat(socket_cloned, addr, up_cloned, stop_udp_rx).await);
-                };
-                tokio::spawn(func);
-                (Some(socket), Some(udp_port))
-            } else {
-                (None, None)
-            }
-        } else {
-            (None, None)
-        };
-        let fut = Self::_start_inner(
-            peer.to_owned(),
-            key.to_owned(),
-            token.to_owned(),
-            conn_type,
-            interface.clone(),
-            udp.clone(),
-            Some(stop_udp_tx),
-            rendezvous_server.clone(),
-            servers.clone(),
-            contained,
-        );
-        if udp.0.is_none() {
-            return fut.await;
-        }
-        let mut connect_futures = Vec::new();
-        connect_futures.push(fut.boxed());
-        let fut = Self::_start_inner(
-            peer.to_owned(),
-            key.to_owned(),
-            token.to_owned(),
-            conn_type,
-            interface,
-            (None, None),
-            None,
-            rendezvous_server,
-            servers,
-            contained,
-        );
-        connect_futures.push(fut.boxed());
-        match select_ok(connect_futures).await {
-            Ok(conn) => Ok((conn.0 .0, conn.0 .1, conn.0 .2)),
-            Err(e) => Err(e),
-        }
+        // R-SV4(b) / R-D / R-S13(d): the fork is DIRECT-IP ONLY. The two early-returns above
+        // handle every reachable address (an IP, or host:port). Anything else is a bare
+        // rendezvous "ID", which has NO path in this fork — the responder runs no mediator
+        // (6920db9) and `get_rendezvous_server` returns nothing (R-SV4), so a rendezvous attempt
+        // could only ever fail. The inherited initiator-side rendezvous/relay/NAT-punch
+        // machinery (`_start_inner`/`connect`/`request_relay`/`secure_connection`) is therefore
+        // dead and is removed (next commit); here we fail CLOSED with a clear message instead of
+        // dialing a mediator that does not exist (sovereign: dial nobody).
+        let _ = (key, token, conn_type, interface);
+        bail!("Direct-IP only: '{peer}' is not a direct address (use an IP or host:port)");
     }
 
     async fn _start_inner(

@@ -83,12 +83,6 @@ lazy_static::lazy_static! {
     static ref WAKELOCK_KEEP_AWAKE_OPTION: Arc::<Mutex<Option<bool>>> = Default::default();
 }
 
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-lazy_static::lazy_static! {
-    static ref SWITCH_SIDES_UUID: Arc::<Mutex<HashMap<String, (Instant, uuid::Uuid)>>> = Default::default();
-    static ref PENDING_SWITCH_SIDES_UUID: Arc::<Mutex<HashMap<String, (Instant, uuid::Uuid)>>> = Default::default();
-}
 
 #[cfg(target_os = "windows")]
 const TERMINAL_OS_LOGIN_FAILED_MSG: &str = "Incorrect username or password.";
@@ -674,15 +668,6 @@ impl Connection {
                             if let Err(e) = portable_client::start_portable_service(portable_client::StartPara::Direct) {
                                 log::error!("Failed to start portable service from cm: {:?}", e);
                             }
-                        }
-                        #[cfg(feature = "flutter")]
-                        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                        ipc::Data::SwitchSidesBack => {
-                            let mut misc = Misc::new();
-                            misc.set_switch_back(SwitchBack::default());
-                            let mut msg = Message::new();
-                            msg.set_misc(misc);
-                            conn.send(msg).await;
                         }
                         ipc::Data::VoiceCallResponse(accepted) => {
                             conn.handle_voice_call(accepted).await;
@@ -2364,15 +2349,6 @@ impl Connection {
                     self.network_delay = new_delay;
                 }
             }
-        } else if let Some(message::Union::SwitchSidesResponse(_s)) = msg.union {
-            // R-S2 / R-A2: the switch-sides resume authorized the peer via
-            // handle_login_request_without_validation — i.e. it set `authorized`
-            // WITHOUT a fresh keyed handshake. CPace re-keys every connection at the
-            // single choke point (R-P14), so a resume that bypasses keying is
-            // rejected: the responder ignores SwitchSidesResponse and the peer must
-            // reconnect and re-run CPace. (handle_login_request_without_validation,
-            // its sole caller now gone, is the dead Hash-oracle remnant R-S2 removes.)
-            log::warn!("R-S2: ignoring SwitchSidesResponse — resume without re-keying is rejected");
         } else if self.authorized {
             if self.port_forward_socket.is_some() {
                 return true;
@@ -3060,25 +3036,6 @@ impl Connection {
                             self.audio_sender
                                 .as_ref()
                                 .map(|a| allow_err!(a.send(MediaData::AudioFormat(format))));
-                        }
-                    }
-                    #[cfg(feature = "flutter")]
-                    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                    Some(misc::Union::SwitchSidesRequest(s)) => {
-                        if let Ok(uuid) = uuid::Uuid::from_slice(&s.uuid.to_vec()[..]) {
-                            crate::server::insert_pending_switch_sides_uuid(
-                                self.lr.my_id.clone(),
-                                uuid.clone(),
-                            );
-                            crate::run_me(vec![
-                                "--connect",
-                                &self.lr.my_id,
-                                "--switch_uuid",
-                                uuid.to_string().as_ref(),
-                            ])
-                            .ok();
-                            self.on_close("switch sides", false).await;
-                            return false;
                         }
                     }
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -4918,35 +4875,8 @@ impl Connection {
     }
 }
 
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn insert_switch_sides_uuid(id: String, uuid: uuid::Uuid) {
-    SWITCH_SIDES_UUID
-        .lock()
-        .unwrap()
-        .insert(id, (tokio::time::Instant::now(), uuid));
-}
 
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn insert_pending_switch_sides_uuid(id: String, uuid: uuid::Uuid) {
-    let mut uuids = PENDING_SWITCH_SIDES_UUID.lock().unwrap();
-    uuids.retain(|_, (instant, _)| instant.elapsed() < Duration::from_secs(10));
-    uuids.insert(id, (tokio::time::Instant::now(), uuid));
-}
 
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn remove_pending_switch_sides_uuid(id: &str, uuid: &uuid::Uuid) -> bool {
-    let mut uuids = PENDING_SWITCH_SIDES_UUID.lock().unwrap();
-    uuids.retain(|_, (instant, _)| instant.elapsed() < Duration::from_secs(10));
-    if uuids.get(id).map(|(_, stored_uuid)| stored_uuid == uuid) == Some(true) {
-        uuids.remove(id);
-        true
-    } else {
-        false
-    }
-}
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 // IPC bootstrap summary:

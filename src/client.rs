@@ -1250,9 +1250,6 @@ pub struct LoginConfigHandler {
     pub direct: Option<bool>,
     pub received: bool,
     switch_uuid: Option<String>,
-    #[cfg(feature = "flutter")]
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    switch_back_allowed: bool,
     pub save_ab_password_to_recent: bool, // true: connected with ab password
     pub other_server: Option<(String, String, String)>,
     pub custom_fps: Arc<Mutex<Option<usize>>>,
@@ -1369,11 +1366,6 @@ impl LoginConfigHandler {
 
         self.direct = None;
         self.received = false;
-        #[cfg(feature = "flutter")]
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        {
-            self.switch_back_allowed = false;
-        }
         self.switch_uuid = switch_uuid;
         self.adapter_luid = adapter_luid;
         self.selected_windows_session_id = None;
@@ -1385,23 +1377,6 @@ impl LoginConfigHandler {
         let is_terminal_admin = conn_type == ConnType::TERMINAL
             && std::env::var("IS_TERMINAL_ADMIN").map_or(false, |v| v == "Y");
         self.is_terminal_admin = is_terminal_admin;
-    }
-
-    #[cfg(feature = "flutter")]
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub fn allow_switch_back_once(&mut self) {
-        self.switch_back_allowed = true;
-    }
-
-    #[cfg(feature = "flutter")]
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub fn consume_switch_back_permission(&mut self) -> bool {
-        if self.switch_back_allowed {
-            self.switch_back_allowed = false;
-            true
-        } else {
-            false
-        }
     }
 
     /// Check if the client should auto login.
@@ -2916,35 +2891,6 @@ pub fn handle_login_error(
     }
 }
 
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-async fn consume_local_switch_sides_uuid(id: &str, uuid: &Uuid) -> bool {
-    let Ok(mut conn) = crate::ipc::connect(1000, "").await else {
-        return false;
-    };
-    let uuid = uuid.to_string();
-    if conn
-        .send(&crate::ipc::Data::SwitchSidesUuid(
-            uuid.clone(),
-            id.to_owned(),
-            None,
-        ))
-        .await
-        .is_err()
-    {
-        return false;
-    }
-    match conn.next_timeout(1000).await {
-        Ok(Some(crate::ipc::Data::SwitchSidesUuid(
-            returned_uuid,
-            returned_id,
-            Some(true),
-        ))) => {
-            returned_uuid == uuid && returned_id == id
-        }
-        _ => false,
-    }
-}
 
 /// Handle hash message sent by peer.
 /// Hash will be used for login.
@@ -2965,25 +2911,6 @@ pub async fn handle_hash(
     lc.write().unwrap().hash = hash.clone();
     // Take care of password application order
 
-    // switch_uuid
-    #[cfg(feature = "flutter")]
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        let uuid = lc.write().unwrap().switch_uuid.take();
-        if let Some(uuid) = uuid {
-            if let Ok(uuid) = uuid::Uuid::from_str(&uuid) {
-                let id = lc.read().unwrap().id.clone();
-                if !consume_local_switch_sides_uuid(&id, &uuid).await {
-                    log::warn!("Ignored untrusted switch_uuid");
-                } else {
-                    lc.write().unwrap().allow_switch_back_once();
-                    send_switch_login_request(lc.clone(), peer, uuid).await;
-                    lc.write().unwrap().password_source = Default::default();
-                    return;
-                }
-            }
-        }
-    }
     // last password
     let mut password = lc.read().unwrap().password.clone();
     // preset password
@@ -3170,25 +3097,6 @@ pub async fn handle_login_from_ui(
     send_login(lc.clone(), os_username, os_password, hash_password, peer).await;
 }
 
-async fn send_switch_login_request(
-    lc: Arc<RwLock<LoginConfigHandler>>,
-    peer: &mut Stream,
-    uuid: Uuid,
-) {
-    let mut msg_out = Message::new();
-    msg_out.set_switch_sides_response(SwitchSidesResponse {
-        uuid: Bytes::from(uuid.as_bytes().to_vec()),
-        lr: hbb_common::protobuf::MessageField::some(
-            lc.read()
-                .unwrap()
-                .create_login_msg("".to_owned(), "".to_owned(), vec![])
-                .login_request()
-                .to_owned(),
-        ),
-        ..Default::default()
-    });
-    allow_err!(peer.send(&msg_out).await);
-}
 
 /// Interface for client to send data and commands.
 #[async_trait]

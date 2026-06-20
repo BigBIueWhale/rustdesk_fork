@@ -1914,24 +1914,6 @@ impl<T: InvokeUiSession> Remote<T> {
                             );
                         }
                     }
-                    #[cfg(feature = "flutter")]
-                    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                    Some(misc::Union::SwitchBack(_)) => {
-                        let allow_switch_back = self
-                            .handler
-                            .lc
-                            .write()
-                            .unwrap()
-                            .consume_switch_back_permission();
-                        if allow_switch_back {
-                            self.handler.switch_back(&self.handler.get_id());
-                        } else {
-                            log::warn!(
-                                "Ignored unsolicited SwitchBack from {}",
-                                self.handler.get_id()
-                            );
-                        }
-                    }
                     Some(misc::Union::SupportedEncoding(e)) => {
                         log::info!("update supported encoding:{:?}", e);
                         self.handler.lc.write().unwrap().supported_encoding = e;

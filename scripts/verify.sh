@@ -80,6 +80,11 @@ ra6_clean 'ipc::Data::SwitchPermission'                                  'R-S16(
 # absent, not config-pinned (R-SV1). The fn defs and the URL literal are gone; only
 # `//` comments naming the host remain (filtered above).
 ra6_clean 'api\.telegram\.org|send_2fa_code_to_telegram|get_chatid_telegram' 'R-SV7 Telegram 2FA egress' || rc=1
+# R-SV6(c) / §18: the device-deploy egress — deploy_device() POSTed {id,uuid,pk}+token to
+# get_api_server()+"/api/devices/deploy" (account-server device registration a sovereign
+# fork has no server for) — is excised: the endpoint literal + the --deploy CLI driver are
+# gone (deploy_device is a refuse-stub; the §19/R-G4 sweep removes its flutter UI caller).
+ra6_clean 'api/devices/deploy' 'R-SV6(c) device-deploy egress' || rc=1
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod auth_2fa:R-X7 2FA/TOTP' 'mod lan:R-X5 LAN discovery' \

@@ -537,56 +537,13 @@ pub fn core_main() -> Option<Vec<String>> {
                 println!("Installation and administrative privileges required!");
             }
             return None;
-        } else if args[0] == "--deploy" {
-            if config::Config::no_register_device() {
-                println!("Cannot deploy an unregistrable device!");
-            } else if config::is_outgoing_only() {
-                println!("Cannot deploy Outgoing-only clients.");
-            } else if crate::platform::is_installed() && is_root() {
-                let max = args.len() - 1;
-                let pos = args.iter().position(|x| x == "--token").unwrap_or(max);
-                if pos >= max {
-                    println!("--token is required!");
-                    return None;
-                }
-                let token = args[pos + 1].to_owned();
-                let get_value = |c: &str| {
-                    let pos = args.iter().position(|x| x == c).unwrap_or(max);
-                    if pos < max {
-                        Some(args[pos + 1].to_owned())
-                    } else {
-                        None
-                    }
-                };
-                let new_id = get_value("--id");
-                match crate::ui_interface::deploy_device(token, new_id) {
-                    crate::ui_interface::DeployResult::Ok => {
-                        println!("Device deployed.");
-                    }
-                    crate::ui_interface::DeployResult::NotEnabled => {
-                        println!("Server does not require deployment.");
-                        std::process::exit(3);
-                    }
-                    crate::ui_interface::DeployResult::InvalidInput => {
-                        println!("Invalid input.");
-                        std::process::exit(5);
-                    }
-                    crate::ui_interface::DeployResult::IdTaken(id) => {
-                        println!(
-                            "Id `{}` is already used by another machine on the server.",
-                            id
-                        );
-                        std::process::exit(6);
-                    }
-                    crate::ui_interface::DeployResult::Error(err) => {
-                        println!("{}", err);
-                        std::process::exit(1);
-                    }
-                }
-            } else {
-                println!("Installation and administrative privileges required!");
-            }
-            return None;
+        // R-SV6(c)/R-X4/§18: the `--deploy` CLI arm is EXCISED. It called
+        // ui_interface::deploy_device() to POST {id,uuid,pk}+token to the account
+        // server's /api/devices/deploy — account-bound device registration a sovereign,
+        // direct-IP fork has no server for (the residual R-X4's --assign/--set-id
+        // excision missed). Removed so the egress is structurally absent (R-SV1), not
+        // merely pin-safe via the empty api-server; deploy_device itself is gutted to
+        // refuse (ui_interface.rs), keeping the flutter FFI signature compiling.
         } else if args[0] == "--check-hwcodec-config" {
             #[cfg(feature = "hwcodec")]
             crate::ipc::hwcodec_process();
@@ -749,7 +706,6 @@ fn is_user_main_ipc_scope_cli_command(args: &[String]) -> bool {
             | Some("--get-id")
             | Some("--option")
             | Some("--assign")
-            | Some("--deploy")
     )
 }
 
@@ -777,7 +733,6 @@ mod tests {
             "--get-id",
             "--option",
             "--assign",
-            "--deploy",
         ] {
             assert!(is_user_main_ipc_scope_cli_command(&args(&[command])));
         }

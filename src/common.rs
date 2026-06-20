@@ -963,23 +963,8 @@ pub fn is_public(url: &str) -> bool {
     url.contains("rustdesk.com/") || url.ends_with("rustdesk.com")
 }
 
-pub fn get_udp_punch_enabled() -> bool {
-    config::option2bool(
-        keys::OPTION_ENABLE_UDP_PUNCH,
-        &get_local_option(keys::OPTION_ENABLE_UDP_PUNCH),
-    )
-}
-
 pub fn get_local_option(key: &str) -> String {
-    let v = LocalConfig::get_option(key);
-    if key == keys::OPTION_ENABLE_UDP_PUNCH || key == keys::OPTION_ENABLE_IPV6_PUNCH {
-        if v.is_empty() {
-            if !is_public(&Config::get_rendezvous_server()) {
-                return "N".to_owned();
-            }
-        }
-    }
-    v
+    LocalConfig::get_option(key)
 }
 
 pub fn get_audit_server(api: String, custom: String, typ: String) -> String {

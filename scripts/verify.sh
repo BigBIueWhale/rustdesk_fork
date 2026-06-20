@@ -183,6 +183,12 @@ ra6_clean 'STUNS_V4|STUNS_V6|stunclient|stun_ipv4_test|stun_ipv6_test|test_nat_i
 # the "relay-hint"/"relay-hint2" emission is removed. (The hyphenated token is distinct from
 # the lang key `relay_hint_tip` (underscore), whose 51-file sweep is a deferred lang cleanup.)
 ra6_clean 'relay-hint' 'R-G6 relay-fallback hint emission' || rc=1
+# §19 closing-box dead-lang-key sweep: lang keys whose UI was removed by earlier §8/§18/§19
+# work and which now have NO live translate() caller — relay_hint_tip/websocket_tip (R-G6,
+# relay/websocket UI), enable-2fa-title/enable-bot-tip (R-X7, 2FA UI), powered_by_me (R-G8,
+# the "Powered by RustDesk" badge). Removed from all 51 lang tables + the lang.rs RustDesk
+# app-name substitution exclusion that only existed to protect the powered_by_me string.
+ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-bot-tip|powered_by_me)"' '§19 dead lang keys' || rc=1
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod auth_2fa:R-X7 2FA/TOTP' 'mod lan:R-X5 LAN discovery' \

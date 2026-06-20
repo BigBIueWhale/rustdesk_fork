@@ -81,12 +81,6 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
         selectedIcon: selectedIcon,
         unselectedIcon: unselectedIcon,
         onTabCloseButton: () async {
-          if (await desktopTryShowTabAuditDialogCloseCancelled(
-            id: peerId!,
-            tabController: tabController,
-          )) {
-            return;
-          }
           tabController.closeBy(peerId!);
         },
         page: ViewCameraPage(
@@ -299,12 +293,6 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
           style: style,
         ),
         proc: () async {
-          if (await desktopTryShowTabAuditDialogCloseCancelled(
-            id: key,
-            tabController: tabController,
-          )) {
-            return;
-          }
           tabController.closeBy(key);
           cancelFunc();
         },
@@ -358,12 +346,6 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
   Future<bool> handleWindowCloseButton() async {
     final connLength = tabController.length;
     if (connLength == 1) {
-      if (await desktopTryShowTabAuditDialogCloseCancelled(
-        id: tabController.state.value.tabs[0].key,
-        tabController: tabController,
-      )) {
-        return false;
-      }
     }
     if (connLength <= 1) {
       tabController.clear();
@@ -419,12 +401,6 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
         selectedIcon: selectedIcon,
         unselectedIcon: unselectedIcon,
         onTabCloseButton: () async {
-          if (await desktopTryShowTabAuditDialogCloseCancelled(
-            id: id,
-            tabController: tabController,
-          )) {
-            return;
-          }
           tabController.closeBy(id);
         },
         page: ViewCameraPage(

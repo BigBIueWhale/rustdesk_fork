@@ -996,32 +996,12 @@ class FfiModel with ChangeNotifier {
   showMsgBox(SessionID sessionId, String type, String title, String text,
       String link, bool hasRetry, OverlayDialogManager dialogManager,
       {bool? hasCancel}) async {
-    final noteAllowed = parent.target != null &&
-        allowAskForNoteAtEndOfConnection(parent.target, false) &&
-        (title == "Connection Error" || type == "restarting");
-    final showNoteEdit = noteAllowed && !hasRetry;
-    if (showNoteEdit) {
-      await showConnEndAuditDialogCloseCanceled(
-          ffi: parent.target!, type: type, title: title, text: text);
-      closeConnection();
-    } else {
-      VoidCallback? onSubmit;
-      if (noteAllowed && hasRetry) {
-        final ffi = parent.target!;
-        onSubmit = () async {
-          _timer?.cancel();
-          _timer = null;
-          await showConnEndAuditDialogCloseCanceled(
-              ffi: ffi, type: type, title: title, text: text);
-          closeConnection();
-        };
-      }
-      msgBox(sessionId, type, title, text, link, dialogManager,
-          hasCancel: hasCancel,
-          reconnect: hasRetry ? reconnect : null,
-          reconnectTimeout: hasRetry ? _reconnects : null,
-          onSubmit: onSubmit);
-    }
+    // R-SV/R-G4: the audit note-at-close prompt is removed (the audit GUID is never
+    // fetched, so this path only ever fell through to the plain msgBox).
+    msgBox(sessionId, type, title, text, link, dialogManager,
+        hasCancel: hasCancel,
+        reconnect: hasRetry ? reconnect : null,
+        reconnectTimeout: hasRetry ? _reconnects : null);
     _timer?.cancel();
     if (hasRetry) {
       _timer = Timer(Duration(seconds: _reconnects), () {
@@ -1057,17 +1037,6 @@ class FfiModel with ChangeNotifier {
       hint = "";
     }
     final text2 = "${translate(text)}$hint";
-
-    if (parent.target != null &&
-        allowAskForNoteAtEndOfConnection(parent.target, false) &&
-        pi.isSet.isTrue) {
-      if (await showConnEndAuditDialogCloseCanceled(
-          ffi: parent.target!, type: type, title: title, text: text2)) {
-        return;
-      }
-      closeConnection();
-      return;
-    }
 
     dialogManager.show(tag: '$sessionId-$type', (setState, close, context) {
       onClose() {

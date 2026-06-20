@@ -113,12 +113,6 @@ class _TerminalTabPageState extends State<TerminalTabPage> {
         }).length;
       }
 
-      if (await desktopTryShowTabAuditDialogCloseCancelled(
-        id: tabKey,
-        tabController: tabController,
-      )) {
-        return;
-      }
 
       // Close terminal session if not in persistent mode.
       // Wrapped separately so session cleanup failure never blocks UI tab removal.
@@ -598,12 +592,6 @@ class _TerminalTabPageState extends State<TerminalTabPage> {
   Future<bool> handleWindowCloseButton() async {
     final connLength = tabController.state.value.tabs.length;
     if (connLength == 1) {
-      if (await desktopTryShowTabAuditDialogCloseCancelled(
-        id: tabController.state.value.tabs[0].key,
-        tabController: tabController,
-      )) {
-        return false;
-      }
     }
     if (connLength <= 1) {
       await _closeAllTabs();

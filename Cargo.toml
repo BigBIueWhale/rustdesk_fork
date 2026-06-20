@@ -93,7 +93,9 @@ fon = "0.6"
 zip = "0.6"
 shutdown_hooks = "0.1"
 totp-rs = { version = "5.4", default-features = false, features = ["gen_secret", "otpauth"] }
-stunclient = "0.4"
+# R-SV4(b)/R-D5/R-R3: `stunclient` removed — its only use was the dead NAT-type/IPv6 STUN
+# probes (test_nat_ipv4/test_ipv6 → stun.l.google.com/cloudflare/nextcloud), excised. A
+# direct-IP fork does no NAT traversal, so the STUN client + its transitive deps are dropped.
 kcp-sys= { git = "https://github.com/rustdesk-org/kcp-sys"}
 reqwest = { version = "0.12", features = ["blocking", "socks", "json", "native-tls", "rustls-tls", "rustls-tls-native-roots", "gzip"], default-features=false }
 

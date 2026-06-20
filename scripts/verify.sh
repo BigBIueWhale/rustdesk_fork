@@ -117,6 +117,14 @@ ra6_clean 'SignedId|set_public_key|message::Union::PublicKey' 'R-P5 SignedId/Pub
 # refresh). The egress fns (create_online_stream / the OnlineRequest send) are gone; peer_online
 # now reports every peer offline with no network call. (Only `//` comments name them, filtered.)
 ra6_clean 'create_online_stream|set_online_request' 'R-SV viewer online-status egress' || rc=1
+# R-SV4(b) / R-D5 / §18: the common.rs NAT-type/IPv6 STUN probes are removed — test_nat_ipv4 /
+# test_ipv6 -> stun_ipv4_test/stun_ipv6_test resolved + queried hardcoded public STUN servers
+# (stun.l.google.com etc.). A direct-IP fork does no NAT traversal; the probes were dead
+# (test_nat_type is a no-op, df3d12f) and are deleted structurally (R-SV1), with the `stunclient`
+# crate dep dropped. (The other STUN source, `webrtc.rs DEFAULT_ICE_SERVERS`, is DEAD SOURCE — the
+# `webrtc` feature is never enabled in the fork, so that module is not compiled; removing the
+# whole webrtc transport is an un-verifiable-here follow-on, like the Windows/sciter excisions.)
+ra6_clean 'STUNS_V4|STUNS_V6|stunclient|stun_ipv4_test|stun_ipv6_test|test_nat_ipv4|stun\.l\.google' 'R-SV4(b) common.rs STUN NAT-probes' || rc=1
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod auth_2fa:R-X7 2FA/TOTP' 'mod lan:R-X5 LAN discovery' \

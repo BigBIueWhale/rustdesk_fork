@@ -237,7 +237,20 @@ impl Client {
                     let prs = {
                         let lch = interface.get_lch();
                         let g = lch.read().unwrap();
-                        String::from_utf8(g.config.password_prs.clone()).unwrap_or_default()
+                        // R-S16: the live PRS for the balanced PAKE. Primary: the remembered
+                        // per-peer plaintext (the viewer twin). Fallback: the shared-address-book
+                        // plaintext (`shared_password`, set in `initialize` — before connect — so
+                        // an ab-card peer also keys). Both are PRE-keying sources; the
+                        // preset/default flow consumed in `handle_hash` runs only AFTER keying, so
+                        // it cannot feed this. An empty result here fails closed in key_initiator
+                        // (R-S9), so this fallback is strictly additive.
+                        let from_prs =
+                            String::from_utf8(g.config.password_prs.clone()).unwrap_or_default();
+                        if !from_prs.is_empty() {
+                            from_prs
+                        } else {
+                            g.shared_password.clone().unwrap_or_default()
+                        }
                     };
                     let pk_b = Self::key_initiator(peer, &prs, &mut x.0 .0).await?;
                     // Surface the verified+pinned host key as the connection pk (the UI

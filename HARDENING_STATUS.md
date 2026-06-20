@@ -169,9 +169,12 @@ R-A8/A9 two-host test, deferred):
    current connect. The real gap: `key_initiator` sources the PRS ONLY from `config.password_prs`,
    but an ab/preset/default-password peer carries its plaintext in OTHER pre-keying sources —
    `LoginConfigHandler.shared_password` (set in `initialize`, available before connect), the
-   `password_preset` arg, and the `OPTION_DEFAULT_CONNECT_PASSWORD` builtin. To support those peers,
-   `key_initiator`'s PRS lookup must fall back to those pre-keying sources (verify `shared_password`'s
-   set-before-`Client::start` ordering first). The primary remembered direct-IP path is fully wired.
+   `password_preset` arg, and the `OPTION_DEFAULT_CONNECT_PASSWORD` builtin. **`shared_password`
+   fallback DONE**: `key_initiator`'s PRS lookup now falls back from `config.password_prs` to
+   `shared_password` (strictly additive — empty still fails closed, R-S9), so ab-card peers key.
+   REMAINING: the `password_preset` + `OPTION_DEFAULT_CONNECT_PASSWORD` sources are consumed only in
+   `handle_hash` (post-keying), so feeding them to `key_initiator` needs extra pre-keying plumbing
+   (lower priority). The primary remembered direct-IP path is fully wired.
 2. **Direct-path keying** in `Client::start` — **DONE** (A2): a new `Client::key_initiator`
    (the mirror of the responder's `run_responder` block) runs in the `Ok(mut x)` arm of
    `Client::start` when `!stream.is_secured()` — reads the R-S16 PRS from

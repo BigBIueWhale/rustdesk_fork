@@ -65,7 +65,8 @@ echo "== §19 / R-A6 Dart-layer grep (dead GUI tokens absent) =="
 # Host-side (plain file content — no flutter needed). Grows as the §19 sweep proceeds.
 dg_clean() { # token, label
   local tok="$1" label="$2" hits
-  hits=$(grep -RInE "$tok" flutter/lib flutter/assets 2>/dev/null | grep -v '//' || true)
+  # exclude the FRB-GENERATED bridge (git-ignored, regenerated — not authored Dart)
+  hits=$(grep -RInE "$tok" flutter/lib flutter/assets 2>/dev/null | grep -v '//' | grep -v 'generated_bridge' || true)
   if [ -n "$hits" ]; then
     echo "  FAIL §19: '$label' must be absent but is present:"; echo "$hits" | sed 's/^/      /'
     exit 1
@@ -76,5 +77,8 @@ dg_clean() { # token, label
 # ALWAYS secure+direct (§10 PAKE + R-SV4/R-D4), so a badge that could render "insecure"
 # or "relayed" is both dead and a dangerous security MISLABEL. (secure.svg is the one kept.)
 dg_clean 'insecure\.svg|secure_relay\.svg|insecure_relay\.svg' 'R-G3 insecure/relay security-badge assets'
+# R-G4 / R-SV3 / §18: the startup version-check FFI trigger is gone — the app makes no
+# api.rustdesk.com/version call at launch (the updater + version-check are excised).
+dg_clean 'bind\.mainGetSoftwareUpdateUrl' 'R-G4/R-SV3 startup version-check FFI trigger'
 
 echo "DART-VERIFY: flutter analyze lib/ is GREEN (zero errors) + §19 Dart-layer greps clean"

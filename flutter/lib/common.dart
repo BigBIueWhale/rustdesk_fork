@@ -3938,20 +3938,14 @@ void earlyAssert() {
 }
 
 void checkUpdate() {
-  if (!isWeb) {
-    if (!bind.isCustomClient()) {
-      platformFFI.registerEventHandler(
-          kCheckSoftwareUpdateFinish, kCheckSoftwareUpdateFinish,
-          (Map<String, dynamic> evt) async {
-        if (evt['url'] is String) {
-          stateGlobal.updateUrl.value = evt['url'];
-        }
-      });
-      Timer(const Duration(seconds: 1), () async {
-        bind.mainGetSoftwareUpdateUrl();
-      });
-    }
-  }
+  // R-G4 / R-SV2 / R-SV3 / §18: the auto-update + version-check is excised (the fetch-and-run
+  // updater RCE — R-X1 — and the device-fingerprinted POST to api.rustdesk.com/version —
+  // R-SV3 — are removed). This startup trigger registered a kCheckSoftwareUpdateFinish event
+  // handler and called bind.mainGetSoftwareUpdateUrl() after 1s; it is now a NO-OP so the app
+  // makes NO version-check FFI call at launch (sovereign: dial nobody). stateGlobal.updateUrl
+  // is therefore never set, so the update banner never shows. The dead update widgets (the
+  // desktop banner, mobile _buildUpdateUI, the check-update toggle, UpdateProgress) and the
+  // residual main_get_software_update_url / main_update_me FFI are the §19/R-G4 follow-on.
 }
 
 // https://github.com/flutter/flutter/issues/153560#issuecomment-2497160535

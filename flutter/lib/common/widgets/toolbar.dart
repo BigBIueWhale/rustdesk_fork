@@ -323,17 +323,6 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
   final isWaylandPeer = pi.platform == kPeerPlatformLinux && pi.isWayland;
 
   List<TTextMenu> v = [];
-  // elevation
-  if (isDefaultConn &&
-      perms['keyboard'] != false &&
-      ffi.elevationModel.showRequestMenu) {
-    v.add(
-      TTextMenu(
-          child: Text(translate('Request Elevation')),
-          onPressed: () =>
-              showRequestElevationDialog(sessionId, ffi.dialogManager)),
-    );
-  }
   // osAccount / osPassword
   if (isDefaultConn && perms['keyboard'] != false) {
     v.add(

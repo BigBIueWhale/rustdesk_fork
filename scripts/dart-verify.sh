@@ -103,6 +103,13 @@ dg_clean 'LoginWidgetOP|kOpSvgList|kAuthReqTypeOidc|queryOidcLoginOptions' 'R-G4
 # (mobile/widgets/dialog.dart) — both now uncalled. (showServerSettingsWithValue stays for the QR
 # scan_page; the mobile "Use WebSocket"/"Deploy" tiles are separate follow-ons.) None may reappear.
 dg_clean 'SettingsTabKey\.network|changeSocks5Proxy|void showServerSettings\(' 'R-G4 Network/server-config UI (tab + SOCKS + server dialog)'
+# R-G4 / R-SV6 / §19: the desktop "Account" settings tab is deleted — the _Account/_AccountState
+# classes (the rustdesk-account login/logout panel) + the SettingsTabKey.account enum value + its
+# tabKeys include + both _settingTabs()/_children() switch cases. A direct-IP fork has no account
+# server (account/OIDC compiled out, R-SV6); the account is no longer a configurable concept. The
+# loginDialog/UserModel/toolbar+mobile account entry points are the rest of the account sweep. No
+# desktop Account tab may reappear.
+dg_clean 'SettingsTabKey\.account' 'R-G4 desktop Account settings tab'
 # R-G / R-D / §18 (dial nobody): the peer-list ONLINE-STATUS query trigger is removed — a
 # direct-IP fork has no rendezvous server to ask which peers are online, and the backend query is
 # a no-egress stub (cebfdf2). The `bind.queryOnlines` calls are gone (peers_view) and the online

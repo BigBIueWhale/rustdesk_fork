@@ -255,15 +255,6 @@ pub fn session_send2fa(session_id: SessionID, code: String, trust_this_device: b
     }
 }
 
-pub fn session_get_enable_trusted_devices(session_id: SessionID) -> SyncReturn<bool> {
-    let v = if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.get_enable_trusted_devices()
-    } else {
-        false
-    };
-    SyncReturn(v)
-}
-
 pub fn will_session_close_close_session(session_id: SessionID) -> SyncReturn<bool> {
     SyncReturn(sessions::would_remove_peer_by_session_id(&session_id))
 }
@@ -2647,18 +2638,6 @@ pub fn main_get_buildin_option(key: String) -> SyncReturn<String> {
 
 pub fn main_check_hwcodec() {
     check_hwcodec()
-}
-
-pub fn main_get_trusted_devices() -> String {
-    get_trusted_devices()
-}
-
-pub fn main_remove_trusted_devices(json: String) {
-    remove_trusted_devices(&json)
-}
-
-pub fn main_clear_trusted_devices() {
-    clear_trusted_devices()
 }
 
 pub fn main_max_encrypt_len() -> SyncReturn<usize> {

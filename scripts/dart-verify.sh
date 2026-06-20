@@ -88,5 +88,10 @@ dg_clean '_buildUpdateUI|UpdateProgress|handleUpdate' 'R-G4 dead update widgets'
 # version-check + updater are excised, so the option keys back nothing).
 dg_clean 'enable-check-update|allow-auto-update' 'R-G4/R-SV3 update-toggle option keys'
 dg_clean 'Download new version|Check for software update on startup' 'R-G4 update-UI strings'
+# R-G / R-D / §18 (dial nobody): the peer-list ONLINE-STATUS query trigger is removed — a
+# direct-IP fork has no rendezvous server to ask which peers are online, and the backend query is
+# a no-egress stub (cebfdf2). The `bind.queryOnlines` calls are gone (peers_view) and the online
+# dot (`getOnline`) renders nothing; no `bind.queryOnlines` call may reappear.
+dg_clean 'bind\.queryOnlines' 'R-G/R-D online-status query trigger'
 
 echo "DART-VERIFY: flutter analyze lib/ is GREEN (zero errors) + §19 Dart-layer greps clean"

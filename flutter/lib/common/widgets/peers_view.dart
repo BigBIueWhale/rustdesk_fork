@@ -333,7 +333,8 @@ class _PeersViewState extends State<_PeersView>
           if (!skipIfNotActive && (_queryCount < _maxQueryCount || !p)) {
             if (now.difference(_lastQueryTime) >= _queryInterval) {
               if (_curPeers.isNotEmpty) {
-                bind.queryOnlines(ids: _curPeers.toList(growable: false));
+                // R-G / R-D (dial nobody): no online-status query — a direct-IP fork has no
+                // rendezvous server to ask (bind.queryOnlines is a no-egress stub, cebfdf2).
                 _lastQueryTime = DateTime.now();
                 _queryCount += 1;
               }
@@ -347,7 +348,8 @@ class _PeersViewState extends State<_PeersView>
 
   _queryOnlines(bool isLoadEvent) {
     if (_curPeers.isNotEmpty) {
-      bind.queryOnlines(ids: _curPeers.toList(growable: false));
+      // R-G / R-D (dial nobody): no online-status query (bind.queryOnlines is a no-egress
+      // stub, cebfdf2) — a direct-IP fork has no rendezvous server to ask.
       _queryCount = 0;
     }
     _lastQueryPeers = {..._curPeers};

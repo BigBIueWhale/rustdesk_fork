@@ -1464,14 +1464,12 @@ void _rdpDialog(String id) async {
   });
 }
 
+// R-G / R-D / §18 (correctness — dial nobody): a direct-IP fork has NO rendezvous server to ask
+// which peers are online, so an "Online/Offline" dot would assert a status it cannot actually know
+// (the online-status query is a no-egress stub — cebfdf2). Render nothing rather than imply a
+// (always-"Offline") status. The callers keep passing `online` so the signature is stable.
 Widget getOnline(double rightPadding, bool online) {
-  return Tooltip(
-      message: translate(online ? 'Online' : 'Offline'),
-      waitDuration: const Duration(seconds: 1),
-      child: Padding(
-          padding: EdgeInsets.fromLTRB(0, 4, rightPadding, 4),
-          child: CircleAvatar(
-              radius: 3, backgroundColor: online ? Colors.green : kColorWarn)));
+  return const SizedBox.shrink();
 }
 
 Widget build_more(BuildContext context, {bool invert = false}) {

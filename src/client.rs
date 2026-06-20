@@ -1733,6 +1733,12 @@ pub struct LoginConfigHandler {
     pub is_terminal_admin: bool,
     hash: Hash,
     password: Vec<u8>, // remember password for reconnect
+    // R-S16 (viewer twin): the captured RAW plaintext password for the CPace initiator
+    // (the secret itself, not the `password` salted hash). Set from the user-entered
+    // password in `handle_login_from_ui`; persisted to `PeerConfig.password_prs` when
+    // `remember`, from which the initiator reads it at the next connect (Stage A2). Kept
+    // separate from `config` because the save path reloads `config` from disk first.
+    password_prs: Vec<u8>,
     pub remember: bool,
     config: PeerConfig,
     pub port_forward: (String, i32),
@@ -2552,6 +2558,13 @@ impl LoginConfigHandler {
                 && !self.password_source.is_shared_ab(&password, &hash)
             {
                 config.password = password.clone();
+                // R-S16 (viewer twin): persist the captured plaintext CPace PRS alongside
+                // the hash. Guarded on non-empty so a hash-only reconnect (saved password,
+                // no UI prompt this session → `password_prs` empty) does NOT wipe a
+                // previously stored PRS that `config` was just loaded with.
+                if !self.password_prs.is_empty() {
+                    config.password_prs = self.password_prs.clone();
+                }
                 log::debug!("remember password of {}", self.id);
             }
         } else {
@@ -2561,6 +2574,7 @@ impl LoginConfigHandler {
                 log::debug!("save ab password of {} to recent", self.id);
             } else if !password0.is_empty() {
                 config.password = Default::default();
+                config.password_prs = Default::default(); // R-S16: clear the PRS with the password
                 log::debug!("remove password of {}", self.id);
             }
         }
@@ -3637,6 +3651,10 @@ pub async fn handle_login_from_ui(
         password2
     } else {
         lc.write().unwrap().password_source = Default::default();
+        // R-S16 (viewer twin): capture the RAW plaintext as the CPace PRS BEFORE it is
+        // hashed away below — the balanced PAKE keys from the password itself, not the
+        // salted hash. Persisted (when `remember`) by the peer-info save path.
+        lc.write().unwrap().password_prs = password.clone().into_bytes();
         let mut hasher = Sha256::new();
         hasher.update(password);
         hasher.update(&lc.read().unwrap().hash.salt);

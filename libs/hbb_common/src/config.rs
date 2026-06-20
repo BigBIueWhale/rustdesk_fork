@@ -286,6 +286,14 @@ pub struct Resolution {
 pub struct PeerConfig {
     #[serde(default, deserialize_with = "deserialize_vec_u8")]
     pub password: Vec<u8>,
+    // R-S16 (viewer twin): the remote box's permanent password held as PRS-usable
+    // PLAINTEXT (encrypted at rest exactly like `password`), so the viewer can drive
+    // the CPace INITIATOR — a balanced PAKE needs the raw shared secret, not the
+    // salted SHA-256 hash that `password` stores. Empty until captured from the
+    // user-entered password; the initiator fails closed (R-S9) on an empty PRS. Old
+    // peer configs without this field deserialize to empty (`#[serde(default)]`).
+    #[serde(default, deserialize_with = "deserialize_vec_u8")]
+    pub password_prs: Vec<u8>,
     #[serde(default, deserialize_with = "deserialize_size")]
     pub size: Size,
     #[serde(default, deserialize_with = "deserialize_size")]
@@ -413,6 +421,7 @@ impl Default for PeerConfig {
     fn default() -> Self {
         Self {
             password: Default::default(),
+            password_prs: Default::default(), // R-S16 viewer twin
             size: Default::default(),
             size_ft: Default::default(),
             size_pf: Default::default(),
@@ -1757,6 +1766,11 @@ impl PeerConfig {
                     decrypt_vec_or_original(&config.password, PASSWORD_ENC_VERSION);
                 config.password = password;
                 store = store || store2;
+                // R-S16 (viewer twin): the plaintext CPace PRS, encrypted at rest like `password`.
+                let (password_prs, _, store2) =
+                    decrypt_vec_or_original(&config.password_prs, PASSWORD_ENC_VERSION);
+                config.password_prs = password_prs;
+                store = store || store2;
                 for opt in ["rdp_password", "os-username", "os-password"] {
                     if let Some(v) = config.options.get_mut(opt) {
                         let (encrypted, _, store2) =
@@ -1791,6 +1805,9 @@ impl PeerConfig {
         let mut config = self.clone();
         config.password =
             encrypt_vec_or_original(&config.password, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
+        // R-S16 (viewer twin): the plaintext CPace PRS, encrypted at rest like `password`.
+        config.password_prs =
+            encrypt_vec_or_original(&config.password_prs, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
         for opt in ["rdp_password", "os-username", "os-password"] {
             if let Some(v) = config.options.get_mut(opt) {
                 *v = encrypt_str_or_original(v, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN)

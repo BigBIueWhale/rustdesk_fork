@@ -94,6 +94,13 @@ dg_clean 'Download new version|Check for software update on startup' 'R-G4 updat
 # has no account server to enumerate providers (mainGetApiServer is pinned empty), so the section
 # was always dead (empty loginOptions ⇒ Offstage). None may reappear.
 dg_clean 'LoginWidgetOP|kOpSvgList|kAuthReqTypeOidc|queryOidcLoginOptions' 'R-G4 OIDC SSO provider-login widgets'
+# R-G4 / §19: the desktop "Network" settings tab is deleted — the _Network/_NetworkState classes
+# (the "ID/Relay Server" editor + SOCKS proxy + WebSocket switch, config UI for the rendezvous /
+# relay / api-server infrastructure the fork structurally removed), the SettingsTabKey.network
+# enum value, its tabKeys include, and both _settingTabs()/_children() switch cases. The mobile
+# Network section + the shared changeSocks5Proxy/showServerSettings dialogs are a follow-on. No
+# desktop Network tab may reappear.
+dg_clean 'SettingsTabKey\.network' 'R-G4 desktop Network/server-config settings tab'
 # R-G / R-D / §18 (dial nobody): the peer-list ONLINE-STATUS query trigger is removed — a
 # direct-IP fork has no rendezvous server to ask which peers are online, and the backend query is
 # a no-egress stub (cebfdf2). The `bind.queryOnlines` calls are gone (peers_view) and the online

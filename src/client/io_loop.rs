@@ -2152,7 +2152,8 @@ impl<T: InvokeUiSession> Remote<T> {
             let impl_key = if impl_key.is_empty() {
                 "privacy_mode_impl_mag".to_string()
             } else {
-                impl_key
+                // R-S15: bound the peer-supplied impl_key before it reaches the on-disk PeerConfig.
+                hbb_common::config::bound_peer_config_string(&impl_key)
             };
             config
                 .options

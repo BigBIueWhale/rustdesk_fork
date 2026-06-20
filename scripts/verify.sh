@@ -133,6 +133,21 @@ ra6_clean 'api/heartbeat|api/sysinfo|heartbeat_url|handle_config_options|start_h
 # peer (R-S17) harvested the operator's stored OS creds with no interaction. The responder
 # already ignores os_login (0685c28); deleting the sender completes the symmetric removal.
 ra6_clean 'Some\(OSLogin|\.set_logon\(' 'R-S18 viewer os_login + elevation-with-logon senders' || rc=1
+# R-S15 (Appendix C #19): the viewer's in-session PeerConfig writes from peer-controlled data — the
+# PeerInfo arm's username/hostname/platform (client.rs handle_peer_info) and the BackNotification
+# privacy-mode impl_key (io_loop.rs update_privacy_mode) — MUST be funnelled through
+# hbb_common::config::bound_peer_config_string (strip control chars + clamp length), so a
+# keyed-but-hostile peer cannot inject unbounded/injection strings into the on-disk config. The
+# initiator-side twin of the responder's R-S11 config-write gate. KAT: config_it tests/r_s15.rs.
+r_s15_missing=
+for f in src/client.rs src/client/io_loop.rs; do
+  grep -q 'bound_peer_config_string' "$f" || r_s15_missing="$r_s15_missing $f"
+done
+if [ -n "$r_s15_missing" ]; then
+  echo "  FAIL R-S15: peer-config-write bound absent in:$r_s15_missing"; rc=1
+else
+  echo "  ok  R-S15 viewer PeerConfig-write bound present (client.rs + io_loop.rs)"
+fi
 # R-P5 / R-SV4(b): the SignedId <-> PublicKey device-identity key bootstrap is removed. The
 # viewer's `secure_connection` (the only SignedId user) + the whole initiator-side
 # rendezvous/relay/NAT-punch cluster it lived in (_start_inner/connect/request_relay/

@@ -467,6 +467,21 @@ pub struct PeerInfoSerde {
     pub platform: String,
 }
 
+/// R-S15: a keyed-but-hostile peer must not write unbounded or attacker-controlled strings into
+/// the viewer's persistent PeerConfig via the in-session PeerInfo / BackNotification arms — these
+/// survive R-S13 keying (keying authenticates the peer; it does not make a hostile-but-keyed
+/// peer's payload trustworthy, Appendix C #19). Every peer-supplied config string is funnelled
+/// through this bound: control characters are stripped (no TOML / terminal / UI-injection bytes
+/// reach the on-disk config) and the length is clamped (no config-bloat DoS). The initiator-side
+/// twin of the responder's R-S11 config-write gate.
+pub fn bound_peer_config_string(s: &str) -> String {
+    const MAX_PEER_CONFIG_STRING: usize = 256;
+    s.chars()
+        .filter(|c| !c.is_control())
+        .take(MAX_PEER_CONFIG_STRING)
+        .collect()
+}
+
 #[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
 pub struct TransferSerde {
     #[serde(default, deserialize_with = "deserialize_vec_string")]

@@ -2013,10 +2013,12 @@ impl LoginConfigHandler {
             self.version = hbb_common::get_version_number(&pi.version);
         }
         self.features = pi.features.clone().into_option();
+        // R-S15: bound the peer-supplied identity strings before they reach the on-disk PeerConfig
+        // (a keyed-but-hostile peer must not inject unbounded/control-char strings, Appendix C #19).
         let serde = PeerInfoSerde {
-            username: pi.username.clone(),
-            hostname: pi.hostname.clone(),
-            platform: pi.platform.clone(),
+            username: hbb_common::config::bound_peer_config_string(&pi.username),
+            hostname: hbb_common::config::bound_peer_config_string(&pi.hostname),
+            platform: hbb_common::config::bound_peer_config_string(&pi.platform),
         };
         let mut config = self.load_config();
         config.info = serde;

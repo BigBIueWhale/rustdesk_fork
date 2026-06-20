@@ -13,7 +13,6 @@ import 'package:flutter_hbb/models/peer_tab_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:get/get.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:flutter_hbb/utils/http_service.dart' as http;
 
 import '../../common.dart';
 import '../../models/model.dart';

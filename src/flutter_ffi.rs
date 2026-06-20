@@ -2015,42 +2015,6 @@ pub fn session_restart_remote_device(session_id: SessionID) {
     }
 }
 
-pub fn session_get_audit_server_sync(session_id: SessionID, typ: String) -> SyncReturn<String> {
-    let res = if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.get_audit_server(typ)
-    } else {
-        "".to_owned()
-    };
-    SyncReturn(res)
-}
-
-pub fn session_send_note(session_id: SessionID, note: String) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.send_note(note)
-    }
-}
-
-pub fn session_get_last_audit_note(session_id: SessionID) -> SyncReturn<String> {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        SyncReturn(session.last_audit_note.lock().unwrap().clone())
-    } else {
-        SyncReturn("".to_owned())
-    }
-}
-
-pub fn session_set_audit_guid(session_id: SessionID, guid: String) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        *session.audit_guid.lock().unwrap() = guid;
-    }
-}
-
-pub fn session_get_audit_guid(session_id: SessionID) -> SyncReturn<String> {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        SyncReturn(session.audit_guid.lock().unwrap().clone())
-    } else {
-        SyncReturn("".to_owned())
-    }
-}
 
 pub fn session_get_conn_session_id(session_id: SessionID) -> SyncReturn<String> {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {

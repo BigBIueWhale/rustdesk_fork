@@ -1254,16 +1254,7 @@ class RustdeskImpl {
     return Future(() => js.context.callMethod('setByName', ['restart']));
   }
 
-  String sessionGetAuditServerSync(
-      {required UuidValue sessionId, required String typ, dynamic hint}) {
-    return js.context.callMethod('getByName', ['audit_server', typ]);
-  }
 
-  Future<void> sessionSendNote(
-      {required UuidValue sessionId, required String note, dynamic hint}) {
-    return Future(
-        () => js.context.callMethod('setByName', ['send_note', note]));
-  }
 
   Future<String> sessionAlternativeCodecs(
       {required UuidValue sessionId, dynamic hint}) {
@@ -1950,19 +1941,8 @@ class RustdeskImpl {
     return true;
   }
 
-  String sessionGetLastAuditNote({required UuidValue sessionId, dynamic hint}) {
-    return js.context.callMethod('getByName', ['last_audit_note']);
-  }
 
-  Future<void> sessionSetAuditGuid(
-      {required UuidValue sessionId, required String guid, dynamic hint}) {
-    return Future(
-        () => js.context.callMethod('setByName', ['audit_guid', guid]));
-  }
 
-  String sessionGetAuditGuid({required UuidValue sessionId, dynamic hint}) {
-    return js.context.callMethod('getByName', ['audit_guid']);
-  }
 
   bool mainSetCursorPosition({required int x, required int y, dynamic hint}) {
     return false;

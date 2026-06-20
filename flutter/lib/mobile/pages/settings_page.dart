@@ -84,7 +84,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   var _buildDate = "";
   var _autoDisconnectTimeout = "";
   var _enableUdpPunch = false;
-  var _allowInsecureTlsFallback = false;
   var _disableUdp = false;
   var _enableIpv6Punch = false;
   var _isUsingPublicServer = false;
@@ -98,8 +97,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
         bind.mainGetOptionSync(key: kOptionEnableRecordSession));
     _enableHardwareCodec = option2bool(kOptionEnableHwcodec,
         bind.mainGetOptionSync(key: kOptionEnableHwcodec));
-    _allowInsecureTlsFallback =
-        mainGetBoolOptionSync(kOptionAllowInsecureTLSFallback);
     _disableUdp = bind.mainGetOptionSync(key: kOptionDisableUdp) == 'Y';
     _autoRecordIncomingSession = option2bool(kOptionAllowAutoRecordIncoming,
         bind.mainGetOptionSync(key: kOptionAllowAutoRecordIncoming));
@@ -507,22 +504,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                 onPressed: (context) {
                   showDeployDialog();
                 }),
-          if (!_isUsingPublicServer)
-            SettingsTile.switchTile(
-              title: Text(translate('Allow insecure TLS fallback')),
-              initialValue: _allowInsecureTlsFallback,
-              onToggle: isOptionFixed(kOptionAllowInsecureTLSFallback)
-                  ? null
-                  : (v) async {
-                      await mainSetBoolOption(
-                          kOptionAllowInsecureTLSFallback, v);
-                      final newValue = mainGetBoolOptionSync(
-                          kOptionAllowInsecureTLSFallback);
-                      setState(() {
-                        _allowInsecureTlsFallback = newValue;
-                      });
-                    },
-            ),
           if (isAndroid && !outgoingOnly && !_isUsingPublicServer)
             SettingsTile.switchTile(
               title: Text(translate('Disable UDP')),

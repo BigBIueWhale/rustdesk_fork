@@ -170,7 +170,6 @@ const String kOptionAllowAskForNoteAtEndOfConnection = "allow-ask-for-note";
 const String kOptionEnableShowTerminalExtraKeys = "enable-show-terminal-extra-keys";
 
 // network options
-const String kOptionAllowInsecureTLSFallback = "allow-insecure-tls-fallback";
 const String kOptionDisableUdp = "disable-udp";
 const String kOptionEnableFlutterHttpOnRust = "enable-flutter-http-on-rust";
 

@@ -1739,18 +1739,7 @@ class RustdeskImpl {
     ]);
   }
 
-  Future<String> mainGenerate2Fa({dynamic hint}) {
-    throw UnimplementedError("mainGenerate2Fa");
-  }
-
-  Future<bool> mainVerify2Fa({required String code, dynamic hint}) {
-    throw UnimplementedError("mainVerify2Fa");
-  }
-
-  bool mainHasValid2FaSync({dynamic hint}) {
-    throw UnimplementedError("mainHasValid2FaSync");
-  }
-
+  // R-X7: 2FA setup bridge stubs removed (the 2FA FFI is excised; 2FA pinned-off-dead).
   String mainGetHardOption({required String key, dynamic hint}) {
     return mainGetLocalOption(key: key, hint: hint);
   }
@@ -1777,14 +1766,7 @@ class RustdeskImpl {
     throw UnimplementedError("mainGetUseTextureRender");
   }
 
-  bool mainHasValidBotSync({dynamic hint}) {
-    throw UnimplementedError("mainHasValidBotSync");
-  }
-
-  Future<String> mainVerifyBot({required String token, dynamic hint}) {
-    throw UnimplementedError("mainVerifyBot");
-  }
-
+  // R-X7: Telegram-bot 2FA bridge stubs removed (the bot FFI is excised).
   String mainGetUnlockPin({dynamic hint}) {
     throw UnimplementedError("mainGetUnlockPin");
   }

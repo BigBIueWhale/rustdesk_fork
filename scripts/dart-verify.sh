@@ -128,5 +128,12 @@ dg_clean 'bind\.queryOnlines' 'R-G/R-D online-status query trigger'
 # links). Gate the privacy + docs URL paths (the `rustdesk.com/pricing` in the dead
 # "use public server" guide goes with the R-G2 server-UI removal). Only `//` comments name them.
 dg_clean 'rustdesk\.com/privacy|rustdesk\.com/docs' 'R-G8 rustdesk.com privacy/docs links'
+# R-S18 / R-X8 / §19: the viewer never solicits OS credentials to push to the host. The
+# host-triggered os-login dialogs (enterUserLoginDialog / enterUserLoginAndPasswordDialog, fed
+# by the session-login / terminal-admin-login msgbox prompts) AND the os-username/os-password
+# fields in the connect dialog (_connectDialog's osUsernameController / osPasswordController)
+# are deleted — the responder strips os_login (R-X14/0685c28) and create_login_msg no longer
+# sends it (R-S18), so the UI that collected the operator's OS creds is structurally gone.
+dg_clean 'enterUserLoginDialog|enterUserLoginAndPasswordDialog|osUsernameController|osPasswordController' 'R-S18/R-X8 viewer os-login dialog (OS-credential push UI)'
 
 echo "DART-VERIFY: flutter analyze lib/ is GREEN (zero errors) + §19 Dart-layer greps clean"

@@ -911,17 +911,6 @@ class FfiModel with ChangeNotifier {
       // R-S17/R-G5 (first-connect pin seed): the box keyed but is not pinned yet. Show its
       // fingerprint to confirm out-of-band, then pin + reconnect on accept.
       hostNotPinnedDialog(sessionId, dialogManager, text);
-    } else if (type == 'session-login' || type == 'session-re-login') {
-      enterUserLoginDialog(sessionId, dialogManager, 'login_linux_tip', true);
-    } else if (type == 'session-login-password') {
-      enterUserLoginAndPasswordDialog(
-          sessionId, dialogManager, 'login_linux_tip', true);
-    } else if (type == 'terminal-admin-login') {
-      enterUserLoginDialog(
-          sessionId, dialogManager, 'terminal-admin-login-tip', false);
-    } else if (type == 'terminal-admin-login-password') {
-      enterUserLoginAndPasswordDialog(
-          sessionId, dialogManager, 'terminal-admin-login-tip', false);
     } else if (type == 'restarting') {
       showMsgBox(sessionId, type, title, text, link, false, dialogManager,
           hasCancel: false);
@@ -3868,12 +3857,15 @@ class FFI {
   }
 
   /// Login with [password], choose if the client should [remember] it.
-  void login(String osUsername, String osPassword, SessionID sessionId,
-      String password, bool remember) {
+  void login(SessionID sessionId, String password, bool remember) {
+    // R-S18: the viewer never pushes OS credentials to the host — os_username/os_password are
+    // forced empty (the host-triggered os-login dialogs are removed, the responder strips
+    // os_login, and create_login_msg no longer sends it). Dropping the os params from the Rust
+    // session_login FFI signature is a flutter-verify follow-on.
     bind.sessionLogin(
         sessionId: sessionId,
-        osUsername: osUsername,
-        osPassword: osPassword,
+        osUsername: '',
+        osPassword: '',
         password: password,
         remember: remember);
   }

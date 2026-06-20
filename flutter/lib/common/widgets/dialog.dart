@@ -895,65 +895,18 @@ void hostNotPinnedDialog(
   });
 }
 
-void enterUserLoginDialog(
-    SessionID sessionId,
-    OverlayDialogManager dialogManager,
-    String osAccountDescTip,
-    bool canRememberAccount) async {
-  await _connectDialog(
-    sessionId,
-    dialogManager,
-    osUsernameController: TextEditingController(),
-    osPasswordController: TextEditingController(),
-    osAccountDescTip: osAccountDescTip,
-    canRememberAccount: canRememberAccount,
-  );
-}
-
-void enterUserLoginAndPasswordDialog(
-    SessionID sessionId,
-    OverlayDialogManager dialogManager,
-    String osAccountDescTip,
-    bool canRememberAccount) async {
-  await _connectDialog(
-    sessionId,
-    dialogManager,
-    osUsernameController: TextEditingController(),
-    osPasswordController: TextEditingController(),
-    passwordController: TextEditingController(),
-    osAccountDescTip: osAccountDescTip,
-    canRememberAccount: canRememberAccount,
-  );
-}
-
+// R-S18/R-X8: the connect-time password dialog (rd-password only). The os-username/os-password
+// fields it used to carry — the operator's OS credentials pushed to the host — are removed: the
+// viewer never solicits OS creds (the host-triggered os-login prompts are gone, the responder
+// strips os_login, and create_login_msg no longer sends it).
 _connectDialog(
   SessionID sessionId,
   OverlayDialogManager dialogManager, {
-  TextEditingController? osUsernameController,
-  TextEditingController? osPasswordController,
-  TextEditingController? passwordController,
-  String? osAccountDescTip,
-  bool canRememberAccount = true,
+  required TextEditingController passwordController,
   bool preKeying = false,
 }) async {
-  final errUsername = ''.obs;
-  var rememberPassword = false;
-  if (passwordController != null) {
-    rememberPassword =
-        await bind.sessionGetRemember(sessionId: sessionId) ?? false;
-  }
-  var rememberAccount = false;
-  if (canRememberAccount && osUsernameController != null) {
-    rememberAccount =
-        await bind.sessionGetRemember(sessionId: sessionId) ?? false;
-  }
-  if (osUsernameController != null) {
-    osUsernameController.addListener(() {
-      if (errUsername.value.isNotEmpty) {
-        errUsername.value = '';
-      }
-    });
-  }
+  var rememberPassword =
+      await bind.sessionGetRemember(sessionId: sessionId) ?? false;
 
   dialogManager.dismissAll();
   dialogManager.show((setState, close, context) {
@@ -963,23 +916,8 @@ _connectDialog(
     }
 
     submit() {
-      if (osUsernameController != null) {
-        if (osUsernameController.text.trim().isEmpty) {
-          errUsername.value = translate('Empty Username');
-          setState(() {});
-          return;
-        }
-      }
-      final osUsername = osUsernameController?.text.trim() ?? '';
-      final osPassword = osPasswordController?.text.trim() ?? '';
-      final password = passwordController?.text.trim() ?? '';
-      if (passwordController != null && password.isEmpty) return;
-      if (rememberAccount) {
-        bind.sessionPeerOption(
-            sessionId: sessionId, name: 'os-username', value: osUsername);
-        bind.sessionPeerOption(
-            sessionId: sessionId, name: 'os-password', value: osPassword);
-      }
+      final password = passwordController.text.trim();
+      if (password.isEmpty) return;
       if (preKeying) {
         // R-S13/A3: store the connect-time password + reconnect so the CPace handshake keys
         // with it (no keyed connection exists yet, so we cannot `login`).
@@ -990,13 +928,7 @@ _connectDialog(
             onCancel: closeConnection);
         return;
       }
-      gFFI.login(
-        osUsername,
-        osPassword,
-        sessionId,
-        password,
-        rememberPassword,
-      );
+      gFFI.login(sessionId, password, rememberPassword);
       close();
       dialogManager.showLoading(translate('Logging in...'),
           onCancel: closeConnection);
@@ -1037,59 +969,13 @@ _connectDialog(
       );
     }
 
-    osAccountWidget() {
-      if (osUsernameController == null || osPasswordController == null) {
-        return Offstage();
-      }
-      return Column(
-        children: [
-          if (osAccountDescTip != null) descWidget(translate(osAccountDescTip)),
-          DialogTextField(
-            title: translate(DialogTextField.kUsernameTitle),
-            controller: osUsernameController,
-            prefixIcon: DialogTextField.kUsernameIcon,
-            errorText: null,
-          ),
-          if (errUsername.value.isNotEmpty)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SelectableText(
-                errUsername.value,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.error,
-                  fontSize: 12,
-                ),
-                textAlign: TextAlign.left,
-              ).paddingOnly(left: 12, bottom: 2),
-            ),
-          PasswordWidget(
-            controller: osPasswordController,
-            autoFocus: false,
-          ),
-          if (canRememberAccount)
-            rememberWidget(
-              translate('remember_account_tip'),
-              rememberAccount,
-              (v) {
-                if (v != null) {
-                  setState(() => rememberAccount = v);
-                }
-              },
-            ),
-        ],
-      );
-    }
-
     passwdWidget() {
-      if (passwordController == null) {
-        return Offstage();
-      }
       return Column(
         children: [
           descWidget(translate('verify_rustdesk_password_tip')),
           PasswordWidget(
             controller: passwordController,
-            autoFocus: osUsernameController == null,
+            autoFocus: true,
           ),
           rememberWidget(
             translate('Remember password'),
@@ -1113,10 +999,6 @@ _connectDialog(
         ],
       ),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        osAccountWidget(),
-        osUsernameController == null || passwordController == null
-            ? Offstage()
-            : Container(height: 12),
         passwdWidget(),
       ]),
       actions: [

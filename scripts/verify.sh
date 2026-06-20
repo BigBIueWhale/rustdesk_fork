@@ -68,6 +68,13 @@ ra6_clean 'DEBUG_BOOT_COMPLETED'                                          'R-X6 
 ra6_clean 'RUSTDESK_FORCED_DISPLAY_SERVER'                                'R-X12 display-server knob' || rc=1
 ra6_clean 'gtk_sudo|run_cmds_privileged|"-gtk-sudo"'                      'R-X11 gtk_sudo elevation'  || rc=1
 ra6_clean 'start_uinput_service'                                         'R-X13 dormant uinput listener' || rc=1
+# R-X7 / §18: the responder 2FA machinery (the `require_2fa` field + the Auth2fa gate/handler +
+# the trusted-device bypass + the raii session-2FA state) is excised from connection.rs — 2FA
+# was pinned-off-dead (`2fa`="" so require_2fa was always None ⇒ every branch was unreachable).
+# The viewer-side `send2fa` sender + the `Auth2FA` proto field + auth_2fa.rs defer with the
+# Sciter sweep (R-B6, since ui.rs/remote.rs still call them), so this gate is scoped to the
+# now-absent responder tokens.
+ra6_clean 'require_2fa|set_session_2fa'                                   'R-X7 responder 2FA machinery' || rc=1
 # R-S16(d)(ii): the runtime SwitchPermission widener (the conn-side handler that
 # re-assigned conn.keyboard/clipboard/audio/... bypassing the pinned policy) is
 # removed. The qualified `ipc::Data::SwitchPermission` token was unique to that

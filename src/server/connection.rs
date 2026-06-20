@@ -33,7 +33,7 @@ use hbb_common::{
     config::{
         self, decode_permanent_password_h1_from_storage, decode_preset_password_h1_from_storage,
         keys, local_permanent_password_storage_is_usable_for_auth,
-        preset_permanent_password_storage_is_usable_for_auth, Config, TrustedDevice,
+        preset_permanent_password_storage_is_usable_for_auth, Config,
     },
     fs::{self, can_enable_overwrite_detection, JobType},
     futures::{SinkExt, StreamExt},
@@ -177,7 +177,6 @@ pub struct SessionKey {
 struct Session {
     last_recv_time: Arc<Mutex<Instant>>,
     random_password: String,
-    tfa: bool,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -231,7 +230,6 @@ pub struct Connection {
     port_forward_address: String,
     tx_to_cm: mpsc::UnboundedSender<ipc::Data>,
     authorized: bool,
-    require_2fa: Option<totp_rs::TOTP>,
     keyboard: bool,
     clipboard: bool,
     audio: bool,
@@ -408,7 +406,6 @@ impl Connection {
                 tx: Some(tx),
                 tx_video: Some(tx_video),
             },
-            require_2fa: crate::auth_2fa::get_2fa(None),
             display_idx: *display_service::PRIMARY_DISPLAY_IDX,
             stream,
             server,
@@ -576,7 +573,6 @@ impl Connection {
                 Some(data) = rx_from_cm.recv() => {
                     match data {
                         ipc::Data::Authorize => {
-                            conn.require_2fa.take();
                             if !conn.send_logon_response_and_keep_alive().await {
                                 break;
                             }
@@ -1295,26 +1291,19 @@ impl Connection {
     }
 
     // Returns whether this connection should be kept alive.
-    // `true` does not necessarily mean authorization succeeded (e.g. REQUIRE_2FA case).
+    // `true` does not necessarily mean authorization succeeded (a pending terminal /
+    // port-forward login can keep the stream alive while still unauthorized).
     async fn send_logon_response_and_keep_alive(&mut self) -> bool {
         if self.authorized {
             return true;
         }
-        if self.require_2fa.is_some() && !self.is_recent_session(true) && !self.from_switch {
-            // R-SV7 / §18: the Telegram 2FA push is excised. Upstream POSTed a
-            // hardcoded https://api.telegram.org/bot.../sendMessage here that leaked
-            // this box's own id (Config::get_id()) AND the peer's source IP — fired
-            // from the pre-`authorized` 2FA gate, an egress the R-D6 api-server pin
-            // never covered (it keys on `bot`/`2fa`, not `api-server`). The push, the
-            // leaking message text, and send_2fa_code_to_telegram are removed from the
-            // tree so `api.telegram.org` is structurally absent (R-SV1 compile-out,
-            // not a config-pin); TOTP-app delivery (were 2fa ever built) is unaffected.
-            // On the shipped build `2fa` is pinned empty (R-D6) so require_2fa is
-            // always None and this whole branch is unreachable regardless.
-            self.send_login_error(crate::client::REQUIRE_2FA).await;
-            // Keep the connection alive so the client can continue with 2FA.
-            return true;
-        }
+        // R-X7 / §18: the responder 2FA gate is removed. 2FA was pinned-off-dead
+        // (`2fa` ∈ PINNED_SETTINGS = "" ⇒ `require_2fa` always None ⇒ this branch never
+        // executed), so the whole responder 2FA machinery — the `require_2fa` field, the
+        // `Auth2fa` message handler, the trusted-device bypass, and the raii session-2FA
+        // state — is excised here. (The earlier Telegram-push leak that lived in this gate
+        // was already removed in R-SV7; the viewer-side `send2fa` sender + the `Auth2FA`
+        // proto field defer with the Sciter sweep, R-B6, since `ui.rs`/`remote.rs` call them.)
         if let Some(keep_alive) = self.prepare_terminal_login_for_authorization().await {
             return keep_alive;
         }
@@ -1784,9 +1773,6 @@ impl Connection {
         let mut msg_out = Message::new();
         let mut res = LoginResponse::new();
         res.set_error(err.to_string());
-        if err.to_string() == crate::client::REQUIRE_2FA {
-            res.enable_trusted_devices = Self::enable_trusted_devices();
-        }
         msg_out.set_login_response(res);
         self.send(msg_out).await;
     }
@@ -1955,7 +1941,6 @@ impl Connection {
                 raii::AuthedConnID::update_or_insert_session(
                     self.session_key(),
                     Some(password),
-                    Some(false),
                 );
                 self.check_update_temporary_password(true);
                 return true;
@@ -2049,32 +2034,11 @@ impl Connection {
         }
     }
 
-    #[inline]
-    fn enable_trusted_devices() -> bool {
-        config::option2bool(
-            keys::OPTION_ENABLE_TRUSTED_DEVICES,
-            &Config::get_option(keys::OPTION_ENABLE_TRUSTED_DEVICES),
-        )
-    }
-
     async fn handle_login_request_without_validation(&mut self, lr: &LoginRequest) {
         self.lr = lr.clone();
         self.peer_argb = crate::str2color(&format!("{}{}", &lr.my_id, &lr.my_platform), 0xff);
         if let Some(o) = lr.option.as_ref() {
             self.options_in_login = Some(o.clone());
-        }
-        if self.require_2fa.is_some() && !lr.hwid.is_empty() && Self::enable_trusted_devices() {
-            let devices = Config::get_trusted_devices();
-            if let Some(device) = devices.iter().find(|d| d.hwid == lr.hwid) {
-                if !device.outdate()
-                    && device.id == lr.my_id
-                    && device.name == lr.my_name
-                    && device.platform == lr.my_platform
-                {
-                    log::info!("2FA bypassed by trusted devices");
-                    self.require_2fa = None;
-                }
-            }
         }
         self.video_ack_required = lr.video_ack_required;
     }
@@ -2381,41 +2345,6 @@ impl Connection {
                         self.try_start_cm(lr.my_id, lr.my_name, self.authorized);
                     } else {
                         self.send_login_error(err_msg).await;
-                    }
-                }
-            }
-        } else if let Some(message::Union::Auth2fa(tfa)) = msg.union {
-            let (failure, res) = self.check_failure(1).await;
-            if !res {
-                return true;
-            }
-            if let Some(totp) = self.require_2fa.as_ref() {
-                if let Ok(res) = totp.check_current(&tfa.code) {
-                    if res {
-                        self.update_failure(failure, true, 1);
-                        self.require_2fa.take();
-                        raii::AuthedConnID::set_session_2fa(self.session_key());
-                        if !self.send_logon_response_and_keep_alive().await {
-                            return false;
-                        }
-                        self.try_start_cm(
-                            self.lr.my_id.to_owned(),
-                            self.lr.my_name.to_owned(),
-                            self.authorized,
-                        );
-                        if !tfa.hwid.is_empty() && Self::enable_trusted_devices() {
-                            Config::add_trusted_device(TrustedDevice {
-                                hwid: tfa.hwid,
-                                time: hbb_common::get_time(),
-                                id: self.lr.my_id.clone(),
-                                name: self.lr.my_name.clone(),
-                                platform: self.lr.my_platform.clone(),
-                            });
-                        }
-                    } else {
-                        self.update_failure(failure, false, 1);
-                        self.send_login_error(crate::client::LOGIN_MSG_2FA_WRONG)
-                            .await;
                     }
                 }
             }
@@ -5763,7 +5692,6 @@ mod raii {
         pub fn update_or_insert_session(
             key: SessionKey,
             password: Option<String>,
-            tfa: Option<bool>,
         ) {
             let mut lock = SESSIONS.lock().unwrap();
             let session = lock.get_mut(&key);
@@ -5771,33 +5699,12 @@ mod raii {
                 if let Some(password) = password {
                     session.random_password = password;
                 }
-                if let Some(tfa) = tfa {
-                    session.tfa = tfa;
-                }
             } else {
                 lock.insert(
                     key,
                     Session {
                         random_password: password.unwrap_or_default(),
-                        tfa: tfa.unwrap_or_default(),
                         last_recv_time: Arc::new(Mutex::new(Instant::now())),
-                    },
-                );
-            }
-        }
-
-        pub fn set_session_2fa(key: SessionKey) {
-            let mut lock = SESSIONS.lock().unwrap();
-            let session = lock.get_mut(&key);
-            if let Some(session) = session {
-                session.tfa = true;
-            } else {
-                lock.insert(
-                    key,
-                    Session {
-                        last_recv_time: Arc::new(Mutex::new(Instant::now())),
-                        random_password: "".to_owned(),
-                        tfa: true,
                     },
                 );
             }

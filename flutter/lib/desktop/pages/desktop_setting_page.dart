@@ -25,7 +25,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../common/widgets/dialog.dart';
-import '../../common/widgets/login.dart';
 
 const double _kTabWidth = 200;
 const double _kTabHeight = 42;
@@ -555,10 +554,6 @@ class _GeneralState extends State<_General> {
         kOptionAllowAskForNoteAtEndOfConnection,
         isServer: false,
         optSetter: (key, value) async {
-          if (value && !gFFI.userModel.isLogin) {
-            final res = await loginDialog();
-            if (res != true) return;
-          }
           await mainSetLocalBoolOption(key, value);
         },
       ));

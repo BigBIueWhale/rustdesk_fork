@@ -10,18 +10,16 @@ use bytes::Bytes;
 pub use connection::*;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::config::Config2;
-use hbb_common::tcp::{self, new_listener};
 use hbb_common::{
     allow_err,
     anyhow::Context,
     bail,
-    config::{Config, CONNECT_TIMEOUT},
+    config::Config,
     log,
     message_proto::*,
     protobuf::{Enum, Message as _},
     rendezvous_proto::*,
-    socket_client,
-    timeout, tokio, ResultType, Stream,
+    tokio, ResultType, Stream,
 };
 use scrap::camera;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -158,34 +156,6 @@ pub fn new() -> ServerPtr {
     Arc::new(RwLock::new(server))
 }
 
-async fn accept_connection_(
-    server: ServerPtr,
-    socket: Stream,
-    secure: bool,
-    control_permissions: Option<ControlPermissions>,
-) -> ResultType<()> {
-    let local_addr = socket.local_addr();
-    drop(socket);
-    // even we drop socket, below still may fail if not use reuse_addr,
-    // there is TIME_WAIT before socket really released, so sometimes we
-    // see "Only one usage of each socket address is normally permitted" on windows sometimes,
-    let listener = new_listener(local_addr, true).await?;
-    log::info!("Server listening on: {}", &listener.local_addr()?);
-    if let Ok((stream, addr)) = timeout(CONNECT_TIMEOUT, listener.accept()).await? {
-        stream.set_nodelay(true).ok();
-        let stream_addr = stream.local_addr()?;
-        create_tcp_connection(
-            server,
-            Stream::from(stream, stream_addr),
-            addr,
-            secure,
-            control_permissions,
-        )
-        .await?;
-    }
-    Ok(())
-}
-
 pub async fn create_tcp_connection(
     server: ServerPtr,
     stream: Stream,
@@ -286,18 +256,6 @@ pub async fn create_tcp_connection(
     )
     .await;
     Ok(())
-}
-
-pub async fn accept_connection(
-    server: ServerPtr,
-    socket: Stream,
-    peer_addr: SocketAddr,
-    secure: bool,
-    control_permissions: Option<ControlPermissions>,
-) {
-    if let Err(err) = accept_connection_(server, socket, secure, control_permissions).await {
-        log::warn!("Failed to accept connection from {}: {}", peer_addr, err);
-    }
 }
 
 impl Server {

@@ -110,6 +110,13 @@ dg_clean 'SettingsTabKey\.network|changeSocks5Proxy|void showServerSettings\(' '
 # loginDialog/UserModel/toolbar+mobile account entry points are the rest of the account sweep. No
 # desktop Account tab may reappear.
 dg_clean 'SettingsTabKey\.account' 'R-G4 desktop Account settings tab'
+# R-X2 / R-G4 / §19: the desktop "Plugin" settings tab is deleted — the native-plugin loader is
+# excised (R-X2: mod plugin / plugin_framework absent) and plugin_feature_is_enabled() is pinned
+# SyncReturn(false), so the tab was always hidden + dead. Removed the _Plugin/_PluginState classes
+# (incl. the "login to use plugins" loginDialog button) + the SettingsTabKey.plugin enum value +
+# its tabKeys include + both switch cases. (The plugin_feature_is_enabled FFI stub stays — a
+# flutter-verify trim follow-on.) No desktop Plugin tab may reappear.
+dg_clean 'SettingsTabKey\.plugin|class _Plugin\b' 'R-X2/R-G4 dead Plugin settings tab'
 # R-G / R-D / §18 (dial nobody): the peer-list ONLINE-STATUS query trigger is removed — a
 # direct-IP fork has no rendezvous server to ask which peers are online, and the backend query is
 # a no-egress stub (cebfdf2). The `bind.queryOnlines` calls are gone (peers_view) and the online

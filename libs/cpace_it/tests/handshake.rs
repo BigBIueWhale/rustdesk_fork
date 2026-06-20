@@ -245,3 +245,47 @@ async fn r_s17_host_proof_binds_pk_to_the_session() {
     // Negative — garbage fails closed rather than panicking.
     assert!(verify_host_identity(&ti, b"not a HostIdentity frame").is_err());
 }
+
+/// R-S17 WIRE PATH: the responder emits its HostIdentity host-proof as the FIRST
+/// frame AFTER keying, so it travels ENCRYPTED under the session key; the viewer
+/// reads it with the same key and verifies. This exercises the exact transit
+/// `Client::key_initiator` (client.rs) and the responder choke point (server.rs)
+/// use — `set_session_keys` then `send_raw` on the box, `next` on the viewer —
+/// proving `send_raw`/`next` round-trip the frame encrypted end-to-end, not just
+/// the in-memory build/verify of the test above. A keyed viewer that could not
+/// decrypt the box's proof would fail closed on EVERY legit connect (a silent
+/// correctness break that the in-memory test cannot catch).
+#[tokio::test]
+async fn r_s17_host_proof_travels_encrypted_over_the_keyed_channel() {
+    use hbb_common::cpace::{
+        build_host_identity, run_initiator_with_transcript, run_responder_with_transcript,
+        verify_host_identity,
+    };
+    let (mut si, mut sr) = loopback_pair().await;
+    let pw = "wire-path-pw";
+    let (ri, rr) = tokio::join!(
+        run_initiator_with_transcript(&mut si, pw),
+        run_responder_with_transcript(&mut sr, pw)
+    );
+    let (ki, ti) = ri.expect("initiator keys+transcript");
+    let (kr, tr) = rr.expect("responder keys+transcript");
+
+    // Engage the session keys on BOTH ends, exactly as the choke points do.
+    si.set_session_keys(ki);
+    sr.set_session_keys(kr);
+
+    // The box signs with its Ed25519 keypair and sends the proof as the first
+    // post-key frame (encrypted by the session key via send_raw).
+    let (pk, sk) = hbb_common::sodiumoxide::crypto::sign::gen_keypair();
+    let frame = build_host_identity(&tr, &pk.0, &sk.0).expect("build host-proof");
+    sr.send_raw(frame).await.expect("responder sends host-proof");
+
+    // The viewer reads + DECRYPTS it with the same key and recovers pk for its pin.
+    let bytes = si
+        .next()
+        .await
+        .expect("a frame arrives")
+        .expect("it decrypts cleanly under the session key");
+    let recovered = verify_host_identity(&ti, &bytes).expect("verify host-proof");
+    assert_eq!(recovered, pk.0.to_vec());
+}

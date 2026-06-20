@@ -3921,6 +3921,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "host_pin_it"
+version = "0.1.0"
+dependencies = [
+ "hbb_common",
+]
+
+[[package]]
 name = "hound"
 version = "3.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

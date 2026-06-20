@@ -1,0 +1,12 @@
+[package]
+name = "host_pin_it"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "KAT for the R-S17 host-key pin store (hbb_common::host_pin). Depends on hbb_common's library only (no dev-deps ⇒ no webrtc/sdp), so it builds + runs on the pinned 1.75 toolchain. Asserts the store keys on the SAME normalize_address as the R-SV5 peer list (a normalization mismatch is a substitution blind spot, R-A6) and that pins round-trip / re-pin / forget."
+
+[lib]
+path = "src/lib.rs"
+
+[dev-dependencies]
+hbb_common = { path = "../hbb_common" }

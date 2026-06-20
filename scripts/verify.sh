@@ -40,7 +40,7 @@ docker volume create rd-verify-target >/dev/null
 docker build -q -t "$IMG" -f scripts/Dockerfile.devcheck scripts >/dev/null
 
 echo "== (1-3) KAT + handshake + policy funnel + R-A4 surface + R-S7 frame/decompress (pinned 1.75) =="
-"${RUN[@]}" cargo test -p pake -p cpace_it -p config_it -p surface_it -p compress_it -p address_it --color never
+"${RUN[@]}" cargo test -p pake -p cpace_it -p config_it -p surface_it -p compress_it -p address_it -p host_pin_it --color never
 
 echo "== (4) main crate compile check (hardening is UNCONDITIONAL — one binary, R-R2b) =="
 "${RUN[@]}" cargo check --features linux-pkg-config --color never

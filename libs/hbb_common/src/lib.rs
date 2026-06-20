@@ -18,6 +18,7 @@ use std::{
 pub use tokio;
 pub use tokio_util;
 pub mod address;
+pub mod host_pin;
 pub mod cpace;
 pub mod proxy;
 pub mod socket_client;

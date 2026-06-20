@@ -1032,31 +1032,12 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
                 : null,
           ).marginOnly(left: _kContentHSubMargin - 5);
 
-          final modeKeys = <String>[
-            'password',
-            'click',
-            defaultOptionApproveMode
-          ];
-          final modeValues = [
-            translate('Accept sessions via password'),
-            translate('Accept sessions via click'),
-            translate('Accept sessions via both'),
-          ];
-          var modeInitialKey = model.approveMode;
-          if (!modeKeys.contains(modeInitialKey)) {
-            modeInitialKey = defaultOptionApproveMode;
-          }
+          // R-G4/R-S9: approve-mode is pinned "password" (PINNED_SETTINGS), so the
+          // accept-via-password/click/both selector is dead — removed. usePassword stays
+          // true (the pinned value drives the password UI below).
           final usePassword = model.approveMode != 'click';
 
-          final isApproveModeFixed = isOptionFixed(kOptionApproveMode);
           return _Card(title: 'Password', children: [
-            ComboBox(
-              enabled: !locked && !isApproveModeFixed,
-              keys: modeKeys,
-              values: modeValues,
-              initialKey: modeInitialKey,
-              onChanged: (key) => model.setApproveMode(key),
-            ).marginOnly(left: _kContentHMargin),
             if (usePassword) radios[0],
             if (usePassword)
               _SubLabeledWidget(

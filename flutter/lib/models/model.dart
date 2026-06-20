@@ -906,8 +906,7 @@ class FfiModel with ChangeNotifier {
 
     if (type == 're-input-password') {
       wrongPasswordDialog(sessionId, dialogManager, type, title, text);
-    } else if (type == 'input-2fa') {
-      enter2FaDialog(sessionId, dialogManager);
+      // R-X7 / §18: the 'input-2fa' branch is removed — 2FA is excised (pinned-off-dead).
     } else if (type == 'input-password') {
       enterPasswordDialog(sessionId, dialogManager);
     } else if (type == 'connect-password-prompt') {
@@ -3909,10 +3908,7 @@ class FFI {
         remember: remember);
   }
 
-  void send2FA(SessionID sessionId, String code, bool trustThisDevice) {
-    bind.sessionSend2Fa(
-        sessionId: sessionId, code: code, trustThisDevice: trustThisDevice);
-  }
+  // R-X7 / §18: send2FA (the connection 2FA-code sender) is removed — 2FA is excised.
 
   /// Close the remote session.
   Future<void> close({bool closeSession = true}) async {

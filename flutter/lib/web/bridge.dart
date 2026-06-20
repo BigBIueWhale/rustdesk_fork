@@ -159,17 +159,6 @@ class RustdeskImpl {
         ]));
   }
 
-  Future<void> sessionSend2Fa(
-      {required UuidValue sessionId,
-      required String code,
-      required bool trustThisDevice,
-      dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
-          'send_2fa',
-          jsonEncode({'code': code, 'trust_this_device': trustThisDevice})
-        ]));
-  }
-
   Future<void> sessionClose({required UuidValue sessionId, dynamic hint}) {
     return Future(() => js.context.callMethod('setByName', ['session_close']));
   }
@@ -793,18 +782,6 @@ class RustdeskImpl {
       {required String server, required bool testWithProxy, dynamic hint}) {
     // TODO: implement
     return Future.value('');
-  }
-
-  Future<void> mainSetSocks(
-      {required String proxy,
-      required String username,
-      required String password,
-      dynamic hint}) {
-    throw UnimplementedError("mainSetSocks");
-  }
-
-  Future<List<String>> mainGetSocks({dynamic hint}) {
-    throw UnimplementedError("mainGetSocks");
   }
 
   Future<String> mainGetAppName({dynamic hint}) {
@@ -1697,10 +1674,6 @@ class RustdeskImpl {
 
   bool pluginIsEnabled({required String id, dynamic hint}) {
     throw UnimplementedError("pluginIsEnabled");
-  }
-
-  bool pluginFeatureIsEnabled({dynamic hint}) {
-    throw UnimplementedError("pluginFeatureIsEnabled");
   }
 
   Future<void> pluginSyncUi({required String syncTo, dynamic hint}) {

@@ -249,12 +249,6 @@ pub fn session_login(
     }
 }
 
-pub fn session_send2fa(session_id: SessionID, code: String, trust_this_device: bool) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.send2fa(code, trust_this_device);
-    }
-}
-
 pub fn will_session_close_close_session(session_id: SessionID) -> SyncReturn<bool> {
     SyncReturn(sessions::would_remove_peer_by_session_id(&session_id))
 }
@@ -1091,16 +1085,8 @@ pub fn main_test_if_valid_server(server: String, test_with_proxy: bool) -> Strin
     test_if_valid_server(server, test_with_proxy)
 }
 
-pub fn main_set_socks(proxy: String, username: String, password: String) {
-    set_socks(proxy, username, password)
-}
-
 pub fn main_get_proxy_status() -> bool {
     get_proxy_status()
-}
-
-pub fn main_get_socks() -> Vec<String> {
-    get_socks()
 }
 
 pub fn main_get_app_name() -> String {
@@ -2568,10 +2554,6 @@ pub fn plugin_enable(_id: String, _v: bool) -> SyncReturn<()> {
 }
 
 pub fn plugin_is_enabled(_id: String) -> SyncReturn<bool> {
-    SyncReturn(false)
-}
-
-pub fn plugin_feature_is_enabled() -> SyncReturn<bool> {
     SyncReturn(false)
 }
 

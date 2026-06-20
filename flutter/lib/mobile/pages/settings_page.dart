@@ -74,7 +74,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   var _floatingWindowDisabled = false;
   var _keepScreenOn = KeepScreenOn.duringControlled; // relay on floating window
   var _enableAbr = false;
-  var _denyLANDiscovery = false;
   var _onlyWhiteList = false;
   var _enableDirectIPAccess = false;
   var _enableRecordSession = false;
@@ -100,8 +99,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   _SettingsState() {
     _enableAbr = option2bool(
         kOptionEnableAbr, bind.mainGetOptionSync(key: kOptionEnableAbr));
-    _denyLANDiscovery = !option2bool(kOptionEnableLanDiscovery,
-        bind.mainGetOptionSync(key: kOptionEnableLanDiscovery));
     _onlyWhiteList = whitelistNotEmpty();
     _enableDirectIPAccess = option2bool(
         kOptionDirectServer, bind.mainGetOptionSync(key: kOptionDirectServer));
@@ -273,22 +270,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
     ));
     final List<AbstractSettingsTile> enhancementsTiles = [];
     final List<AbstractSettingsTile> shareScreenTiles = [
-      SettingsTile.switchTile(
-        title: Text(translate('Deny LAN discovery')),
-        initialValue: _denyLANDiscovery,
-        onToggle: isOptionFixed(kOptionEnableLanDiscovery)
-            ? null
-            : (v) async {
-                await bind.mainSetOption(
-                    key: kOptionEnableLanDiscovery,
-                    value: bool2option(kOptionEnableLanDiscovery, !v));
-                final newValue = !option2bool(kOptionEnableLanDiscovery,
-                    await bind.mainGetOption(key: kOptionEnableLanDiscovery));
-                setState(() {
-                  _denyLANDiscovery = newValue;
-                });
-              },
-      ),
       SettingsTile.switchTile(
         title: Row(children: [
           Expanded(child: Text(translate('Use IP Whitelisting'))),

@@ -482,7 +482,6 @@ class _GeneralState extends State<_General> {
   }
 
   Widget other() {
-    final showAutoUpdate = isWindows && bind.mainIsInstalled();
     final children = <Widget>[
       if (!isWeb && !bind.isIncomingOnly())
         _OptionCheckBox(context, 'Confirm before closing multiple tabs',
@@ -539,20 +538,9 @@ class _GeneralState extends State<_General> {
               isServer: false,
             ),
           ),
-        if (!isWeb && !bind.isCustomClient())
-          _OptionCheckBox(
-            context,
-            'Check for software update on startup',
-            kOptionEnableCheckUpdate,
-            isServer: false,
-          ),
-        if (showAutoUpdate)
-          _OptionCheckBox(
-            context,
-            'Auto update',
-            kOptionAllowAutoUpdate,
-            isServer: true,
-          ),
+        // R-G4 / R-SV3 / §18: the "Check for software update on startup" and "Auto update"
+        // toggles are removed — the version-check + fetch-and-run updater are excised
+        // (R-X1), so there is nothing to enable (sovereign: dial nobody).
         if (isWindows && !bind.isOutgoingOnly())
           _OptionCheckBox(
             context,

@@ -136,7 +136,8 @@ Future<void> initEnv(String appType) async {
 void runMainApp(bool startService) async {
   // register uni links
   await initEnv(kAppTypeMain);
-  checkUpdate();
+  // R-G4 / R-SV3 / §18: no startup version-check — the updater + version fetch are excised
+  // (sovereign: dial nobody). (Was checkUpdate().)
   // trigger connection status updater
   await bind.mainCheckConnectStatus();
   if (startService) {
@@ -180,7 +181,7 @@ void runMainApp(bool startService) async {
 
 void runMobileApp() async {
   await initEnv(kAppTypeMain);
-  checkUpdate();
+  // R-G4 / R-SV3 / §18: no startup version-check (updater excised). (Was checkUpdate().)
   if (isAndroid) androidChannelInit();
   if (isAndroid) platformFFI.syncAndroidServiceAppDirConfigPath();
   draggablePositions.load();

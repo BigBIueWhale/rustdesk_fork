@@ -80,5 +80,13 @@ dg_clean 'insecure\.svg|secure_relay\.svg|insecure_relay\.svg' 'R-G3 insecure/re
 # R-G4 / R-SV3 / §18: the startup version-check FFI trigger is gone — the app makes no
 # api.rustdesk.com/version call at launch (the updater + version-check are excised).
 dg_clean 'bind\.mainGetSoftwareUpdateUrl' 'R-G4/R-SV3 startup version-check FFI trigger'
+# R-G4 / §18: the dead update GUI is removed — the desktop update card, the mobile
+# _buildUpdateUI banner, and the UpdateProgress downloader widget (the file that issued the
+# `download-new-version` / `update-me` FFI egress). None may reappear.
+dg_clean '_buildUpdateUI|UpdateProgress|handleUpdate' 'R-G4 dead update widgets'
+# R-G4 / R-SV3 / §18: the check-update / auto-update settings toggles are removed (the
+# version-check + updater are excised, so the option keys back nothing).
+dg_clean 'enable-check-update|allow-auto-update' 'R-G4/R-SV3 update-toggle option keys'
+dg_clean 'Download new version|Check for software update on startup' 'R-G4 update-UI strings'
 
 echo "DART-VERIFY: flutter analyze lib/ is GREEN (zero errors) + §19 Dart-layer greps clean"

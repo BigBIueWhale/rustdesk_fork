@@ -156,8 +156,9 @@ const String kOptionPeerCardUiType = "peer-card-ui-type";
 const String kOptionCurrentAbName = "current-ab-name";
 const String kOptionEnableConfirmClosingTabs = "enable-confirm-closing-tabs";
 const String kOptionAllowAlwaysSoftwareRender = "allow-always-software-render";
-const String kOptionEnableCheckUpdate = "enable-check-update";
-const String kOptionAllowAutoUpdate = "allow-auto-update";
+// R-G4 / R-SV3 / §18: kOptionEnableCheckUpdate ("enable-check-update") and
+// kOptionAllowAutoUpdate ("allow-auto-update") are removed — the version-check + updater
+// are excised, so no GUI toggle references them (dial nobody).
 const String kOptionAllowLinuxHeadless = "allow-linux-headless";
 const String kOptionAllowRemoveWallpaper = "allow-remove-wallpaper";
 const String kOptionStopService = "stop-service";

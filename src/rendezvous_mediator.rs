@@ -929,6 +929,52 @@ fn assert_socket_surface(port: u16) {
     }
 }
 
+/// R-D4 / §17 / §18: the direct-only service entry — the minimal KEEP path lifted out of
+/// the inherited `start_all` (which is now bypassed; its register/STUN/KCP/LAN protocol
+/// is dead pending the Stage-2 cfg-gating that makes R-SV10's symbol-greps sound).
+///
+/// The fork ships NO rendezvous mediator: no registration loop / `register_pk` /
+/// heartbeat, no STUN/NAT probe, no LAN discovery, no `hbbs_http::sync` sysinfo POST
+/// (R-SV6(b)), no `test_rendezvous_server` probe. The box is reachable ONLY by a
+/// deliberate, PAKE-gated direct connection on the one v4 TCP port (R-F4 21118 / R-D5
+/// v4-only), so this entry just stands up the genuinely-shared startup and the listener:
+///   - `assert_startup_invariants()` — the R-A4 policy/pin self-check (refuse to listen);
+///   - the zombie reaper + the `Server`;
+///   - `spawn(direct_server)` — binds the listener and runs `assert_socket_surface()`
+///     post-listen (R-A4 live surface: exactly 1×TCP v4, 0×UDP);
+///   - on Linux, the seat0/greeter capture-session discovery R-S14/R-X14 needs.
+///
+/// `test_av1` is deliberately NOT carried over: it is an `AomEncoder` benchmark (not the
+/// decoder the R-D4 prose states) that the per-session encode path instantiates on
+/// demand anyway, so the headless service entry stands up no codec at startup. The AV1
+/// gate then resolves useable-without-benchmark — acceptable on the §17 desktop (VP9
+/// fallback + PreferCodec remain).
+pub async fn start_direct_only() {
+    assert_startup_invariants();
+    if config::is_outgoing_only() {
+        // A viewer-only box binds no inbound listener (R-SV5); park the service future.
+        loop {
+            sleep(1.).await;
+        }
+    }
+    check_zombie();
+    let server = new_server();
+    let server_cloned = server.clone();
+    tokio::spawn(async move {
+        direct_server(server_cloned).await;
+    });
+    // It is ok to run xdesktop manager when the headless function is not allowed.
+    #[cfg(target_os = "linux")]
+    if crate::is_server() {
+        crate::platform::linux_desktop_manager::start_xdesktop();
+    }
+    // The direct listener runs in its spawned task; there is no registration loop to
+    // re-enter, so just keep the service future alive without busy-work.
+    loop {
+        sleep(3600.).await;
+    }
+}
+
 async fn direct_server(server: ServerPtr) {
     let mut listener = None;
     let mut port = 0;

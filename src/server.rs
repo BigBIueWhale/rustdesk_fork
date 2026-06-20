@@ -578,7 +578,9 @@ pub fn check_zombie() {
 #[cfg(any(target_os = "android", target_os = "ios"))]
 #[tokio::main]
 pub async fn start_server(_is_server: bool) {
-    crate::RendezvousMediator::start_all().await;
+    // R-D4 / R-D7: direct-only on every target (the Android JNI service entry too) — no
+    // rendezvous mediator. The inherited start_all is bypassed for start_direct_only.
+    crate::rendezvous_mediator::start_direct_only().await;
 }
 
 /// Start the host server that allows the remote peer to control the current machine.
@@ -627,7 +629,9 @@ pub async fn start_server(is_server: bool, no_server: bool) {
         crate::platform::try_kill_broker();
         #[cfg(feature = "hwcodec")]
         scrap::hwcodec::start_check_process();
-        crate::RendezvousMediator::start_all().await;
+        // R-D4 / §17: direct-only service entry — no rendezvous mediator (the inherited
+        // start_all and its register/STUN/KCP/LAN protocol are bypassed, removal pending).
+        crate::rendezvous_mediator::start_direct_only().await;
     } else {
         match crate::ipc::connect(1000, "").await {
             Ok(mut conn) => {

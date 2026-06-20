@@ -94,13 +94,15 @@ dg_clean 'Download new version|Check for software update on startup' 'R-G4 updat
 # has no account server to enumerate providers (mainGetApiServer is pinned empty), so the section
 # was always dead (empty loginOptions ⇒ Offstage). None may reappear.
 dg_clean 'LoginWidgetOP|kOpSvgList|kAuthReqTypeOidc|queryOidcLoginOptions' 'R-G4 OIDC SSO provider-login widgets'
-# R-G4 / §19: the desktop "Network" settings tab is deleted — the _Network/_NetworkState classes
-# (the "ID/Relay Server" editor + SOCKS proxy + WebSocket switch, config UI for the rendezvous /
-# relay / api-server infrastructure the fork structurally removed), the SettingsTabKey.network
-# enum value, its tabKeys include, and both _settingTabs()/_children() switch cases. The mobile
-# Network section + the shared changeSocks5Proxy/showServerSettings dialogs are a follow-on. No
-# desktop Network tab may reappear.
-dg_clean 'SettingsTabKey\.network' 'R-G4 desktop Network/server-config settings tab'
+# R-G4 / §19: the "Network"/server-config UI is deleted — config UI for the rendezvous / relay /
+# api-server infrastructure the fork structurally removed. Desktop: the _Network/_NetworkState
+# classes ("ID/Relay Server" editor + SOCKS proxy + WebSocket switch) + the SettingsTabKey.network
+# enum value + its tabKeys include + both _settingTabs()/_children() switch cases. Mobile: the
+# ID/Relay-Server + Socks5/Http(s)-Proxy SettingsTiles + the _hideServer/_hideProxy state. Plus the
+# shared changeSocks5Proxy proxy-editor (desktop_setting_page) and showServerSettings dialog
+# (mobile/widgets/dialog.dart) — both now uncalled. (showServerSettingsWithValue stays for the QR
+# scan_page; the mobile "Use WebSocket"/"Deploy" tiles are separate follow-ons.) None may reappear.
+dg_clean 'SettingsTabKey\.network|changeSocks5Proxy|void showServerSettings\(' 'R-G4 Network/server-config UI (tab + SOCKS + server dialog)'
 # R-G / R-D / §18 (dial nobody): the peer-list ONLINE-STATUS query trigger is removed — a
 # direct-IP fork has no rendezvous server to ask which peers are online, and the backend query is
 # a no-egress stub (cebfdf2). The `bind.queryOnlines` calls are gone (peers_view) and the online

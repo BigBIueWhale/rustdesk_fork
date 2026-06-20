@@ -53,18 +53,6 @@ void setTemporaryPasswordLengthDialog(
   }, backDismiss: true, clickMaskDismiss: true);
 }
 
-void showServerSettings(OverlayDialogManager dialogManager,
-    void Function(VoidCallback) setState) async {
-  Map<String, dynamic> options = {};
-  try {
-    options = jsonDecode(await bind.mainGetOptions());
-  } catch (e) {
-    print("Invalid server config: $e");
-  }
-  showServerSettingsWithValue(
-      ServerConfig.fromOptions(options), dialogManager, setState);
-}
-
 void showServerSettingsWithValue(
     ServerConfig serverConfig,
     OverlayDialogManager dialogManager,

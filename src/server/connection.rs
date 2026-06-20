@@ -1077,10 +1077,6 @@ impl Connection {
         {
             self.send_login_error("Your ip is blocked by the peer")
                 .await;
-            Self::post_alarm_audit(
-                AlarmAuditType::IpWhitelist, //"ip whitelist",
-                json!({ "ip":addr.ip() }),
-            );
             return false;
         }
         true
@@ -1103,12 +1099,6 @@ impl Connection {
         msg_out.set_hash(self.hash.clone());
         self.send(msg_out).await;
         true
-    }
-
-    pub fn post_alarm_audit(_typ: AlarmAuditType, _info: Value) {
-        // R-SV6(a) / §18: the alarm-audit POST is EXCISED — it leaked the box id/uuid +
-        // alarm type/info (whitelist-reject / rate-limit source data) to the api-server
-        // audit URL. Egress removed; the reqwest sink + worker are gone — R-SV1 / R-D6 "dial nobody".
     }
 
     fn normalize_port_forward_target(pf: &mut PortForward) -> (String, bool) {
@@ -3064,14 +3054,6 @@ impl Connection {
                         );
                         self.send_login_error("Please try 1 minute later").await;
                         sleep(1.).await;
-                        Self::post_alarm_audit(
-                            AlarmAuditType::TerminalOsLoginConcurrency,
-                            json!({
-                                "ip": self.ip,
-                                "id": self.lr.my_id.clone(),
-                                "name": self.lr.my_name.clone(),
-                            }),
-                        );
                         return Some(false);
                     }
                     guard.ok()
@@ -3252,14 +3234,6 @@ impl Connection {
                 prefix_num
             ))
             .await;
-            Self::post_alarm_audit(
-                AlarmAuditType::ExceedIPv6PrefixAttempts,
-                json!({
-                            "ip": self.ip,
-                            "id": self.lr.my_id.clone(),
-                            "name": self.lr.my_name.clone(),
-                }),
-            );
             Some(((failure_prefix, time), false))
         } else {
             None
@@ -3294,18 +3268,6 @@ impl Connection {
                     // Rare branch and currently temporary response copy; translation can be added later if needed.
                     self.send_login_error(login_error).await;
                 }
-                if let Some(audit) = decision.audit {
-                    // For OS blocked/backoff events, we currently emit one alarm report per blocked attempt.
-                    // TODO: Add unified cumulative/aggregation fields across alarm producers.
-                    Self::post_alarm_audit(
-                        audit,
-                        json!({
-                                    "ip": self.ip,
-                                    "id": self.lr.my_id.clone(),
-                                    "name": self.lr.my_name.clone(),
-                        }),
-                    );
-                }
                 false
             };
             return (((0, 0, 0), time), res);
@@ -3334,25 +3296,9 @@ impl Connection {
 
         let res = if failure.2 > 30 {
             self.send_login_error("Too many wrong attempts").await;
-            Self::post_alarm_audit(
-                AlarmAuditType::ExceedThirtyAttempts,
-                json!({
-                            "ip": self.ip,
-                            "id": self.lr.my_id.clone(),
-                            "name": self.lr.my_name.clone(),
-                }),
-            );
             false
         } else if time == failure.0 && failure.1 > 6 {
             self.send_login_error("Please try 1 minute later").await;
-            Self::post_alarm_audit(
-                AlarmAuditType::SixAttemptsWithinOneMinute,
-                json!({
-                            "ip": self.ip,
-                            "id": self.lr.my_id.clone(),
-                            "name": self.lr.my_name.clone(),
-                }),
-            );
             false
         } else {
             true
@@ -4836,18 +4782,6 @@ fn try_activate_screen() {
         std::thread::sleep(std::time::Duration::from_millis(30));
         mouse_move_relative(6, 6);
     });
-}
-
-pub enum AlarmAuditType {
-    IpWhitelist = 0,
-    ExceedThirtyAttempts = 1,
-    SixAttemptsWithinOneMinute = 2,
-    // ExceedThirtyLoginAttempts = 3,
-    // MultipleLoginsAttemptsWithinOneMinute = 4,
-    // MultipleLoginsAttemptsWithinOneHour = 5,
-    ExceedIPv6PrefixAttempts = 6,
-    TerminalOsLoginBackoff = 7,
-    TerminalOsLoginConcurrency = 8,
 }
 
 #[derive(Debug, Serialize)]

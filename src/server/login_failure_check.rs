@@ -1,4 +1,3 @@
-use crate::AlarmAuditType;
 use hbb_common::get_time;
 #[cfg(target_os = "windows")]
 use hbb_common::tokio::sync::{Mutex as TokioMutex, OwnedMutexGuard};
@@ -19,7 +18,6 @@ pub(crate) enum FailureScope {
 pub(crate) struct OsCredentialPolicyDecision {
     pub allowed: bool,
     pub login_error: Option<String>,
-    pub audit: Option<AlarmAuditType>,
 }
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -50,13 +48,6 @@ fn state_for_os_credential_scope(
         Some(&OS_CREDENTIAL_LOGIN_FAILURE_STATE)
     } else {
         None
-    }
-}
-
-fn backoff_audit_type_for_scope(scope: FailureScope) -> Option<AlarmAuditType> {
-    match scope {
-        FailureScope::TerminalOsLogin => Some(AlarmAuditType::TerminalOsLoginBackoff),
-        FailureScope::Default => None,
     }
 }
 
@@ -91,18 +82,13 @@ fn allow_decision() -> OsCredentialPolicyDecision {
     OsCredentialPolicyDecision {
         allowed: true,
         login_error: None,
-        audit: None,
     }
 }
 
-fn block_decision(
-    login_error: String,
-    alarm_type: Option<AlarmAuditType>,
-) -> OsCredentialPolicyDecision {
+fn block_decision(login_error: String) -> OsCredentialPolicyDecision {
     OsCredentialPolicyDecision {
         allowed: false,
         login_error: Some(login_error),
-        audit: alarm_type,
     }
 }
 
@@ -128,13 +114,10 @@ pub(crate) fn evaluate_os_credential_policy(
         } else {
             "seconds"
         };
-        block_decision(
-            format!(
-                "Please try again in {} {}.",
-                remaining_seconds, seconds_label
-            ),
-            backoff_audit_type_for_scope(scope),
-        )
+        block_decision(format!(
+            "Please try again in {} {}.",
+            remaining_seconds, seconds_label
+        ))
     } else {
         allow_decision()
     }
@@ -207,25 +190,6 @@ mod tests {
         let after_idle_ms = after_failures_ms + OS_CREDENTIAL_LOGIN_TOTAL_IDLE_RESET_MS + 1_000;
         let allowed = evaluate_os_credential_policy(FailureScope::TerminalOsLogin, after_idle_ms);
         assert!(allowed.allowed);
-        clear_os_credential_failure_state(FailureScope::TerminalOsLogin);
-    }
-
-    #[test]
-    fn os_credential_policy_audits_every_backoff_block() {
-        let _guard = TEST_MUTEX.lock().unwrap();
-        clear_os_credential_failure_state(FailureScope::TerminalOsLogin);
-
-        for _ in 0..3 {
-            record_os_credential_failure(FailureScope::TerminalOsLogin);
-        }
-        let now_ms = get_time();
-        let first = evaluate_os_credential_policy(FailureScope::TerminalOsLogin, now_ms);
-        let second = evaluate_os_credential_policy(FailureScope::TerminalOsLogin, now_ms + 1_000);
-        assert!(!first.allowed);
-        assert!(!second.allowed);
-        assert!(first.audit.is_some());
-        assert!(second.audit.is_some());
-
         clear_os_credential_failure_state(FailureScope::TerminalOsLogin);
     }
 }

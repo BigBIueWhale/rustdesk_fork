@@ -337,6 +337,16 @@ pub fn session_set_connect_password(session_id: SessionID, password: String, rem
     session_on_waiting_for_image_dialog_show(session_id);
 }
 
+// R-S17/R-G5 (first-connect pin seed): the `host-not-pinned-prompt` dialog's accept lands here
+// after the operator confirmed the fingerprint out-of-band. Pins the host key the keying stashed
+// and reconnects (the reconnect's pin compare then matches). Never seeds from a peer message.
+pub fn session_pin_host(session_id: SessionID) {
+    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
+        session.set_pin_host_and_reconnect();
+    }
+    session_on_waiting_for_image_dialog_show(session_id);
+}
+
 pub fn session_toggle_option(session_id: SessionID, value: String) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         log::warn!("toggle option {}", &value);

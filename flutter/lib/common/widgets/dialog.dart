@@ -843,6 +843,58 @@ void enterConnectPasswordDialog(
   );
 }
 
+// R-S17/R-G5 (first-connect pin seed): the box keyed (so it DOES hold the host key), but the
+// operator has not pinned it yet. Show the fingerprint to confirm OUT-OF-BAND against the box's
+// `--get-fingerprint`, then pin THIS key + reconnect on accept (SSH's "type yes to the
+// fingerprint", done deliberately). NOT shown for a pin MISMATCH — that stays a loud error with
+// no easy bypass (the operator must `--forget-host` to re-pin a legitimately re-keyed box).
+void hostNotPinnedDialog(
+    SessionID sessionId, OverlayDialogManager dialogManager, String text) async {
+  dialogManager.dismissAll();
+  dialogManager.show((setState, close, context) {
+    cancel() {
+      close();
+      closeConnection();
+    }
+
+    submit() {
+      // Pin the host key the keying stashed, then reconnect (keys against the new pin).
+      bind.sessionPinHost(sessionId: sessionId);
+      close();
+      dialogManager.showLoading(translate('Connecting...'),
+          onCancel: closeConnection);
+    }
+
+    return CustomAlertDialog(
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.orange),
+          Text(translate('Unknown host')).paddingOnly(left: 10),
+        ],
+      ),
+      content: Align(
+        alignment: Alignment.centerLeft,
+        child: SelectableText(text, style: TextStyle(fontSize: 14)),
+      ),
+      actions: [
+        dialogButton(
+          'Cancel',
+          icon: Icon(Icons.close_rounded),
+          onPressed: cancel,
+          isOutline: true,
+        ),
+        dialogButton(
+          'Trust',
+          icon: Icon(Icons.verified_user_outlined),
+          onPressed: submit,
+        ),
+      ],
+      onCancel: cancel,
+    );
+  });
+}
+
 void enterUserLoginDialog(
     SessionID sessionId,
     OverlayDialogManager dialogManager,

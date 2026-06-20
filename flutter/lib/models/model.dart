@@ -915,6 +915,10 @@ class FfiModel with ChangeNotifier {
       // a bare-ID first connect has none, so the keying fails and routes here. Enter it →
       // store + reconnect → key with it. (vs `input-password`, which logs in once keyed.)
       enterConnectPasswordDialog(sessionId, dialogManager);
+    } else if (type == 'host-not-pinned-prompt') {
+      // R-S17/R-G5 (first-connect pin seed): the box keyed but is not pinned yet. Show its
+      // fingerprint to confirm out-of-band, then pin + reconnect on accept.
+      hostNotPinnedDialog(sessionId, dialogManager, text);
     } else if (type == 'session-login' || type == 'session-re-login') {
       enterUserLoginDialog(sessionId, dialogManager, 'login_linux_tip', true);
     } else if (type == 'session-login-password') {

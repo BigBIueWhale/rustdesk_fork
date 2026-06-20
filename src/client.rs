@@ -258,7 +258,9 @@ impl Client {
                             (g.shared_password.clone().unwrap_or_default(), false) // ab: not per-peer
                         }
                     };
-                    let pk_b = Self::key_initiator(peer, &prs, &mut x.0 .0).await?;
+                    let lch_for_key = interface.get_lch();
+                    let pk_b =
+                        Self::key_initiator(peer, &prs, &mut x.0 .0, &lch_for_key).await?;
                     if onboarding {
                         // R-S16: the connect-time password just keyed a not-yet-remembered peer —
                         // stage it as the in-memory PRS so the peer-info save path persists it (when
@@ -887,7 +889,12 @@ impl Client {
     /// Ed25519 host key (`pk_B`) — surfaced as the connection's pk so the UI fingerprint is
     /// the pinned host's. `prs` is the live plaintext password (the R-S16 viewer twin
     /// `PeerConfig.password_prs`); `peer_addr` keys the R-S17 pin lookup.
-    async fn key_initiator(peer_addr: &str, prs: &str, conn: &mut Stream) -> ResultType<Vec<u8>> {
+    async fn key_initiator(
+        peer_addr: &str,
+        prs: &str,
+        conn: &mut Stream,
+        lch: &Arc<RwLock<LoginConfigHandler>>,
+    ) -> ResultType<Vec<u8>> {
         // R-S9: an empty PRS has no shared secret — fail closed (never key in the open).
         if prs.is_empty() {
             bail!("No remembered password for this peer — cannot run the CPace handshake (R-S9, fail-closed). Connect once with the box's password remembered so the viewer can key.");
@@ -934,8 +941,11 @@ impl Client {
             // the box's `--get-fingerprint`, then pin via `--pin-host`.
             None => {
                 let fp = crate::common::pk_to_fingerprint(pk_b.clone());
+                // R-G5: stash the verified host key so the GUI seed dialog's accept can pin
+                // THIS exact key + reconnect (the operator confirms `fp` out-of-band first).
+                lch.write().unwrap().pending_host_pk = Some(pk_b.clone());
                 bail!(
-                    "R-S17: host {peer_addr} is not pinned (first contact). Its host-key fingerprint is:\n    {fp}\nVerify it equals `--get-fingerprint` on the box (over your trusted channel), then pin it:\n    --pin-host {peer_addr} <fingerprint>\nRefusing until pinned (fail-closed; no trust-on-first-use)."
+                    "R-S17: host {peer_addr} is not pinned (first contact). Its host-key fingerprint is:\n    {fp}\nVerify it equals `--get-fingerprint` on the box (over your trusted channel), then pin it (GUI: accept the prompt; CLI: `--pin-host {peer_addr} <fingerprint>`).\nRefusing until pinned (fail-closed; no trust-on-first-use)."
                 );
             }
         }
@@ -1854,6 +1864,12 @@ pub struct LoginConfigHandler {
     // dialog's submit can set it and `reconnect`, and `get_connect_password` reads it to feed
     // `key_initiator`. Never persisted directly; the onboarding-PRS path persists it (A2).
     pub connect_password: String,
+    // R-S17/R-G5 (first-connect pin seed): on a no-pin abort, `key_initiator` stashes the
+    // box's just-verified Ed25519 host key here so the GUI seed dialog's accept can pin THIS
+    // exact key (`host_pin::set_pinned_pk`) and reconnect — the operator confirms the
+    // fingerprint out-of-band first. Never seeded from a peer message (R-S15); set only by the
+    // keying path after the host-proof verified.
+    pub pending_host_pk: Option<Vec<u8>>,
     pub remember: bool,
     config: PeerConfig,
     pub port_forward: (String, i32),
@@ -3872,6 +3888,15 @@ pub trait Interface: Send + Clone + 'static + Sized {
             && (err.contains("(R-S9") || err.contains("CPace handshake failed"))
         {
             self.msgbox("connect-password-prompt", "Password Required", &text, "");
+            return;
+        }
+        // R-S17/R-G5: first contact with an unpinned host — the keyed handshake proved the box
+        // holds the host key, but the operator has not pinned it. Offer to pin (after confirming
+        // the fingerprint out-of-band) and reconnect, rather than dead-ending. A pin MISMATCH
+        // (a different key than pinned) deliberately does NOT route here — it falls through to
+        // the loud error (no easy bypass; the operator must `--forget-host` to re-pin).
+        if cfg!(feature = "flutter") && err.contains("is not pinned") {
+            self.msgbox("host-not-pinned-prompt", "Unknown host", &text, "");
             return;
         }
         let lc = self.get_lch();

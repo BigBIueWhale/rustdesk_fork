@@ -1310,6 +1310,29 @@ impl<T: InvokeUiSession> Session<T> {
         self.reconnect(false);
     }
 
+    /// R-S17/R-G5 (first-connect pin seed): the operator accepted the unknown-host prompt
+    /// after confirming the fingerprint out-of-band. Pin the host key `key_initiator` stashed
+    /// in `pending_host_pk` for this peer's address, then reconnect — the reconnect's pin
+    /// compare now matches and keying proceeds. No-op if nothing is staged (the keyed abort
+    /// always stages a VERIFIED key first), so a peer message can never drive a pin (R-S15).
+    pub fn set_pin_host_and_reconnect(&self) {
+        let id = self.get_id();
+        let pk = self.lc.read().unwrap().pending_host_pk.clone();
+        match pk {
+            Some(pk) => {
+                if let Err(e) = hbb_common::host_pin::set_pinned_pk(&id, &pk) {
+                    log::error!("R-S17: failed to pin host {id}: {e}");
+                    return;
+                }
+            }
+            None => {
+                log::warn!("R-S17: no pending host key to pin for {id} — refusing to pin");
+                return;
+            }
+        }
+        self.reconnect(false);
+    }
+
     #[cfg(not(feature = "flutter"))]
     pub fn get_icon_path(&self, file_type: i32, ext: String) -> String {
         let mut path = Config::icon_path();

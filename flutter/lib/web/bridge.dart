@@ -678,11 +678,6 @@ class RustdeskImpl {
         ]));
   }
 
-  Future<void> sessionSwitchSides(
-      {required UuidValue sessionId, dynamic hint}) {
-    throw UnimplementedError("sessionSwitchSides");
-  }
-
   Future<void> sessionChangeResolution(
       {required UuidValue sessionId,
       required int display,
@@ -1385,10 +1380,6 @@ class RustdeskImpl {
 
   Future<void> cmElevatePortable({required int connId, dynamic hint}) {
     throw UnimplementedError("cmElevatePortable");
-  }
-
-  Future<void> cmSwitchBack({required int connId, dynamic hint}) {
-    throw UnimplementedError("cmSwitchBack");
   }
 
   Future<String> cmGetConfig({required String name, dynamic hint}) {

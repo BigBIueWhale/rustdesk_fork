@@ -919,12 +919,6 @@ pub fn session_elevate_with_logon(session_id: SessionID, username: String, passw
     }
 }
 
-pub fn session_switch_sides(session_id: SessionID) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.switch_sides();
-    }
-}
-
 pub fn session_change_resolution(session_id: SessionID, display: i32, width: i32, height: i32) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         session.change_resolution(display, width, height);
@@ -2232,11 +2226,6 @@ pub fn cm_can_elevate() -> SyncReturn<bool> {
 pub fn cm_elevate_portable(conn_id: i32) {
     #[cfg(not(any(target_os = "ios")))]
     crate::ui_cm_interface::elevate_portable(conn_id);
-}
-
-pub fn cm_switch_back(conn_id: i32) {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    crate::ui_cm_interface::switch_back(conn_id);
 }
 
 pub fn cm_get_config(name: String) -> String {

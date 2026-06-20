@@ -274,56 +274,6 @@ void changeWhiteList({Function()? callback}) async {
   });
 }
 
-Future<String> changeDirectAccessPort(
-    String currentIP, String currentPort) async {
-  final controller = TextEditingController(text: currentPort);
-  await gFFI.dialogManager.show((setState, close, context) {
-    return CustomAlertDialog(
-      title: Text(translate("Change Local Port")),
-      content: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 8.0),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                        maxLines: null,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                            hintText: '21118',
-                            isCollapsed: true,
-                            prefix: Text('$currentIP : '),
-                            suffix: IconButton(
-                                padding: EdgeInsets.zero,
-                                icon: const Icon(Icons.clear, size: 16),
-                                onPressed: () => controller.clear())),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(RegExp(
-                              r'^([0-9]|[1-9]\d|[1-9]\d{2}|[1-9]\d{3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5])$')),
-                        ],
-                        controller: controller,
-                        autofocus: true)
-                    .workaroundFreezeLinuxMint(),
-              ),
-            ],
-          ),
-        ],
-      ),
-      actions: [
-        dialogButton("Cancel", onPressed: close, isOutline: true),
-        dialogButton("OK", onPressed: () async {
-          await bind.mainSetOption(
-              key: kOptionDirectAccessPort, value: controller.text);
-          close();
-        }),
-      ],
-      onCancel: close,
-    );
-  });
-  return controller.text;
-}
-
 Future<String> changeAutoDisconnectTimeout(String old) async {
   final controller = TextEditingController(text: old);
   await gFFI.dialogManager.show((setState, close, context) {

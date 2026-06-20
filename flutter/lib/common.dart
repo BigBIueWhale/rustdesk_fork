@@ -1597,9 +1597,7 @@ bool option2bool(String option, String value) {
 
 String bool2option(String option, bool b) {
   String res;
-  if (option.startsWith('enable-') &&
-      option != kOptionEnableUdpPunch &&
-      option != kOptionEnableIpv6Punch) {
+  if (option.startsWith('enable-')) {
     res = b ? defaultOptionYes : 'N';
   } else if (option.startsWith('allow-') ||
       option == kOptionStopService ||

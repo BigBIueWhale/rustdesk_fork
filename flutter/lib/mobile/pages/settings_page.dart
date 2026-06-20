@@ -83,9 +83,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   var _fingerprint = "";
   var _buildDate = "";
   var _autoDisconnectTimeout = "";
-  var _enableUdpPunch = false;
   var _disableUdp = false;
-  var _enableIpv6Punch = false;
   var _isUsingPublicServer = false;
   var _preventSleepWhileConnected = true;
 
@@ -106,8 +104,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
         bind.mainGetOptionSync(key: kOptionAllowAutoDisconnect));
     _autoDisconnectTimeout =
         bind.mainGetOptionSync(key: kOptionAutoDisconnectTimeout);
-    _enableUdpPunch = mainGetLocalBoolOptionSync(kOptionEnableUdpPunch);
-    _enableIpv6Punch = mainGetLocalBoolOptionSync(kOptionEnableIpv6Punch);
     _preventSleepWhileConnected =
         mainGetLocalBoolOptionSync(kOptionKeepAwakeDuringOutgoingSessions);
     _showTerminalExtraKeys =
@@ -519,32 +515,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                         _disableUdp = newValue;
                       });
                     },
-            ),
-          if (!incomingOnly)
-            SettingsTile.switchTile(
-              title: Text(translate('Enable UDP hole punching')),
-              initialValue: _enableUdpPunch,
-              onToggle: (v) async {
-                await mainSetLocalBoolOption(kOptionEnableUdpPunch, v);
-                final newValue =
-                    mainGetLocalBoolOptionSync(kOptionEnableUdpPunch);
-                setState(() {
-                  _enableUdpPunch = newValue;
-                });
-              },
-            ),
-          if (!incomingOnly)
-            SettingsTile.switchTile(
-              title: Text(translate('Enable IPv6 P2P connection')),
-              initialValue: _enableIpv6Punch,
-              onToggle: (v) async {
-                await mainSetLocalBoolOption(kOptionEnableIpv6Punch, v);
-                final newValue =
-                    mainGetLocalBoolOptionSync(kOptionEnableIpv6Punch);
-                setState(() {
-                  _enableIpv6Punch = newValue;
-                });
-              },
             ),
           SettingsTile(
               title: Text(translate('Language')),

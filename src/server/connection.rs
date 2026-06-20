@@ -283,9 +283,6 @@ pub struct Connection {
     multi_ui_session: bool,
     tx_from_authed: mpsc::UnboundedSender<ipc::Data>,
     printer_data: Vec<(Instant, String, Vec<u8>)>,
-    // For post requests that need to be sent sequentially.
-    // eg. post_conn_audit
-    tx_post_seq: mpsc::UnboundedSender<(String, Value)>,
     // Tracks read job IDs delegated to CM process.
     // When a read job is delegated to CM (via FS::ReadFile), the job id is added here.
     // Used to filter stale responses (FileBlockFromCM, FileReadDone, etc.) for
@@ -379,11 +376,6 @@ impl Connection {
         let linux_headless_handle =
             LinuxHeadlessHandle::new(_rx_cm_stream_ready, _tx_desktop_ready);
 
-        let (tx_post_seq, rx_post_seq) = mpsc::unbounded_channel();
-        tokio::spawn(async move {
-            Self::post_seq_loop(rx_post_seq).await;
-        });
-
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let tx_cloned = tx.clone();
         let mut conn = Self {
@@ -468,7 +460,6 @@ impl Connection {
             retina: Retina::default(),
             tx_from_authed,
             printer_data: Vec::new(),
-            tx_post_seq,
             cm_read_job_ids: HashSet::new(),
             terminal_service_id: "".to_owned(),
             terminal_persistent: false,
@@ -1003,13 +994,6 @@ impl Connection {
         log::debug!("Input thread exited");
     }
 
-    async fn post_seq_loop(mut rx: mpsc::UnboundedReceiver<(String, Value)>) {
-        while let Some((url, v)) = rx.recv().await {
-            allow_err!(Self::post_audit_async(url, v).await);
-        }
-        log::debug!("post_seq_loop exited");
-    }
-
     async fn try_port_forward_loop(
         &mut self,
         rx_from_cm: &mut mpsc::UnboundedReceiver<Data>,
@@ -1158,11 +1142,10 @@ impl Connection {
         // R-SV6(a) / §18: the connection-audit POST is EXCISED. Upstream sent this to an
         // api-server-derived audit URL — fired PRE-AUTH in on_open (above, action:"new"),
         // leaking the box id/uuid + conn/session ids on the mere keyed reach of any peer.
-        // The egress body (build-leak-json → tx_post_seq → post_seq_loop → post_request)
-        // is removed so the reqwest sink is STRUCTURALLY unreachable from the audit path —
-        // not left behind the empty-url runtime guard (R-SV1 compile-out, not config-pin;
-        // R-D6 "dial nobody"). Full symbol removal of the POST + its worker is the
-        // R-D4-era cleanup; this kills the egress now. See post_audit_async (the sink).
+        // The egress body AND its worker (build-leak-json → tx_post_seq → post_seq_loop →
+        // the reqwest sink) are REMOVED — R-SV1 structural absence, not an empty-url runtime
+        // guard (R-D6 "dial nobody"). This no-op stub remains only until its call sites are
+        // excised (R-D4-era); it can no longer reach any egress path.
     }
 
     fn get_files_for_audit(job_type: fs::JobType, mut files: Vec<FileEntry>) -> Vec<(String, i64)> {
@@ -1190,23 +1173,14 @@ impl Connection {
     ) {
         // R-SV6(a) / §18: the file-transfer audit POST is EXCISED — it leaked the box
         // id/uuid + peer id/ip + file names/sizes to the api-server audit URL. The egress
-        // body is removed; the reqwest sink (post_audit_async) is neutered. See
-        // post_conn_audit for the full rationale (R-SV1 compile-out, not config-pin).
+        // body is removed and the reqwest sink + its worker are gone (R-SV1 structural
+        // absence). See post_conn_audit for the full rationale (R-D6 "dial nobody").
     }
 
     pub fn post_alarm_audit(_typ: AlarmAuditType, _info: Value) {
         // R-SV6(a) / §18: the alarm-audit POST is EXCISED — it leaked the box id/uuid +
         // alarm type/info (whitelist-reject / rate-limit source data) to the api-server
-        // audit URL. Egress removed; the reqwest sink is neutered (see post_conn_audit).
-    }
-
-    #[inline]
-    async fn post_audit_async(_url: String, _v: Value) -> ResultType<String> {
-        // R-SV6(a): the shared audit reqwest sink — NEUTERED. The three audit POSTs above
-        // are no-ops, so this is reachable only from the now-idle post_seq_loop; it MUST
-        // NOT call crate::post_request — the structural guarantee that no audit egress
-        // survives even if an entry point were ever restored.
-        Ok(String::new())
+        // audit URL. Egress removed; the reqwest sink + worker are gone (see post_conn_audit).
     }
 
     fn normalize_port_forward_target(pf: &mut PortForward) -> (String, bool) {

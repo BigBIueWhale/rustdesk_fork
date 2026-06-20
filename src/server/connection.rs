@@ -251,8 +251,6 @@ pub struct Connection {
     tx_input: std_mpsc::Sender<MessageInput>,
     // handle input messages
     video_ack_required: bool,
-    server_audit_conn: String,
-    server_audit_file: String,
     lr: LoginRequest,
     peer_argb: u32,
     chat_unanswered: bool,
@@ -425,8 +423,6 @@ impl Connection {
             show_my_cursor: false,
             tx_input,
             video_ack_required: false,
-            server_audit_conn: "".to_owned(),
-            server_audit_file: "".to_owned(),
             lr: Default::default(),
             peer_argb: 0u32,
             chat_unanswered: false,
@@ -902,9 +898,6 @@ impl Connection {
             conn.on_close(&err.to_string(), false).await;
         }
 
-        conn.post_conn_audit(json!({
-            "action": "close",
-        }));
         if let Some(s) = conn.server.upgrade() {
             let mut s = s.write().unwrap();
             s.remove_connection(&conn.inner);
@@ -1117,35 +1110,7 @@ impl Connection {
         let mut msg_out = Message::new();
         msg_out.set_hash(self.hash.clone());
         self.send(msg_out).await;
-        self.get_api_server();
-        self.post_conn_audit(json!({
-            "ip": addr.ip(),
-            "action": "new",
-        }));
         true
-    }
-
-    fn get_api_server(&mut self) {
-        self.server_audit_conn = crate::get_audit_server(
-            Config::get_option("api-server"),
-            Config::get_option("custom-rendezvous-server"),
-            "conn".to_owned(),
-        );
-        self.server_audit_file = crate::get_audit_server(
-            Config::get_option("api-server"),
-            Config::get_option("custom-rendezvous-server"),
-            "file".to_owned(),
-        );
-    }
-
-    fn post_conn_audit(&self, _v: Value) {
-        // R-SV6(a) / §18: the connection-audit POST is EXCISED. Upstream sent this to an
-        // api-server-derived audit URL — fired PRE-AUTH in on_open (above, action:"new"),
-        // leaking the box id/uuid + conn/session ids on the mere keyed reach of any peer.
-        // The egress body AND its worker (build-leak-json → tx_post_seq → post_seq_loop →
-        // the reqwest sink) are REMOVED — R-SV1 structural absence, not an empty-url runtime
-        // guard (R-D6 "dial nobody"). This no-op stub remains only until its call sites are
-        // excised (R-D4-era); it can no longer reach any egress path.
     }
 
     fn get_files_for_audit(job_type: fs::JobType, mut files: Vec<FileEntry>) -> Vec<(String, i64)> {
@@ -1173,14 +1138,15 @@ impl Connection {
     ) {
         // R-SV6(a) / §18: the file-transfer audit POST is EXCISED — it leaked the box
         // id/uuid + peer id/ip + file names/sizes to the api-server audit URL. The egress
-        // body is removed and the reqwest sink + its worker are gone (R-SV1 structural
-        // absence). See post_conn_audit for the full rationale (R-D6 "dial nobody").
+        // body is removed and the reqwest sink + its worker are gone — R-SV1 structural
+        // absence (R-D6 "dial nobody"), not an empty-url guard. No-op stub; only its
+        // call sites remain to be excised (R-D4-era slice).
     }
 
     pub fn post_alarm_audit(_typ: AlarmAuditType, _info: Value) {
         // R-SV6(a) / §18: the alarm-audit POST is EXCISED — it leaked the box id/uuid +
         // alarm type/info (whitelist-reject / rate-limit source data) to the api-server
-        // audit URL. Egress removed; the reqwest sink + worker are gone (see post_conn_audit).
+        // audit URL. Egress removed; the reqwest sink + worker are gone — R-SV1 / R-D6 "dial nobody".
     }
 
     fn normalize_port_forward_target(pf: &mut PortForward) -> (String, bool) {
@@ -1259,16 +1225,16 @@ impl Connection {
             return false;
         }
         self.authorized = true;
-        let (conn_type, auth_conn_type) = if self.file_transfer.is_some() {
-            (1, AuthConnType::FileTransfer)
+        let auth_conn_type = if self.file_transfer.is_some() {
+            AuthConnType::FileTransfer
         } else if self.port_forward_socket.is_some() {
-            (2, AuthConnType::PortForward)
+            AuthConnType::PortForward
         } else if self.view_camera {
-            (3, AuthConnType::ViewCamera)
+            AuthConnType::ViewCamera
         } else if self.terminal {
-            (4, AuthConnType::Terminal)
+            AuthConnType::Terminal
         } else {
-            (0, AuthConnType::Remote)
+            AuthConnType::Remote
         };
         self.authed_conn_id = Some(self::raii::AuthedConnID::new(
             self.inner.id(),
@@ -1277,9 +1243,6 @@ impl Connection {
             self.tx_from_authed.clone(),
             self.lr.clone(),
         ));
-        self.post_conn_audit(
-            json!({"peer": ((&self.lr.my_id, &self.lr.my_name)), "type": conn_type}),
-        );
         #[allow(unused_mut)]
         let mut username = crate::platform::get_active_username();
         let mut res = LoginResponse::new();

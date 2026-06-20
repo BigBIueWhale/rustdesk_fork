@@ -214,9 +214,19 @@ R-A8/A9 two-host test, deferred):
    error (no easy bypass; the operator must `--forget-host` to re-pin a legitimately re-keyed
    box). flutter-verify + dart-verify green. (A dedicated mismatch GUI panel + the manage/forget
    view are an optional §19 polish; the CLI `--forget-host`/`--list-known-hosts` cover them.)
-5. **Cleanup**: delete the old `secure_connection` SignedId keying + `validate_password` (R-S6) +
-   the `SignedId`/`PublicKey` proto messages (R-P5/R-S18), and the rendezvous/relay/KCP `_start`
-   branches + `udp_nat_connect` (R-SV4(b)/R-S13(d), which also lets `mod kcp_stream` go).
+5. **Cleanup** (R-P5/R-SV4(b), the only viewer-keying residue — Linux-verifiable, ~400 lines,
+   NEXT). Scope mapped: `secure_connection` (client.rs:758, the old SignedId+single-`set_key`
+   keying) is called only from `_start_inner` (626, the rendezvous connect) and the punch path
+   (793). Removing those two calls makes both streams return UNKEYED — exactly like the direct
+   path — so `key_initiator` keys them (consistent; and since the responder is CPace-only, the
+   inherited SignedId path could not key a fork box anyway). Then `secure_connection` is
+   unreferenced → delete it; the `signed_id_pk` threading (462/558/600/660/686/770/809/820) goes
+   unused → delete; and `SignedId`/`PublicKey` (message.proto) + `decode_id_pk` /
+   `create_symmetric_key_msg` become removable (R-P5). The broader rendezvous/relay/KCP `_start`
+   machinery + `udp_nat_connect` removal (R-SV4(b)/R-S13(d), which also lets `mod kcp_stream` go)
+   is the same excision's larger arc. RISK to verify carefully: `_start`'s reachability for
+   non-direct peers (switch-sides / `other_server` / a saved non-IP id) — confirm those flows
+   before deleting, or fail-close `_start` to direct-only first. Plus `validate_password` (R-S6).
 
 ## Excisions (§8)
 

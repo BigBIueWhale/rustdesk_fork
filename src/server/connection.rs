@@ -1184,17 +1184,15 @@ impl Connection {
         );
     }
 
-    fn post_conn_audit(&self, v: Value) {
-        if self.server_audit_conn.is_empty() {
-            return;
-        }
-        let url = self.server_audit_conn.clone();
-        let mut v = v;
-        v["id"] = json!(Config::get_id());
-        v["uuid"] = json!(crate::encode64(hbb_common::get_uuid()));
-        v["conn_id"] = json!(self.inner.id);
-        v["session_id"] = json!(self.lr.session_id);
-        allow_err!(self.tx_post_seq.send((url, v)));
+    fn post_conn_audit(&self, _v: Value) {
+        // R-SV6(a) / §18: the connection-audit POST is EXCISED. Upstream sent this to an
+        // api-server-derived audit URL — fired PRE-AUTH in on_open (above, action:"new"),
+        // leaking the box id/uuid + conn/session ids on the mere keyed reach of any peer.
+        // The egress body (build-leak-json → tx_post_seq → post_seq_loop → post_request)
+        // is removed so the reqwest sink is STRUCTURALLY unreachable from the audit path —
+        // not left behind the empty-url runtime guard (R-SV1 compile-out, not config-pin;
+        // R-D6 "dial nobody"). Full symbol removal of the POST + its worker is the
+        // R-D4-era cleanup; this kills the egress now. See post_audit_async (the sink).
     }
 
     fn get_files_for_audit(job_type: fs::JobType, mut files: Vec<FileEntry>) -> Vec<(String, i64)> {
@@ -1215,61 +1213,30 @@ impl Connection {
 
     fn post_file_audit(
         &self,
-        r#type: FileAuditType,
-        path: &str,
-        files: Vec<(String, i64)>,
-        info: Value,
+        _type: FileAuditType,
+        _path: &str,
+        _files: Vec<(String, i64)>,
+        _info: Value,
     ) {
-        if self.server_audit_file.is_empty() {
-            return;
-        }
-        let url = self.server_audit_file.clone();
-        let file_num = files.len();
-        let mut files = files;
-        files.sort_by(|a, b| b.1.cmp(&a.1));
-        files.truncate(10);
-        let is_file = files.len() == 1 && files[0].0.is_empty();
-        let mut info = info;
-        info["ip"] = json!(self.ip.clone());
-        info["name"] = json!(self.lr.my_name.clone());
-        info["num"] = json!(file_num);
-        info["files"] = json!(files);
-        let v = json!({
-            "id":json!(Config::get_id()),
-            "uuid":json!(crate::encode64(hbb_common::get_uuid())),
-            "peer_id":json!(self.lr.my_id),
-            "type": r#type as i8,
-            "path":path,
-            "is_file":is_file,
-            "info":json!(info).to_string(),
-        });
-        tokio::spawn(async move {
-            allow_err!(Self::post_audit_async(url, v).await);
-        });
+        // R-SV6(a) / §18: the file-transfer audit POST is EXCISED — it leaked the box
+        // id/uuid + peer id/ip + file names/sizes to the api-server audit URL. The egress
+        // body is removed; the reqwest sink (post_audit_async) is neutered. See
+        // post_conn_audit for the full rationale (R-SV1 compile-out, not config-pin).
     }
 
-    pub fn post_alarm_audit(typ: AlarmAuditType, info: Value) {
-        let url = crate::get_audit_server(
-            Config::get_option("api-server"),
-            Config::get_option("custom-rendezvous-server"),
-            "alarm".to_owned(),
-        );
-        if url.is_empty() {
-            return;
-        }
-        let mut v = Value::default();
-        v["id"] = json!(Config::get_id());
-        v["uuid"] = json!(crate::encode64(hbb_common::get_uuid()));
-        v["typ"] = json!(typ as i8);
-        v["info"] = serde_json::Value::String(info.to_string());
-        tokio::spawn(async move {
-            allow_err!(Self::post_audit_async(url, v).await);
-        });
+    pub fn post_alarm_audit(_typ: AlarmAuditType, _info: Value) {
+        // R-SV6(a) / §18: the alarm-audit POST is EXCISED — it leaked the box id/uuid +
+        // alarm type/info (whitelist-reject / rate-limit source data) to the api-server
+        // audit URL. Egress removed; the reqwest sink is neutered (see post_conn_audit).
     }
 
     #[inline]
-    async fn post_audit_async(url: String, v: Value) -> ResultType<String> {
-        crate::post_request(url, v.to_string(), "").await
+    async fn post_audit_async(_url: String, _v: Value) -> ResultType<String> {
+        // R-SV6(a): the shared audit reqwest sink — NEUTERED. The three audit POSTs above
+        // are no-ops, so this is reachable only from the now-idle post_seq_loop; it MUST
+        // NOT call crate::post_request — the structural guarantee that no audit egress
+        // survives even if an entry point were ever restored.
+        Ok(String::new())
     }
 
     fn normalize_port_forward_target(pf: &mut PortForward) -> (String, bool) {

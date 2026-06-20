@@ -21,7 +21,13 @@ lazy_static::lazy_static! {
 }
 
 pub fn is_enable() -> bool {
-    ENABLE.lock().unwrap().clone()
+    // R-SV6(b) / §18: session-record upload is EXCISED. run() (below) builds an
+    // api-server `/api/login-options` HTTP client and streams recorded session frames
+    // out — a global-reaching egress. Forcing this gate false makes run() unreachable
+    // from its sole caller (video_service.rs `if record_upload::is_enable()`), so the
+    // record-upload reqwest path is structurally dead (R-SV1 compile-out, not config-pin;
+    // the ENABLE flag / record-session option is moot). Full symbol removal is R-D4-era.
+    false
 }
 
 pub fn run(rx: Receiver<RecordState>) {

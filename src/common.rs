@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     future::Future,
-    net::{SocketAddr, ToSocketAddrs},
     sync::{Arc, Mutex, RwLock},
     task::Poll,
 };
@@ -11,7 +10,6 @@ use serde_json::{json, Map, Value};
 #[cfg(not(target_os = "ios"))]
 use hbb_common::whoami;
 use hbb_common::{
-    allow_err,
     anyhow::{anyhow, Context},
     async_recursion::async_recursion,
     bail, base64,
@@ -31,7 +29,6 @@ use hbb_common::{
     tls::{get_cached_tls_accept_invalid_cert, get_cached_tls_type, upsert_tls_cache, TlsType},
     tokio::{
         self,
-        net::UdpSocket,
         time::{Duration, Instant, Interval},
     },
     ResultType, Stream,
@@ -39,7 +36,7 @@ use hbb_common::{
 
 use crate::{
     hbbs_http::{create_http_client_async, get_url_for_tls},
-    ui_interface::{get_api_server as ui_get_api_server, get_option, is_installed, set_option},
+    ui_interface::{get_api_server as ui_get_api_server, get_option, set_option},
 };
 
 #[derive(Debug, Eq, PartialEq)]
@@ -96,7 +93,6 @@ lazy_static::lazy_static! {
     pub static ref SOFTWARE_UPDATE_URL: Arc<Mutex<String>> = Default::default();
     pub static ref DEVICE_ID: Arc<Mutex<String>> = Default::default();
     pub static ref DEVICE_NAME: Arc<Mutex<String>> = Default::default();
-    static ref PUBLIC_IPV6_ADDR: Arc<Mutex<(Option<SocketAddr>, Option<Instant>)>> = Default::default();
 }
 
 lazy_static::lazy_static! {
@@ -971,13 +967,6 @@ pub fn get_udp_punch_enabled() -> bool {
     config::option2bool(
         keys::OPTION_ENABLE_UDP_PUNCH,
         &get_local_option(keys::OPTION_ENABLE_UDP_PUNCH),
-    )
-}
-
-pub fn get_ipv6_punch_enabled() -> bool {
-    config::option2bool(
-        keys::OPTION_ENABLE_IPV6_PUNCH,
-        &get_local_option(keys::OPTION_ENABLE_IPV6_PUNCH),
     )
 }
 
@@ -2184,84 +2173,12 @@ pub fn is_udp_disabled() -> bool {
     Config::get_option(keys::OPTION_DISABLE_UDP) == "Y"
 }
 
-pub async fn punch_udp(
-    socket: Arc<UdpSocket>,
-    listen: bool,
-) -> ResultType<Option<bytes::BytesMut>> {
-    let mut retry_interval = Duration::from_millis(20);
-    const MAX_INTERVAL: Duration = Duration::from_millis(200);
-    const MAX_TIME: Duration = Duration::from_secs(20);
-    let mut packets_sent = 0;
-    socket.send(&[]).await.ok();
-    packets_sent += 1;
-    let mut last_send_time = Instant::now();
-    let tm = Instant::now();
-    let mut data = [0u8; 1500];
-
-    loop {
-        tokio::select! {
-            _ = hbb_common::sleep(retry_interval.as_secs_f32()) => {
-                if tm.elapsed() > MAX_TIME {
-                    bail!("UDP punch is timed out, stop sending packets after {:?} packets", packets_sent);
-                }
-                let elapsed = last_send_time.elapsed();
-
-                if elapsed >= retry_interval {
-                    socket.send(&[]).await.ok();
-                    packets_sent += 1;
-
-                    // Exponentially increase interval to reduce network pressure
-                    retry_interval = std::cmp::min(
-                        Duration::from_millis((retry_interval.as_millis() as f64 * 1.5) as u64),
-                        MAX_INTERVAL
-                    );
-                    last_send_time = Instant::now();
-                }
-            }
-            res = socket.recv(&mut data) => match res {
-                Err(e) => bail!("UDP punch failed, {packets_sent} packets sent: {e}"),
-                Ok(n) => {
-                    // log::debug!("UDP punch succeeded after sending {} packets after {:?}", packets_sent, tm.elapsed());
-                    if listen {
-                        if n == 0 {
-                            continue;
-                        }
-                        return Ok(Some(bytes::BytesMut::from(&data[..n])));
-                    }
-                    return Ok(None);
-                }
-            }
-        }
-    }
-}
-
 // R-SV4 / R-D6: test_ipv6_sync (the synchronous wrapper that spawned test_ipv6 at
 // process startup) is REMOVED — it was the only reach to the STUN-resolving
 // test_bind_ipv6 from the startup path (test_nat_type), and that DNS resolution +
 // UDP6 bind is a startup phone-home the sovereign fork forbids. The async test_ipv6
 // remains for now (the connect-time client.rs caller), excised in the R-SV4(d)
 // token-absent follow-on.
-
-pub async fn get_ipv6_socket() -> Option<(Arc<UdpSocket>, bytes::Bytes)> {
-    let Some(addr) = PUBLIC_IPV6_ADDR.lock().unwrap().0 else {
-        return None;
-    };
-
-    match UdpSocket::bind(addr).await {
-        Err(err) => {
-            log::warn!("Failed to create UDP socket for IPv6: {err}");
-        }
-        Ok(socket) => {
-            if let Ok(local_addr_v6) = socket.local_addr() {
-                return Some((
-                    Arc::new(socket),
-                    hbb_common::AddrMangle::encode(local_addr_v6).into(),
-                ));
-            }
-        }
-    }
-    None
-}
 
 // The color is the same to `str2color()` in flutter.
 pub fn str2color(s: &str, alpha: u8) -> u32 {

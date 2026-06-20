@@ -1,0 +1,39 @@
+# Flutter compile-check image — extends the Linux devcheck with the pinned Flutter SDK
+# (3.24.5) + flutter_rust_bridge_codegen (1.80.1), so the `feature="flutter"` Rust code
+# (flutter_ffi.rs + the FRB-generated bridge) can be generated and `cargo check`ed. This
+# is what unlocks verifying the viewer-side / GUI changes (R-S13/R-S17/§19) that the
+# linux-pkg-config devcheck (which compiles the Sciter/non-flutter default) cannot see.
+#
+# NOT a release build (that is build-debian.sh's vcpkg flow, §12). No socket is bound by
+# `cargo check` / the FRB codegen, so this is safe on the DMZ host (never publish ports).
+#
+# Build: docker build -t rd-fluttercheck -f scripts/Dockerfile.fluttercheck scripts
+# Use:   scripts/flutter-verify.sh   (generates the bridge, then cargo check --features flutter)
+#
+# Pins (scripts/pins.env): FLUTTER_VERSION=3.24.5, FLUTTER_RUST_BRIDGE_VERSION=1.80.1,
+# RUST_VERSION=1.75. Built FROM the already-built rd-devcheck (the linux libs + libyuv.pc
+# + SODIUM_USE_PKG_CONFIG live there); flutter-verify.sh ensures rd-devcheck exists first.
+FROM rd-devcheck
+
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+        curl xz-utils ca-certificates unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pinned Flutter SDK 3.24.5 (bundles the Dart SDK the FRB codegen formats with). Fetched
+# from Google's release CDN; this is the unpinned-best-effort path R-B12(c) documents for
+# the evergreen toolchain installers (the SHA is operator-pinned in pins.env once staged).
+RUN curl -fsSL \
+      "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.24.5-stable.tar.xz" \
+      -o /tmp/flutter.tar.xz \
+    && mkdir -p /opt && tar xf /tmp/flutter.tar.xz -C /opt && rm /tmp/flutter.tar.xz
+ENV PATH="/opt/flutter/bin:/opt/flutter/bin/cache/dart-sdk/bin:/usr/local/cargo/bin:${PATH}"
+# Flutter refuses to run inside a dir it doesn't own; warm the Dart SDK + precache nothing.
+RUN git config --global --add safe.directory /opt/flutter \
+    && flutter config --no-analytics >/dev/null 2>&1 || true \
+    && dart --version
+
+# Pinned flutter_rust_bridge_codegen 1.80.1 — parses src/flutter_ffi.rs and emits the
+# (git-ignored) src/bridge_generated.rs + flutter/lib/generated_bridge.dart. `--locked`
+# first (reproducible), falling back if the 1.75 toolchain rejects a transitive lock pin.
+RUN cargo install flutter_rust_bridge_codegen --version 1.80.1 --locked \
+    || cargo install flutter_rust_bridge_codegen --version 1.80.1

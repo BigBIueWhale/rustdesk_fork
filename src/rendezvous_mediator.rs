@@ -188,11 +188,12 @@ async fn direct_server(server: ServerPtr) {
     let mut port = 0;
     loop {
         // R-D4 / R-F4: the direct listener is UNCONDITIONAL — it is the box's only
-        // inbound path (§17), so it is NOT gated on the `direct-server` option (the
-        // spec deliberately keeps direct-server OUT of PINNED_SETTINGS for exactly
-        // this reason: R-D4 makes the listener unconditional and R-F4 pins the port
-        // as the compile-time constant get_direct_port() → 21118, never a runtime
-        // option). Only the pinned stop-service=N (R-S16) is honored, and it is
+        // inbound path (§17), so it has no enable-toggle at all. Upstream's
+        // `direct-server` option (which gated the listener) is now REMOVED from the
+        // tree entirely — the UI + the OPTION_DIRECT_SERVER const + its option2bool
+        // branch (R-G4 / R-SV1). R-F4 pins the port as the compile-time constant
+        // get_direct_port() → 21118, never a runtime option. Only the pinned
+        // stop-service=N (R-S16) is honored, and it is
         // always N, so the box never self-stops listening.
         let disabled = option2bool("stop-service", &Config::get_option("stop-service"));
         if !disabled && listener.is_none() {

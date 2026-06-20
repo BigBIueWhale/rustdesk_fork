@@ -2846,7 +2846,6 @@ pub fn option2bool(option: &str, value: &str) -> bool {
         value != "N"
     } else if option.starts_with("allow-")
         || option == "stop-service"
-        || option == keys::OPTION_DIRECT_SERVER
         || option == "force-always-relay"
     {
         value == "Y"
@@ -2929,8 +2928,6 @@ pub mod keys {
         "enable-perm-change-in-accept-window";
     pub const OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION: &str = "allow-remote-config-modification";
     pub const OPTION_ALLOW_NUMERNIC_ONE_TIME_PASSWORD: &str = "allow-numeric-one-time-password";
-    pub const OPTION_DIRECT_SERVER: &str = "direct-server";
-    pub const OPTION_DIRECT_ACCESS_PORT: &str = "direct-access-port";
     pub const OPTION_WHITELIST: &str = "whitelist";
     pub const OPTION_ALLOW_AUTO_DISCONNECT: &str = "allow-auto-disconnect";
     pub const OPTION_AUTO_DISCONNECT_TIMEOUT: &str = "auto-disconnect-timeout";
@@ -3158,8 +3155,6 @@ pub mod keys {
         OPTION_ENABLE_PRIVACY_MODE,
         OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION,
         OPTION_ALLOW_NUMERNIC_ONE_TIME_PASSWORD,
-        OPTION_DIRECT_SERVER,
-        OPTION_DIRECT_ACCESS_PORT,
         OPTION_WHITELIST,
         OPTION_ALLOW_AUTO_DISCONNECT,
         OPTION_AUTO_DISCONNECT_TIMEOUT,

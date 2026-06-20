@@ -2639,8 +2639,11 @@ impl LoginConfigHandler {
     /// Create a [`Message`] for login.
     fn create_login_msg(
         &self,
-        os_username: String,
-        os_password: String,
+        // R-S18: os_username/os_password are no longer SENT (the os_login leak below is
+        // removed); the params stay so the callers compile, unused here. The persisted
+        // os-username/os-password options + their UI are the §19/R-G4 follow-on.
+        _os_username: String,
+        _os_password: String,
         password: Vec<u8>,
     ) -> Message {
         #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -2705,11 +2708,6 @@ impl LoginConfigHandler {
         let my_platform = hbb_common::whoami::platform().to_string();
         #[cfg(target_os = "android")]
         let my_platform = "Android".into();
-        let hwid = if self.get_option("trust-this-device") == "Y" {
-            crate::get_hwid()
-        } else {
-            Bytes::new()
-        };
         let mut lr = LoginRequest {
             username: pure_id,
             password: password.into(),
@@ -2719,13 +2717,16 @@ impl LoginConfigHandler {
             option: self.get_option_message(true).into(),
             session_id: self.session_id,
             version: crate::VERSION.to_string(),
-            os_login: Some(OSLogin {
-                username: os_username,
-                password: os_password,
-                ..Default::default()
-            })
-            .into(),
-            hwid,
+            // R-S18 / Appendix C #22: the viewer NO LONGER sends os_login (peer-supplied
+            // OS credentials) or hwid (a stable device fingerprint). Upstream auto-sent
+            // BOTH on every connect, so a malicious or substituted peer (a different box
+            // answering at a pinned address — R-S17) harvested the operator's stored OS
+            // creds + fingerprint with no interaction — a client-side leak the
+            // responder-only audit could not see. The responder already ignores os_login
+            // (0685c28, R-X14); deleting the sender completes R-S18's symmetric removal.
+            // (The os-username/os-password options + the Request-Elevation/OS-login UI
+            // that feed them are the §19/R-G4 follow-on; the OSLogin proto-field deletion
+            // is R-S18's message.proto cleanup.) os_login + hwid stay unset (Default).
             avatar,
             ..Default::default()
         };

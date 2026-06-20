@@ -96,6 +96,12 @@ ra6_clean 'handle_request_relay|handle_punch_hole|udp_nat_listen|punch_udp_hole|
 # endpoints + the worker + the re-home handler are gone; only the local broadcast channel
 # (signal_receiver/is_pro) survives in mod hbbs_http::sync.
 ra6_clean 'api/heartbeat|api/sysinfo|heartbeat_url|handle_config_options|start_hbbs_sync_async' 'R-SV6(b) HBBS heartbeat/sysinfo egress' || rc=1
+# R-S18 / Appendix C #22: the viewer's auto-sent OS-credential leak is removed — upstream
+# built `os_login: Some(OSLogin {os-username, os-password})` + the hwid device fingerprint
+# into the LoginRequest on EVERY connect (client.rs create_login_msg), so a substituted
+# peer (R-S17) harvested the operator's stored OS creds with no interaction. The responder
+# already ignores os_login (0685c28); deleting the sender completes the symmetric removal.
+ra6_clean 'Some\(OSLogin' 'R-S18 viewer os_login credential leak (sender)' || rc=1
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod auth_2fa:R-X7 2FA/TOTP' 'mod lan:R-X5 LAN discovery' \

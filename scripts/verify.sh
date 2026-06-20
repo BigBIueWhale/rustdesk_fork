@@ -111,6 +111,12 @@ ra6_clean 'Some\(OSLogin|\.set_logon\(' 'R-S18 viewer os_login + elevation-with-
 # `Union::PublicKey` arm — NOT the sodiumoxide `sign::PublicKey`/`box_::PublicKey` crypto types,
 # which legitimately remain. Only `//` doc comments naming SignedId survive (filtered above).
 ra6_clean 'SignedId|set_public_key|message::Union::PublicKey' 'R-P5 SignedId/PublicKey device-identity keying' || rc=1
+# R-SV / R-D / §18 (dial nobody): the viewer's peer-list ONLINE-STATUS query is removed — it
+# connected to get_rendezvous_server() (defaulting to the built-in rs-ny.rustdesk.com) and sent an
+# OnlineRequest carrying Config::get_id() + the peer ids (a box-id + peer-list leak on every list
+# refresh). The egress fns (create_online_stream / the OnlineRequest send) are gone; peer_online
+# now reports every peer offline with no network call. (Only `//` comments name them, filtered.)
+ra6_clean 'create_online_stream|set_online_request' 'R-SV viewer online-status egress' || rc=1
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod auth_2fa:R-X7 2FA/TOTP' 'mod lan:R-X5 LAN discovery' \

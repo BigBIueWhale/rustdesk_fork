@@ -405,8 +405,6 @@ class FfiModel with ChangeNotifier {
         final peer_id = evt['peer_id'].toString();
         await bind.sessionSwitchSides(sessionId: sessionId);
         closeConnection(id: peer_id);
-      } else if (name == 'portable_service_running') {
-        _handlePortableServiceRunning(peerId, evt);
       } else if (name == 'on_url_scheme_received') {
         // currently comes from "_url" ipc of mac and dbus of linux
         onUrlSchemeReceived(evt);
@@ -768,11 +766,6 @@ class FfiModel with ChangeNotifier {
     platformFFI.setEventCallback(startEventListener(sessionId, peerId));
   }
 
-  _handlePortableServiceRunning(String peerId, Map<String, dynamic> evt) {
-    final running = evt['running'] == 'true';
-    parent.target?.elevationModel.onPortableServiceRunning(running);
-  }
-
   handleAliasChanged(Map<String, dynamic> evt) {
     if (!(isDesktop || isWebDesktop)) return;
     final String peerId = evt['id'];
@@ -934,12 +927,6 @@ class FfiModel with ChangeNotifier {
           hasCancel: false);
     } else if (type == 'wait-remote-accept-nook') {
       showWaitAcceptDialog(sessionId, type, title, text, dialogManager);
-    } else if (type == 'on-uac' || type == 'on-foreground-elevated') {
-      showOnBlockDialog(sessionId, type, title, text, dialogManager);
-    } else if (type == 'wait-uac') {
-      showWaitUacDialog(sessionId, dialogManager, type);
-    } else if (type == 'elevation-error') {
-      showElevationError(sessionId, type, title, text, dialogManager);
     } else if (type == 'relay-hint' || type == 'relay-hint2') {
       showRelayHintDialog(sessionId, type, title, text, dialogManager, peerId);
     } else if (text == kMsgboxTextWaitingForImage) {
@@ -1390,7 +1377,6 @@ class FfiModel with ChangeNotifier {
       if (!isCache) {
         handleResolutions(peerId, evt["resolutions"]);
       }
-      parent.target?.elevationModel.onPeerInfo(_pi);
     }
     if (connType == ConnType.defaultConn) {
       setViewOnly(
@@ -3579,20 +3565,6 @@ class RecordingModel with ChangeNotifier {
   }
 }
 
-class ElevationModel with ChangeNotifier {
-  WeakReference<FFI> parent;
-  ElevationModel(this.parent);
-  bool _running = false;
-  bool _canElevate = false;
-  bool get showRequestMenu => _canElevate && !_running;
-  onPeerInfo(PeerInfo pi) {
-    _canElevate = pi.platform == kPeerPlatformWindows && pi.sasEnabled == false;
-    _running = false;
-  }
-
-  onPortableServiceRunning(bool running) => _running = running;
-}
-
 // The index values of `ConnType` are same as rust protobuf.
 enum ConnType {
   defaultConn,
@@ -3628,7 +3600,6 @@ class FFI {
   late final QualityMonitorModel qualityMonitorModel; // session
   late final RecordingModel recordingModel; // session
   late final InputModel inputModel; // session
-  late final ElevationModel elevationModel; // session
   late final CmFileModel cmFileModel; // cm
   late final TextureModel textureModel; //session
   late final Peers recentPeersModel; // global
@@ -3657,7 +3628,6 @@ class FFI {
     qualityMonitorModel = QualityMonitorModel(WeakReference(this));
     recordingModel = RecordingModel(WeakReference(this));
     inputModel = InputModel(WeakReference(this));
-    elevationModel = ElevationModel(WeakReference(this));
     cmFileModel = CmFileModel(WeakReference(this));
     textureModel = TextureModel(WeakReference(this));
     recentPeersModel = Peers(

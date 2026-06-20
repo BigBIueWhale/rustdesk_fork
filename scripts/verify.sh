@@ -74,6 +74,12 @@ ra6_clean 'start_uinput_service'                                         'R-X13 
 # handler arm; the CM-side senders use the unqualified `Data::SwitchPermission`
 # (R-G7 GUI surface), so this gate is specific to the widener.
 ra6_clean 'ipc::Data::SwitchPermission'                                  'R-S16(d)(ii) SwitchPermission widener' || rc=1
+# R-SV7 / §18: the Telegram 2FA push/enrollment egress (a hardcoded api.telegram.org
+# POST that leaked the box id + peer IP, gated on `bot`/`2fa` not `api-server`, so the
+# R-D6 api-server pin never silenced it) is excised from the tree — structurally
+# absent, not config-pinned (R-SV1). The fn defs and the URL literal are gone; only
+# `//` comments naming the host remain (filtered above).
+ra6_clean 'api\.telegram\.org|send_2fa_code_to_telegram|get_chatid_telegram' 'R-SV7 Telegram 2FA egress' || rc=1
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod auth_2fa:R-X7 2FA/TOTP' 'mod lan:R-X5 LAN discovery' \

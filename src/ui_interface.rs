@@ -1622,14 +1622,12 @@ pub fn has_valid_bot() -> bool {
     crate::auth_2fa::TelegramBot::get().map_or(false, |bot| bot.is_some())
 }
 
-pub fn verify_bot(token: String) -> String {
-    match crate::auth_2fa::get_chatid_telegram(&token) {
-        Err(err) => err.to_string(),
-        Ok(None) => {
-            "To activate the bot, simply send a message beginning with a forward slash (\"/\") like \"/hello\" to its chat.".to_owned()
-        }
-        _ => "".to_owned(),
-    }
+pub fn verify_bot(_token: String) -> String {
+    // R-SV7: the Telegram-bot 2FA enrollment path (get_chatid_telegram, an
+    // api.telegram.org/getUpdates POST that leaked the bot token) is excised. The
+    // FFI signature is kept so the (R-X7a-removed) Flutter caller still links, but it
+    // performs no egress and reports the feature absent.
+    "Telegram bot 2FA is not supported in this build.".to_owned()
 }
 
 pub fn check_hwcodec() {

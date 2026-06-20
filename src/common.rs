@@ -2661,7 +2661,7 @@ mod tests {
             "https://admin.example.com"
         ));
         assert!(!should_use_tcp_proxy_for_api_url(
-            "https://api.telegram.org/bot123/sendMessage",
+            "https://api.example.org/bot123/sendMessage",
             "https://admin.example.com"
         ));
         assert!(!should_use_tcp_proxy_for_api_url(

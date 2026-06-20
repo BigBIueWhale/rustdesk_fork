@@ -1,5 +1,4 @@
 use hbb_common::{
-    anyhow::anyhow,
     bail,
     config::Config,
     get_time,
@@ -120,25 +119,10 @@ pub struct TelegramBot {
 }
 
 impl TelegramBot {
-    fn into_string(&self) -> ResultType<String> {
-        let token = encrypt_vec_or_original(self.token_str.as_bytes(), "00", 1024);
-        let bot = TelegramBot {
-            token,
-            ..self.clone()
-        };
-        let s = serde_json::to_string(&bot)?;
-        Ok(s)
-    }
-
-    fn save(&self) -> ResultType<()> {
-        let s = self.into_string()?;
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        crate::ipc::set_option("bot", &s);
-        #[cfg(any(target_os = "android", target_os = "ios"))]
-        Config::set_option("bot".to_owned(), s);
-        Ok(())
-    }
-
+    // R-SV7: into_string()/save() persisted a verified bot for the enrollment path
+    // (get_chatid_telegram) that is now excised — removed with it. get() stays: it is
+    // a pure config read (no egress) backing ui_interface::has_valid_bot, and the
+    // `bot` option is pinned empty (R-D6) so it always yields None on the shipped box.
     pub fn get() -> ResultType<Option<TelegramBot>> {
         let data = Config::get_option("bot");
         if data.is_empty() {
@@ -154,51 +138,12 @@ impl TelegramBot {
     }
 }
 
-// https://gist.github.com/dideler/85de4d64f66c1966788c1b2304b9caf1
-pub async fn send_2fa_code_to_telegram(text: &str, bot: TelegramBot) -> ResultType<()> {
-    let url = format!("https://api.telegram.org/bot{}/sendMessage", bot.token_str);
-    let params = serde_json::json!({"chat_id": bot.chat_id, "text": text});
-    crate::post_request(url, params.to_string(), "").await?;
-    Ok(())
-}
-
-pub fn get_chatid_telegram(bot_token: &str) -> ResultType<Option<String>> {
-    let url = format!("https://api.telegram.org/bot{}/getUpdates", bot_token);
-    // because caller is in tokio runtime, so we must call post_request_sync in new thread.
-    let handle = std::thread::spawn(move || crate::post_request_sync(url, "".to_owned(), ""));
-    let resp = handle.join().map_err(|_| anyhow!("Thread panicked"))??;
-    let value = serde_json::from_str::<serde_json::Value>(&resp).map_err(|e| anyhow!(e))?;
-
-    // Check for an error_code in the response
-    if let Some(error_code) = value.get("error_code").and_then(|code| code.as_i64()) {
-        // If there's an error_code, try to use the description for the error message
-        let description = value["description"]
-            .as_str()
-            .unwrap_or("Unknown error occurred");
-        return Err(anyhow!(
-            "Telegram API error: {} (error_code: {})",
-            description,
-            error_code
-        ));
-    }
-
-    let chat_id = &value["result"][0]["message"]["chat"]["id"];
-    let chat_id = if let Some(id) = chat_id.as_i64() {
-        Some(id.to_string())
-    } else if let Some(id) = chat_id.as_str() {
-        Some(id.to_owned())
-    } else {
-        None
-    };
-
-    if let Some(chat_id) = chat_id.as_ref() {
-        let bot = TelegramBot {
-            token_str: bot_token.to_owned(),
-            chat_id: chat_id.to_owned(),
-            ..Default::default()
-        };
-        bot.save()?;
-    }
-
-    Ok(chat_id)
-}
+// R-SV7 / §18 (sovereignty — no phone-home): send_2fa_code_to_telegram and
+// get_chatid_telegram are EXCISED. Upstream POSTed a hardcoded
+// `https://api.telegram.org/bot{token}/{sendMessage,getUpdates}` — the send path
+// leaked this box's id + the peer's source IP from the pre-`authorized` 2FA gate
+// (connection.rs), the getUpdates path leaked the bot token during enrollment.
+// Both are gated on the `bot`/`2fa` options, NOT `api-server`, so R-D6's
+// api-server pin never silenced them. Removed from the tree (not config-pinned) so
+// `api.telegram.org` is structurally absent — R-SV1 ("sovereignty is a property of
+// the artifact … deleted, not runtime-gated") / R-SV10's zero-egress grep.

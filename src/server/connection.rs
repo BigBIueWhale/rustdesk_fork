@@ -1334,33 +1334,16 @@ impl Connection {
             return true;
         }
         if self.require_2fa.is_some() && !self.is_recent_session(true) && !self.from_switch {
-            self.require_2fa.as_ref().map(|totp| {
-                let bot = crate::auth_2fa::TelegramBot::get();
-                let bot = match bot {
-                    Ok(Some(bot)) => bot,
-                    Err(err) => {
-                        log::error!("Failed to get telegram bot: {}", err);
-                        return;
-                    }
-                    _ => return,
-                };
-                let code = totp.generate_current();
-                if let Ok(code) = code {
-                    let text = format!(
-                        "2FA code: {}\n\nA new connection has been established to your device with ID {}. The source IP address is {}.",
-                        code,
-                        Config::get_id(),
-                        self.ip,
-                    );
-                    tokio::spawn(async move {
-                        if let Err(err) =
-                            crate::auth_2fa::send_2fa_code_to_telegram(&text, bot).await
-                        {
-                            log::error!("Failed to send 2fa code to telegram bot: {}", err);
-                        }
-                    });
-                }
-            });
+            // R-SV7 / §18: the Telegram 2FA push is excised. Upstream POSTed a
+            // hardcoded https://api.telegram.org/bot.../sendMessage here that leaked
+            // this box's own id (Config::get_id()) AND the peer's source IP — fired
+            // from the pre-`authorized` 2FA gate, an egress the R-D6 api-server pin
+            // never covered (it keys on `bot`/`2fa`, not `api-server`). The push, the
+            // leaking message text, and send_2fa_code_to_telegram are removed from the
+            // tree so `api.telegram.org` is structurally absent (R-SV1 compile-out,
+            // not a config-pin); TOTP-app delivery (were 2fa ever built) is unaffected.
+            // On the shipped build `2fa` is pinned empty (R-D6) so require_2fa is
+            // always None and this whole branch is unreachable regardless.
             self.send_login_error(crate::client::REQUIRE_2FA).await;
             // Keep the connection alive so the client can continue with 2FA.
             return true;

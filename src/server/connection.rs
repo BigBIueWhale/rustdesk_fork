@@ -1819,54 +1819,6 @@ impl Connection {
         self.tx_input.send(MessageInput::Key((msg, press))).ok();
     }
 
-    fn verify_h1(&self, h1: &[u8]) -> bool {
-        let mut hasher2 = Sha256::new();
-        hasher2.update(h1);
-        hasher2.update(self.hash.challenge.as_bytes());
-        // A normal `==` on slices may short-circuit on the first mismatch, which can leak how many leading
-        // bytes matched via timing. In typical remote scenarios this is difficult to exploit due to network
-        // jitter, changing challenges, and login attempt throttling, but a constant-time comparison here is
-        // low-cost defensive programming.
-        constant_time_eq(&hasher2.finalize()[..], &self.lr.password[..])
-    }
-
-    fn validate_password_plain(&self, password: &str) -> bool {
-        if password.is_empty() {
-            return false;
-        }
-
-        let mut hasher = Sha256::new();
-        hasher.update(password.as_bytes());
-        hasher.update(self.hash.salt.as_bytes());
-        let h1_plain = hasher.finalize();
-        self.verify_h1(&h1_plain[..])
-    }
-
-    fn validate_password_storage(&self, storage: &str) -> bool {
-        if storage.is_empty() {
-            return false;
-        }
-
-        // Use strict decode success to detect hashed storage.
-        // If decode fails, treat as legacy plaintext storage for compatibility.
-        if let Some(h1) = decode_permanent_password_h1_from_storage(storage) {
-            return self.verify_h1(&h1[..]);
-        }
-
-        // Legacy plaintext storage path.
-        self.validate_password_plain(storage)
-    }
-
-    fn validate_preset_password_storage(&self, storage: &str, salt: &str) -> bool {
-        if salt.is_empty() {
-            return self.validate_password_plain(storage);
-        }
-        let Some(h1) = decode_preset_password_h1_from_storage(storage) else {
-            return false;
-        };
-        self.verify_h1(&h1[..])
-    }
-
     // This is coarse brute-force protection for the current temporary password value.
     // We only care whether the active temporary password itself was presented correctly,
     // not whether later authorization steps succeed. A successful temporary-password
@@ -1919,47 +1871,6 @@ impl Connection {
         state.failures = 0;
     }
 
-    fn validate_password(&mut self, allow_permanent_password: bool) -> bool {
-        if password::temporary_enabled() {
-            let password = password::temporary_password();
-            if self.validate_password_plain(&password) {
-                raii::AuthedConnID::update_or_insert_session(
-                    self.session_key(),
-                    Some(password),
-                );
-                self.check_update_temporary_password(true);
-                return true;
-            }
-        }
-        if password::permanent_enabled() || allow_permanent_password {
-            let print_fallback = || {
-                if allow_permanent_password && !password::permanent_enabled() {
-                    log::info!("Permanent password accepted via logon-screen fallback");
-                }
-            };
-            // Strictly check storage usability before auth so malformed encrypted/hash storage
-            // cannot fall back to being accepted as legacy plaintext.
-            let (local_storage, local_salt) =
-                Config::get_local_permanent_password_storage_and_salt();
-            if !local_storage.is_empty() {
-                if local_permanent_password_storage_is_usable_for_auth(&local_storage, &local_salt)
-                    && self.validate_password_storage(&local_storage)
-                {
-                    print_fallback();
-                    return true;
-                }
-            } else {
-                let (hard, salt) = Config::get_preset_password_storage_and_salt();
-                if preset_permanent_password_storage_is_usable_for_auth(&hard, &salt)
-                    && self.validate_preset_password_storage(&hard, &salt)
-                {
-                    print_fallback();
-                    return true;
-                }
-            }
-        }
-        false
-    }
 
     fn is_recent_session(&mut self, _tfa: bool) -> bool {
         // R-S2 / R-A2: no resume without a fresh handshake. CPace re-keys every
@@ -2304,9 +2215,13 @@ impl Connection {
                 // R-R2b) refuses unkeyed streams before Connection::start, so on the
                 // responder this branch is unreachable; no PRS material is ever
                 // re-validated over the wire.
-                if !self.stream.is_secured()
-                    && !self.validate_password(allow_logon_screen_password)
-                {
+                // R-S2: the post-keying salted-hash password oracle (validate_password /
+                // verify_h1) is removed. The stream is always CPace-keyed here — R-A1 (now
+                // unconditional, R-R2b) refuses unkeyed streams before Connection::start — so
+                // this branch is unreachable; retaining `!is_secured()` makes it fail CLOSED: an
+                // unkeyed stream is rejected outright, never password-validated. Authorization
+                // IS the CPace KEYED edge (R-S6 collapsed the redundant login-time proof).
+                if !self.stream.is_secured() {
                     self.update_failure_with_scope(failure, false, 0, FailureScope::Default);
                     self.check_update_temporary_password(false);
                     if err_msg.is_empty() {

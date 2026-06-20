@@ -94,6 +94,15 @@ ra6_clean 'SwitchSides|SwitchBack'                                       'R-A6/R
 if grep -qE 'SwitchSides|SwitchBack' libs/hbb_common/protos/message.proto 2>/dev/null; then
   echo "  FAIL R-A6: switch-sides proto messages/arms must be absent from message.proto"; rc=1
 else echo "  ok  R-A6/R-S2 switch-sides proto absent"; fi
+# R-S2 FSM-collapse: the post-keying salted-hash password oracle is deleted. With CPace
+# (R-P14) every connection is mutually password-authenticated at keying, and R-A1 (now
+# unconditional) refuses unkeyed streams before Connection::start, so the inherited
+# login-time `validate_password`/`verify_h1` challenge-response was unreachable (R-S6) — the
+# responder authorizes purely on the CPace KEYED edge. The call site now reads `!is_secured()`
+# alone (fail-closed: an unkeyed stream is rejected, never password-validated). (The Hash{salt,
+# challenge} emission `set_hash` + the now-dead recent-session cache/`is_recent_session` are the
+# remaining FSM-collapse tokens — a dedicated follow-on; the prompt-flow rework removes set_hash.)
+ra6_clean 'validate_password|verify_h1'                                  'R-S2 post-key password oracle' || rc=1
 # R-SV7 / §18: the Telegram 2FA push/enrollment egress (a hardcoded api.telegram.org
 # POST that leaked the box id + peer IP, gated on `bot`/`2fa` not `api-server`, so the
 # R-D6 api-server pin never silenced it) is excised from the tree — structurally

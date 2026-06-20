@@ -1,9 +1,6 @@
-#[cfg(not(target_os = "ios"))]
-use hbb_common::whoami;
 use hbb_common::{
     allow_err,
     anyhow::bail,
-    config::Config,
     config::{self, RENDEZVOUS_PORT},
     log,
     protobuf::Message as _,
@@ -22,56 +19,6 @@ use std::{
 };
 
 type Message = RendezvousMessage;
-
-#[cfg(not(target_os = "ios"))]
-pub(super) fn start_listening() -> ResultType<()> {
-    let addr = SocketAddr::from(([0, 0, 0, 0], get_broadcast_port()));
-    let socket = std::net::UdpSocket::bind(addr)?;
-    socket.set_read_timeout(Some(std::time::Duration::from_millis(1000)))?;
-    log::info!("lan discovery listener started");
-    loop {
-        let mut buf = [0; 2048];
-        if let Ok((len, addr)) = socket.recv_from(&mut buf) {
-            if let Ok(msg_in) = Message::parse_from_bytes(&buf[0..len]) {
-                match msg_in.union {
-                    Some(rendezvous_message::Union::PeerDiscovery(p)) => {
-                        if p.cmd == "ping"
-                            && config::option2bool(
-                                "enable-lan-discovery",
-                                &Config::get_option("enable-lan-discovery"),
-                            )
-                        {
-                            let id = Config::get_id();
-                            if p.id == id {
-                                continue;
-                            }
-                            if let Some(self_addr) = get_ipaddr_by_peer(&addr) {
-                                let mut msg_out = Message::new();
-                                let mut hostname = crate::whoami_hostname();
-                                // The default hostname is "localhost" which is a bit confusing
-                                if hostname == "localhost" {
-                                    hostname = "unknown".to_owned();
-                                }
-                                let peer = PeerDiscovery {
-                                    cmd: "pong".to_owned(),
-                                    mac: get_mac(&self_addr),
-                                    id,
-                                    hostname,
-                                    username: crate::platform::get_active_username(),
-                                    platform: whoami::platform().to_string(),
-                                    ..Default::default()
-                                };
-                                msg_out.set_peer_discovery(peer);
-                                socket.send_to(&msg_out.write_to_bytes()?, addr).ok();
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-}
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn discover() -> ResultType<()> {

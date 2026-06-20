@@ -234,25 +234,38 @@ impl Client {
                 // had (the dead rendezvous path is already keyed, so `is_secured` skips it).
                 // The PRS is the live R-S16 viewer twin (`PeerConfig.password_prs`).
                 if !x.0 .0.is_secured() {
-                    let prs = {
+                    let (prs, onboarding) = {
+                        // Computed before the lch lock (no re-entrancy): the connect-time
+                        // password the operator supplied this session (URI/dialog/card).
+                        let connect_pw = interface.get_connect_password();
                         let lch = interface.get_lch();
                         let g = lch.read().unwrap();
-                        // R-S16: the live PRS for the balanced PAKE. Primary: the remembered
-                        // per-peer plaintext (the viewer twin). Fallback: the shared-address-book
-                        // plaintext (`shared_password`, set in `initialize` — before connect — so
-                        // an ab-card peer also keys). Both are PRE-keying sources; the
-                        // preset/default flow consumed in `handle_hash` runs only AFTER keying, so
-                        // it cannot feed this. An empty result here fails closed in key_initiator
-                        // (R-S9), so this fallback is strictly additive.
+                        // R-S16: the live PRS for the balanced PAKE, from PRE-keying sources only
+                        // (the preset/default flow consumed in `handle_hash` runs AFTER keying, so
+                        // it cannot feed this). Precedence: the remembered per-peer plaintext (the
+                        // viewer twin) → the connect-time password (a FIRST connect to a not-yet-
+                        // remembered peer, the onboarding path) → the shared-address-book plaintext
+                        // (`shared_password`, set in `initialize`). An empty result fails closed in
+                        // key_initiator (R-S9), so each fallback is strictly additive. The bool
+                        // marks the connect-time onboarding case so its PRS can be persisted below.
                         let from_prs =
                             String::from_utf8(g.config.password_prs.clone()).unwrap_or_default();
                         if !from_prs.is_empty() {
-                            from_prs
+                            (from_prs, false) // already the stored PRS
+                        } else if !connect_pw.is_empty() {
+                            (connect_pw, true) // onboarding — stage for persistence
                         } else {
-                            g.shared_password.clone().unwrap_or_default()
+                            (g.shared_password.clone().unwrap_or_default(), false) // ab: not per-peer
                         }
                     };
                     let pk_b = Self::key_initiator(peer, &prs, &mut x.0 .0).await?;
+                    if onboarding {
+                        // R-S16: the connect-time password just keyed a not-yet-remembered peer —
+                        // stage it as the in-memory PRS so the peer-info save path persists it (when
+                        // the user remembers + it is not a shared-ab password), closing the
+                        // onboarding loop: the NEXT connect keys from the stored PRS, no re-entry.
+                        interface.get_lch().write().unwrap().password_prs = prs.into_bytes();
+                    }
                     // Surface the verified+pinned host key as the connection pk (the UI
                     // fingerprint, io_loop set_fingerprint, becomes the pinned host's).
                     x.0 .2 = Some(pk_b);
@@ -3814,6 +3827,15 @@ pub trait Interface: Send + Clone + 'static + Sized {
 
     fn get_id(&self) -> String {
         self.get_lch().read().unwrap().id.clone()
+    }
+
+    /// R-S16: the connect-time password the operator supplied (a URI `--password`, an
+    /// address-book / saved-peer card, the connect dialog) — a SOURCE of the CPace PRS
+    /// for a peer not yet remembered, available BEFORE keying. Empty by default; the GUI
+    /// `Session` overrides it with the live connect password. (The post-`Hash` prompt is
+    /// too late to feed the handshake, so this is how a first connect provides the PRS.)
+    fn get_connect_password(&self) -> String {
+        String::new()
     }
 
     fn is_force_relay(&self) -> bool {

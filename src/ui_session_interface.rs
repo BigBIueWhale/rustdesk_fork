@@ -1847,6 +1847,12 @@ impl<T: InvokeUiSession> Interface for Session<T> {
         }
     }
 
+    fn get_connect_password(&self) -> String {
+        // R-S16: the live connect-time password (URI `--password`, an address-book / saved
+        // card, the connect dialog) — feeds the CPace PRS at `Client::start`, before keying.
+        self.password.clone()
+    }
+
     async fn handle_hash(&self, pass: &str, hash: Hash, peer: &mut Stream) {
         handle_hash(self.lc.clone(), pass, hash, self, peer).await;
     }

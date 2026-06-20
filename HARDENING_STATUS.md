@@ -192,11 +192,19 @@ R-A8/A9 two-host test, deferred):
    the key hex, whitespace-stripped + decoded → `set_pinned_pk`), `--list-known-hosts`,
    `--forget-host <addr>`. So the SSH-known_hosts workflow is COMPLETE and headless: the GUI
    seed/mismatch dialogs (step 4) are now a usability layer, not a prerequisite to function.
-4. **Prompt-before-keying restructure** (the flutter-GUI part, REMAINING): for a NEW peer with no
-   remembered PRS, prompt for the password BEFORE keying (CPace needs the PRS upfront) vs the
-   inherited prompt-AFTER-`Hash` flow; + the R-S17 first-connect seed / mismatch GUI dialogs
-   (R-G5) as a convenience over the `--pin-host` CLI. (Today a new peer fails closed until its
-   PRS is remembered and its key pinned via CLI — correct, but the GUI makes it ergonomic.)
+4. **Prompt-before-keying** — **PARTIAL**: the connect-time-password SOURCE is now wired
+   (Rust): a defaulted `Interface::get_connect_password()` (overridden in the GUI `Session` to
+   return its live `password` field — the URI `--password`, an address-book / saved card, the
+   connect dialog) feeds `key_initiator`'s PRS lookup BEFORE keying, and on a successful
+   onboarding key the password is staged into the in-memory PRS so the peer-info save path
+   PERSISTS it (closing the loop: next connect keys from the stored PRS). So every connect path
+   that supplies a password up front — URI links, AB cards, an explicit password field — now
+   keys + remembers, with NO change to the flutter substrate. **REMAINING (flutter):** the MAIN
+   "type an ID, click connect, get prompted" flow still prompts AFTER `Hash` (too late for the
+   PAKE), so a brand-new peer reached that way fails closed until its password is provided up
+   front; the flutter fix is to prompt-before-`Client::start` for a peer with no remembered PRS
+   (route the entry to `Session.password`). Plus the R-S17 first-connect seed / mismatch GUI
+   dialogs (R-G5) as a convenience over the `--pin-host` CLI.
 5. **Cleanup**: delete the old `secure_connection` SignedId keying + `validate_password` (R-S6) +
    the `SignedId`/`PublicKey` proto messages (R-P5/R-S18), and the rendezvous/relay/KCP `_start`
    branches + `udp_nat_connect` (R-SV4(b)/R-S13(d), which also lets `mod kcp_stream` go).

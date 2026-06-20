@@ -412,6 +412,62 @@ pub fn core_main() -> Option<Vec<String>> {
                 crate::common::pk_to_fingerprint(config::Config::get_key_pair().1)
             );
             return None;
+        } else if args[0] == "--pin-host" {
+            // R-S17 known_hosts seed (headless): pin a box's Ed25519 host key for an
+            // address, learned OUT-OF-BAND from the box's `--get-fingerprint` (whose output
+            // IS the key's lowercase hex, space-grouped — strip whitespace and decode). This
+            // is SSH's "type yes to the fingerprint", done deliberately rather than on faith:
+            // the viewer then refuses any box at that address whose HostIdentity host-proof
+            // (R-S17) does not match this key. Seeds ONLY from this explicit operator action,
+            // never from a peer message (R-S15).
+            if args.len() != 3 {
+                println!("usage: --pin-host <address> <fingerprint-from --get-fingerprint on the box>");
+                return None;
+            }
+            let hex: String = args[2].chars().filter(|c| !c.is_whitespace()).collect();
+            let pk: Option<Vec<u8>> =
+                if hex.len() == 64 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
+                    (0..64)
+                        .step_by(2)
+                        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
+                        .collect()
+                } else {
+                    None
+                };
+            match pk {
+                Some(pk) => match hbb_common::host_pin::set_pinned_pk(&args[1], &pk) {
+                    Ok(()) => {
+                        println!("pinned {} -> {}", args[1], crate::common::pk_to_fingerprint(pk))
+                    }
+                    Err(e) => println!("failed to pin {}: {}", args[1], e),
+                },
+                None => println!(
+                    "invalid host-key fingerprint: need 64 hex chars (the 32-byte Ed25519 key) as printed by `--get-fingerprint`"
+                ),
+            }
+            return None;
+        } else if args[0] == "--list-known-hosts" {
+            // R-S17: the pinned hosts (the viewer's known_hosts) — address + fingerprint.
+            for (addr, hex) in hbb_common::host_pin::list_pinned() {
+                let bytes: Option<Vec<u8>> = (0..hex.len())
+                    .step_by(2)
+                    .map(|i| u8::from_str_radix(hex.get(i..i + 2).unwrap_or(""), 16).ok())
+                    .collect();
+                let fp = bytes.map(crate::common::pk_to_fingerprint).unwrap_or(hex);
+                println!("{}  {}", addr, fp);
+            }
+            return None;
+        } else if args[0] == "--forget-host" {
+            // R-S17 / §19: drop a pin (a legitimately re-keyed box, or a decommissioned one).
+            if args.len() != 2 {
+                println!("usage: --forget-host <address>");
+                return None;
+            }
+            match hbb_common::host_pin::remove_pinned(&args[1]) {
+                Ok(()) => println!("forgot {}", args[1]),
+                Err(e) => println!("failed to forget {}: {}", args[1], e),
+            }
+            return None;
         // R-X4: the `--set-id` (rendezvous-ID change) and `--config` (trust-anchor +
         // server adoption) CLI paths are excised — both presuppose the rendezvous
         // account / anchor this serverless fork removes; the larger account

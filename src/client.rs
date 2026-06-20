@@ -216,7 +216,7 @@ impl Client {
                     return Err(err);
                 }
             }
-            Ok(x) => {
+            Ok(mut x) => {
                 // Set x.2 to true only in the connect() function to indicate that direct_failures needs to be updated; everywhere else it should be set to false.
                 if x.2 {
                     let direct_failures = interface.get_lch().read().unwrap().direct_failures;
@@ -226,6 +226,27 @@ impl Client {
                         log::info!("direct_failures updated to {}", n);
                         interface.get_lch().write().unwrap().set_direct_failure(n);
                     }
+                }
+                // R-S13 / R-P14 (initiator): key the connection with the single mandatory
+                // CPace handshake BEFORE it reaches the message loop — the symmetric mirror
+                // of the responder's `run_responder` block. `_start`'s direct path returns
+                // an UNKEYED stream, so this is where the viewer gains the keying it never
+                // had (the dead rendezvous path is already keyed, so `is_secured` skips it).
+                // The PRS is the live R-S16 viewer twin (`PeerConfig.password_prs`).
+                if !x.0 .0.is_secured() {
+                    let prs = {
+                        let lch = interface.get_lch();
+                        let g = lch.read().unwrap();
+                        String::from_utf8(g.config.password_prs.clone()).unwrap_or_default()
+                    };
+                    let pk_b = Self::key_initiator(peer, &prs, &mut x.0 .0).await?;
+                    // Surface the verified+pinned host key as the connection pk (the UI
+                    // fingerprint, io_loop set_fingerprint, becomes the pinned host's).
+                    x.0 .2 = Some(pk_b);
+                }
+                // R-A1 (initiator analog): never hand an unkeyed stream to the message loop.
+                if !x.0 .0.is_secured() {
+                    bail!("R-A1: refusing to proceed on an unkeyed stream (initiator, fail-closed)");
                 }
                 Ok((x.0, x.1))
             }
@@ -831,6 +852,68 @@ impl Client {
             }
         }
         Ok(option_pk)
+    }
+
+    /// R-S13 / R-P14 / R-S17 — the viewer (initiator) keying choke point: the mirror of
+    /// the responder's `run_responder` block (server.rs). The fork keys EVERY connection
+    /// with the single mandatory CPace handshake, run over the direct TCP stream BEFORE any
+    /// application message, fail-closed. On success it returns the responder's verified
+    /// Ed25519 host key (`pk_B`) — surfaced as the connection's pk so the UI fingerprint is
+    /// the pinned host's. `prs` is the live plaintext password (the R-S16 viewer twin
+    /// `PeerConfig.password_prs`); `peer_addr` keys the R-S17 pin lookup.
+    async fn key_initiator(peer_addr: &str, prs: &str, conn: &mut Stream) -> ResultType<Vec<u8>> {
+        // R-S9: an empty PRS has no shared secret — fail closed (never key in the open).
+        if prs.is_empty() {
+            bail!("No remembered password for this peer — cannot run the CPace handshake (R-S9, fail-closed). Connect once with the box's password remembered so the viewer can key.");
+        }
+        // The balanced PAKE runs over the direct TCP stream (the flagship path is always TCP).
+        let (keys, transcript) = {
+            let Some(fs) = conn.as_framed_tcp_mut() else {
+                bail!("CPace handshake requires a direct TCP stream");
+            };
+            match hbb_common::cpace::run_initiator_with_transcript(fs, prs).await {
+                Ok(v) => v,
+                // A confirmation mismatch here = wrong password (or a non-fork/substitute
+                // peer). The viewer cannot tell which, by design; fail closed either way.
+                Err(_) => bail!(
+                    "CPace handshake failed — wrong password, or the peer is not a fork box (fail-closed)"
+                ),
+            }
+        };
+        conn.set_session_keys(keys);
+        // R-S17: the responder emits its HostIdentity host-proof as the FIRST post-key frame
+        // (server.rs, encrypted by the session key). Read + verify it BEFORE anything else.
+        let bytes = match timeout(READ_TIMEOUT, conn.next()).await {
+            Ok(Some(Ok(b))) => b,
+            _ => bail!("R-S17: no HostIdentity host-proof from the responder (fail-closed)"),
+        };
+        let pk_b = match hbb_common::cpace::verify_host_identity(&transcript, &bytes) {
+            Ok(pk) => pk,
+            Err(_) => bail!(
+                "R-S17: the responder's HostIdentity host-proof did not verify (fail-closed)"
+            ),
+        };
+        // R-S17 pin compare — the SSH known_hosts check. The pin store normalizes the
+        // address (shared with R-SV5), so a spelling variant cannot silently re-seed.
+        match hbb_common::host_pin::get_pinned_pk(peer_addr) {
+            // Known host: the box proved the SAME key the operator pinned out-of-band.
+            Some(pinned) if pinned == pk_b => {}
+            // A box that knows the password but presents a DIFFERENT host key — the
+            // substitution R-S17 exists to catch. Refuse; never auto-re-pin.
+            Some(_) => bail!(
+                "R-S17: HOST KEY MISMATCH for {peer_addr} — the box presented a different host key than the one pinned. Refusing (possible substitution/MITM). If the box was legitimately re-keyed, run `--forget-host {peer_addr}` and re-pin."
+            ),
+            // First contact, no pin. NO silent trust-on-first-use (R-S17): require an
+            // explicit, out-of-band-verified seed. Print the fingerprint to compare against
+            // the box's `--get-fingerprint`, then pin via `--pin-host`.
+            None => {
+                let fp = crate::common::pk_to_fingerprint(pk_b.clone());
+                bail!(
+                    "R-S17: host {peer_addr} is not pinned (first contact). Its host-key fingerprint is:\n    {fp}\nVerify it equals `--get-fingerprint` on the box (over your trusted channel), then pin it:\n    --pin-host {peer_addr} <fingerprint>\nRefusing until pinned (fail-closed; no trust-on-first-use)."
+                );
+            }
+        }
+        Ok(pk_b)
     }
 
     /// Request a relay connection to the server.

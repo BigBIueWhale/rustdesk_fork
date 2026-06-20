@@ -88,6 +88,12 @@ dg_clean '_buildUpdateUI|UpdateProgress|handleUpdate' 'R-G4 dead update widgets'
 # version-check + updater are excised, so the option keys back nothing).
 dg_clean 'enable-check-update|allow-auto-update' 'R-G4/R-SV3 update-toggle option keys'
 dg_clean 'Download new version|Check for software update on startup' 'R-G4 update-UI strings'
+# R-G4 / §19: the OIDC SSO provider-login is removed — the "Login with Google/GitHub/…" widgets
+# (_IconOP / ButtonOP / WidgetOP / LoginWidgetOP / ConfigOP + kOpSvgList), the loginDialog
+# third-auth section, queryOidcLoginOptions, and the auth-*.svg provider icons. A direct-IP fork
+# has no account server to enumerate providers (mainGetApiServer is pinned empty), so the section
+# was always dead (empty loginOptions ⇒ Offstage). None may reappear.
+dg_clean 'LoginWidgetOP|kOpSvgList|kAuthReqTypeOidc|queryOidcLoginOptions' 'R-G4 OIDC SSO provider-login widgets'
 # R-G / R-D / §18 (dial nobody): the peer-list ONLINE-STATUS query trigger is removed — a
 # direct-IP fork has no rendezvous server to ask which peers are online, and the backend query is
 # a no-egress stub (cebfdf2). The `bind.queryOnlines` calls are gone (peers_view) and the online

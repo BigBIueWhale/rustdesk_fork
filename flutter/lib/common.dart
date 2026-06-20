@@ -4065,16 +4065,13 @@ String get appName {
 }
 
 String getConnectionText(bool secure, bool direct, String streamType) {
-  String connectionText;
-  if (secure && direct) {
-    connectionText = translate("Direct and encrypted connection");
-  } else if (secure && !direct) {
-    connectionText = translate("Relayed and encrypted connection");
-  } else if (!secure && direct) {
-    connectionText = translate("Direct and unencrypted connection");
-  } else {
-    connectionText = translate("Relayed and unencrypted connection");
-  }
+  // R-G3: the fork's channel is ALWAYS PAKE-keyed (§10) and direct-IP (the relay/rendezvous
+  // path is removed — R-SV4/R-D4), so the "insecure" and "relayed" states are IMPOSSIBLE.
+  // A UI that can render them is both dead and dangerously MISLEADING about the channel's
+  // actual guarantee — misreporting channel security is worse than omitting it — so the four
+  // secure×direct branches collapse to the one reachable state. The `secure`/`direct` args
+  // are retained for the call sites.
+  final String connectionText = translate("Direct and encrypted connection");
   if (streamType == 'Relay') {
     streamType = 'TCP';
   }

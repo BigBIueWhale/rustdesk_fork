@@ -182,7 +182,10 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
                 Tooltip(
                   message: '$msgConn\n$msgFingerprint',
                   child: SvgPicture.asset(
-                    'assets/${connectionType.secure.value}${connectionType.direct.value}.svg',
+                    // R-G3: always the secure-direct badge — the insecure/relay assets are
+                    // deleted and those states are impossible (§10 PAKE + R-SV4/R-D4
+                    // direct-only), so the icon can never structurally MISLABEL the channel.
+                    'assets/secure.svg',
                     width: themeConf.iconSize,
                     height: themeConf.iconSize,
                   ).paddingOnly(right: 5),

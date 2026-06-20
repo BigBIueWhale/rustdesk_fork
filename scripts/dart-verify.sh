@@ -59,4 +59,22 @@ echo "== flutter pub get + full FRB codegen + flutter analyze lib/ (zero-errors 
     exit 1
   fi
 '
-echo "DART-VERIFY: flutter analyze lib/ is GREEN (zero errors; ~238 baseline info/warnings ignored)"
+echo "== §19 / R-A6 Dart-layer grep (dead GUI tokens absent) =="
+# Extends the R-A6/R-SV10 grep set into the Dart + asset layers (§19's CI hook). Each
+# token names a UI surface whose backend §8/§18 removed; a non-comment hit fails the gate.
+# Host-side (plain file content — no flutter needed). Grows as the §19 sweep proceeds.
+dg_clean() { # token, label
+  local tok="$1" label="$2" hits
+  hits=$(grep -RInE "$tok" flutter/lib flutter/assets 2>/dev/null | grep -v '//' || true)
+  if [ -n "$hits" ]; then
+    echo "  FAIL §19: '$label' must be absent but is present:"; echo "$hits" | sed 's/^/      /'
+    exit 1
+  fi
+  echo "  ok  $label absent"
+}
+# R-G3: the insecure/relay security-badge assets + states are deleted — the channel is
+# ALWAYS secure+direct (§10 PAKE + R-SV4/R-D4), so a badge that could render "insecure"
+# or "relayed" is both dead and a dangerous security MISLABEL. (secure.svg is the one kept.)
+dg_clean 'insecure\.svg|secure_relay\.svg|insecure_relay\.svg' 'R-G3 insecure/relay security-badge assets'
+
+echo "DART-VERIFY: flutter analyze lib/ is GREEN (zero errors) + §19 Dart-layer greps clean"

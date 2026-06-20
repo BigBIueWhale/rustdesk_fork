@@ -176,7 +176,9 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
                 Tooltip(
                   message: '$msgConn\n$msgFingerprint',
                   child: SvgPicture.asset(
-                    'assets/${connectionType.secure.value}${connectionType.direct.value}.svg',
+                    // R-G3: always the secure-direct badge (see remote_tab_page) — the
+                    // insecure/relay states are impossible (§10 PAKE + R-SV4/R-D4).
+                    'assets/secure.svg',
                     width: themeConf.iconSize,
                     height: themeConf.iconSize,
                   ).paddingOnly(right: 5),

@@ -163,8 +163,15 @@ R-A8/A9 two-host test, deferred):
    hashed; the peer-info save path persists it to `config.password_prs` when `remember` (guarded
    non-empty so a hash-only reconnect does NOT wipe a stored PRS; cleared when the password is
    removed). The initiator (stage 2) reads `self.config.password_prs` at connect. verify.sh green.
-   NFC normalization is applied by the CPace layer (R-P1), not at storage. (Shared-ab/preset
-   plaintext capture in `handle_hash` is a small follow-on; the primary user-entered path is wired.)
+   NFC normalization is applied by the CPace layer (R-P1), not at storage. **Follow-on (ab/preset
+   PRS sourcing):** `handle_hash` (where shared-ab/preset/default plaintext is consumed) runs AFTER
+   keying (the responder sends `Hash` only post-CPace), so capturing there is TOO LATE for the
+   current connect. The real gap: `key_initiator` sources the PRS ONLY from `config.password_prs`,
+   but an ab/preset/default-password peer carries its plaintext in OTHER pre-keying sources —
+   `LoginConfigHandler.shared_password` (set in `initialize`, available before connect), the
+   `password_preset` arg, and the `OPTION_DEFAULT_CONNECT_PASSWORD` builtin. To support those peers,
+   `key_initiator`'s PRS lookup must fall back to those pre-keying sources (verify `shared_password`'s
+   set-before-`Client::start` ordering first). The primary remembered direct-IP path is fully wired.
 2. **Direct-path keying** in `Client::start` — **DONE** (A2): a new `Client::key_initiator`
    (the mirror of the responder's `run_responder` block) runs in the `Ok(mut x)` arm of
    `Client::start` when `!stream.is_secured()` — reads the R-S16 PRS from

@@ -84,7 +84,7 @@ ra6_clean 'api\.telegram\.org|send_2fa_code_to_telegram|get_chatid_telegram' 'R-
 # get_api_server()+"/api/devices/deploy" (account-server device registration a sovereign
 # fork has no server for) — is excised: the endpoint literal + the --deploy CLI driver are
 # gone (deploy_device is a refuse-stub; the §19/R-G4 sweep removes its flutter UI caller).
-ra6_clean 'api/devices/deploy' 'R-SV6(c) device-deploy egress' || rc=1
+ra6_clean 'api/devices/deploy|api/devices/cli' 'R-SV6(c) device-deploy/assign egress' || rc=1
 # R-D4 Stage 2 / R-SV10: the rendezvous-mediator PROTOCOL is removed from the tree (the
 # register loop + register_pk method, the relay/punch-hole/intranet handlers, the UDP/KCP
 # path). These worker symbols were mediator-internal and are now tree-wide absent — the

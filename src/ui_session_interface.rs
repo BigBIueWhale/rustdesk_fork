@@ -571,13 +571,10 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn send_note(&self, note: String) {
-        let url = self.get_audit_server("conn".to_string());
-        let id = self.get_id();
-        let session_id = self.lc.read().unwrap().session_id;
-        *self.last_audit_note.lock().unwrap() = note.clone();
-        std::thread::spawn(move || {
-            send_note(url, id, session_id, note);
-        });
+        // R-SV6(a) / R-G4 / §18 (dial nobody): the session note was POSTed to the audit server
+        // (the free `send_note` -> post_request, now removed). A serverless direct-IP fork has no
+        // audit server to send it to; keep the note locally (last shown), send nothing.
+        *self.last_audit_note.lock().unwrap() = note;
     }
 
     #[cfg(not(feature = "flutter"))]
@@ -2091,8 +2088,4 @@ async fn start_one_port_forward<T: InvokeUiSession>(
     log::info!("port forward (:{}) exit", port);
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn send_note(url: String, id: String, sid: u64, note: String) {
-    let body = serde_json::json!({ "id": id, "session_id": sid, "note": note });
-    allow_err!(crate::post_request(url, body.to_string(), "").await);
-}
+// R-SV6(a)/R-G4: the free `send_note` (the audit-server POST) is removed — see `Session::send_note`.

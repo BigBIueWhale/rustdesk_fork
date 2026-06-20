@@ -574,17 +574,13 @@ pub fn core_main() -> Option<Vec<String>> {
                         if let Some(name) = device_name {
                             body["device_name"] = serde_json::json!(name);
                         }
-                        let url = crate::ui_interface::get_api_server() + "/api/devices/cli";
-                        match crate::post_request_sync(url, body.to_string(), &header) {
-                            Err(err) => println!("{}", err),
-                            Ok(text) => {
-                                if text.is_empty() {
-                                    println!("Done!");
-                                } else {
-                                    println!("{}", text);
-                                }
-                            }
-                        }
+                        // R-SV6(c) / R-X4 / R-G4 / §18 (dial nobody): the account device-assignment
+                        // POST to <api-server>/api/devices/cli is EXCISED — a serverless, direct-IP
+                        // fork has no account server to assign devices/strategies/address-books on.
+                        // `body`/`header` were assembled above; nothing is sent. (Sibling of the
+                        // already-excised `--deploy` /api/devices/deploy POST, R-SV6(c).)
+                        let _ = (&body, &header);
+                        println!("--assign is not supported: this is a serverless, direct-IP fork (it dials nobody).");
                     }
                 } else {
                     println!("--token is required!");

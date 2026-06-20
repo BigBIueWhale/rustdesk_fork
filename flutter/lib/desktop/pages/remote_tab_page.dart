@@ -99,7 +99,6 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
           password: params['password'],
           toolbarState: ToolbarState(),
           tabController: tabController,
-          switchUuid: params['switch_uuid'],
           forceRelay: params['forceRelay'],
           isSharedPassword: params['isSharedPassword'],
         ),
@@ -432,7 +431,6 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
     if (call.method == kWindowEventNewRemoteDesktop) {
       final args = jsonDecode(call.arguments);
       final id = args['id'];
-      final switchUuid = args['switch_uuid'];
       final sessionId = args['session_id'];
       final tabWindowId = args['tab_window_id'];
       final display = args['display'];
@@ -475,7 +473,6 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
           password: args['password'],
           toolbarState: ToolbarState(),
           tabController: tabController,
-          switchUuid: switchUuid,
           forceRelay: args['forceRelay'],
           isSharedPassword: args['isSharedPassword'],
         ),

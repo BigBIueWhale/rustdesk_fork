@@ -1276,7 +1276,6 @@ pub fn session_add(
     is_port_forward: bool,
     is_rdp: bool,
     is_terminal: bool,
-    switch_uuid: &str,
     force_relay: bool,
     password: String,
     is_shared_password: bool,
@@ -1327,16 +1326,10 @@ pub fn session_add(
         ..Default::default()
     };
 
-    let switch_uuid = if switch_uuid.is_empty() {
-        None
-    } else {
-        Some(switch_uuid.to_string())
-    };
-
     session.lc.write().unwrap().initialize(
         id.to_owned(),
         conn_type,
-        switch_uuid,
+        None,
         force_relay,
         get_adapter_luid(),
         shared_password,

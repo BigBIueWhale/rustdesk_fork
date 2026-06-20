@@ -2250,7 +2250,6 @@ bool handleUriLink({List<String>? cmdArgs, Uri? uri, String? uriString}) {
   UriLinkType? type;
   String? id;
   String? password;
-  String? switchUuid;
   bool? forceRelay;
   for (int i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -2295,10 +2294,6 @@ bool handleUriLink({List<String>? cmdArgs, Uri? uri, String? uriString}) {
         password = args[i + 1];
         i++;
         break;
-      case '--switch_uuid':
-        switchUuid = args[i + 1];
-        i++;
-        break;
       case '--relay':
         forceRelay = true;
         break;
@@ -2312,7 +2307,6 @@ bool handleUriLink({List<String>? cmdArgs, Uri? uri, String? uriString}) {
         Future.delayed(Duration.zero, () {
           rustDeskWinManager.newRemoteDesktop(id!,
               password: password,
-              switchUuid: switchUuid,
               forceRelay: forceRelay);
         });
         break;
@@ -2443,8 +2437,6 @@ List<String>? urlLinkToCmdArgs(Uri uri) {
     var param = queryParameters;
     String? password = param["password"];
     if (password != null) args.addAll(['--password', password]);
-    String? switch_uuid = param["switch_uuid"];
-    if (switch_uuid != null) args.addAll(['--switch_uuid', switch_uuid]);
     if (param["relay"] != null) args.add("--relay");
     return args;
   }

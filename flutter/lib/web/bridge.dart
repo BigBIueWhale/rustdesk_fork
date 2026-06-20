@@ -82,7 +82,6 @@ class RustdeskImpl {
       required bool isPortForward,
       required bool isRdp,
       required bool isTerminal,
-      required String switchUuid,
       required bool forceRelay,
       required String password,
       required bool isSharedPassword,

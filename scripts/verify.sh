@@ -81,6 +81,19 @@ ra6_clean 'require_2fa|set_session_2fa'                                   'R-X7 
 # handler arm; the CM-side senders use the unqualified `Data::SwitchPermission`
 # (R-G7 GUI surface), so this gate is specific to the widener.
 ra6_clean 'ipc::Data::SwitchPermission'                                  'R-S16(d)(ii) SwitchPermission widener' || rc=1
+# R-A6 / R-S2 / R-G4: the switch-sides role-swap feature is FULLY excised. SwitchSidesResponse
+# was a password-bypass + 2FA-skip authorization path (R-S2) — the resume itself was deleted by
+# R-A2 (2cf3ad6), and this removes the rest for structural absence: the 3 proto messages
+# (SwitchSidesRequest/SwitchSidesResponse/SwitchBack) + their Misc/Message Union arms, the ipc
+# Data variants + relay handlers, the connection.rs UUID statics/helpers + the LIVE responder
+# handler (the run_me("--switch_uuid") process-spawn), the client.rs consume/send_switch_login/
+# handle_hash flow, the io_loop SwitchBack handler, and the whole flutter switch_sides FFI+UI.
+# Case-sensitive, so the R-B6-deferred sciter `switch_sides` {} stub + `switch_back` trait method
+# (lowercase) are not matched. The proto twin is gated just below.
+ra6_clean 'SwitchSides|SwitchBack'                                       'R-A6/R-S2 switch-sides role-swap' || rc=1
+if grep -qE 'SwitchSides|SwitchBack' libs/hbb_common/protos/message.proto 2>/dev/null; then
+  echo "  FAIL R-A6: switch-sides proto messages/arms must be absent from message.proto"; rc=1
+else echo "  ok  R-A6/R-S2 switch-sides proto absent"; fi
 # R-SV7 / §18: the Telegram 2FA push/enrollment egress (a hardcoded api.telegram.org
 # POST that leaked the box id + peer IP, gated on `bot`/`2fa` not `api-server`, so the
 # R-D6 api-server pin never silenced it) is excised from the tree — structurally

@@ -840,17 +840,6 @@ message ElevationRequest {
   }
 }
 
-message SwitchSidesRequest {
-  bytes uuid = 1;
-}
-
-message SwitchSidesResponse {
-  bytes uuid = 1;
-  LoginRequest lr = 2;
-}
-
-message SwitchBack {}
-
 message PluginRequest {
   string id = 1;
   bytes content = 2;
@@ -892,8 +881,6 @@ message Misc {
     ElevationRequest elevation_request = 18;
     string elevation_response = 19;
     bool portable_service_running = 20;
-    SwitchSidesRequest switch_sides_request = 21;
-    SwitchBack switch_back = 22;
     // Deprecated since 1.2.4, use `change_display_resolution` (36) instead.
     // But we must keep it for compatibility when peer version < 1.2.4.
     Resolution change_resolution = 24;
@@ -1021,7 +1008,6 @@ message Message {
     Misc misc = 19;
     Cliprdr cliprdr = 20;
     MessageBox message_box = 21;
-    SwitchSidesResponse switch_sides_response = 22;
     VoiceCallRequest voice_call_request = 23;
     VoiceCallResponse voice_call_response = 24;
     PeerInfo peer_info = 25;

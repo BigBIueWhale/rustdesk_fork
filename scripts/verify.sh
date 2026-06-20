@@ -157,6 +157,14 @@ fi
 # `Union::PublicKey` arm — NOT the sodiumoxide `sign::PublicKey`/`box_::PublicKey` crypto types,
 # which legitimately remain. Only `//` doc comments naming SignedId survive (filtered above).
 ra6_clean 'SignedId|set_public_key|message::Union::PublicKey' 'R-P5 SignedId/PublicKey device-identity keying' || rc=1
+# R-SV4(b)/R-S13(d)/R-SV10 (no rendezvous path in either role): the initiator-side
+# rendezvous/relay/NAT-punch cluster (Client::_start_inner / secure_connection /
+# udp_nat_connect) AND the responder-side relay-dialer (create_relay_connection — which dialed
+# a relay server via set_request_relay, a "dial nobody" violation if ever reached) are deleted,
+# orphaned by the mediator excision (R-D4). This locks in R-SV10's "no path reaches
+# Client::_start's rendezvous branch" so a regression cannot silently re-introduce one. (The
+# proto setter set_request_relay is intentionally NOT gated — it lives in generated code.)
+ra6_clean 'create_relay_connection|_start_inner|secure_connection|udp_nat_connect' 'R-SV4(b)/R-SV10 rendezvous/relay connect cluster' || rc=1
 # R-SV / R-D / §18 (dial nobody): the viewer's peer-list ONLINE-STATUS query is removed — it
 # connected to get_rendezvous_server() (defaulting to the built-in rs-ny.rustdesk.com) and sent an
 # OnlineRequest carrying Config::get_id() + the peer ids (a box-id + peer-list leak on every list

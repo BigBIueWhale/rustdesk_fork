@@ -15,7 +15,7 @@ use hbb_common::{
     allow_err,
     anyhow::Context,
     bail,
-    config::{Config, CONNECT_TIMEOUT, RELAY_PORT},
+    config::{Config, CONNECT_TIMEOUT},
     log,
     message_proto::*,
     protobuf::{Enum, Message as _},
@@ -298,61 +298,6 @@ pub async fn accept_connection(
     if let Err(err) = accept_connection_(server, socket, secure, control_permissions).await {
         log::warn!("Failed to accept connection from {}: {}", peer_addr, err);
     }
-}
-
-pub async fn create_relay_connection(
-    server: ServerPtr,
-    relay_server: String,
-    uuid: String,
-    peer_addr: SocketAddr,
-    secure: bool,
-    ipv4: bool,
-    control_permissions: Option<ControlPermissions>,
-) {
-    if let Err(err) = create_relay_connection_(
-        server,
-        relay_server,
-        uuid.clone(),
-        peer_addr,
-        secure,
-        ipv4,
-        control_permissions,
-    )
-    .await
-    {
-        log::error!(
-            "Failed to create relay connection for {} with uuid {}: {}",
-            peer_addr,
-            uuid,
-            err
-        );
-    }
-}
-
-async fn create_relay_connection_(
-    server: ServerPtr,
-    relay_server: String,
-    uuid: String,
-    peer_addr: SocketAddr,
-    secure: bool,
-    ipv4: bool,
-    control_permissions: Option<ControlPermissions>,
-) -> ResultType<()> {
-    let mut stream = socket_client::connect_tcp(
-        socket_client::ipv4_to_ipv6(crate::check_port(relay_server, RELAY_PORT), ipv4),
-        CONNECT_TIMEOUT,
-    )
-    .await?;
-    let mut msg_out = RendezvousMessage::new();
-    let licence_key = crate::get_key(true).await;
-    msg_out.set_request_relay(RequestRelay {
-        licence_key,
-        uuid,
-        ..Default::default()
-    });
-    stream.send(&msg_out).await?;
-    create_tcp_connection(server, stream, peer_addr, secure, control_permissions).await?;
-    Ok(())
 }
 
 impl Server {

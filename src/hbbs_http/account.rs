@@ -1,31 +1,28 @@
-use super::HbbHttpResponse;
-use crate::hbbs_http::create_http_client_with_url;
-use hbb_common::{config::LocalConfig, log, ResultType};
+// R-G4 / R-SV6(b) / §18 (dial nobody): ACCOUNT LOGIN is REMOVED. A sovereign, direct-IP fork has
+// NO account server, so the inherited OIDC flow was dead egress AND a leak: `account_auth` spawned
+// a task that POSTed { op, id, uuid, deviceInfo: get_login_device_info() } to
+// <api-server>/api/oidc/auth (a device-fingerprint leak), then polled /api/oidc/auth-query for an
+// access_token (storing it + the user profile to LocalConfig), having warmed /api/login-options.
+// All of it — `auth`/`query`/`ensure_client`/`auth_task` + the querying state machine + the
+// session fields that drove it — is deleted. `account_auth` is now a refuse-stub that sets a
+// "not available" result WITHOUT any network call (it is not behind the empty-`api-server` pin,
+// R-SV1 structural absence). The public API the FFI/ui_interface call (`OidcSession::account_auth`
+// / `auth_cancel` / `get_result`) and the `AuthResult`/`AuthBody` serialization shape the flutter
+// side parses are preserved so callers compile; removing the GUI account button/dialog is the
+// §19/R-G4 follow-on.
 use serde_derive::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
-    time::{Duration, Instant},
 };
-use url::Url;
 
 lazy_static::lazy_static! {
     static ref OIDC_SESSION: Arc<RwLock<OidcSession>> = Arc::new(RwLock::new(OidcSession::new()));
 }
 
-const QUERY_INTERVAL_SECS: f32 = 1.0;
-const QUERY_TIMEOUT_SECS: u64 = 60 * 3;
-
-const REQUESTING_ACCOUNT_AUTH: &str = "Requesting account auth";
-const WAITING_ACCOUNT_AUTH: &str = "Waiting account auth";
-const LOGIN_ACCOUNT_AUTH: &str = "Login account auth";
-
-#[derive(Deserialize, Clone, Debug)]
-pub struct OidcAuthUrl {
-    code: String,
-    url: Url,
-}
+const ACCOUNT_AUTH_UNAVAILABLE: &str =
+    "Account login is unavailable: this is a serverless, direct-IP fork (it dials nobody).";
 
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct DeviceInfo {
@@ -108,14 +105,8 @@ pub struct AuthBody {
 }
 
 pub struct OidcSession {
-    warmed_api_server: Option<String>,
     state_msg: &'static str,
     failed_msg: String,
-    code_url: Option<OidcAuthUrl>,
-    auth_body: Option<AuthBody>,
-    keep_querying: bool,
-    running: bool,
-    query_timeout: Duration,
 }
 
 #[derive(Serialize)]
@@ -135,232 +126,37 @@ impl Default for UserStatus {
 impl OidcSession {
     fn new() -> Self {
         Self {
-            warmed_api_server: None,
-            state_msg: REQUESTING_ACCOUNT_AUTH,
-            failed_msg: "".to_owned(),
-            code_url: None,
-            auth_body: None,
-            keep_querying: false,
-            running: false,
-            query_timeout: Duration::from_secs(QUERY_TIMEOUT_SECS),
+            state_msg: "",
+            failed_msg: String::new(),
         }
     }
 
-    fn ensure_client(api_server: &str) {
-        let mut write_guard = OIDC_SESSION.write().unwrap();
-        if write_guard.warmed_api_server.as_deref() == Some(api_server) {
-            return;
-        }
-        // This URL is used to detect the appropriate TLS implementation for the server.
-        let login_option_url = format!("{}/api/login-options", api_server);
-        let _ = create_http_client_with_url(&login_option_url);
-        write_guard.warmed_api_server = Some(api_server.to_owned());
-    }
-
-    fn auth(
-        api_server: &str,
-        op: &str,
-        id: &str,
-        uuid: &str,
-    ) -> ResultType<HbbHttpResponse<OidcAuthUrl>> {
-        Self::ensure_client(api_server);
-        let body = serde_json::json!({
-            "op": op,
-            "id": id,
-            "uuid": uuid,
-            "deviceInfo": crate::ui_interface::get_login_device_info(),
-        })
-        .to_string();
-        let resp = crate::post_request_sync(format!("{}/api/oidc/auth", api_server), body, "")?;
-        HbbHttpResponse::parse(&resp)
-    }
-
-    fn query(
-        api_server: &str,
-        code: &str,
-        id: &str,
-        uuid: &str,
-    ) -> ResultType<HbbHttpResponse<AuthBody>> {
-        let url = Url::parse_with_params(
-            &format!("{}/api/oidc/auth-query", api_server),
-            &[("code", code), ("id", id), ("uuid", uuid)],
-        )?;
-        Self::ensure_client(api_server);
-        #[derive(Deserialize)]
-        struct HttpResponseBody {
-            body: String,
-        }
-
-        let resp = crate::http_request_sync(
-            url.to_string(),
-            "GET".to_owned(),
-            None,
-            "{}".to_owned(),
-        )?;
-        let resp = serde_json::from_str::<HttpResponseBody>(&resp)?;
-        HbbHttpResponse::parse(&resp.body)
-    }
-
-    fn reset(&mut self) {
-        self.state_msg = REQUESTING_ACCOUNT_AUTH;
-        self.failed_msg = "".to_owned();
-        self.keep_querying = true;
-        self.running = false;
-        self.code_url = None;
-        self.auth_body = None;
-    }
-
-    fn before_task(&mut self) {
-        self.reset();
-        self.running = true;
-    }
-
-    fn after_task(&mut self) {
-        self.running = false;
-    }
-
-    fn sleep(secs: f32) {
-        std::thread::sleep(std::time::Duration::from_secs_f32(secs));
-    }
-
-    fn auth_task(api_server: String, op: String, id: String, uuid: String, remember_me: bool) {
-        let auth_request_res = Self::auth(&api_server, &op, &id, &uuid);
-        log::info!("Request oidc auth result: {:?}", &auth_request_res);
-        let code_url = match auth_request_res {
-            Ok(HbbHttpResponse::<_>::Data(code_url)) => code_url,
-            Ok(HbbHttpResponse::<_>::Error(err)) => {
-                OIDC_SESSION
-                    .write()
-                    .unwrap()
-                    .set_state(REQUESTING_ACCOUNT_AUTH, err);
-                return;
-            }
-            Ok(_) => {
-                OIDC_SESSION
-                    .write()
-                    .unwrap()
-                    .set_state(REQUESTING_ACCOUNT_AUTH, "Invalid auth response".to_owned());
-                return;
-            }
-            Err(err) => {
-                OIDC_SESSION
-                    .write()
-                    .unwrap()
-                    .set_state(REQUESTING_ACCOUNT_AUTH, err.to_string());
-                return;
-            }
-        };
-
-        OIDC_SESSION
-            .write()
-            .unwrap()
-            .set_state(WAITING_ACCOUNT_AUTH, "".to_owned());
-        OIDC_SESSION.write().unwrap().code_url = Some(code_url.clone());
-
-        let begin = Instant::now();
-        let query_timeout = OIDC_SESSION.read().unwrap().query_timeout;
-        while OIDC_SESSION.read().unwrap().keep_querying && begin.elapsed() < query_timeout {
-            match Self::query(&api_server, &code_url.code, &id, &uuid) {
-                Ok(HbbHttpResponse::<_>::Data(auth_body)) => {
-                    if auth_body.r#type == "access_token" {
-                        if remember_me {
-                            LocalConfig::set_option(
-                                "access_token".to_owned(),
-                                auth_body.access_token.clone(),
-                            );
-                            LocalConfig::set_option(
-                                "user_info".to_owned(),
-                                serde_json::json!({
-                                    "name": auth_body.user.name,
-                                    "display_name": auth_body.user.display_name,
-                                    "avatar": auth_body.user.avatar,
-                                    "status": auth_body.user.status
-                                })
-                                .to_string(),
-                            );
-                        }
-                    }
-                    OIDC_SESSION
-                        .write()
-                        .unwrap()
-                        .set_state(LOGIN_ACCOUNT_AUTH, "".to_owned());
-                    OIDC_SESSION.write().unwrap().auth_body = Some(auth_body);
-                    return;
-                }
-                Ok(HbbHttpResponse::<_>::Error(err)) => {
-                    if err.contains("No authed oidc is found") {
-                        // ignore, keep querying
-                    } else {
-                        OIDC_SESSION
-                            .write()
-                            .unwrap()
-                            .set_state(WAITING_ACCOUNT_AUTH, err);
-                        return;
-                    }
-                }
-                Ok(_) => {
-                    // ignore
-                }
-                Err(err) => {
-                    log::trace!("Failed query oidc {}", err);
-                    // ignore
-                }
-            }
-            Self::sleep(QUERY_INTERVAL_SECS);
-        }
-
-        if begin.elapsed() >= query_timeout {
-            OIDC_SESSION
-                .write()
-                .unwrap()
-                .set_state(WAITING_ACCOUNT_AUTH, "timeout".to_owned());
-        }
-
-        // no need to handle "keep_querying == false"
-    }
-
-    fn set_state(&mut self, state_msg: &'static str, failed_msg: String) {
-        self.state_msg = state_msg;
-        self.failed_msg = failed_msg;
-    }
-
-    fn wait_stop_querying() {
-        let wait_secs = 0.3;
-        while OIDC_SESSION.read().unwrap().running {
-            Self::sleep(wait_secs);
-        }
-    }
-
+    /// R-G4/R-SV6(b): refuse-stub. There is no account server to authenticate against (dial
+    /// nobody), so this performs NO network call — it sets a terminal "unavailable" result that
+    /// the GUI surfaces as an error instead of starting the excised OIDC egress task.
     pub fn account_auth(
-        api_server: String,
-        op: String,
-        id: String,
-        uuid: String,
-        remember_me: bool,
+        _api_server: String,
+        _op: String,
+        _id: String,
+        _uuid: String,
+        _remember_me: bool,
     ) {
-        Self::auth_cancel();
-        Self::wait_stop_querying();
-        OIDC_SESSION.write().unwrap().before_task();
-        std::thread::spawn(move || {
-            Self::auth_task(api_server, op, id, uuid, remember_me);
-            OIDC_SESSION.write().unwrap().after_task();
-        });
-    }
-
-    fn get_result_(&self) -> AuthResult {
-        AuthResult {
-            state_msg: self.state_msg.to_string(),
-            failed_msg: self.failed_msg.clone(),
-            url: self.code_url.as_ref().map(|x| x.url.to_string()),
-            auth_body: self.auth_body.clone(),
-        }
+        let mut g = OIDC_SESSION.write().unwrap();
+        g.state_msg = "";
+        g.failed_msg = ACCOUNT_AUTH_UNAVAILABLE.to_owned();
     }
 
     pub fn auth_cancel() {
-        OIDC_SESSION.write().unwrap().keep_querying = false;
+        // Nothing to cancel — there is no auth task (the OIDC querying loop is excised).
     }
 
     pub fn get_result() -> AuthResult {
-        OIDC_SESSION.read().unwrap().get_result_()
+        let g = OIDC_SESSION.read().unwrap();
+        AuthResult {
+            state_msg: g.state_msg.to_string(),
+            failed_msg: g.failed_msg.clone(),
+            url: None,
+            auth_body: None,
+        }
     }
 }

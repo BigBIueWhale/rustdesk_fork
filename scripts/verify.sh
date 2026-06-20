@@ -117,6 +117,12 @@ ra6_clean 'SignedId|set_public_key|message::Union::PublicKey' 'R-P5 SignedId/Pub
 # refresh). The egress fns (create_online_stream / the OnlineRequest send) are gone; peer_online
 # now reports every peer offline with no network call. (Only `//` comments name them, filtered.)
 ra6_clean 'create_online_stream|set_online_request' 'R-SV viewer online-status egress' || rc=1
+# R-SV6(b) / R-G4 / §18 (dial nobody): the OIDC ACCOUNT-LOGIN egress is excised. account.rs's
+# auth_task POSTed { deviceInfo: get_login_device_info() } to <api-server>/api/oidc/auth (a
+# device-fingerprint leak), polled /api/oidc/auth-query for an access token, and warmed
+# /api/login-options. OidcSession::account_auth is now a refuse-stub with NO network call (R-SV1
+# structural absence, not the empty-api-server pin). Only `//` doc comments name the endpoints.
+ra6_clean 'api/oidc|fn auth_task' 'R-SV6(b)/R-G4 OIDC account-login egress' || rc=1
 # R-SV4(b) / R-D5 / §18: the common.rs NAT-type/IPv6 STUN probes are removed — test_nat_ipv4 /
 # test_ipv6 -> stun_ipv4_test/stun_ipv6_test resolved + queried hardcoded public STUN servers
 # (stun.l.google.com etc.). A direct-IP fork does no NAT traversal; the probes were dead

@@ -827,6 +827,22 @@ void enterPasswordDialog(
   );
 }
 
+// R-S13/A3 (prompt-before-keying): the CPace handshake needs the box's password BEFORE
+// keying, but a bare-ID first connect has none remembered. The keying then fails closed and
+// surfaces `connect-password-prompt`; this dialog takes the password and, via
+// `sessionSetConnectPassword`, stores it as the connect-password and RECONNECTS — the
+// reconnect keys with it. Distinct from `enterPasswordDialog` (which logs in over an
+// already-keyed connection); here there is no keyed connection yet.
+void enterConnectPasswordDialog(
+    SessionID sessionId, OverlayDialogManager dialogManager) async {
+  await _connectDialog(
+    sessionId,
+    dialogManager,
+    passwordController: TextEditingController(),
+    preKeying: true,
+  );
+}
+
 void enterUserLoginDialog(
     SessionID sessionId,
     OverlayDialogManager dialogManager,
@@ -866,6 +882,7 @@ _connectDialog(
   TextEditingController? passwordController,
   String? osAccountDescTip,
   bool canRememberAccount = true,
+  bool preKeying = false,
 }) async {
   final errUsername = ''.obs;
   var rememberPassword = false;
@@ -910,6 +927,16 @@ _connectDialog(
             sessionId: sessionId, name: 'os-username', value: osUsername);
         bind.sessionPeerOption(
             sessionId: sessionId, name: 'os-password', value: osPassword);
+      }
+      if (preKeying) {
+        // R-S13/A3: store the connect-time password + reconnect so the CPace handshake keys
+        // with it (no keyed connection exists yet, so we cannot `login`).
+        bind.sessionSetConnectPassword(
+            sessionId: sessionId, password: password, remember: rememberPassword);
+        close();
+        dialogManager.showLoading(translate('Connecting...'),
+            onCancel: closeConnection);
+        return;
       }
       gFFI.login(
         osUsername,

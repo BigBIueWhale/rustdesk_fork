@@ -910,6 +910,11 @@ class FfiModel with ChangeNotifier {
       enter2FaDialog(sessionId, dialogManager);
     } else if (type == 'input-password') {
       enterPasswordDialog(sessionId, dialogManager);
+    } else if (type == 'connect-password-prompt') {
+      // R-S13/A3 (prompt-before-keying): the CPace keying needs the box's password up front;
+      // a bare-ID first connect has none, so the keying fails and routes here. Enter it →
+      // store + reconnect → key with it. (vs `input-password`, which logs in once keyed.)
+      enterConnectPasswordDialog(sessionId, dialogManager);
     } else if (type == 'session-login' || type == 'session-re-login') {
       enterUserLoginDialog(sessionId, dialogManager, 'login_linux_tip', true);
     } else if (type == 'session-login-password') {

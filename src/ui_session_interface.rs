@@ -1296,6 +1296,20 @@ impl<T: InvokeUiSession> Session<T> {
         }));
     }
 
+    /// R-S13/A3 (prompt-before-keying): set the connect-time password entered into the
+    /// pre-keying `connect-password-prompt` dialog, then reconnect. The reconnect feeds the
+    /// password to the CPace handshake via `get_connect_password` -> `key_initiator`;
+    /// `remember` flows to the lch so a successful onboarding persists the PRS (A2). This is
+    /// how a bare-ID first connect to a not-yet-remembered peer provides its password.
+    pub fn set_connect_password_and_reconnect(&self, password: String, remember: bool) {
+        {
+            let mut lc = self.lc.write().unwrap();
+            lc.connect_password = password;
+            lc.remember = remember;
+        }
+        self.reconnect(false);
+    }
+
     #[cfg(not(feature = "flutter"))]
     pub fn get_icon_path(&self, file_type: i32, ext: String) -> String {
         let mut path = Config::icon_path();
@@ -1848,9 +1862,16 @@ impl<T: InvokeUiSession> Interface for Session<T> {
     }
 
     fn get_connect_password(&self) -> String {
-        // R-S16: the live connect-time password (URI `--password`, an address-book / saved
-        // card, the connect dialog) — feeds the CPace PRS at `Client::start`, before keying.
-        self.password.clone()
+        // R-S16: the live connect-time password feeding the CPace PRS at `Client::start`.
+        // Prefer the lch's `connect_password` (set by the pre-keying dialog before a reconnect,
+        // A3); else the construction-time `Session.password` (URI `--password`, an
+        // address-book / saved card).
+        let cp = self.lc.read().unwrap().connect_password.clone();
+        if !cp.is_empty() {
+            cp
+        } else {
+            self.password.clone()
+        }
     }
 
     async fn handle_hash(&self, pass: &str, hash: Hash, peer: &mut Stream) {

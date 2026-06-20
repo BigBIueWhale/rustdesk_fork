@@ -192,19 +192,21 @@ R-A8/A9 two-host test, deferred):
    the key hex, whitespace-stripped + decoded → `set_pinned_pk`), `--list-known-hosts`,
    `--forget-host <addr>`. So the SSH-known_hosts workflow is COMPLETE and headless: the GUI
    seed/mismatch dialogs (step 4) are now a usability layer, not a prerequisite to function.
-4. **Prompt-before-keying** — **PARTIAL**: the connect-time-password SOURCE is now wired
-   (Rust): a defaulted `Interface::get_connect_password()` (overridden in the GUI `Session` to
-   return its live `password` field — the URI `--password`, an address-book / saved card, the
-   connect dialog) feeds `key_initiator`'s PRS lookup BEFORE keying, and on a successful
-   onboarding key the password is staged into the in-memory PRS so the peer-info save path
-   PERSISTS it (closing the loop: next connect keys from the stored PRS). So every connect path
-   that supplies a password up front — URI links, AB cards, an explicit password field — now
-   keys + remembers, with NO change to the flutter substrate. **REMAINING (flutter):** the MAIN
-   "type an ID, click connect, get prompted" flow still prompts AFTER `Hash` (too late for the
-   PAKE), so a brand-new peer reached that way fails closed until its password is provided up
-   front; the flutter fix is to prompt-before-`Client::start` for a peer with no remembered PRS
-   (route the entry to `Session.password`). Plus the R-S17 first-connect seed / mismatch GUI
-   dialogs (R-G5) as a convenience over the `--pin-host` CLI.
+4. **Prompt-before-keying (password)** — **DONE**: the connect-time-password SOURCE is wired
+   (`Interface::get_connect_password()` reads the lch `connect_password`, the GUI `Session` also
+   folds in its construction-time `password` — URI `--password`, AB card; a successful onboarding
+   stages the PRS so the save path PERSISTS it). AND the bare-ID flow now prompts BEFORE keying:
+   `key_initiator`'s R-S9 (no-PRS) / wrong-password failures are caught in
+   `on_establish_connection_error` (flutter) → a `connect-password-prompt` msgbox → the new
+   `enterConnectPasswordDialog` → `bind.sessionSetConnectPassword` (FFI →
+   `Session::set_connect_password_and_reconnect`: stores the lch `connect_password` + `remember`,
+   then `reconnect`) → the reconnect keys with it. So a brand-new peer reached by the main
+   "type-ID, click-connect" flow now gets a password dialog and keys (no CLI needed for the
+   password). flutter-verify + dart-verify green. **REMAINING:** the R-S17 first-connect SEED /
+   mismatch GUI dialogs (R-G5) — today an unpinned/mismatched host still surfaces the
+   `key_initiator` error telling the operator to `--pin-host` (the pin half of onboarding is CLI;
+   the password half is now GUI). The seed dialog needs `key_initiator` to stash the received
+   `pk_B` (lch) on the no-pin abort so a GUI "pin this fingerprint?" accept can seed + reconnect.
 5. **Cleanup**: delete the old `secure_connection` SignedId keying + `validate_password` (R-S6) +
    the `SignedId`/`PublicKey` proto messages (R-P5/R-S18), and the rendezvous/relay/KCP `_start`
    branches + `udp_nat_connect` (R-SV4(b)/R-S13(d), which also lets `mod kcp_stream` go).

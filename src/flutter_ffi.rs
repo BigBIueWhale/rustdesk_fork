@@ -327,6 +327,16 @@ pub fn session_reconnect(session_id: SessionID, force_relay: bool) {
     session_on_waiting_for_image_dialog_show(session_id);
 }
 
+// R-S13/A3 (prompt-before-keying): the `connect-password-prompt` dialog submits the box's
+// password here; it is stored as the lch connect-password and the session reconnects, keying
+// the CPace handshake with it (the bare-ID first connect to a not-yet-remembered peer).
+pub fn session_set_connect_password(session_id: SessionID, password: String, remember: bool) {
+    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
+        session.set_connect_password_and_reconnect(password, remember);
+    }
+    session_on_waiting_for_image_dialog_show(session_id);
+}
+
 pub fn session_toggle_option(session_id: SessionID, value: String) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         log::warn!("toggle option {}", &value);

@@ -1848,6 +1848,12 @@ pub struct LoginConfigHandler {
     // `remember`, from which the initiator reads it at the next connect (Stage A2). Kept
     // separate from `config` because the save path reloads `config` from disk first.
     password_prs: Vec<u8>,
+    // R-S13/A3 (prompt-before-keying): the connect-time plaintext password entered into the
+    // pre-keying password dialog (the bare-ID flow has no remembered PRS). Lives here, not on
+    // `Session.password` (not interior-mutable), because the lch is `Arc<RwLock>` — so the
+    // dialog's submit can set it and `reconnect`, and `get_connect_password` reads it to feed
+    // `key_initiator`. Never persisted directly; the onboarding-PRS path persists it (A2).
+    pub connect_password: String,
     pub remember: bool,
     config: PeerConfig,
     pub port_forward: (String, i32),
@@ -3830,12 +3836,13 @@ pub trait Interface: Send + Clone + 'static + Sized {
     }
 
     /// R-S16: the connect-time password the operator supplied (a URI `--password`, an
-    /// address-book / saved-peer card, the connect dialog) — a SOURCE of the CPace PRS
-    /// for a peer not yet remembered, available BEFORE keying. Empty by default; the GUI
-    /// `Session` overrides it with the live connect password. (The post-`Hash` prompt is
-    /// too late to feed the handshake, so this is how a first connect provides the PRS.)
+    /// address-book / saved-peer card, the pre-keying connect dialog) — a SOURCE of the CPace
+    /// PRS for a peer not yet remembered, available BEFORE keying. Reads the lch's
+    /// `connect_password` (set by the pre-keying dialog before a reconnect); the GUI `Session`
+    /// also folds in its construction-time `password` field. (The post-`Hash` prompt is too
+    /// late to feed the handshake, so this is how a first connect provides the PRS.)
     fn get_connect_password(&self) -> String {
-        String::new()
+        self.get_lch().read().unwrap().connect_password.clone()
     }
 
     fn is_force_relay(&self) -> bool {
@@ -3855,6 +3862,18 @@ pub trait Interface: Send + Clone + 'static + Sized {
     fn on_establish_connection_error(&self, err: String) {
         let title = "Connection Error";
         let text = err.to_string();
+        // R-S13/A3 (prompt-before-keying): a CPace keying failure for want of a password
+        // (R-S9, the bare-ID first connect) or a wrong password is RECOVERABLE — prompt for
+        // the box's password and reconnect, rather than dead-ending on an error. The reconnect
+        // keys via `get_connect_password` -> `key_initiator`. Scoped to these two keying
+        // failures: the R-S17 pin mismatch / not-pinned errors deliberately fall through to
+        // the normal error (they need `--pin-host`, not a password). flutter-only (the dialog).
+        if cfg!(feature = "flutter")
+            && (err.contains("(R-S9") || err.contains("CPace handshake failed"))
+        {
+            self.msgbox("connect-password-prompt", "Password Required", &text, "");
+            return;
+        }
         let lc = self.get_lch();
         let direct = lc.read().unwrap().direct;
         let received = lc.read().unwrap().received;

@@ -14,7 +14,6 @@ import 'package:flutter_hbb/utils/multi_window_manager.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-bool isEditOsPassword = false;
 const String kPeerOptionAllowWaylandKeyboard = 'allow-wayland-keyboard';
 const String kWaylandKeyboardIssueUrl =
     'https://github.com/rustdesk/rustdesk/issues/14586';
@@ -122,30 +121,6 @@ class TToggleMenu {
   final ValueChanged<bool?>? onChanged;
   TToggleMenu(
       {required this.child, required this.value, required this.onChanged});
-}
-
-handleOsPasswordEditIcon(
-    SessionID sessionId, OverlayDialogManager dialogManager) {
-  isEditOsPassword = true;
-  showSetOSPassword(
-      sessionId, false, dialogManager, null, () => isEditOsPassword = false);
-}
-
-handleOsPasswordAction(
-    SessionID sessionId, OverlayDialogManager dialogManager) async {
-  if (isEditOsPassword) {
-    isEditOsPassword = false;
-    return;
-  }
-  final password =
-      await bind.sessionGetOption(sessionId: sessionId, arg: 'os-password') ??
-          '';
-  if (password.isEmpty) {
-    showSetOSPassword(sessionId, true, dialogManager, password,
-        () => isEditOsPassword = false);
-  } else {
-    bind.sessionInputOsPassword(sessionId: sessionId, value: password);
-  }
 }
 
 void showWaylandKeyboardInputWarningDialog(
@@ -323,35 +298,6 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
   final isWaylandPeer = pi.platform == kPeerPlatformLinux && pi.isWayland;
 
   List<TTextMenu> v = [];
-  // osAccount / osPassword
-  if (isDefaultConn && perms['keyboard'] != false) {
-    v.add(
-      TTextMenu(
-        child: Row(children: [
-          Text(translate(pi.isHeadless ? 'OS Account' : 'OS Password')),
-        ]),
-        trailingIcon: Transform.scale(
-          scale: (isDesktop || isWebDesktop) ? 0.8 : 1,
-          child: IconButton(
-            onPressed: () {
-              if (isMobile && Navigator.canPop(context)) {
-                Navigator.pop(context);
-              }
-              if (pi.isHeadless) {
-                showSetOSAccount(sessionId, ffi.dialogManager);
-              } else {
-                handleOsPasswordEditIcon(sessionId, ffi.dialogManager);
-              }
-            },
-            icon: Icon(Icons.edit, color: isMobile ? MyTheme.accent : null),
-          ),
-        ),
-        onPressed: () => pi.isHeadless
-            ? showSetOSAccount(sessionId, ffi.dialogManager)
-            : handleOsPasswordAction(sessionId, ffi.dialogManager),
-      ),
-    );
-  }
   // paste
   if (isDefaultConn &&
       pi.platform != kPeerPlatformAndroid &&

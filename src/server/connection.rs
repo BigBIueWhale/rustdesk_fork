@@ -75,7 +75,6 @@ pub type Sender = mpsc::UnboundedSender<(Instant, Arc<Message>)>;
 
 lazy_static::lazy_static! {
     static ref LOGIN_FAILURES: [Arc::<Mutex<HashMap<String, (i32, i32, i32)>>>; 2] = Default::default();
-    static ref SESSIONS: Arc::<Mutex<HashMap<SessionKey, Session>>> = Default::default();
     static ref ALIVE_CONNS: Arc::<Mutex<Vec<i32>>> = Default::default();
     pub static ref AUTHED_CONNS: Arc::<Mutex<Vec<AuthedConn>>> = Default::default();
     pub static ref CONTROL_PERMISSIONS_ARRAY: Arc::<Mutex<Vec<(i32, ControlPermissions)>>> = Default::default();
@@ -167,11 +166,6 @@ pub struct SessionKey {
     session_id: u64,
 }
 
-#[derive(Clone, Debug)]
-struct Session {
-    last_recv_time: Arc<Mutex<Instant>>,
-    random_password: String,
-}
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct StartCmIpcPara {
@@ -261,7 +255,6 @@ pub struct Connection {
     server_audit_file: String,
     lr: LoginRequest,
     peer_argb: u32,
-    session_last_recv_time: Option<Arc<Mutex<Instant>>>,
     chat_unanswered: bool,
     file_transferred: bool,
     #[cfg(windows)]
@@ -348,7 +341,6 @@ const H1: Duration = Duration::from_secs(3600);
 const MILLI1: Duration = Duration::from_millis(1);
 const SEND_TIMEOUT_VIDEO: u64 = 12_000;
 const SEND_TIMEOUT_OTHER: u64 = SEND_TIMEOUT_VIDEO * 10;
-const SESSION_TIMEOUT: Duration = Duration::from_secs(30);
 
 impl Connection {
     pub async fn start(
@@ -445,7 +437,6 @@ impl Connection {
             server_audit_file: "".to_owned(),
             lr: Default::default(),
             peer_argb: 0u32,
-            session_last_recv_time: None,
             chat_unanswered: false,
             file_transferred: false,
             #[cfg(windows)]
@@ -721,7 +712,6 @@ impl Connection {
                             },
                             Ok(bytes) => {
                                 last_recv_time = Instant::now();
-                                conn.session_last_recv_time.as_mut().map(|t| *t.lock().unwrap() = Instant::now());
                                 if let Ok(msg_in) = Message::parse_from_bytes(&bytes) {
                                     if !conn.on_message(msg_in).await {
                                         break;
@@ -919,7 +909,6 @@ impl Connection {
         }
         if let Err(err) = conn.try_port_forward_loop(&mut rx_from_cm).await {
             conn.on_close(&err.to_string(), false).await;
-            raii::AuthedConnID::check_remove_session(conn.inner.id(), conn.session_key());
         }
 
         conn.post_conn_audit(json!({
@@ -1314,11 +1303,6 @@ impl Connection {
             self.tx_from_authed.clone(),
             self.lr.clone(),
         ));
-        self.session_last_recv_time = SESSIONS
-            .lock()
-            .unwrap()
-            .get(&self.session_key())
-            .map(|s| s.last_recv_time.clone());
         self.post_conn_audit(
             json!({"peer": ((&self.lr.my_id, &self.lr.my_name)), "type": conn_type}),
         );
@@ -1872,19 +1856,6 @@ impl Connection {
     }
 
 
-    fn is_recent_session(&mut self, _tfa: bool) -> bool {
-        // R-S2 / R-A2: no resume without a fresh handshake. CPace re-keys every
-        // connection at the choke point (R-P14), so the inherited 30-s reconnect
-        // cache MUST NOT short-circuit authentication — authorization is the CPace
-        // KEYED edge, on this exact stream, every time. The cache is still pruned
-        // (bounded memory) but never authorizes a resume; the stored-password
-        // re-validation that re-opened the deleted Hash oracle is gone.
-        SESSIONS
-            .lock()
-            .unwrap()
-            .retain(|_, s| s.last_recv_time.lock().unwrap().elapsed() < SESSION_TIMEOUT);
-        false
-    }
 
     #[inline]
     pub fn is_permission_enabled_locally(enable_prefix_option: &str) -> bool {
@@ -1979,7 +1950,6 @@ impl Connection {
             if let Some(misc::Union::CloseReason(s)) = &misc.union {
                 log::info!("receive close reason: {}", s);
                 self.on_close("Peer close", true).await;
-                raii::AuthedConnID::check_remove_session(self.inner.id(), self.session_key());
                 return false;
             }
         }
@@ -2173,17 +2143,6 @@ impl Connection {
                         .await;
                 }
                 return true;
-            } else if self.is_recent_session(false) {
-                if err_msg.is_empty() {
-                    #[cfg(target_os = "linux")]
-                    self.linux_headless_handle.wait_desktop_cm_ready().await;
-                    if !self.send_logon_response_and_keep_alive().await {
-                        return false;
-                    }
-                    self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), self.authorized);
-                } else {
-                    self.send_login_error(err_msg).await;
-                }
             } else if lr.password.is_empty() {
                 if err_msg.is_empty() {
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -4221,7 +4180,6 @@ impl Connection {
         let mut msg_out = Message::new();
         msg_out.set_misc(misc);
         self.send(msg_out).await;
-        raii::AuthedConnID::check_remove_session(self.inner.id(), self.session_key());
     }
 
     async fn handle_read_job_init_result(
@@ -5505,55 +5463,7 @@ mod raii {
                 .count()
         }
 
-        pub fn check_remove_session(conn_id: i32, key: SessionKey) {
-            let mut lock = SESSIONS.lock().unwrap();
-            let contains = lock.contains_key(&key);
-            if contains {
-                // No two remote connections with the same session key, just for ensure.
-                let is_remote = AUTHED_CONNS
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .any(|c| c.conn_id == conn_id && c.conn_type == AuthConnType::Remote);
-                // If there are 2 connections with the same peer_id and session_id, a remote connection and a file transfer or port forward connection,
-                // If any of the connections is closed allowing retry, this will not be called;
-                // If the file transfer/port forward connection is closed with no retry, the session should be kept for remote control menu action;
-                // If the remote connection is closed with no retry, keep the session is not reasonable in case there is a retry button in the remote side, and ignore network fluctuations.
-                let another_remote = AUTHED_CONNS.lock().unwrap().iter().any(|c| {
-                    c.conn_id != conn_id
-                        && c.session_key == key
-                        && c.conn_type == AuthConnType::Remote
-                });
-                if is_remote || !another_remote {
-                    lock.remove(&key);
-                    log::info!("remove session");
-                } else {
-                    // Keep the session if there is another remote connection with same peer_id and session_id.
-                    log::info!("skip remove session");
-                }
-            }
-        }
 
-        pub fn update_or_insert_session(
-            key: SessionKey,
-            password: Option<String>,
-        ) {
-            let mut lock = SESSIONS.lock().unwrap();
-            let session = lock.get_mut(&key);
-            if let Some(session) = session {
-                if let Some(password) = password {
-                    session.random_password = password;
-                }
-            } else {
-                lock.insert(
-                    key,
-                    Session {
-                        random_password: password.unwrap_or_default(),
-                        last_recv_time: Arc::new(Mutex::new(Instant::now())),
-                    },
-                );
-            }
-        }
 
         pub fn conn_type(&self) -> AuthConnType {
             self.1

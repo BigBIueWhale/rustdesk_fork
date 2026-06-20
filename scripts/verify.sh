@@ -99,10 +99,12 @@ else echo "  ok  R-A6/R-S2 switch-sides proto absent"; fi
 # unconditional) refuses unkeyed streams before Connection::start, so the inherited
 # login-time `validate_password`/`verify_h1` challenge-response was unreachable (R-S6) — the
 # responder authorizes purely on the CPace KEYED edge. The call site now reads `!is_secured()`
-# alone (fail-closed: an unkeyed stream is rejected, never password-validated). (The Hash{salt,
-# challenge} emission `set_hash` + the now-dead recent-session cache/`is_recent_session` are the
-# remaining FSM-collapse tokens — a dedicated follow-on; the prompt-flow rework removes set_hash.)
-ra6_clean 'validate_password|verify_h1'                                  'R-S2 post-key password oracle' || rc=1
+# alone (fail-closed: an unkeyed stream is rejected, never password-validated). The 30-s
+# recent-session resume `is_recent_session` + its entire dead SESSIONS cache (the only populator
+# was `validate_password`, so it was never filled) are deleted too; the lone remaining FSM token
+# is the `Hash{salt,challenge}` emission `set_hash` — still the viewer's login trigger, whose
+# removal needs the prompt-flow rework (a dedicated follow-on).
+ra6_clean 'validate_password|verify_h1|is_recent_session'               'R-S2 post-key oracle + recent-session resume' || rc=1
 # R-SV7 / §18: the Telegram 2FA push/enrollment egress (a hardcoded api.telegram.org
 # POST that leaked the box id + peer IP, gated on `bot`/`2fa` not `api-server`, so the
 # R-D6 api-server pin never silenced it) is excised from the tree — structurally

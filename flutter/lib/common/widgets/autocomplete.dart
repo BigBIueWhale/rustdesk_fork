@@ -11,8 +11,6 @@ class AllPeersLoader {
   bool _isPeersLoading = false;
   bool _isPeersLoaded = false;
 
-  final String _listenerKey = 'AllPeersLoader';
-
   late void Function(VoidCallback) setState;
 
   bool get needLoad => !_isPeersLoaded && !_isPeersLoading;
@@ -24,15 +22,11 @@ class AllPeersLoader {
     this.setState = setState;
     gFFI.recentPeersModel.addListener(_mergeAllPeers);
     gFFI.lanPeersModel.addListener(_mergeAllPeers);
-    gFFI.abModel.addPeerUpdateListener(_listenerKey, _mergeAllPeers);
-    gFFI.groupModel.addPeerUpdateListener(_listenerKey, _mergeAllPeers);
   }
 
   void clear() {
     gFFI.recentPeersModel.removeListener(_mergeAllPeers);
     gFFI.lanPeersModel.removeListener(_mergeAllPeers);
-    gFFI.abModel.removePeerUpdateListener(_listenerKey);
-    gFFI.groupModel.removePeerUpdateListener(_listenerKey);
   }
 
   Future<void> getAllPeers() async {
@@ -47,9 +41,6 @@ class AllPeersLoader {
     if (gFFI.lanPeersModel.peers.isEmpty) {
       bind.mainLoadLanPeers();
     }
-    // No need to care about peers from abModel, and group model.
-    // Because they will pull data in `refreshCurrentUser()` on startup.
-
     final startTime = DateTime.now();
     _mergeAllPeers();
     final diffTime = DateTime.now().difference(startTime).inMilliseconds;
@@ -59,24 +50,10 @@ class AllPeersLoader {
   }
 
   void _mergeAllPeers() {
-    Map<String, dynamic> combinedPeers = {};
-    for (var p in gFFI.abModel.allPeers()) {
-      if (!combinedPeers.containsKey(p.id)) {
-        combinedPeers[p.id] = p.toJson();
-      }
-    }
-    for (var p in gFFI.groupModel.peers.map((e) => Peer.copy(e)).toList()) {
-      if (!combinedPeers.containsKey(p.id)) {
-        combinedPeers[p.id] = p.toJson();
-      }
-    }
-
+    // R-G2/R-SV6: a direct-IP fork has no account address book or groups — the autocomplete
+    // suggests only the local Discovered (LAN) + Recent peers.
     List<Peer> parsedPeers = [];
-    for (var peer in combinedPeers.values) {
-      parsedPeers.add(Peer.fromJson(peer));
-    }
-
-    Set<String> peerIds = combinedPeers.keys.toSet();
+    Set<String> peerIds = {};
     for (final peer in gFFI.lanPeersModel.peers) {
       if (!peerIds.contains(peer.id)) {
         parsedPeers.add(peer);
@@ -232,26 +209,13 @@ class AutocompletePeerTileState extends State<AutocompletePeerTile> {
                     )
                   ],
                 ))));
-    final colors = _frontN(widget.peer.tags, 25)
-        .map((e) => gFFI.abModel.getCurrentAbTagColor(e))
-        .toList();
     return Tooltip(
       message: !(isDesktop || isWebDesktop)
           ? ''
           : widget.peer.tags.isNotEmpty
               ? '${translate('Tags')}: ${widget.peer.tags.join(', ')}'
               : '',
-      child: Stack(children: [
-        child,
-        if (colors.isNotEmpty)
-          Positioned(
-            top: 5,
-            right: 10,
-            child: CustomPaint(
-              painter: TagPainter(radius: 3, colors: colors),
-            ),
-          )
-      ]),
+      child: child,
     );
   }
 }

@@ -174,7 +174,7 @@ impl<T: InvokeUiSession> Remote<T> {
         )
         .await
         {
-            Ok(((mut peer, direct, pk, kcp, stream_type), (feedback, rendezvous_server))) => {
+            Ok(((mut peer, direct, pk, stream_type), (feedback, rendezvous_server))) => {
                 self.handler
                     .connection_round_state
                     .lock()
@@ -322,13 +322,6 @@ impl<T: InvokeUiSession> Remote<T> {
                 // Stop client audio server.
                 if let Some(s) = self.stop_voice_call_sender.take() {
                     s.send(()).ok();
-                }
-                if kcp.is_some() {
-                    // Send the close reason if it hasn't been sent yet, as KCP cannot detect the socket close event.
-                    self.send_close_reason(&mut peer, "kcp").await;
-                    // KCP does not send messages immediately, so wait to ensure the last message is sent.
-                    // 1ms works in my test, but 30ms is more reliable.
-                    tokio::time::sleep(Duration::from_millis(30)).await;
                 }
             }
             Err(err) => {

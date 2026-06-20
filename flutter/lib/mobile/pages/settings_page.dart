@@ -77,15 +77,12 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   var _onlyWhiteList = false;
   var _enableRecordSession = false;
   var _enableHardwareCodec = false;
-  var _allowWebSocket = false;
   var _autoRecordIncomingSession = false;
   var _autoRecordOutgoingSession = false;
   var _allowAutoDisconnect = false;
   var _fingerprint = "";
   var _buildDate = "";
   var _autoDisconnectTimeout = "";
-  var _hideNetwork = false;
-  var _hideWebSocket = false;
   var _enableUdpPunch = false;
   var _allowInsecureTlsFallback = false;
   var _disableUdp = false;
@@ -101,7 +98,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
         bind.mainGetOptionSync(key: kOptionEnableRecordSession));
     _enableHardwareCodec = option2bool(kOptionEnableHwcodec,
         bind.mainGetOptionSync(key: kOptionEnableHwcodec));
-    _allowWebSocket = mainGetBoolOptionSync(kOptionAllowWebSocket);
     _allowInsecureTlsFallback =
         mainGetBoolOptionSync(kOptionAllowInsecureTLSFallback);
     _disableUdp = bind.mainGetOptionSync(key: kOptionDisableUdp) == 'Y';
@@ -113,11 +109,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
         bind.mainGetOptionSync(key: kOptionAllowAutoDisconnect));
     _autoDisconnectTimeout =
         bind.mainGetOptionSync(key: kOptionAutoDisconnectTimeout);
-    _hideNetwork =
-        bind.mainGetBuildinOption(key: kOptionHideNetworkSetting) == 'Y';
-    _hideWebSocket =
-        bind.mainGetBuildinOption(key: kOptionHideWebSocketSetting) == 'Y' ||
-            isWeb;
     _enableUdpPunch = mainGetLocalBoolOptionSync(kOptionEnableUdpPunch);
     _enableIpv6Punch = mainGetLocalBoolOptionSync(kOptionEnableIpv6Punch);
     _preventSleepWhileConnected =
@@ -516,21 +507,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                 onPressed: (context) {
                   showDeployDialog();
                 }),
-          if (!disabledSettings && !_hideNetwork && !_hideWebSocket)
-            SettingsTile.switchTile(
-              title: Text(translate('Use WebSocket')),
-              initialValue: _allowWebSocket,
-              onToggle: isOptionFixed(kOptionAllowWebSocket)
-                  ? null
-                  : (v) async {
-                      await mainSetBoolOption(kOptionAllowWebSocket, v);
-                      final newValue =
-                          await mainGetBoolOption(kOptionAllowWebSocket);
-                      setState(() {
-                        _allowWebSocket = newValue;
-                      });
-                    },
-            ),
           if (!_isUsingPublicServer)
             SettingsTile.switchTile(
               title: Text(translate('Allow insecure TLS fallback')),

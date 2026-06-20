@@ -935,19 +935,17 @@ impl<T: InvokeUiSession> Remote<T> {
                 allow_err!(peer.send(&msg).await);
                 self.elevation_requested = true;
             }
-            Data::ElevateWithLogon(username, password) => {
-                let mut request = ElevationRequest::new();
-                request.set_logon(ElevationRequestWithLogon {
-                    username,
-                    password,
-                    ..Default::default()
-                });
-                let mut misc = Misc::new();
-                misc.set_elevation_request(request);
-                let mut msg = Message::new();
-                msg.set_misc(misc);
-                allow_err!(peer.send(&msg).await);
-                self.elevation_requested = true;
+            Data::ElevateWithLogon(_username, _password) => {
+                // R-S18 / R-X9: the viewer NO LONGER sends ElevationRequestWithLogon — i.e.
+                // peer-supplied OS credentials (username/password) driving a Windows
+                // elevation (CreateProcessWithLogonW on the controlled side). That is a
+                // SECOND OS credential the PAKE does not subsume; the controlled side's
+                // peer-triggered elevation is excised (R-X9), and R-S18's symmetric rule
+                // deletes the client SENDER too, so the operator's OS creds never leave the
+                // viewer (a substituted peer, R-S17, cannot harvest them). The UI "Request
+                // Elevation (with logon)" affordance + the `os-username`/`os-password`
+                // options that feed it are the §19/R-G4 follow-on; this arm is a no-op so a
+                // stray Data variant sends nothing.
             }
             Data::NewVoiceCall => {
                 let msg = new_voice_call_request(true);

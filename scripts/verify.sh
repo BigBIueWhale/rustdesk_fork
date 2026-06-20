@@ -101,7 +101,7 @@ ra6_clean 'api/heartbeat|api/sysinfo|heartbeat_url|handle_config_options|start_h
 # into the LoginRequest on EVERY connect (client.rs create_login_msg), so a substituted
 # peer (R-S17) harvested the operator's stored OS creds with no interaction. The responder
 # already ignores os_login (0685c28); deleting the sender completes the symmetric removal.
-ra6_clean 'Some\(OSLogin' 'R-S18 viewer os_login credential leak (sender)' || rc=1
+ra6_clean 'Some\(OSLogin|\.set_logon\(' 'R-S18 viewer os_login + elevation-with-logon senders' || rc=1
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod auth_2fa:R-X7 2FA/TOTP' 'mod lan:R-X5 LAN discovery' \

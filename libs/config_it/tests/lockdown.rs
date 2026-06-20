@@ -37,7 +37,6 @@ fn pinned_policy_is_the_single_source_of_truth() {
         "enable-block-input",
         "enable-privacy-mode",
         "enable-remote-printer",
-        "enable-trusted-devices",
         "allow-websocket",
         "allow-insecure-tls-fallback",
         "allow-linux-headless",

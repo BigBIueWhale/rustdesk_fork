@@ -10,7 +10,6 @@ use std::{
 };
 
 use anyhow::{anyhow, Result};
-use bytes::Bytes;
 use rand::Rng;
 use regex::Regex;
 use serde as de;
@@ -66,7 +65,6 @@ lazy_static::lazy_static! {
     static ref CONFIG2: RwLock<Config2> = RwLock::new(Config2::load());
     static ref LOCAL_CONFIG: RwLock<LocalConfig> = RwLock::new(LocalConfig::load());
     static ref STATUS: RwLock<Status> = RwLock::new(Status::load());
-    static ref TRUSTED_DEVICES: RwLock<(Vec<TrustedDevice>, bool)> = Default::default();
     static ref ONLINE: Mutex<HashMap<String, i64>> = Default::default();
     pub static ref PROD_RENDEZVOUS_SERVER: RwLock<String> = RwLock::new("".to_owned());
     pub static ref EXE_RENDEZVOUS_SERVER: RwLock<String> = Default::default();
@@ -265,8 +263,6 @@ pub struct Config2 {
     serial: i32,
     #[serde(default, deserialize_with = "deserialize_string")]
     unlock_pin: String,
-    #[serde(default, deserialize_with = "deserialize_string")]
-    trusted_devices: String,
 
     #[serde(default)]
     socks: Option<Socks5Server>,
@@ -1361,7 +1357,6 @@ impl Config {
         config.password = stored;
         config.password_prs = prs;
         config.store();
-        Self::clear_trusted_devices();
         true
     }
 
@@ -1408,7 +1403,6 @@ impl Config {
         }
 
         config.store();
-        Self::clear_trusted_devices();
         Ok(true)
     }
 
@@ -1646,70 +1640,10 @@ impl Config {
         config.store();
     }
 
-    pub fn get_trusted_devices_json() -> String {
-        serde_json::to_string(&Self::get_trusted_devices()).unwrap_or_default()
-    }
-
-    pub fn get_trusted_devices() -> Vec<TrustedDevice> {
-        let (devices, synced) = TRUSTED_DEVICES.read().unwrap().clone();
-        if synced {
-            return devices;
-        }
-        let devices = CONFIG2.read().unwrap().trusted_devices.clone();
-        let (devices, succ, store) = decrypt_str_or_original(&devices, PASSWORD_ENC_VERSION);
-        if succ {
-            let mut devices: Vec<TrustedDevice> =
-                serde_json::from_str(&devices).unwrap_or_default();
-            let len = devices.len();
-            devices.retain(|d| !d.outdate());
-            if store || devices.len() != len {
-                Self::set_trusted_devices(devices.clone());
-            }
-            *TRUSTED_DEVICES.write().unwrap() = (devices.clone(), true);
-            devices
-        } else {
-            Default::default()
-        }
-    }
-
-    fn set_trusted_devices(mut trusted_devices: Vec<TrustedDevice>) {
-        trusted_devices.retain(|d| !d.outdate());
-        let devices = serde_json::to_string(&trusted_devices).unwrap_or_default();
-        let max_len = 1024 * 1024;
-        if devices.bytes().len() > max_len {
-            log::error!("Trusted devices too large: {}", devices.bytes().len());
-            return;
-        }
-        let devices = encrypt_str_or_original(&devices, PASSWORD_ENC_VERSION, max_len);
-        let mut config = CONFIG2.write().unwrap();
-        config.trusted_devices = devices;
-        config.store();
-        *TRUSTED_DEVICES.write().unwrap() = (trusted_devices, true);
-    }
-
-    pub fn add_trusted_device(device: TrustedDevice) {
-        let mut devices = Self::get_trusted_devices();
-        devices.retain(|d| d.hwid != device.hwid);
-        devices.push(device);
-        Self::set_trusted_devices(devices);
-    }
-
-    pub fn remove_trusted_devices(hwids: &Vec<Bytes>) {
-        let mut devices = Self::get_trusted_devices();
-        devices.retain(|d| !hwids.contains(&d.hwid));
-        Self::set_trusted_devices(devices);
-    }
-
-    pub fn clear_trusted_devices() {
-        Self::set_trusted_devices(Default::default());
-    }
-
     pub fn get() -> Config {
         return CONFIG.read().unwrap().clone();
     }
 
-    // TODO: `Config::set()` does not invalidate trusted devices when permanent password/salt changes.
-    // This matches historical behavior, but may need revisiting in a separate PR.
     pub fn set(cfg: Config) -> bool {
         let mut lock = CONFIG.write().unwrap();
         if *lock == cfg {
@@ -2769,22 +2703,6 @@ impl Group {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct TrustedDevice {
-    pub hwid: Bytes,
-    pub time: i64,
-    pub id: String,
-    pub name: String,
-    pub platform: String,
-}
-
-impl TrustedDevice {
-    pub fn outdate(&self) -> bool {
-        const DAYS_90: i64 = 90 * 24 * 60 * 60 * 1000;
-        self.time + DAYS_90 < crate::get_time()
-    }
-}
-
 deserialize_default!(deserialize_string, String);
 deserialize_default!(deserialize_bool, bool);
 deserialize_default!(deserialize_i32, i32);
@@ -3029,7 +2947,6 @@ pub mod keys {
     pub const OPTION_ENABLE_DIRECTX_CAPTURE: &str = "enable-directx-capture";
     pub const OPTION_ENABLE_ANDROID_SOFTWARE_ENCODING_HALF_SCALE: &str =
         "enable-android-software-encoding-half-scale";
-    pub const OPTION_ENABLE_TRUSTED_DEVICES: &str = "enable-trusted-devices";
     pub const OPTION_AV1_TEST: &str = "av1-test";
     pub const OPTION_TRACKPAD_SPEED: &str = "trackpad-speed";
     pub const OPTION_REGISTER_DEVICE: &str = "register-device";
@@ -3260,7 +3177,6 @@ pub mod keys {
         OPTION_PRESET_NOTE,
         OPTION_ENABLE_DIRECTX_CAPTURE,
         OPTION_ENABLE_ANDROID_SOFTWARE_ENCODING_HALF_SCALE,
-        OPTION_ENABLE_TRUSTED_DEVICES,
         OPTION_RELAY_SERVER,
         OPTION_ICE_SERVERS,
         OPTION_DISABLE_UDP,
@@ -3303,8 +3219,7 @@ pub mod keys {
         (OPTION_ENABLE_BLOCK_INPUT, "N"),
         (OPTION_ENABLE_PRIVACY_MODE, "N"),
         (OPTION_ENABLE_REMOTE_PRINTER, "N"),
-        // No 2FA-bypass devices, no TOTP, no Telegram-bot push (R-X7, R-D6).
-        (OPTION_ENABLE_TRUSTED_DEVICES, "N"),
+        // No TOTP, no Telegram-bot push (R-X7, R-D6); trusted-devices is fully excised, not just pinned.
         ("2fa", ""),
         ("bot", ""),
         // Egress-silent: no rendezvous / relay / api / proxy (R-D6); the proxy

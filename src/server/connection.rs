@@ -602,17 +602,9 @@ impl Connection {
                                 continue;
                             }
                             match clip {
-                                clipboard::ClipboardFile::Files { files } => {
-                                    let files = files.into_iter().map(|(f, s)| {
-                                        (f, s as i64)
-                                    }).collect::<Vec<_>>();
-                                    conn.post_file_audit(
-                                        FileAuditType::RemoteSend,
-                                        "",
-                                        files,
-                                        json!({}),
-                                    );
-                                }
+                                // Files announcement: consumed without forwarding (upstream
+                                // intercepted it here to audit-only); the egress is removed.
+                                clipboard::ClipboardFile::Files { .. } => {}
                                 _ => {
                                     allow_err!(conn.stream.send(&clip_2_msg(clip)).await);
                                 }
@@ -1111,36 +1103,6 @@ impl Connection {
         msg_out.set_hash(self.hash.clone());
         self.send(msg_out).await;
         true
-    }
-
-    fn get_files_for_audit(job_type: fs::JobType, mut files: Vec<FileEntry>) -> Vec<(String, i64)> {
-        files
-            .drain(..)
-            .map(|f| {
-                (
-                    if job_type == fs::JobType::Printer {
-                        "Remote print".to_owned()
-                    } else {
-                        f.name
-                    },
-                    f.size as _,
-                )
-            })
-            .collect()
-    }
-
-    fn post_file_audit(
-        &self,
-        _type: FileAuditType,
-        _path: &str,
-        _files: Vec<(String, i64)>,
-        _info: Value,
-    ) {
-        // R-SV6(a) / §18: the file-transfer audit POST is EXCISED — it leaked the box
-        // id/uuid + peer id/ip + file names/sizes to the api-server audit URL. The egress
-        // body is removed and the reqwest sink + its worker are gone — R-SV1 structural
-        // absence (R-D6 "dial nobody"), not an empty-url guard. No-op stub; only its
-        // call sites remain to be excised (R-D4-era slice).
     }
 
     pub fn post_alarm_audit(_typ: AlarmAuditType, _info: Value) {
@@ -2400,17 +2362,9 @@ impl Connection {
                 }
                 #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
                 Some(message::Union::Cliprdr(clip)) => {
-                    if let Some(cliprdr::Union::Files(files)) = &clip.union {
-                        self.post_file_audit(
-                            FileAuditType::RemoteReceive,
-                            "",
-                            files
-                                .files
-                                .iter()
-                                .map(|f| (f.name.clone(), f.size as i64))
-                                .collect::<Vec<(String, i64)>>(),
-                            json!({}),
-                        );
+                    if let Some(cliprdr::Union::Files(_)) = &clip.union {
+                        // Files announcement: consumed without forwarding (upstream
+                        // intercepted it here to audit-only); the egress is removed.
                     } else if let Some(clip) = msg_2_clip(clip) {
                         #[cfg(target_os = "windows")]
                         {
@@ -2451,19 +2405,10 @@ impl Connection {
 
                             for msg in out_msgs.into_iter() {
                                 if let Some(message::Union::Cliprdr(cliprdr)) = msg.union.as_ref() {
-                                    if let Some(cliprdr::Union::Files(files)) =
+                                    if let Some(cliprdr::Union::Files(_)) =
                                         cliprdr.union.as_ref()
                                     {
-                                        self.post_file_audit(
-                                            FileAuditType::RemoteSend,
-                                            "",
-                                            files
-                                                .files
-                                                .iter()
-                                                .map(|f| (f.name.clone(), f.size as i64))
-                                                .collect::<Vec<(String, i64)>>(),
-                                            json!({}),
-                                        );
+                                        // Files announcement: not forwarded (egress removed).
                                         continue;
                                     }
                                 }
@@ -2642,12 +2587,6 @@ impl Connection {
                                     total_size: r.total_size,
                                     conn_id: self.inner.id(),
                                 });
-                                self.post_file_audit(
-                                    FileAuditType::RemoteReceive,
-                                    &r.path,
-                                    Self::get_files_for_audit(fs::JobType::Generic, r.files),
-                                    json!({}),
-                                );
                                 self.file_transferred = true;
                             }
                             Some(file_action::Union::RemoveDir(d)) => {
@@ -4160,14 +4099,6 @@ impl Connection {
                 self.send(fs::new_dir(id, path_str.clone(), file_entries.clone()))
                     .await;
 
-                // Post audit for file transfer
-                self.post_file_audit(
-                    FileAuditType::RemoteSend,
-                    &path_str,
-                    Self::get_files_for_audit(fs::JobType::Generic, file_entries),
-                    json!({}),
-                );
-
                 // CM will handle the actual file reading and send blocks via IPC
                 self.file_transferred = true;
             }
@@ -4279,24 +4210,12 @@ impl Connection {
 
     async fn process_new_read_job(&mut self, mut job: fs::TransferJob, path: String) {
         let files = job.files().to_owned();
-        let job_type = job.r#type;
         self.send(fs::new_dir(job.id, path.clone(), files.clone()))
             .await;
         job.is_remote = true;
         job.conn_id = self.inner.id();
         self.read_jobs.push(job);
         self.file_timer = crate::rustdesk_interval(time::interval(MILLI1));
-        let audit_path = if job_type == fs::JobType::Printer {
-            "Remote print".to_owned()
-        } else {
-            path
-        };
-        self.post_file_audit(
-            FileAuditType::RemoteSend,
-            &audit_path,
-            Self::get_files_for_audit(job_type, files),
-            json!({}),
-        );
     }
 
     async fn handle_all_files_result(
@@ -4929,11 +4848,6 @@ pub enum AlarmAuditType {
     ExceedIPv6PrefixAttempts = 6,
     TerminalOsLoginBackoff = 7,
     TerminalOsLoginConcurrency = 8,
-}
-
-pub enum FileAuditType {
-    RemoteSend = 0,
-    RemoteReceive = 1,
 }
 
 #[derive(Debug, Serialize)]

@@ -1116,34 +1116,6 @@ Widget buildNoteTextField({
   ).workaroundFreezeLinuxMint();
 }
 
-showAuditDialog(FFI ffi) async {
-  final controller = TextEditingController(
-      text: bind.sessionGetLastAuditNote(sessionId: ffi.sessionId));
-  ffi.dialogManager.show((setState, close, context) {
-    submit() {
-      var text = controller.text;
-      bind.sessionSendNote(sessionId: ffi.sessionId, note: text);
-      close();
-    }
-
-    return CustomAlertDialog(
-      title: Text(translate('Note')),
-      content: SizedBox(
-          width: 250,
-          height: 120,
-          child: buildNoteTextField(
-            controller: controller,
-            onEscape: close,
-          )),
-      actions: [
-        dialogButton('Cancel', onPressed: close, isOutline: true),
-        dialogButton('OK', onPressed: submit)
-      ],
-      onSubmit: submit,
-      onCancel: close,
-    );
-  });
-}
 
 bool allowAskForNoteAtEndOfConnection(FFI? ffi, bool closedByControlling) {
   if (ffi == null) {

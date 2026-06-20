@@ -1170,98 +1170,11 @@ class FfiModel with ChangeNotifier {
     }
   }
 
-  void _queryAuditGuid(String peerId) async {
-    try {
-      if (bind.isDisableAccount()) {
-        return;
-      }
-      if (bind
-          .sessionGetAuditServerSync(sessionId: sessionId, typ: "conn/active")
-          .isEmpty) {
-        return;
-      }
-      if (!mainGetLocalBoolOptionSync(
-          kOptionAllowAskForNoteAtEndOfConnection)) {
-        return;
-      }
-      if (bind.sessionGetAuditGuid(sessionId: sessionId).isNotEmpty) {
-        debugPrint('Get cached audit GUID');
-        return;
-      }
-      final url = bind.sessionGetAuditServerSync(
-          sessionId: sessionId, typ: "conn/active");
-      if (url.isEmpty) {
-        return;
-      }
-      final initialConnSessionId =
-          bind.sessionGetConnSessionId(sessionId: sessionId);
-      final connType = switch (parent.target?.connType) {
-        ConnType.defaultConn => 0,
-        ConnType.fileTransfer => 1,
-        ConnType.portForward => 2,
-        ConnType.rdp => 2,
-        ConnType.viewCamera => 3,
-        ConnType.terminal => 4,
-        _ => 0,
-      };
-
-      const retryIntervals = [1, 1, 2, 2, 3, 3];
-
-      for (int attempt = 1; attempt <= retryIntervals.length; attempt++) {
-        final currentConnSessionId =
-            bind.sessionGetConnSessionId(sessionId: sessionId);
-        if (currentConnSessionId != initialConnSessionId) {
-          debugPrint('connSessionId changed, stopping audit GUID query');
-          return;
-        }
-
-        final fullUrl =
-            '$url?id=$peerId&session_id=$currentConnSessionId&conn_type=$connType';
-
-        debugPrint(
-            'Querying audit GUID, attempt $attempt/${retryIntervals.length}');
-        try {
-          var headers = getHttpHeaders();
-          headers['Content-Type'] = "application/json";
-
-          final response = await http.get(
-            Uri.parse(fullUrl),
-            headers: headers,
-          );
-
-          if (response.statusCode == 200) {
-            final guid = jsonDecode(response.body) as String?;
-            if (guid != null && guid.isNotEmpty) {
-              bind.sessionSetAuditGuid(sessionId: sessionId, guid: guid);
-              debugPrint('Successfully retrieved audit GUID');
-              return;
-            }
-          } else {
-            debugPrint(
-                'Failed to query audit GUID. Status: ${response.statusCode}, Body: ${response.body}');
-            return;
-          }
-        } catch (e) {
-          debugPrint('Error querying audit GUID (attempt $attempt): $e');
-        }
-
-        if (attempt < retryIntervals.length) {
-          await Future.delayed(Duration(seconds: retryIntervals[attempt - 1]));
-        }
-      }
-
-      debugPrint(
-          'Failed to retrieve audit GUID after ${retryIntervals.length} attempts');
-    } catch (e) {
-      debugPrint('Error in _queryAuditGuid: $e');
-    }
-  }
 
   /// Handle the peer info event based on [evt].
   handlePeerInfo(Map<String, dynamic> evt, String peerId, bool isCache) async {
     parent.target?.chatModel.voiceCallStatus.value = VoiceCallStatus.notStarted;
 
-    _queryAuditGuid(peerId);
 
     // Map clone is required here, otherwise "evt" may be changed by other threads through the reference.
     // Because this function is asynchronous, there's an "await" in this function.

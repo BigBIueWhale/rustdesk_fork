@@ -82,16 +82,6 @@ class ServerModel with ChangeNotifier {
 
   String get approveMode => _approveMode;
 
-  setVerificationMethod(String method) async {
-    await bind.mainSetOption(key: kOptionVerificationMethod, value: method);
-    /*
-    if (method != kUsePermanentPassword) {
-      await bind.mainSetOption(
-          key: 'allow-hide-cm', value: bool2option('allow-hide-cm', false));
-    }
-    */
-  }
-
   String get temporaryPasswordLength {
     final lengthIndex = ["6", "8", "10"].indexOf(_temporaryPasswordLength);
     if (lengthIndex < 0) {
@@ -100,25 +90,7 @@ class ServerModel with ChangeNotifier {
     return _temporaryPasswordLength;
   }
 
-  setTemporaryPasswordLength(String length) async {
-    await bind.mainSetOption(key: "temporary-password-length", value: length);
-  }
-
-  setApproveMode(String mode) async {
-    await bind.mainSetOption(key: kOptionApproveMode, value: mode);
-    /*
-    if (mode != 'password') {
-      await bind.mainSetOption(
-          key: 'allow-hide-cm', value: bool2option('allow-hide-cm', false));
-    }
-    */
-  }
-
   bool get allowNumericOneTimePassword => _allowNumericOneTimePassword;
-  switchAllowNumericOneTimePassword() async {
-    await mainSetBoolOption(
-        kOptionAllowNumericOneTimePassword, !_allowNumericOneTimePassword);
-  }
 
   TextEditingController get serverId => _serverId;
 

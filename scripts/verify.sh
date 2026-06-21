@@ -477,6 +477,24 @@ elif grep -E '^default *=' Cargo.toml | grep -qiE 'hwcodec|vram'; then
 else
   echo "  ok  §18/R-R2b hwcodec/vram never selected in any build path (CPU-only software codec)"
 fi
+# R-R2a (§12 / sovereignty): the .deb + systemd is the SOLE Linux package model. The AppImage
+# recipe (whose `update-information` self-updater collides with R-X1 "the fork ships its own
+# releases") and the Flatpak manifest (a portal-sandbox, no-systemd posture colliding with
+# R-D1/R-D3a "the systemd confinement IS the model") are DELETED from the tree — not merely
+# unbuilt — so that sovereignty/sandbox-model drift cannot regress in. Gate their absence (the
+# appimage/ + flatpak/ dirs gone) AND that no workflow builds them. (The PKGBUILD/rpm specs +
+# build.py's pacman/yum/zypper branches are the Phase-2 follow-on; not yet excised/gated.)
+rr2a_bad=
+[ -e appimage ] && rr2a_bad="$rr2a_bad appimage-dir"
+[ -e flatpak ]  && rr2a_bad="$rr2a_bad flatpak-dir"
+if grep -rqIE 'build-appimage:|build-flatpak:|appimage-builder|flatpak-builder|"appimage/\*\*"|"flatpak/\*\*"' .github/workflows/ 2>/dev/null; then
+  rr2a_bad="$rr2a_bad CI-ref"
+fi
+if [ -n "$rr2a_bad" ]; then
+  echo "  FAIL R-R2a: AppImage/Flatpak packaging must be ABSENT (.deb+systemd is the sole Linux model):$rr2a_bad"; rc=1
+else
+  echo "  ok  R-R2a AppImage + Flatpak packaging excised (.deb + systemd is the sole Linux model)"
+fi
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod lan:R-X5 lan.rs residual (WoL send_wol + discover no-op; the discovery LISTENER is excised + hard-gated above — full removal is the R-G2 Discovered-tab/WoL-UI follow-on)' \

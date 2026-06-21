@@ -401,6 +401,19 @@ if [ "$r_secrets_n" -lt 1 ]; then
 else
   echo "  ok  secrets-at-rest config files written mode 0o600 (owner-only; permanent-password PRS + peer creds)"
 fi
+# R-S17/R-S13 (viewer-side MITM gate): the viewer MUST verify the responder's HostIdentity host-proof
+# AND pin-compare it before trusting the keyed session. `key_initiator` (client.rs) reads the proof,
+# `verify_host_identity` checks the Ed25519 signature over the session transcript, then
+# `host_pin::get_pinned_pk` does the SSH-known_hosts fail-closed compare: a MISMATCH refuses
+# (substitution/MITM), and FIRST-CONTACT refuses too — NO trust-on-first-use. The smoke's probe
+# verifies the SIGNATURE but does NOT pin, so this gate is the only guard that the pin-compare (the
+# actual MITM gate) is not silently dropped. Assert both calls survive in client.rs.
+r_s17v_n=$(grep -cE 'verify_host_identity|get_pinned_pk' src/client.rs 2>/dev/null || echo 0)
+if [ "$r_s17v_n" -lt 2 ]; then
+  echo "  FAIL R-S17: viewer host-proof verify + pin-compare (verify_host_identity + get_pinned_pk) missing in client.rs — MITM gate regressed"; rc=1
+else
+  echo "  ok  R-S17 viewer verifies host-proof + pin-compares (fail-closed, no trust-on-first-use)"
+fi
 # R-SV4(b)/R-S13(d)/R-SV10 (no rendezvous path in either role): the initiator-side
 # rendezvous/relay/NAT-punch cluster (Client::_start_inner / secure_connection /
 # udp_nat_connect) AND the responder-side relay-dialer (create_relay_connection — which dialed

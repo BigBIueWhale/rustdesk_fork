@@ -108,8 +108,24 @@ echo "$out4"
 echo "$out4" | grep -qE 'security summary .* shed=[1-9]' \
   || { echo "  FAIL R-T1: the connection-flood capacity shed did not fire (budget 256; flooded 300)"; rc=1; }
 
+echo "== (5) R-T15(d) ENFORCED: a fully KEYED connection is DENIED by the empty default-deny whitelist =="
+out5=$("${RUN[@]}" bash -c '
+  export HOME=/tmp/rd5 RUSTDESK_BIND_LOOPBACK=1; mkdir -p "$HOME"
+  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
+  ./target/debug/rustdesk --server >/tmp/srv.log 2>&1 & SRV=$!
+  sleep 6
+  ./target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok read 2>&1 | grep "post-key"
+  kill -TERM $SRV 2>/dev/null
+' || true)
+echo "$out5"
+# The probe keys, engages the session cipher, reads the post-key flow, and finds the server's
+# whitelist refusal — proving default-deny (R-S9) is ENFORCED on a real keyed session, not merely
+# warned about at startup (CPace authenticated the peer, yet the empty whitelist still blocks it).
+echo "$out5" | grep -q 'Your ip is blocked by the peer' \
+  || { echo "  FAIL R-T15(d): a fully-keyed connection was NOT denied by the empty default-deny whitelist"; rc=1; }
+
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed — ALL validated at RUNTIME."
+  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) startup-warning AND session-enforcement + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

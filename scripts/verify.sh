@@ -293,6 +293,21 @@ if [ -n "$r_t10_missing" ]; then
 else
   echo "  ok  R-T10 TCP keepalive set on accepted peer sockets (SockRef + TcpKeepalive, app deadline primary)"
 fi
+# R-T15(b) / R-S10: the inherited LOGIN_FAILURES limiter — unbounded-growth / never-decaying /
+# full-IPv6-keyed, and on dead paths (the legacy unkeyed/salted-hash login is gone) — MUST be
+# excised so the live online-guess limiter is unambiguously the bounded, decaying, per-v4-source
+# GUESS_FAILURES in cpace.rs (R-P14c). Gate: no LOGIN_FAILURES reference remains in CODE (the
+# excision-documenting comments are allowed), and GUESS_FAILURES (the live limiter) is still present.
+r_t15b_missing=
+grep -q 'static ref LOGIN_FAILURES' src/server/connection.rs && r_t15b_missing="$r_t15b_missing static-present!"
+grep -q 'fn check_failure_ipv6_prefix' src/server/connection.rs && r_t15b_missing="$r_t15b_missing ipv6-helper-present!"
+grep -q 'fn get_ipv6_prefixes' src/server/connection.rs && r_t15b_missing="$r_t15b_missing prefixes-helper-present!"
+grep -q 'GUESS_FAILURES' libs/hbb_common/src/cpace.rs || r_t15b_missing="$r_t15b_missing guess-failures-MISSING!"
+if [ -z "$r_t15b_missing" ]; then
+  echo "  ok  R-T15(b) LOGIN_FAILURES limiter excised (GUESS_FAILURES remains the live limiter)"
+else
+  echo "  FAIL R-T15(b): excision incomplete:$r_t15b_missing"; rc=1
+fi
 # R-T15(a) / R-P12: secret-zeroization in libs/pake — curve25519-dalek 4.1.3 impls the Zeroize
 # TRAIT but not Drop, so secrets not explicitly wiped linger on attacker-inducible abort/timeout
 # paths. The ISK master secret is wrapped in Zeroizing, the initiator's ephemeral scalar is wiped

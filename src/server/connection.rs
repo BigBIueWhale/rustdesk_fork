@@ -58,10 +58,8 @@ use serde_json::{json, value::Value};
 use std::sync::atomic::Ordering;
 use std::{
     collections::HashSet,
-    net::Ipv6Addr,
     num::NonZeroI64,
     path::PathBuf,
-    str::FromStr,
     sync::{atomic::AtomicI64, mpsc as std_mpsc},
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -74,7 +72,8 @@ use crate::virtual_display_manager;
 pub type Sender = mpsc::UnboundedSender<(Instant, Arc<Message>)>;
 
 lazy_static::lazy_static! {
-    static ref LOGIN_FAILURES: [Arc::<Mutex<HashMap<String, (i32, i32, i32)>>>; 2] = Default::default();
+    // R-T15(b)/R-S10: the inherited LOGIN_FAILURES limiter is excised (see update/check_failure) —
+    // an unbounded/never-decaying/full-IPv6-keyed map on dead paths; CPace's GUESS_FAILURES is live.
     static ref ALIVE_CONNS: Arc::<Mutex<Vec<i32>>> = Default::default();
     pub static ref AUTHED_CONNS: Arc::<Mutex<Vec<AuthedConn>>> = Default::default();
     pub static ref CONTROL_PERMISSIONS_ARRAY: Arc::<Mutex<Vec<(i32, ControlPermissions)>>> = Default::default();
@@ -3145,119 +3144,30 @@ impl Connection {
         None
     }
 
-    // Try to parse connection IP as IPv6 address, returning /64, /56, and /48 prefixes.
-    // Parsing an IPv4 address just returns None.
-    // note: we specifically don't use hbb_common::is_ipv6_str to avoid divergence issues
-    // between its regex and the system std::net::Ipv6Addr implementation.
-    fn get_ipv6_prefixes(&self) -> Option<(String, String, String)> {
-        fn mask_u128(addr: u128, prefix: u8) -> u128 {
-            let mask = if prefix == 0 || prefix > 128 {
-                0
-            } else {
-                (!0u128) << (128 - prefix)
-            };
-            addr & mask
-        }
-        // eliminate zone-ids like "fe80::1%eth0"
-        let ip_only = self.ip.split('%').next().unwrap_or(&self.ip).trim();
-        let ip = Ipv6Addr::from_str(ip_only).ok()?;
-
-        let as_u128 = u128::from_be_bytes(ip.octets());
-
-        let p64 = Ipv6Addr::from(mask_u128(as_u128, 64).to_be_bytes()).to_string() + "/64";
-        let p56 = Ipv6Addr::from(mask_u128(as_u128, 56).to_be_bytes()).to_string() + "/56";
-        let p48 = Ipv6Addr::from(mask_u128(as_u128, 48).to_be_bytes()).to_string() + "/48";
-
-        Some((p64, p56, p48))
-    }
-
-    fn bump_failure_entry(mut cur: (i32, i32, i32), time: i32) -> (i32, i32, i32) {
-        if cur.0 == time {
-            cur.1 += 1;
-            cur.2 += 1;
-        } else {
-            cur.0 = time;
-            cur.1 = 1;
-            cur.2 += 1;
-        }
-        cur
-    }
-
+    // R-T15(b) / R-S10: the inherited LOGIN_FAILURES limiter and its IPv6-prefix helpers
+    // (`get_ipv6_prefixes` / `bump_failure_entry` / `check_failure_ipv6_prefix`) are EXCISED — they
+    // carried the exact unbounded-growth / never-decaying / full-IPv6-address anti-patterns R-S10
+    // condemns, and on dead paths: the legacy unkeyed/salted-hash login is gone (R-A1 refuses
+    // unkeyed streams before `Connection::start`; R-S2/R-S6 collapsed the password proof into
+    // CPace), so nothing reachably bumped the map. The live online-guess limiter is now
+    // unambiguously the bounded, decaying, per-v4-source `GUESS_FAILURES` in `cpace.rs` (R-P14c).
+    // `update_failure`/`check_failure` are retained as thin shims: the Default scope defers to the
+    // CPace gate (always-allow here), and the SEPARATE os-credential (terminal) policy is kept.
     fn update_failure(&self, failure: ((i32, i32, i32), i32), remove: bool, i: usize) {
         self.update_failure_with_scope(failure, remove, i, FailureScope::Default);
     }
 
     fn update_failure_with_scope(
         &self,
-        (failure, time): ((i32, i32, i32), i32),
+        (_failure, _time): ((i32, i32, i32), i32),
         remove: bool,
-        i: usize,
+        _i: usize,
         scope: FailureScope,
     ) {
-        let os_credential_scope = matches!(scope, FailureScope::TerminalOsLogin);
-        if os_credential_scope {
-            if !remove {
-                record_os_credential_failure(scope);
-            }
-            return;
-        }
-
-        let map_mutex = &LOGIN_FAILURES[i];
-        if remove {
-            if failure.0 != 0 {
-                if let Some((p64, p56, p48)) = self.get_ipv6_prefixes() {
-                    let mut m = map_mutex.lock().unwrap();
-                    m.remove(&p64);
-                    m.remove(&p56);
-                    m.remove(&p48);
-                    m.remove(&self.ip);
-                } else {
-                    map_mutex.lock().unwrap().remove(&self.ip);
-                }
-            }
-            return;
-        }
-        // Bump the prefixes, fetching existing values
-        if let Some((p64, p56, p48)) = self.get_ipv6_prefixes() {
-            let mut m = map_mutex.lock().unwrap();
-            for key in [p64, p56, p48] {
-                let cur = m.get(&key).copied().unwrap_or((0, 0, 0));
-                m.insert(key, Self::bump_failure_entry(cur, time));
-            }
-            let current_ip = m.get(&self.ip).copied().unwrap_or((0, 0, 0));
-            m.insert(self.ip.clone(), Self::bump_failure_entry(current_ip, time));
-        } else {
-            // Re-read the full IP bucket in case another failed attempt updated it.
-            let mut m = map_mutex.lock().unwrap();
-            let current_ip = m.get(&self.ip).copied().unwrap_or((0, 0, 0));
-            m.insert(self.ip.clone(), Self::bump_failure_entry(current_ip, time));
-        }
-    }
-
-    async fn check_failure_ipv6_prefix(
-        &mut self,
-        i: usize,
-        time: i32,
-        prefix: &str,
-        prefix_num: i8,
-        thresh: i32,
-    ) -> Option<(((i32, i32, i32), i32), bool)> {
-        let failure_prefix = LOGIN_FAILURES[i]
-            .lock()
-            .unwrap()
-            .get(prefix)
-            .copied()
-            .unwrap_or((0, 0, 0));
-
-        if failure_prefix.2 > thresh {
-            self.send_login_error(format!(
-                "Too many wrong attempts for IPv6 prefix /{}",
-                prefix_num
-            ))
-            .await;
-            Some(((failure_prefix, time), false))
-        } else {
-            None
+        // R-T15(b): only the os-credential (terminal) scope records anything now; the Default-scope
+        // LOGIN_FAILURES limiter is excised — CPace's GUESS_FAILURES (R-P14c) is the live limiter.
+        if matches!(scope, FailureScope::TerminalOsLogin) && !remove {
+            record_os_credential_failure(scope);
         }
     }
 
@@ -3294,37 +3204,9 @@ impl Connection {
             return (((0, 0, 0), time), res);
         }
 
-        // IPv6 addresses are cheap to make so we check prefix/netblock as well
-        if let Some((p64, p56, p48)) = self.get_ipv6_prefixes() {
-            if let Some(res) = self.check_failure_ipv6_prefix(i, time, &p64, 64, 60).await {
-                return res;
-            }
-            if let Some(res) = self.check_failure_ipv6_prefix(i, time, &p56, 56, 80).await {
-                return res;
-            }
-            if let Some(res) = self.check_failure_ipv6_prefix(i, time, &p48, 48, 100).await {
-                return res;
-            }
-        }
-
-        // checks IPv6 and IPv4 direct addresses
-        let failure = LOGIN_FAILURES[i]
-            .lock()
-            .unwrap()
-            .get(&self.ip)
-            .copied()
-            .unwrap_or((0, 0, 0));
-
-        let res = if failure.2 > 30 {
-            self.send_login_error("Too many wrong attempts").await;
-            false
-        } else if time == failure.0 && failure.1 > 6 {
-            self.send_login_error("Please try 1 minute later").await;
-            false
-        } else {
-            true
-        };
-        ((failure, time), res)
+        // R-T15(b): Default-scope login-failure limiting is excised — the CPace handshake's
+        // GUESS_FAILURES (R-P14c) is the live online-guess limiter. This layer always allows.
+        (((0, 0, 0), time), true)
     }
 
     fn refresh_video_display(&self, display: Option<usize>) {
@@ -5381,10 +5263,4 @@ mod test {
         assert_eq!(pos.y, 510);
     }
 
-    #[test]
-    fn ipv6() {
-        assert!(Ipv6Addr::from_str("::1").is_ok());
-        assert!(Ipv6Addr::from_str("127.0.0.1").is_err());
-        assert!(Ipv6Addr::from_str("0").is_err());
-    }
 }

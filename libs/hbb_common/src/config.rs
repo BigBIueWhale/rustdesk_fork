@@ -109,7 +109,7 @@ lazy_static::lazy_static! {
         ]);
 }
 
-const NUM_CHARS: &[char] = &['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+// R-X7: NUM_CHARS / get_auto_numeric_password removed — the numeric one-time password is excised.
 
 const CHARS: &[char] = &[
     '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k',
@@ -1110,10 +1110,6 @@ impl Config {
 
     pub fn get_auto_password(length: usize) -> String {
         Self::get_auto_password_with_chars(length, CHARS)
-    }
-
-    pub fn get_auto_numeric_password(length: usize) -> String {
-        Self::get_auto_password_with_chars(length, NUM_CHARS)
     }
 
     fn get_auto_password_with_chars(length: usize, chars: &[char]) -> String {
@@ -2923,7 +2919,6 @@ pub mod keys {
     pub const OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW: &str =
         "enable-perm-change-in-accept-window";
     pub const OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION: &str = "allow-remote-config-modification";
-    pub const OPTION_ALLOW_NUMERNIC_ONE_TIME_PASSWORD: &str = "allow-numeric-one-time-password";
     pub const OPTION_WHITELIST: &str = "whitelist";
     pub const OPTION_ALLOW_AUTO_DISCONNECT: &str = "allow-auto-disconnect";
     pub const OPTION_AUTO_DISCONNECT_TIMEOUT: &str = "auto-disconnect-timeout";
@@ -2938,7 +2933,6 @@ pub mod keys {
     pub const OPTION_ENABLE_HWCODEC: &str = "enable-hwcodec";
     pub const OPTION_APPROVE_MODE: &str = "approve-mode";
     pub const OPTION_VERIFICATION_METHOD: &str = "verification-method";
-    pub const OPTION_TEMPORARY_PASSWORD_LENGTH: &str = "temporary-password-length";
     pub const OPTION_CUSTOM_RENDEZVOUS_SERVER: &str = "custom-rendezvous-server";
     pub const OPTION_API_SERVER: &str = "api-server";
     pub const OPTION_KEY: &str = "key";
@@ -3145,7 +3139,6 @@ pub mod keys {
         OPTION_ENABLE_BLOCK_INPUT,
         OPTION_ENABLE_PRIVACY_MODE,
         OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION,
-        OPTION_ALLOW_NUMERNIC_ONE_TIME_PASSWORD,
         OPTION_WHITELIST,
         OPTION_ALLOW_AUTO_DISCONNECT,
         OPTION_AUTO_DISCONNECT_TIMEOUT,
@@ -3158,7 +3151,6 @@ pub mod keys {
         OPTION_ENABLE_HWCODEC,
         OPTION_APPROVE_MODE,
         OPTION_VERIFICATION_METHOD,
-        OPTION_TEMPORARY_PASSWORD_LENGTH,
         OPTION_PROXY_URL,
         OPTION_PROXY_USERNAME,
         OPTION_PROXY_PASSWORD,

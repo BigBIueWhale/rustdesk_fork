@@ -22,7 +22,7 @@ use hbb_common::{
     config::{self, keys::OPTION_ALLOW_WEBSOCKET, Config, Config2},
     futures::StreamExt as _,
     futures_util::sink::SinkExt,
-    log, password_security as password, timeout,
+    log, timeout,
     tokio::{
         self,
         io::{AsyncRead, AsyncWrite},
@@ -795,8 +795,6 @@ async fn handle(data: Data, stream: &mut Connection) {
                 let value;
                 if name == "id" {
                     value = Some(Config::get_id());
-                } else if name == "temporary-password" {
-                    value = Some(password::temporary_password());
                 } else if name == "permanent-password-storage-and-salt" {
                     let (storage, salt) = Config::get_local_permanent_password_storage_and_salt();
                     value = Some(storage + "\n" + &salt);
@@ -849,8 +847,6 @@ async fn handle(data: Data, stream: &mut Connection) {
                 if name == "id" {
                     Config::set_key_confirmed(false);
                     Config::set_id(&value);
-                } else if name == "temporary-password" {
-                    password::update_temporary_password();
                 } else if name == "permanent-password" {
                     if Config::is_disable_change_permanent_password() {
                         log::warn!("Changing permanent password is disabled");
@@ -1462,10 +1458,6 @@ async fn set_data_async(data: &Data) -> ResultType<()> {
 #[tokio::main(flavor = "current_thread")]
 pub async fn set_config(name: &str, value: String) -> ResultType<()> {
     set_config_async(name, value).await
-}
-
-pub fn update_temporary_password() -> ResultType<()> {
-    set_config("temporary-password", "".to_owned())
 }
 
 fn apply_permanent_password_storage_and_salt_payload(payload: Option<&str>) -> ResultType<()> {

@@ -895,11 +895,9 @@ impl Connection {
         // R-T4 (§20): privacy-off (screen-unblank), the video-fetch notify, `remove_connection`,
         // and cursor-record-stop have MOVED into `Connection`'s `Drop` so they run on cancellation
         // too, not only on this normal-exit tail (a dropped session previously left the console
-        // blanked + the Server map diverged). `update_temporary_password`, the port-forward drain,
-        // and the async `on_close` (CloseReason + lock_screen) remain here on the normal path.
-        if conn.authorized {
-            password::update_temporary_password();
-        }
+        // blanked + the Server map diverged). The port-forward drain and the async `on_close`
+        // (CloseReason + lock_screen) remain here on the normal path. (R-X7: the
+        // temporary-password rotation that ran here on authorized-exit is removed with the OTP.)
         if let Err(err) = conn.try_port_forward_loop(&mut rx_from_cm).await {
             conn.on_close(&err.to_string(), false).await;
         }
@@ -1709,57 +1707,8 @@ impl Connection {
         self.tx_input.send(MessageInput::Key((msg, press))).ok();
     }
 
-    // This is coarse brute-force protection for the current temporary password value.
-    // We only care whether the active temporary password itself was presented correctly,
-    // not whether later authorization steps succeed. A successful temporary-password
-    // match clears this state immediately, and the counter also resets whenever the
-    // temporary password changes or is rotated.
-    fn check_update_temporary_password(&self, temporary_password_success: bool) {
-        const MAX_CONSECUTIVE_FAILURES: i32 = 10;
-        #[derive(Default)]
-        struct State {
-            password: String,
-            failures: i32,
-        }
-        lazy_static::lazy_static! {
-            static ref TEMPORARY_PASSWORD_FAILURES: Mutex<State> =
-                Mutex::new(State::default());
-        }
-
-        if !password::temporary_enabled() {
-            return;
-        }
-
-        let mut state = TEMPORARY_PASSWORD_FAILURES.lock().unwrap();
-        let current_password = password::temporary_password();
-        if current_password.is_empty() {
-            return;
-        }
-        if state.password != current_password {
-            state.password = current_password;
-            state.failures = 0;
-        }
-
-        if temporary_password_success {
-            state.failures = 0;
-            return;
-        }
-        state.failures += 1;
-
-        if state.failures < MAX_CONSECUTIVE_FAILURES {
-            return;
-        }
-
-        password::update_temporary_password();
-        let new_password = password::temporary_password();
-        log::warn!(
-            "Temporary password rotated after too many consecutive wrong attempts: failures={}, ip={}",
-            state.failures,
-            self.ip,
-        );
-        state.password = new_password;
-        state.failures = 0;
-    }
+    // R-X7: check_update_temporary_password (the consecutive-wrong-attempt OTP rotation — a
+    // remotely-triggerable lockout) is removed with the temporary-password credential.
 
 
 
@@ -2088,7 +2037,6 @@ impl Connection {
                 // IS the CPace KEYED edge (R-S6 collapsed the redundant login-time proof).
                 if !self.stream.is_secured() {
                     self.update_failure_with_scope(failure, false, 0, FailureScope::Default);
-                    self.check_update_temporary_password(false);
                     if err_msg.is_empty() {
                         self.send_login_error(crate::client::LOGIN_MSG_PASSWORD_WRONG)
                             .await;

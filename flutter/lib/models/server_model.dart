@@ -192,7 +192,6 @@ class ServerModel with ChangeNotifier {
 
   updatePasswordModel() async {
     var update = false;
-    final temporaryPassword = await bind.mainGetTemporaryPassword();
     final verificationMethod =
         await bind.mainGetOption(key: kOptionVerificationMethod);
     final approveMode = await bind.mainGetOption(key: kOptionApproveMode);
@@ -208,18 +207,12 @@ class ServerModel with ChangeNotifier {
       _approveMode = approveMode;
       update = true;
     }
-    var stopped = await mainGetBoolOption(kOptionStopService);
     final oldPwdText = _serverPasswd.text;
-    if (stopped ||
-        verificationMethod == kUsePermanentPassword ||
-        _approveMode == 'click') {
-      _serverPasswd.text = '-';
-    } else {
-      if (_serverPasswd.text != temporaryPassword &&
-          temporaryPassword.isNotEmpty) {
-        _serverPasswd.text = temporaryPassword;
-      }
-    }
+    // R-X7/R-G3: the permanent password is never shown here (it is set via the menu / Safety
+    // settings) — under the pinned use-permanent-password policy (R-S16) this field is always the
+    // hidden "-" placeholder; the temporary-password display path (and the stop-service gate it
+    // shared) is excised.
+    _serverPasswd.text = '-';
     if (oldPwdText != _serverPasswd.text) {
       update = true;
     }

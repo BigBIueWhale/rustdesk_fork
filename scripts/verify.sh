@@ -630,6 +630,21 @@ if [ -n "$r_s5_missing" ]; then
 else
   echo "  ok  R-S5/R-A3 set_raw seal intact (fail-closed assert refuses to strip a keyed session stream; enable-tunnel=N pins the only caller unreachable)"
 fi
+# R-X7 (Rust OTP excision): the rotating one-time (temporary) password is EXCISED from the Rust tree
+# — the permanent password is the sole credential and sole CPace PRS (R-S9/R-P1). R-A6 lists
+# TEMPORARY_PASSWORD/update_temporary_password/check_update_temporary_password/get_auto_*numeric* as
+# must-be-ZERO; the 2FA half of R-X7 was already gated above, this closes the OTP half. The whole
+# chain is gone: the TEMPORARY_PASSWORD store + numeric generator (password_security/config), the
+# FFI/IPC/sciter forwarders (ui_interface/ipc/ui/flutter_ffi), the consecutive-wrong-attempt rotation
+# (connection.rs TEMPORARY_PASSWORD_FAILURES), and the dead option keys. `Config::get_auto_password`
+# STAYS (shared with the Hash challenge — R-T15(c) deferred — and salt generation). The FRB-generated
+# bridge is excluded (gitignored, regenerated from flutter_ffi.rs, so it tracks this automatically).
+rx7otp_hits=$(grep -rInE 'TEMPORARY_PASSWORD|TEMPORARY_PASSWD|temporary_password|temporary_enabled|get_auto_numeric_password' src libs --include='*.rs' 2>/dev/null | grep -vE 'bridge_generated' | grep -vE ':[0-9]+:[[:space:]]*//|R-X7' || true)
+if [ -n "$rx7otp_hits" ]; then
+  echo "  FAIL R-X7: the temporary/one-time-password machinery must be absent from the Rust tree (the OTP half of R-X7 — permanent password is the sole credential):"; echo "$rx7otp_hits" | sed 's/^/      /'; rc=1
+else
+  echo "  ok  R-X7 temporary/one-time-password machinery excised (Rust: store/generator/FFI/IPC/rotation/dead-keys; get_auto_password kept for the Hash challenge + salt)"
+fi
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod lan:R-X5 lan.rs residual (WoL send_wol + discover no-op; the discovery LISTENER is excised + hard-gated above — full removal is the R-G2 Discovered-tab/WoL-UI follow-on)' \

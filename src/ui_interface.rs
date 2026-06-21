@@ -68,7 +68,6 @@ lazy_static::lazy_static! {
     }));
     static ref ASYNC_JOB_STATUS : Arc<Mutex<String>> = Default::default();
     static ref ASYNC_HTTP_STATUS : Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
-    static ref TEMPORARY_PASSWD : Arc<Mutex<String>> = Arc::new(Mutex::new("".to_owned()));
     static ref IS_REMOTE_MODIFY_ENABLED_BY_CONTROL_PERMISSIONS : Arc<Mutex<Option<bool>>> = Arc::new(Mutex::new(None));
 }
 
@@ -592,21 +591,7 @@ pub fn get_connect_status() -> UiStatus {
     UI_STATUS.lock().unwrap().clone()
 }
 
-#[inline]
-pub fn temporary_password() -> String {
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    return password_security::temporary_password();
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    return TEMPORARY_PASSWD.lock().unwrap().clone();
-}
-
-#[inline]
-pub fn update_temporary_password() {
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    password_security::update_temporary_password();
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    allow_err!(ipc::update_temporary_password());
-}
+// R-X7: temporary_password()/update_temporary_password() removed with the OTP credential.
 
 #[inline]
 pub fn is_permanent_password_set() -> bool {
@@ -1291,9 +1276,12 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                                     {
                                         id = value;
                                     }
-                                } else if name == "temporary-password" {
-                                    *TEMPORARY_PASSWD.lock().unwrap() = value;
                                 }
+                                // R-X7: the "temporary-password" sync arm is removed; consume
+                                // `value` so it is not flagged unused on the flutter cfg (where the
+                                // only other reader, the `id = value` above, is compiled out).
+                                #[cfg(feature = "flutter")]
+                                let _ = value;
                             }
                             #[cfg(feature = "flutter")]
                             Ok(Some(ipc::Data::VideoConnCount(Some(n)))) => {
@@ -1342,7 +1330,6 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                         c.send(&ipc::Data::OnlineStatus(None)).await.ok();
                         c.send(&ipc::Data::Options(None)).await.ok();
                         c.send(&ipc::Data::Config(("id".to_owned(), None))).await.ok();
-                        c.send(&ipc::Data::Config(("temporary-password".to_owned(), None))).await.ok();
                         #[cfg(feature = "flutter")]
                         c.send(&ipc::Data::VideoConnCount(None)).await.ok();
                         c.send(&ipc::Data::ControlPermissionsRemoteModify(None)).await.ok();

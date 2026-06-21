@@ -204,13 +204,6 @@ impl UI {
         ipc::get_id()
     }
 
-    fn temporary_password(&mut self) -> String {
-        temporary_password()
-    }
-
-    fn update_temporary_password(&self) {
-        update_temporary_password()
-    }
 
     fn set_permanent_password(&self, password: String) {
         let _ = set_permanent_password_with_result(password);
@@ -711,8 +704,6 @@ impl sciter::EventHandler for UI {
         fn is_disable_installation();
         fn is_disable_ab();
         fn get_id();
-        fn temporary_password();
-        fn update_temporary_password();
         fn set_permanent_password(String);
         fn is_local_permanent_password_set();
         fn is_permanent_password_set();

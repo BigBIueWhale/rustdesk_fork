@@ -1754,9 +1754,7 @@ pub fn main_get_langs() -> String {
     get_langs()
 }
 
-pub fn main_get_temporary_password() -> String {
-    ui_interface::temporary_password()
-}
+// R-X7: main_get_temporary_password / main_update_temporary_password removed (OTP excised).
 
 pub fn main_set_permanent_password_with_result(password: String) -> bool {
     ui_interface::set_permanent_password_with_result(password)
@@ -2098,9 +2096,6 @@ pub fn main_start_service() {
     }
 }
 
-pub fn main_update_temporary_password() {
-    update_temporary_password();
-}
 
 pub fn main_check_super_user_permission() -> bool {
     check_super_user_permission()

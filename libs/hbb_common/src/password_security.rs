@@ -1,10 +1,10 @@
 use crate::config::Config;
 use sodiumoxide::{base64, crypto::secretbox};
-use std::sync::{Arc, RwLock};
 
-lazy_static::lazy_static! {
-    pub static ref TEMPORARY_PASSWORD:Arc<RwLock<String>> = Arc::new(RwLock::new(get_auto_password()));
-}
+// R-X7: the rotating one-time (temporary) password is EXCISED — the permanent password is the
+// fork's sole credential and sole CPace PRS (R-S9/R-P1). The TEMPORARY_PASSWORD store, its
+// generator, update/read, and the per-connection failure-rotation are removed. `verification_method`
+// keeps its enum for permanent-only resolution (the OTP variants are inert under the R-S16 pin).
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VerificationMethod {
@@ -20,25 +20,6 @@ pub enum ApproveMode {
     Click,
 }
 
-fn get_auto_password() -> String {
-    let len = temporary_password_length();
-    if Config::get_bool_option(crate::config::keys::OPTION_ALLOW_NUMERNIC_ONE_TIME_PASSWORD) {
-        Config::get_auto_numeric_password(len)
-    } else {
-        Config::get_auto_password(len)
-    }
-}
-
-// Should only be called in server
-pub fn update_temporary_password() {
-    *TEMPORARY_PASSWORD.write().unwrap() = get_auto_password();
-}
-
-// Should only be called in server
-pub fn temporary_password() -> String {
-    TEMPORARY_PASSWORD.read().unwrap().clone()
-}
-
 fn verification_method() -> VerificationMethod {
     let method = Config::get_option("verification-method");
     if method == "use-temporary-password" {
@@ -50,28 +31,13 @@ fn verification_method() -> VerificationMethod {
     }
 }
 
-pub fn temporary_password_length() -> usize {
-    let length = Config::get_option("temporary-password-length");
-    if length == "8" {
-        8
-    } else if length == "10" {
-        10
-    } else {
-        6 // default
-    }
-}
-
-pub fn temporary_enabled() -> bool {
-    verification_method() != VerificationMethod::OnlyUsePermanentPassword
-}
-
 pub fn permanent_enabled() -> bool {
     verification_method() != VerificationMethod::OnlyUseTemporaryPassword
 }
 
 pub fn has_valid_password() -> bool {
-    temporary_enabled() && !temporary_password().is_empty()
-        || permanent_enabled() && Config::has_permanent_password()
+    // R-X7: only the permanent password remains (the temporary-password path is excised).
+    permanent_enabled() && Config::has_permanent_password()
 }
 
 pub fn approve_mode() -> ApproveMode {

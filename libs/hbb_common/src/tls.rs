@@ -9,7 +9,6 @@ pub enum TlsType {
 
 lazy_static::lazy_static! {
     static ref URL_TLS_TYPE: RwLock<HashMap<String, TlsType>> = RwLock::new(HashMap::new());
-    static ref URL_TLS_DANGER_ACCEPT_INVALID_CERTS: RwLock<HashMap<String, bool>> = RwLock::new(HashMap::new());
 }
 
 #[inline]
@@ -37,7 +36,7 @@ fn get_domain_and_port_from_url(url: &str) -> &str {
 }
 
 #[inline]
-pub fn upsert_tls_cache(url: &str, tls_type: TlsType, danger_accept_invalid_cert: bool) {
+pub fn upsert_tls_cache(url: &str, tls_type: TlsType) {
     if is_plain(url) {
         return;
     }
@@ -50,12 +49,6 @@ pub fn upsert_tls_cache(url: &str, tls_type: TlsType, danger_accept_invalid_cert
             .unwrap()
             .insert(domain_port.to_string(), tls_type);
     }
-    {
-        URL_TLS_DANGER_ACCEPT_INVALID_CERTS
-            .write()
-            .unwrap()
-            .insert(domain_port.to_string(), danger_accept_invalid_cert);
-    }
 }
 
 #[inline]
@@ -63,9 +56,6 @@ pub fn reset_tls_cache() {
     // Use curly braces to ensure the lock is released immediately.
     {
         URL_TLS_TYPE.write().unwrap().clear();
-    }
-    {
-        URL_TLS_DANGER_ACCEPT_INVALID_CERTS.write().unwrap().clear();
     }
 }
 

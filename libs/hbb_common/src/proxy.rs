@@ -494,11 +494,7 @@ impl Proxy {
             ),
         )
         .await??;
-        upsert_tls_cache(
-            url,
-            TlsType::NativeTls,
-            danger_accept_invalid_cert.unwrap_or(false),
-        );
+        upsert_tls_cache(url, TlsType::NativeTls);
         Ok(DynTcpStream(Box::new(s)))
     }
 
@@ -546,11 +542,7 @@ impl Proxy {
         .await?
         {
             Ok(s) => {
-                upsert_tls_cache(
-                    &url,
-                    TlsType::Rustls,
-                    danger_accept_invalid_cert.unwrap_or(false),
-                );
+                upsert_tls_cache(&url, TlsType::Rustls);
                 Ok(DynTcpStream(Box::new(s)))
             }
             Err(e) => {

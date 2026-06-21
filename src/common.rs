@@ -1052,11 +1052,7 @@ async fn post_request_(
         // `danger_accept_invalid_cert` are cached.
         match req.body(body.clone()).timeout(to).send().await {
             Ok(resp) => {
-                upsert_tls_cache(
-                    tls_url,
-                    tls_type.unwrap_or(TlsType::Rustls),
-                    danger_accept_invalid_cert.unwrap_or(false),
-                );
+                upsert_tls_cache(tls_url, tls_type.unwrap_or(TlsType::Rustls));
                 Ok(resp)
             }
             Err(e) => Err(anyhow!("{:?}", e)),
@@ -1064,11 +1060,7 @@ async fn post_request_(
     } else {
         match req.body(body.clone()).timeout(to).send().await {
             Ok(resp) => {
-                upsert_tls_cache(
-                    tls_url,
-                    tls_type.unwrap_or(TlsType::Rustls),
-                    danger_accept_invalid_cert.unwrap_or(false),
-                );
+                upsert_tls_cache(tls_url, tls_type.unwrap_or(TlsType::Rustls));
                 Ok(resp)
             }
             Err(e) => {
@@ -1151,11 +1143,7 @@ async fn get_http_response_async(
             .await
         {
             Ok(resp) => {
-                upsert_tls_cache(
-                    tls_url,
-                    tls_type.unwrap_or(TlsType::Rustls),
-                    danger_accept_invalid_cert.unwrap_or(false),
-                );
+                upsert_tls_cache(tls_url, tls_type.unwrap_or(TlsType::Rustls));
                 Ok(resp)
             }
             Err(e) => Err(anyhow!("{:?}", e)),
@@ -1171,11 +1159,7 @@ async fn get_http_response_async(
             .await
         {
             Ok(resp) => {
-                upsert_tls_cache(
-                    tls_url,
-                    tls_type.unwrap_or(TlsType::Rustls),
-                    danger_accept_invalid_cert.unwrap_or(false),
-                );
+                upsert_tls_cache(tls_url, tls_type.unwrap_or(TlsType::Rustls));
                 Ok(resp)
             }
             Err(e) => {

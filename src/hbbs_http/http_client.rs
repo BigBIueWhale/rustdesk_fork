@@ -220,11 +220,7 @@ fn create_http_client_with_url_(
             tls_url,
             tls_type
         );
-        upsert_tls_cache(
-            tls_url,
-            tls_type,
-            danger_accept_invalid_cert.unwrap_or(false),
-        );
+        upsert_tls_cache(tls_url, tls_type);
     }
     client
 }
@@ -326,11 +322,7 @@ async fn create_http_client_async_with_url_(
             tls_url,
             tls_type
         );
-        upsert_tls_cache(
-            tls_url,
-            tls_type,
-            danger_accept_invalid_cert.unwrap_or(false),
-        );
+        upsert_tls_cache(tls_url, tls_type);
     }
     client
 }

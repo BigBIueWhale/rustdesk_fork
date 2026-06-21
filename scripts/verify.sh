@@ -376,6 +376,19 @@ ra6_clean 'SignedId|set_signed_id|set_public_key|message::Union::PublicKey' 'R-P
 # build, resetting to an already-used nonce and reusing (key, nonce) (catastrophic for the AEAD).
 # Assert the raw compound-increment never returns to cpace.rs's DirectionalCipher.
 ra6_clean 'write_seq *\+=|read_seq *\+=' 'R-A5 unchecked nonce-counter increment (must be checked_add)' || rc=1
+# R-A2/R-S2 (authorization is a single keyed-edge choke-point): `self.authorized = true` must appear
+# EXACTLY ONCE in connection.rs — it lives in `send_logon_response_and_keep_alive`, reached only on
+# the CPace-keyed + whitelisted + password-login path, and EVERY privileged inbound handler
+# (input/clipboard/file/capture/terminal/port-forward) is gated behind the lone `else if
+# self.authorized` arm of `on_message`. A second set-point is a candidate auth-bypass — fail closed.
+# (Audited: only Misc::CloseReason, LoginRequest, and TestDelay dispatch pre-authorization, all
+# side-effect-free.)
+r_a2_n=$(grep -c 'self\.authorized = true' src/server/connection.rs 2>/dev/null || echo 99)
+if [ "$r_a2_n" -ne 1 ]; then
+  echo "  FAIL R-A2/R-S2: expected EXACTLY ONE 'self.authorized = true' in connection.rs (found $r_a2_n) — a new authorization point needs an auth-bypass re-audit"; rc=1
+else
+  echo "  ok  R-A2/R-S2 single authorization choke-point (self.authorized=true x1; privileged handlers gated)"
+fi
 # R-SV4(b)/R-S13(d)/R-SV10 (no rendezvous path in either role): the initiator-side
 # rendezvous/relay/NAT-punch cluster (Client::_start_inner / secure_connection /
 # udp_nat_connect) AND the responder-side relay-dialer (create_relay_connection — which dialed

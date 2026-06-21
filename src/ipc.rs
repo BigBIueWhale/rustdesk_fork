@@ -643,10 +643,7 @@ pub struct CheckIfRestart {
     rendezvous_servers: Vec<String>,
     audio_input: String,
     voice_call_input: String,
-    ws: String,
     disable_udp: String,
-    allow_insecure_tls_fallback: String,
-    api_server: String,
 }
 
 impl CheckIfRestart {
@@ -656,32 +653,20 @@ impl CheckIfRestart {
             rendezvous_servers: Config::get_rendezvous_servers(),
             audio_input: Config::get_option("audio-input"),
             voice_call_input: Config::get_option("voice-call-input"),
-            ws: Config::get_option(OPTION_ALLOW_WEBSOCKET),
             disable_udp: Config::get_option(config::keys::OPTION_DISABLE_UDP),
-            allow_insecure_tls_fallback: Config::get_option(
-                config::keys::OPTION_ALLOW_INSECURE_TLS_FALLBACK,
-            ),
-            api_server: Config::get_option("api-server"),
         }
     }
 }
 impl Drop for CheckIfRestart {
     fn drop(&mut self) {
-        // If https proxy is used, we need to restart rendezvous mediator.
-        // No need to check if https proxy is used, because this option does not change frequently
-        // and restarting mediator is safe even https proxy is not used.
-        let allow_insecure_tls_fallback_changed = self.allow_insecure_tls_fallback
-            != Config::get_option(config::keys::OPTION_ALLOW_INSECURE_TLS_FALLBACK);
-        if allow_insecure_tls_fallback_changed
-            || self.stop_service != Config::get_option("stop-service")
+        // Restart the (direct) mediator when a live option that affects it changes. The former
+        // allow-websocket / allow-insecure-tls-fallback / api-server watches (and the tls-cache
+        // reset they gated) are removed — those features are excised and their options are
+        // lockdown-pinned, so they never change; their change-detection was dead.
+        if self.stop_service != Config::get_option("stop-service")
             || self.rendezvous_servers != Config::get_rendezvous_servers()
-            || self.ws != Config::get_option(OPTION_ALLOW_WEBSOCKET)
             || self.disable_udp != Config::get_option(config::keys::OPTION_DISABLE_UDP)
-            || self.api_server != Config::get_option("api-server")
         {
-            if allow_insecure_tls_fallback_changed {
-                hbb_common::tls::reset_tls_cache();
-            }
             RendezvousMediator::restart();
         }
         if self.audio_input != Config::get_option("audio-input") {

@@ -175,6 +175,20 @@ if [ "$r_t7_n" -gt 1 ]; then
 else
   echo "  ok  R-T7 keyed-stream <=1-byte AEAD bypass removed ($r_t7_n legacy Encrypt occurrence left)"
 fi
+# R-T2 (§20): the FramedStream poison flag. A keyed stream's write nonce is pre-incremented by
+# `seal` before the ciphertext is flushed; reusing a stream after a send error would re-flush
+# stale bytes under an advanced nonce and permanently desync the c2s direction. The poison flag
+# (5th tuple field) makes "a send/recv error is fatal-to-the-connection" structural: send_bytes
+# bails when poisoned and sets it on any send error; next() returns EOF when poisoned and sets it
+# on any read or decrypt/auth failure. Presence gate: the short-circuit guard (>=2 sites:
+# send_bytes + next) and the poison-set (>=3 sites: send error, decrypt-fail, read-err).
+r_t2_guard=$(grep -c 'if self.4 {' libs/hbb_common/src/tcp.rs 2>/dev/null || echo 0)
+r_t2_set=$(grep -c 'self.4 = true' libs/hbb_common/src/tcp.rs 2>/dev/null || echo 0)
+if [ "$r_t2_guard" -ge 2 ] && [ "$r_t2_set" -ge 3 ]; then
+  echo "  ok  R-T2 FramedStream poison flag present (guard x$r_t2_guard, poison-set x$r_t2_set)"
+else
+  echo "  FAIL R-T2: poison flag incomplete (guard=$r_t2_guard need>=2, set=$r_t2_set need>=3)"; rc=1
+fi
 # R-T15(a) / R-P12: secret-zeroization in libs/pake — curve25519-dalek 4.1.3 impls the Zeroize
 # TRAIT but not Drop, so secrets not explicitly wiped linger on attacker-inducible abort/timeout
 # paths. The ISK master secret is wrapped in Zeroizing, the initiator's ephemeral scalar is wiped

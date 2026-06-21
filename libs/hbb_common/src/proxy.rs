@@ -404,6 +404,7 @@ impl Proxy {
                     addr,
                     None,
                     0,
+                    false, // R-T2: a fresh stream is not poisoned
                 ))
             }
             ProxyScheme::Https { .. } => {
@@ -445,6 +446,7 @@ impl Proxy {
                     addr,
                     None,
                     0,
+                    false, // R-T2: a fresh stream is not poisoned
                 ))
             }
             ProxyScheme::Socks5 { .. } => {
@@ -472,6 +474,7 @@ impl Proxy {
                     addr,
                     None,
                     0,
+                    false, // R-T2: a fresh stream is not poisoned
                 ))
             }
         };

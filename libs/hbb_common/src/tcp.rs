@@ -80,6 +80,14 @@ pub struct FramedStream(
     pub SocketAddr,
     pub Option<StreamCipher>,
     pub u64,
+    // R-T2 (§20): the poison flag. Set on ANY send/recv error so the stream can never be
+    // reused after a failure. On a keyed stream `seal` pre-increments the write nonce before
+    // the bytes are flushed; if a future edit kept looping after a send error and reused the
+    // stream, the next send would re-flush stale buffered ciphertext under an already-advanced
+    // nonce, permanently desyncing the c2s direction. Poisoning makes "a send/recv error is
+    // fatal-to-the-connection" a structural invariant rather than a per-call-site convention —
+    // `send_bytes`/`next` short-circuit to an error / EOF once it is set.
+    pub bool,
 );
 
 impl Deref for FramedStream {
@@ -174,6 +182,7 @@ impl FramedStream {
                         addr,
                         None,
                         0,
+                        false, // R-T2: a fresh stream is not poisoned
                     ));
                 }
             }
@@ -208,6 +217,7 @@ impl FramedStream {
             addr,
             None,
             0,
+            false, // R-T2: a fresh stream is not poisoned
         )
     }
 
@@ -254,6 +264,21 @@ impl FramedStream {
 
     #[inline]
     pub async fn send_bytes(&mut self, bytes: Bytes) -> ResultType<()> {
+        // R-T2: a poisoned stream is never reused (a prior send/recv error was fatal).
+        if self.4 {
+            bail!("R-T2: refusing to send on a poisoned stream (a prior send/recv error)");
+        }
+        let r = self.send_bytes_raw(bytes).await;
+        if r.is_err() {
+            // R-T2: a send error (incl. a write timeout) is fatal — poison so a later edit
+            // cannot reuse the stream and re-flush stale ciphertext under an advanced nonce.
+            self.4 = true;
+        }
+        r
+    }
+
+    #[inline]
+    async fn send_bytes_raw(&mut self, bytes: Bytes) -> ResultType<()> {
         if self.3 > 0 {
             super::timeout(self.3, self.0.send(bytes)).await??;
         } else {
@@ -264,13 +289,23 @@ impl FramedStream {
 
     #[inline]
     pub async fn next(&mut self) -> Option<Result<BytesMut, Error>> {
+        // R-T2: a poisoned stream behaves as EOF — never read again after a fatal error.
+        if self.4 {
+            return None;
+        }
         let mut res = self.0.next().await;
         if let Some(Ok(bytes)) = res.as_mut() {
             if let Some(key) = self.2.as_mut() {
                 if let Err(err) = key.dec(bytes) {
+                    // R-T2: a decrypt/authentication failure is fatal — poison the stream.
+                    self.4 = true;
                     return Some(Err(err));
                 }
             }
+        }
+        if matches!(res, Some(Err(_))) {
+            // R-T2: a read/framing error is fatal — poison so the stream is never reused.
+            self.4 = true;
         }
         res
     }

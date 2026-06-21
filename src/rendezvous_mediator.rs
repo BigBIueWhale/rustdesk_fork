@@ -171,6 +171,48 @@ pub async fn start_direct_only() {
     tokio::spawn(async move {
         direct_server(server_cloned).await;
     });
+    // R-T9 (§20): install the graceful-shutdown handler. SIGTERM (what `systemctl stop` / an
+    // upgrade sends) or SIGINT stops the accept loop and drains live sessions with a bounded
+    // deadline before exiting — so an upgrade mid-session does not SIGKILL a connection mid-write
+    // and truncate an in-flight transfer on the peer. The unit's pkill / KillMode=mixed /
+    // TimeoutStopSec=30 remain the hard backstop for a hung process.
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    tokio::spawn(async {
+        // The drain is initiated only from inside an actual signal branch (so a target with no
+        // signal mechanism simply never shuts down here, rather than draining on startup).
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{signal, SignalKind};
+            let mut sigterm = match signal(SignalKind::terminate()) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("R-T9: failed to install SIGTERM handler: {}", e);
+                    return;
+                }
+            };
+            let mut sigint = match signal(SignalKind::interrupt()) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("R-T9: failed to install SIGINT handler: {}", e);
+                    return;
+                }
+            };
+            tokio::select! {
+                _ = sigterm.recv() => log::info!("R-T9: SIGTERM received"),
+                _ = sigint.recv() => log::info!("R-T9: SIGINT received"),
+            }
+            crate::server::begin_graceful_shutdown().await;
+        }
+        #[cfg(windows)]
+        {
+            if let Err(e) = tokio::signal::ctrl_c().await {
+                log::error!("R-T9: failed to await Ctrl-C: {}", e);
+                return;
+            }
+            log::info!("R-T9: Ctrl-C received");
+            crate::server::begin_graceful_shutdown().await;
+        }
+    });
     // It is ok to run xdesktop manager when the headless function is not allowed.
     #[cfg(target_os = "linux")]
     if crate::is_server() {
@@ -187,6 +229,14 @@ async fn direct_server(server: ServerPtr) {
     let mut listener = None;
     let mut port = 0;
     loop {
+        // R-T9 (§20): on graceful shutdown, stop accepting and drop the listener (returning here
+        // drops the `listener` local, so the listening socket closes and new SYNs get an RST), then
+        // leave the accept loop. begin_graceful_shutdown() drives the live-session drain and the
+        // process exit; this only guarantees no new connection is admitted past the signal.
+        if crate::server::is_shutting_down() {
+            log::info!("R-T9: shutdown — direct_server stops accepting");
+            return;
+        }
         // R-D4 / R-F4: the direct listener is UNCONDITIONAL — it is the box's only
         // inbound path (§17), so it has no enable-toggle at all. Upstream's
         // `direct-server` option (which gated the listener) is now REMOVED from the

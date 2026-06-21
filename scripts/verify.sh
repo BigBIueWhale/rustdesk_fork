@@ -211,6 +211,25 @@ if [ -n "$r_t8_missing" ]; then
 else
   echo "  ok  R-T8/R-T16 single-writer + framing/processing-order contract codified (no second-writer handle)"
 fi
+# R-T9 (§20): graceful shutdown on SIGTERM/SIGINT. A process-wide CancellationToken (server.rs) is
+# cancelled by the signal handler (rendezvous_mediator.rs); the accept loop then stops accepting and
+# drops its listener, every live session's run-loop drains via its `cancelled()` select-arm
+# (CloseReason -> flush -> CM Close), and a BOUNDED drain deadline — shorter than the unit's
+# TimeoutStopSec — precedes a force-exit(0). The pkill/KillMode=mixed path stays the backstop.
+# Presence gate across the three layers (server primitive, connection drain arm, mediator handler).
+r_t9_missing=
+grep -q 'fn begin_graceful_shutdown' src/server.rs         || r_t9_missing="$r_t9_missing begin_graceful_shutdown"
+grep -q 'fn is_shutting_down' src/server.rs                || r_t9_missing="$r_t9_missing is_shutting_down"
+grep -q 'SHUTDOWN_TOKEN' src/server.rs                     || r_t9_missing="$r_t9_missing SHUTDOWN_TOKEN"
+grep -q 'shutdown.cancelled()' src/server/connection.rs    || r_t9_missing="$r_t9_missing conn-drain-arm"
+grep -q 'SignalKind::terminate' src/rendezvous_mediator.rs || r_t9_missing="$r_t9_missing sigterm-handler"
+grep -q 'is_shutting_down()' src/rendezvous_mediator.rs    || r_t9_missing="$r_t9_missing accept-stop"
+grep -q 'TimeoutStopSec' res/rustdesk.service              || r_t9_missing="$r_t9_missing service-timeoutstopsec"
+if [ -n "$r_t9_missing" ]; then
+  echo "  FAIL R-T9: graceful-shutdown machinery incomplete:$r_t9_missing"; rc=1
+else
+  echo "  ok  R-T9 graceful shutdown present (signal handler + accept-stop + drain arm + bounded exit)"
+fi
 # R-T15(a) / R-P12: secret-zeroization in libs/pake — curve25519-dalek 4.1.3 impls the Zeroize
 # TRAIT but not Drop, so secrets not explicitly wiped linger on attacker-inducible abort/timeout
 # paths. The ISK master secret is wrapped in Zeroizing, the initiator's ephemeral scalar is wiped

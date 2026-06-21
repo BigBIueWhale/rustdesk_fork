@@ -126,6 +126,12 @@ lazy_static::lazy_static! {
         std::sync::Mutex::new((None, None));
     static ref ACCEPT_ERR_LOG: std::sync::Mutex<Option<std::time::Instant>> =
         std::sync::Mutex::new(None);
+    /// R-T9 (§20): the process-wide graceful-shutdown signal. Cancelled by the SIGTERM/SIGINT
+    /// handler (`rendezvous_mediator::start_direct_only`); the accept loop observes it and stops
+    /// accepting, and every live connection's run-loop wakes on its `cancelled()` select-arm to
+    /// send a CloseReason, flush the writer, and notify the CM before the process exits.
+    static ref SHUTDOWN_TOKEN: hbb_common::tokio_util::sync::CancellationToken =
+        hbb_common::tokio_util::sync::CancellationToken::new();
 }
 
 /// R-T12 security-event categories whose hot-path observability is rate-limited (R-T0 rule 1).
@@ -200,6 +206,53 @@ pub fn note_accept_error(port: u16, err: &std::io::Error) {
             );
         }
     }
+}
+
+/// R-T9 (§20): a clone of the process-wide shutdown token. A connection's run-loop holds one and
+/// selects on `.cancelled()`, so a graceful shutdown drains it (send CloseReason → flush → CM
+/// Close) instead of a mid-write SIGKILL truncating an in-flight transfer on the peer.
+pub fn shutdown_token() -> hbb_common::tokio_util::sync::CancellationToken {
+    SHUTDOWN_TOKEN.clone()
+}
+
+/// R-T9: the cheap synchronous check the accept loop polls — once true it stops accepting and
+/// drops its `TcpListener` so new SYNs get an RST.
+pub fn is_shutting_down() -> bool {
+    SHUTDOWN_TOKEN.is_cancelled()
+}
+
+/// R-T9 (§20): perform a graceful shutdown on SIGTERM/SIGINT. (1) stop accepting — the accept
+/// loop observes the cancelled token and drops the listener (new SYNs RST); (2) signal every live
+/// connection to close gracefully (each run-loop's `cancelled()` arm sends its CloseReason, flushes,
+/// and delivers the CM `Close`); (3) wait up to a BOUNDED deadline — deliberately shorter than the
+/// unit's `TimeoutStopSec` (30 s) so systemd's SIGKILL stays only a backstop — for the
+/// authenticated sessions to finish their cleanup tail (an `AuthedConnID`'s `Drop`, which prunes
+/// `AUTHED_CONNS`, runs only AFTER that tail, so the count draining to zero means cleanup actually
+/// completed); (4) force-exit 0, terminating any still-live connection past the deadline. Idempotent.
+pub async fn begin_graceful_shutdown() {
+    if SHUTDOWN_TOKEN.is_cancelled() {
+        return;
+    }
+    log::info!("R-T9: graceful shutdown initiated — stop accepting, drain live sessions");
+    SHUTDOWN_TOKEN.cancel();
+    let deadline = std::time::Duration::from_secs(8);
+    let start = std::time::Instant::now();
+    loop {
+        let live = AUTHED_CONNS.lock().unwrap().len();
+        if live == 0 {
+            break;
+        }
+        if start.elapsed() >= deadline {
+            log::warn!(
+                "R-T9: drain deadline reached with {} session(s) still live — forcing exit",
+                live
+            );
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    log::info!("R-T9: graceful shutdown complete — exiting 0");
+    std::process::exit(0);
 }
 
 pub struct Server {

@@ -544,9 +544,24 @@ impl Connection {
             (_tx_clip, rx_clip) = mpsc::unbounded_channel::<i32>();
         }
 
+        // R-T9 (§20): an owned clone of the process-wide shutdown token, selected on below so a
+        // SIGTERM/SIGINT drains this session gracefully. Bound outside the loop because
+        // `cancelled()` borrows the token for the future's lifetime.
+        let shutdown = crate::server::shutdown_token();
+
         loop {
             tokio::select! {
                 // biased; // video has higher priority // causing test_delay_timer failed while transferring big file
+
+                // R-T9 (§20): graceful shutdown — drain this session cleanly instead of being
+                // SIGKILL'd mid-write (which would truncate a file block on the peer and skip the
+                // CM Close). Send a CloseReason, then break so the post-loop tail runs its full
+                // cleanup (remove_connection + on_close → CM Close, capture/resolution restore).
+                _ = shutdown.cancelled() => {
+                    log::info!("#{} graceful shutdown — closing session", id);
+                    conn.send_close_reason_no_retry("Server is shutting down").await;
+                    break;
+                }
 
                 Some(data) = rx_from_cm.recv() => {
                     match data {

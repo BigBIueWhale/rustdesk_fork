@@ -208,6 +208,33 @@ pub(crate) fn active_uid() -> Option<u32> {
     active_uid_strict()
 }
 
+// R-S11a(a): a FRESH active-user lookup for AUTHORIZATION — bypassing the service-loop cache — so
+// a just-switched-out user cannot pass the `_service` UID gate during the cache-lag window. This
+// matches the fresh lookup the `_uinput_*` authorizer already does. The cached `active_uid()` is
+// kept ONLY for stable config-sync ROUTING (ipc.rs `select_server_uid_for_user_main_ipc`, fs.rs) —
+// which is not authorization. On macOS `/dev/console` ownership is already a live fs lookup.
+#[cfg(target_os = "macos")]
+#[inline]
+fn active_uid_fresh() -> Option<u32> {
+    console_owner_uid()
+}
+
+#[cfg(target_os = "linux")]
+#[inline]
+fn active_uid_fresh() -> Option<u32> {
+    let reported_uid_raw = crate::platform::linux::get_active_userid_fresh();
+    let trimmed = reported_uid_raw.trim();
+    if let Ok(uid) = trimmed.parse::<u32>() {
+        return Some(uid);
+    }
+    if trimmed.is_empty() {
+        log::debug!("R-S11a(a): fresh active uid lookup is empty");
+    } else {
+        log::warn!("R-S11a(a): failed to parse fresh active uid: '{}'", trimmed);
+    }
+    None
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[inline]
 pub(crate) fn peer_uid_from_fd(fd: RawFd) -> Option<u32> {
@@ -755,9 +782,12 @@ where
 
     fn service_authorization_status(&self) -> (bool, Option<u32>, Option<u32>) {
         let peer_uid = self.peer_uid();
-        // On Linux, `_service` can use the cached active UID from the service loop for
-        // stable config sync. Uinput does a fresh active-UID lookup in its own authorizer.
-        let active_uid = active_uid();
+        // R-S11a(a): authorize against a FRESH active-user lookup, NOT the service-loop cache —
+        // otherwise a just-switched-out user could pass this `_service` UID gate in the cache-lag
+        // window. Matches the `_uinput_*` authorizer's fresh lookup. (The cached active_uid() stays
+        // for stable config-sync routing elsewhere; that is not authorization.) Fail-closed: if the
+        // live lookup yields None, only root (uid 0) is admitted until it resolves.
+        let active_uid = active_uid_fresh();
         let authorized = peer_uid.is_some_and(|uid| is_allowed_service_peer_uid(uid, active_uid));
         (authorized, peer_uid, active_uid)
     }

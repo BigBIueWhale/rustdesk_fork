@@ -184,8 +184,8 @@ fi
 # unauthenticated; also the closure of the unkeyed→keyed boundary, R-T6). The legacy single-key
 # `Encrypt` cipher (which carried the only ≤1-byte bypass) was excised entirely at R-A6, so this
 # now asserts ZERO `bytes.len() <= 1` in tcp.rs — the keyed edge is CPace/Dual-only.
-r_t7_n=$(grep -c 'bytes.len() <= 1' libs/hbb_common/src/tcp.rs 2>/dev/null || echo 99)
-if [ "$r_t7_n" -gt 0 ]; then
+r_t7_n=$(grep -c 'bytes.len() <= 1' libs/hbb_common/src/tcp.rs 2>/dev/null || true)
+if [ "${r_t7_n:-99}" -gt 0 ]; then
   echo "  FAIL R-T7: a <=1-byte decrypt bypass remains in tcp.rs (found $r_t7_n) — must be ZERO"; rc=1
 else
   echo "  ok  R-T7 <=1-byte AEAD bypass fully removed (single-key Encrypt excised, R-A6)"
@@ -198,9 +198,9 @@ fi
 # it on any send error; next() returns EOF when poisoned and sets it on any read OR (now codec-fold)
 # decrypt/auth failure. Presence gate: the short-circuit guard (>=2 sites: send_bytes + next) and
 # the poison-set (>=2 sites: send error, and next's unified read/decrypt error).
-r_t2_guard=$(grep -c 'if self.3 {' libs/hbb_common/src/tcp.rs 2>/dev/null || echo 0)
-r_t2_set=$(grep -c 'self.3 = true' libs/hbb_common/src/tcp.rs 2>/dev/null || echo 0)
-if [ "$r_t2_guard" -ge 2 ] && [ "$r_t2_set" -ge 2 ]; then
+r_t2_guard=$(grep -c 'if self.3 {' libs/hbb_common/src/tcp.rs 2>/dev/null || true)
+r_t2_set=$(grep -c 'self.3 = true' libs/hbb_common/src/tcp.rs 2>/dev/null || true)
+if [ "${r_t2_guard:-0}" -ge 2 ] && [ "${r_t2_set:-0}" -ge 2 ]; then
   echo "  ok  R-T2 FramedStream poison flag present (guard x$r_t2_guard, poison-set x$r_t2_set)"
 else
   echo "  FAIL R-T2: poison flag incomplete (guard=$r_t2_guard need>=2, set=$r_t2_set need>=2)"; rc=1
@@ -383,8 +383,8 @@ ra6_clean 'write_seq *\+=|read_seq *\+=' 'R-A5 unchecked nonce-counter increment
 # self.authorized` arm of `on_message`. A second set-point is a candidate auth-bypass — fail closed.
 # (Audited: only Misc::CloseReason, LoginRequest, and TestDelay dispatch pre-authorization, all
 # side-effect-free.)
-r_a2_n=$(grep -c 'self\.authorized = true' src/server/connection.rs 2>/dev/null || echo 99)
-if [ "$r_a2_n" -ne 1 ]; then
+r_a2_n=$(grep -c 'self\.authorized = true' src/server/connection.rs 2>/dev/null || true)
+if [ "${r_a2_n:-99}" -ne 1 ]; then
   echo "  FAIL R-A2/R-S2: expected EXACTLY ONE 'self.authorized = true' in connection.rs (found $r_a2_n) — a new authorization point needs an auth-bypass re-audit"; rc=1
 else
   echo "  ok  R-A2/R-S2 single authorization choke-point (self.authorized=true x1; privileged handlers gated)"
@@ -395,8 +395,8 @@ fi
 # machine-UUID wrapper, but the FILE MODE is the at-rest perimeter against other local users. Audited:
 # both go through `store_path` -> `confy::store_path_perms(.., from_mode(0o600))`. Assert it survives;
 # a regression to a world/group-readable mode would expose the password-equivalent to any local account.
-r_secrets_n=$(grep -c 'from_mode(0o600)' libs/hbb_common/src/config.rs 2>/dev/null || echo 0)
-if [ "$r_secrets_n" -lt 1 ]; then
+r_secrets_n=$(grep -c 'from_mode(0o600)' libs/hbb_common/src/config.rs 2>/dev/null || true)
+if [ "${r_secrets_n:-0}" -lt 1 ]; then
   echo "  FAIL secrets-at-rest: config store_path must write mode 0o600 (from_mode(0o600) missing in config.rs)"; rc=1
 else
   echo "  ok  secrets-at-rest config files written mode 0o600 (owner-only; permanent-password PRS + peer creds)"
@@ -408,8 +408,8 @@ fi
 # (substitution/MITM), and FIRST-CONTACT refuses too — NO trust-on-first-use. The smoke's probe
 # verifies the SIGNATURE but does NOT pin, so this gate is the only guard that the pin-compare (the
 # actual MITM gate) is not silently dropped. Assert both calls survive in client.rs.
-r_s17v_n=$(grep -cE 'verify_host_identity|get_pinned_pk' src/client.rs 2>/dev/null || echo 0)
-if [ "$r_s17v_n" -lt 2 ]; then
+r_s17v_n=$(grep -cE 'verify_host_identity|get_pinned_pk' src/client.rs 2>/dev/null || true)
+if [ "${r_s17v_n:-0}" -lt 2 ]; then
   echo "  FAIL R-S17: viewer host-proof verify + pin-compare (verify_host_identity + get_pinned_pk) missing in client.rs — MITM gate regressed"; rc=1
 else
   echo "  ok  R-S17 viewer verifies host-proof + pin-compares (fail-closed, no trust-on-first-use)"

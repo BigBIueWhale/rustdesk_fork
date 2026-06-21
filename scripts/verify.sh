@@ -517,10 +517,15 @@ rsv8_bad=
 grep -rqIE 'firebaseio\.com|IS_GCM_ENABLED|GOOGLE_APP_ID' flutter 2>/dev/null && rsv8_bad="$rsv8_bad firebase-creds/endpoint"
 grep -qE '<key>' flutter/ios/Runner/Runner.entitlements 2>/dev/null && rsv8_bad="$rsv8_bad ios-push-entitlement"
 grep -qE '^[[:space:]]*firebase_' flutter/pubspec.yaml 2>/dev/null && rsv8_bad="$rsv8_bad firebase-dep"
+# R-SV8 per-pod allow-list (R-SV1 enforces sovereignty on the cfg-checked Apple source too): no
+# auto-updater or telemetry rides the macOS/iOS source — no Sparkle (the macOS phone-home-and-
+# fetch-run auto-updater, an R-X1 surface), no Crashlytics/Fabric, no Sentry, no AppCenter.
+# Verified ZERO mentions (code AND comments) in flutter/macos + flutter/ios; this locks it in.
+grep -rqIE 'Sparkle|Crashlytics|Fabric|Sentry|AppCenter' flutter/macos flutter/ios 2>/dev/null && rsv8_bad="$rsv8_bad apple-telemetry/updater-pod"
 if [ -n "$rsv8_bad" ]; then
-  echo "  FAIL R-SV8: Firebase/FCM/Google-services residue (MUST be absent on every artifact):$rsv8_bad"; rc=1
+  echo "  FAIL R-SV8: Firebase/telemetry/auto-updater residue on an artifact or the Apple source (MUST be absent):$rsv8_bad"; rc=1
 else
-  echo "  ok  R-SV8 no Firebase/FCM/Google-services (iOS creds plist + push entitlements + Android all absent)"
+  echo "  ok  R-SV8 no Firebase/FCM/Google-services + no Sparkle/Crashlytics/Sentry telemetry (iOS plist + push entitlements + Android + Apple source all clean)"
 fi
 # R-SV9 (§18 sovereignty): the front-ends MUST carry no PLAINTEXT-http link (a downgrade/MITM
 # vector). The installer's EULA #agreement link opened http://rustdesk.com/privacy over cleartext —

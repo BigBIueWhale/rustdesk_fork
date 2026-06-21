@@ -64,6 +64,11 @@ rc=0
 ra6_clean 'crate::updater|mod updater|"download-new-version"|"update-me"' 'R-X1 auto-updater RCE'    || rc=1
 ra6_clean 'plugin_framework|install_plugin_with_url|"--plugin-install"'    'R-X2 native-plugin loader' || rc=1
 ra6_clean '"--import-config"|"--remove"|fn import_config'                  'R-X4 trust-anchor CLI gadgets' || rc=1
+# R-X5: the LAN-discovery UDP listener/querier (the 0.0.0.0:RENDEZVOUS_PORT+3=21119 responder that
+# disclosed MAC/ID/hostname/active-username/platform, removed in 322aebb) MUST stay absent — §8's
+# "removed not disabled" bar + R-A4's zero-UDP runtime check. (lan.rs persists only for WoL +
+# a discover() no-op, a separate R-G2 Discovered-tab follow-on; that residual is the TODO below.)
+ra6_clean 'start_lan_listening|spawn_wait_responses|handle_received_peers|RENDEZVOUS_PORT *\+ *3' 'R-X5 LAN-discovery listener/querier/bind' || rc=1
 ra6_clean 'DEBUG_BOOT_COMPLETED'                                          'R-X6 fake-boot broadcast'  || rc=1
 ra6_clean 'RUSTDESK_FORCED_DISPLAY_SERVER'                                'R-X12 display-server knob' || rc=1
 ra6_clean 'gtk_sudo|run_cmds_privileged|"-gtk-sudo"'                      'R-X11 gtk_sudo elevation'  || rc=1
@@ -399,7 +404,7 @@ ra6_clean 'relay-hint' 'R-G6 relay-fallback hint emission' || rc=1
 ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-bot-tip|powered_by_me)"' '§19 dead lang keys' || rc=1
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
-for t in 'mod lan:R-X5 LAN discovery' \
+for t in 'mod lan:R-X5 lan.rs residual (WoL send_wol + discover no-op; the discovery LISTENER is excised + hard-gated above — full removal is the R-G2 Discovered-tab/WoL-UI follow-on)' \
          'terminal_helper:R-X8 terminal' 'mod custom_server:R-X4 custom_server module'; do
   tok=${t%%:*}; lbl=${t#*:}
   n=$(grep -RIl "$tok" src libs --include='*.rs' 2>/dev/null | grep -v 'libs/pake' | wc -l | tr -d ' ' || true)

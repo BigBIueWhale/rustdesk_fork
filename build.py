@@ -405,17 +405,6 @@ def build_flutter_dmg(version, features):
     os.chdir("..")
 
 
-def build_flutter_arch_manjaro(version, features):
-    if not skip_cargo:
-        system2(f'cargo build --locked --features {features} --lib --release')
-    ffi_bindgen_function_refactor()
-    os.chdir('flutter')
-    system2('flutter build linux --release')
-    system2(f'strip {flutter_build_dir}/lib/librustdesk.so')
-    os.chdir('../res')
-    system2('HBB=`pwd`/.. FLUTTER=1 makepkg -f')
-
-
 def build_flutter_windows(version, features, skip_portable_pack):
     if not skip_cargo:
         system2(f'cargo build --locked --features {features} --lib --release')
@@ -498,40 +487,6 @@ def main():
         system2(
             f'python3 ./generate.py -f ../../{res_dir} -o . -e ../../{res_dir}/rustdesk-{version}-win7-install.exe')
         system2(f'mv ../../{res_dir}/rustdesk-{version}-win7-install.exe ../..')
-    elif os.path.isfile('/usr/bin/pacman'):
-        # pacman -S -needed base-devel
-        system2("sed -i 's/pkgver=.*/pkgver=%s/g' res/PKGBUILD" % version)
-        if flutter:
-            build_flutter_arch_manjaro(version, features)
-        else:
-            system2('cargo build --locked --release --features ' + features)
-            system2('git checkout src/ui/common.tis')
-            system2('strip target/release/rustdesk')
-            system2('ln -s res/pacman_install && ln -s res/PKGBUILD')
-            system2('HBB=`pwd` makepkg -f')
-        system2('mv rustdesk-%s-0-x86_64.pkg.tar.zst rustdesk-%s-manjaro-arch.pkg.tar.zst' % (
-            version, version))
-        # pacman -U ./rustdesk.pkg.tar.zst
-    elif os.path.isfile('/usr/bin/yum'):
-        system2('cargo build --locked --release --features ' + features)
-        system2('strip target/release/rustdesk')
-        system2(
-            "sed -i 's/Version:    .*/Version:    %s/g' res/rpm.spec" % version)
-        system2('HBB=`pwd` rpmbuild -ba res/rpm.spec')
-        system2(
-            'mv $HOME/rpmbuild/RPMS/x86_64/rustdesk-%s-0.x86_64.rpm ./rustdesk-%s-fedora28-centos8.rpm' % (
-                version, version))
-        # yum localinstall rustdesk.rpm
-    elif os.path.isfile('/usr/bin/zypper'):
-        system2('cargo build --locked --release --features ' + features)
-        system2('strip target/release/rustdesk')
-        system2(
-            "sed -i 's/Version:    .*/Version:    %s/g' res/rpm-suse.spec" % version)
-        system2('HBB=`pwd` rpmbuild -ba res/rpm-suse.spec')
-        system2(
-            'mv $HOME/rpmbuild/RPMS/x86_64/rustdesk-%s-0.x86_64.rpm ./rustdesk-%s-suse.rpm' % (
-                version, version))
-        # yum localinstall rustdesk.rpm
     else:
         if flutter:
             if osx:

@@ -490,18 +490,22 @@ fi
 # releases") and the Flatpak manifest (a portal-sandbox, no-systemd posture colliding with
 # R-D1/R-D3a "the systemd confinement IS the model") are DELETED from the tree — not merely
 # unbuilt — so that sovereignty/sandbox-model drift cannot regress in. Gate their absence (the
-# appimage/ + flatpak/ dirs gone) AND that no workflow builds them. (The PKGBUILD/rpm specs +
-# build.py's pacman/yum/zypper branches are the Phase-2 follow-on; not yet excised/gated.)
+# appimage/ + flatpak/ dirs gone) AND that no workflow builds them. PHASE 2 (also done): the
+# non-Debian distro packaging — res/PKGBUILD (Arch) + res/rpm*.spec (Fedora/SUSE) + build.py's
+# pacman/yum/zypper branches + the CI rpmbuild/makepkg (arch) steps — is excised too, so the .deb
+# is the ONLY Linux artifact (the harmless apt-get `rpm` tooling install is not a build step).
 rr2a_bad=
 [ -e appimage ] && rr2a_bad="$rr2a_bad appimage-dir"
 [ -e flatpak ]  && rr2a_bad="$rr2a_bad flatpak-dir"
-if grep -rqIE 'build-appimage:|build-flatpak:|appimage-builder|flatpak-builder|"appimage/\*\*"|"flatpak/\*\*"' .github/workflows/ 2>/dev/null; then
+[ -e res/PKGBUILD ] && rr2a_bad="$rr2a_bad PKGBUILD"
+ls res/rpm*.spec >/dev/null 2>&1 && rr2a_bad="$rr2a_bad rpm-spec"
+if grep -rqIE 'build-appimage:|build-flatpak:|appimage-builder|flatpak-builder|rpmbuild|makepkg|arch-makepkg|"appimage/\*\*"|"flatpak/\*\*"' .github/workflows/ 2>/dev/null; then
   rr2a_bad="$rr2a_bad CI-ref"
 fi
 if [ -n "$rr2a_bad" ]; then
-  echo "  FAIL R-R2a: AppImage/Flatpak packaging must be ABSENT (.deb+systemd is the sole Linux model):$rr2a_bad"; rc=1
+  echo "  FAIL R-R2a: non-.deb Linux packaging must be ABSENT (.deb+systemd is the sole model):$rr2a_bad"; rc=1
 else
-  echo "  ok  R-R2a AppImage + Flatpak packaging excised (.deb + systemd is the sole Linux model)"
+  echo "  ok  R-R2a non-.deb Linux packaging excised — AppImage/Flatpak + PKGBUILD/rpm (.deb+systemd is the sole Linux model)"
 fi
 # R-SV8 (§18 sovereignty, MUST): no Firebase / FCM / Google-services on ANY artifact (iOS source +
 # Android). The iOS GoogleService-Info.plist shipped LIVE Google creds (API_KEY / GCM_SENDER_ID /

@@ -34,7 +34,7 @@ PORT_HEX='527E' # 21118
 LOOPBACK_LISTEN='0100007F:527E' # 127.0.0.1:21118
 
 echo "== (0) build the server binary + the test seeder + the CPace probe client (R-B4 build smoke) =="
-"${RUN[@]}" bash -c 'cargo build --features linux-pkg-config --bin rustdesk --example seed_password --example probe_client --color never 2>&1 | grep -E "error|Finished" | tail -2'
+"${RUN[@]}" bash -c 'cargo build --features linux-pkg-config --bin rustdesk --example seed_password --example probe_client --example flood_probe --color never 2>&1 | grep -E "^error|Finished" | tail -2'
 
 rc=0
 
@@ -93,8 +93,23 @@ echo "$out3" | grep -q 'keying ok=false (expected=fail)' \
 echo "$out3" | grep -qE 'security summary .* key_confirmation_failures=[1-9]' \
   || { echo "  FAIL R-T12/R-P14c: the key-confirmation-failure was not counted in the flood-safe summary"; rc=1; }
 
+echo "== (4) R-T1: a connection flood past the 256-permit budget MUST be capacity-shed =="
+out4=$("${RUN[@]}" bash -c '
+  export HOME=/tmp/rd4 RUSTDESK_BIND_LOOPBACK=1; mkdir -p "$HOME"
+  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
+  ./target/debug/rustdesk --server >/tmp/srv.log 2>&1 & SRV=$!
+  sleep 5
+  ./target/debug/examples/flood_probe "127.0.0.1:21118" 300 >/dev/null 2>&1 & FLOOD=$!
+  sleep 4
+  grep "security summary" /tmp/srv.log | grep -m1 "shed=" || echo "(no shed summary)"
+  kill -TERM $SRV 2>/dev/null; kill $FLOOD 2>/dev/null
+' || true)
+echo "$out4"
+echo "$out4" | grep -qE 'security summary .* shed=[1-9]' \
+  || { echo "  FAIL R-T1: the connection-flood capacity shed did not fire (budget 256; flooded 300)"; rc=1; }
+
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability — ALL validated at RUNTIME."
+  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

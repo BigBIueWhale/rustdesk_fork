@@ -205,6 +205,12 @@ impl TerminalUserToken {
 pub struct Connection {
     inner: ConnInner,
     display_idx: usize,
+    // R-T8 (§20): the single owner — and therefore the single writer — of this
+    // connection's `FramedStream`. The stream is never `.split()`, cloned, or shared;
+    // this `Connection`'s run-loop task is the sole task that ever writes it. Every other
+    // producer (video/audio/clipboard/camera/CM) reaches the wire only by sending on an
+    // `mpsc` whose receiver this loop drains, so all output funnels through one writer and
+    // frame/seal order equals wire order. See `FramedStream`'s contract doc in hbb_common.
     stream: super::Stream,
     server: super::ServerPtrWeak,
     hash: Hash,

@@ -75,6 +75,62 @@ impl StreamCipher {
     }
 }
 
+/// A length-delimited, optionally-keyed TCP message stream.
+///
+/// # Single-writer contract (R-T8, §20)
+///
+/// **Each `FramedStream` has exactly one writer.** Two concurrent writers would
+/// byte-interleave their encoded frames on the wire — a permanent framing desync,
+/// and on a keyed stream (field `.2 = Some`) garbage ciphertext that fails every
+/// subsequent Poly1305 tag. The invariant is kept *structural*, not conventional,
+/// so a refactor cannot silently break it:
+///
+/// * every write method (`send`/`send_raw`/`send_bytes`) takes `&mut self`, so the
+///   borrow checker alone forbids two simultaneous writers;
+/// * the type owns its socket through a `Box<dyn>` (`DynTcpStream`) and is
+///   deliberately **not** `Clone` — there is no way to obtain a second owner;
+/// * the stream is **never** `.split()` into independent read/write halves, and
+///   **never** wrapped in `Arc<Mutex<_>>` for writing.
+///
+/// The fork's many output producers (video / audio / clipboard / camera / the
+/// connection-manager) therefore do **not** hold the stream; each holds a *clone of
+/// an `mpsc` sender*, and the single task that owns the `FramedStream` is the sole
+/// drainer of that channel and the sole writer of the socket. `seal` advances the
+/// write counter on that single-producer drain side, so flush order = seal order =
+/// wire order (the nonce never races). A second writable handle must remain a
+/// compile-visible error, never a silent wire corruption — `scripts/verify.sh`
+/// gates against `.split()` / `Arc<Mutex<FramedStream>>` as a backstop.
+///
+/// # Framing + processing-order contract (R-T16 / R-T5 / R-T7, §20)
+///
+/// TCP is a boundary-less byte stream, so message delimitation is a property of
+/// *this framing*, never of TCP segmentation or any "accidental packetization":
+/// every message carries an explicit self-describing length prefix (a variable
+/// 1–4 byte header — low 2 bits select the width, the remaining 30 bits carry the
+/// payload length; see `bytes_codec.rs`) decoded by a **stateful `Head`/`Data(n)`
+/// `Decoder`** driven across reads by tokio-util's `Framed` loop. A partial frame
+/// returns `Ok(None)` and is buffered; coalesced frames are each emitted; a frame
+/// split across arbitrarily many segments — even one byte at a time, even with the
+/// header split — is reassembled correctly. The `Framed` (with its partial-frame
+/// buffer) is **retained across reads, never reconstructed**.
+///
+/// The processing order in [`FramedStream::next`] is **normative and exactly**:
+/// (1) *reassemble* — `self.0.next()` yields exactly ONE complete frame; (2)
+/// *authenticate + decrypt* — `key.dec` (R-T7) opens the WHOLE frame's AEAD,
+/// advancing the recv counter only on a frame actually delivered (R-T5); (3)
+/// *parse* — the protobuf decoder (`connection.rs`) sees ONLY the decrypted,
+/// authenticated plaintext. No validation, decryption, or application parse ever
+/// runs on a partial frame or a raw TCP segment, and no `.await` sits between a
+/// frame leaving the read buffer and the secretbox `open`. The frame-length cap
+/// (`max_packet_length`, R-S7) and the speculative-allocation cap
+/// (`MAX_PREALLOCATED_PAYLOAD_LEN`, decoupled from the declared length) are
+/// enforced at the framing layer *before* reassembly completes, so an
+/// attacker-advertised huge length is rejected — and its allocation bounded —
+/// before any payload is buffered.
+///
+/// # Field layout
+/// `.0` framed socket · `.1` peer addr · `.2` engaged cipher (post-keying) ·
+/// `.3` per-send write timeout (ms; 0 = none) · `.4` poison flag (R-T2).
 pub struct FramedStream(
     pub Framed<DynTcpStream, BytesCodec>,
     pub SocketAddr,

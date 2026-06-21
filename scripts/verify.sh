@@ -189,6 +189,28 @@ if [ "$r_t2_guard" -ge 2 ] && [ "$r_t2_set" -ge 3 ]; then
 else
   echo "  FAIL R-T2: poison flag incomplete (guard=$r_t2_guard need>=2, set=$r_t2_set need>=3)"; rc=1
 fi
+# R-T8 / R-T16 (§20): the single-writer + framing/processing-order contract is CODIFIED at the
+# FramedStream type (and at the Connection.stream owner) so a refactor cannot silently regress to
+# a second writer (wire-interleave / cipher desync) or to parsing a raw TCP segment. The invariant
+# already holds structurally — the write API is &mut self, the type owns a Box<dyn> socket and is
+# not Clone, and the stream is never split / Arc<Mutex>-wrapped — so this gate (a) keeps the
+# contract docs present and (b) forbids the one realistic second-writer regression: an Arc<Mutex>
+# write-wrapper or a `.split()` of the stream in CODE (doc-comment mentions, `///`, are excluded).
+r_t8_missing=
+grep -q 'Single-writer contract (R-T8' libs/hbb_common/src/tcp.rs        || r_t8_missing="$r_t8_missing tcp-writer-doc"
+grep -q 'Framing + processing-order contract (R-T16' libs/hbb_common/src/tcp.rs || r_t8_missing="$r_t8_missing tcp-framing-doc"
+grep -q 'the single writer' src/server/connection.rs                     || r_t8_missing="$r_t8_missing conn-stream-doc"
+if grep -n '\.split()' libs/hbb_common/src/tcp.rs 2>/dev/null | grep -vq '///'; then
+  r_t8_missing="$r_t8_missing tcp-split!"
+fi
+if grep -rn 'Arc<.*Mutex<.*FramedStream' src libs/hbb_common/src 2>/dev/null | grep -vq '///'; then
+  r_t8_missing="$r_t8_missing arc-mutex-framedstream!"
+fi
+if [ -n "$r_t8_missing" ]; then
+  echo "  FAIL R-T8/R-T16: single-writer/framing contract codification incomplete or violated:$r_t8_missing"; rc=1
+else
+  echo "  ok  R-T8/R-T16 single-writer + framing/processing-order contract codified (no second-writer handle)"
+fi
 # R-T15(a) / R-P12: secret-zeroization in libs/pake — curve25519-dalek 4.1.3 impls the Zeroize
 # TRAIT but not Drop, so secrets not explicitly wiped linger on attacker-inducible abort/timeout
 # paths. The ISK master secret is wrapped in Zeroizing, the initiator's ephemeral scalar is wiped

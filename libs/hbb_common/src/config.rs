@@ -1533,6 +1533,16 @@ impl Config {
     }
 
     pub fn set_socks(socks: Option<Socks5Server>) {
+        // R-D6(d)(iii)/R-S11: the fork is direct-only (no proxy). proxy-url is pinned empty in
+        // PINNED_SETTINGS, but set_socks bypasses the `get_option` funnel and the inherited guard
+        // only checks the RustDesk-SIGNED `OVERWRITE_SETTINGS` (empty on a fork) — so it MUST honor
+        // the pin DIRECTLY here, else a local main-channel IPC write (Data::Socks) could set a
+        // proxy: a local-MITM / egress-reroute primitive, and the trigger that flips
+        // CheckTestNatType's `is_direct` to fire a STUN probe (an R-A4 zero-UDP violation). Inert
+        // whenever proxy-url is pinned (always, on a fork build).
+        if pinned_setting(keys::OPTION_PROXY_URL).is_some() {
+            return;
+        }
         if OVERWRITE_SETTINGS
             .read()
             .unwrap()
@@ -1597,6 +1607,11 @@ impl Config {
     }
 
     pub fn get_socks() -> Option<Socks5Server> {
+        // R-D6(d)(iii): direct-only — never surface a proxy when proxy-url is pinned (the accessor
+        // fix; the get_option-funnel pin does not reach this struct-field accessor).
+        if pinned_setting(keys::OPTION_PROXY_URL).is_some() {
+            return None;
+        }
         Self::get_socks_from_custom_client_advanced_settings(&OVERWRITE_SETTINGS.read().unwrap())
             .or(CONFIG2.read().unwrap().socks.clone())
             .or(Self::get_socks_from_custom_client_advanced_settings(
@@ -1610,6 +1625,11 @@ impl Config {
     }
 
     pub fn get_network_type() -> NetworkType {
+        // R-D6(d)(iii): direct-only — Direct whenever proxy-url is pinned (keeps CheckTestNatType's
+        // is_direct constant so its Drop never fires the STUN probe, and is_proxy() stays false).
+        if pinned_setting(keys::OPTION_PROXY_URL).is_some() {
+            return NetworkType::Direct;
+        }
         if OVERWRITE_SETTINGS
             .read()
             .unwrap()

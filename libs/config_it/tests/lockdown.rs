@@ -107,3 +107,29 @@ fn permanent_password_is_prs_usable_plaintext() {
     assert!(Config::set_permanent_password(""));
     assert_eq!(Config::get_permanent_password_prs(), "");
 }
+
+// R-D6(d)(iii)/R-S11: the fork is direct-only. proxy-url is pinned, and set_socks/get_socks/
+// get_network_type bypass the get_option funnel — so they MUST honor the pin AT THE ACCESSOR.
+// Otherwise a local main-channel IPC write (Data::Socks) installs a proxy: a local-MITM /
+// egress-reroute primitive, and the trigger that flips CheckTestNatType's is_direct to fire a
+// STUN UDP probe (an R-A4 zero-UDP violation). This proves the accessors refuse it.
+#[test]
+fn socks_is_inert_under_the_proxy_pin() {
+    use hbb_common::config::{NetworkType, Socks5Server};
+    // a local Data::Socks write attempts to install an attacker proxy
+    Config::set_socks(Some(Socks5Server {
+        proxy: "127.0.0.1:1080".into(),
+        ..Default::default()
+    }));
+    // the accessors refuse it — no proxy is ever surfaced
+    assert!(
+        Config::get_socks().is_none(),
+        "R-D6(d)(iii): get_socks must be None when proxy-url is pinned (set_socks must be inert)"
+    );
+    assert_eq!(
+        Config::get_network_type(),
+        NetworkType::Direct,
+        "R-D6(d)(iii): get_network_type must be Direct (keeps CheckTestNatType is_direct constant)"
+    );
+    assert!(!Config::is_proxy(), "the direct-only box is never a proxy client");
+}

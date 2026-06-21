@@ -166,6 +166,19 @@ ra6_clean 'handle_request_relay|handle_punch_hole|udp_nat_listen|punch_udp_hole|
 # audit POST helpers (post_conn_audit/post_alarm_audit/post_file_audit -> <api-server>/api/audit/*)
 # are EXCISED — absent, not merely api-server-pinned — so an audit-egress leak cannot regress in.
 ra6_clean 'post_conn_audit|post_alarm_audit|post_file_audit' 'R-D6 audit phone-home (conn/alarm/file POST)' || rc=1
+# R-D6(d)(iii)/R-S11: socks/proxy is INERT AT THE ACCESSOR. set_socks/get_socks/get_network_type bypass
+# the get_option funnel (they read the structured CONFIG2.socks field), so the PINNED_SETTINGS proxy-url
+# pin does not reach them — the inherited guard only checked the RustDesk-SIGNED OVERWRITE_SETTINGS, which
+# is EMPTY on a fork, leaving set_socks LIVE. The fork makes each accessor consult the proxy-url pin
+# DIRECTLY (pinned_setting), so a local main-channel IPC Data::Socks write cannot install a proxy (a
+# local-MITM / egress-reroute primitive, and the trigger that flips CheckTestNatType's is_direct to fire
+# a STUN UDP probe). Behavior is proven by config_it (socks_is_inert_under_the_proxy_pin); this is belt.
+r_d6socks_n=$(grep -c 'pinned_setting(keys::OPTION_PROXY_URL).is_some()' libs/hbb_common/src/config.rs 2>/dev/null || echo 0)
+if [ "${r_d6socks_n:-0}" -ge 3 ]; then
+  echo "  ok  R-D6(d)(iii) socks/proxy inert at the accessor (set_socks/get_socks/get_network_type honor the proxy-url pin; behavior-tested by config_it)"
+else
+  echo "  FAIL R-D6(d)(iii): socks accessors not all inert-at-accessor (found ${r_d6socks_n}/3 proxy-url pin checks in config.rs)"; rc=1
+fi
 # R-SV6(b)/R-SV1/R-SV10 / §18: the session-record UPLOAD egress (hbbs_http::record_upload — a reqwest
 # POST of the recorded session to <api-server>/api/record) is EXCISED — the whole module is removed
 # from the tree, not merely its is_enable() neutralized (the prior state). Recording stays local

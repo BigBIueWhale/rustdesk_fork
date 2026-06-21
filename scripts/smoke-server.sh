@@ -33,8 +33,8 @@ RUN=(docker run --rm
 PORT_HEX='527E' # 21118
 LOOPBACK_LISTEN='0100007F:527E' # 127.0.0.1:21118
 
-echo "== (0) build the server binary + the test seeder (R-B4 build smoke) =="
-"${RUN[@]}" bash -c 'cargo build --features linux-pkg-config --bin rustdesk --example seed_password --color never 2>&1 | tail -2'
+echo "== (0) build the server binary + the test seeder + the CPace probe client (R-B4 build smoke) =="
+"${RUN[@]}" bash -c 'cargo build --features linux-pkg-config --bin rustdesk --example seed_password --example probe_client --color never 2>&1 | grep -E "error|Finished" | tail -2'
 
 rc=0
 
@@ -71,8 +71,30 @@ echo "$out2" | grep -q 'socket surface verified — exactly one TCP v4:21118, ze
 echo "$out2" | grep -q 'R-T9: graceful shutdown complete — exiting 0' \
   || { echo "  FAIL R-T9: no graceful SIGTERM shutdown"; rc=1; }
 
+echo "== (3) two-process: a CPace probe client keys the REAL server (R-A1/R-S1) + a wrong password is refused (R-P3/R-P14c) + the R-T12 observability fires =="
+out3=$("${RUN[@]}" bash -c '
+  export HOME=/tmp/rd3 RUSTDESK_BIND_LOOPBACK=1; mkdir -p "$HOME"
+  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
+  ./target/debug/rustdesk --server >/tmp/srv.log 2>&1 & SRV=$!
+  sleep 6
+  echo "CORRECT: $(./target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok)"
+  echo "WRONG:   $(./target/debug/examples/probe_client "127.0.0.1:21118" "WRONG-Password-xyz" fail)"
+  sleep 1
+  grep -m1 "security summary" /tmp/srv.log || true
+  kill -TERM $SRV 2>/dev/null; sleep 2
+' || true)
+echo "$out3"
+echo "$out3" | grep -q 'keying ok=true (expected=ok)' \
+  || { echo "  FAIL R-A1/R-S1: the real server did not key a CORRECT-password client"; rc=1; }
+echo "$out3" | grep -q 'keying ok=false (expected=fail)' \
+  || { echo "  FAIL R-P3/R-P14c: a WRONG-password client was not refused at key-confirmation"; rc=1; }
+[ "$(echo "$out3" | grep -c 'probe_client: PASS')" -ge 2 ] \
+  || { echo "  FAIL: a probe did not match its expected keying outcome"; rc=1; }
+echo "$out3" | grep -qE 'security summary .* key_confirmation_failures=[1-9]' \
+  || { echo "  FAIL R-T12/R-P14c: the key-confirmation-failure was not counted in the flood-safe summary"; rc=1; }
+
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) — ALL validated at RUNTIME."
+  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

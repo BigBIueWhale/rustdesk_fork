@@ -85,7 +85,7 @@ ra6_clean 'start_uinput_service'                                         'R-X13 
 # qrcode-generator deps, and the Sciter 2FA UI (index/msgbox/common.tis) — no 2FA path on either
 # side or on the wire. Two hard gates lock it in (the second covers the module/proto/dep/FFI):
 ra6_clean 'require_2fa|set_session_2fa'                                   'R-X7 responder 2FA machinery' || rc=1
-ra6_clean 'totp|Auth2FA|auth_2fa|generate2fa|verify2fa|set_auth_2fa'      'R-X7 2FA module/totp-rs/Auth2FA proto/FFI' || rc=1
+ra6_clean 'totp|Auth2FA|auth_2fa|generate2fa|verify2fa|set_auth_2fa|add_trusted_device' 'R-X7 2FA module/totp-rs/Auth2FA proto/FFI/trusted-device' || rc=1
 # R-S16(d)(ii): the runtime SwitchPermission widener (the conn-side handler that
 # re-assigned conn.keyboard/clipboard/audio/... bypassing the pinned policy) is
 # removed. The qualified `ipc::Data::SwitchPermission` token was unique to that
@@ -370,7 +370,7 @@ fi
 # (reserved 3,4). Gate the proto keying types — `SignedId`, the `set_public_key` setter, and the
 # `Union::PublicKey` arm — NOT the sodiumoxide `sign::PublicKey`/`box_::PublicKey` crypto types,
 # which legitimately remain. Only `//` doc comments naming SignedId survive (filtered above).
-ra6_clean 'SignedId|set_public_key|message::Union::PublicKey' 'R-P5 SignedId/PublicKey device-identity keying' || rc=1
+ra6_clean 'SignedId|set_signed_id|set_public_key|message::Union::PublicKey' 'R-P5 SignedId/PublicKey device-identity keying' || rc=1
 # R-SV4(b)/R-S13(d)/R-SV10 (no rendezvous path in either role): the initiator-side
 # rendezvous/relay/NAT-punch cluster (Client::_start_inner / secure_connection /
 # udp_nat_connect) AND the responder-side relay-dialer (create_relay_connection — which dialed

@@ -117,8 +117,7 @@ const String kOptionAllowRemoteConfigModification =
     "allow-remote-config-modification";
 const String kOptionVerificationMethod = "verification-method";
 const String kOptionApproveMode = "approve-mode";
-const String kOptionAllowNumericOneTimePassword =
-    "allow-numeric-one-time-password";
+// R-X7/R-G4: the numeric-OTP option key is dropped — the one-time password is excised.
 const String kOptionCollapseToolbar = "collapse_toolbar";
 const String kOptionHideToolbar = "hide-toolbar";
 const String kOptionShowRemoteCursor = "show_remote_cursor";

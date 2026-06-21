@@ -156,5 +156,14 @@ dg_clean 'enterUserLoginDialog|enterUserLoginAndPasswordDialog|osUsernameControl
 # relay; WoL is the R-SV4(c) accepted loss). The relay-hint dialog the Rust core fed is gone
 # too (the core now emits a plain error, R-G6). All removed at the widget, not greyed (R-G1).
 dg_clean '_forceAlwaysRelayAction|_isForceAlwaysRelay|kOptionForceAlwaysRelay|_wolAction|showRelayHintDialog' 'R-G6 relay-fallback + WoL peer-card actions'
+# R-X7 / R-G4 / R-G1 (the one-time-password UI is fully excised, not greyed): R-X7 removed the
+# TEMPORARY_PASSWORD backend and R-S16 pins verification-method=use-permanent-password, so the
+# rotating-OTP surface is dead. The desktop home board's OTP label+refresh (buildPasswordBoard2,
+# 2173710), the mobile "Your Device" card password row (1a383c1), and the server_model
+# OTP-length/numeric-mode state + its refresh sync are all removed — the permanent password is the
+# sole credential. No hand-written Dart may call the OTP-refresh FFI or read the excised OTP-state
+# getters. (The FRB binding DEFINES mainUpdateTemporaryPassword and web/bridge stubs it — neither is
+# authored Dart; the `bind.`/`.`-access patterns match CALLERS, not those definitions.)
+dg_clean 'bind\.mainUpdateTemporaryPassword|\.temporaryPasswordLength|\.allowNumericOneTimePassword' 'R-X7/R-G4 one-time-password UI + OTP-state (refresh FFI caller + length/numeric getters)'
 
 echo "DART-VERIFY: flutter analyze lib/ is GREEN (zero errors) + §19 Dart-layer greps clean"

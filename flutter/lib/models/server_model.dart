@@ -34,8 +34,9 @@ class ServerModel with ChangeNotifier {
   bool hideCm = false;
   int _connectStatus = 0; // Rendezvous Server status
   String _verificationMethod = "";
-  String _temporaryPasswordLength = "";
-  bool _allowNumericOneTimePassword = false;
+  // R-X7/R-G4: the rotating OTP credential is excised (no temporary-password backend) — its
+  // length / numeric-mode state and the OTP-refresh sync are removed from this model; the
+  // permanent password is the box's sole credential.
   String _approveMode = "";
   int _zeroClientLengthCounter = 0;
 
@@ -81,16 +82,6 @@ class ServerModel with ChangeNotifier {
   }
 
   String get approveMode => _approveMode;
-
-  String get temporaryPasswordLength {
-    final lengthIndex = ["6", "8", "10"].indexOf(_temporaryPasswordLength);
-    if (lengthIndex < 0) {
-      return "6";
-    }
-    return _temporaryPasswordLength;
-  }
-
-  bool get allowNumericOneTimePassword => _allowNumericOneTimePassword;
 
   TextEditingController get serverId => _serverId;
 
@@ -204,11 +195,7 @@ class ServerModel with ChangeNotifier {
     final temporaryPassword = await bind.mainGetTemporaryPassword();
     final verificationMethod =
         await bind.mainGetOption(key: kOptionVerificationMethod);
-    final temporaryPasswordLength =
-        await bind.mainGetOption(key: "temporary-password-length");
     final approveMode = await bind.mainGetOption(key: kOptionApproveMode);
-    final numericOneTimePassword =
-        await mainGetBoolOption(kOptionAllowNumericOneTimePassword);
     /*
     var hideCm = option2bool(
         'allow-hide-cm', await bind.mainGetOption(key: 'allow-hide-cm'));
@@ -238,17 +225,6 @@ class ServerModel with ChangeNotifier {
     }
     if (_verificationMethod != verificationMethod) {
       _verificationMethod = verificationMethod;
-      update = true;
-    }
-    if (_temporaryPasswordLength != temporaryPasswordLength) {
-      if (_temporaryPasswordLength.isNotEmpty) {
-        bind.mainUpdateTemporaryPassword();
-      }
-      _temporaryPasswordLength = temporaryPasswordLength;
-      update = true;
-    }
-    if (_allowNumericOneTimePassword != numericOneTimePassword) {
-      _allowNumericOneTimePassword = numericOneTimePassword;
       update = true;
     }
     /*

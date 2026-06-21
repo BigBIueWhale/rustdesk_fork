@@ -180,15 +180,15 @@ else
   echo "  ok  R-T1/R-T12 connection-flood bound + flood-safe observability present"
 fi
 # R-T7 (§20): every frame on a KEYED (Dual) stream MUST be AEAD-authenticated — the ≤1-byte
-# decrypt bypass is removed from the Dual arm (the one path by which a byte could reach the
-# application parser unauthenticated; also the closure of the unkeyed→keyed boundary, R-T6).
-# The legacy single-key Encrypt::dec ≤1-byte (the dead rendezvous health-check heartbeat) may
-# remain, so this asserts AT MOST ONE `bytes.len() <= 1` in tcp.rs (the keyed Dual one is gone).
+# decrypt bypass is removed (the one path by which a byte could reach the application parser
+# unauthenticated; also the closure of the unkeyed→keyed boundary, R-T6). The legacy single-key
+# `Encrypt` cipher (which carried the only ≤1-byte bypass) was excised entirely at R-A6, so this
+# now asserts ZERO `bytes.len() <= 1` in tcp.rs — the keyed edge is CPace/Dual-only.
 r_t7_n=$(grep -c 'bytes.len() <= 1' libs/hbb_common/src/tcp.rs 2>/dev/null || echo 99)
-if [ "$r_t7_n" -gt 1 ]; then
-  echo "  FAIL R-T7: the keyed (Dual) <=1-byte decrypt bypass must be removed (found $r_t7_n in tcp.rs)"; rc=1
+if [ "$r_t7_n" -gt 0 ]; then
+  echo "  FAIL R-T7: a <=1-byte decrypt bypass remains in tcp.rs (found $r_t7_n) — must be ZERO"; rc=1
 else
-  echo "  ok  R-T7 keyed-stream <=1-byte AEAD bypass removed ($r_t7_n legacy Encrypt occurrence left)"
+  echo "  ok  R-T7 <=1-byte AEAD bypass fully removed (single-key Encrypt excised, R-A6)"
 fi
 # R-T2 (§20): the FramedStream poison flag. A keyed stream's write nonce is pre-incremented by
 # `seal` before the ciphertext is flushed; reusing a stream after a send error would re-flush

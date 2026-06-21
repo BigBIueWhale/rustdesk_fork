@@ -1,7 +1,6 @@
 use crate::{tcp, ResultType};
 #[cfg(feature = "webrtc")]
 use crate::webrtc;
-use sodiumoxide::crypto::secretbox::Key;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
 
@@ -51,18 +50,10 @@ impl Stream {
         }
     }
 
-    #[inline]
-    pub fn set_key(&mut self, key: Key) {
-        match self {
-            #[cfg(feature = "webrtc")]
-            Stream::WebRTC(s) => s.set_key(key),
-            Stream::Tcp(s) => s.set_key(key),
-        }
-    }
-
     /// Engage the CPace two-key per-direction cipher after a confirmed handshake
-    /// (R-P2/R-P10) — the keying call that carries role/direction, replacing the
-    /// symmetric single-key `set_key` at the choke point.
+    /// (R-P2/R-P10) — the keying call that carries role/direction. The legacy
+    /// symmetric single-key `set_key` was removed at R-A6; CPace/Dual is the only
+    /// keying path now.
     #[inline]
     pub fn set_session_keys(&mut self, keys: crate::cpace::DirectionalKeys) {
         match self {

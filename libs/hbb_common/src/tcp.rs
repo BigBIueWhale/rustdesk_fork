@@ -7,10 +7,6 @@ use anyhow::Context as AnyhowCtx;
 use bytes::{BufMut, Bytes, BytesMut};
 use futures::{SinkExt, StreamExt};
 use protobuf::Message;
-use sodiumoxide::crypto::{
-    box_,
-    secretbox::{self, Key, Nonce},
-};
 use std::{
     io::{self, Error, ErrorKind},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
@@ -28,16 +24,13 @@ use tokio_util::codec::{Decoder, Encoder, Framed};
 pub trait TcpStreamTrait: AsyncRead + AsyncWrite + Unpin {}
 pub struct DynTcpStream(pub Box<dyn TcpStreamTrait + Send + Sync>);
 
-#[derive(Clone)]
-pub struct Encrypt(pub Key, pub u64, pub u64);
-
-/// The cipher engaged on a stream after keying. Either the inherited single-key
-/// secretbox ([`Encrypt`], from the legacy `SignedId`/`box_` bootstrap) or the
-/// CPace two-key per-direction cipher ([`DirectionalCipher`], R-P2/R-P10). The
-/// single-key form is retained only until the choke-point cutover moves every
-/// caller to [`FramedStream::set_session_keys`]; R-A6 then removes it.
+/// The cipher engaged on a stream after keying — the CPace two-key per-direction
+/// cipher ([`DirectionalCipher`], R-P2/R-P10). The legacy single-key `Encrypt`
+/// secretbox form (the `SignedId`/`box_` bootstrap) was removed at R-A6: every
+/// caller now keys via [`FramedStream::set_session_keys`], so the keyed edge is
+/// two-key only. The enum is retained as a thin wrapper so the R-T7 fold-in dec
+/// logic stays in one place.
 pub enum StreamCipher {
-    Single(Encrypt),
     Dual(DirectionalCipher),
 }
 
@@ -45,7 +38,6 @@ impl StreamCipher {
     #[inline]
     pub fn enc(&mut self, data: &[u8]) -> Vec<u8> {
         match self {
-            StreamCipher::Single(e) => e.enc(data),
             StreamCipher::Dual(d) => d.seal(data),
         }
     }
@@ -53,7 +45,6 @@ impl StreamCipher {
     #[inline]
     pub fn dec(&mut self, bytes: &mut BytesMut) -> Result<(), Error> {
         match self {
-            StreamCipher::Single(e) => e.dec(bytes),
             StreamCipher::Dual(d) => {
                 // R-T7 (§20): authenticate EVERY frame on the keyed stream — there is no
                 // ≤1-byte passthrough. A genuine sealed frame is always >= MACBYTES (16 bytes:
@@ -75,12 +66,10 @@ impl StreamCipher {
     }
 
     /// The recv counter (`read_seq`) — exposed for the R-T5 cancellation-safety regression test
-    /// (a dropped `next()` MUST NOT advance it). Single: the `Encrypt` recv field; Dual: the
-    /// `DirectionalCipher`'s `read_seq`.
+    /// (a dropped `next()` MUST NOT advance it): the `DirectionalCipher`'s `read_seq`.
     #[inline]
     pub fn read_seq(&self) -> u64 {
         match self {
-            StreamCipher::Single(e) => e.2,
             StreamCipher::Dual(d) => d.read_seq(),
         }
     }
@@ -473,11 +462,6 @@ impl FramedStream {
         }
     }
 
-    pub fn set_key(&mut self, key: Key) {
-        // R-T5: the cipher lives in the Framed-owned codec.
-        self.0.codec_mut().cipher = Some(StreamCipher::Single(Encrypt::new(key)));
-    }
-
     /// Engage the CPace two-key per-direction cipher after a confirmed handshake
     /// (R-P2/R-P10). The keys are role-oriented (the caller's send/recv slots),
     /// so a single key can never end up engaged in both directions.
@@ -493,12 +477,6 @@ impl FramedStream {
         );
         // R-T5: the cipher lives in the Framed-owned codec.
         self.0.codec_mut().cipher = Some(StreamCipher::Dual(DirectionalCipher::new(&keys)));
-    }
-
-    fn get_nonce(seqnum: u64) -> Nonce {
-        let mut nonce = Nonce([0u8; secretbox::NONCEBYTES]);
-        nonce.0[..std::mem::size_of_val(&seqnum)].copy_from_slice(&seqnum.to_le_bytes());
-        nonce
     }
 }
 
@@ -608,53 +586,3 @@ impl AsyncWrite for DynTcpStream {
 }
 
 impl<R: AsyncRead + AsyncWrite + Unpin> TcpStreamTrait for R {}
-
-impl Encrypt {
-    pub fn new(key: Key) -> Self {
-        Self(key, 0, 0)
-    }
-
-    pub fn dec(&mut self, bytes: &mut BytesMut) -> Result<(), Error> {
-        if bytes.len() <= 1 {
-            return Ok(());
-        }
-        self.2 += 1;
-        let nonce = FramedStream::get_nonce(self.2);
-        match secretbox::open(bytes, &nonce, &self.0) {
-            Ok(res) => {
-                bytes.clear();
-                bytes.put_slice(&res);
-                Ok(())
-            }
-            Err(()) => Err(Error::new(ErrorKind::Other, "decryption error")),
-        }
-    }
-
-    pub fn enc(&mut self, data: &[u8]) -> Vec<u8> {
-        self.1 += 1;
-        let nonce = FramedStream::get_nonce(self.1);
-        secretbox::seal(&data, &nonce, &self.0)
-    }
-
-    pub fn decode(
-        symmetric_data: &[u8],
-        their_pk_b: &[u8],
-        our_sk_b: &box_::SecretKey,
-    ) -> ResultType<Key> {
-        if their_pk_b.len() != box_::PUBLICKEYBYTES {
-            anyhow::bail!("Handshake failed: pk length {}", their_pk_b.len());
-        }
-        let nonce = box_::Nonce([0u8; box_::NONCEBYTES]);
-        let mut pk_ = [0u8; box_::PUBLICKEYBYTES];
-        pk_[..].copy_from_slice(their_pk_b);
-        let their_pk_b = box_::PublicKey(pk_);
-        let symmetric_key = box_::open(symmetric_data, &nonce, &their_pk_b, &our_sk_b)
-            .map_err(|_| anyhow::anyhow!("Handshake failed: box decryption failure"))?;
-        if symmetric_key.len() != secretbox::KEYBYTES {
-            anyhow::bail!("Handshake failed: invalid secret key length from peer");
-        }
-        let mut key = [0u8; secretbox::KEYBYTES];
-        key[..].copy_from_slice(&symmetric_key);
-        Ok(Key(key))
-    }
-}

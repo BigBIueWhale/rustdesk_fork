@@ -396,14 +396,29 @@ impl DirectionalCipher {
     }
 
     /// Seal an outbound frame under the send key (R-P10).
+    ///
+    /// R-A5: the per-direction nonce IS this monotonic counter, so it MUST NEVER wrap — a wrap
+    /// resets to an already-used nonce and reuses `(key, nonce)`, the catastrophic XSalsa20-Poly1305
+    /// failure. At `u64::MAX` (2^64 frames) the counter is exhausted; that is physically unreachable
+    /// (~5.8e8 yr at 1000 frames/s), but the fork still FAILS CLOSED rather than reset — `+= 1` would
+    /// silently wrap in a release build, so use a checked increment. The spec prefers a fresh-key
+    /// rekey; aborting is its conservative form (the MUST is "not a counter reset"), and a full
+    /// mid-session re-CPace is over-engineering for an unreachable case.
     pub fn seal(&mut self, plaintext: &[u8]) -> Vec<u8> {
-        self.write_seq += 1;
+        self.write_seq = self
+            .write_seq
+            .checked_add(1)
+            .expect("R-A5: send nonce-counter exhausted (2^64 frames) — fail-closed, never reuse a nonce");
         secretbox::seal(plaintext, &Self::nonce(self.write_seq), &self.send_key)
     }
 
     /// Open an inbound frame under the recv key (R-P10).
+    ///
+    /// R-A5 (recv side): the recv nonce-counter MUST NOT wrap either (a wrap would accept a frame
+    /// under a reused recv nonce). At exhaustion, reject the frame (`Err`) so the connection tears
+    /// down fail-closed — never reset the counter.
     pub fn open(&mut self, ciphertext: &[u8]) -> Result<Vec<u8>, ()> {
-        self.read_seq += 1;
+        self.read_seq = self.read_seq.checked_add(1).ok_or(())?;
         secretbox::open(ciphertext, &Self::nonce(self.read_seq), &self.recv_key)
     }
 

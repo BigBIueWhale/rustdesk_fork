@@ -371,6 +371,11 @@ fi
 # `Union::PublicKey` arm — NOT the sodiumoxide `sign::PublicKey`/`box_::PublicKey` crypto types,
 # which legitimately remain. Only `//` doc comments naming SignedId survive (filtered above).
 ra6_clean 'SignedId|set_signed_id|set_public_key|message::Union::PublicKey' 'R-P5 SignedId/PublicKey device-identity keying' || rc=1
+# R-A5: the directional-cipher nonce IS the per-direction counter, so seal/open MUST use a CHECKED
+# increment (checked_add, fail-closed at 2^64) — a raw `seq += 1` would silently WRAP in a release
+# build, resetting to an already-used nonce and reusing (key, nonce) (catastrophic for the AEAD).
+# Assert the raw compound-increment never returns to cpace.rs's DirectionalCipher.
+ra6_clean 'write_seq *\+=|read_seq *\+=' 'R-A5 unchecked nonce-counter increment (must be checked_add)' || rc=1
 # R-SV4(b)/R-S13(d)/R-SV10 (no rendezvous path in either role): the initiator-side
 # rendezvous/relay/NAT-punch cluster (Client::_start_inner / secure_connection /
 # udp_nat_connect) AND the responder-side relay-dialer (create_relay_connection — which dialed

@@ -214,6 +214,23 @@ if [ -n "$r_t1_missing" ]; then
 else
   echo "  ok  R-T1/R-T12 connection-flood bound + flood-safe observability present"
 fi
+# R-D3a (§17): the root service unit MUST carry the kernel sandbox (the upstream unit had none),
+# shrinking the blast radius of any memory-corruption bug missed by the §8 excisions. MemoryDenyWriteExecute
+# (W^X) is the code-injection-primitive blocker, ENABLED after examples/mdwe_codec_probe empirically
+# proved the software VP9 codec path maps no W+X under the exact PR_SET_MDWE primitive systemd applies
+# (run by smoke-server.sh). This gate asserts the sandbox directives + the validated MDWE line are present
+# (uncommented) so a regression that drops them fails closed.
+r_d3a_missing=
+grep -qE '^CapabilityBoundingSet='      res/rustdesk.service || r_d3a_missing="$r_d3a_missing CapabilityBoundingSet"
+grep -qE '^RestrictAddressFamilies=AF_UNIX AF_INET$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing RestrictAddressFamilies-v4only"
+grep -qE '^SystemCallFilter=@system-service' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter"
+grep -qE '^MemoryDenyWriteExecute=yes$'  res/rustdesk.service || r_d3a_missing="$r_d3a_missing MemoryDenyWriteExecute(validated)"
+grep -q 'PR_SET_MDWE' examples/mdwe_codec_probe.rs           || r_d3a_missing="$r_d3a_missing mdwe_codec_probe"
+if [ -n "$r_d3a_missing" ]; then
+  echo "  FAIL R-D3a: systemd sandbox / validated-MDWE incomplete:$r_d3a_missing"; rc=1
+else
+  echo "  ok  R-D3a systemd sandbox + MemoryDenyWriteExecute (W^X, codec-validated by mdwe_codec_probe) present"
+fi
 # R-T7 (§20): every frame on a KEYED (Dual) stream MUST be AEAD-authenticated — the ≤1-byte
 # decrypt bypass is removed (the one path by which a byte could reach the application parser
 # unauthenticated; also the closure of the unkeyed→keyed boundary, R-T6). The legacy single-key

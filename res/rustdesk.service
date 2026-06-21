@@ -57,11 +57,16 @@ SystemCallArchitectures=native
 # never needs.
 SystemCallFilter=@system-service
 SystemCallFilter=~@mount @reboot @swap
-# MemoryDenyWriteExecute: R-D3a gates this on validating the JIT-free codec path
-# (libvpx/aom/ffmpeg) maps no W+X memory. Left disabled pending that RUNTIME
-# validation (cannot be checked under the no-run constraint); enable once
-# confirmed it does not break the software encode/decode path.
-#MemoryDenyWriteExecute=yes
+# MemoryDenyWriteExecute (W^X for the root service): block any runtime W+X mmap/mprotect
+# — the classic code-injection primitive a memory-corruption bug would reach for. R-D3a
+# gated this on validating the JIT-free software codec path maps no W+X. VALIDATED:
+# examples/mdwe_codec_probe sets PR_SET_MDWE|REFUSE_EXEC_GAIN (the EXACT kernel primitive
+# systemd applies here, before any code runs) then drives the deployed software VP9 encoder
+# — vpx_codec_enc_init + 5/5 encodes complete clean (the controlled --server only ENCODES,
+# §13/Appendix C #2b; the decode path is the viewer's and runs no systemd unit). libvpx/aom
+# do CPU-feature SIMD dispatch via function pointers, never JIT, so no W+X is attempted.
+# Gated by smoke-server.sh (runs the probe, asserts MDWE_CODEC_OK) + verify.sh (presence).
+MemoryDenyWriteExecute=yes
 
 [Install]
 WantedBy=multi-user.target

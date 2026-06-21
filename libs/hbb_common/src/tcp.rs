@@ -128,6 +128,29 @@ pub(crate) fn new_socket(addr: std::net::SocketAddr, reuse: bool) -> Result<TcpS
     Ok(socket)
 }
 
+/// R-T11 (§20): the socket for the PUBLIC inbound listener (the direct-server port). Unlike
+/// `new_socket`, it does NOT set `SO_REUSEPORT`: a single-instance service needs no kernel
+/// load-balance group, and `SO_REUSEPORT` would let another same-uid (root) process silently
+/// bind the same port and join the group, stealing a fraction of inbound connections — a local
+/// connection-hijack invisible to R-A4's own-process `/proc/self/net` self-check, violating
+/// R-D3's "no second listener of any kind". On Unix it keeps `SO_REUSEADDR` for a clean
+/// restart; on Windows it OMITS `SO_REUSEADDR` (whose Windows semantics are "steal the port"),
+/// so the listener bind is exclusive and cannot be hijacked. (A listening socket does not enter
+/// TIME_WAIT — that is the active-close side of an established connection, on an ephemeral port —
+/// so omitting `SO_REUSEADDR` on Windows does not impede rebinding the listener port on restart.)
+pub(crate) fn new_listener_socket(addr: std::net::SocketAddr) -> Result<TcpSocket, std::io::Error> {
+    let socket = match addr {
+        std::net::SocketAddr::V4(..) => TcpSocket::new_v4()?,
+        std::net::SocketAddr::V6(..) => TcpSocket::new_v6()?,
+    };
+    // NEVER SO_REUSEPORT (no load-balance group). SO_REUSEADDR for clean restart on non-Windows
+    // only — on Windows it is the bind-hijack enabler, so leave the listener bind exclusive there.
+    #[cfg(not(windows))]
+    socket.set_reuseaddr(true).ok();
+    socket.bind(addr)?;
+    Ok(socket)
+}
+
 impl FramedStream {
     pub async fn new<T: ToSocketAddrs + std::fmt::Display>(
         remote_addr: T,
@@ -341,11 +364,9 @@ pub async fn listen_any(port: u16) -> ResultType<TcpListener> {
 /// `direct_server`, R-D4) calls this; a v4-only box also retires the
 /// connection.rs IPv6-prefix limiter (R-S10) as dead code by construction.
 pub async fn listen_any_v4(port: u16) -> ResultType<TcpListener> {
-    Ok(new_socket(
-        SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port),
-        true,
-    )?
-    .listen(DEFAULT_BACKLOG)?)
+    // R-T11: the public listener uses the REUSEPORT-free, hijack-resistant constructor.
+    Ok(new_listener_socket(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port))?
+        .listen(DEFAULT_BACKLOG)?)
 }
 
 impl Unpin for DynTcpStream {}

@@ -358,6 +358,18 @@ pub struct InitiatorAwaitConfirm {
     k_s2c: [u8; 32],
 }
 
+impl Drop for InitiatorAwaitConfirm {
+    /// R-T15(a)/R-P12: wipe the derived session keys when this state is dropped — notably
+    /// on the R-P14b step-4 timeout (a peer that opens the handshake and stalls), where the
+    /// keys would otherwise linger in freed memory. On the success path `recv_step4` copies
+    /// them (they are `Copy`) into `DirectionalKeys` (which wipes its own copy on drop) and
+    /// this wipes this struct's copy. `mac_key` is `Zeroizing` and self-wipes; `yb` is public.
+    fn drop(&mut self) {
+        self.k_c2s.zeroize();
+        self.k_s2c.zeroize();
+    }
+}
+
 impl Initiator {
     /// Begin a handshake as the viewer. Samples `sid_a`, pins `ADa = b"viewer"`,
     /// and returns the WAIT_2 state plus [`Step1`] to send.
@@ -401,7 +413,16 @@ impl Initiator {
         let g = derive_generator(&self.prs, &self.ci, &sid);
         let ya_pt = (ya * g).compress().to_bytes();
 
-        let yb_pt = decompress(&step2.yb)?;
+        // R-T15(a)/R-P12: wipe the ephemeral scalar on the decompress-error early-return too
+        // (mirrors the responder's recv_step3) — the `?` form would skip the zeroize below,
+        // leaking `ya` on an attacker-triggerable malformed-Yb abort.
+        let yb_pt = match decompress(&step2.yb) {
+            Ok(p) => p,
+            Err(e) => {
+                ya.zeroize();
+                return Err(e);
+            }
+        };
         let k_pt = ya * yb_pt;
         ya.zeroize();
         if k_pt.is_identity() {
@@ -409,7 +430,16 @@ impl Initiator {
         }
         let mut k_bytes = k_pt.compress().to_bytes();
 
-        let isk = compute_isk(&ya_pt, AD_INITIATOR, &step2.yb, AD_RESPONDER, &sid, &k_bytes);
+        // R-T15(a)/R-P12: ISK is the layer's master secret (mac_key + both directional keys
+        // derive from it), so wipe it on drop rather than leave it resident on the stack.
+        let isk = Zeroizing::new(compute_isk(
+            &ya_pt,
+            AD_INITIATOR,
+            &step2.yb,
+            AD_RESPONDER,
+            &sid,
+            &k_bytes,
+        ));
         k_bytes.zeroize();
         let (k_c2s, k_s2c) = derive_session_keys(&isk);
         let mac_key = derive_mac_key(&sid, &isk);
@@ -456,6 +486,17 @@ pub struct ResponderAwaitConfirm {
     yb_scalar: Scalar,
     yb_pt: [u8; 32],
     sid: [u8; 32],
+}
+
+impl Drop for ResponderAwaitConfirm {
+    /// R-T15(a)/R-P12: wipe the ephemeral scalar when this state is dropped — notably on the
+    /// R-P14b step-3 timeout (a peer that received `Step2` and then stalls), where it would
+    /// otherwise linger in freed memory. `recv_step3` also wipes it explicitly on each of its
+    /// own paths (belt-and-suspenders); this covers the drop that never reaches `recv_step3`.
+    /// `yb_pt`/`sid` are public. `Scalar` is `Copy`, so `recv_step3`'s reads do not move it out.
+    fn drop(&mut self) {
+        self.yb_scalar.zeroize();
+    }
 }
 
 impl Responder {
@@ -530,7 +571,15 @@ impl ResponderAwaitConfirm {
         }
         let mut k_bytes = k_pt.compress().to_bytes();
 
-        let isk = compute_isk(&step3.ya, AD_INITIATOR, &self.yb_pt, AD_RESPONDER, &self.sid, &k_bytes);
+        // R-T15(a)/R-P12: ISK is the layer's master secret — wipe it on drop.
+        let isk = Zeroizing::new(compute_isk(
+            &step3.ya,
+            AD_INITIATOR,
+            &self.yb_pt,
+            AD_RESPONDER,
+            &self.sid,
+            &k_bytes,
+        ));
         k_bytes.zeroize();
         let (k_c2s, k_s2c) = derive_session_keys(&isk);
         let mac_key = derive_mac_key(&self.sid, &isk);

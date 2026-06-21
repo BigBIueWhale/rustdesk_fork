@@ -175,6 +175,21 @@ if [ "$r_t7_n" -gt 1 ]; then
 else
   echo "  ok  R-T7 keyed-stream <=1-byte AEAD bypass removed ($r_t7_n legacy Encrypt occurrence left)"
 fi
+# R-T15(a) / R-P12: secret-zeroization in libs/pake — curve25519-dalek 4.1.3 impls the Zeroize
+# TRAIT but not Drop, so secrets not explicitly wiped linger on attacker-inducible abort/timeout
+# paths. The ISK master secret is wrapped in Zeroizing, the initiator's ephemeral scalar is wiped
+# on the decompress-error early-return, and the two *AwaitConfirm states carry a Drop that wipes
+# their session keys / ephemeral scalar on the R-P14b step-timeout drop. The KATs check derived
+# VALUES, not wiping, so this is a presence gate.
+r_t15a_missing=
+grep -q 'impl Drop for InitiatorAwaitConfirm' libs/pake/src/lib.rs || r_t15a_missing="$r_t15a_missing InitiatorDrop"
+grep -q 'impl Drop for ResponderAwaitConfirm' libs/pake/src/lib.rs || r_t15a_missing="$r_t15a_missing ResponderDrop"
+grep -q 'Zeroizing::new(compute_isk' libs/pake/src/lib.rs            || r_t15a_missing="$r_t15a_missing isk-Zeroizing"
+if [ -n "$r_t15a_missing" ]; then
+  echo "  FAIL R-T15(a): pake secret-zeroization absent:$r_t15a_missing"; rc=1
+else
+  echo "  ok  R-T15(a) pake secret-zeroization present (isk Zeroizing + *AwaitConfirm Drop)"
+fi
 # R-P5 / R-SV4(b): the SignedId <-> PublicKey device-identity key bootstrap is removed. The
 # viewer's `secure_connection` (the only SignedId user) + the whole initiator-side
 # rendezvous/relay/NAT-punch cluster it lived in (_start_inner/connect/request_relay/

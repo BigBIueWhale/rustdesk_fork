@@ -128,6 +128,12 @@ impl StreamCipher {
 /// attacker-advertised huge length is rejected — and its allocation bounded —
 /// before any payload is buffered.
 ///
+/// The drop-safety this relies on — that dropping a `next()` read future (a `select!`/`timeout`
+/// losing the race) consumes zero bytes and so cannot desync the recv nonce — is a documented
+/// cross-backend property of the pinned reactor (mio 1.0.3 / tokio 1.44.2), not folklore; the
+/// citation and the "never hand-roll an overlapped read" rule live at the read site in
+/// [`FramedStream::next`] (R-T14).
+///
 /// # Field layout
 /// `.0` framed socket · `.1` peer addr · `.2` engaged cipher (post-keying) ·
 /// `.3` per-send write timeout (ms; 0 = none) · `.4` poison flag (R-T2).
@@ -349,6 +355,17 @@ impl FramedStream {
         if self.4 {
             return None;
         }
+        // R-T14 (§20) — cross-backend cancellation-safety basis (the foundation R-T5 relies on):
+        // dropping THIS read future (because `select!`/`timeout` chose another branch) consumes
+        // ZERO bytes on epoll, kqueue, AND Windows IOCP alike, so a dropped read can never desync
+        // the recv nonce. By construction of the pinned reactor (mio 1.0.3 / tokio 1.44.2): mio is
+        // edge-triggered on every backend (epoll EPOLLET / kqueue EV_CLEAR / IOCP+AFD emulated),
+        // but the actual byte transfer is a SYNCHRONOUS non-blocking std `recv` inside mio's
+        // `do_io` on all of them — NO kernel-owned overlapped data buffer is ever in flight (the
+        // Windows AFD path carries only an `AfdPollInfo` handle+mask; there is no `WSARecv` in
+        // mio's TcpStream path), so dropping the future only unlinks a readiness waiter. This MUST
+        // NOT be "fixed" with a hand-rolled overlapped / `WSARecv` read: that would reintroduce the
+        // very per-OS hazard (a kernel buffer consuming bytes into a dropped future) this avoids.
         let mut res = self.0.next().await;
         if let Some(Ok(bytes)) = res.as_mut() {
             if let Some(key) = self.2.as_mut() {

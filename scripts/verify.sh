@@ -230,6 +230,20 @@ if [ -n "$r_t9_missing" ]; then
 else
   echo "  ok  R-T9 graceful shutdown present (signal handler + accept-stop + drain arm + bounded exit)"
 fi
+# R-T14 (§20): the cross-backend cancellation-safety guarantee — dropping a tokio read future
+# consumes ZERO bytes on epoll/kqueue/IOCP because mio's do_io does a synchronous std recv (no
+# kernel overlapped buffer in flight) — MUST be documented WITH its mio/tokio citation at the read
+# site (the basis R-T5 relies on), so a contributor cannot "fix" it with a hand-rolled WSARecv
+# overlapped read that would reintroduce a real per-OS hazard. Presence gate on the citation.
+r_t14_missing=
+grep -q 'R-T14' libs/hbb_common/src/tcp.rs                   || r_t14_missing="$r_t14_missing anchor"
+grep -q 'mio 1.0.3 / tokio 1.44.2' libs/hbb_common/src/tcp.rs || r_t14_missing="$r_t14_missing citation"
+grep -q 'do_io' libs/hbb_common/src/tcp.rs                   || r_t14_missing="$r_t14_missing do_io-basis"
+if [ -n "$r_t14_missing" ]; then
+  echo "  FAIL R-T14: cross-backend cancellation-safety citation incomplete:$r_t14_missing"; rc=1
+else
+  echo "  ok  R-T14 cross-backend cancellation-safety guarantee documented (mio/tokio cited at read site)"
+fi
 # R-T15(a) / R-P12: secret-zeroization in libs/pake — curve25519-dalek 4.1.3 impls the Zeroize
 # TRAIT but not Drop, so secrets not explicitly wiped linger on attacker-inducible abort/timeout
 # paths. The ISK master secret is wrapped in Zeroizing, the initiator's ephemeral scalar is wiped

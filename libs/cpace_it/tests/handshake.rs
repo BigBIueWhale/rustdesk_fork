@@ -101,6 +101,33 @@ async fn framed_stream_encrypts_after_session_keys_installed() {
     assert_eq!(&got2[..], b"reply from the controlled host");
 }
 
+#[tokio::test]
+async fn responder_many_frames_decrypt_in_strict_fifo_order() {
+    // R-T8 / R-P2 / R-P10 — and the regression harness the §20 R-T3 writer-task refactor MUST keep
+    // green: on the keyed responder->initiator stream every frame is sealed with k_s2c, advancing
+    // write_seq by one; the initiator opens with k_s2c, advancing read_seq. Send N distinct frames
+    // back-to-back and assert each arrives in the EXACT order sent and decrypts. A nonce-sequencing
+    // regression — or a future writer-task that reorders, drops, or double-seals a frame — desyncs
+    // write_seq/read_seq and fails the AEAD here.
+    let (mut si, mut sr) = loopback_pair().await;
+    let pw = "fifo-order-pw";
+    let (ri, rr) = tokio::join!(run_initiator(&mut si, pw), run_responder(&mut sr, pw));
+    si.set_session_keys(ri.expect("initiator keys"));
+    sr.set_session_keys(rr.expect("responder keys"));
+    const N: usize = 100; // ~3 KB framed: fits the loopback socket buffer, so no reader is needed mid-send
+    for i in 0..N {
+        sr.send_raw(format!("frame-{i:05}").into_bytes()).await.unwrap();
+    }
+    for i in 0..N {
+        let got = si.next().await.expect("frame present").expect("frame decrypts");
+        assert_eq!(
+            &got[..],
+            format!("frame-{i:05}").as_bytes(),
+            "frame {i} arrived out of order or corrupt — a write_seq/read_seq desync"
+        );
+    }
+}
+
 /// R-T5 (§20): a `FramedStream::next()` that LOSES a `select!` race (a competing always-ready
 /// branch wins, so the read branch is not taken) MUST NOT advance the recv counter or consume
 /// bytes — the cancellation-safety the decrypt-in-codec (`SecretboxCodec`) makes structural by

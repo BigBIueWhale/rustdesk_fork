@@ -444,7 +444,7 @@ ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-bot-tip|powere
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod lan:R-X5 lan.rs residual (WoL send_wol + discover no-op; the discovery LISTENER is excised + hard-gated above — full removal is the R-G2 Discovered-tab/WoL-UI follow-on)' \
-         'terminal_helper:R-X8 terminal' 'mod custom_server:R-X4 custom_server module'; do
+         'terminal_helper:R-X8 terminal' 'mod custom_server:R-X4 custom_server module — NB ALSO used by src/platform/windows.rs (get_license/get_license_from_exe_name, the dead custom-rendezvous-server-from-exe-name feature) which this mod-decl grep does NOT count; its removal edits the cfg(windows) build (un-validatable in the Linux docker), so R-X4 is WINDOWS-BUILD-BLOCKED, not a clean Linux excision'; do
   tok=${t%%:*}; lbl=${t#*:}
   n=$(grep -RIl "$tok" src libs --include='*.rs' 2>/dev/null | grep -v 'libs/pake' | wc -l | tr -d ' ' || true)
   echo "  TODO $lbl — still referenced in $n file(s)"

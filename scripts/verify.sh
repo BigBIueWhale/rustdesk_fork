@@ -544,6 +544,26 @@ if [ -n "$rsv9_http" ]; then
 else
   echo "  ok  R-SV9 no plaintext-http rustdesk/github link in the front-ends (the MUST; the SHOULD de-brand is pending)"
 fi
+# R-S11a(b) / R-S8 (cross-uid IPC parent-dir hardening): the world-mode 0o0666 `_service`/`_uinput_*`
+# sockets sit under a parent dir the root service MUST own + lock down BEFORE binding — opened
+# O_NOFOLLOW (symlink-TOCTOU, R-S8), the opened FD fchmod'd to the expected mode (0o0711 service /
+# 0o0700 else) + fchown'd, with stale artifacts scrubbed — so a local user cannot pre-stage a
+# world-traversable dir/socket the service then trusts. Gate the mechanism present + WIRED into
+# new_listener (a refactor must not bind an IPC listener without the parent-dir hardening). NOTE: a
+# separate open question (recorded, not gated) is whether the root fchown-ADOPT of a foreign-owned
+# service dir fully meets R-S11a(b)'s "reject-and-recreate, no fchown-adopt" — a careful review item.
+r_s11a_missing=
+grep -q 'ensure_secure_ipc_parent_dir(&path, postfix)' src/ipc.rs || r_s11a_missing="$r_s11a_missing new_listener-wire"
+grep -q 'scrub_secure_ipc_parent_dir(&path, postfix)'  src/ipc.rs || r_s11a_missing="$r_s11a_missing scrub-wire"
+grep -q 'fn ensure_secure_ipc_parent_dir' src/ipc/fs.rs           || r_s11a_missing="$r_s11a_missing ensure-fn"
+grep -q 'O_NOFOLLOW' src/ipc/fs.rs                                 || r_s11a_missing="$r_s11a_missing O_NOFOLLOW"
+grep -q 'fn expected_ipc_parent_mode' src/ipc/fs.rs               || r_s11a_missing="$r_s11a_missing expected-mode"
+grep -qE '0o0?711' src/ipc/fs.rs                                   || r_s11a_missing="$r_s11a_missing 0o711"
+if [ -n "$r_s11a_missing" ]; then
+  echo "  FAIL R-S11a(b)/R-S8: IPC parent-dir hardening incomplete or unwired from new_listener:$r_s11a_missing"; rc=1
+else
+  echo "  ok  R-S11a(b)/R-S8 IPC parent-dir hardening present + wired (O_NOFOLLOW + 0o0711 fchmod/fchown + scrub, before new_listener binds)"
+fi
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod lan:R-X5 lan.rs residual (WoL send_wol + discover no-op; the discovery LISTENER is excised + hard-gated above — full removal is the R-G2 Discovered-tab/WoL-UI follow-on)' \

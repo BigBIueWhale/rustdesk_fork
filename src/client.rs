@@ -1,7 +1,6 @@
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::clipboard::clipboard_listener;
 use async_trait::async_trait;
-use bytes::Bytes;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use clipboard_master::CallbackResult;
 #[cfg(not(target_os = "linux"))]
@@ -39,30 +38,32 @@ pub use file_trait::FileManager;
 #[cfg(not(feature = "flutter"))]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::tokio::sync::mpsc::UnboundedSender;
+// `anyhow!` now survives only in the non-linux cpal audio path (the rendezvous health-check,
+// its sole linux user, was removed) — keep the macro import there, cfg-gated.
+#[cfg(not(target_os = "linux"))]
+use hbb_common::anyhow::anyhow;
 use hbb_common::{
     allow_err,
-    anyhow::anyhow,
     bail,
     config::{
         self, keys, use_ws, Config, LocalConfig, PeerConfig, PeerInfoSerde, Resolution,
-        CONNECT_TIMEOUT, READ_TIMEOUT, RELAY_PORT, RENDEZVOUS_PORT,
+        CONNECT_TIMEOUT, READ_TIMEOUT, RELAY_PORT,
     },
     fs::JobType,
     get_version_number, log,
     message_proto::{option_message::BoolOption, *},
-    protobuf::{Message as _, MessageField},
+    protobuf::MessageField,
     rand,
     rendezvous_proto::*,
     sha2::{Digest, Sha256},
-    socket_client::{connect_tcp, connect_tcp_local},
+    socket_client::connect_tcp_local,
     sodiumoxide::base64,
     timeout,
     tokio::{
-        self,
         sync::{
             mpsc::{unbounded_channel, UnboundedReceiver},
         },
-        time::{interval, Duration, Instant},
+        time::Duration,
     },
     ResultType, Stream,
 };
@@ -3374,77 +3375,11 @@ pub fn check_if_retry(msgtype: &str, title: &str, text: &str, retry_for_relay: b
                 && !text.to_lowercase().contains("not allowed")))
 }
 
-pub async fn hc_connection(
-    feedback: i32,
-    rendezvous_server: String,
-    token: &str,
-) -> Option<tokio::sync::mpsc::UnboundedSender<()>> {
-    if feedback == 0 || rendezvous_server.is_empty() || token.is_empty() {
-        return None;
-    }
-    let (tx, rx) = unbounded_channel::<()>();
-    let token = token.to_owned();
-    tokio::spawn(async move {
-        allow_err!(hc_connection_(rendezvous_server, rx, token).await);
-    });
-    Some(tx)
-}
-
-async fn hc_connection_(
-    rendezvous_server: String,
-    mut rx: UnboundedReceiver<()>,
-    token: String,
-) -> ResultType<()> {
-    let mut timer = crate::rustdesk_interval(interval(crate::TIMER_OUT));
-    let mut last_recv_msg = Instant::now();
-    let mut keep_alive = crate::DEFAULT_KEEP_ALIVE;
-
-    let host = check_port(&rendezvous_server, RENDEZVOUS_PORT);
-    let mut conn = connect_tcp(host.clone(), CONNECT_TIMEOUT).await?;
-    let key = crate::get_key(true).await;
-    crate::secure_tcp(&mut conn, &key).await?;
-    let mut msg_out = RendezvousMessage::new();
-    msg_out.set_hc(HealthCheck {
-        token,
-        ..Default::default()
-    });
-    conn.send(&msg_out).await?;
-    loop {
-        tokio::select! {
-            res = rx.recv() => {
-                if res.is_none() {
-                    log::debug!("HC connection is closed as controlling connection exits");
-                    break;
-                }
-            }
-            res = conn.next() => {
-                last_recv_msg = Instant::now();
-                let bytes = res.ok_or_else(|| anyhow!("Rendezvous connection is reset by the peer"))??;
-                if bytes.is_empty() {
-                    conn.send_bytes(bytes::Bytes::new()).await?;
-                    continue; // heartbeat
-                }
-                let msg = RendezvousMessage::parse_from_bytes(&bytes)?;
-                match msg.union {
-                    Some(rendezvous_message::Union::RegisterPkResponse(rpr)) => {
-                        if rpr.keep_alive > 0 {
-                            keep_alive = rpr.keep_alive * 1000;
-                            log::info!("keep_alive: {}ms", keep_alive);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            _  = timer.tick() => {
-                // https://www.emqx.com/en/blog/mqtt-keep-alive
-                if last_recv_msg.elapsed().as_millis() as u64 > keep_alive as u64 * 3 / 2 {
-                    bail!("HC connection is timeout");
-                }
-            }
-        }
-    }
-    Ok(())
-}
+// R-D4/R-SV/§8: the rendezvous HEALTH-CHECK heartbeat (`hc_connection`/`hc_connection_` —
+// a kept-alive TCP connection to the rendezvous server, secured with the legacy single-key
+// `secure_tcp` and fed periodic `HealthCheck` messages) is REMOVED. The direct-IP fork has no
+// rendezvous server to keep a connection alive to (the entry point was already guarded dead
+// whenever `rendezvous_server` is empty, which is always) — gone, not merely disabled.
 
 pub mod peer_online {
     // R-SV / R-D / §18 (dial nobody): the peer-list ONLINE-STATUS query is REMOVED. Upstream

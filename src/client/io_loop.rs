@@ -174,7 +174,7 @@ impl<T: InvokeUiSession> Remote<T> {
         )
         .await
         {
-            Ok(((mut peer, direct, pk, stream_type), (feedback, rendezvous_server))) => {
+            Ok(((mut peer, direct, pk, stream_type), _)) => {
                 self.handler
                     .connection_round_state
                     .lock()
@@ -217,8 +217,6 @@ impl<T: InvokeUiSession> Remote<T> {
                 let mut status_timer =
                     crate::rustdesk_interval(time::interval(Duration::new(1, 0)));
                 let mut fps_instant = Instant::now();
-
-                let _keep_it = client::hc_connection(feedback, rendezvous_server, token).await;
 
                 loop {
                     tokio::select! {

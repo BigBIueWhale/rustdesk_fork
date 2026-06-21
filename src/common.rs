@@ -1823,10 +1823,9 @@ async fn secure_tcp_impl(conn: &mut Stream, key: &str, log_on_success: bool) -> 
     Ok(())
 }
 
-pub async fn secure_tcp(conn: &mut Stream, key: &str) -> ResultType<()> {
-    secure_tcp_impl(conn, key, true).await
-}
-
+// `secure_tcp` (the logging public wrapper used by the now-removed rendezvous health-check) is
+// gone; `secure_tcp_silent` is the sole remaining caller (the rendezvous HTTP proxy, itself dead
+// on the direct-IP fork — excised next together with the legacy single-key it engages).
 async fn secure_tcp_silent(conn: &mut Stream, key: &str) -> ResultType<()> {
     secure_tcp_impl(conn, key, false).await
 }

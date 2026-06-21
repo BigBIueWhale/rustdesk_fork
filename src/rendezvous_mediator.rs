@@ -232,27 +232,59 @@ async fn direct_server(server: ServerPtr) {
                 listener = None;
                 continue;
             }
-            if let Ok(Ok((stream, addr))) = hbb_common::timeout(1000, l.accept()).await {
-                stream.set_nodelay(true).ok();
-                log::info!("direct access from {}", addr);
-                let local_addr = stream
-                    .local_addr()
-                    .unwrap_or(Config::get_any_listen_addr(true));
-                let server = server.clone();
-                tokio::spawn(async move {
-                    allow_err!(
-                        crate::server::create_tcp_connection(
-                            server,
-                            hbb_common::Stream::from(stream, local_addr),
-                            addr,
-                            false,
-                            None, // Direct connections don't have control_permissions
-                        )
-                        .await
-                    );
-                });
-            } else {
-                sleep(0.1).await;
+            match hbb_common::timeout(1000, l.accept()).await {
+                Ok(Ok((stream, addr))) => {
+                    stream.set_nodelay(true).ok();
+                    // R-T1(b) / R-T0 rule 2: acquire a pre-key handshake slot BEFORE spawning a
+                    // task or taking the server lock — so a shed connection costs accept+close,
+                    // not spawn+lock+handshake. The permit moves into the task and is released
+                    // after keying (server.rs), bounding only the attacker-reachable half-opens.
+                    let permit = match crate::server::PREKEY_HANDSHAKE_SLOTS
+                        .clone()
+                        .try_acquire_owned()
+                    {
+                        Ok(p) => p,
+                        Err(_) => {
+                            crate::server::note_security_event(
+                                crate::server::SecurityEvent::Shed,
+                                addr.ip(),
+                            );
+                            // R-T1: damp the accept-and-drop CPU spin under a sustained flood
+                            // without materially delaying a legitimate connection (the kernel
+                            // backlog absorbs the burst); dropping `stream` here closes the fd.
+                            sleep(0.002).await;
+                            continue;
+                        }
+                    };
+                    log::info!("direct access from {}", addr);
+                    let local_addr = stream
+                        .local_addr()
+                        .unwrap_or(Config::get_any_listen_addr(true));
+                    let server = server.clone();
+                    tokio::spawn(async move {
+                        allow_err!(
+                            crate::server::create_tcp_connection(
+                                server,
+                                hbb_common::Stream::from(stream, local_addr),
+                                addr,
+                                false,
+                                None, // Direct connections don't have control_permissions
+                                permit,
+                            )
+                            .await
+                        );
+                    });
+                }
+                Ok(Err(e)) => {
+                    // R-T12: a real accept() error (EMFILE/ENFILE under fd-exhaustion) — observe
+                    // it rate-limited and back off to damp the busy-spin, not silently sleep as
+                    // if idle (which would hide an in-progress flood from the operator).
+                    crate::server::note_accept_error(port as u16, &e);
+                    sleep(0.2).await;
+                }
+                Err(_) => {
+                    // The 1s poll timeout — normal idle; loop to re-check disabled/port.
+                }
             }
         } else {
             sleep(1.).await;

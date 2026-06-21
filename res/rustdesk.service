@@ -15,7 +15,24 @@ PIDFile=/run/rustdesk.pid
 KillMode=mixed
 TimeoutStopSec=30
 User=root
-LimitNOFILE=100000
+# ── R-T1(a) / §20: bound an unauthenticated connection flood's blast radius ───────
+# An unbounded flood must OOM-kill THIS service inside its own cgroup (then auto-
+# restart), never the HOST (R-D3 "defensible without a firewall"). These OS ceilings
+# complement the in-process pre-key handshake bound (R-T1(b), src/server.rs); the
+# semaphore sheds the flood, these cap what slips through. Memory limits are
+# HOST-RELATIVE percentages (R-T1: never an absolute byte count, which is a no-op on a
+# small DMZ VPS) — the invariant is "the service's hard cap is below the host's RAM",
+# sized with headroom for the CPU-only vpx/aom encode path (hwcodec is compiled out,
+# R-R2b). LimitNOFILE was 100000 (a high fd ceiling only serves the attacker); 8192
+# bounds concurrent fds with ample single-user headroom. Restart=on-failure fires on a
+# cgroup OOM-kill but not on a clean `systemctl stop`, so it cannot restart-loop.
+LimitNOFILE=8192
+TasksMax=512
+MemoryAccounting=yes
+MemoryHigh=50%
+MemoryMax=65%
+Restart=on-failure
+RestartSec=2
 Environment="PULSE_LATENCY_MSEC=60" "PIPEWIRE_LATENCY=1024/48000"
 
 # ── R-D3a: systemd confinement the upstream unit lacked ───────────────────────

@@ -97,6 +97,111 @@ lazy_static::lazy_static! {
     pub static ref CLIENT_SERVER: ServerPtr = new();
 }
 
+// ── R-T1 / R-T0 / R-T12: DMZ connection-flood bound + flood-safe observability ────────────
+/// R-T1(b): a global bound on concurrent PRE-KEY CPace handshakes. An unauthenticated
+/// connection flood would otherwise spawn unbounded handshake tasks (each holding an fd and
+/// up to ~36s of half-open state) and exhaust the host (R-D3 "defensible without a
+/// firewall"). The slot is acquired with a non-blocking try-acquire in the accept loop
+/// BEFORE the task is spawned and before any per-connection server lock is taken (R-T0
+/// rule 2: a shed connection costs accept+close, not spawn+lock); it is a global CAPACITY
+/// shed, NEVER a per-source ban (R-S10 cardinal rule: a CGNAT-shared attacker must not lock
+/// the owner out). The budget is generous — a single-user box never has hundreds of
+/// concurrent NEW handshakes, so a legitimate connection always finds a slot — while a
+/// flood is capped at this many concurrent half-opens, each self-expiring via the R-P14b
+/// per-step timeout. The permit is held only across the handshake and released before the
+/// unbounded Connection::start session.
+const PREKEY_HANDSHAKE_BUDGET: usize = 256;
+/// R-T0 rule 1 / R-T12: a per-event log on the shed / rate-limit / key-confirmation hot
+/// paths is itself a log-amplification DoS under the very flood it reports, so events are
+/// counted lock-free and a single summary line is emitted at most once per this interval.
+const SECURITY_LOG_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+
+lazy_static::lazy_static! {
+    pub static ref PREKEY_HANDSHAKE_SLOTS: std::sync::Arc<tokio::sync::Semaphore> =
+        std::sync::Arc::new(tokio::sync::Semaphore::new(PREKEY_HANDSHAKE_BUDGET));
+    static ref SEC_SHED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    static ref SEC_RATE_LIMITED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    static ref SEC_KEY_CONFIRM: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    static ref SEC_LOG_STATE: std::sync::Mutex<(Option<std::time::Instant>, Option<std::net::IpAddr>)> =
+        std::sync::Mutex::new((None, None));
+    static ref ACCEPT_ERR_LOG: std::sync::Mutex<Option<std::time::Instant>> =
+        std::sync::Mutex::new(None);
+}
+
+/// R-T12 security-event categories whose hot-path observability is rate-limited (R-T0 rule 1).
+#[derive(Clone, Copy)]
+pub enum SecurityEvent {
+    /// R-T1(b): an inbound connection shed because the pre-key handshake budget is saturated.
+    Shed,
+    /// R-S10: a source shed because it exceeded the online-guess rate.
+    RateLimited,
+    /// R-P3 / R-P14c: a key-confirmation tag mismatch (an online password guess).
+    KeyConfirmFail,
+}
+
+/// R-T12 / R-S10: record a security event and emit at most one aggregated summary line per
+/// `SECURITY_LOG_INTERVAL` (with the most-recent source). Lock-light by construction: the
+/// counters are lock-free atomics, and the periodic flush is gated on a non-blocking
+/// `try_lock`, so a flood never serializes on it. This is the "only audit signal on a
+/// serverless box" (R-S10) made flood-safe (R-T0 rule 1) — never one log line per event.
+pub fn note_security_event(kind: SecurityEvent, ip: std::net::IpAddr) {
+    use std::sync::atomic::Ordering::Relaxed;
+    match kind {
+        SecurityEvent::Shed => {
+            SEC_SHED.fetch_add(1, Relaxed);
+        }
+        SecurityEvent::RateLimited => {
+            SEC_RATE_LIMITED.fetch_add(1, Relaxed);
+        }
+        SecurityEvent::KeyConfirmFail => {
+            SEC_KEY_CONFIRM.fetch_add(1, Relaxed);
+        }
+    }
+    if let Ok(mut state) = SEC_LOG_STATE.try_lock() {
+        state.1 = Some(ip);
+        let due = match state.0 {
+            None => true,
+            Some(t) => t.elapsed() >= SECURITY_LOG_INTERVAL,
+        };
+        if due {
+            let shed = SEC_SHED.swap(0, Relaxed);
+            let rate_limited = SEC_RATE_LIMITED.swap(0, Relaxed);
+            let key_confirmation_failures = SEC_KEY_CONFIRM.swap(0, Relaxed);
+            if shed + rate_limited + key_confirmation_failures > 0 {
+                state.0 = Some(std::time::Instant::now());
+                log::warn!(
+                    "R-S10/R-T12 security summary (last {:?}): shed={} rate_limited={} key_confirmation_failures={} recent_src={:?}",
+                    SECURITY_LOG_INTERVAL,
+                    shed,
+                    rate_limited,
+                    key_confirmation_failures,
+                    state.1
+                );
+            }
+        }
+    }
+}
+
+/// R-T12: a real `accept()` error (e.g. EMFILE/ENFILE under fd-exhaustion) — observed
+/// rate-limited (R-T0 rule 1) so a sustained accept-error storm cannot itself log-flood.
+pub fn note_accept_error(port: u16, err: &std::io::Error) {
+    if let Ok(mut last) = ACCEPT_ERR_LOG.try_lock() {
+        let due = match *last {
+            None => true,
+            Some(t) => t.elapsed() >= SECURITY_LOG_INTERVAL,
+        };
+        if due {
+            *last = Some(std::time::Instant::now());
+            log::warn!(
+                "R-T12: accept() failing on :{} — {} (errno={:?}); likely fd/resource exhaustion",
+                port,
+                err,
+                err.raw_os_error()
+            );
+        }
+    }
+}
+
 pub struct Server {
     connections: ConnMap,
     services: HashMap<String, Box<dyn Service>>,
@@ -162,6 +267,11 @@ pub async fn create_tcp_connection(
     addr: SocketAddr,
     secure: bool,
     control_permissions: Option<ControlPermissions>,
+    // R-T1(b): the pre-key handshake slot, acquired in the accept loop before this task was
+    // spawned. Held only across the handshake below; explicitly dropped on the keyed path
+    // before Connection::start (and auto-dropped on any earlier fail-closed bail), so the
+    // bound caps the attacker-reachable half-open population, not authenticated sessions.
+    prekey_permit: tokio::sync::OwnedSemaphorePermit,
 ) -> ResultType<()> {
     let mut stream = stream;
     let id = server.write().unwrap().get_new_id();
@@ -188,6 +298,7 @@ pub async fn create_tcp_connection(
         // R-S10 / R-P14c: shed a source that has exceeded the online-guess rate
         // BEFORE the expensive scalar-mult — checked here, before run_responder.
         if !hbb_common::cpace::guess_limiter_allows(addr.ip()) {
+            note_security_event(SecurityEvent::RateLimited, addr.ip());
             bail!("R-S10: source rate-limited after too many failed password attempts");
         }
         let Some(fs) = stream.as_framed_tcp_mut() else {
@@ -220,11 +331,16 @@ pub async fn create_tcp_connection(
                     // decode / order / AD / identity / timeout aborts MUST NOT, or a
                     // malformed-frame flood would trip the owner's own block.
                     hbb_common::cpace::record_guess_failure(addr.ip());
+                    note_security_event(SecurityEvent::KeyConfirmFail, addr.ip());
                 }
                 bail!("CPace handshake failed: fail-closed");
             }
         }
     }
+    // R-T1(b): keying succeeded — release the pre-key handshake slot now, before the
+    // unbounded Connection::start session, so the bound governs only the half-open
+    // (attacker-reachable) population. (A fail-closed bail above auto-drops it on return.)
+    drop(prekey_permit);
 
     #[cfg(target_os = "macos")]
     {

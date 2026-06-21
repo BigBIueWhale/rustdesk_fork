@@ -148,6 +148,22 @@ if [ -n "$r_s15_missing" ]; then
 else
   echo "  ok  R-S15 viewer PeerConfig-write bound present (client.rs + io_loop.rs)"
 fi
+# R-T1 / R-T12 (§20 CRITICAL): the DMZ connection-flood bound + flood-safe observability MUST be
+# present — the pre-key handshake semaphore (PREKEY_HANDSHAKE_SLOTS, acquired in the accept loop
+# before the task is spawned, server.rs) and the rate-limited AGGREGATED security log
+# (note_security_event), so an unauthenticated flood is shed before it can exhaust the host
+# WITHOUT the shed itself becoming a log-amplification DoS (R-T0 rule 1). The systemd cgroup caps
+# (res/rustdesk.service MemoryMax/TasksMax) bound the blast radius to the service, never the host.
+r_t1_missing=
+grep -q 'PREKEY_HANDSHAKE_SLOTS' src/server.rs                  || r_t1_missing="$r_t1_missing server.rs:semaphore"
+grep -q 'fn note_security_event' src/server.rs                  || r_t1_missing="$r_t1_missing server.rs:agg-log"
+grep -q 'try_acquire_owned' src/rendezvous_mediator.rs          || r_t1_missing="$r_t1_missing mediator:acquire-before-spawn"
+grep -q 'MemoryMax=' res/rustdesk.service                       || r_t1_missing="$r_t1_missing service:MemoryMax"
+if [ -n "$r_t1_missing" ]; then
+  echo "  FAIL R-T1: connection-flood bound / flood-safe observability absent:$r_t1_missing"; rc=1
+else
+  echo "  ok  R-T1/R-T12 connection-flood bound + flood-safe observability present"
+fi
 # R-P5 / R-SV4(b): the SignedId <-> PublicKey device-identity key bootstrap is removed. The
 # viewer's `secure_connection` (the only SignedId user) + the whole initiator-side
 # rendezvous/relay/NAT-punch cluster it lived in (_start_inner/connect/request_relay/

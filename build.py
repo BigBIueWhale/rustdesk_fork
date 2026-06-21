@@ -109,17 +109,6 @@ def make_parser():
     parser.add_argument('--flutter', action='store_true',
                         help='Build flutter package', default=False)
     parser.add_argument(
-        '--hwcodec',
-        action='store_true',
-        help='Enable feature hwcodec' + (
-            '' if windows or osx else ', need libva-dev.')
-    )
-    parser.add_argument(
-        '--vram',
-        action='store_true',
-        help='Enable feature vram, only available on windows now.'
-    )
-    parser.add_argument(
         '--portable',
         action='store_true',
         help='Build windows portable'
@@ -183,7 +172,7 @@ def generate_build_script_for_docker():
             popd
             $VCPKG_ROOT/vcpkg install --x-install-root="$VCPKG_ROOT/installed"
             # build rustdesk
-            ./build.py --flutter --hwcodec
+            ./build.py --flutter
         ''')
     system2("chmod +x /tmp/build.sh")
     system2("bash /tmp/build.sh")
@@ -273,10 +262,6 @@ def external_resources(flutter, args, res_dir):
 
 def get_features(args):
     features = ['inline'] if not args.flutter else []
-    if args.hwcodec:
-        features.append('hwcodec')
-    if args.vram:
-        features.append('vram')
     if args.flutter:
         features.append('flutter')
     if args.unix_file_copy_paste:

@@ -47,8 +47,15 @@ echo "== flutter pub get + full FRB codegen + flutter analyze lib/ (zero-errors 
   trap "cp /tmp/pubspec.lock.pin /work/flutter/pubspec.lock" EXIT  # preserve the committed pin
   flutter pub get >/dev/null
   cd /work
+  # R-B12: FRB codegen runs build_runner, which fails under the pinned-flutter / committed-
+  # pubspec.lock mismatch (a documented open R-B12 item). Do NOT let that abort the run under
+  # `set -e` — the `flutter analyze lib/` gate below is the valuable check (it analyzes the
+  # AUTHORED Dart against the existing committed bridge), and a hard-exit here means a real source
+  # error (e.g. a malformed widget that breaks the build) slips past the gate ENTIRELY. Warn and
+  # continue. (An FFI-signature change still needs a working codegen for the bridge to match.)
   flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
-      --dart-output ./flutter/lib/generated_bridge.dart >/dev/null 2>&1
+      --dart-output ./flutter/lib/generated_bridge.dart >/dev/null 2>&1 \
+    || echo "  WARN: FRB codegen failed (R-B12 pubspec-pin mismatch) — analyzing lib/ against the existing bridge"
   cd /work/flutter
   out="$(flutter analyze lib/ 2>&1 || true)"
   errs="$(printf "%s\n" "$out" | grep -c "error •" || true)"

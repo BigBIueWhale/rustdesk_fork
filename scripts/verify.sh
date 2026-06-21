@@ -42,6 +42,13 @@ docker build -q -t "$IMG" -f scripts/Dockerfile.devcheck scripts >/dev/null
 echo "== (1-3) KAT + handshake + policy funnel + R-A4 surface + R-S7 frame/decompress (pinned 1.75) =="
 "${RUN[@]}" cargo test -p pake -p cpace_it -p config_it -p surface_it -p compress_it -p address_it -p host_pin_it --color never
 
+# (3b) IPC parent-dir hardening BEHAVIOR (R-S11a / R-S11a(b)): the docker test-runner is root, so these
+# unit tests actually exercise the root-only branches — symlink-parent reject, and the R-S11a(b)
+# foreign-owned service dir REJECT-AND-RECREATE (fresh inode, never fchown-adopt) + its fail-closed on a
+# non-emptyable foreign dir. These were un-run before (verify.sh only `cargo check`ed the main crate).
+echo "== (3b) IPC parent-dir hardening behavior tests (R-S11a/R-S11a(b), root-exercised) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::ipc_fs::tests --color never
+
 echo "== (4) main crate compile check (hardening is UNCONDITIONAL — one binary, R-R2b) =="
 "${RUN[@]}" cargo check --features linux-pkg-config --color never
 

@@ -192,6 +192,117 @@ fn remove_ipc_socket_via_secure_parent_fd(postfix: &str) -> ResultType<()> {
     remove_parent_entry_via_fd(fd, parent_dir, &format!("ipc{}", postfix))
 }
 
+// R-S11a(b): REJECT-AND-RECREATE a foreign-owned service IPC parent dir on a FRESH inode instead of
+// fchown-ADOPTING it. Adopting keeps the foreign-created inode, so a pre-set POSIX ACL/xattr granting
+// the foreign user write survives chown+chmod (mode bits don't clear ACLs) and could race-inject a
+// socket after the scrub; a fresh inode carries none. Operates relative to the GRANDPARENT fd
+// (O_NOFOLLOW), so it removes exactly `parent_dir` (= grandparent + basename, both DERIVED from the
+// passed path — never a hardcoded/wrong dir; no grandparent ⇒ fail-closed). Fail-closed on any race /
+// non-empty / error: a recreate failure refuses to listen (a detectable DoS), never an adopt. Returns
+// the fresh dir's fd for the caller to fstat-verify (root-owned, expected mode).
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn recreate_foreign_service_ipc_parent_dir(parent_dir: &Path, postfix: &str) -> ResultType<i32> {
+    let grandparent = parent_dir.parent().ok_or_else(|| {
+        Error::new(
+            ErrorKind::InvalidInput,
+            format!(
+                "R-S11a(b): ipc parent has no grandparent to recreate under: {}",
+                parent_dir.display()
+            ),
+        )
+    })?;
+    let basename = parent_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::InvalidInput,
+                format!(
+                    "R-S11a(b): ipc parent has no basename: {}",
+                    parent_dir.display()
+                ),
+            )
+        })?;
+    let gp_c = CString::new(grandparent.as_os_str().as_bytes().to_vec())?;
+    let gp_fd = open_ipc_parent_dir_fd(&gp_c).map_err(|e| {
+        Error::new(
+            e.kind(),
+            format!(
+                "R-S11a(b): failed to open ipc grandparent (no-follow) to recreate: gp={}, err={}",
+                grandparent.display(),
+                e
+            ),
+        )
+    })?;
+    let _gp_guard = FdGuard(gp_fd);
+
+    // Empty the foreign dir (so the rmdir below can succeed) by removing the KNOWN ipc artifacts via
+    // an O_NOFOLLOW fd opened under our verified grandparent. Any leftover non-ipc entry then makes the
+    // rmdir fail ENOTEMPTY → fail-closed (never adopt). A failed openat (e.g. raced away) is benign:
+    // the rmdir surfaces NotFound as Ok and we recreate.
+    let base_c = CString::new(basename.as_bytes().to_vec())?;
+    let foreign_fd = unsafe {
+        hbb_common::libc::openat(
+            gp_fd,
+            base_c.as_ptr(),
+            hbb_common::libc::O_RDONLY
+                | hbb_common::libc::O_DIRECTORY
+                | hbb_common::libc::O_CLOEXEC
+                | hbb_common::libc::O_NOFOLLOW,
+        )
+    };
+    if foreign_fd >= 0 {
+        let _f_guard = FdGuard(foreign_fd);
+        let _ = scrub_preexisting_ipc_parent_entries(foreign_fd, parent_dir, postfix);
+    }
+
+    // rmdir the foreign dir via the grandparent fd (AT_REMOVEDIR). ENOTEMPTY / any error ⇒ fail-closed.
+    remove_parent_entry_via_fd(gp_fd, grandparent, basename)?;
+
+    // Recreate fresh, root-owned, at the expected mode. EEXIST ⇒ an attacker raced our rmdir ⇒
+    // fail-closed (do NOT adopt the raced inode).
+    let expected_mode = expected_ipc_parent_mode(postfix);
+    if unsafe {
+        hbb_common::libc::mkdirat(gp_fd, base_c.as_ptr(), expected_mode as hbb_common::libc::mode_t)
+    } != 0
+    {
+        let err = std::io::Error::last_os_error();
+        return Err(Error::new(
+            err.kind(),
+            format!(
+                "R-S11a(b): failed to recreate ipc parent dir (refusing to adopt foreign): parent={}, err={}",
+                parent_dir.display(),
+                err
+            ),
+        )
+        .into());
+    }
+
+    let new_fd = unsafe {
+        hbb_common::libc::openat(
+            gp_fd,
+            base_c.as_ptr(),
+            hbb_common::libc::O_RDONLY
+                | hbb_common::libc::O_DIRECTORY
+                | hbb_common::libc::O_CLOEXEC
+                | hbb_common::libc::O_NOFOLLOW,
+        )
+    };
+    if new_fd < 0 {
+        let err = std::io::Error::last_os_error();
+        return Err(Error::new(
+            err.kind(),
+            format!(
+                "R-S11a(b): failed to open recreated ipc parent dir (no-follow): parent={}, err={}",
+                parent_dir.display(),
+                err
+            ),
+        )
+        .into());
+    }
+    Ok(new_fd)
+}
+
 // Purpose:
 // - Harden the IPC parent directory before creating/listening socket files.
 // - Prevent symlink/path-race abuse and reject unsafe owner/mode.
@@ -226,7 +337,7 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
     // we mutate the inode we opened, though it does not protect against symlinks in ancestor path
     // components.
     let parent_c = CString::new(parent_dir.as_os_str().as_bytes().to_vec())?;
-    let fd = match open_ipc_parent_dir_fd(&parent_c) {
+    let mut fd = match open_ipc_parent_dir_fd(&parent_c) {
         Ok(fd) => fd,
         Err(open_err) => {
             // If the directory doesn't exist yet, create it with the expected mode. The parent
@@ -284,7 +395,7 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
             }
         }
     };
-    let _fd_guard = FdGuard(fd);
+    let mut fd_guard = FdGuard(fd);
 
     let mut st: hbb_common::libc::stat = unsafe { std::mem::zeroed() };
     if unsafe { hbb_common::libc::fstat(fd, &mut st as *mut _) } != 0 {
@@ -316,36 +427,34 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
 
     let expected_uid = unsafe { hbb_common::libc::geteuid() as u32 };
     let mut owner_uid = st.st_uid as u32;
-    let mut adopted_foreign_service_parent = false;
-    // Service-scoped IPC may be created by different privilege contexts historically.
-    // If running as root on protected service postfix, try adopting ownership first.
+    let mut recreated_foreign_service_parent = false;
+    // R-S11a(b): if running as root and the protected service-postfix parent dir is FOREIGN-owned, do
+    // NOT fchown-ADOPT it — adopting keeps the foreign-created inode, so a pre-set POSIX ACL/xattr
+    // granting the foreign user write SURVIVES the chown+chmod and could race-inject a socket after the
+    // scrub. REJECT-AND-RECREATE on a fresh inode instead (no surviving ACL). The helper removes exactly
+    // this dir via its grandparent fd and fails closed on any race/non-empty/error — never an adopt.
     if owner_uid != expected_uid && expected_uid == 0 && config::is_service_ipc_postfix(postfix) {
-        let rc = unsafe {
-            hbb_common::libc::fchown(
-                fd,
-                expected_uid as hbb_common::libc::uid_t,
-                hbb_common::libc::gid_t::MAX,
+        // Close the foreign parent fd before its directory is removed, then re-open the fresh one.
+        drop(fd_guard);
+        fd = recreate_foreign_service_ipc_parent_dir(parent_dir, postfix)?;
+        fd_guard = FdGuard(fd);
+        let mut st2: hbb_common::libc::stat = unsafe { std::mem::zeroed() };
+        if unsafe { hbb_common::libc::fstat(fd, &mut st2 as *mut _) } != 0 {
+            let os_err = std::io::Error::last_os_error();
+            return Err(Error::new(
+                os_err.kind(),
+                format!(
+                    "R-S11a(b): failed to stat recreated ipc parent dir: postfix={}, parent={}, err={}",
+                    postfix,
+                    parent_dir.display(),
+                    os_err
+                ),
             )
-        };
-        if rc == 0 {
-            let mut st2: hbb_common::libc::stat = unsafe { std::mem::zeroed() };
-            if unsafe { hbb_common::libc::fstat(fd, &mut st2 as *mut _) } == 0 {
-                owner_uid = st2.st_uid as u32;
-                st = st2;
-                adopted_foreign_service_parent = true;
-            }
-        } else {
-            // Keep behavior unchanged; capture errno to ease diagnosing why chown failed.
-            let err = std::io::Error::last_os_error();
-            log::warn!(
-                "Failed to chown ipc parent dir, parent={}, postfix={}, expected_uid={}, rc={}, err={:?}",
-                parent_dir.display(),
-                postfix,
-                expected_uid,
-                rc,
-                err
-            );
+            .into());
         }
+        owner_uid = st2.st_uid as u32;
+        st = st2;
+        recreated_foreign_service_parent = true;
     }
     if owner_uid != expected_uid {
         return Err(Error::new(
@@ -382,7 +491,10 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
         }
     }
     let should_scrub =
-        repaired_parent_mode || adopted_foreign_service_parent || had_untrusted_parent_mode;
+        repaired_parent_mode || recreated_foreign_service_parent || had_untrusted_parent_mode;
+    // Close the (possibly-recreated) parent-dir fd now that hardening is complete; the caller re-opens
+    // by path to bind. The explicit drop also marks fd_guard read after the recreate-branch rebind.
+    drop(fd_guard);
     Ok(should_scrub)
 }
 
@@ -770,6 +882,96 @@ mod tests {
         assert!(md.is_dir());
         let mode = md.permissions().mode() & 0o777;
         assert_eq!(mode, 0o0700);
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    // R-S11a(b): a root service MUST NOT fchown-ADOPT a foreign-owned `_service` IPC parent dir; it must
+    // REJECT-AND-RECREATE it on a FRESH inode (so a pre-set foreign ACL/xattr cannot survive a chown).
+    // Creating the foreign-owned scenario needs root (chown to another uid), so this is a no-op unless
+    // run as root — the docker harness runs root, which is where it actually exercises the branch.
+    #[test]
+    fn test_ensure_secure_ipc_parent_dir_recreates_foreign_service_dir() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+        let euid = unsafe { hbb_common::libc::geteuid() };
+        if euid != 0 {
+            eprintln!("skip recreate-foreign-service test: not root, cannot create a foreign-owned dir");
+            return;
+        }
+
+        let unique = format!(
+            "rustdesk-ipc-recreate-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        );
+        let base = std::env::temp_dir().join(&unique);
+        // The `_service` IPC parent dir; its grandparent is `base` (the recreate operates via that).
+        let parent_dir = base.join("rustdesk-svc-service");
+        std::fs::create_dir_all(&parent_dir).unwrap();
+
+        // Make it FOREIGN-owned (uid/gid 1000) so the reject-and-recreate branch triggers.
+        let parent_c = CString::new(parent_dir.as_os_str().as_bytes().to_vec()).unwrap();
+        let rc = unsafe { hbb_common::libc::chown(parent_c.as_ptr(), 1000, 1000) };
+        assert_eq!(rc, 0, "chown to uid 1000 failed (need root)");
+        let before = std::fs::metadata(&parent_dir).unwrap();
+        assert_ne!(before.uid(), euid, "precondition: dir must start foreign-owned");
+        let foreign_ino = before.ino();
+
+        // Must REJECT-AND-RECREATE (return Ok with the dir recreated), not adopt or error.
+        let ipc_path = parent_dir.join("ipc_service");
+        super::ensure_secure_ipc_parent_dir(ipc_path.to_string_lossy().as_ref(), "_service").unwrap();
+
+        let after = std::fs::metadata(&parent_dir).unwrap();
+        assert!(after.is_dir());
+        assert_eq!(after.uid(), euid, "recreated dir must be root-owned, NOT the adopted foreign owner");
+        assert_eq!(after.permissions().mode() & 0o777, 0o0711, "recreated dir must be 0o711");
+        // The decisive check: a FRESH inode proves reject-and-recreate (the foreign inode + any ACL on
+        // it is gone), NOT an fchown-adopt (which would keep the same inode).
+        assert_ne!(after.ino(), foreign_ino, "must REJECT-AND-RECREATE (fresh inode), not fchown-ADOPT");
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    // R-S11a(b) fail-closed: if the foreign-owned `_service` dir holds a leftover non-ipc entry (so it
+    // cannot be emptied + rmdir'd), the service MUST refuse (Err) rather than adopt the foreign inode.
+    #[test]
+    fn test_ensure_secure_ipc_parent_dir_foreign_nonempty_fails_closed() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+
+        let euid = unsafe { hbb_common::libc::geteuid() };
+        if euid != 0 {
+            eprintln!("skip foreign-nonempty fail-closed test: not root");
+            return;
+        }
+        let unique = format!(
+            "rustdesk-ipc-failclosed-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        );
+        let base = std::env::temp_dir().join(&unique);
+        let parent_dir = base.join("rustdesk-svc-service");
+        std::fs::create_dir_all(&parent_dir).unwrap();
+        // A leftover the scrub does not know about → rmdir fails ENOTEMPTY → fail-closed.
+        std::fs::write(parent_dir.join("attacker-junk"), b"x").unwrap();
+        let parent_c = CString::new(parent_dir.as_os_str().as_bytes().to_vec()).unwrap();
+        assert_eq!(
+            unsafe { hbb_common::libc::chown(parent_c.as_ptr(), 1000, 1000) },
+            0
+        );
+
+        let ipc_path = parent_dir.join("ipc_service");
+        let res = super::ensure_secure_ipc_parent_dir(ipc_path.to_string_lossy().as_ref(), "_service");
+        assert!(res.is_err(), "must FAIL-CLOSED on a non-emptyable foreign dir, never adopt");
 
         std::fs::remove_dir_all(&base).ok();
     }

@@ -923,6 +923,36 @@ mod tests {
         assert_ne!(before.uid(), euid, "precondition: dir must start foreign-owned");
         let foreign_ino = before.ino();
 
+        // Pre-set a POSIX ACL granting the foreign uid 1000 rwx. This models the EXACT R-S11a(b)
+        // threat: an attacker's pre-set ACL that a naive fchown+chmod ADOPT would preserve (mode bits
+        // do not clear ACLs), letting them race-inject a socket after the scrub. Root holds CAP_FOWNER,
+        // so it can set the ACL on the foreign-owned dir, and the ACL survives the later chown by design.
+        // Encoding (little-endian): version=2; USER_OBJ rwx, USER:1000 rwx, GROUP_OBJ r-x, MASK rwx,
+        // OTHER r-x — a valid, canonically-ordered ACL.
+        let acl_name = CString::new("system.posix_acl_access").unwrap();
+        #[rustfmt::skip]
+        let acl: [u8; 44] = [
+            0x02, 0x00, 0x00, 0x00,                         // ACL_EA_VERSION = 2
+            0x01, 0x00, 0x07, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, // USER_OBJ  rwx
+            0x02, 0x00, 0x07, 0x00, 0xE8, 0x03, 0x00, 0x00, // USER:1000 rwx  (the attacker grant)
+            0x04, 0x00, 0x05, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, // GROUP_OBJ r-x
+            0x10, 0x00, 0x07, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, // MASK      rwx
+            0x20, 0x00, 0x05, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, // OTHER     r-x
+        ];
+        let set_rc = unsafe {
+            hbb_common::libc::setxattr(
+                parent_c.as_ptr(),
+                acl_name.as_ptr(),
+                acl.as_ptr() as *const _,
+                acl.len(),
+                0,
+            )
+        };
+        // The threat-accurate check only runs where the FS supports POSIX ACLs; if setxattr is
+        // unsupported (e.g. a noacl mount) we fall back to the uid/mode assertions below — never a
+        // false failure.
+        let acl_supported = set_rc == 0;
+
         // Must REJECT-AND-RECREATE (return Ok with the dir recreated), not adopt or error.
         let ipc_path = parent_dir.join("ipc_service");
         super::ensure_secure_ipc_parent_dir(ipc_path.to_string_lossy().as_ref(), "_service").unwrap();
@@ -931,9 +961,39 @@ mod tests {
         assert!(after.is_dir());
         assert_eq!(after.uid(), euid, "recreated dir must be root-owned, NOT the adopted foreign owner");
         assert_eq!(after.permissions().mode() & 0o777, 0o0711, "recreated dir must be 0o711");
-        // The decisive check: a FRESH inode proves reject-and-recreate (the foreign inode + any ACL on
-        // it is gone), NOT an fchown-adopt (which would keep the same inode).
-        assert_ne!(after.ino(), foreign_ino, "must REJECT-AND-RECREATE (fresh inode), not fchown-ADOPT");
+
+        // The DECISIVE, threat-accurate check: the attacker's pre-set ACL_USER:1000 entry MUST be gone.
+        // reject-and-recreate rmdir's the foreign inode (destroying its ACL) and mkdir's a fresh one, so
+        // the named-user grant cannot survive; an fchown-ADOPT keeps the inode and the grant survives.
+        // This is robust to inode-NUMBER reuse — a freed inode number may be recycled by rmdir+mkdir on
+        // some filesystems, so the old `assert_ne!(ino)` was environment-flaky; the ACL is the real
+        // security property R-S11a(b) protects.
+        if acl_supported {
+            let mut buf = [0u8; 256];
+            let got = unsafe {
+                hbb_common::libc::getxattr(
+                    parent_c.as_ptr(),
+                    acl_name.as_ptr(),
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len(),
+                )
+            };
+            let named_user_1000: [u8; 8] = [0x02, 0x00, 0x07, 0x00, 0xE8, 0x03, 0x00, 0x00];
+            let grant_survived =
+                got > 0 && buf[..got as usize].windows(8).any(|w| w == named_user_1000);
+            assert!(
+                !grant_survived,
+                "reject-and-RECREATE must drop the pre-set foreign POSIX ACL (uid-1000 grant); an fchown-ADOPT would preserve it (R-S11a(b))"
+            );
+        }
+        // A fresh inode number is the common case but not guaranteed (rmdir+mkdir may recycle the number
+        // on some filesystems), so this is a non-fatal hint, not a hard assertion.
+        if after.ino() == foreign_ino {
+            eprintln!(
+                "note: inode number {} recycled by rmdir+mkdir (benign; the ACL check above is the real proof)",
+                foreign_ino
+            );
+        }
 
         std::fs::remove_dir_all(&base).ok();
     }

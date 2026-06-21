@@ -7,12 +7,19 @@
 //! (Keying runs BEFORE `check_whitelist`, so the probe keys regardless of the whitelist policy.)
 //!
 //! 4th arg modes (after keying):
-//!   - `read`  : engage the session keys and read the post-key flow (observe the R-T15(d)
-//!               default-deny ENFORCEMENT on a keyed connection, or the legacy `Hash` on admit);
-//!   - `login` : also send a minimal `LoginRequest` (CPace already authenticated, so the password
-//!               proof is collapsed — empty `password`), to drive the post-key login flow.
+//!   - `read`   : engage the session keys and read the post-key flow (observe the R-T15(d)
+//!                default-deny ENFORCEMENT on a keyed connection, or the legacy `Hash` on admit);
+//!   - `login`  : also send a minimal `LoginRequest` (CPace already authenticated, so the password
+//!                proof is collapsed — empty `password`) to drive the post-key login flow. Its
+//!                `my_id` is the ASCII canary `PLAINTEXT-CANARY-DEADBEEF` so the R-A9 wire-capture
+//!                test can assert it NEVER appears on the wire (the post-key frame is AEAD-sealed);
+//!   - `inject` : R-A8/R-T7 — after keying, corrupt the cipher (distinct garbage `DirectionalKeys`)
+//!                and send a forged frame; the server's AEAD MUST reject it (`decryption error`).
 //!
-//! Usage: `probe_client <addr> <password> <ok|fail> [read|login]`  (exit 0 = matched expectation)
+//! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
+//! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
+//!
+//! Usage: `probe_client <addr> <password> <ok|fail> [read|login|inject] [local_addr]`  (exit 0 = matched)
 use hbb_common::cpace::{run_initiator_with_transcript, verify_host_identity, DirectionalKeys};
 use hbb_common::message_proto::Message;
 use hbb_common::protobuf::Message as _; // parse_from_bytes / write_to_bytes
@@ -59,7 +66,9 @@ fn main() {
                     if mode == "login" {
                         use hbb_common::message_proto::LoginRequest;
                         let mut lr = LoginRequest::new();
-                        lr.my_id = "probe-id".to_string();
+                        // A distinctive ASCII canary so the R-A9 wire-capture test can assert it
+                        // NEVER appears on the wire (the post-key LoginRequest is encrypted).
+                        lr.my_id = "PLAINTEXT-CANARY-DEADBEEF".to_string();
                         lr.my_name = "probe".to_string();
                         lr.version = "1.4.0".to_string();
                         lr.my_platform = "Linux".to_string();

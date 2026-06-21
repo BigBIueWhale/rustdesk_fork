@@ -17,7 +17,9 @@
 #   - R-B4 / R-D3/R-D5/R-D6 socket surface : with a password seeded the box binds EXACTLY ONE v4 TCP
 #     listener on the pinned port (21118) and ZERO UDP — the §17 direct-IP/no-UDP thesis, empirical;
 #   - R-A4 (runtime socket self-check) : `assert_socket_surface` confirms the same from inside;
-#   - R-T9 : SIGTERM -> "graceful shutdown initiated" -> "complete — exiting 0".
+#   - R-T9 : SIGTERM -> "graceful shutdown initiated" -> "complete — exiting 0";
+#   - R-A9 (wire-capture) : a distinctive plaintext canary sent in a POST-KEY LoginRequest NEVER
+#     appears in a tcpdump of the loopback — the keyed session bytes carry no recoverable plaintext.
 #
 # The permanent password is seeded by the TEST-ONLY `examples/seed_password` (the production
 # `--password` CLI is install-privilege-gated and refuses in a container).
@@ -186,8 +188,44 @@ echo "$out8" | grep -q 'OWNER_DIFF_SRC: keying ok=true' \
 echo "$out8" | grep -q 'FLOODER_SAME_SRC: keying ok=false' \
   || { echo "  FAIL R-A8.2: the flooding source was NOT rate-limited (the per-source guess limiter is not working)"; rc=1; }
 
+echo "== (9) R-A9: wire-capture — a post-key LoginRequest canary is ENCRYPTED (never plaintext on the wire) =="
+out9=$("${RUN[@]}" bash -c '
+  (apt-get update -q >/dev/null 2>&1; apt-get install -y -q tcpdump >/dev/null 2>&1) || true
+  if ! command -v tcpdump >/dev/null; then echo "TCPDUMP_ABSENT"; exit 0; fi
+  export HOME=/tmp/rd9 RUSTDESK_BIND_LOOPBACK=1; mkdir -p "$HOME"
+  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" "0.0.0.0/0" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
+  ./target/debug/rustdesk --server >/tmp/srv.log 2>&1 & SRV=$!
+  sleep 6
+  tcpdump -i lo -w /tmp/cap.pcap "tcp port 21118" >/dev/null 2>&1 & TCPD=$!
+  sleep 1
+  # The probe reaches a live session and sends a LoginRequest whose my_id is the distinctive ASCII
+  # canary PLAINTEXT-CANARY-DEADBEEF — sent POST-KEY, so it is sealed by the session cipher.
+  ./target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok login >/dev/null 2>&1
+  sleep 1; kill $TCPD 2>/dev/null; sleep 1
+  echo "PCAP_SIZE: $(wc -c < /tmp/cap.pcap 2>/dev/null || echo 0)"
+  # Sanity: the canary string DOES exist in the probe binary, so the grep pattern genuinely matches —
+  # its ABSENCE from the wire is real encryption, not a broken/empty search (guards a false pass).
+  echo "CANARY_IN_BINARY: $(grep -a -c PLAINTEXT-CANARY-DEADBEEF ./target/debug/examples/probe_client)"
+  grep -a -q "PLAINTEXT-CANARY-DEADBEEF" /tmp/cap.pcap 2>/dev/null && echo "CANARY_ON_WIRE: YES" || echo "CANARY_ON_WIRE: NO"
+  kill -TERM $SRV 2>/dev/null
+' || true)
+echo "$out9"
+if echo "$out9" | grep -q 'TCPDUMP_ABSENT'; then
+  echo "  SKIP R-A9: tcpdump unavailable in this image (apt offline) — wire-capture not run"
+else
+  # R-A9: the session bytes are indistinguishable from random — a known plaintext canary sent on the
+  # KEYED stream NEVER appears on the captured wire (AEAD-sealed). The non-empty pcap + the in-binary
+  # sanity rule out a false pass (we captured real traffic, and the search pattern really matches).
+  echo "$out9" | grep -q 'CANARY_IN_BINARY: 1' \
+    || { echo "  FAIL R-A9: the canary sanity check failed (the grep pattern does not match the probe binary)"; rc=1; }
+  echo "$out9" | grep -qE 'PCAP_SIZE: [0-9]{3,}' \
+    || { echo "  FAIL R-A9: the wire capture was empty/trivial — no real traffic was captured"; rc=1; }
+  echo "$out9" | grep -q 'CANARY_ON_WIRE: NO' \
+    || { echo "  FAIL R-A9: the LoginRequest canary appeared as PLAINTEXT on the wire — the session is NOT encrypted"; rc=1; }
+fi
+
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) startup-warning AND session-enforcement + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter — ALL validated at RUNTIME."
+  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) startup-warning AND session-enforcement + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire) — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

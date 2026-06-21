@@ -232,14 +232,19 @@ pub fn channel_identifier(port: u16) -> Vec<u8> {
 }
 
 /// `g = RistrettoPoint::from_uniform_bytes(SHA512(generator_string))`.
+///
+/// R-T15(a)/R-P12: every PRS-laden intermediate of this substep — which §10.4 flags
+/// as the most side-channel-critical — is wiped before return. `gs` carries the raw
+/// PRS (`lv_cat(SUITE_DSI, prs, zpad, ci, sid)`) and the SHA-512 digest / `wide` copy
+/// are PRS-derived; all three are zeroized. The returned point `g` is itself PRS-laden,
+/// so callers wrap it in `Zeroizing` to wipe the expanded point on every exit path.
 fn derive_generator(prs: &[u8], ci: &[u8], sid: &[u8]) -> RistrettoPoint {
-    let gs = generator_string(prs, ci, sid);
-    let hash = Sha512::digest(&gs); // 64 bytes
-    let mut wide = [0u8; 64];
-    wide.copy_from_slice(&hash);
-    let g = RistrettoPoint::from_uniform_bytes(&wide);
-    wide.zeroize();
-    g
+    let gs = Zeroizing::new(generator_string(prs, ci, sid));
+    let mut digest = Sha512::digest(&gs[..]); // 64 bytes, PRS-derived
+    let mut wide = Zeroizing::new([0u8; 64]);
+    wide.copy_from_slice(&digest);
+    digest.as_mut_slice().zeroize();
+    RistrettoPoint::from_uniform_bytes(&wide)
 }
 
 /// `ISK = SHA512( lv_cat(ISK_DSI, sid, K) ‖ o_cat(lv_cat(Ya,ADa), lv_cat(Yb,ADb)) )`.
@@ -410,8 +415,10 @@ impl Initiator {
         sid[..16].copy_from_slice(&self.sid_a);
         sid[16..].copy_from_slice(&step2.sid_b);
 
-        let g = derive_generator(&self.prs, &self.ci, &sid);
-        let ya_pt = (ya * g).compress().to_bytes();
+        // R-T15(a)/R-P12: `g` is PRS-laden — wrap in `Zeroizing` so the expanded point
+        // is wiped on every exit path, including the decompress-error early-return below.
+        let g = Zeroizing::new(derive_generator(&self.prs, &self.ci, &sid));
+        let ya_pt = (ya * *g).compress().to_bytes();
 
         // R-T15(a)/R-P12: wipe the ephemeral scalar on the decompress-error early-return too
         // (mirrors the responder's recv_step3) — the `?` form would skip the zeroize below,
@@ -423,7 +430,9 @@ impl Initiator {
                 return Err(e);
             }
         };
-        let k_pt = ya * yb_pt;
+        // R-T15(a)/R-P12: the DH shared point `K` is as secret as its `k_bytes`
+        // serialization — `Zeroizing` wipes the expanded point, not only the bytes.
+        let k_pt = Zeroizing::new(ya * yb_pt);
         ya.zeroize();
         if k_pt.is_identity() {
             return Err(PakeError::Identity);
@@ -533,8 +542,9 @@ impl Responder {
         sid[..16].copy_from_slice(&step1.sid_a);
         sid[16..].copy_from_slice(&sid_b);
 
-        let g = derive_generator(&self.prs, &self.ci, &sid);
-        let yb_pt = (yb * g).compress().to_bytes();
+        // R-T15(a)/R-P12: `g` is PRS-laden — wipe the expanded point on drop.
+        let g = Zeroizing::new(derive_generator(&self.prs, &self.ci, &sid));
+        let yb_pt = (yb * *g).compress().to_bytes();
 
         let next = ResponderAwaitConfirm {
             yb_scalar: yb,
@@ -564,7 +574,8 @@ impl ResponderAwaitConfirm {
                 return Err(e);
             }
         };
-        let k_pt = self.yb_scalar * ya_pt;
+        // R-T15(a)/R-P12: wipe the expanded DH point `K`, not only its `k_bytes` form.
+        let k_pt = Zeroizing::new(self.yb_scalar * ya_pt);
         if k_pt.is_identity() {
             self.yb_scalar.zeroize();
             return Err(PakeError::Identity);

@@ -244,6 +244,23 @@ if [ -n "$r_t14_missing" ]; then
 else
   echo "  ok  R-T14 cross-backend cancellation-safety guarantee documented (mio/tokio cited at read site)"
 fi
+# R-S9 / R-T15(d) (§20): check_whitelist is inverted to DEFAULT-DENY — an unset or all-unparseable
+# whitelist BLOCKS (it does not pass), with an explicit 0.0.0.0/0 entry the auditable
+# connect-from-anywhere opt-out. The decision is factored into a pure `whitelist_admits` so
+# assert_startup_invariants (R-A4) asserts the "not default-open" invariant at runtime (an empty
+# whitelist MUST deny, else refuse to listen). The legacy default-ALLOW gate must be gone.
+r_t15d_missing=
+grep -q 'fn whitelist_admits' src/server/connection.rs    || r_t15d_missing="$r_t15d_missing admits-fn"
+grep -q 'Self::whitelist_admits' src/server/connection.rs || r_t15d_missing="$r_t15d_missing check-uses-admits"
+grep -q 'whitelist_admits(' src/rendezvous_mediator.rs    || r_t15d_missing="$r_t15d_missing a4-selftest"
+if grep -q '!whitelist.is_empty()' src/server/connection.rs; then
+  r_t15d_missing="$r_t15d_missing legacy-default-allow!"
+fi
+if [ -n "$r_t15d_missing" ]; then
+  echo "  FAIL R-S9/R-T15(d): default-deny whitelist incomplete:$r_t15d_missing"; rc=1
+else
+  echo "  ok  R-S9/R-T15(d) whitelist default-deny + R-A4 not-default-open self-test present"
+fi
 # R-T15(a) / R-P12: secret-zeroization in libs/pake — curve25519-dalek 4.1.3 impls the Zeroize
 # TRAIT but not Drop, so secrets not explicitly wiped linger on attacker-inducible abort/timeout
 # paths. The ISK master secret is wrapped in Zeroizing, the initiator's ephemeral scalar is wiped

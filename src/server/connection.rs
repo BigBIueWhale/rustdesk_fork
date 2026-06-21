@@ -1078,26 +1078,26 @@ impl Connection {
         }
     }
 
+    /// R-S9 / R-T15(d): the DEFAULT-DENY whitelist decision, factored pure (no `self`, no I/O) so
+    /// the R-A4 startup self-check can assert the default-deny invariant at runtime. On an exposed
+    /// host an unset or all-unparseable whitelist BLOCKS (returns `false`), it never passes; the
+    /// auditable connect-from-anywhere opt-out is an explicit `0.0.0.0` / `0.0.0.0/0` entry, else
+    /// the peer's IP MUST fall inside a configured CIDR. This is a fixed compile-time policy, not a
+    /// runtime toggle. CPace remains the real authentication gate (R-S1); the whitelist is the
+    /// IP-level conformance the keyed-path threat model wants (R-A4), never a substitute for it.
+    pub fn whitelist_admits(raw: &str, ip: std::net::IpAddr) -> bool {
+        let entries: Vec<&str> = raw.split(',').filter(|x| !x.is_empty()).collect();
+        entries.iter().any(|x| *x == "0.0.0.0" || *x == "0.0.0.0/0")
+            || entries
+                .iter()
+                .any(|x| IpCidr::from_str(x).map_or(false, |y| y.contains(ip)))
+    }
+
     async fn check_whitelist(&mut self, addr: &SocketAddr) -> bool {
-        let whitelist: Vec<String> = Config::get_option("whitelist")
-            .split(",")
-            .filter(|x| !x.is_empty())
-            .map(|x| x.to_owned())
-            .collect();
-        if !whitelist.is_empty()
-            && whitelist
-                .iter()
-                .filter(|x| x == &"0.0.0.0")
-                .next()
-                .is_none()
-            && whitelist
-                .iter()
-                .filter(|x| IpCidr::from_str(x).map_or(false, |y| y.contains(addr.ip())))
-                .next()
-                .is_none()
-        {
-            self.send_login_error("Your ip is blocked by the peer")
-                .await;
+        // R-S9 / R-T15(d): default-DENY — an unset or all-unparseable whitelist blocks (see
+        // `whitelist_admits`). The legacy behaviour passed an empty whitelist; that is inverted.
+        if !Self::whitelist_admits(&Config::get_option(keys::OPTION_WHITELIST), addr.ip()) {
+            self.send_login_error("Your ip is blocked by the peer").await;
             return false;
         }
         true

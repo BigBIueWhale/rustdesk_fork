@@ -92,6 +92,42 @@ fn assert_startup_invariants() {
         log::error!("R-A4/R-S9: no permanent password is set — refusing to listen");
         ok = false;
     }
+    // R-A4 / R-S9 / R-T15(d): assert the source whitelist is NOT default-open. This is a runtime
+    // regression-guard on the default-deny inversion — an empty whitelist MUST block; if a refactor
+    // flipped `check_whitelist` back to default-open, an empty whitelist would admit any source, so
+    // here it fails closed (refuse to listen). The TEST-NET-3 sample IP (RFC 5737) must be denied
+    // by an empty whitelist for the invariant to hold.
+    if crate::server::Connection::whitelist_admits(
+        "",
+        "203.0.113.1".parse::<std::net::IpAddr>().unwrap(),
+    ) {
+        log::error!(
+            "R-A4/R-S9: the source whitelist policy is default-OPEN (an empty whitelist admits) — refusing to listen"
+        );
+        ok = false;
+    }
+    // R-S9: surface the effective whitelist policy at startup so a default-deny lockout is never
+    // SILENT. An empty whitelist is a valid deny-all (not an error), but the operator MUST know
+    // inbound is fully blocked and how to open it.
+    {
+        let wl = Config::get_option(hbb_common::config::keys::OPTION_WHITELIST);
+        let entries: Vec<&str> = wl.split(',').filter(|x| !x.is_empty()).collect();
+        if entries.is_empty() {
+            log::warn!(
+                "R-S9: the source whitelist is EMPTY — default-deny is BLOCKING ALL inbound connections. \
+                 Set whitelist=0.0.0.0/0 for connect-from-anywhere (CPace remains the gate), or a CIDR to scope access."
+            );
+        } else if entries.iter().any(|x| *x == "0.0.0.0" || *x == "0.0.0.0/0") {
+            log::info!(
+                "R-S9: the source whitelist permits ANY source (explicit 0.0.0.0/0 opt-out); CPace is the authentication gate."
+            );
+        } else {
+            log::info!(
+                "R-S9: the source whitelist restricts inbound to {} CIDR(s).",
+                entries.len()
+            );
+        }
+    }
     // R-A4 / R-S16(d)(iv)(v): the second/third config funnels MUST carry no managed
     // override or preset credential — BUILTIN_SETTINGS (get_builtin_option) and
     // HARD_SETTINGS (the preset-password / conn-type funnel) MUST be empty, or a

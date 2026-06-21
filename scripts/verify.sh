@@ -665,6 +665,23 @@ if [ -n "$rx7otp_hits" ]; then
 else
   echo "  ok  R-X7 temporary/one-time-password machinery excised (Rust: store/generator/FFI/IPC/rotation/dead-keys; get_auto_password kept for the Hash challenge + salt)"
 fi
+# R-F4 (the direct port is a single PINNED compile-time constant, never a runtime knob): the listener
+# binds exactly one port, pinned to the literal 21118 (config::DIRECT_PORT) — NOT the inherited
+# RENDEZVOUS_PORT+2 derivation (which would silently shift the port and desync the §10.4 CPace CI KAT
+# be16(21118)=527e), and NOT a runtime `direct-access-port` option (an override R-S12 forbids). The
+# spec's R-A6 mandates exactly this check. Assert the const is 21118, get_direct_port returns the const,
+# and no direct-access-port config read exists anywhere.
+r_f4_missing=
+grep -qE 'pub const DIRECT_PORT: i32 = 21118;' libs/hbb_common/src/config.rs || r_f4_missing="$r_f4_missing const-21118"
+grep -qF 'config::DIRECT_PORT' src/rendezvous_mediator.rs                     || r_f4_missing="$r_f4_missing get_direct_port-returns-const"
+if grep -rInE 'get_option\([^)]*direct-access-port|OPTION_DIRECT_ACCESS_PORT' src libs --include='*.rs' 2>/dev/null | grep -vE ':[0-9]+:[[:space:]]*//' | grep -q .; then
+  r_f4_missing="$r_f4_missing direct-access-port-read-present"
+fi
+if [ -n "$r_f4_missing" ]; then
+  echo "  FAIL R-F4: the direct port must be the pinned compile-time literal 21118 (config::DIRECT_PORT), never the RENDEZVOUS_PORT+2 derivation or a runtime direct-access-port option:$r_f4_missing"; rc=1
+else
+  echo "  ok  R-F4 direct port pinned to the compile-time literal 21118 (get_direct_port returns config::DIRECT_PORT; no direct-access-port config read; CI KAT be16=527e holds)"
+fi
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod lan:R-X5 lan.rs residual (WoL send_wol + discover no-op; the discovery LISTENER is excised + hard-gated above — full removal is the R-G2 Discovered-tab/WoL-UI follow-on)' \

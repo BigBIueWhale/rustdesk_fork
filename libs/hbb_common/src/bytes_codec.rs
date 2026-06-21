@@ -41,6 +41,12 @@ impl BytesCodec {
         self.max_packet_length = n;
     }
 
+    /// The engaged frame cap (R-A5: never `usize::MAX` on a keyed stream — the fail-closed assert
+    /// at `FramedStream::set_session_keys` reads it back).
+    pub fn max_packet_length(&self) -> usize {
+        self.max_packet_length
+    }
+
     fn decode_head(&mut self, src: &mut BytesMut) -> io::Result<Option<usize>> {
         if src.is_empty() {
             return Ok(None);

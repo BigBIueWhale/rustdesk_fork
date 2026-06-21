@@ -119,6 +119,10 @@ impl SecretboxCodec {
     fn set_max_packet_length(&mut self, n: usize) {
         self.inner.set_max_packet_length(n);
     }
+
+    fn max_packet_length(&self) -> usize {
+        self.inner.max_packet_length()
+    }
 }
 
 impl Decoder for SecretboxCodec {
@@ -478,6 +482,15 @@ impl FramedStream {
     /// (R-P2/R-P10). The keys are role-oriented (the caller's send/recv slots),
     /// so a single key can never end up engaged in both directions.
     pub fn set_session_keys(&mut self, keys: DirectionalKeys) {
+        // R-A5: a keyed session stream MUST carry a BOUNDED frame cap before any keyed byte flows.
+        // The handshake (cpace.rs) sets MAX_SESSION_PACKET before handing the keys here, so the cap
+        // is never the BytesCodec `usize::MAX` default at this choke-point. Assert it fail-closed —
+        // an unbounded keyed read would be a speculative-allocation DoS (R-S7), and the assertion
+        // is what R-A5 mandates ("max_packet_length is set, not usize::MAX, on every connection").
+        assert!(
+            self.0.codec().max_packet_length() != usize::MAX,
+            "R-A5: keyed stream has an unbounded frame cap (usize::MAX) — the handshake must set MAX_SESSION_PACKET first"
+        );
         // R-T5: the cipher lives in the Framed-owned codec.
         self.0.codec_mut().cipher = Some(StreamCipher::Dual(DirectionalCipher::new(&keys)));
     }

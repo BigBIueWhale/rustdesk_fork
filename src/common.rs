@@ -561,14 +561,14 @@ pub struct CheckTestNatType {
 impl CheckTestNatType {
     pub fn new() -> Self {
         Self {
-            is_direct: Config::get_socks().is_none() && !config::use_ws(),
+            is_direct: Config::get_socks().is_none(),
         }
     }
 }
 
 impl Drop for CheckTestNatType {
     fn drop(&mut self) {
-        let is_direct = Config::get_socks().is_none() && !config::use_ws();
+        let is_direct = Config::get_socks().is_none();
         if self.is_direct != is_direct {
             test_nat_type();
         }

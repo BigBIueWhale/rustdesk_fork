@@ -144,8 +144,27 @@ echo "$out6" | grep -q 'PermissionInfo\|PeerInfo' \
 echo "$out6" | grep -q 'R-S17 host-proof VERIFIED' \
   || { echo "  FAIL R-S17: the responder's HostIdentity host-proof did not verify"; rc=1; }
 
+echo "== (7) R-A8 / R-T7: an INJECTED (forged) frame on the keyed stream is rejected by the AEAD =="
+out7=$("${RUN[@]}" bash -c '
+  export HOME=/tmp/rd7 RUSTDESK_BIND_LOOPBACK=1; mkdir -p "$HOME"
+  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" "0.0.0.0/0" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
+  ./target/debug/rustdesk --server >/tmp/srv.log 2>&1 & SRV=$!
+  sleep 6
+  # The probe keys, reaches the live session, then corrupts its cipher (distinct garbage keys) and
+  # sends a frame on the keyed stream — a forged/injected frame an attacker without the keys mimics.
+  ./target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok inject >/dev/null 2>&1
+  sleep 1
+  grep "Connection closed: decryption error" /tmp/srv.log | tail -1 || echo "(no decryption-error close)"
+  kill -TERM $SRV 2>/dev/null
+' || true)
+echo "$out7"
+# The server tears the connection down with "decryption error" — secretbox::open fails the Poly1305
+# tag (R-T7: every keyed frame authenticated), so the forged frame NEVER reaches the parser (R-A8).
+echo "$out7" | grep -q 'Connection closed: decryption error' \
+  || { echo "  FAIL R-A8/R-T7: an injected forged frame was NOT rejected by the AEAD"; rc=1; }
+
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) startup-warning AND session-enforcement + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) — ALL validated at RUNTIME."
+  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) startup-warning AND session-enforcement + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) + R-A8/R-T7 forged-frame rejection — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

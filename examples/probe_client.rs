@@ -13,7 +13,7 @@
 //!               proof is collapsed — empty `password`), to drive the post-key login flow.
 //!
 //! Usage: `probe_client <addr> <password> <ok|fail> [read|login]`  (exit 0 = matched expectation)
-use hbb_common::cpace::{run_initiator_with_transcript, verify_host_identity};
+use hbb_common::cpace::{run_initiator_with_transcript, verify_host_identity, DirectionalKeys};
 use hbb_common::message_proto::Message;
 use hbb_common::protobuf::Message as _; // parse_from_bytes / write_to_bytes
 use hbb_common::tcp::FramedStream;
@@ -27,7 +27,7 @@ fn main() {
     let pw = a.get(2).cloned().expect("password");
     let expect = a.get(3).map(String::as_str).unwrap_or("ok").to_string();
     let mode = a.get(4).map(String::as_str).unwrap_or("").to_string();
-    let do_read = mode == "read" || mode == "login";
+    let do_read = mode == "read" || mode == "login" || mode == "inject";
 
     let rt = hbb_common::tokio::runtime::Runtime::new().expect("tokio runtime");
     let (keyed, postkey) = rt.block_on(async {
@@ -82,6 +82,23 @@ fn main() {
                                 break;
                             }
                         }
+                    }
+                    if mode == "inject" {
+                        // R-A8 / R-T7: POST-KEY injection. Corrupt the cipher (engage DISTINCT
+                        // garbage keys — distinct to pass R-A5's no-single-key assert) and send a
+                        // frame on the KEYED stream. The server still holds the REAL keys, so its
+                        // AEAD MUST reject the frame fail-closed (secretbox::open fails the Poly1305
+                        // tag), poison the recv direction, and tear the connection down — an
+                        // unauthenticated/forged frame MUST NEVER reach the application parser.
+                        let garbage = DirectionalKeys {
+                            send: [0xFFu8; 32],
+                            recv: [0xEEu8; 32],
+                        };
+                        stream.set_session_keys(garbage);
+                        let _ = stream.send_raw(b"INJECTED-GARBAGE-KEY-FRAME".to_vec()).await;
+                        pk.push_str("[sent a garbage-key frame] ");
+                        // Hold briefly so the server processes + logs the AEAD rejection.
+                        let _ = stream.next_timeout(2500).await;
                     }
                 }
                 (true, pk)

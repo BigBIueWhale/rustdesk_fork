@@ -132,6 +132,10 @@ ra6_clean 'api/devices/deploy|api/devices/cli' 'R-SV6(c) device-deploy/assign eg
 # path). These worker symbols were mediator-internal and are now tree-wide absent — the
 # direct-only service entry (start_direct_only -> direct_server) is all that remains.
 ra6_clean 'handle_request_relay|handle_punch_hole|udp_nat_listen|punch_udp_hole|KcpStream::accept' 'R-D4 Stage 2 mediator relay/punch/KCP protocol' || rc=1
+# R-D6 / §18 (sovereignty): the box never phones home with audit logs. The connection/alarm/file
+# audit POST helpers (post_conn_audit/post_alarm_audit/post_file_audit -> <api-server>/api/audit/*)
+# are EXCISED — absent, not merely api-server-pinned — so an audit-egress leak cannot regress in.
+ra6_clean 'post_conn_audit|post_alarm_audit|post_file_audit' 'R-D6 audit phone-home (conn/alarm/file POST)' || rc=1
 # R-SV6(b)/R-SV3/R-X3 / §18: the HBBS heartbeat/sysinfo POST loop (start_hbbs_sync_async)
 # is excised — it POSTed get_sysinfo() to <api-server>/api/{heartbeat,sysinfo} and adopted
 # server `strategy` config via handle_config_options (R-X3's heartbeat re-home twin). The

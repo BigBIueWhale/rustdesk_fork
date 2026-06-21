@@ -136,6 +136,14 @@ ra6_clean 'handle_request_relay|handle_punch_hole|udp_nat_listen|punch_udp_hole|
 # audit POST helpers (post_conn_audit/post_alarm_audit/post_file_audit -> <api-server>/api/audit/*)
 # are EXCISED — absent, not merely api-server-pinned — so an audit-egress leak cannot regress in.
 ra6_clean 'post_conn_audit|post_alarm_audit|post_file_audit' 'R-D6 audit phone-home (conn/alarm/file POST)' || rc=1
+# R-SV3 / R-SV1 (§18 sovereignty): the version-check phone-home is DELETED structurally, not
+# neutered. Upstream's hbb_common `version_check_request` built a device-fingerprinted POST
+# (os/arch/device_id) to a HARDWIRED api.rustdesk.com/version endpoint — a global-reaching egress
+# the R-D6 api-server pin never covered, fired ~1s after launch by the Dart `checkUpdate`. That
+# caller + the egress worker were already gone and `check_software_update` neutered; this locks in
+# the BUILDER's removal so no version_check_request / VersionCheck{Request,Response} / hardwired
+# api.rustdesk.com endpoint survives in the binary (Dart-side excision comments are `//`-filtered).
+ra6_clean 'version_check_request|VersionCheckRequest|VersionCheckResponse|VER_TYPE_RUSTDESK|api\.rustdesk\.com' 'R-SV3 version-check phone-home (api.rustdesk.com builder)' || rc=1
 # R-SV6(b)/R-SV3/R-X3 / §18: the HBBS heartbeat/sysinfo POST loop (start_hbbs_sync_async)
 # is excised — it POSTed get_sysinfo() to <api-server>/api/{heartbeat,sysinfo} and adopted
 # server `strategy` config via handle_config_options (R-X3's heartbeat re-home twin). The

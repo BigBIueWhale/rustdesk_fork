@@ -7,7 +7,6 @@ pub use futures;
 pub use protobuf;
 pub use protos::message as message_proto;
 pub use protos::rendezvous as rendezvous_proto;
-use serde_derive::{Deserialize, Serialize};
 use std::{
     fs::File,
     io::{self, BufRead},
@@ -487,50 +486,14 @@ pub fn init_log(_is_async: bool, _name: &str) -> Option<flexi_logger::LoggerHand
     logger_holder
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
-pub struct VersionCheckRequest {
-    #[serde(default)]
-    pub os: String,
-    #[serde(default)]
-    pub os_version: String,
-    #[serde(default)]
-    pub arch: String,
-    #[serde(default)]
-    pub device_id: Vec<u8>,
-    #[serde(default)]
-    pub typ: String,
-}
-
-#[derive(Debug, Default, Deserialize, Serialize)]
-pub struct VersionCheckResponse {
-    #[serde(default)]
-    pub url: String,
-}
-
-pub const VER_TYPE_RUSTDESK_CLIENT: &str = "rustdesk-client";
-pub const VER_TYPE_RUSTDESK_SERVER: &str = "rustdesk-server";
-
-pub fn version_check_request(typ: String) -> (VersionCheckRequest, String) {
-    const URL: &str = "https://api.rustdesk.com/version/latest";
-
-    use sysinfo::System;
-    let system = System::new();
-    let os = system.distribution_id();
-    let os_version = system.os_version().unwrap_or_default();
-    let arch = std::env::consts::ARCH.to_string();
-    #[allow(deprecated)]
-    let device_id = fingerprint::get_fingerprint(None, None);
-    (
-        VersionCheckRequest {
-            os,
-            os_version,
-            arch,
-            device_id,
-            typ,
-        },
-        URL.to_string(),
-    )
-}
+// R-SV3 / R-SV1 (§18 sovereignty): the version-check phone-home is DELETED, not neutered.
+// Upstream's `version_check_request` built a device-fingerprinted POST (os/arch/device_id)
+// to a HARDWIRED upstream version endpoint — a global-reaching egress the R-D6 api-server
+// pin never covered, fired ~1s after launch by the Dart `checkUpdate`. That caller + the
+// egress worker are already gone (R-X1) and `check_software_update` is neutered
+// (src/common.rs); removing the request builder, its hardwired URL, and the
+// VersionCheck{Request,Response} types makes the endpoint structurally absent from the binary
+// (R-SV1: "the binary cannot connect because the code is gone"), not merely uncalled.
 
 pub fn time_based_rand() -> u32 {
     let nanos = std::time::SystemTime::now()

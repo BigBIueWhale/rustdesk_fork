@@ -610,6 +610,26 @@ if [ -n "$rx7a_hits" ]; then
 else
   echo "  ok  R-X7a/R-G1 no flutter UI writes the pinned verification-method/approve-mode selectors (removed not greyed; display-reads only)"
 fi
+# R-S5 / R-A3 (seal the set_raw plaintext-tunnel escape — Appendix C #4, a Tier-1 finding): upstream's
+# port-forward/RDP tunnel calls FramedStream::set_raw AFTER login to DROP the secretbox, so the
+# tunnelled bytes cross an otherwise-keyed session in plaintext ("the plaintext path is deleted, not
+# defaulted off", §1; acceptance criterion 3). The fork seals it in two layers: (1) enable-tunnel=N is
+# pinned in PINNED_SETTINGS (gated above under R-S16), so the only set_raw caller — the port-forward
+# loop (connection.rs try_port_forward_loop) — is policy-unreachable; and (2) FramedStream::set_raw is
+# made FAIL-CLOSED — it asserts the codec carries no engaged cipher (cipher.is_none()) and PANICS
+# rather than downgrade a keyed stream (R-A3, "absent or assert-only" per R-A6). Layer 2 is the
+# structural backstop: were a future edit to re-reach set_raw on a keyed stream, it aborts instead of
+# leaking plaintext. Gate that the R-A3 downgrade-refusal assert stays present — its removal would
+# silently restore the plaintext tunnel, so the absence IS the regression (a presence gate).
+r_s5_missing=
+grep -q 'fn set_raw' libs/hbb_common/src/tcp.rs                                || r_s5_missing="$r_s5_missing set_raw-fn"
+grep -qF 'cipher.is_none()' libs/hbb_common/src/tcp.rs                          || r_s5_missing="$r_s5_missing cipher-guard"
+grep -qF 'R-A3: set_raw on a keyed session stream' libs/hbb_common/src/tcp.rs   || r_s5_missing="$r_s5_missing a3-assert"
+if [ -n "$r_s5_missing" ]; then
+  echo "  FAIL R-S5/R-A3: the set_raw plaintext-tunnel seal regressed (FramedStream::set_raw must fail-closed assert cipher.is_none(), refusing to downgrade a keyed session stream):$r_s5_missing"; rc=1
+else
+  echo "  ok  R-S5/R-A3 set_raw seal intact (fail-closed assert refuses to strip a keyed session stream; enable-tunnel=N pins the only caller unreachable)"
+fi
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod lan:R-X5 lan.rs residual (WoL send_wol + discover no-op; the discovery LISTENER is excised + hard-gated above — full removal is the R-G2 Discovered-tab/WoL-UI follow-on)' \

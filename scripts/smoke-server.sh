@@ -24,7 +24,9 @@
 # The permanent password is seeded by the TEST-ONLY `examples/seed_password` (the production
 # `--password` CLI is install-privilege-gated and refuses in a container).
 #
-# Usage:  scripts/smoke-server.sh
+# Usage:  scripts/smoke-server.sh           (the fast default path)
+#         SMOKE_DECAY=1 scripts/smoke-server.sh   (also runs stage 10 — the R-A8 limiter-DECAY proof,
+#                                                  which waits out the real 60s window, ~75 s slower)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 IMG=rd-devcheck
@@ -224,8 +226,36 @@ else
     || { echo "  FAIL R-A9: the LoginRequest canary appeared as PLAINTEXT on the wire — the session is NOT encrypted"; rc=1; }
 fi
 
+# Opt-in (SMOKE_DECAY=1): the R-A8 limiter-DECAY proof waits out the real 60s GUESS_WINDOW, so it is
+# kept off the default fast path. It adds ~75 s but exercises the genuine production window (no
+# test-only time-injection into the security-critical limiter).
+DECAY_NOTE=""
+if [ "${SMOKE_DECAY:-0}" = 1 ]; then
+echo "== (10) R-A8 DECAY: a tripped per-source block DECAYS after the window (no PERMANENT lockout) =="
+out10=$("${RUN[@]}" bash -c '
+  export HOME=/tmp/rd10 RUSTDESK_BIND_LOOPBACK=1; mkdir -p "$HOME"
+  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" "0.0.0.0/0" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
+  ./target/debug/rustdesk --server >/tmp/srv.log 2>&1 & SRV=$!
+  sleep 6
+  # Trip the per-source block: 11 WRONG guesses from 127.0.0.1 (> MAX_GUESSES_PER_WINDOW=10) in <60s.
+  for i in $(seq 11); do ./target/debug/examples/probe_client "127.0.0.1:21118" "WRONG-PW-$i-zz" fail >/dev/null 2>&1; done
+  echo "BLOCKED_NOW: $(./target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok 2>&1 | grep -oE "keying ok=(true|false)")"
+  echo "(waiting 64s for the 60s GUESS_WINDOW to lapse...)"; sleep 64
+  echo "DECAYED_AFTER_WINDOW: $(./target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok 2>&1 | grep -oE "keying ok=(true|false)")"
+  kill -TERM $SRV 2>/dev/null
+' || true)
+echo "$out10"
+# The block must be live first (precondition), then self-heal once the window lapses. A limiter that
+# never decays is a PERMANENT lockout — the cardinal "never lock the owner out" violation (R-S10).
+echo "$out10" | grep -q 'BLOCKED_NOW: keying ok=false' \
+  || { echo "  FAIL R-A8: the source was not blocked after the flood (decay-test precondition)"; rc=1; }
+echo "$out10" | grep -q 'DECAYED_AFTER_WINDOW: keying ok=true' \
+  || { echo "  FAIL R-A8: the block did NOT decay after the 60s window — a PERMANENT lockout (cardinal owner-safety violation)"; rc=1; }
+DECAY_NOTE=" + R-A8 limiter-decay (tripped block self-heals after the 60s window)"
+fi
+
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) startup-warning AND session-enforcement + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire) — ALL validated at RUNTIME."
+  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) startup-warning AND session-enforcement + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

@@ -164,6 +164,17 @@ if [ -n "$r_t1_missing" ]; then
 else
   echo "  ok  R-T1/R-T12 connection-flood bound + flood-safe observability present"
 fi
+# R-T7 (§20): every frame on a KEYED (Dual) stream MUST be AEAD-authenticated — the ≤1-byte
+# decrypt bypass is removed from the Dual arm (the one path by which a byte could reach the
+# application parser unauthenticated; also the closure of the unkeyed→keyed boundary, R-T6).
+# The legacy single-key Encrypt::dec ≤1-byte (the dead rendezvous health-check heartbeat) may
+# remain, so this asserts AT MOST ONE `bytes.len() <= 1` in tcp.rs (the keyed Dual one is gone).
+r_t7_n=$(grep -c 'bytes.len() <= 1' libs/hbb_common/src/tcp.rs 2>/dev/null || echo 99)
+if [ "$r_t7_n" -gt 1 ]; then
+  echo "  FAIL R-T7: the keyed (Dual) <=1-byte decrypt bypass must be removed (found $r_t7_n in tcp.rs)"; rc=1
+else
+  echo "  ok  R-T7 keyed-stream <=1-byte AEAD bypass removed ($r_t7_n legacy Encrypt occurrence left)"
+fi
 # R-P5 / R-SV4(b): the SignedId <-> PublicKey device-identity key bootstrap is removed. The
 # viewer's `secure_connection` (the only SignedId user) + the whole initiator-side
 # rendezvous/relay/NAT-punch cluster it lived in (_start_inner/connect/request_relay/

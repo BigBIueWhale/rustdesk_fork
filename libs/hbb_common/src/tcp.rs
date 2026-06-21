@@ -55,10 +55,13 @@ impl StreamCipher {
         match self {
             StreamCipher::Single(e) => e.dec(bytes),
             StreamCipher::Dual(d) => {
-                // Mirror Encrypt::dec: pass through tiny (<=1 byte) control frames.
-                if bytes.len() <= 1 {
-                    return Ok(());
-                }
+                // R-T7 (§20): authenticate EVERY frame on the keyed stream — there is no
+                // ≤1-byte passthrough. A genuine sealed frame is always >= MACBYTES (16 bytes:
+                // seal appends a 16-byte tag even to a 0-byte plaintext), so any shorter frame
+                // cannot be a valid ciphertext and MUST fail closed at the AEAD — closing the
+                // one path by which a byte could reach the application parser unauthenticated
+                // (also the worst-case carryover channel for R-T6). secretbox::open rejects
+                // len < MACBYTES, so a tiny injected frame is a clean decryption error.
                 match d.open(bytes) {
                     Ok(res) => {
                         bytes.clear();

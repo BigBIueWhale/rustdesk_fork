@@ -78,6 +78,14 @@ ra6_clean 'direct-ok'                                                     'R-P3 
 ra6_clean 'RUSTDESK_FORCED_DISPLAY_SERVER'                                'R-X12 display-server knob' || rc=1
 ra6_clean 'gtk_sudo|run_cmds_privileged|"-gtk-sudo"'                      'R-X11 gtk_sudo elevation'  || rc=1
 ra6_clean 'start_uinput_service'                                         'R-X13 dormant uinput listener' || rc=1
+# R-X14 (Appendix C #17, a Tier-1-class remote root-context PAM oracle): the os_login -> PAM
+# desktop-session-start in linux_desktop_manager.rs is EXCISED. Upstream let a peer's
+# LoginRequest.os_login drive a real PAM credential check + a root window-manager-launch script to
+# spawn an X session as an arbitrary OS account — on the plaintext direct path BEFORE the password
+# check. The whole X-session-spawn + PAM subsystem is removed (linux_desktop_manager collapsed to
+# seat0 capture-discovery only; the connection wrapper ignores os_login). These tokens MUST stay
+# absent (the capture-side discovery — get_username/is_headless/seat0 — is kept, R-S14).
+ra6_clean 'pam::Client|try_start_x_session|start_x_session|start_x11|add_xauth_cookie|pam_get_service_name' 'R-X14 os_login->PAM desktop-session-start (X-session spawn)' || rc=1
 # R-X7 / §18: the 2FA machinery is FULLY excised. Responder side: the `require_2fa` field, the
 # Auth2fa gate/handler, the trusted-device bypass, the raii session-2FA state (2FA was
 # pinned-off-dead: `2fa`="" so require_2fa was always None ⇒ every branch unreachable). Now also:

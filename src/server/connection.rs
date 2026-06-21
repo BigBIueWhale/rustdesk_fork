@@ -4898,14 +4898,14 @@ impl LinuxHeadlessHandle {
         }
     }
 
-    pub fn try_start_desktop(&mut self, os_login: Option<&OSLogin>) -> String {
+    pub fn try_start_desktop(&mut self, _os_login: Option<&OSLogin>) -> String {
+        // R-X14: ignore the peer-supplied os_login entirely — the controlled side never spawns an X
+        // session or authenticates a peer OS credential. The PAM/session-spawn path is excised from
+        // linux_desktop_manager (Appendix C #17), so the collapsed call only reports whether a seat0
+        // desktop session already exists for capture (R-S14). On the shipped build allow-linux-headless
+        // is pinned off (R-S16), so this returns "".
         if self.is_headless_allowed {
-            match os_login {
-                Some(os_login) => {
-                    linux_desktop_manager::try_start_desktop(&os_login.username, &os_login.password)
-                }
-                None => linux_desktop_manager::try_start_desktop("", ""),
-            }
+            linux_desktop_manager::try_start_desktop("", "")
         } else {
             "".to_string()
         }

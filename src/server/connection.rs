@@ -1077,7 +1077,16 @@ impl Connection {
     /// runtime toggle. CPace remains the real authentication gate (R-S1); the whitelist is the
     /// IP-level conformance the keyed-path threat model wants (R-A4), never a substitute for it.
     pub fn whitelist_admits(raw: &str, ip: std::net::IpAddr) -> bool {
-        let entries: Vec<&str> = raw.split(',').filter(|x| !x.is_empty()).collect();
+        // Trim each entry: a natural comma-space list ("a.b.c.0/24, d.e.f.0/8") must honor every
+        // entry — without the trim, `IpCidr::from_str(" d.e.f.0/8")` fails and that subnet is
+        // silently dropped, leaving the admin's whitelist quietly half-applied (fail-closed, but
+        // not what was configured). Trimming only ever lets an INTENDED entry parse; a malformed
+        // token still fails closed, so it cannot widen access.
+        let entries: Vec<&str> = raw
+            .split(',')
+            .map(|x| x.trim())
+            .filter(|x| !x.is_empty())
+            .collect();
         entries.iter().any(|x| *x == "0.0.0.0" || *x == "0.0.0.0/0")
             || entries
                 .iter()
@@ -5278,4 +5287,45 @@ mod test {
         assert_eq!(pos.y, 510);
     }
 
+}
+
+#[cfg(test)]
+mod whitelist_admits_tests {
+    use super::*;
+
+    fn ip(s: &str) -> std::net::IpAddr {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn default_deny_unset_or_malformed() {
+        // R-S9/R-T15(d): empty / malformed / out-of-range => DENY (fail-closed).
+        assert!(!Connection::whitelist_admits("", ip("1.2.3.4")));
+        assert!(!Connection::whitelist_admits("garbage", ip("1.2.3.4")));
+        assert!(!Connection::whitelist_admits("10.0.0.0/8", ip("11.1.2.3")));
+    }
+
+    #[test]
+    fn explicit_opt_out_admits_any() {
+        assert!(Connection::whitelist_admits("0.0.0.0", ip("1.2.3.4")));
+        assert!(Connection::whitelist_admits("0.0.0.0/0", ip("203.0.113.9")));
+        // the explicit connect-from-anywhere opt-out admits IPv6 too
+        assert!(Connection::whitelist_admits("0.0.0.0/0", ip("2001:db8::1")));
+    }
+
+    #[test]
+    fn cidr_match_v4_and_v6() {
+        assert!(Connection::whitelist_admits("10.0.0.0/8", ip("10.1.2.3")));
+        assert!(!Connection::whitelist_admits("10.0.0.0/8", ip("11.1.2.3")));
+        assert!(Connection::whitelist_admits("2001:db8::/32", ip("2001:db8::5")));
+    }
+
+    #[test]
+    fn entries_are_trimmed() {
+        // A natural "a, b" comma-space list MUST honor EVERY entry, not silently drop the
+        // whitespace-padded ones (which would leave the admin's whitelist quietly half-applied).
+        assert!(Connection::whitelist_admits("192.168.0.0/16, 10.0.0.0/8", ip("10.1.2.3")));
+        assert!(Connection::whitelist_admits("1.0.0.0/8 , 2.0.0.0/8", ip("2.3.4.5")));
+        assert!(Connection::whitelist_admits(" 0.0.0.0/0 ", ip("8.8.8.8")));
+    }
 }

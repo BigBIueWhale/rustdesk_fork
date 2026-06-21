@@ -444,7 +444,12 @@ use std::net::IpAddr;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-/// Sliding window for the online-guess limiter.
+/// Fixed (tumbling) per-source window for the online-guess limiter — NOT sliding: the window
+/// start is not advanced per failure (see `record_guess_failure`), so at most
+/// `MAX_GUESSES_PER_WINDOW` confirmation failures per `GUESS_WINDOW` per source IP are allowed
+/// (R-S10), with a ~2x worst case straddling a boundary. That is immaterial: the CPace password is
+/// the real gate (one online guess per attempt, nothing offline-crackable); this is only DoS-safe
+/// rate-limiting, fail-cheap before the scalar-mult (R-P14c) — defence-in-depth, not the auth.
 const GUESS_WINDOW: Duration = Duration::from_secs(60);
 /// Confirmation failures allowed from one source within a window before it is shed.
 const MAX_GUESSES_PER_WINDOW: u32 = 10;

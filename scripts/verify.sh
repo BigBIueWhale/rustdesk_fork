@@ -342,7 +342,7 @@ fi
 # process silently join the group and steal inbound connections (invisible to R-A4's own-process
 # /proc self-check, violating R-D3 "no second listener"). It binds via the dedicated
 # new_listener_socket (SO_REUSEADDR on non-Windows only; Windows omits it for an exclusive bind).
-if grep -A4 'pub async fn listen_any_v4' libs/hbb_common/src/tcp.rs | grep -q 'new_listener_socket'; then
+if grep -A14 'pub async fn listen_any_v4' libs/hbb_common/src/tcp.rs | grep -q 'new_listener_socket'; then
   echo "  ok  R-T11 public listener binds via REUSEPORT-free new_listener_socket"
 else
   echo "  FAIL R-T11: listen_any_v4 must bind via new_listener_socket (no SO_REUSEPORT)"; rc=1

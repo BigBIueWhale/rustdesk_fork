@@ -389,6 +389,18 @@ if [ "$r_a2_n" -ne 1 ]; then
 else
   echo "  ok  R-A2/R-S2 single authorization choke-point (self.authorized=true x1; privileged handlers gated)"
 fi
+# Secrets-at-rest: the config writer `store_path` MUST create files mode 0o600 (owner-only). Every
+# password-equivalent lives in a config file — the box's permanent-password PRS (main Config) and the
+# viewer's per-peer password/password_prs + os/rdp creds (PeerConfig), all encrypted under the
+# machine-UUID wrapper, but the FILE MODE is the at-rest perimeter against other local users. Audited:
+# both go through `store_path` -> `confy::store_path_perms(.., from_mode(0o600))`. Assert it survives;
+# a regression to a world/group-readable mode would expose the password-equivalent to any local account.
+r_secrets_n=$(grep -c 'from_mode(0o600)' libs/hbb_common/src/config.rs 2>/dev/null || echo 0)
+if [ "$r_secrets_n" -lt 1 ]; then
+  echo "  FAIL secrets-at-rest: config store_path must write mode 0o600 (from_mode(0o600) missing in config.rs)"; rc=1
+else
+  echo "  ok  secrets-at-rest config files written mode 0o600 (owner-only; permanent-password PRS + peer creds)"
+fi
 # R-SV4(b)/R-S13(d)/R-SV10 (no rendezvous path in either role): the initiator-side
 # rendezvous/relay/NAT-punch cluster (Client::_start_inner / secure_connection /
 # udp_nat_connect) AND the responder-side relay-dialer (create_relay_connection — which dialed

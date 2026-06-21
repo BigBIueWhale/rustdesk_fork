@@ -289,11 +289,13 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   }
 
   buildPasswordBoard2(BuildContext context, ServerModel model) {
-    RxBool refreshHover = false.obs;
+    // R-G4 / R-X7 / R-G1: the rotating OTP credential is EXCISED (R-X7 removed the temporary
+    // password), and verification-method is pinned use-permanent-password (R-S16), so this board
+    // only ever shows the PERMANENT password. The inherited OTP label + the rotate/refresh button
+    // were dead-under-the-pin surface for a feature that no longer exists — removed, not greyed
+    // (R-G1), and the mislabel corrected (R-G3: misreporting a credential is worse than omitting).
     RxBool editHover = false.obs;
     final textColor = Theme.of(context).textTheme.titleLarge?.color;
-    final showOneTime = model.approveMode != 'click' &&
-        model.verificationMethod != kUsePermanentPassword;
     return Container(
       margin: EdgeInsets.only(left: 20.0, right: 16, top: 13, bottom: 13),
       child: Row(
@@ -312,7 +314,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   AutoSizeText(
-                    translate("One-time Password"),
+                    translate("Password"),
                     style: TextStyle(
                         fontSize: 14, color: textColor?.withOpacity(0.5)),
                     maxLines: 1,
@@ -322,11 +324,9 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                       Expanded(
                         child: GestureDetector(
                           onDoubleTap: () {
-                            if (showOneTime) {
-                              Clipboard.setData(
-                                  ClipboardData(text: model.serverPasswd.text));
-                              showToast(translate("Copied"));
-                            }
+                            Clipboard.setData(
+                                ClipboardData(text: model.serverPasswd.text));
+                            showToast(translate("Copied"));
                           },
                           child: TextFormField(
                             controller: model.serverPasswd,
@@ -340,23 +340,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                           ).workaroundFreezeLinuxMint(),
                         ),
                       ),
-                      if (showOneTime)
-                        AnimatedRotationWidget(
-                          onPressed: () => bind.mainUpdateTemporaryPassword(),
-                          child: Tooltip(
-                            message: translate('Refresh Password'),
-                            child: Obx(() => RotatedBox(
-                                quarterTurns: 2,
-                                child: Icon(
-                                  Icons.refresh,
-                                  color: refreshHover.value
-                                      ? textColor
-                                      : Color(0xFFDDDDDD),
-                                  size: 22,
-                                ))),
-                          ),
-                          onHover: (value) => refreshHover.value = value,
-                        ).marginOnly(right: 8, top: 4),
                       if (!bind.isDisableSettings())
                         InkWell(
                           child: Tooltip(

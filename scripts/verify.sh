@@ -503,6 +503,25 @@ if [ -n "$rr2a_bad" ]; then
 else
   echo "  ok  R-R2a AppImage + Flatpak packaging excised (.deb + systemd is the sole Linux model)"
 fi
+# R-SV8 (§18 sovereignty, MUST): no Firebase / FCM / Google-services on ANY artifact (iOS source +
+# Android). The iOS GoogleService-Info.plist shipped LIVE Google creds (API_KEY / GCM_SENDER_ID /
+# GOOGLE_APP_ID) + DATABASE_URL https://rustdesk.firebaseio.com, bundled at the Xcode/CocoaPods
+# layer — invisible to cargo/cfg. The push entitlements (aps-environment APNs + wifi-info SSID
+# fingerprint) are already stripped (Runner.entitlements is an empty dict) and Android is
+# google-services-free; this locks in the residual creds-plist deletion. (build_fdroid.sh's
+# gms/firebase STRIP sed, the spec, and the entitlements R-SV8 comment legitimately NAME the
+# tokens — the checks below target the actual creds/endpoint/entitlement, not those mentions.)
+rsv8_bad=
+[ -e flutter/ios/Runner/GoogleService-Info.plist ] && rsv8_bad="$rsv8_bad ios-creds-plist"
+[ -n "$(find flutter/android -name google-services.json 2>/dev/null)" ] && rsv8_bad="$rsv8_bad android-google-services"
+grep -rqIE 'firebaseio\.com|IS_GCM_ENABLED|GOOGLE_APP_ID' flutter 2>/dev/null && rsv8_bad="$rsv8_bad firebase-creds/endpoint"
+grep -qE '<key>' flutter/ios/Runner/Runner.entitlements 2>/dev/null && rsv8_bad="$rsv8_bad ios-push-entitlement"
+grep -qE '^[[:space:]]*firebase_' flutter/pubspec.yaml 2>/dev/null && rsv8_bad="$rsv8_bad firebase-dep"
+if [ -n "$rsv8_bad" ]; then
+  echo "  FAIL R-SV8: Firebase/FCM/Google-services residue (MUST be absent on every artifact):$rsv8_bad"; rc=1
+else
+  echo "  ok  R-SV8 no Firebase/FCM/Google-services (iOS creds plist + push entitlements + Android all absent)"
+fi
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod lan:R-X5 lan.rs residual (WoL send_wol + discover no-op; the discovery LISTENER is excised + hard-gated above — full removal is the R-G2 Discovered-tab/WoL-UI follow-on)' \

@@ -1,26 +1,27 @@
-//! TEST-ONLY seeder for the docker-loopback runtime tests (R-B4 socket-surface / R-T9 drain /
-//! the two-process rig). NOT shipped — an `examples/` binary, never linked into a release.
+//! TEST-ONLY seeder for the docker-loopback runtime tests. NOT shipped.
 //!
-//! A headless `rustdesk --server` refuses to listen until a PRS-usable permanent password is set
-//! (R-A4 fail-closed startup), and the production `--password` CLI is install-privilege-gated
-//! (`core_main.rs`: `is_installed() && is_root()`), which a test container is not. This calls the
-//! library setter `Config::set_permanent_password` DIRECTLY — the same at-rest storage the CLI
-//! ultimately writes — so a test container can seed the credential and let the server get past
-//! R-A4 and actually BIND, enabling the `ss`/`/proc` socket-surface check and the SIGTERM drain.
+//! Seeds the at-rest config a headless `rustdesk --server` reads, so a test container can get the
+//! server past the R-A4 fail-closed startup (it refuses without a permanent password) and, with an
+//! optional whitelist, past the R-S9 default-deny so a keyed session can be ADMITTED. It calls the
+//! library setters directly (the production `--password` CLI is install-privilege-gated and refuses
+//! in a container). Same `$HOME` + APP_NAME "RustDesk" => same config path as the server.
 //!
-//! It writes the SAME at-rest config the server reads: same `$HOME`, and `APP_NAME` defaults to
-//! "RustDesk" for both (this seeder does not change it), so the config path matches.
-//!
-//! Usage: `cargo run --example seed_password --features linux-pkg-config -- <password>`
+//! Usage: `cargo run --example seed_password --features linux-pkg-config -- <password> [whitelist]`
 fn main() {
-    let pw = std::env::args()
-        .nth(1)
-        .expect("usage: seed_password <password>");
-    let ok = hbb_common::config::Config::set_permanent_password(&pw);
+    let a: Vec<String> = std::env::args().collect();
+    let pw = a.get(1).expect("usage: seed_password <password> [whitelist]");
+    let ok = hbb_common::config::Config::set_permanent_password(pw);
     let prs_empty = hbb_common::config::Config::get_permanent_password_prs().is_empty();
     println!("seed_password: set_permanent_password ok={ok}, prs_empty={prs_empty}");
     assert!(
         ok && !prs_empty,
         "seed_password: the credential did not round-trip into at-rest storage"
     );
+
+    if let Some(wl) = a.get(2) {
+        hbb_common::config::Config::set_option("whitelist".to_string(), wl.to_string());
+        let got = hbb_common::config::Config::get_option("whitelist");
+        println!("seed_password: set whitelist={wl:?} (read back {got:?})");
+        assert_eq!(&got, wl, "seed_password: whitelist did not round-trip");
+    }
 }

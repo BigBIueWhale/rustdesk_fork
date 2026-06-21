@@ -124,8 +124,24 @@ echo "$out5"
 echo "$out5" | grep -q 'Your ip is blocked by the peer' \
   || { echo "  FAIL R-T15(d): a fully-keyed connection was NOT denied by the empty default-deny whitelist"; rc=1; }
 
+echo "== (6) FULL SESSION (R-S6/R-S2): a keyed client + an empty-password LoginRequest is AUTHORIZED (whitelist=0.0.0.0/0) =="
+out6=$("${RUN[@]}" bash -c '
+  export HOME=/tmp/rd6 RUSTDESK_BIND_LOOPBACK=1; mkdir -p "$HOME"
+  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" "0.0.0.0/0" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
+  ./target/debug/rustdesk --server >/tmp/srv.log 2>&1 & SRV=$!
+  sleep 6
+  ./target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok login 2>&1 | grep "post-key"
+  kill -TERM $SRV 2>/dev/null
+' || true)
+echo "$out6"
+# An authorized session emits PermissionInfo (session-setup) — proving the keyed edge IS the
+# authorization (R-S6: the password proof is collapsed into the PAKE; the empty-password
+# LoginRequest still authorizes because CPace already authenticated, and the whitelist admits).
+echo "$out6" | grep -q 'PermissionInfo\|PeerInfo' \
+  || { echo "  FAIL R-S6: a keyed empty-password LoginRequest did NOT authorize / start a session"; rc=1; }
+
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) startup-warning AND session-enforcement + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed — ALL validated at RUNTIME."
+  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) startup-warning AND session-enforcement + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S6 keyed-edge authorization (full session) — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

@@ -2,18 +2,20 @@
 //!
 //! Connects to a loopback `--server`, runs the CPace handshake (`run_initiator`) with a password,
 //! and reports whether KEYING succeeded — runtime-validating, end-to-end against the REAL server:
-//!   - R-A1 / R-S1 : the mandatory CPace keying choke-point — a correct password keys;
+//!   - R-A1 / R-S1   : the mandatory CPace keying choke-point — a correct password keys;
 //!   - R-P3 / R-P14c : a WRONG password is refused (key-confirmation fails, no key derived).
 //! (Keying runs BEFORE `check_whitelist`, so the probe keys regardless of the whitelist policy.)
 //!
-//! With a 4th arg `read`, after keying it engages the session keys and reads ONE post-key message,
-//! printing its union — to observe the server's post-key flow at runtime (the R-T15(d) default-deny
-//! ENFORCEMENT on a keyed connection: an empty whitelist yields a `LoginResponse{error}`, vs the
-//! legacy `Hash` emission when admitted).
+//! 4th arg modes (after keying):
+//!   - `read`  : engage the session keys and read the post-key flow (observe the R-T15(d)
+//!               default-deny ENFORCEMENT on a keyed connection, or the legacy `Hash` on admit);
+//!   - `login` : also send a minimal `LoginRequest` (CPace already authenticated, so the password
+//!               proof is collapsed — empty `password`), to drive the post-key login flow.
 //!
-//! Usage: `probe_client <addr> <password> <ok|fail> [read]`  (exit 0 = matched expectation)
+//! Usage: `probe_client <addr> <password> <ok|fail> [read|login]`  (exit 0 = matched expectation)
 use hbb_common::cpace::run_initiator;
-use hbb_common::protobuf::Message as _; // for Message::parse_from_bytes
+use hbb_common::message_proto::Message;
+use hbb_common::protobuf::Message as _; // parse_from_bytes / write_to_bytes
 use hbb_common::tcp::FramedStream;
 
 fn main() {
@@ -21,10 +23,11 @@ fn main() {
     let addr = a
         .get(1)
         .cloned()
-        .expect("usage: probe_client <addr> <password> <ok|fail> [read]");
+        .expect("usage: probe_client <addr> <password> <ok|fail> [read|login]");
     let pw = a.get(2).cloned().expect("password");
     let expect = a.get(3).map(String::as_str).unwrap_or("ok").to_string();
-    let read_postkey = a.get(4).map(|s| s == "read").unwrap_or(false);
+    let mode = a.get(4).map(String::as_str).unwrap_or("").to_string();
+    let do_read = mode == "read" || mode == "login";
 
     let rt = hbb_common::tokio::runtime::Runtime::new().expect("tokio runtime");
     let (keyed, postkey) = rt.block_on(async {
@@ -35,20 +38,27 @@ fn main() {
                 std::process::exit(2);
             }
         };
-        // CPace initiator: sends step1 first, so the client drives the handshake the responder awaits.
         match run_initiator(&mut stream, &pw).await {
             Ok(keys) => {
                 let mut pk = String::new();
-                if read_postkey {
+                if do_read {
                     stream.set_session_keys(keys); // engage the two-key cipher
-                    for i in 0..5 {
+                    if mode == "login" {
+                        use hbb_common::message_proto::LoginRequest;
+                        let mut lr = LoginRequest::new();
+                        lr.my_id = "probe-id".to_string();
+                        lr.my_name = "probe".to_string();
+                        lr.version = "1.4.0".to_string();
+                        lr.my_platform = "Linux".to_string();
+                        let mut msg = Message::new();
+                        msg.set_login_request(lr);
+                        let _ = stream.send_raw(msg.write_to_bytes().unwrap_or_default()).await;
+                    }
+                    for i in 0..6 {
                         match stream.next_timeout(3000).await {
                             Some(Ok(bytes)) => {
-                                let u = match hbb_common::message_proto::Message::parse_from_bytes(&bytes) {
-                                    Ok(msg) => {
-                                        let s = format!("{:?}", msg.union);
-                                        s.chars().take(180).collect::<String>()
-                                    }
+                                let u = match Message::parse_from_bytes(&bytes) {
+                                    Ok(m) => format!("{:?}", m.union).chars().take(140).collect::<String>(),
                                     Err(e) => format!("PARSE_ERR {e}"),
                                 };
                                 pk.push_str(&format!("[{i} len={} {u}] ", bytes.len()));
@@ -71,8 +81,8 @@ fn main() {
     });
 
     println!("probe_client: keying ok={keyed} (expected={expect})");
-    if read_postkey {
-        println!("probe_client: post-key union = {postkey}");
+    if do_read {
+        println!("probe_client: post-key = {postkey}");
     }
 
     let pass = match expect.as_str() {

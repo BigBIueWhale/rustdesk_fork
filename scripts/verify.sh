@@ -261,6 +261,20 @@ if [ -n "$r_t15d_missing" ]; then
 else
   echo "  ok  R-S9/R-T15(d) whitelist default-deny + R-A4 not-default-open self-test present"
 fi
+# R-T10 (§20): TCP keepalive on every accepted peer socket — the kernel backstop the NAT'd-client
+# reality demands (idle/rebinding/sleeping NAT mappings vanish WITHOUT a FIN/RST, so a dead peer
+# would otherwise hold an fd+task+capture+CM until the app deadline). Set at the accept site via
+# socket2 0.5's SockRef + TcpKeepalive (with_time + with_interval; with_retries compiled out on
+# Windows), the app 30s deadline staying the portable primary. Gate: the 0.5 dep + accept-site call.
+r_t10_missing=
+grep -q '^socket2 = "0.5"' Cargo.toml                  || r_t10_missing="$r_t10_missing socket2-0.5-dep"
+grep -q 'set_tcp_keepalive' src/rendezvous_mediator.rs || r_t10_missing="$r_t10_missing keepalive-call"
+grep -q 'with_time' src/rendezvous_mediator.rs         || r_t10_missing="$r_t10_missing with_time-knob"
+if [ -n "$r_t10_missing" ]; then
+  echo "  FAIL R-T10: TCP keepalive on accepted sockets incomplete:$r_t10_missing"; rc=1
+else
+  echo "  ok  R-T10 TCP keepalive set on accepted peer sockets (SockRef + TcpKeepalive, app deadline primary)"
+fi
 # R-T15(a) / R-P12: secret-zeroization in libs/pake — curve25519-dalek 4.1.3 impls the Zeroize
 # TRAIT but not Drop, so secrets not explicitly wiped linger on attacker-inducible abort/timeout
 # paths. The ISK master secret is wrapped in Zeroizing, the initiator's ephemeral scalar is wiped

@@ -321,6 +321,30 @@ async fn direct_server(server: ServerPtr) {
             match hbb_common::timeout(1000, l.accept()).await {
                 Ok(Ok((stream, addr))) => {
                     stream.set_nodelay(true).ok();
+                    // R-T10 (§20): enable TCP keepalive on the accepted peer socket immediately
+                    // after set_nodelay — the kernel-level backstop the NAT'd-client reality
+                    // demands. UDP is off precisely BECAUSE the client is behind NAT (R-S13(d)), so
+                    // idle/rebinding/sleeping NAT mappings that vanish WITHOUT a FIN/RST are the
+                    // common case; without keepalive a dead peer would hold an fd + task + capture
+                    // subscription + CM IPC until the ~30 s app deadline (test_delay_timer), and any
+                    // future read path that failed to arm that timer would hang forever. The app
+                    // 30 s deadline stays the portable PRIMARY guarantee; this is the kernel backstop.
+                    // OS-aware (the knobs differ): with_time → TCP_KEEPIDLE (Linux/Android) /
+                    // TCP_KEEPALIVE (macOS) / keepalivetime (Windows); with_interval → TCP_KEEPINTVL;
+                    // with_retries → TCP_KEEPCNT, COMPILED OUT on Windows (SIO_KEEPALIVE_VALS has no
+                    // retry field — the probe count is OS-chosen there).
+                    {
+                        let keepalive = socket2::TcpKeepalive::new()
+                            .with_time(std::time::Duration::from_secs(30))
+                            .with_interval(std::time::Duration::from_secs(10));
+                        #[cfg(not(target_os = "windows"))]
+                        let keepalive = keepalive.with_retries(3);
+                        if let Err(e) =
+                            socket2::SockRef::from(&stream).set_tcp_keepalive(&keepalive)
+                        {
+                            log::warn!("R-T10: failed to set TCP keepalive on {}: {}", addr, e);
+                        }
+                    }
                     // R-T1(b) / R-T0 rule 2: acquire a pre-key handshake slot BEFORE spawning a
                     // task or taking the server lock — so a shed connection costs accept+close,
                     // not spawn+lock+handshake. The permit moves into the task and is released

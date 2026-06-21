@@ -68,6 +68,11 @@ serde_repr = "0.1"
 cfg-if = "1.0"
 lazy_static = "1.4"
 sha2 = "0.10"
+# R-T10 (§20): TCP keepalive on accepted peer sockets, set at the rustdesk-crate accept site via
+# socket2's SockRef + TcpKeepalive (with_interval / with_retries). hbb_common pins socket2 0.3
+# (idle-only set_keepalive), so this direct 0.5 dep provides the full keepalive knobs WITHOUT a
+# hbb_common 0.3→0.5 migration of the R-T11-hardened socket path. socket2 0.5 is already in-tree.
+socket2 = "0.5"
 repng = "0.2"
 parity-tokio-ipc = { git = "https://github.com/rustdesk-org/parity-tokio-ipc" }
 magnum-opus = { git = "https://github.com/rustdesk-org/magnum-opus" }

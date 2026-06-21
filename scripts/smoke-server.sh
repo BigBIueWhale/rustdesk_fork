@@ -139,9 +139,13 @@ echo "$out6"
 # LoginRequest still authorizes because CPace already authenticated, and the whitelist admits).
 echo "$out6" | grep -q 'PermissionInfo\|PeerInfo' \
   || { echo "  FAIL R-S6: a keyed empty-password LoginRequest did NOT authorize / start a session"; rc=1; }
+# R-S17: the probe (a faithful viewer) verified the responder's HostIdentity host-proof as the
+# FIRST post-key frame — the SSH-known_hosts-style defence against a substituted/MITM host.
+echo "$out6" | grep -q 'R-S17 host-proof VERIFIED' \
+  || { echo "  FAIL R-S17: the responder's HostIdentity host-proof did not verify"; rc=1; }
 
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) startup-warning AND session-enforcement + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S6 keyed-edge authorization (full session) — ALL validated at RUNTIME."
+  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) startup-warning AND session-enforcement + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

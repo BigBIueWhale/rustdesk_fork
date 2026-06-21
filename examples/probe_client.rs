@@ -13,7 +13,7 @@
 //!               proof is collapsed — empty `password`), to drive the post-key login flow.
 //!
 //! Usage: `probe_client <addr> <password> <ok|fail> [read|login]`  (exit 0 = matched expectation)
-use hbb_common::cpace::run_initiator;
+use hbb_common::cpace::{run_initiator_with_transcript, verify_host_identity};
 use hbb_common::message_proto::Message;
 use hbb_common::protobuf::Message as _; // parse_from_bytes / write_to_bytes
 use hbb_common::tcp::FramedStream;
@@ -38,11 +38,21 @@ fn main() {
                 std::process::exit(2);
             }
         };
-        match run_initiator(&mut stream, &pw).await {
-            Ok(keys) => {
+        match run_initiator_with_transcript(&mut stream, &pw).await {
+            Ok((keys, transcript)) => {
                 let mut pk = String::new();
                 if do_read {
                     stream.set_session_keys(keys); // engage the two-key cipher
+                    // R-S17: the responder's FIRST post-key frame is its HostIdentity host-proof;
+                    // a faithful viewer reads + verifies it (the SSH-known_hosts-style host pin
+                    // against substitution) BEFORE anything else.
+                    match stream.next_timeout(3000).await {
+                        Some(Ok(proof)) => match verify_host_identity(&transcript, &proof) {
+                            Ok(_) => pk.push_str("[R-S17 host-proof VERIFIED] "),
+                            Err(_) => pk.push_str("[R-S17 host-proof FAILED] "),
+                        },
+                        _ => pk.push_str("[R-S17 no host-proof] "),
+                    }
                     if mode == "login" {
                         use hbb_common::message_proto::LoginRequest;
                         let mut lr = LoginRequest::new();

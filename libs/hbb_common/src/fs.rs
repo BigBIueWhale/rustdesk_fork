@@ -11,7 +11,7 @@ use std::{
 use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::{
-    fs::{File, OpenOptions},
+    fs::File,
     io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufStream as TokioBufStream},
 };
 
@@ -559,6 +559,42 @@ fn join_validated_path(base: &PathBuf, name: &str) -> ResultType<PathBuf> {
     Ok(TransferJob::join(base, name))
 }
 
+/// R-S8 / R-A5: open a file-transfer RECEIVE-write target with NO-FOLLOW semantics, closing the
+/// acknowledged symlink TOCTOU (§4.3). The path components are validated earlier
+/// (`validate_no_symlink_components`), but that is a path-based check with a race window: a local
+/// user can swap the FINAL component for a symlink AFTER the check and BEFORE the open, redirecting
+/// the write through it. On the root §17 box that is the difference between a local user making root
+/// truncate+write an arbitrary file (e.g. `/etc/passwd`) and a clean refusal.
+///
+/// Unix: `O_NOFOLLOW` makes the open fail with `ELOOP` if the final component is a symlink — the
+/// open never follows it. Windows: `FILE_FLAG_OPEN_REPARSE_POINT` opens the reparse point itself
+/// instead of following it (a no-op on a regular file, so it is safe; Windows is not built in this
+/// harness — R-X9 — so this half is unverified-here but the standard non-follow flag). This closes
+/// the final-component race — the direct, exploitable attack. A full `openat()` parent-walk that
+/// also no-follows every intermediate directory is deeper hardening left as a follow-on (the parent
+/// components are best-effort path-validated above); the final-component open is the primary vector.
+fn open_recv_write_no_follow_std(path: &str, truncate: bool) -> std::io::Result<std::fs::File> {
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(truncate);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.custom_flags(crate::libc::O_NOFOLLOW);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        opts.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    opts.open(path)
+}
+
+/// Async wrapper over [`open_recv_write_no_follow_std`] for the tokio receive-write path (R-S8).
+async fn open_recv_write_no_follow(path: &str, truncate: bool) -> ResultType<File> {
+    Ok(File::from_std(open_recv_write_no_follow_std(path, truncate)?))
+}
+
 impl TransferJob {
     #[allow(clippy::too_many_arguments)]
     pub fn new_write(
@@ -777,10 +813,10 @@ impl TransferJob {
                         (p.to_string_lossy().to_string(), None)
                     } else {
                         let path = join_validated_path(p, &entry.name)?;
-                        // NOTE: We intentionally keep path-based validation + regular file open here.
-                        // This still has a known TOCTOU window for symlink races, but avoids a large
-                        // cross-platform rewrite for now.
-                        // Revisit with descriptor/handle-based no-follow open in future hardening.
+                        // R-S8/R-A5: path components were validated above, but that is a path-based
+                        // check with a TOCTOU window — the actual open below is NO-FOLLOW
+                        // (open_recv_write_no_follow / O_NOFOLLOW), so a final-component symlink swapped
+                        // in after validation fails the open rather than redirecting root's write.
                         if let Some(pp) = path.parent() {
                             std::fs::create_dir_all(pp).ok();
                         }
@@ -795,9 +831,16 @@ impl TransferJob {
                             std::fs::remove_file(dp)?;
                         }
                     }
-                    self.data_stream = Some(DataStream::FileStream(File::create(&path).await?));
+                    // R-S8/R-A5: no-follow open — a symlink swapped in at `path` fails (ELOOP),
+                    // never redirects the write (the §4.3 symlink TOCTOU, closed for the final component).
+                    self.data_stream =
+                        Some(DataStream::FileStream(open_recv_write_no_follow(&path, true).await?));
                     if let Some(dp) = digest_path.as_ref() {
-                        std::fs::write(dp, json!(self.digest).to_string()).ok();
+                        // R-S8: the digest sidecar is a write too — no-follow it for the same reason.
+                        if let Ok(mut f) = open_recv_write_no_follow_std(dp, true) {
+                            use std::io::Write;
+                            let _ = f.write_all(json!(self.digest).to_string().as_bytes());
+                        }
                     }
                 }
             }
@@ -1113,14 +1156,9 @@ impl TransferJob {
 
             let mut f = if Path::new(&download_path).exists() && Path::new(&digest_path).exists() {
                 // If both download and digest files exist, seek (writer) to the offset
-                // NOTE: same as write path: best-effort symlink validation happened earlier,
-                // but this reopen remains TOCTOU-prone by design for now.
-                match OpenOptions::new()
-                    .create(true)
-                    .write(true)
-                    .open(&download_path)
-                    .await
-                {
+                // R-S8/R-A5: no-follow reopen of the resume target (truncate=false keeps the partial
+                // download); a symlink swapped in here fails rather than redirecting the write.
+                match open_recv_write_no_follow(&download_path, false).await {
                     Ok(f) => f,
                     Err(e) => {
                         log::warn!("Failed to open file {}: {}", download_path, e);
@@ -1563,6 +1601,53 @@ mod tests {
         let mut entry = FileEntry::new();
         entry.name = name.to_string();
         entry
+    }
+
+    // R-S8/R-A5: the receive-write open MUST refuse a symlink final component (the symlink TOCTOU),
+    // so a local user racing a symlink swap cannot redirect the (root, on the §17 box) write to an
+    // arbitrary file. This tests the no-follow open DIRECTLY — robust to the race timing.
+    #[test]
+    #[cfg(unix)]
+    fn recv_write_no_follow_refuses_symlink_target() {
+        let tmp = TestTempDir::new("rustdesk_nofollow_sym");
+        let dl = tmp.join("downloads");
+        std::fs::create_dir_all(&dl).expect("create downloads");
+        let secret = tmp.join("secret.txt");
+        std::fs::write(&secret, b"DO-NOT-OVERWRITE").expect("write secret");
+        // a local attacker swaps the receive target for a symlink to the secret (after path validation)
+        let target = dl.join("incoming.download");
+        std::os::unix::fs::symlink(&secret, &target).expect("create symlink");
+        // the no-follow open MUST fail (ELOOP) — never follow into `secret`
+        let res = open_recv_write_no_follow_std(target.to_str().unwrap(), true);
+        assert!(res.is_err(), "O_NOFOLLOW must refuse a symlink final component");
+        // and the secret is untouched (the open failed before any truncate-through-the-symlink)
+        assert_eq!(
+            std::fs::read(&secret).expect("read secret"),
+            b"DO-NOT-OVERWRITE",
+            "the no-follow open must not have truncated the symlink target"
+        );
+    }
+
+    // R-S8: the no-follow open MUST still allow a legitimate (fresh or existing-regular) target, so
+    // the hardening never breaks a real transfer (only a symlink final component is refused).
+    #[test]
+    fn recv_write_no_follow_allows_regular_target() {
+        let tmp = TestTempDir::new("rustdesk_nofollow_ok");
+        let dl = tmp.join("downloads");
+        std::fs::create_dir_all(&dl).expect("create downloads");
+        let target = dl.join("incoming.download");
+        let target_s = target.to_str().expect("utf8 path");
+        // a fresh target opens
+        assert!(
+            open_recv_write_no_follow_std(target_s, true).is_ok(),
+            "no-follow open must allow a fresh regular target"
+        );
+        assert!(target.exists());
+        // an existing regular target re-opens (truncate) — a re-download is not blocked
+        assert!(
+            open_recv_write_no_follow_std(target_s, true).is_ok(),
+            "no-follow open must allow an existing regular target"
+        );
     }
 
     fn new_validation_job(id: i32) -> TransferJob {

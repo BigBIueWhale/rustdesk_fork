@@ -49,6 +49,14 @@ echo "== (1-3) KAT + handshake + policy funnel + R-A4 surface + R-S7 frame/decom
 echo "== (3b) IPC parent-dir hardening behavior tests (R-S11a/R-S11a(b), root-exercised) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::ipc_fs::tests --color never
 
+# (3c) File-transfer write-path safety (R-S8/R-A5): the receive-write opens are NO-FOLLOW
+# (open_recv_write_no_follow / O_NOFOLLOW) so a local symlink swapped in at the target after the
+# path-validation fails the open rather than redirecting root's write (the §4.3 symlink TOCTOU).
+# These hbb_common fs tests were previously UN-RUNNABLE on the pinned 1.75 (a dead webrtc dev-dep
+# pulled sdp/webrtc-util which need a newer rustc) — now runnable after that excision (R-SV4).
+echo "== (3c) file-transfer no-follow write + path-traversal tests (R-S8/R-A5) =="
+"${RUN[@]}" cargo test -p hbb_common --lib fs::tests --color never
+
 echo "== (4) main crate compile check (hardening is UNCONDITIONAL — one binary, R-R2b) =="
 "${RUN[@]}" cargo check --features linux-pkg-config --color never
 
@@ -595,9 +603,9 @@ fi
 # active_uid() stays only for config-sync routing. (b) the parent dir the root service owns + locks
 # down BEFORE binding — opened O_NOFOLLOW (symlink-TOCTOU, R-S8), the opened FD fchmod'd to the
 # expected mode (0o0711 service / 0o0700 else) + fchown'd, stale artifacts scrubbed — so a local user
-# cannot pre-stage a world-traversable dir/socket the service trusts. Gate both present + wired. NOTE:
-# one open question (recorded, not gated) — whether the root fchown-ADOPT of a foreign-owned service
-# dir fully meets R-S11a(b)'s "reject-and-recreate, no fchown-adopt"; a careful review item.
+# cannot pre-stage a world-traversable dir/socket the service trusts. Gate both present + wired.
+# R-S11a(b) reject-and-recreate (a foreign-owned service dir is rmdir'd + recreated on a FRESH inode,
+# never fchown-adopted, so a pre-set ACL cannot survive) is DONE (commit b46e427) + behavior-tested at (3b).
 r_s11a_missing=
 grep -q 'fn active_uid_fresh' src/ipc/auth.rs                      || r_s11a_missing="$r_s11a_missing fresh-auth-fn"
 grep -q 'let active_uid = active_uid_fresh()' src/ipc/auth.rs      || r_s11a_missing="$r_s11a_missing fresh-auth-wire"
@@ -611,6 +619,23 @@ if [ -n "$r_s11a_missing" ]; then
   echo "  FAIL R-S11a/R-S8: IPC fresh-auth or parent-dir hardening incomplete/unwired:$r_s11a_missing"; rc=1
 else
   echo "  ok  R-S11a(a) fresh _service active-uid auth + R-S11a(b)/R-S8 parent-dir hardening (O_NOFOLLOW+0o0711+scrub) present & wired"
+fi
+# R-S8 / R-A5 (file-transfer write-path no-follow — DISTINCT from the IPC parent-dir O_NOFOLLOW above):
+# the receive-WRITE opens in hbb_common/src/fs.rs MUST be no-follow (open_recv_write_no_follow /
+# O_NOFOLLOW), closing the §4.3 symlink TOCTOU on the file-receive path — a local user swapping the
+# target for a symlink AFTER the path-validation must not redirect root's write onto an arbitrary file.
+# Upstream/inherited used a path-based File::create/OpenOptions (TOCTOU-prone, acknowledged in-code).
+# Assert the helper + O_NOFOLLOW are present AND the raw symlink-following create is gone from the
+# write path; the refuse-symlink / allow-regular behavior is proven by the (3c) tests.
+r_s8ft_missing=
+grep -q 'fn open_recv_write_no_follow' libs/hbb_common/src/fs.rs           || r_s8ft_missing="$r_s8ft_missing helper"
+grep -q 'O_NOFOLLOW' libs/hbb_common/src/fs.rs                             || r_s8ft_missing="$r_s8ft_missing O_NOFOLLOW"
+grep -q 'open_recv_write_no_follow(&path, true)' libs/hbb_common/src/fs.rs || r_s8ft_missing="$r_s8ft_missing data-write-wired"
+if grep -qE 'File::create\(&path\)' libs/hbb_common/src/fs.rs; then r_s8ft_missing="$r_s8ft_missing raw-File::create-remains"; fi
+if [ -n "$r_s8ft_missing" ]; then
+  echo "  FAIL R-S8/R-A5: file-transfer receive-write is not no-follow:$r_s8ft_missing"; rc=1
+else
+  echo "  ok  R-S8/R-A5 file-transfer receive-write is no-follow (O_NOFOLLOW closes the §4.3 symlink-TOCTOU; behavior-tested at (3c))"
 fi
 # R-S14 (screen capture bound to a PAKE session — a reused grant must not capture outside one): the
 # controlled-side capture is per-connection — started only in the authorized (CPace-keyed) Connection

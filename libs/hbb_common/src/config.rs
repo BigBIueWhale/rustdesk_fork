@@ -2854,13 +2854,11 @@ pub fn option2bool(option: &str, value: &str) -> bool {
     }
 }
 
-// `use_ws()` removed (R-G4/§8): the WebSocket transport is excised and the `allow-websocket`
-// option is pinned `N` by the lockdown, so it was a permanently-false flag read by live code.
-
-pub fn allow_insecure_tls_fallback() -> bool {
-    let option = keys::OPTION_ALLOW_INSECURE_TLS_FALLBACK;
-    option2bool(option, &Config::get_option(option))
-}
+// `use_ws()` and `allow_insecure_tls_fallback()` removed (R-G4/§8): the WebSocket transport is
+// excised, and insecure-TLS fallback is structurally gone (outbound TLS never accepts an invalid
+// cert — see `tls::get_cached_tls_accept_invalid_cert`). Both `allow-websocket` and
+// `allow-insecure-tls-fallback` are pinned `N` by the lockdown — permanently-false flags that
+// were read by live code.
 
 pub mod keys {
     pub const OPTION_VIEW_ONLY: &str = "view_only";

@@ -1,7 +1,5 @@
 use std::{collections::HashMap, sync::RwLock};
 
-use crate::config::allow_insecure_tls_fallback;
-
 #[derive(Debug, Clone, Copy)]
 pub enum TlsType {
     Plain,
@@ -81,20 +79,13 @@ pub fn get_cached_tls_type(url: &str) -> Option<TlsType> {
 }
 
 #[inline]
-pub fn get_cached_tls_accept_invalid_cert(url: &str) -> Option<bool> {
-    if !allow_insecure_tls_fallback() {
-        return Some(false);
-    }
-
-    if is_plain(url) {
-        return Some(false);
-    }
-    let domain_port = get_domain_and_port_from_url(url);
-    URL_TLS_DANGER_ACCEPT_INVALID_CERTS
-        .read()
-        .unwrap()
-        .get(domain_port)
-        .cloned()
+pub fn get_cached_tls_accept_invalid_cert(_url: &str) -> Option<bool> {
+    // R-G4/§8 hardening: insecure-TLS fallback is excised from the fork — outbound TLS NEVER
+    // accepts an invalid certificate. This was gated by `allow_insecure_tls_fallback()`, an option
+    // the lockdown pins `N`; the guarantee is now STRUCTURAL (no caller can ever obtain a
+    // `danger_accept_invalid_certs = true`), not merely config-disabled. The per-host danger cache
+    // is now write-only dead (left for a follow-on §8 tidy of the upsert/connector path).
+    Some(false)
 }
 #[cfg(test)]
 mod tests {

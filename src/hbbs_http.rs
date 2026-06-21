@@ -6,7 +6,8 @@ use serde_json::{Map, Value};
 pub mod account;
 pub mod downloader;
 mod http_client;
-pub mod record_upload;
+// R-SV6 / R-SV1: hbbs_http::record_upload (the session-record reqwest POST egress) is excised — the
+// module is removed, not just its is_enable() neutralized. Recording stays local (R-D6, dial nobody).
 pub mod sync;
 pub use http_client::{
     create_http_client_async, create_http_client_async_with_url, create_http_client_with_url,

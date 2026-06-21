@@ -144,6 +144,11 @@ ra6_clean 'handle_request_relay|handle_punch_hole|udp_nat_listen|punch_udp_hole|
 # audit POST helpers (post_conn_audit/post_alarm_audit/post_file_audit -> <api-server>/api/audit/*)
 # are EXCISED — absent, not merely api-server-pinned — so an audit-egress leak cannot regress in.
 ra6_clean 'post_conn_audit|post_alarm_audit|post_file_audit' 'R-D6 audit phone-home (conn/alarm/file POST)' || rc=1
+# R-SV6(b)/R-SV1/R-SV10 / §18: the session-record UPLOAD egress (hbbs_http::record_upload — a reqwest
+# POST of the recorded session to <api-server>/api/record) is EXCISED — the whole module is removed
+# from the tree, not merely its is_enable() neutralized (the prior state). Recording stays local
+# (R-D6 dial-nobody). The video_service caller now hard-codes the upload channel to None.
+ra6_clean 'record_upload|api/record\b' 'R-SV6(b) session-record upload egress' || rc=1
 # R-SV3 / R-SV1 (§18 sovereignty): the version-check phone-home is DELETED structurally, not
 # neutered. Upstream's hbb_common `version_check_request` built a device-fingerprinted POST
 # (os/arch/device_id) to a HARDWIRED api.rustdesk.com/version endpoint — a global-reaching egress

@@ -1041,15 +1041,10 @@ fn get_recorder(
     #[cfg(not(windows))]
     let root = false;
     let recorder = if record_incoming {
-        use crate::hbbs_http::record_upload;
-
-        let tx = if record_upload::is_enable() {
-            let (tx, rx) = std::sync::mpsc::channel();
-            record_upload::run(rx);
-            Some(tx)
-        } else {
-            None
-        };
+        // R-SV6 / R-SV1: the session-record UPLOAD egress (hbbs_http::record_upload — a reqwest POST
+        // to {api-server}/api/record) is compiled out, not merely neutralized. Recording stays LOCAL
+        // and is never uploaded: the upload channel is always None, so the box dials nobody (R-D6).
+        let tx = None;
         Recorder::new(RecorderContext {
             server: true,
             id: Config::get_id(),

@@ -596,6 +596,20 @@ if [ -n "$r_g5_missing" ]; then
 else
   echo "  ok  R-G5/R-S17 host-key-pin dialogs present (first-contact fingerprint seed -> sessionPinHost; no silent trust-on-first-use)"
 fi
+# R-X7a / R-G1 (no inert pinned-policy SELECTOR survives — removed, not greyed): verification-method +
+# approve-mode are R-S16-pinned (use-permanent-password / password), so a UI that PRESENTS+WRITES them
+# is the exact "defaulted-off-but-present" hazard R-G1 forbids — the funnel overrides the write and
+# is_option_can_save rejects it, leaving a divergent dead presentation. The fork REMOVES the
+# verification-method/approve-mode/one-time-password selectors (desktop Safety tab + Android server
+# page), leaving only "Set permanent password". Gate that NO flutter UI WRITES those pinned keys — no
+# mainSetOption with verification-method/approve-mode (literal or kOption* const) and no
+# setVerificationMethod/setApproveMode model setter. (Reading them for display via mainGetOption is fine.)
+rx7a_hits=$(grep -rInE 'setVerificationMethod|setApproveMode|mainSetOption[^;]*verification-method|mainSetOption[^;]*approve-mode|mainSetOption[^;]*kOptionVerificationMethod|mainSetOption[^;]*kOptionApproveMode' flutter/lib --include='*.dart' 2>/dev/null | grep -v 'generated_bridge' | grep -vE ':[0-9]+:[[:space:]]*//' || true)
+if [ -n "$rx7a_hits" ]; then
+  echo "  FAIL R-X7a/R-G1: a flutter UI still WRITES the pinned verification-method/approve-mode policy (remove the selector, do not disable it):"; echo "$rx7a_hits" | sed 's/^/      /'; rc=1
+else
+  echo "  ok  R-X7a/R-G1 no flutter UI writes the pinned verification-method/approve-mode selectors (removed not greyed; display-reads only)"
+fi
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod lan:R-X5 lan.rs residual (WoL send_wol + discover no-op; the discovery LISTENER is excised + hard-gated above — full removal is the R-G2 Discovered-tab/WoL-UI follow-on)' \

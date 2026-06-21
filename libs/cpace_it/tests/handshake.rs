@@ -168,6 +168,33 @@ async fn r_s7_large_frame_flows_only_after_keying_raises_the_cap() {
 }
 
 #[tokio::test]
+async fn responder_rejects_oversize_pre_pake_frame() {
+    // R-S7 / R-P14b (R-A10 wire-choreography negative): BEFORE keying the frame cap is
+    // 4 KiB (MAX_CPACE_PACKET=4096). An unauthenticated peer that sends a LARGER first
+    // frame is rejected at the cap (HandshakeError::Io) — the box refuses to allocate or
+    // buffer an oversize pre-auth frame, a memory-exhaustion guard against a peer that has
+    // not yet proven the password. This is the pre-key twin of
+    // `r_s7_large_frame_flows_only_after_keying_raises_the_cap` (which proves the post-key
+    // raise to 32 MiB for real video keyframes); together they pin BOTH sides of the cap.
+    let (mut si, sr) = loopback_pair().await;
+    let jr = tokio::spawn(async move {
+        let mut sr = sr;
+        run_responder(&mut sr, "frame-cap-pw").await
+    });
+    // The attacker raises ITS OWN cap (a hostile client emits whatever size it likes) and
+    // blasts a 5 KiB raw frame on the still-UNKEYED stream — not even a valid CPace step.
+    // Encode is uncapped on the wire; the responder's 4 KiB DECODE cap is what must reject,
+    // at the length prefix, before any body allocation.
+    si.set_max_packet_length(64 * 1024);
+    si.send_raw(vec![0x5au8; 5 * 1024]).await.ok(); // 5 KiB > the 4 KiB pre-PAKE cap
+    assert_eq!(
+        err_of(jr.await.unwrap()),
+        HandshakeError::Io,
+        "R-S7/R-P14b: an oversize (>4 KiB) pre-PAKE frame must abort at the cap, never buffer"
+    );
+}
+
+#[tokio::test]
 async fn wrong_password_aborts_at_confirmation() {
     let (si, sr) = loopback_pair().await;
     // Spawn so the responder's abort drops its stream and frees the initiator

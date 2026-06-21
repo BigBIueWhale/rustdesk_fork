@@ -522,6 +522,19 @@ if [ -n "$rsv8_bad" ]; then
 else
   echo "  ok  R-SV8 no Firebase/FCM/Google-services (iOS creds plist + push entitlements + Android all absent)"
 fi
+# R-SV9 (§18 sovereignty): the front-ends MUST carry no PLAINTEXT-http link (a downgrade/MITM
+# vector). The installer's EULA #agreement link opened http://rustdesk.com/privacy over cleartext —
+# fixed to https. (The broader SHOULD — delete/repoint the ~28 rustdesk.com / github.com/rustdesk
+# advertising + doc links across both front-ends + the config.rs HELPER_URL doc map — is a separate
+# de-branding pass needing an operator-resource decision; not yet gated.) Gate the MUST: no
+# `http://`-scheme rustdesk/github link in the UI front-ends (.tis / .dart). The common.rs is_public
+# unit-test string is a .rs test, not a UI link, so it is out of scope.
+rsv9_http=$(grep -rInE 'http://[^ ]*(rustdesk|github)' src/ui flutter/lib --include='*.tis' --include='*.dart' 2>/dev/null || true)
+if [ -n "$rsv9_http" ]; then
+  echo "  FAIL R-SV9: a plaintext-http rustdesk/github link remains in a front-end (MUST be https or removed):"; echo "$rsv9_http" | sed 's/^/      /'; rc=1
+else
+  echo "  ok  R-SV9 no plaintext-http rustdesk/github link in the front-ends (the MUST; the SHOULD de-brand is pending)"
+fi
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod lan:R-X5 lan.rs residual (WoL send_wol + discover no-op; the discovery LISTENER is excised + hard-gated above — full removal is the R-G2 Discovered-tab/WoL-UI follow-on)' \

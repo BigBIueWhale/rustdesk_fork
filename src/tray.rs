@@ -110,11 +110,10 @@ fn make_tray() -> hbb_common::ResultType<()> {
         }
         #[cfg(target_os = "linux")]
         {
-            // Do not use "xdg-open", it won't read the config.
-            if crate::dbus::invoke_new_connection(crate::get_uri_prefix()).is_err() {
-                if let Ok(task) = crate::run_me::<&str>(vec![]) {
-                    crate::server::CHILD_PROCESS.lock().unwrap().push(task);
-                }
+            // R-X6: the D-Bus IPC (org.rustdesk.rustdesk NewConnection) is excised — open a fresh
+            // instance directly rather than forwarding to a running one over the session bus.
+            if let Ok(task) = crate::run_me::<&str>(vec![]) {
+                crate::server::CHILD_PROCESS.lock().unwrap().push(task);
             }
         }
     };

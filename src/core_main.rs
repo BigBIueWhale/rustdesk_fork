@@ -161,9 +161,13 @@ pub fn core_main() -> Option<Vec<String>> {
     hbb_common::init_log(false, &log_name);
 
     // linux uni (url) go here.
+    // R-X6: the D-Bus deep-link transport (org.rustdesk.rustdesk `NewConnection`) is excised — a
+    // co-installed same-session app could fire it (a local-IPC injection vector) and it claimed the
+    // bus name with replace_existing (a name-hijack). A uni-link is now self-handled by this instance
+    // (the R-X6 confirmation gate still applies), never forwarded over D-Bus to a running one.
     #[cfg(all(target_os = "linux", feature = "flutter"))]
     if args.len() > 0 && args[0].starts_with(&crate::get_uri_prefix()) {
-        return try_send_by_dbus(args[0].clone());
+        return Some(Vec::new());
     }
 
     #[cfg(windows)]
@@ -691,8 +695,12 @@ fn core_main_invoke_new_connection(mut args: std::env::Args) -> Option<Vec<Strin
         return None;
     }
 
+    // R-X6: D-Bus deep-link transport excised — self-handle the uni-link in this instance (no forward).
     #[cfg(target_os = "linux")]
-    return try_send_by_dbus(uni_links);
+    {
+        let _ = &uni_links;
+        return Some(Vec::new());
+    }
 
     #[cfg(windows)]
     {
@@ -713,22 +721,6 @@ fn core_main_invoke_new_connection(mut args: std::env::Args) -> Option<Vec<Strin
         } else {
             None
         };
-    }
-}
-
-#[cfg(all(target_os = "linux", feature = "flutter"))]
-fn try_send_by_dbus(uni_links: String) -> Option<Vec<String>> {
-    use crate::dbus::invoke_new_connection;
-
-    match invoke_new_connection(uni_links) {
-        Ok(()) => {
-            return None;
-        }
-        Err(err) => {
-            log::error!("{}", err.as_ref());
-            // return Some to invoke this url by self
-            return Some(Vec::new());
-        }
     }
 }
 

@@ -70,6 +70,13 @@ ra6_clean '"--import-config"|"--remove"|fn import_config'                  'R-X4
 # a discover() no-op, a separate R-G2 Discovered-tab follow-on; that residual is the TODO below.)
 ra6_clean 'start_lan_listening|spawn_wait_responses|handle_received_peers|RENDEZVOUS_PORT *\+ *3' 'R-X5 LAN-discovery listener/querier/bind' || rc=1
 ra6_clean 'DEBUG_BOOT_COMPLETED'                                          'R-X6 fake-boot broadcast'  || rc=1
+# R-X6: the Linux D-Bus deep-link delivery transport (src/server/dbus.rs: session-bus name
+# org.rustdesk.rustdesk, method NewConnection) is EXCISED. It ignored the caller (any co-installed
+# same-session app could fire it — a local-IPC injection vector) and claimed the bus name with
+# replace_existing=true (a name-hijack to intercept legitimate links). The module is deleted; uni-links
+# are self-handled per-instance (core_main, still behind the R-X6 confirmation gate). \bstart_dbus_server
+# excludes the kept no-op FFI shim main_start_dbus_server (no word boundary before "start").
+ra6_clean 'crate::dbus|org\.rustdesk\.rustdesk|\bstart_dbus_server' 'R-X6 D-Bus deep-link transport (NewConnection)' || rc=1
 ra6_clean 'ConfigureUpdate|TestNatResponse'                              'R-X3 server-push config-update + NAT-response rewrite arms' || rc=1
 # R-P3 / R-P14: the inherited insecure direct-mode used a plaintext constant-byte ack ("direct-ok")
 # to admit a peer WITHOUT the PAKE key-confirmation. The fork makes CPace mandatory (R-A1), so any

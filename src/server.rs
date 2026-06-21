@@ -45,8 +45,7 @@ pub(crate) mod wayland;
 pub mod uinput;
 #[cfg(target_os = "linux")]
 pub mod rdp_input;
-#[cfg(target_os = "linux")]
-pub mod dbus;
+// R-X6: the D-Bus deep-link module (org.rustdesk.rustdesk NewConnection) is excised.
 #[cfg(not(target_os = "android"))]
 pub mod input_service;
 } else {

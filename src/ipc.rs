@@ -757,7 +757,10 @@ async fn handle(data: Data, stream: &mut Connection) {
                 allow_err!(stream.send(&Data::Socks(Config::get_socks())).await);
             }
             Some(data) => {
-                let _nat = CheckTestNatType::new();
+                // R-A6/R-S11: the CheckTestNatType Drop guard (which fired test_nat_type — a NAT/STUN
+                // probe — when is_direct flipped) is REMOVED from the service IPC handler. set_socks is
+                // now inert (R-D6(d)(iii)), so is_direct is constant and the guard was already dead; this
+                // structurally severs the service-entry -> test_nat_type Drop reach R-A6 wants severed.
                 if data.proxy.is_empty() {
                     Config::set_socks(None);
                 } else {
@@ -880,7 +883,8 @@ async fn handle(data: Data, stream: &mut Connection) {
             }
             Some(value) => {
                 let _chk = CheckIfRestart::new();
-                let _nat = CheckTestNatType::new();
+                // R-A6/R-S11: CheckTestNatType Drop guard removed here too — is_direct is constant
+                // (socks inert, R-D6(d)(iii)), so it never fired; severs the service-entry probe reach.
                 if let Some(v) = value.get("privacy-mode-impl-key") {
                     crate::privacy_mode::switch(v);
                 }

@@ -2554,12 +2554,12 @@ pub fn main_supported_input_source() -> SyncReturn<String> {
     }
 }
 
-// R-X7 / §18: the 2FA/Telegram-bot setup FFI (main_generate2fa / main_verify2fa /
-// main_has_valid_2fa_sync / main_verify_bot / main_has_valid_bot_sync) is removed — the flutter
-// 2FA UI that called it is excised (dbbb152) and 2FA is pinned-off-dead. The ui_interface
-// backends stay only because ui.rs (Sciter) still calls them; their removal + auth_2fa.rs +
-// the totp-rs dep + the connection.rs responder gate + the Auth2FA proto field are the
-// sciter-coupled / auth-flow follow-on (R-B6 / R-G4-proto).
+// R-X7 / §18: the 2FA/Telegram-bot machinery is FULLY excised. The Flutter setup FFI
+// (main_generate2fa / main_verify2fa / main_has_valid_2fa_sync / main_verify_bot /
+// main_has_valid_bot_sync) was removed first (dbbb152); the Sciter-coupled remainder — the
+// ui_interface backends, the ui.rs/remote.rs FFI, src/auth_2fa.rs, the totp-rs + qrcode-generator
+// deps, and the Auth2FA proto field + viewer-side send2fa sender — are now gone too. No 2FA
+// second-authentication path survives on either side or on the wire (R-X7 complete).
 
 pub fn main_get_hard_option(key: String) -> SyncReturn<String> {
     SyncReturn(get_hard_option(key))

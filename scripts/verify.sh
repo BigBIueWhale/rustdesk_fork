@@ -68,13 +68,14 @@ ra6_clean 'DEBUG_BOOT_COMPLETED'                                          'R-X6 
 ra6_clean 'RUSTDESK_FORCED_DISPLAY_SERVER'                                'R-X12 display-server knob' || rc=1
 ra6_clean 'gtk_sudo|run_cmds_privileged|"-gtk-sudo"'                      'R-X11 gtk_sudo elevation'  || rc=1
 ra6_clean 'start_uinput_service'                                         'R-X13 dormant uinput listener' || rc=1
-# R-X7 / §18: the responder 2FA machinery (the `require_2fa` field + the Auth2fa gate/handler +
-# the trusted-device bypass + the raii session-2FA state) is excised from connection.rs — 2FA
-# was pinned-off-dead (`2fa`="" so require_2fa was always None ⇒ every branch was unreachable).
-# The viewer-side `send2fa` sender + the `Auth2FA` proto field + auth_2fa.rs defer with the
-# Sciter sweep (R-B6, since ui.rs/remote.rs still call them), so this gate is scoped to the
-# now-absent responder tokens.
+# R-X7 / §18: the 2FA machinery is FULLY excised. Responder side: the `require_2fa` field, the
+# Auth2fa gate/handler, the trusted-device bypass, the raii session-2FA state (2FA was
+# pinned-off-dead: `2fa`="" so require_2fa was always None ⇒ every branch unreachable). Now also:
+# the viewer-side `send2fa` sender, the `Auth2FA` proto field, src/auth_2fa.rs, the totp-rs +
+# qrcode-generator deps, and the Sciter 2FA UI (index/msgbox/common.tis) — no 2FA path on either
+# side or on the wire. Two hard gates lock it in (the second covers the module/proto/dep/FFI):
 ra6_clean 'require_2fa|set_session_2fa'                                   'R-X7 responder 2FA machinery' || rc=1
+ra6_clean 'totp|Auth2FA|auth_2fa|generate2fa|verify2fa|set_auth_2fa'      'R-X7 2FA module/totp-rs/Auth2FA proto/FFI' || rc=1
 # R-S16(d)(ii): the runtime SwitchPermission widener (the conn-side handler that
 # re-assigned conn.keyboard/clipboard/audio/... bypassing the pinned policy) is
 # removed. The qualified `ipc::Data::SwitchPermission` token was unique to that
@@ -398,10 +399,10 @@ ra6_clean 'relay-hint' 'R-G6 relay-fallback hint emission' || rc=1
 ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-bot-tip|powered_by_me)"' '§19 dead lang keys' || rc=1
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
-for t in 'mod auth_2fa:R-X7 2FA/TOTP' 'mod lan:R-X5 LAN discovery' \
+for t in 'mod lan:R-X5 LAN discovery' \
          'terminal_helper:R-X8 terminal' 'mod custom_server:R-X4 custom_server module'; do
   tok=${t%%:*}; lbl=${t#*:}
-  n=$(grep -RIl "$tok" src libs --include='*.rs' 2>/dev/null | grep -v 'libs/pake' | wc -l | tr -d ' ')
+  n=$(grep -RIl "$tok" src libs --include='*.rs' 2>/dev/null | grep -v 'libs/pake' | wc -l | tr -d ' ' || true)
   echo "  TODO $lbl — still referenced in $n file(s)"
 done
 

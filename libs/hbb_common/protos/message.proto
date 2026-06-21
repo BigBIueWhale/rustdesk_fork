@@ -94,11 +94,6 @@ message Terminal {
   string service_id = 1;  // Service ID for reconnecting to existing session
 }
 
-message Auth2FA {
-  string code = 1;
-  bytes hwid = 2;
-}
-
 message ChatMessage { string text = 1; }
 
 message Features {
@@ -1012,7 +1007,6 @@ message Message {
     VoiceCallResponse voice_call_response = 24;
     PeerInfo peer_info = 25;
     PointerDeviceEvent pointer_device_event = 26;
-    Auth2FA auth_2fa = 27;
     MultiClipboards multi_clipboards = 28;
     ScreenshotRequest screenshot_request = 29;
     ScreenshotResponse screenshot_response= 30;

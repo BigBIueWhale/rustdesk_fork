@@ -7,7 +7,6 @@ use crate::{
     ui_interface::use_texture_render,
 };
 use async_trait::async_trait;
-use bytes::Bytes;
 #[cfg(all(target_os = "windows", not(feature = "flutter")))]
 use hbb_common::config::keys;
 #[cfg(not(feature = "flutter"))]
@@ -1389,25 +1388,6 @@ impl<T: InvokeUiSession> Session<T> {
         remember: bool,
     ) {
         self.send(Data::Login((os_username, os_password, password, remember)));
-    }
-
-    pub fn send2fa(&self, code: String, trust_this_device: bool) {
-        let mut msg_out = Message::new();
-        let hwid = if trust_this_device {
-            crate::get_hwid()
-        } else {
-            Bytes::new()
-        };
-        self.lc.write().unwrap().set_option(
-            "trust-this-device".to_string(),
-            if trust_this_device { "Y" } else { "" }.to_string(),
-        );
-        msg_out.set_auth_2fa(Auth2FA {
-            code,
-            hwid,
-            ..Default::default()
-        });
-        self.send(Data::Message(msg_out));
     }
 
     pub fn get_enable_trusted_devices(&self) -> bool {

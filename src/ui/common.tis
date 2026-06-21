@@ -263,15 +263,6 @@ function msgbox(type, title, content, link="", callback=null, height=180, width=
               else msgbox("connecting", "Connecting...", "Logging in...");
             }
         };
-    } else if (type.indexOf("input-2fa") >= 0) {
-        callback = function (res) {
-            if (!res) {
-                view.close();
-                return;
-            }
-            handler.send2fa(res.code, res.trust_this_device || false); 
-            msgbox("connecting", "Connecting...", "Logging in...");
-        };
     } else if (type == "session-login" || type == "session-re-login") {
         callback = function (res) {
             if (!res) {

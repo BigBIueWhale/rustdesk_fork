@@ -1543,35 +1543,6 @@ pub fn support_remove_wallpaper() -> bool {
     return false;
 }
 
-pub fn has_valid_2fa() -> bool {
-    let raw = get_option("2fa");
-    crate::auth_2fa::get_2fa(Some(raw)).is_some()
-}
-
-pub fn generate2fa() -> String {
-    crate::auth_2fa::generate2fa()
-}
-
-pub fn verify2fa(code: String) -> bool {
-    let res = crate::auth_2fa::verify2fa(code);
-    if res {
-        refresh_options();
-    }
-    res
-}
-
-pub fn has_valid_bot() -> bool {
-    crate::auth_2fa::TelegramBot::get().map_or(false, |bot| bot.is_some())
-}
-
-pub fn verify_bot(_token: String) -> String {
-    // R-SV7: the Telegram-bot 2FA enrollment path (get_chatid_telegram, an
-    // api.telegram.org/getUpdates POST that leaked the bot token) is excised. The
-    // FFI signature is kept so the (R-X7a-removed) Flutter caller still links, but it
-    // performs no egress and reports the feature absent.
-    "Telegram bot 2FA is not supported in this build.".to_owned()
-}
-
 pub fn check_hwcodec() {
     #[cfg(feature = "hwcodec")]
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

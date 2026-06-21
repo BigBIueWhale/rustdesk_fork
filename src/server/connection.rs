@@ -1180,8 +1180,9 @@ impl Connection {
         // executed), so the whole responder 2FA machinery — the `require_2fa` field, the
         // `Auth2fa` message handler, the trusted-device bypass, and the raii session-2FA
         // state — is excised here. (The earlier Telegram-push leak that lived in this gate
-        // was already removed in R-SV7; the viewer-side `send2fa` sender + the `Auth2FA`
-        // proto field defer with the Sciter sweep, R-B6, since `ui.rs`/`remote.rs` call them.)
+        // was already removed in R-SV7; the viewer-side `send2fa` sender, the `Auth2FA` proto
+        // field, src/auth_2fa.rs, the totp-rs dep, and the Sciter 2FA UI are now excised too —
+        // R-X7 complete: no 2FA path survives on either side or on the wire.)
         if let Some(keep_alive) = self.prepare_terminal_login_for_authorization().await {
             return keep_alive;
         }

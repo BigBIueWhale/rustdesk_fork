@@ -28,10 +28,13 @@ fn main() {
     let expect = a.get(3).map(String::as_str).unwrap_or("ok").to_string();
     let mode = a.get(4).map(String::as_str).unwrap_or("").to_string();
     let do_read = mode == "read" || mode == "login" || mode == "inject";
+    // Optional local source address (6th arg) — e.g. 127.0.0.2:0 to connect as a DIFFERENT source,
+    // for the R-A8.2 owner-safe limiter test (a flood from one source must not block another).
+    let local = a.get(5).and_then(|s| s.parse::<std::net::SocketAddr>().ok());
 
     let rt = hbb_common::tokio::runtime::Runtime::new().expect("tokio runtime");
     let (keyed, postkey) = rt.block_on(async {
-        let mut stream = match FramedStream::new(&addr, None, 5000).await {
+        let mut stream = match FramedStream::new(&addr, local, 5000).await {
             Ok(s) => s,
             Err(e) => {
                 println!("probe_client: CONNECT_FAIL {e}");

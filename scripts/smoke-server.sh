@@ -163,8 +163,31 @@ echo "$out7"
 echo "$out7" | grep -q 'Connection closed: decryption error' \
   || { echo "  FAIL R-A8/R-T7: an injected forged frame was NOT rejected by the AEAD"; rc=1; }
 
+echo "== (8) R-A8.2 / R-S10: the per-source online-guess limiter is OWNER-SAFE (flood one source; a DIFFERENT source still keys) =="
+out8=$("${RUN[@]}" bash -c '
+  export HOME=/tmp/rd8 RUSTDESK_BIND_LOOPBACK=1; mkdir -p "$HOME"
+  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" "0.0.0.0/0" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
+  ./target/debug/rustdesk --server >/tmp/srv.log 2>&1 & SRV=$!
+  sleep 6
+  # An attacker floods >10 WRONG guesses from 127.0.0.1 within the 60s window (MAX_GUESSES_PER_WINDOW=10).
+  for i in $(seq 11); do ./target/debug/examples/probe_client "127.0.0.1:21118" "WRONG-PW-$i-zz" fail >/dev/null 2>&1; done
+  # The OWNER, from a DIFFERENT source (127.0.0.2), with the CORRECT password -> MUST still key.
+  echo "OWNER_DIFF_SRC: $(./target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok "" "127.0.0.2:0" 2>&1 | grep -oE "keying ok=(true|false)")"
+  # The flooding source (127.0.0.1), even with the CORRECT password, is now rate-limited (shed pre-key).
+  echo "FLOODER_SAME_SRC: $(./target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok 2>&1 | grep -oE "keying ok=(true|false)")"
+  kill -TERM $SRV 2>/dev/null
+' || true)
+echo "$out8"
+# The CARDINAL R-S10 rule: a limiter must NEVER lock the owner out of their own machine. The per-IP
+# online-guess limiter (guess_limiter_allows, MAX 10/60s) blocks the FLOODING source but not a
+# different one — so a connection-flood / guess-flood from an attacker cannot deny the owner.
+echo "$out8" | grep -q 'OWNER_DIFF_SRC: keying ok=true' \
+  || { echo "  FAIL R-A8.2: a DIFFERENT source was blocked by the limiter — owner lock-out, the CARDINAL violation"; rc=1; }
+echo "$out8" | grep -q 'FLOODER_SAME_SRC: keying ok=false' \
+  || { echo "  FAIL R-A8.2: the flooding source was NOT rate-limited (the per-source guess limiter is not working)"; rc=1; }
+
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) startup-warning AND session-enforcement + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) + R-A8/R-T7 forged-frame rejection — ALL validated at RUNTIME."
+  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) startup-warning AND session-enforcement + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

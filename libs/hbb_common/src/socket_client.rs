@@ -4,7 +4,6 @@ use crate::{
     config::{Config, NetworkType},
     tcp::FramedStream,
     udp::FramedSocket,
-    websocket::{self, check_ws, is_ws_endpoint},
     ResultType, Stream,
 };
 use anyhow::Context;
@@ -122,7 +121,7 @@ impl IsResolvedSocketAddr for &str {
     }
 }
 
-// This function checks if the target is a websocket endpoint and connects accordingly.
+// Direct-IP fork: the flagship path is always TCP (WebSocket transport excised, §8).
 #[inline]
 pub async fn connect_tcp<
     't,
@@ -135,12 +134,6 @@ pub async fn connect_tcp<
     if is_webrtc_endpoint(&target.to_string()) {
         return Ok(Stream::WebRTC(
             webrtc::WebRTCStream::new(&target.to_string(), false, ms_timeout).await?,
-        ));
-    }
-    let target_str = check_ws(&target.to_string());
-    if is_ws_endpoint(&target_str) {
-        return Ok(Stream::WebSocket(
-            websocket::WsFramedStream::new(target_str, None, None, ms_timeout).await?,
         ));
     }
     connect_tcp_local(target, None, ms_timeout).await

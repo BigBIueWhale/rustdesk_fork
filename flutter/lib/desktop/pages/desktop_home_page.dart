@@ -321,24 +321,22 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                   ),
                   Row(
                     children: [
+                      // R-G3/R-G1: serverPasswd is the hidden "-" placeholder under the pin —
+                      // server_model sets it to "-" whenever verification-method ==
+                      // use-permanent-password (which R-S16 pins), so the permanent password is
+                      // never shown here. The value is displayed hidden and is NOT copyable (a copy
+                      // of "-" would be misleading); the password is changed via the edit affordance.
                       Expanded(
-                        child: GestureDetector(
-                          onDoubleTap: () {
-                            Clipboard.setData(
-                                ClipboardData(text: model.serverPasswd.text));
-                            showToast(translate("Copied"));
-                          },
-                          child: TextFormField(
-                            controller: model.serverPasswd,
-                            readOnly: true,
-                            decoration: InputDecoration(
-                              border: InputBorder.none,
-                              contentPadding:
-                                  EdgeInsets.only(top: 14, bottom: 10),
-                            ),
-                            style: TextStyle(fontSize: 15),
-                          ).workaroundFreezeLinuxMint(),
-                        ),
+                        child: TextFormField(
+                          controller: model.serverPasswd,
+                          readOnly: true,
+                          decoration: InputDecoration(
+                            border: InputBorder.none,
+                            contentPadding:
+                                EdgeInsets.only(top: 14, bottom: 10),
+                          ),
+                          style: TextStyle(fontSize: 15),
+                        ).workaroundFreezeLinuxMint(),
                       ),
                       if (!bind.isDisableSettings())
                         InkWell(

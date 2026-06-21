@@ -897,24 +897,16 @@ impl Connection {
             conn.try_empty_file_clipboard();
         }
 
-        if let Some(video_privacy_conn_id) = privacy_mode::get_privacy_mode_conn_id() {
-            if video_privacy_conn_id == id {
-                let _ = Self::turn_off_privacy_to_msg(id, String::new());
-            }
-        }
-        video_service::notify_video_frame_fetched_by_conn_id(id, None);
+        // R-T4 (§20): privacy-off (screen-unblank), the video-fetch notify, `remove_connection`,
+        // and cursor-record-stop have MOVED into `Connection`'s `Drop` so they run on cancellation
+        // too, not only on this normal-exit tail (a dropped session previously left the console
+        // blanked + the Server map diverged). `update_temporary_password`, the port-forward drain,
+        // and the async `on_close` (CloseReason + lock_screen) remain here on the normal path.
         if conn.authorized {
             password::update_temporary_password();
         }
         if let Err(err) = conn.try_port_forward_loop(&mut rx_from_cm).await {
             conn.on_close(&err.to_string(), false).await;
-        }
-
-        if let Some(s) = conn.server.upgrade() {
-            let mut s = s.write().unwrap();
-            s.remove_connection(&conn.inner);
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            try_stop_record_cursor_pos();
         }
         conn.on_close("End", true).await;
         log::info!("#{} connection loop exited", id);
@@ -4890,6 +4882,28 @@ impl Default for PortableState {
 
 impl Drop for Connection {
     fn drop(&mut self) {
+        // R-T4 (§20): the per-connection cleanup that was previously straight-line AFTER the
+        // run-loop — and so LOST on cancellation (a dropped session could leave the physical
+        // console BLANKED, a local-security regression; and the `Server`'s own connection map
+        // diverged from the RAII-pruned globals) — runs HERE in `Drop`, which executes on BOTH
+        // normal exit AND cancellation (the run-loop future being dropped at its `.await`). Every
+        // action is synchronous and Drop-safe: the server lock is taken with `if let Ok` (never
+        // `.unwrap()` — a poisoned-lock panic in Drop would abort), and each effect is best-effort.
+        let id = self.inner.id();
+        if let Some(video_privacy_conn_id) = privacy_mode::get_privacy_mode_conn_id() {
+            if video_privacy_conn_id == id {
+                let _ = Self::turn_off_privacy_to_msg(id, String::new());
+            }
+        }
+        video_service::notify_video_frame_fetched_by_conn_id(id, None);
+        if let Some(s) = self.server.upgrade() {
+            if let Ok(mut s) = s.write() {
+                s.remove_connection(&self.inner);
+            }
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            try_stop_record_cursor_pos();
+        }
+
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         self.release_pressed_modifiers();
 

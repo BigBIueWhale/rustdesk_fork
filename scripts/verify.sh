@@ -308,6 +308,20 @@ if [ -z "$r_t15b_missing" ]; then
 else
   echo "  FAIL R-T15(b): excision incomplete:$r_t15b_missing"; rc=1
 fi
+# R-T4 (§20, part): the per-connection SYNC cleanup (privacy-off/screen-unblank, the video-fetch
+# notify, remove_connection, cursor-record-stop) MUST run on cancellation, so it lives in
+# Connection's Drop (which Rust runs when the run-loop future is dropped at its await), not only in
+# the post-loop tail it previously sat in (where a cancelled session left the console BLANKED — a
+# local-security regression — and the Server map diverged). Gate: the cleanup is in Drop + the tail
+# documents the move. (The CM-child kill_on_drop sub-part of R-T4 is a tracked follow-on.)
+r_t4_missing=
+grep -q 'the per-connection cleanup that was previously straight-line' src/server/connection.rs || r_t4_missing="$r_t4_missing drop-cleanup"
+grep -q 'have MOVED into' src/server/connection.rs || r_t4_missing="$r_t4_missing tail-note"
+if [ -z "$r_t4_missing" ]; then
+  echo "  ok  R-T4 (part) sync teardown cleanup folded into Connection::Drop (runs on cancellation)"
+else
+  echo "  FAIL R-T4: teardown cleanup not folded into Drop:$r_t4_missing"; rc=1
+fi
 # R-T15(a) / R-P12: secret-zeroization in libs/pake — curve25519-dalek 4.1.3 impls the Zeroize
 # TRAIT but not Drop, so secrets not explicitly wiped linger on attacker-inducible abort/timeout
 # paths. The ISK master secret is wrapped in Zeroizing, the initiator's ephemeral scalar is wiped

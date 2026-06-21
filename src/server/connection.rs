@@ -30,17 +30,12 @@ use cidr_utils::cidr::IpCidr;
 #[cfg(target_os = "android")]
 use hbb_common::protobuf::EnumOrUnknown;
 use hbb_common::{
-    config::{
-        self, decode_permanent_password_h1_from_storage, decode_preset_password_h1_from_storage,
-        keys, local_permanent_password_storage_is_usable_for_auth,
-        preset_permanent_password_storage_is_usable_for_auth, Config,
-    },
+    config::{self, keys, Config},
     fs::{self, can_enable_overwrite_detection, JobType},
     futures::{SinkExt, StreamExt},
     get_time, get_version_number,
     message_proto::{option_message::BoolOption, permission_info::Permission},
     password_security::{self as password, ApproveMode},
-    sha2::{Digest, Sha256},
     sleep, timeout,
     tokio::{
         net::TcpStream,

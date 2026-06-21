@@ -568,6 +568,19 @@ if [ -n "$r_s11a_missing" ]; then
 else
   echo "  ok  R-S11a(a) fresh _service active-uid auth + R-S11a(b)/R-S8 parent-dir hardening (O_NOFOLLOW+0o0711+scrub) present & wired"
 fi
+# R-S14 (screen capture bound to a PAKE session — a reused grant must not capture outside one): the
+# controlled-side capture is per-connection — started only in the authorized (CPace-keyed) Connection
+# setup (try_add_primay_video_service, after the R-A2 single self.authorized point) and torn down in
+# its Drop (R-T4: stop capture / unblank on disconnect). The Android "reused grant" vector — a
+# foreground-service AUTO-RESTART re-entering capture WITHOUT a fresh PAKE session — is closed by
+# MainService.onStartCommand returning START_NOT_STICKY (not START_STICKY): a restart never resumes
+# capture on its own. Gate that the Android capture service stays NOT_STICKY.
+r_s14_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
+if grep -q 'START_NOT_STICKY' "$r_s14_kt" 2>/dev/null && ! grep -qE 'return[[:space:]]+START_STICKY\b' "$r_s14_kt" 2>/dev/null; then
+  echo "  ok  R-S14 Android capture service is START_NOT_STICKY (an auto-restart never re-enters capture outside a fresh PAKE session; desktop capture is per-Connection via R-A2 + R-T4)"
+else
+  echo "  FAIL R-S14: MainService.onStartCommand must return START_NOT_STICKY (not START_STICKY) so an auto-restart cannot resume capture outside a PAKE session"; rc=1
+fi
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod lan:R-X5 lan.rs residual (WoL send_wol + discover no-op; the discovery LISTENER is excised + hard-gated above — full removal is the R-G2 Discovered-tab/WoL-UI follow-on)' \

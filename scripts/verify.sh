@@ -178,16 +178,34 @@ fi
 # R-T2 (§20): the FramedStream poison flag. A keyed stream's write nonce is pre-incremented by
 # `seal` before the ciphertext is flushed; reusing a stream after a send error would re-flush
 # stale bytes under an advanced nonce and permanently desync the c2s direction. The poison flag
-# (5th tuple field) makes "a send/recv error is fatal-to-the-connection" structural: send_bytes
-# bails when poisoned and sets it on any send error; next() returns EOF when poisoned and sets it
-# on any read or decrypt/auth failure. Presence gate: the short-circuit guard (>=2 sites:
-# send_bytes + next) and the poison-set (>=3 sites: send error, decrypt-fail, read-err).
-r_t2_guard=$(grep -c 'if self.4 {' libs/hbb_common/src/tcp.rs 2>/dev/null || echo 0)
-r_t2_set=$(grep -c 'self.4 = true' libs/hbb_common/src/tcp.rs 2>/dev/null || echo 0)
-if [ "$r_t2_guard" -ge 2 ] && [ "$r_t2_set" -ge 3 ]; then
+# (the `pub bool` tuple field, `.3` after R-T5 folded the cipher into the codec) makes "a
+# send/recv error is fatal-to-the-connection" structural: send_bytes bails when poisoned and sets
+# it on any send error; next() returns EOF when poisoned and sets it on any read OR (now codec-fold)
+# decrypt/auth failure. Presence gate: the short-circuit guard (>=2 sites: send_bytes + next) and
+# the poison-set (>=2 sites: send error, and next's unified read/decrypt error).
+r_t2_guard=$(grep -c 'if self.3 {' libs/hbb_common/src/tcp.rs 2>/dev/null || echo 0)
+r_t2_set=$(grep -c 'self.3 = true' libs/hbb_common/src/tcp.rs 2>/dev/null || echo 0)
+if [ "$r_t2_guard" -ge 2 ] && [ "$r_t2_set" -ge 2 ]; then
   echo "  ok  R-T2 FramedStream poison flag present (guard x$r_t2_guard, poison-set x$r_t2_set)"
 else
-  echo "  FAIL R-T2: poison flag incomplete (guard=$r_t2_guard need>=2, set=$r_t2_set need>=3)"; rc=1
+  echo "  FAIL R-T2: poison flag incomplete (guard=$r_t2_guard need>=2, set=$r_t2_set need>=2)"; rc=1
+fi
+# R-T5 (§20): decryption is FOLDED INTO the Framed-owned codec (SecretboxCodec) — decode()
+# reassembles ONE frame then authenticates+decrypts it, advancing read_seq INSIDE decode, so a
+# dropped next() (select!/timeout losing the race) cannot desync the recv counter. The cipher
+# lives in the codec, inheriting tokio-util's StreamExt::next cancel-safety verbatim. Gate: the
+# codec + its Decoder/Encoder impls + the Framed<_,SecretboxCodec> type + the mandated regression
+# test (drives next() under a biased select and asserts read_seq unchanged via recv_counter).
+r_t5_missing=
+grep -q 'pub struct SecretboxCodec' libs/hbb_common/src/tcp.rs              || r_t5_missing="$r_t5_missing codec-struct"
+grep -q 'impl Decoder for SecretboxCodec' libs/hbb_common/src/tcp.rs        || r_t5_missing="$r_t5_missing decoder-impl"
+grep -q 'impl Encoder<Bytes> for SecretboxCodec' libs/hbb_common/src/tcp.rs || r_t5_missing="$r_t5_missing encoder-impl"
+grep -q 'Framed<DynTcpStream, SecretboxCodec>' libs/hbb_common/src/tcp.rs   || r_t5_missing="$r_t5_missing framed-type"
+grep -rq 'recv_counter' libs/cpace_it/tests/                               || r_t5_missing="$r_t5_missing regression-test"
+if [ -n "$r_t5_missing" ]; then
+  echo "  FAIL R-T5: decrypt-in-codec incomplete:$r_t5_missing"; rc=1
+else
+  echo "  ok  R-T5 decrypt folded into SecretboxCodec (read_seq advances in decode) + regression test"
 fi
 # R-T8 / R-T16 (§20): the single-writer + framing/processing-order contract is CODIFIED at the
 # FramedStream type (and at the Connection.stream owner) so a refactor cannot silently regress to

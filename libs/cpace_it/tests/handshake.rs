@@ -101,6 +101,52 @@ async fn framed_stream_encrypts_after_session_keys_installed() {
     assert_eq!(&got2[..], b"reply from the controlled host");
 }
 
+/// R-T5 (§20): a `FramedStream::next()` that LOSES a `select!` race (a competing always-ready
+/// branch wins, so the read branch is not taken) MUST NOT advance the recv counter or consume
+/// bytes — the cancellation-safety the decrypt-in-codec (`SecretboxCodec`) makes structural by
+/// advancing `read_seq` only inside `decode`, atomically with reassembly. We put a complete keyed
+/// frame on the wire (so data genuinely IS available at the receiver), then repeatedly drive
+/// `next()` under a `biased` select whose first branch is always ready, asserting `recv_counter()`
+/// is unchanged each round; finally a real read still delivers the frame intact and advances the
+/// counter EXACTLY once — proving the dropped reads neither consumed the bytes nor desynced the
+/// recv nonce. A regression that advanced `read_seq` outside the delivered-frame path (or consumed
+/// the buffer on a dropped poll) fails here: the final frame would be lost or decrypt-fail.
+#[tokio::test]
+async fn r_t5_dropped_next_does_not_advance_read_seq() {
+    let (mut si, mut sr) = loopback_pair().await;
+    let pw = "cancel-safety-test";
+    let (ri, rr) = tokio::join!(run_initiator(&mut si, pw), run_responder(&mut sr, pw));
+    si.set_session_keys(ri.expect("initiator keys"));
+    sr.set_session_keys(rr.expect("responder keys"));
+
+    // Put a complete keyed frame on the wire toward `sr`, and let it arrive so the read branch
+    // genuinely COULD complete were it ever polled to completion.
+    si.send_raw(b"frame-that-must-survive-a-dropped-read".to_vec())
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    assert_eq!(sr.recv_counter(), 0, "no frame consumed before any read");
+    for _ in 0..8 {
+        let before = sr.recv_counter();
+        tokio::select! {
+            biased;
+            _ = std::future::ready(()) => {}
+            _ = sr.next() => panic!("R-T5: the read branch must not be taken"),
+        }
+        assert_eq!(
+            sr.recv_counter(),
+            before,
+            "R-T5: a dropped next() advanced read_seq — cancellation-safety violated"
+        );
+    }
+
+    // A real read still delivers the frame intact and advances the counter exactly once.
+    let got = sr.next().await.unwrap().unwrap();
+    assert_eq!(&got[..], b"frame-that-must-survive-a-dropped-read");
+    assert_eq!(sr.recv_counter(), 1, "exactly one frame consumed after the dropped reads");
+}
+
 /// R-S7: the handshake caps frames at 4 KiB pre-PAKE (the only attacker-reachable
 /// parser before keying), then RAISES the cap to the session ceiling on success.
 /// A 100 KiB frame — far over the pre-auth cap — therefore flows only because

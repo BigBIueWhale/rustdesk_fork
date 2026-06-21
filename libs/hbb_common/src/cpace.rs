@@ -406,6 +406,13 @@ impl DirectionalCipher {
         self.read_seq += 1;
         secretbox::open(ciphertext, &Self::nonce(self.read_seq), &self.recv_key)
     }
+
+    /// The recv counter — exposed for the R-T5 cancellation-safety regression test (a dropped
+    /// `FramedStream::next` MUST NOT advance it).
+    #[inline]
+    pub fn read_seq(&self) -> u64 {
+        self.read_seq
+    }
 }
 
 // ── per-source online-guess limiter (R-S10 / R-P14c) ─────────────────────────

@@ -23,7 +23,7 @@ use tokio::{
     net::{lookup_host, TcpListener, TcpSocket, ToSocketAddrs},
 };
 use tokio_socks::IntoTargetAddr;
-use tokio_util::codec::Framed;
+use tokio_util::codec::{Decoder, Encoder, Framed};
 
 pub trait TcpStreamTrait: AsyncRead + AsyncWrite + Unpin {}
 pub struct DynTcpStream(pub Box<dyn TcpStreamTrait + Send + Sync>);
@@ -72,6 +72,86 @@ impl StreamCipher {
                 }
             }
         }
+    }
+
+    /// The recv counter (`read_seq`) — exposed for the R-T5 cancellation-safety regression test
+    /// (a dropped `next()` MUST NOT advance it). Single: the `Encrypt` recv field; Dual: the
+    /// `DirectionalCipher`'s `read_seq`.
+    #[inline]
+    pub fn read_seq(&self) -> u64 {
+        match self {
+            StreamCipher::Single(e) => e.2,
+            StreamCipher::Dual(d) => d.read_seq(),
+        }
+    }
+}
+
+/// R-T5 (§20): the length codec with decryption FOLDED IN — the structural form of the
+/// reassemble → authenticate → parse order.
+///
+/// `decode` reassembles exactly ONE complete frame (the stateful `Head`/`Data(n)` machine of the
+/// inner [`BytesCodec`]) and THEN, in the same synchronous call with **no `.await` between**,
+/// authenticates + decrypts it and advances the recv counter (`read_seq`). Because the counter
+/// lives in this `Framed`-owned codec and the decrypt is part of the value `StreamExt::next`
+/// atomically yields, a dropped `next()` (a `select!`/`timeout` losing the race) consumes zero
+/// bytes and never advances `read_seq` — inheriting tokio-util's documented cancel-safety verbatim,
+/// *structurally* rather than by the incidental ordering of an external decrypt step. A partial
+/// frame returns `Ok(None)` (buffered, no counter advance), so a dropped poll never half-consumes.
+/// `encode` symmetrically seals the plaintext under the send key (advancing `write_seq`) THEN
+/// length-frames it, so on the single-writer side (R-T8) seal order == wire order.
+pub struct SecretboxCodec {
+    inner: BytesCodec,
+    cipher: Option<StreamCipher>,
+}
+
+impl SecretboxCodec {
+    pub(crate) fn new() -> Self {
+        Self {
+            inner: BytesCodec::new(),
+            cipher: None,
+        }
+    }
+    #[inline]
+    fn set_raw(&mut self) {
+        self.inner.set_raw();
+    }
+    #[inline]
+    fn set_max_packet_length(&mut self, n: usize) {
+        self.inner.set_max_packet_length(n);
+    }
+}
+
+impl Decoder for SecretboxCodec {
+    type Item = BytesMut;
+    type Error = Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<BytesMut>, Error> {
+        // (1) reassemble exactly ONE complete frame; a partial frame buffers as Ok(None) with no
+        // counter advance, so a dropped poll never half-consumes.
+        match self.inner.decode(src)? {
+            Some(mut frame) => {
+                // (2) authenticate + decrypt the WHOLE frame, advancing read_seq INSIDE decode —
+                // R-T7 (every keyed frame AEAD-authenticated) lives in StreamCipher::dec.
+                if let Some(cipher) = self.cipher.as_mut() {
+                    cipher.dec(&mut frame)?;
+                }
+                Ok(Some(frame))
+            }
+            None => Ok(None),
+        }
+    }
+}
+
+impl Encoder<Bytes> for SecretboxCodec {
+    type Error = Error;
+
+    fn encode(&mut self, data: Bytes, dst: &mut BytesMut) -> Result<(), Error> {
+        // seal under the send key (advancing write_seq) THEN length-frame.
+        let framed_input = match self.cipher.as_mut() {
+            Some(cipher) => Bytes::from(cipher.enc(&data)),
+            None => data,
+        };
+        self.inner.encode(framed_input, dst)
     }
 }
 
@@ -135,12 +215,12 @@ impl StreamCipher {
 /// [`FramedStream::next`] (R-T14).
 ///
 /// # Field layout
-/// `.0` framed socket · `.1` peer addr · `.2` engaged cipher (post-keying) ·
-/// `.3` per-send write timeout (ms; 0 = none) · `.4` poison flag (R-T2).
+/// `.0` framed socket whose codec ([`SecretboxCodec`]) OWNS the engaged cipher (R-T5: the recv
+/// counter lives in the `Framed`-owned codec, so a dropped `next()` cannot desync it) · `.1` peer
+/// addr · `.2` per-send write timeout (ms; 0 = none) · `.3` poison flag (R-T2).
 pub struct FramedStream(
-    pub Framed<DynTcpStream, BytesCodec>,
+    pub Framed<DynTcpStream, SecretboxCodec>,
     pub SocketAddr,
-    pub Option<StreamCipher>,
     pub u64,
     // R-T2 (§20): the poison flag. Set on ANY send/recv error so the stream can never be
     // reused after a failure. On a keyed stream `seal` pre-increments the write nonce before
@@ -153,7 +233,7 @@ pub struct FramedStream(
 );
 
 impl Deref for FramedStream {
-    type Target = Framed<DynTcpStream, BytesCodec>;
+    type Target = Framed<DynTcpStream, SecretboxCodec>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -240,9 +320,8 @@ impl FramedStream {
                     stream.set_nodelay(true).ok();
                     let addr = stream.local_addr()?;
                     return Ok(Self(
-                        Framed::new(DynTcpStream(Box::new(stream)), BytesCodec::new()),
+                        Framed::new(DynTcpStream(Box::new(stream)), SecretboxCodec::new()),
                         addr,
-                        None,
                         0,
                         false, // R-T2: a fresh stream is not poisoned
                     ));
@@ -270,14 +349,13 @@ impl FramedStream {
     }
 
     pub fn set_send_timeout(&mut self, ms: u64) {
-        self.3 = ms;
+        self.2 = ms;
     }
 
     pub fn from(stream: impl TcpStreamTrait + Send + Sync + 'static, addr: SocketAddr) -> Self {
         Self(
-            Framed::new(DynTcpStream(Box::new(stream)), BytesCodec::new()),
+            Framed::new(DynTcpStream(Box::new(stream)), SecretboxCodec::new()),
             addr,
-            None,
             0,
             false, // R-T2: a fresh stream is not poisoned
         )
@@ -291,11 +369,10 @@ impl FramedStream {
         // R-S16, now unconditional), so a keyed stream must never reach here; assert it
         // fail-closed on every build (R-A3/R-R2b) rather than silently downgrade.
         assert!(
-            self.2.is_none(),
+            self.0.codec().cipher.is_none(),
             "R-A3: set_raw on a keyed session stream — refusing to downgrade"
         );
         self.0.codec_mut().set_raw();
-        self.2 = None;
     }
 
     /// Cap the inbound frame length before the first byte is read. Used to bound
@@ -306,7 +383,13 @@ impl FramedStream {
     }
 
     pub fn is_secured(&self) -> bool {
-        self.2.is_some()
+        self.0.codec().cipher.is_some()
+    }
+
+    /// The recv counter (`read_seq`) of the engaged cipher, or 0 if unkeyed — exposed for the
+    /// R-T5 cancellation-safety regression test (a dropped `next()` MUST NOT advance it).
+    pub fn recv_counter(&self) -> u64 {
+        self.0.codec().cipher.as_ref().map_or(0, |c| c.read_seq())
     }
 
     #[inline]
@@ -316,33 +399,30 @@ impl FramedStream {
 
     #[inline]
     pub async fn send_raw(&mut self, msg: Vec<u8>) -> ResultType<()> {
-        let mut msg = msg;
-        if let Some(key) = self.2.as_mut() {
-            msg = key.enc(&msg);
-        }
-        self.send_bytes(bytes::Bytes::from(msg)).await?;
-        Ok(())
+        // R-T5: encryption (and the write_seq advance) is folded into the codec's `encode`; this
+        // just enqueues the plaintext frame, which the SecretboxCodec seals then length-frames.
+        self.send_bytes(bytes::Bytes::from(msg)).await
     }
 
     #[inline]
     pub async fn send_bytes(&mut self, bytes: Bytes) -> ResultType<()> {
         // R-T2: a poisoned stream is never reused (a prior send/recv error was fatal).
-        if self.4 {
+        if self.3 {
             bail!("R-T2: refusing to send on a poisoned stream (a prior send/recv error)");
         }
         let r = self.send_bytes_raw(bytes).await;
         if r.is_err() {
             // R-T2: a send error (incl. a write timeout) is fatal — poison so a later edit
             // cannot reuse the stream and re-flush stale ciphertext under an advanced nonce.
-            self.4 = true;
+            self.3 = true;
         }
         r
     }
 
     #[inline]
     async fn send_bytes_raw(&mut self, bytes: Bytes) -> ResultType<()> {
-        if self.3 > 0 {
-            super::timeout(self.3, self.0.send(bytes)).await??;
+        if self.2 > 0 {
+            super::timeout(self.2, self.0.send(bytes)).await??;
         } else {
             self.0.send(bytes).await?;
         }
@@ -352,9 +432,14 @@ impl FramedStream {
     #[inline]
     pub async fn next(&mut self) -> Option<Result<BytesMut, Error>> {
         // R-T2: a poisoned stream behaves as EOF — never read again after a fatal error.
-        if self.4 {
+        if self.3 {
             return None;
         }
+        // R-T5 (§20): reassembly AND decryption+`read_seq` advance happen atomically INSIDE the
+        // codec's `decode` (see `SecretboxCodec`) — there is no `.await` between a frame leaving the
+        // buffer and the AEAD `open`, so the recv counter advances only on a frame actually
+        // delivered, and a decrypt/auth failure (R-T7) surfaces here as `Some(Err(_))`.
+        //
         // R-T14 (§20) — cross-backend cancellation-safety basis (the foundation R-T5 relies on):
         // dropping THIS read future (because `select!`/`timeout` chose another branch) consumes
         // ZERO bytes on epoll, kqueue, AND Windows IOCP alike, so a dropped read can never desync
@@ -366,19 +451,11 @@ impl FramedStream {
         // mio's TcpStream path), so dropping the future only unlinks a readiness waiter. This MUST
         // NOT be "fixed" with a hand-rolled overlapped / `WSARecv` read: that would reintroduce the
         // very per-OS hazard (a kernel buffer consuming bytes into a dropped future) this avoids.
-        let mut res = self.0.next().await;
-        if let Some(Ok(bytes)) = res.as_mut() {
-            if let Some(key) = self.2.as_mut() {
-                if let Err(err) = key.dec(bytes) {
-                    // R-T2: a decrypt/authentication failure is fatal — poison the stream.
-                    self.4 = true;
-                    return Some(Err(err));
-                }
-            }
-        }
+        let res = self.0.next().await;
         if matches!(res, Some(Err(_))) {
-            // R-T2: a read/framing error is fatal — poison so the stream is never reused.
-            self.4 = true;
+            // R-T2: a read / framing / decrypt-auth failure is fatal — poison the stream so it is
+            // never reused (the decrypt now lives in the codec, so this one check covers both).
+            self.3 = true;
         }
         res
     }
@@ -393,14 +470,16 @@ impl FramedStream {
     }
 
     pub fn set_key(&mut self, key: Key) {
-        self.2 = Some(StreamCipher::Single(Encrypt::new(key)));
+        // R-T5: the cipher lives in the Framed-owned codec.
+        self.0.codec_mut().cipher = Some(StreamCipher::Single(Encrypt::new(key)));
     }
 
     /// Engage the CPace two-key per-direction cipher after a confirmed handshake
     /// (R-P2/R-P10). The keys are role-oriented (the caller's send/recv slots),
     /// so a single key can never end up engaged in both directions.
     pub fn set_session_keys(&mut self, keys: DirectionalKeys) {
-        self.2 = Some(StreamCipher::Dual(DirectionalCipher::new(&keys)));
+        // R-T5: the cipher lives in the Framed-owned codec.
+        self.0.codec_mut().cipher = Some(StreamCipher::Dual(DirectionalCipher::new(&keys)));
     }
 
     fn get_nonce(seqnum: u64) -> Nonce {

@@ -16,9 +16,8 @@ use tokio_util::codec::Framed;
 use url::Url;
 
 use crate::{
-    bytes_codec::BytesCodec,
     config::Socks5Server,
-    tcp::{DynTcpStream, FramedStream},
+    tcp::{DynTcpStream, FramedStream, SecretboxCodec},
     tls::{get_cached_tls_accept_invalid_cert, get_cached_tls_type, upsert_tls_cache, TlsType},
     ResultType,
 };
@@ -400,9 +399,8 @@ impl Proxy {
                     super::timeout(self.ms_timeout, self.http_connect(stream, &target_addr))
                         .await??;
                 Ok(FramedStream(
-                    Framed::new(DynTcpStream(Box::new(stream)), BytesCodec::new()),
+                    Framed::new(DynTcpStream(Box::new(stream)), SecretboxCodec::new()),
                     addr,
-                    None,
                     0,
                     false, // R-T2: a fresh stream is not poisoned
                 ))
@@ -442,9 +440,8 @@ impl Proxy {
                     }
                 };
                 Ok(FramedStream(
-                    Framed::new(stream, BytesCodec::new()),
+                    Framed::new(stream, SecretboxCodec::new()),
                     addr,
-                    None,
                     0,
                     false, // R-T2: a fresh stream is not poisoned
                 ))
@@ -470,9 +467,8 @@ impl Proxy {
                     .await??
                 };
                 Ok(FramedStream(
-                    Framed::new(DynTcpStream(Box::new(stream)), BytesCodec::new()),
+                    Framed::new(DynTcpStream(Box::new(stream)), SecretboxCodec::new()),
                     addr,
-                    None,
                     0,
                     false, // R-T2: a fresh stream is not poisoned
                 ))

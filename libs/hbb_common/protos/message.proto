@@ -86,7 +86,9 @@ message LoginRequest {
   string version = 11;
   OSLogin os_login = 12;
   string my_platform = 13;
-  bytes hwid = 14;
+  // R-S18 / Appendix C #22: the stable device-fingerprint `hwid` (field 14) is deleted — the viewer
+  // no longer auto-sends it (a credential-harvest vector for a malicious/substituted peer) and
+  // nothing reads it. Field number 14 is left retired (not reused) to avoid wire-tag confusion.
   string avatar = 17;
 }
 

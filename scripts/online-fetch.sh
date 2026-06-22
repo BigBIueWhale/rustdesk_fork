@@ -206,6 +206,24 @@ stage_vcpkg_natives() {
     log "vcpkg natives staged ($(ls "$ONLINE_DIR"/vcpkg/installed/x64-linux/lib/*.a 2>/dev/null | wc -l) static libs)"
 }
 
+# ── The Android NDK r28c, extracted for the cargo-ndk JNI cross-compile ─────────
+# fetch_toolchains fetched the NDK zip; build-android.sh expects it at ANDROID_NDK_HOME=
+# /online/android-ndk. Unzip it ONCE here (~2GB extracted) so the offline build reuses it.
+# (The SDK build-tools/platform are staged separately via sdkmanager; the rust JNI lib also
+# needs the aarch64-linux-android std + cargo-ndk + the arm64-android vcpkg set.)
+stage_android_ndk() {
+    require_cmd unzip
+    if [ -d "$ONLINE_DIR/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin" ]; then
+        log "android NDK already extracted, skipping"; return 0
+    fi
+    [ -f "$ONLINE_DIR/android-ndk-${ANDROID_NDK_VERSION}.zip" ] || die "android NDK zip missing — fetch_toolchains must run first"
+    log "extracting the Android NDK ${ANDROID_NDK_VERSION} -> ./online/android-ndk"
+    rm -rf "$ONLINE_DIR/.ndk-tmp" "$ONLINE_DIR/android-ndk"; mkdir -p "$ONLINE_DIR/.ndk-tmp"
+    unzip -q "$ONLINE_DIR/android-ndk-${ANDROID_NDK_VERSION}.zip" -d "$ONLINE_DIR/.ndk-tmp"
+    mv "$ONLINE_DIR"/.ndk-tmp/android-ndk-* "$ONLINE_DIR/android-ndk"
+    rm -rf "$ONLINE_DIR/.ndk-tmp"
+}
+
 main() {
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     vendor_cargo
@@ -215,6 +233,7 @@ main() {
     build_frb_codegen
     stage_pub_cache
     stage_vcpkg_natives
+    stage_android_ndk
     # Windows ISO / VS Build Tools are partly evergreen (R-B12(c)): pin the CAPTURED
     # offline layout by SHA-256, documenting publisher-verified vs evergreen.
     log "online-fetch complete — ./online is now offline-buildable. Builds run --network=none."

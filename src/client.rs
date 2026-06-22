@@ -3192,7 +3192,7 @@ pub enum Data {
     ResumeJob((i32, bool)),
     RecordScreen(bool),
     ElevateDirect,
-    ElevateWithLogon(String, String),
+    // R-S18 / R-X9: ElevateWithLogon (peer-supplied OS creds -> CreateProcessWithLogonW) excised.
     NewVoiceCall,
     CloseVoiceCall,
     ResetDecoder(Option<usize>),

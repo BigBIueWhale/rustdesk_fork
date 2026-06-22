@@ -421,7 +421,7 @@ ra6_clean 'api/heartbeat|api/sysinfo|heartbeat_url|handle_config_options|start_h
 # into the LoginRequest on EVERY connect (client.rs create_login_msg), so a substituted
 # peer (R-S17) harvested the operator's stored OS creds with no interaction. The responder
 # already ignores os_login (0685c28); deleting the sender completes the symmetric removal.
-ra6_clean 'Some\(OSLogin|\.set_logon\(' 'R-S18 viewer os_login + elevation-with-logon senders' || rc=1
+ra6_clean 'Some\(OSLogin|\.set_logon\(|ElevateWithLogon|elevate_with_logon' 'R-S18 viewer os_login + elevation-with-logon senders' || rc=1
 # R-S18 / Appendix C #22 (cont.): the persisted os-username/os-password OPTION READS the spec names
 # for deletion are gone from the Rust viewer — get_option("os-username"/"os-password") + should_auto_login()
 # (which returned the STORED os-password to auto-type into the remote OS on connect, a persisted second

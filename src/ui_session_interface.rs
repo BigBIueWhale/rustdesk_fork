@@ -1463,10 +1463,7 @@ impl<T: InvokeUiSession> Session<T> {
     pub fn elevate_direct(&self) {
         self.send(Data::ElevateDirect);
     }
-
-    pub fn elevate_with_logon(&self, username: String, password: String) {
-        self.send(Data::ElevateWithLogon(username, password));
-    }
+    // R-S18 / R-X9: elevate_with_logon (sent peer OS creds for CreateProcessWithLogonW) is excised.
 
     #[cfg(any(target_os = "android", target_os = "ios", not(feature = "flutter")))]
     pub fn switch_sides(&self) {}

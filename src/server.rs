@@ -727,14 +727,17 @@ pub async fn start_server(is_server: bool, no_server: bool) {
                 crate::ipc::client_get_hwcodec_config_thread(0);
             }
             Err(err) => {
-                log::info!("server not started: {err:?}, no_server: {no_server}");
-                if no_server {
-                    hbb_common::sleep(1.0).await;
-                    std::thread::spawn(|| start_server(false, true));
-                } else {
-                    log::info!("try start server");
-                    std::thread::spawn(|| start_server(true, false));
-                }
+                // R-X10: the GUI/client (`is_server == false`) path NEVER auto-starts a controlled
+                // server — the controlled side starts ONLY via the installed `--service` (one mode,
+                // the installed-service privilege model). The inherited `else { start_server(true) }`
+                // was a SECOND, non-installed-service way to run the controlled side (the portable /
+                // quick-support / run-from-terminal twin R-X10 excises). Removed: both `no_server`
+                // values now just retry the config-sync connect in case a `--service` comes up later
+                // (`no_server` is hence vestigial). The standalone `--service`/`--server` entries
+                // (R-D8) are unaffected — they take the `is_server == true` path above.
+                log::info!("no controlled --service to sync config from yet (GUI viewer-only, R-X10): {err:?}, no_server={no_server}");
+                hbb_common::sleep(1.0).await;
+                std::thread::spawn(|| start_server(false, true));
             }
         }
     }

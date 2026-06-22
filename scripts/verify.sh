@@ -162,6 +162,18 @@ ra6_clean 'api/devices/deploy|api/devices/cli' 'R-SV6(c) device-deploy/assign eg
 # path). These worker symbols were mediator-internal and are now tree-wide absent — the
 # direct-only service entry (start_direct_only -> direct_server) is all that remains.
 ra6_clean 'handle_request_relay|handle_punch_hole|udp_nat_listen|punch_udp_hole|KcpStream::accept' 'R-D4 Stage 2 mediator relay/punch/KCP protocol' || rc=1
+# R-X10 (§8 run-mode plurality): the GUI/client (`is_server == false`) startup path NEVER auto-starts
+# a controlled server — the controlled side starts ONLY via the installed `--service`/`--server` (one
+# mode, R-D8). The inherited `else { start_server(true) }` fallback in server.rs's `is_server == false`
+# branch (a SECOND, non-installed-service way to run the controlled side — the portable/quick-support/
+# run-from-terminal twin) is removed. Assert NO non-comment `start_server(true)` survives in server.rs
+# (the legitimate `start_server(true, false)` entries live in core_main.rs's `--server` arm, KEPT).
+r_x10_n=$(grep -E 'start_server\(true' src/server.rs 2>/dev/null | grep -vcE '//' || true)
+if [ "${r_x10_n:-1}" -eq 0 ]; then
+  echo "  ok  R-X10 GUI/client path never auto-starts a controlled server (server-fallback removed; controlled = installed --service only)"
+else
+  echo "  FAIL R-X10: a start_server(true) fallback survives in server.rs's is_server==false branch (found ${r_x10_n} non-comment)"; rc=1
+fi
 # R-D6 / §18 (sovereignty): the box never phones home with audit logs. The connection/alarm/file
 # audit POST helpers (post_conn_audit/post_alarm_audit/post_file_audit -> <api-server>/api/audit/*)
 # are EXCISED — absent, not merely api-server-pinned — so an audit-egress leak cannot regress in.

@@ -92,6 +92,14 @@ fn assert_startup_invariants() {
         log::error!("R-A4/R-S9: no permanent password is set — refusing to listen");
         ok = false;
     }
+    // R-X12: the capture+input backend is compile-pinned to X11 (is_x11() == true). Assert it at
+    // startup so any future un-pin that lets is_x11() go false (a Wayland/misdetected session) refuses
+    // to listen rather than silently failing X11 capture — the runtime half of the X11 pin.
+    #[cfg(target_os = "linux")]
+    if !crate::platform::linux::is_x11() {
+        log::error!("R-X12: is_x11() is not true — the X11 capture/input pin is violated");
+        ok = false;
+    }
     // R-A4 / R-S9 / R-T15(d): assert the source whitelist is NOT default-open. This is a runtime
     // regression-guard on the default-deny inversion — an empty whitelist MUST block; if a refactor
     // flipped `check_whitelist` back to default-open, an empty whitelist would admit any source, so

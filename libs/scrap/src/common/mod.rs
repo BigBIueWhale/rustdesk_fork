@@ -259,10 +259,12 @@ pub struct EncodeYuvFormat {
     pub v: usize,
 }
 
+// R-X12 (§8): the scrap capture backend is pinned to X11 — is_x11() is a compile-time `true`
+// (matches platform::linux::is_x11; the Wayland/pipewire path is compiled out).
 #[cfg(x11)]
 #[inline]
 pub fn is_x11() -> bool {
-    hbb_common::platform::linux::is_x11_or_headless()
+    true
 }
 
 #[cfg(x11)]

@@ -145,6 +145,20 @@ ra6_clean 'ConfigureUpdate|TestNatResponse'                              'R-X3 s
 # such constant ack MUST stay absent — its return would be a PAKE bypass.
 ra6_clean 'direct-ok'                                                     'R-P3 insecure constant-byte ack (direct-ok), PAKE bypass' || rc=1
 ra6_clean 'RUSTDESK_FORCED_DISPLAY_SERVER'                                'R-X12 display-server knob' || rc=1
+# R-X12: is_x11() is compile-pinned `true` in BOTH the main crate (src/platform/linux.rs) and scrap
+# (libs/scrap/src/common/mod.rs) — the capture+input backend is X11 with NO runtime display-server
+# selector (the `*IS_X11` detection cache + the is_x11_or_headless() body are gone). Startup-asserted
+# (R-A4, rendezvous_mediator). Guards a regression that re-adds runtime capture/input backend selection.
+# (The scrap `wayland` feature drop + `mod wayland` compile-out is the remaining R-X12 stage — task #4.)
+r_x12_pin=
+grep -A1 'pub fn is_x11() -> bool {' src/platform/linux.rs        | grep -qE '^\s*true\s*$' || r_x12_pin="$r_x12_pin main-is_x11"
+grep -A1 'pub fn is_x11() -> bool {' libs/scrap/src/common/mod.rs | grep -qE '^\s*true\s*$' || r_x12_pin="$r_x12_pin scrap-is_x11"
+grep -q 'static ref IS_X11' src/platform/linux.rs && r_x12_pin="$r_x12_pin IS_X11-cache-returned"
+if [ -n "$r_x12_pin" ]; then
+  echo "  FAIL R-X12: is_x11() X11-pin incomplete:$r_x12_pin"; rc=1
+else
+  echo "  ok  R-X12 is_x11() compile-pinned true (main + scrap; no runtime display-server selection)"
+fi
 ra6_clean 'gtk_sudo|run_cmds_privileged|"-gtk-sudo"'                      'R-X11 gtk_sudo elevation'  || rc=1
 ra6_clean 'start_uinput_service'                                         'R-X13 dormant uinput listener' || rc=1
 # R-X13 (§8): the rdp_input module — Wayland-portal RDP keyboard/mouse injection via the dbus

@@ -44,7 +44,7 @@ const TERM_SCREEN_256COLOR: &str = "screen-256color";
 const TERM_XTERM: &str = "xterm";
 
 lazy_static::lazy_static! {
-    pub static ref IS_X11: bool = hbb_common::platform::linux::is_x11_or_headless();
+    // R-X12: IS_X11 removed — is_x11() is compile-pinned `true` (no runtime detection cache).
     // Cache for TERM value - once TERM_XTERM_256COLOR is found, reuse it directly
     static ref CACHED_TERM: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
     static ref DATABASE_XTERM_256COLOR: Option<Database> = {
@@ -2189,9 +2189,12 @@ impl Drop for WallPaperRemover {
     }
 }
 
+// R-X12 (§8): the capture+input backend is pinned to X11. is_x11() is a compile-time `true` — the §17
+// box is Xorg; the Wayland/pipewire scrap path + the RUSTDESK_FORCED_DISPLAY_SERVER override are
+// removed, so there is no runtime selector. Asserted at startup (rendezvous_mediator, R-A4).
 #[inline]
 pub fn is_x11() -> bool {
-    *IS_X11
+    true
 }
 
 #[inline]

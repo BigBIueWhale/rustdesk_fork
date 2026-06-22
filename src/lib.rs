@@ -46,7 +46,7 @@ pub mod cli;
 mod clipboard;
 #[cfg(not(any(target_os = "android", target_os = "ios", feature = "cli")))]
 pub mod core_main;
-mod custom_server;
+// R-X4: mod custom_server removed (the custom-rendezvous-server-from-exe-name parser).
 mod lang;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod port_forward;

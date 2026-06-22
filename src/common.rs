@@ -14,9 +14,7 @@ use hbb_common::{
     async_recursion::async_recursion,
     bail, base64,
     bytes::Bytes,
-    config::{
-        self, keys, Config, LocalConfig, CONNECT_TIMEOUT, READ_TIMEOUT, RENDEZVOUS_PORT,
-    },
+    config::{self, keys, Config, LocalConfig, CONNECT_TIMEOUT, READ_TIMEOUT, RENDEZVOUS_PORT},
     futures::future::join_all,
     futures_util::future::poll_fn,
     get_version_number, log,
@@ -572,12 +570,7 @@ pub async fn get_rendezvous_server(ms_timeout: u64) -> (String, Vec<String>, boo
     let (mut a, mut b) = get_rendezvous_server_(ms_timeout);
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let (mut a, mut b) = get_rendezvous_server_(ms_timeout).await;
-    #[cfg(windows)]
-    if let Ok(lic) = crate::platform::get_license_from_exe_name() {
-        if !lic.host.is_empty() {
-            a = lic.host;
-        }
-    }
+    // R-X4: exe-name license rendezvous-server override removed (direct-IP only).
     let mut b: Vec<String> = b
         .drain(..)
         .map(|x| socket_client::check_port(x, config::RENDEZVOUS_PORT))
@@ -861,12 +854,7 @@ pub fn is_setup(name: &str) -> bool {
 }
 
 pub fn get_custom_rendezvous_server(custom: String) -> String {
-    #[cfg(windows)]
-    if let Ok(lic) = crate::platform::windows::get_license_from_exe_name() {
-        if !lic.host.is_empty() {
-            return lic.host.clone();
-        }
-    }
+    // R-X4: exe-name license rendezvous-server override removed (direct-IP only).
     if !custom.is_empty() {
         return custom;
     }
@@ -895,12 +883,7 @@ pub fn get_api_server(api: String, custom: String) -> String {
 }
 
 fn get_api_server_(api: String, custom: String) -> String {
-    #[cfg(windows)]
-    if let Ok(lic) = crate::platform::windows::get_license_from_exe_name() {
-        if !lic.api.is_empty() {
-            return lic.api.clone();
-        }
-    }
+    // R-X4: exe-name license api-server override removed (direct-IP only).
     if !api.is_empty() {
         return api.to_owned();
     }
@@ -1887,7 +1870,10 @@ mod tests {
     async fn get_key_is_the_pinned_anchor_ignoring_overrides() {
         use hbb_common::config::{Config, RS_PUB_KEY};
         // a local config/IPC write installs an attacker "key" override
-        Config::set_option("key".to_owned(), "ATTACKER-REPOINTED-TRUST-ANCHOR=".to_owned());
+        Config::set_option(
+            "key".to_owned(),
+            "ATTACKER-REPOINTED-TRUST-ANCHOR=".to_owned(),
+        );
         assert_eq!(
             Config::get_option("key"),
             "ATTACKER-REPOINTED-TRUST-ANCHOR=",
@@ -1899,7 +1885,11 @@ mod tests {
             RS_PUB_KEY,
             "R-A4: the trust anchor must be the pinned RS_PUB_KEY, never the stored override"
         );
-        assert_eq!(get_key(false).await, RS_PUB_KEY, "R-A4: the anchor is constant across the sync flag");
+        assert_eq!(
+            get_key(false).await,
+            RS_PUB_KEY,
+            "R-A4: the anchor is constant across the sync flag"
+        );
         // restore the shared CONFIG singleton so the override does not leak into sibling lib tests
         Config::set_option("key".to_owned(), String::new());
     }

@@ -1,7 +1,5 @@
 use super::{CursorData, ResultType};
 use crate::{
-    common::PORTABLE_APPNAME_RUNTIME_ENV_KEY,
-    custom_server::*,
     ipc,
     privacy_mode::win_topmost_window::{self, WIN_TOPMOST_INJECTED_PROCESS_EXE},
 };
@@ -1653,12 +1651,8 @@ if exist \"{tmp_path}\\{app_name} Tray.lnk\" del /f /q \"{tmp_path}\\{app_name} 
     );
     let src_exe = std::env::current_exe()?.to_str().unwrap_or("").to_string();
 
-    // potential bug here: if run_cmd cancelled, but config file is changed.
-    if let Some(lic) = get_license() {
-        Config::set_option("key".into(), lic.key);
-        Config::set_option("custom-rendezvous-server".into(), lic.host);
-        Config::set_option("api-server".into(), lic.api);
-    }
+    // R-X4: the install-time license injection (custom_server-from-exe-name -> key /
+    // custom-rendezvous-server / api-server) is excised; the fork is direct-IP only.
 
     let tray_shortcuts = if config::is_outgoing_only() {
         "".to_owned()
@@ -2106,14 +2100,7 @@ pub fn prepare_custom_client_update() -> ResultType<bool> {
     Ok(true)
 }
 
-pub fn get_license_from_exe_name() -> ResultType<CustomServer> {
-    let mut exe = std::env::current_exe()?.to_str().unwrap_or("").to_owned();
-    // if defined portable appname entry, replace original executable name with it.
-    if let Ok(portable_exe) = std::env::var(PORTABLE_APPNAME_RUNTIME_ENV_KEY) {
-        exe = portable_exe;
-    }
-    get_custom_server_from_string(&exe)
-}
+// R-X4: get_license_from_exe_name (the custom-rendezvous-server-from-exe-name parser) removed.
 
 // We can't directly use `RegKey::set_value` to update the registry value, because it will fail with `ERROR_ACCESS_DENIED`
 // So we have to use `run_cmds` to update the registry value.
@@ -2144,9 +2131,7 @@ pub fn is_win_10_or_greater() -> bool {
 }
 
 pub fn bootstrap() -> bool {
-    if let Ok(lic) = get_license_from_exe_name() {
-        *config::EXE_RENDEZVOUS_SERVER.write().unwrap() = lic.host.clone();
-    }
+    // R-X4: exe-name license EXE_RENDEZVOUS_SERVER injection removed (direct-IP only).
 
     #[cfg(debug_assertions)]
     {
@@ -3238,21 +3223,7 @@ pub fn alloc_console() {
     }
 }
 
-fn get_license() -> Option<CustomServer> {
-    let mut lic: CustomServer = Default::default();
-    if let Ok(tmp) = get_license_from_exe_name() {
-        lic = tmp;
-    } else {
-        // for back compatibility from migrating from <= 1.2.1 to 1.2.2
-        lic.key = get_reg("Key");
-        lic.host = get_reg("Host");
-        lic.api = get_reg("Api");
-    }
-    if lic.key.is_empty() || lic.host.is_empty() {
-        return None;
-    }
-    Some(lic)
-}
+// R-X4: get_license (the custom_server license from exe-name / registry) removed.
 
 pub struct WallPaperRemover {
     old_path: String,

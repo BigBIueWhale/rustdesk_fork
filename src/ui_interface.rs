@@ -134,17 +134,8 @@ pub fn show_run_without_install() -> bool {
 
 #[inline]
 pub fn get_license() -> String {
-    #[cfg(windows)]
-    if let Ok(lic) = crate::platform::windows::get_license_from_exe_name() {
-        #[cfg(feature = "flutter")]
-        return format!("Key: {}\nHost: {}\nAPI: {}", lic.key, lic.host, lic.api);
-        // default license format is html formed (sciter)
-        #[cfg(not(feature = "flutter"))]
-        return format!(
-            "<br /> Key: {} <br /> Host: {} API: {}",
-            lic.key, lic.host, lic.api
-        );
-    }
+    // R-X4: the custom_server license (custom-rendezvous-server-from-exe-name) is excised;
+    // the fork is direct-IP only, so there is no license to display.
     Default::default()
 }
 

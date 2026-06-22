@@ -91,6 +91,21 @@ apple_absent 'fn elevate\b|bool Elevate\b|AuthorizationExecuteWithPrivileges' 'R
 # pending (flip to apple_absent as each lands): R-X6 macOS _url-IPC sender-auth (start_ipc_url_server)
 # is a POSITIVE assertion handled separately; nothing left to grep-as-absent here.
 
+echo "== (2b) R-X12/X13 macOS sole-backend assertions (assert the backend, don't excise an alternate) =="
+# R-X12: macOS capture is Quartz/CGDisplayStream (cfg(quartz) mod) — macOS has ONE compile-time
+# backend with no runtime selector (the is_x11 Display::{X11,WAYLAND} branch is cfg(linux) only,
+# and RUSTDESK_FORCED_DISPLAY_SERVER — which macOS has no analog of — is excised tree-wide). The
+# obligation is to ASSERT that sole backend stays present, not to excise an alternate.
+if grep -qE 'pub mod quartz' "$REPO/libs/scrap/src/lib.rs"; then
+  note "ok  R-X12 macOS capture = quartz/CGDisplayStream present (sole; no Wayland selector on macOS)"
+else echo "  FAIL R-X12: the macOS quartz capture backend is missing from libs/scrap/src/lib.rs"; rc=1; fi
+# R-X13: macOS input is CGEvent (HID tap) in enigo's macos backend; there is no uinput/rdp_input
+# twin to excise (those are src/server cfg(linux) and never compile for apple — the (4) cross-check
+# proves it). Assert the CGEvent injector stays present.
+if grep -qE 'CGEventPost' "$REPO/libs/enigo/src/macos/macos_impl.rs"; then
+  note "ok  R-X13 macOS input = CGEvent present (sole injector; no uinput/rdp_input on the apple path)"
+else echo "  FAIL R-X13: the macOS CGEvent injector is missing from libs/enigo/src/macos/macos_impl.rs"; rc=1; fi
+
 echo "== (3) rustfmt parse-check of the Rust apple sources (SDK-free syntax gate) =="
 docker run --rm -v "$REPO:/work:ro" -w /work "$IMG" bash -c '
   rc=0

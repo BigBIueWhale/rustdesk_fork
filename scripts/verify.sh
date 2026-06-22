@@ -422,6 +422,13 @@ ra6_clean 'api/heartbeat|api/sysinfo|heartbeat_url|handle_config_options|start_h
 # peer (R-S17) harvested the operator's stored OS creds with no interaction. The responder
 # already ignores os_login (0685c28); deleting the sender completes the symmetric removal.
 ra6_clean 'Some\(OSLogin|\.set_logon\(' 'R-S18 viewer os_login + elevation-with-logon senders' || rc=1
+# R-S18 / Appendix C #22 (cont.): the persisted os-username/os-password OPTION READS the spec names
+# for deletion are gone from the Rust viewer — get_option("os-username"/"os-password") + should_auto_login()
+# (which returned the STORED os-password to auto-type into the remote OS on connect, a persisted second
+# OS credential). The manual input_os_password path (operator types a FRESH password — not persisted,
+# not named by R-S18) stays. NB the sciter src/ui/header.tis "OS Password" menu cluster (.tis runtime
+# script, not the shipped flutter UI, not grepped by this .rs gate) is a tracked follow-on.
+ra6_clean 'get_option\("os-username"\)|get_option\("os-password"\)|fn should_auto_login' 'R-S18 viewer persisted os-credential reads (.rs)' || rc=1
 # R-S15 (Appendix C #19): the viewer's in-session PeerConfig writes from peer-controlled data MUST be
 # funnelled through a validated allowlist before save_config — a keyed-but-hostile host (§4.4) must not
 # inject unbounded/injection strings into the on-disk config. The initiator-side twin of the responder's

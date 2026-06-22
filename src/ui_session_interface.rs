@@ -1768,10 +1768,8 @@ impl<T: InvokeUiSession> Interface for Session<T> {
                 return;
             }
             self.try_change_init_resolution(pi.current_display);
-            let p = self.lc.read().unwrap().should_auto_login();
-            if !p.is_empty() {
-                input_os_password(p, true, self.clone());
-            }
+            // R-S18: auto-typing a STORED os-password on connect is removed (the persisted
+            // os-password option is deleted). The manual input_os_password path is unaffected.
             let current = &pi.displays[pi.current_display as usize];
             self.set_display(
                 current.x,

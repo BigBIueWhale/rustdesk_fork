@@ -1374,18 +1374,9 @@ impl LoginConfigHandler {
         self.is_terminal_admin = is_terminal_admin;
     }
 
-    /// Check if the client should auto login.
-    /// Return password if the client should auto login, otherwise return empty string.
-    pub fn should_auto_login(&self) -> String {
-        let l = self.lock_after_session_end.v;
-        let a = !self.get_option("auto-login").is_empty();
-        let p = self.get_option("os-password");
-        if !p.is_empty() && l && a {
-            p
-        } else {
-            "".to_owned()
-        }
-    }
+    // R-S18 / Appendix C #22: `should_auto_login` is removed. It returned the PERSISTED os-password
+    // (deleted now) to auto-type into the remote OS on connect — a stored second OS credential. The
+    // manual input_os_password path (operator types a fresh password) is unaffected.
 
     /// Load [`PeerConfig`].
     pub fn load_config(&self) -> PeerConfig {
@@ -2983,17 +2974,11 @@ pub async fn handle_hash(
         hasher.finalize()[..].into()
     };
 
-    let is_terminal = lc.read().unwrap().conn_type.eq(&ConnType::TERMINAL);
-    let (os_username, os_password) = if is_terminal {
-        ("".to_owned(), "".to_owned())
-    } else {
-        (
-            lc.read().unwrap().get_option("os-username"),
-            lc.read().unwrap().get_option("os-password"),
-        )
-    };
-
-    send_login(lc.clone(), os_username, os_password, password, peer).await;
+    // R-S18 / Appendix C #22: the persisted os-username/os-password options are deleted, so the
+    // viewer no longer reads a stored OS credential to send to the peer. (send_login/create_login_msg
+    // already ignore the os-cred params — the vestigial param threading is the tolerated §19/R-G4
+    // follow-on; passing empty strings keeps no second-credential on the wire.)
+    send_login(lc.clone(), String::new(), String::new(), password, peer).await;
     lc.write().unwrap().hash = hash;
 }
 

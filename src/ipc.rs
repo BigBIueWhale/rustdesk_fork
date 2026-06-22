@@ -643,36 +643,28 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
 }
 
 pub struct CheckIfRestart {
-    stop_service: String,
-    rendezvous_servers: Vec<String>,
     audio_input: String,
     voice_call_input: String,
-    disable_udp: String,
 }
 
 impl CheckIfRestart {
     pub fn new() -> CheckIfRestart {
         CheckIfRestart {
-            stop_service: Config::get_option("stop-service"),
-            rendezvous_servers: Config::get_rendezvous_servers(),
             audio_input: Config::get_option("audio-input"),
             voice_call_input: Config::get_option("voice-call-input"),
-            disable_udp: Config::get_option(config::keys::OPTION_DISABLE_UDP),
         }
     }
 }
 impl Drop for CheckIfRestart {
     fn drop(&mut self) {
-        // Restart the (direct) mediator when a live option that affects it changes. The former
-        // allow-websocket / allow-insecure-tls-fallback / api-server watches (and the tls-cache
-        // reset they gated) are removed — those features are excised and their options are
-        // lockdown-pinned, so they never change; their change-detection was dead.
-        if self.stop_service != Config::get_option("stop-service")
-            || self.rendezvous_servers != Config::get_rendezvous_servers()
-            || self.disable_udp != Config::get_option(config::keys::OPTION_DISABLE_UDP)
-        {
-            RendezvousMediator::restart();
-        }
+        // R-D4: the audio-device watches are the ONLY live restart triggers on the direct-only
+        // build. The former mediator-restart watch (stop-service / rendezvous-servers / disable-udp)
+        // is removed: RendezvousMediator::restart() is a no-op here (no rendezvous registration loop
+        // to break — the direct listener runs continuously, R-D4); stop-service and
+        // custom-rendezvous-server are lockdown-pinned (so constant); and disable-udp is vestigial
+        // (UDP is excised — no transport path reads it). The earlier allow-websocket /
+        // allow-insecure-tls-fallback / api-server watches (+ the tls-cache reset they gated) were
+        // already removed for the same dead-change-detection reason.
         if self.audio_input != Config::get_option("audio-input") {
             crate::audio_service::restart();
         }

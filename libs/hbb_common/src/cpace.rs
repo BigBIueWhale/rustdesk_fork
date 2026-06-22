@@ -460,6 +460,13 @@ use std::time::{Duration, Instant};
 const GUESS_WINDOW: Duration = Duration::from_secs(60);
 /// Confirmation failures allowed from one source within a window before it is shed.
 const MAX_GUESSES_PER_WINDOW: u32 = 10;
+/// R-S10(b): a HARD ceiling on the number of distinct source IPs tracked, backstopping the
+/// time-eviction in `record_guess_failure` — so even a flood of distinct sources within one window
+/// (each must complete a PAKE and fail R-P3 to be recorded here, and v4-only per R-D5 bounds the
+/// keyspace) cannot grow the map without bound. 8192 is ample for any real DMZ; over it, the
+/// oldest-window entries are evicted first — those past GUESS_WINDOW are already un-blocked
+/// (guess_limiter_allows lets them through), so eviction never weakens the live rate-limit.
+const MAX_TRACKED_SOURCES: usize = 8192;
 
 lazy_static::lazy_static! {
     static ref GUESS_FAILURES: Mutex<HashMap<IpAddr, (u32, Instant)>> =
@@ -490,6 +497,31 @@ pub fn record_guess_failure(source: IpAddr) {
     }
     // Bounded memory: drop entries whose window has long since lapsed.
     map.retain(|_, (_, start)| start.elapsed() < GUESS_WINDOW.saturating_mul(2));
+    // R-S10(b): a hard entry-count ceiling backstops the time-eviction — under a distinct-source
+    // flood, evict the single oldest-window entry (closest to lapsing; any past GUESS_WINDOW is
+    // already un-blocked) whenever an insert pushes the map over the cap. An O(n) min-scan, not a
+    // sort, so even at-cap each failure stays cheap (and a failure already cost the attacker a full
+    // PAKE). Runs only when over cap, so normal operation is untouched.
+    while map.len() > MAX_TRACKED_SOURCES {
+        let oldest = map
+            .iter()
+            .min_by_key(|(_, &(_, start))| start)
+            .map(|(ip, _)| *ip);
+        match oldest {
+            Some(ip) => {
+                map.remove(&ip);
+            }
+            None => break,
+        }
+    }
+}
+
+/// Test-support introspection (R-S10(b)): how many source IPs the online-guess limiter currently
+/// tracks. Exposed (not cfg(test) — `cpace_it` is a separate crate) so the cap test can assert the
+/// MAX_TRACKED_SOURCES ceiling holds; benign in production (a count, leaks no source identity).
+#[doc(hidden)]
+pub fn guess_limiter_tracked_count() -> usize {
+    GUESS_FAILURES.lock().unwrap().len()
 }
 
 // The wire-level round-trip / adversarial tests live in the dedicated `cpace_it`

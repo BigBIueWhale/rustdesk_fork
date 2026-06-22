@@ -627,6 +627,23 @@ if [ -z "$r_t15b_missing" ]; then
 else
   echo "  FAIL R-T15(b): excision incomplete:$r_t15b_missing"; rc=1
 fi
+# R-S10(b): the live online-guess limiter (GUESS_FAILURES, cpace.rs) MUST be bounded by VALUE, not just
+# present — a HARD entry-count ceiling (MAX_TRACKED_SOURCES) with oldest-window eviction ON TOP of the
+# time-eviction, plus a finite per-source threshold and window. Value-assert the named constants + the
+# eviction path + the flood-cap KAT (cpace_it/tests/guess_limiter_cap.rs, run under -p cpace_it above),
+# so a regression to unbounded / never-decaying tracking fails closed (presence-only would not catch it).
+r_s10b=
+grep -qE '^const MAX_TRACKED_SOURCES: usize = 8192;'                  libs/hbb_common/src/cpace.rs || r_s10b="$r_s10b no-8192-cap"
+grep -qE 'while map\.len\(\) > MAX_TRACKED_SOURCES'                   libs/hbb_common/src/cpace.rs || r_s10b="$r_s10b no-cap-eviction"
+grep -qE '^const MAX_GUESSES_PER_WINDOW: u32 = 10;'                   libs/hbb_common/src/cpace.rs || r_s10b="$r_s10b no-threshold-value"
+grep -qE '^const GUESS_WINDOW: Duration = Duration::from_secs\(60\);' libs/hbb_common/src/cpace.rs || r_s10b="$r_s10b no-window-value"
+grep -qE 'map\.retain'                                               libs/hbb_common/src/cpace.rs || r_s10b="$r_s10b no-time-eviction"
+[ -f libs/cpace_it/tests/guess_limiter_cap.rs ]                                                   || r_s10b="$r_s10b no-cap-KAT"
+if [ -z "$r_s10b" ]; then
+  echo "  ok  R-S10(b) online-guess limiter bounded by value (8192-source cap + oldest-eviction + 10/60s + KAT)"
+else
+  echo "  FAIL R-S10(b): limiter bound weakened:$r_s10b"; rc=1
+fi
 # R-T4 (§20, part): the per-connection SYNC cleanup (privacy-off/screen-unblank, the video-fetch
 # notify, remove_connection, cursor-record-stop) MUST run on cancellation, so it lives in
 # Connection's Drop (which Rust runs when the run-loop future is dropped at its await), not only in

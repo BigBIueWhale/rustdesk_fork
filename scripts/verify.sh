@@ -589,7 +589,7 @@ grep -q 'SHUTDOWN_TOKEN' src/server.rs                     || r_t9_missing="$r_t
 grep -q 'shutdown.cancelled()' src/server/connection.rs    || r_t9_missing="$r_t9_missing conn-drain-arm"
 grep -q 'SignalKind::terminate' src/rendezvous_mediator.rs || r_t9_missing="$r_t9_missing sigterm-handler"
 grep -q 'is_shutting_down()' src/rendezvous_mediator.rs    || r_t9_missing="$r_t9_missing accept-stop"
-grep -q 'TimeoutStopSec' res/rustdesk.service              || r_t9_missing="$r_t9_missing service-timeoutstopsec"
+grep -qE '^TimeoutStopSec=[1-9][0-9]*$' res/rustdesk.service || r_t9_missing="$r_t9_missing service-TimeoutStopSec(must be a positive drain backstop, =0 is infinite)"
 if [ -n "$r_t9_missing" ]; then
   echo "  FAIL R-T9: graceful-shutdown machinery incomplete:$r_t9_missing"; rc=1
 else

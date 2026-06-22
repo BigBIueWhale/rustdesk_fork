@@ -16,7 +16,6 @@ import '../../common/widgets/dialog.dart';
 import '../../consts.dart';
 import '../../models/model.dart';
 import '../../models/platform_model.dart';
-import '../widgets/deploy_dialog.dart';
 import '../widgets/dialog.dart';
 import 'home_page.dart';
 import 'scan_page.dart';
@@ -493,13 +492,9 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
       sections: [
         customClientSection,
         SettingsSection(title: Text(translate("Settings")), tiles: [
-          if (isAndroid && !bind.isOutgoingOnly())
-            SettingsTile(
-                title: Text(translate('Deploy')),
-                leading: Icon(Icons.cloud_upload),
-                onPressed: (context) {
-                  showDeployDialog();
-                }),
+          // R-G4 / R-SV6(c) / §18: the "Deploy" tile is removed — device deployment (the
+          // /api/devices/deploy account-registration egress) is excised; deploy_device is a
+          // refuse-stub and a sovereign, direct-IP fork has no account server to deploy to.
           if (isAndroid && !outgoingOnly && !_isUsingPublicServer)
             SettingsTile.switchTile(
               title: Text(translate('Disable UDP')),

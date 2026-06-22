@@ -27,7 +27,6 @@ import 'common.dart';
 import 'consts.dart';
 import 'mobile/pages/home_page.dart';
 import 'mobile/pages/server_page.dart';
-import 'mobile/widgets/deploy_dialog.dart';
 import 'models/platform_model.dart';
 
 import 'package:flutter_hbb/plugin/handlers.dart'
@@ -575,14 +574,10 @@ _registerEventHandler() {
       NativeUiHandler.instance.onEvent(evt);
     });
   }
-  if (isAndroid) {
-    platformFFI.registerEventHandler(
-        'android_needs_deploy', 'android_needs_deploy', (_) async {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        showDeployPromptDialog();
-      });
-    });
-  }
+  // R-G4 / R-SV6(c) / §18: the 'android_needs_deploy' handler is removed — device deployment
+  // (the /api/devices/deploy account-registration egress) is excised (deploy_device is a refuse-
+  // stub), and the Android mediator that fired NEEDS_DEPLOY is gone (R-D4), so this event never
+  // arrives. The deploy UI it opened (deploy_dialog.dart) is deleted with it.
 }
 
 Widget keyListenerBuilder(BuildContext context, Widget? child) {

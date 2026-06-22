@@ -273,6 +273,28 @@ stage_vcpkg_natives_arm64() {
     log "vcpkg arm64-android codecs staged ($(ls "$ONLINE_DIR"/vcpkg/installed/arm64-android/lib/*.a 2>/dev/null | wc -l) static libs)"
 }
 
+# ── cargo-ndk (R-B7): the JNI cross-compile orchestrator, staged ───────────────────
+# ndk_arm64.sh runs `cargo ndk ... build` to cross-compile librustdesk.so for android;
+# cargo-ndk is NOT in the main cargo-vendor set, so `cargo install` it HERE (networked) in
+# the android-builder image with the pinned rust — exactly as upstream's android job does
+# (`cargo install cargo-ndk --version <pin> --locked`). A HOST tool → ./online/cargo-ndk-tool.
+stage_cargo_ndk() {
+    require_cmd docker
+    local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"
+    docker image inspect "$builder" >/dev/null 2>&1 || die "android-builder image missing — build_android_builder_image must run first"
+    if [ -x "$ONLINE_DIR/cargo-ndk-tool/bin/cargo-ndk" ]; then
+        log "cargo-ndk already staged, skipping"; return 0
+    fi
+    log "installing cargo-ndk ${CARGO_NDK_VERSION} for the android-builder image -> ./online/cargo-ndk-tool"
+    docker run --rm -v "$ONLINE_DIR:/online" "$builder" bash -euo pipefail -c '
+        TC=/tmp/tc; mkdir -p "$TC"; tar -C "$TC" -xf /online/rust-1.*.tar.xz
+        "$TC"/rust-1.*/install.sh --prefix=/tmp/rust --disable-ldconfig \
+            --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu >/dev/null
+        export PATH=/tmp/rust/bin:$PATH
+        cargo install cargo-ndk --version '"${CARGO_NDK_VERSION}"' --locked --root /online/cargo-ndk-tool
+    '
+}
+
 main() {
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     vendor_cargo
@@ -285,6 +307,7 @@ main() {
     stage_vcpkg_natives
     stage_android_ndk
     stage_vcpkg_natives_arm64
+    stage_cargo_ndk
     # Windows ISO / VS Build Tools are partly evergreen (R-B12(c)): pin the CAPTURED
     # offline layout by SHA-256, documenting publisher-verified vs evergreen.
     log "online-fetch complete — ./online is now offline-buildable. Builds run --network=none."

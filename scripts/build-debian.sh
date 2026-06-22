@@ -100,7 +100,10 @@ CFG
             git config --global --add safe.directory "*"
             export PUB_CACHE=/online/pub-cache
             [ -d "$PUB_CACHE" ] || { echo "[FATAL] /online/pub-cache missing -- run online-fetch.sh (stage_pub_cache)"; exit 1; }
-            ( cd flutter && flutter pub get --offline )
+            # Use dart pub get (NOT flutter pub get): the flutter wrapper runs a version
+            # self-check that git-fetches github (fails offline, exit 1); dart pub get --offline
+            # resolves the project straight from PUB_CACHE (validated against the staged cache).
+            ( cd flutter && dart pub get --offline )
             # FRB codegen first (R-B7: the uncommitted generated_bridge.dart /
             # bridge_generated.rs every build job needs), then upstream build.py
             # with the §3.2 x64-linux features.

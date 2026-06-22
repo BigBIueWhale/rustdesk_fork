@@ -169,6 +169,14 @@ dg_clean 'bind\.queryOnlines' 'R-G/R-D online-status query trigger'
 # links). Gate the privacy + docs URL paths (the `rustdesk.com/pricing` in the dead
 # "use public server" guide goes with the R-G2 server-UI removal). Only `//` comments name them.
 dg_clean 'rustdesk\.com/privacy|rustdesk\.com/docs' 'R-G8 rustdesk.com privacy/docs links'
+# R-X12 / R-G8 / §19: the Wayland-keyboard prompt machinery is excised. The fork is X11-pinned
+# (R-X12), so a controlled peer is never Wayland (current_is_wayland() is false on the §17 Xorg box,
+# and fork-to-fork is the only PAKE-compatible topology) — the "Wayland keyboard input" warning was
+# DEAD, and it carried an upstream github "learn more" link (github.com/rustdesk/.../issues/14586 —
+# a de-brand miss). Removed across toolbar.dart (the dialog + helpers + the menu items) and both
+# remote_page.dart gate/normalizer machineries; keyboardInputAllowed defaults true so the keyboard
+# is unaffected. None may reappear (only `//` comments name these).
+dg_clean 'kWaylandKeyboardIssueUrl|showWaylandKeyboardInputWarningDialog|shouldShowWaylandKeyboardPrompt|kPeerOptionAllowWaylandKeyboard|issues/14586' 'R-X12/R-G8 dead Wayland-keyboard prompt + upstream link'
 # R-S18 / R-X8 / §19: the viewer never solicits OS credentials to push to the host. The
 # host-triggered os-login dialogs (enterUserLoginDialog / enterUserLoginAndPasswordDialog, fed
 # by the session-login / terminal-admin-login msgbox prompts) AND the os-username/os-password

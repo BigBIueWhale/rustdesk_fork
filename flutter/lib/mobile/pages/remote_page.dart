@@ -75,9 +75,6 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   final FocusNode _physicalFocusNode = FocusNode();
   var _showEdit = false; // use soft keyboard
 
-  Worker? _waylandKeyboardGateWorker;
-  bool _waylandKeyboardGateInitialized = false;
-
   InputModel get inputModel => gFFI.inputModel;
   SessionID get sessionId => gFFI.sessionId;
 
@@ -126,18 +123,6 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
 
     inputModel.keyboardInputAllowed = true;
-
-    // Wayland sessions may use clipboard-based text input on the controlled side.
-    // Require explicit user confirmation before allowing soft-keyboard and
-    // clipboard-assisted text input. Physical keyboard events are not gated here.
-    _waylandKeyboardGateWorker = ever(gFFI.ffiModel.pi.isSet, (bool isSet) {
-      if (isSet) {
-        _initWaylandKeyboardGateIfNeeded();
-      }
-    });
-    if (gFFI.ffiModel.pi.isSet.value) {
-      _initWaylandKeyboardGateIfNeeded();
-    }
   }
 
   @override
@@ -160,8 +145,6 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     await gFFI.invokeMethod("enable_soft_keyboard", true);
     _mobileFocusNode.dispose();
     _physicalFocusNode.dispose();
-    clearWaylandKeyboardPromptSuppressedForConnection(sessionId.toString());
-    _waylandKeyboardGateWorker?.dispose();
     inputModel.keyboardInputAllowed = true;
     await gFFI.close();
     _timer?.cancel();
@@ -191,39 +174,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     gFFI.invokeMethod("try_sync_clipboard");
   }
 
-  bool _shouldGateKeyboardForWayland() {
-    if (!(isAndroid || isIOS)) return false;
-    final pi = gFFI.ffiModel.pi;
-    return pi.platform == kPeerPlatformLinux && pi.isWayland;
-  }
-
-  void _initWaylandKeyboardGateIfNeeded() {
-    if (!mounted) return;
-    if (_waylandKeyboardGateInitialized) return;
-    if (!_shouldGateKeyboardForWayland()) return;
-
-    _waylandKeyboardGateInitialized = true;
-
-    final allowWaylandKeyboard =
-        mainGetPeerBoolOptionSync(widget.id, kPeerOptionAllowWaylandKeyboard);
-    if (!shouldShowWaylandKeyboardPrompt(
-      connectionId: sessionId.toString(),
-      isWaylandPeer: _shouldGateKeyboardForWayland(),
-      allowWaylandKeyboardRemembered: allowWaylandKeyboard,
-    )) {
-      inputModel.keyboardInputAllowed = true;
-      return;
-    }
-
-    inputModel.keyboardInputAllowed = false;
-
-    // Ensure soft keyboard is not active before user confirms.
-    _showEdit = false;
-    gFFI.invokeMethod("enable_soft_keyboard", false);
-    _mobileFocusNode.unfocus();
-    _physicalFocusNode.requestFocus();
-    setState(() {});
-  }
+  // R-X12 (§19): the Wayland-keyboard gate (_shouldGateKeyboardForWayland /
+  // _initWaylandKeyboardGateIfNeeded) is excised — the X11-pinned fork has no Wayland peers, so the
+  // gate was always a no-op and keyboardInputAllowed stays at its default (true).
 
   // to-do: It should be better to use transparent color instead of the bgColor.
   // But for now, the transparent color will cause the canvas to be white.
@@ -391,24 +344,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   }
 
   void openKeyboard() {
-    final allowWaylandKeyboard =
-        mainGetPeerBoolOptionSync(widget.id, kPeerOptionAllowWaylandKeyboard);
-    if (shouldShowWaylandKeyboardPrompt(
-      connectionId: sessionId.toString(),
-      isWaylandPeer: _shouldGateKeyboardForWayland(),
-      allowWaylandKeyboardRemembered: allowWaylandKeyboard,
-    )) {
-      inputModel.keyboardInputAllowed = false;
-      showWaylandKeyboardInputWarningDialog(
-        id: widget.id,
-        connectionId: sessionId.toString(),
-        ffi: gFFI,
-        onEnable: () async {
-          _openKeyboardUnlocked();
-        },
-      );
-      return;
-    }
+    // R-X12 (§19): no Wayland peers on the X11-pinned fork — open the keyboard directly.
     _openKeyboardUnlocked();
   }
 

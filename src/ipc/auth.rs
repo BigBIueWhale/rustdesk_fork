@@ -521,17 +521,9 @@ pub(crate) fn ensure_peer_executable_matches_current_by_pid_opt(
     ensure_peer_executable_matches_current_by_pid(peer_pid, postfix)
 }
 
-#[cfg(target_os = "linux")]
-#[inline]
-pub(crate) fn ensure_peer_executable_matches_current_by_fd(
-    fd: RawFd,
-    postfix: &str,
-) -> ResultType<()> {
-    let peer_pid = peer_pid_from_fd(fd).ok_or_else(|| {
-        anyhow::anyhow!("Failed to resolve peer pid on ipc channel '{}'", postfix)
-    })?;
-    ensure_peer_executable_matches_current_by_pid(peer_pid, postfix)
-}
+// R-X13 (§8): ensure_peer_executable_matches_current_by_fd (the FD-based exe-match used ONLY by the
+// uinput peer authorizer) is removed with the uinput module. The _service authorizer uses the
+// _by_pid variant; peer_pid_from_fd / ensure_peer_executable_matches_current_by_pid remain.
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 const UNAUTHORIZED_IPC_LOG_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
@@ -598,33 +590,8 @@ fn log_rejected_service_connection(postfix: &str, peer_uid: Option<u32>, active_
     });
 }
 
-#[cfg(target_os = "linux")]
-#[inline]
-pub(crate) fn log_rejected_uinput_connection(
-    postfix: &str,
-    peer_uid: Option<u32>,
-    active_uid: Option<u32>,
-) {
-    static LOG_THROTTLE: OnceLock<Mutex<UnauthorizedIpcLogThrottle>> = OnceLock::new();
-    throttled_unauthorized_ipc_log(&LOG_THROTTLE, |suppressed| {
-        if suppressed > 0 {
-            log::warn!(
-                "Rejected unauthorized connection on uinput ipc channel: postfix={}, peer_uid={:?}, active_uid={:?} (suppressed {} similar events)",
-                postfix,
-                peer_uid,
-                active_uid,
-                suppressed
-            );
-        } else {
-            log::warn!(
-                "Rejected unauthorized connection on uinput ipc channel: postfix={}, peer_uid={:?}, active_uid={:?}",
-                postfix,
-                peer_uid,
-                active_uid
-            );
-        }
-    });
-}
+// R-X13 (§8): log_rejected_uinput_connection (the throttled reject-log for the uinput IPC channel)
+// is removed with the uinput module. log_rejected_service_connection remains for the _service channel.
 
 #[cfg(windows)]
 #[inline]

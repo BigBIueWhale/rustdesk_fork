@@ -599,56 +599,11 @@ static mut VIRTUAL_INPUT_MTX: Mutex<()> = Mutex::new(());
 #[cfg(target_os = "macos")]
 static mut VIRTUAL_INPUT_STATE: Option<VirtualInputState> = None;
 
-// First call set_uinput() will create keyboard and mouse clients.
-// The clients are ipc connections that must live shorter than tokio runtime.
-// Thus this function must not be called in a temporary runtime.
-#[cfg(target_os = "linux")]
-pub async fn setup_uinput(minx: i32, maxx: i32, miny: i32, maxy: i32) -> ResultType<()> {
-    // Keyboard and mouse both open /dev/uinput
-    // TODO: Make sure there's no race
-    set_uinput_resolution(minx, maxx, miny, maxy).await?;
-
-    let keyboard = super::uinput::client::UInputKeyboard::new().await?;
-    log::info!("UInput keyboard created");
-    let mouse = super::uinput::client::UInputMouse::new().await?;
-    log::info!("UInput mouse created");
-
-    ENIGO
-        .lock()
-        .unwrap()
-        .set_custom_keyboard(Box::new(keyboard));
-    ENIGO.lock().unwrap().set_custom_mouse(Box::new(mouse));
-    Ok(())
-}
-
-// R-X13 (§8): setup_rdp_input (installed the dbus-portal RdpInputKeyboard/RdpInputMouse as the
-// enigo custom backend) is EXCISED with the rdp_input module — XTEST/enigo is the pinned sole
-// injector. RDP_SESSION_INFO is still read by the deferred uinput path (R-X12/R-X13, task #4).
-
-#[cfg(target_os = "linux")]
-pub async fn update_mouse_resolution(minx: i32, maxx: i32, miny: i32, maxy: i32) -> ResultType<()> {
-    set_uinput_resolution(minx, maxx, miny, maxy).await?;
-
-    std::thread::spawn(|| {
-        if let Some(mouse) = ENIGO.lock().unwrap().get_custom_mouse() {
-            if let Some(mouse) = mouse
-                .as_mut_any()
-                .downcast_mut::<super::uinput::client::UInputMouse>()
-            {
-                allow_err!(mouse.send_refresh());
-            } else {
-                log::error!("failed downcast uinput mouse");
-            }
-        }
-    });
-
-    Ok(())
-}
-
-#[cfg(target_os = "linux")]
-async fn set_uinput_resolution(minx: i32, maxx: i32, miny: i32, maxy: i32) -> ResultType<()> {
-    super::uinput::client::set_resolution(minx, maxx, miny, maxy).await
-}
+// R-X13 (§8): the uinput injection client (setup_uinput / update_mouse_resolution /
+// set_uinput_resolution — they installed UInputKeyboard/UInputMouse as the enigo custom backend
+// over the cross-uid _uinput_* IPC) is EXCISED with the uinput module. XTEST/enigo is the pinned
+// sole injector (wayland_use_uinput() was already false by construction). setup_rdp_input was
+// likewise removed earlier with the rdp_input module.
 
 pub fn is_left_up(evt: &MouseEvent) -> bool {
     let buttons = evt.mask >> 3;

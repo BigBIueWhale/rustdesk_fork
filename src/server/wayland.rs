@@ -136,24 +136,9 @@ pub(super) fn is_inited() -> Option<Message> {
 pub(super) async fn check_init() -> ResultType<()> {
     if !is_x11() {
         if CAP_DISPLAY_INFO.read().unwrap().is_empty() {
-            if crate::input_service::wayland_use_uinput() {
-                if let Some((minx, maxx, miny, maxy)) =
-                    scrap::wayland::display::get_desktop_rect_for_uinput()
-                {
-                    log::info!(
-                        "update mouse resolution: ({}, {}), ({}, {})",
-                        minx,
-                        maxx,
-                        miny,
-                        maxy
-                    );
-                    allow_err!(
-                        input_service::update_mouse_resolution(minx, maxx, miny, maxy).await
-                    );
-                } else {
-                    log::warn!("Failed to get desktop rect for uinput");
-                }
-            }
+            // R-X13 (§8): the dead `if wayland_use_uinput()` mouse-resolution sync (which called
+            // scrap::wayland::display::get_desktop_rect_for_uinput + update_mouse_resolution) is
+            // removed with the uinput module — XTEST/enigo is the pinned sole injector.
 
             let mut lock = CAP_DISPLAY_INFO.write().unwrap();
             if lock.is_empty() {

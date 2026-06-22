@@ -41,12 +41,11 @@ mod clipboard_service;
 pub use clipboard_service::is_clipboard_service_ok;
 #[cfg(target_os = "linux")]
 pub(crate) mod wayland;
-#[cfg(target_os = "linux")]
-pub mod uinput;
-// R-X13 (§8): the rdp_input module — Wayland-portal RDP keyboard/mouse injection via the dbus
-// org.freedesktop.portal.RemoteDesktop session — is EXCISED. XTEST/enigo is the pinned sole
-// injector (wayland_use_rdp_input() was already false by construction), so this was dead surface.
-// The uinput module + the scrap::wayland capture path remain a deferred R-X12/R-X13 stage (task #4).
+// R-X13 (§8): the uinput + rdp_input injection modules are EXCISED — Wayland uinput (the cross-uid
+// _uinput_* IPC + /dev/uinput kernel injection) and the dbus-portal RDP injection. XTEST/enigo is the
+// pinned sole injector (wayland_use_uinput()/wayland_use_rdp_input() were already false by
+// construction), so these were dead compiled-in surface (§8 "removed not disabled"). The scrap::wayland
+// CAPTURE path (R-X12) remains a deferred stage (task #4).
 // R-X6: the D-Bus deep-link module (org.rustdesk.rustdesk NewConnection) is excised.
 #[cfg(not(target_os = "android"))]
 pub mod input_service;
@@ -692,10 +691,8 @@ pub async fn start_server(is_server: bool, no_server: bool) {
             }
         });
         input_service::fix_key_down_timeout_loop();
-        #[cfg(target_os = "linux")]
-        if input_service::wayland_use_uinput() {
-            allow_err!(input_service::setup_uinput(0, 1920, 0, 1080).await);
-        }
+        // R-X13 (§8): the dead `if wayland_use_uinput() { setup_uinput(..) }` backend-install is
+        // removed with the uinput module — XTEST/enigo is the pinned sole injector.
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         wait_initial_config_sync().await;
         #[cfg(target_os = "windows")]

@@ -150,6 +150,20 @@ else
   echo "  ok  R-X13 rdp_input module file absent"
 fi
 ra6_clean 'RdpInput|fn setup_rdp_input|wayland_use_rdp_input|mod rdp_input' 'R-X13 rdp_input Wayland-portal injection (module/setup/selector)' || rc=1
+# R-X13 (§8): the uinput INJECTION module — Wayland kernel input injection (/dev/uinput) driven over a
+# cross-uid `_uinput_*` IPC SERVICE — is EXCISED (src/server/uinput.rs, 1350 lines). XTEST/enigo is the
+# pinned sole injector (wayland_use_uinput() was already false). Gone: the module, the client
+# (UInputKeyboard/UInputMouse + setup_uinput/set_uinput_resolution/update_mouse_resolution), and the
+# uinput-only IPC-auth helpers (log_rejected_uinput_connection, ensure_peer_executable_matches_current_by_fd).
+# The _service-channel peer-uid authorization is UNTOUCHED (gate 3b-i still green). [Deferred residual,
+# task #4: the dead wayland_use_uinput() selector + its dead dispatch guards + the `_uinput_` postfix in
+# is_service_ipc_postfix.]
+if [ -e src/server/uinput.rs ]; then
+  echo "  FAIL R-X13: the excised src/server/uinput.rs reappeared"; rc=1
+else
+  echo "  ok  R-X13 uinput module file absent"
+fi
+ra6_clean 'mod uinput|UInputKeyboard|UInputMouse|fn setup_uinput|update_mouse_resolution|set_uinput_resolution|log_rejected_uinput_connection|ensure_peer_executable_matches_current_by_fd' 'R-X13 uinput injection module/client + cross-uid IPC auth helpers' || rc=1
 # R-X14 (Appendix C #17, a Tier-1-class remote root-context PAM oracle): the os_login -> PAM
 # desktop-session-start in linux_desktop_manager.rs is EXCISED. Upstream let a peer's
 # LoginRequest.os_login drive a real PAM credential check + a root window-manager-launch script to

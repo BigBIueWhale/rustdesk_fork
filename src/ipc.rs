@@ -43,11 +43,10 @@ use ipc_auth::{
     authorize_windows_main_ipc_connection, portable_service_listener_security_attributes,
     should_allow_everyone_create_on_windows,
 };
-#[cfg(target_os = "linux")]
-pub(crate) use ipc_auth::{
-    ensure_peer_executable_matches_current_by_fd, is_allowed_service_peer_uid,
-    log_rejected_uinput_connection, peer_uid_from_fd,
-};
+// R-X13 (§8): the ipc_auth re-exports (ensure_peer_executable_matches_current_by_fd /
+// is_allowed_service_peer_uid / log_rejected_uinput_connection / peer_uid_from_fd) were the uinput
+// peer-authorization accessors, removed with the uinput module. The _service-channel authorization
+// keeps using is_allowed_service_peer_uid / peer_uid_from_fd INTERNALLY inside ipc_auth.
 #[cfg(target_os = "linux")]
 use ipc_fs::terminal_count_candidate_uids;
 #[cfg(any(target_os = "linux", target_os = "macos"))]

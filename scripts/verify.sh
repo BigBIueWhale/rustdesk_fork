@@ -69,6 +69,15 @@ echo "== (3b-i) IPC service-socket peer-uid authorization policy (R-S11a/§17) =
 echo "== (3b-ii) api-server resolution dials-nobody behavior test (R-SV6(d)) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config common::tests::api_server_resolution_defaults_to_sovereign_empty --color never
 
+# (3b-iv) R-A4/R-X4: the rendezvous trust anchor (get_key) must return the baked RS_PUB_KEY and IGNORE
+# a stored "key" override. Upstream re-pointed the client via Config::get_option("key") / the async IPC
+# options blob / the Windows license; the fork reads NO override. "key" is unpinned so the override
+# actually persists, so this proves the READ is inert (the runtime half of R-X4 — the CLI gadgets that
+# wrote it are gone, gated separately at R-X4). A regression reverting get_key to the override read
+# would pass the CLI-gadget gate but FAIL here.
+echo "== (3b-iv) trust-anchor get_key ignores a stored override (R-A4/R-X4) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config common::tests::get_key_is_the_pinned_anchor_ignoring_overrides --color never
+
 # (3b-iii) R-S11 / Appendix C #15: the MAIN IPC channel (UI⇄service, 0o0600 same-uid) MUST reject a
 # whole-config SyncConfig(Some) write — Config::set/Config2::set overwrite the ENTIRE config with NO
 # is_option_can_save/pin check, so a same-uid local process could re-pin the trust anchor / undo the

@@ -2317,8 +2317,17 @@ impl Connection {
                         {
                             self.send_to_cm(ipc::Data::ClipboardFile(clip));
                         }
+                        // R-A2 / R-S16 policy parity: gate inbound clipboard-FILE processing on the SAME
+                        // capability as the subscription (can_sub_file_clipboard_service = clipboard +
+                        // file-transfer enabled, NOT one-way) — not merely the peer-reported version. The
+                        // text-clipboard arms gate on `if self.clipboard`; this file-clipboard arm gated
+                        // ONLY on the version, so a keyed peer could drive the cliprdr FUSE context +
+                        // inject file:// URLs into the host clipboard even with file-transfer disabled
+                        // (one-way-file-transfer=Y / enable-file-transfer=N). Close that asymmetry.
                         #[cfg(feature = "unix-file-copy-paste")]
-                        if crate::is_support_file_copy_paste(&self.lr.version) {
+                        if self.can_sub_file_clipboard_service()
+                            && crate::is_support_file_copy_paste(&self.lr.version)
+                        {
                             let mut out_msgs = vec![];
 
                             #[cfg(target_os = "macos")]

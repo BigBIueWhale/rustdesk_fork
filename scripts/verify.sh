@@ -108,6 +108,13 @@ echo "== (3c-i) IPC _service path-sharing across uids (R-S11a/R-X13) =="
 echo "== (4) main crate compile check (hardening is UNCONDITIONAL — one binary, R-R2b) =="
 "${RUN[@]}" cargo check --features linux-pkg-config --color never
 
+# (4a) the SHIPPED release ALSO enables unix-file-copy-paste (build.py --flutter --unix-file-copy-paste,
+# flutter-build.yml) — the clipboard-FILE Cliprdr arm (connection.rs, R-A2 capability gate at (5)) is
+# compiled ONLY under that feature, so (4) above never compiles it. Compile-check it too so the arm + its
+# can_sub_file_clipboard_service() gate stay buildable (this feature pulls the FUSE clipboard-file path).
+echo "== (4a) unix-file-copy-paste feature compile check (the shipped clipboard-file arm) =="
+"${RUN[@]}" cargo check --features linux-pkg-config,unix-file-copy-paste --color never
+
 echo "== (5) R-A6 forbidden-token greps =="
 # Greps run over the Rust source only, never requirements.html / the status docs
 # (which legitimately name the tokens). A non-comment hit is a failure.
@@ -385,6 +392,21 @@ if [ -n "$r_s15_missing" ]; then
   echo "  FAIL R-S15: peer-config-write allowlist gap:$r_s15_missing"; rc=1
 else
   echo "  ok  R-S15 viewer PeerConfig writes routed (PeerInfo+service_id bounded; impl_key validated vs supported set)"
+fi
+# R-A2 (clipboard-file capability parity): the inbound Cliprdr clipboard-FILE arm (connection.rs ~2311)
+# drives unix_file_clip::serve_clip_messages — the FUSE context + host-clipboard file:// injection. It
+# MUST gate on the SAME capability as the SUBSCRIPTION (can_sub_file_clipboard_service = clipboard +
+# file-transfer enabled, NOT one-way), like the text-clipboard arms gate on `if self.clipboard` — not
+# merely the peer-reported is_support_file_copy_paste version (no security meaning). This arm is
+# #[cfg(unix-file-copy-paste)] (compiled out of (4), compiled IN at (4a)), so this is a source-structure
+# gate: assert the combined capability+version gate is present AND the version is no longer the sole gate.
+r_clip_file=
+grep -A1 'if self.can_sub_file_clipboard_service()' src/server/connection.rs | grep -q 'is_support_file_copy_paste' || r_clip_file="$r_clip_file inbound-cliprdr-not-capability-gated"
+grep -qE 'if crate::is_support_file_copy_paste\(&self\.lr\.version\) \{' src/server/connection.rs && r_clip_file="$r_clip_file version-only-sole-gate-present"
+if [ -n "$r_clip_file" ]; then
+  echo "  FAIL R-A2 clipboard-file inbound arm capability gap:$r_clip_file"; rc=1
+else
+  echo "  ok  R-A2 inbound clipboard-file (Cliprdr) arm gated on can_sub_file_clipboard_service (not version-only)"
 fi
 # R-T1 / R-T12 (§20 CRITICAL): the DMZ connection-flood bound + flood-safe observability MUST be
 # present — the pre-key handshake semaphore (PREKEY_HANDSHAKE_SLOTS, acquired in the accept loop

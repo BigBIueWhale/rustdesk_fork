@@ -115,9 +115,13 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig signingConfigs.release
+            // The fork ships the .apk UNSIGNED and signs it with apksigner + the stable
+            // key (scripts/build-android.sh sign_apk, R-B2). flutter build apk --release
+            // would demand a release keystore via signingConfigs.release ("storeFile is
+            // missing"); fall back to the debug signing config when key.properties is absent,
+            // so the offline build produces a (debug-signed) .apk that apksigner then re-signs
+            // with the real key.
+            signingConfig keystorePropertiesFile.exists() ? signingConfigs.release : signingConfigs.debug
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules'
         }
     }

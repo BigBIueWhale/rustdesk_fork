@@ -1,7 +1,7 @@
 #[cfg(not(target_os = "android"))]
 use arboard::{ClipboardData, ClipboardFormat};
-#[cfg(target_os = "linux")]
-use arboard::{LinuxClipboardKind, SetExtLinux};
+// R-X13 (§8): arboard LinuxClipboardKind/SetExtLinux were used only by the removed
+// set_with_owner_marker_for_linux (Wayland uinput clipboard-paste SET) — import dropped.
 use hbb_common::{bail, log, message_proto::*, ResultType};
 use std::{
     sync::{Arc, Mutex},
@@ -259,19 +259,9 @@ fn append_owner_marker(mut data: Vec<ClipboardData>, side: ClipboardSide) -> Vec
     data
 }
 
-#[cfg(target_os = "linux")]
-pub fn set_text_clipboard_with_owner_sync(text: &str, side: ClipboardSide) -> ResultType<()> {
-    let mut ctx = CLIPBOARD_CTX.lock().unwrap();
-    if ctx.is_none() {
-        *ctx = Some(ClipboardContext::new()?);
-    }
-    let clipboard_ctx = match ctx.as_mut() {
-        Some(ctx) => ctx,
-        None => bail!("Failed to create clipboard context"),
-    };
-    let data = append_owner_marker(vec![ClipboardData::Text(text.to_owned())], side);
-    clipboard_ctx.set_with_owner_marker_for_linux(&data)
-}
+// R-X13 (§8): set_text_clipboard_with_owner_sync + the set_with_owner_marker_for_linux method (the
+// owner-marked clipboard SET used only by the excised Wayland uinput clipboard-paste input) are
+// removed. append_owner_marker stays — the live clipboard-sync still marks its own writes.
 
 #[cfg(not(target_os = "android"))]
 pub fn update_clipboard(multi_clipboards: Vec<Clipboard>, side: ClipboardSide) {
@@ -424,23 +414,8 @@ impl ClipboardContext {
         Ok(())
     }
 
-    #[cfg(target_os = "linux")]
-    fn set_with_owner_marker_for_linux(&mut self, data: &[ClipboardData]) -> ResultType<()> {
-        let _lock = ARBOARD_MTX.lock().unwrap();
-        self.inner
-            .set()
-            .clipboard(LinuxClipboardKind::Clipboard)
-            .formats(data)?;
-        if let Err(e) = self
-            .inner
-            .set()
-            .clipboard(LinuxClipboardKind::Primary)
-            .formats(data)
-        {
-            log::warn!("Failed to set PRIMARY clipboard with owner marker: {}", e);
-        }
-        Ok(())
-    }
+    // R-X13 (§8): set_with_owner_marker_for_linux removed with set_text_clipboard_with_owner_sync
+    // (the excised Wayland uinput clipboard-paste SET path).
 
     #[cfg(all(feature = "unix-file-copy-paste", target_os = "macos"))]
     fn get_file_urls_set_by_rustdesk(

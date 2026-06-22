@@ -109,61 +109,13 @@ fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
     Ok(())
 }
 
-#[cfg(target_os = "linux")]
-const WAYLAND_CLIPBOARD_SKIP_CHECK_MAX_UTF8_BYTES: usize =
-    super::input_service::WAYLAND_CLIPBOARD_INPUT_MAX_TEXT_CHARS * 4;
+// R-X13 (§8): the clipboard-text decode helpers (WAYLAND_CLIPBOARD_SKIP_CHECK_MAX_UTF8_BYTES +
+// decode_utf8_prefix + decode_text_clipboard) fed only should_skip_wayland_clipboard_sync's
+// echo-suppression check, removed with the Wayland clipboard-input path.
 
-#[cfg(target_os = "linux")]
-fn decode_utf8_prefix(bytes: &[u8]) -> Option<String> {
-    let end = bytes.len().min(WAYLAND_CLIPBOARD_SKIP_CHECK_MAX_UTF8_BYTES);
-    let slice = &bytes[..end];
-    match std::str::from_utf8(slice) {
-        Ok(text) => Some(text.to_owned()),
-        Err(e) => {
-            if e.error_len().is_some() {
-                return None;
-            }
-            let valid_up_to = e.valid_up_to();
-            std::str::from_utf8(&slice[..valid_up_to])
-                .ok()
-                .map(ToOwned::to_owned)
-        }
-    }
-}
-
-#[cfg(target_os = "linux")]
-fn decode_text_clipboard(clipboard: &Clipboard) -> Option<String> {
-    if clipboard.format.enum_value() != Ok(ClipboardFormat::Text) {
-        return None;
-    }
-    if clipboard.compress {
-        let bytes = hbb_common::compress::decompress(&clipboard.content);
-        return decode_utf8_prefix(&bytes);
-    }
-    decode_utf8_prefix(&clipboard.content)
-}
-
-#[cfg(target_os = "linux")]
-fn should_skip_wayland_clipboard_sync(msg: &Message) -> bool {
-    if crate::platform::linux::is_x11() {
-        return false;
-    }
-    let is_recent_wayland_input = |clipboard: &Clipboard| -> bool {
-        let Some(text) = decode_text_clipboard(clipboard) else {
-            return false;
-        };
-        super::input_service::is_recent_wayland_clipboard_input(&text)
-    };
-
-    match &msg.union {
-        Some(message::Union::Clipboard(clipboard)) => is_recent_wayland_input(clipboard),
-        Some(message::Union::MultiClipboards(multi_clipboards)) => multi_clipboards
-            .clipboards
-            .iter()
-            .any(is_recent_wayland_input),
-        _ => false,
-    }
-}
+// R-X13 (§8): should_skip_wayland_clipboard_sync + is_recent_wayland_clipboard_input (the Wayland
+// clipboard-input echo-suppression filter, fed by the excised uinput clipboard-paste injection) are
+// removed — nothing self-injects clipboard text any more, so there is no echo to suppress.
 
 #[cfg(not(target_os = "android"))]
 impl Handler {
@@ -230,12 +182,12 @@ impl Handler {
 
         #[cfg(target_os = "linux")]
         {
-            let msg = crate::clipboard::peek_clipboard(&mut self.ctx, ClipboardSide::Host, false)?;
-            if should_skip_wayland_clipboard_sync(&msg) {
-                log::debug!("Skip clipboard sync for recent Wayland keyboard injection");
-                return None;
-            }
-            return Some(msg);
+            // R-X13 (§8): the should_skip_wayland_clipboard_sync echo-suppression filter (which
+            // skipped syncing clipboard text the server had just INJECTED via the Wayland uinput
+            // clipboard-paste input) is removed — the uinput injection is excised, so nothing
+            // self-injects to echo-suppress, and on the pinned-X11 fork the filter already returned
+            // false (the is_x11 early-return). Peek + sync the host clipboard unconditionally.
+            crate::clipboard::peek_clipboard(&mut self.ctx, ClipboardSide::Host, false)
         }
         #[cfg(not(target_os = "linux"))]
         {
@@ -341,45 +293,4 @@ fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
     Ok(())
 }
 
-#[cfg(test)]
-#[cfg(target_os = "linux")]
-mod tests {
-    use super::{decode_utf8_prefix, WAYLAND_CLIPBOARD_SKIP_CHECK_MAX_UTF8_BYTES};
-
-    #[test]
-    fn decode_utf8_prefix_returns_text_for_valid_utf8() {
-        let text = "hello-مرحبا";
-        assert_eq!(decode_utf8_prefix(text.as_bytes()), Some(text.to_owned()));
-    }
-
-    #[test]
-    fn decode_utf8_prefix_returns_none_for_invalid_utf8_sequence() {
-        let bytes = b"ab\xffcd";
-        assert_eq!(decode_utf8_prefix(bytes), None);
-    }
-
-    #[test]
-    fn decode_utf8_prefix_trims_incomplete_utf8_suffix() {
-        let bytes = vec![b'a', 0xE4, 0xB8];
-        assert_eq!(decode_utf8_prefix(&bytes), Some("a".to_owned()));
-    }
-
-    #[test]
-    fn decode_utf8_prefix_applies_max_bytes_limit() {
-        let bytes = vec![b'a'; WAYLAND_CLIPBOARD_SKIP_CHECK_MAX_UTF8_BYTES + 8];
-        let result = decode_utf8_prefix(&bytes).expect("expected decoded prefix");
-        assert_eq!(result.len(), WAYLAND_CLIPBOARD_SKIP_CHECK_MAX_UTF8_BYTES);
-    }
-
-    #[test]
-    fn decode_utf8_prefix_keeps_utf8_boundary_when_limited() {
-        let mut bytes = vec![b'a'; WAYLAND_CLIPBOARD_SKIP_CHECK_MAX_UTF8_BYTES - 1];
-        bytes.extend_from_slice("ا".as_bytes());
-        let result = decode_utf8_prefix(&bytes).expect("expected decoded prefix");
-        assert_eq!(
-            result.len(),
-            WAYLAND_CLIPBOARD_SKIP_CHECK_MAX_UTF8_BYTES - 1
-        );
-        assert!(result.chars().all(|c| c == 'a'));
-    }
-}
+// R-X13 (§8): the decode_utf8_prefix unit tests are removed with the decode helpers they covered.

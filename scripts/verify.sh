@@ -173,6 +173,13 @@ else
   echo "  ok  R-X13 uinput module file absent"
 fi
 ra6_clean 'mod uinput|UInputKeyboard|UInputMouse|fn setup_uinput|update_mouse_resolution|set_uinput_resolution|log_rejected_uinput_connection|ensure_peer_executable_matches_current_by_fd' 'R-X13 uinput injection module/client + cross-uid IPC auth helpers' || rc=1
+# R-X13 (§8): the uinput DISPATCH guards (the wayland_use_uinput() selector + its dead `if false`
+# branches in the input hot-path) AND the coupled Wayland clipboard-input echo-suppression subsystem
+# (the WRITER chain set_clipboard_for_paste_sync/input_text_via_clipboard_server/record_..._for_sync_filter
+# in input_service.rs + the READER should_skip_wayland_clipboard_sync/is_recent_wayland_clipboard_input
+# in clipboard_service.rs + the owner-marked SET path in clipboard.rs) are EXCISED — XTEST/enigo is the
+# unconditional sole injector and nothing self-injects clipboard text, so there is no echo to suppress.
+ra6_clean 'wayland_use_uinput|should_skip_wayland_clipboard_sync|is_recent_wayland_clipboard_input|input_text_via_clipboard_server|set_clipboard_for_paste_sync|set_with_owner_marker_for_linux' 'R-X13 uinput dispatch guards + Wayland clipboard-input echo-suppression subsystem' || rc=1
 # R-X14 (Appendix C #17, a Tier-1-class remote root-context PAM oracle): the os_login -> PAM
 # desktop-session-start in linux_desktop_manager.rs is EXCISED. Upstream let a peer's
 # LoginRequest.os_login drive a real PAM credential check + a root window-manager-launch script to

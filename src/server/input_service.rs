@@ -107,9 +107,8 @@ struct Input {
 
 const KEY_CHAR_START: u64 = 9999;
 
-// XKB keycode for Insert key (evdev KEY_INSERT code 110 + 8 for XKB offset)
-#[cfg(target_os = "linux")]
-const XKB_KEY_INSERT: u16 = evdev::Key::KEY_INSERT.code() + 8;
+// R-X13 (§8): XKB_KEY_INSERT (the Shift+Insert paste key for the dead Wayland clipboard-input path)
+// is removed with that path.
 
 #[derive(Clone, Default)]
 pub struct MouseCursorSub {
@@ -178,18 +177,8 @@ impl LockModesHandler {
         }
     }
 
-    #[cfg(target_os = "linux")]
-    fn sleep_to_ensure_locked(v: bool, k: enigo::Key, en: &mut Enigo) {
-        if wayland_use_uinput() {
-            // Sleep at most 500ms to ensure the lock state is applied.
-            for _ in 0..50 {
-                std::thread::sleep(std::time::Duration::from_millis(10));
-                if en.get_key_state(k) == v {
-                    break;
-                }
-            }
-        }
-    }
+    // R-X13 (§8): sleep_to_ensure_locked (a Wayland-uinput-only wait for the lock-key state to apply
+    // after a click — uinput has a delay X11/XTEST does not) is removed with the uinput module.
 
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     fn new(key_event: &KeyEvent, is_numpad_key: bool) -> Self {
@@ -199,8 +188,6 @@ impl LockModesHandler {
         let caps_lock_changed = event_caps_enabled != local_caps_enabled;
         if caps_lock_changed {
             en.key_click(enigo::Key::CapsLock);
-            #[cfg(target_os = "linux")]
-            Self::sleep_to_ensure_locked(event_caps_enabled, enigo::Key::CapsLock, &mut en);
         }
 
         let mut num_lock_changed = false;
@@ -219,8 +206,6 @@ impl LockModesHandler {
         }
         if num_lock_changed {
             en.key_click(enigo::Key::NumLock);
-            #[cfg(target_os = "linux")]
-            Self::sleep_to_ensure_locked(event_num_enabled, enigo::Key::NumLock, &mut en);
         }
 
         Self {
@@ -258,14 +243,8 @@ impl LockModesHandler {
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 impl Drop for LockModesHandler {
     fn drop(&mut self) {
-        // Do not change led state if is Wayland uinput.
-        // Because there must be a delay to ensure the lock state is applied on Wayland uinput,
-        // which may affect the user experience.
-        #[cfg(target_os = "linux")]
-        if wayland_use_uinput() {
-            return;
-        }
-
+        // R-X13 (§8): the dead Wayland-uinput LED-skip guard (uinput needs a lock-state delay X11
+        // does not) is removed with the uinput module — XTEST/enigo applies LED state directly.
         let mut en = ENIGO.lock().unwrap();
         if self.caps_lock_changed {
             en.key_click(enigo::Key::CapsLock);
@@ -450,11 +429,8 @@ lazy_static::lazy_static! {
     static ref RELATIVE_MOUSE_CONNS: Arc<Mutex<std::collections::HashSet<i32>>> = Default::default();
 }
 
-#[cfg(target_os = "linux")]
-lazy_static::lazy_static! {
-    static ref WAYLAND_CLIPBOARD_INPUT_RECORDS: Arc<Mutex<Vec<(Instant, String)>>> =
-        Default::default();
-}
+// R-X13 (§8): WAYLAND_CLIPBOARD_INPUT_RECORDS (the echo-suppression record store for the dead
+// Wayland clipboard-input path) is removed with that path.
 
 #[inline]
 fn set_relative_mouse_active(conn: i32, active: bool) {
@@ -1523,33 +1499,9 @@ fn need_to_uppercase(en: &mut Enigo) -> bool {
 }
 
 fn process_chr(en: &mut Enigo, chr: u32, down: bool, _hotkey: bool) {
-    // On Wayland with uinput mode:
-    // - ASCII printable: input via key events (custom keyboard path, e.g. portal keysym)
-    // - Non-ASCII: input via clipboard paste
-    #[cfg(target_os = "linux")]
-    if !crate::platform::linux::is_x11() && wayland_use_uinput() {
-        // Skip clipboard for hotkeys (Ctrl/Alt/Meta pressed)
-        if !is_hotkey_modifier_pressed(en) {
-            if let Ok(c) = char::try_from(chr) {
-                if is_ascii_printable(c) {
-                    if down {
-                        en.key_down(Key::Layout(c)).ok();
-                    } else {
-                        en.key_up(Key::Layout(c));
-                    }
-                } else if down {
-                    input_char_via_clipboard_server(en, c);
-                }
-            } else {
-                log::warn!(
-                    "Ignore invalid unicode scalar in Wayland+uinput path: {}",
-                    chr
-                );
-            }
-            return;
-        }
-    }
-
+    // R-X13 (§8): the dead Wayland-uinput char path (key events for ASCII, clipboard for non-ASCII,
+    // skipping hotkeys) is removed with the uinput module — XTEST/enigo handles char input on the
+    // pinned-X11 fork.
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     if !_hotkey {
         if down {
@@ -1579,213 +1531,17 @@ fn process_chr(en: &mut Enigo, chr: u32, down: bool, _hotkey: bool) {
 }
 
 fn process_unicode(en: &mut Enigo, chr: u32) {
-    // On Wayland with uinput mode:
-    // - ASCII printable: input via key sequence (custom keyboard path)
-    // - Non-ASCII: input via clipboard paste
-    #[cfg(target_os = "linux")]
-    if !crate::platform::linux::is_x11() && wayland_use_uinput() {
-        if let Ok(c) = char::try_from(chr) {
-            if is_ascii_printable(c) {
-                en.key_sequence(&c.to_string());
-            } else {
-                input_char_via_clipboard_server(en, c);
-            }
-        }
-        return;
-    }
-
+    // R-X13 (§8): the dead Wayland-uinput unicode path (ASCII via key_sequence / non-ASCII via
+    // clipboard) is removed with the uinput module — XTEST/enigo handles it on the pinned-X11 fork.
     if let Ok(chr) = char::try_from(chr) {
         en.key_sequence(&chr.to_string());
     }
 }
 
 fn process_seq(en: &mut Enigo, sequence: &str) {
-    // On Wayland with uinput mode:
-    // - pure ASCII printable sequence: input via key sequence (custom keyboard path)
-    // - any non-ASCII present: input whole sequence via clipboard to preserve order
-    #[cfg(target_os = "linux")]
-    if !crate::platform::linux::is_x11() && wayland_use_uinput() {
-        if sequence.chars().all(is_ascii_printable) {
-            en.key_sequence(sequence);
-        } else {
-            input_text_via_clipboard_server(en, sequence);
-        }
-        return;
-    }
-
+    // R-X13 (§8): the dead Wayland-uinput seq path (ASCII via key_sequence / non-ASCII via clipboard)
+    // is removed with the uinput module — XTEST/enigo handles the sequence on the pinned-X11 fork.
     en.key_sequence(&sequence);
-}
-
-/// Delay in milliseconds to wait for clipboard to sync on Wayland.
-/// This is an empirical value — Wayland provides no callback or event to confirm
-/// clipboard content has been received by the compositor. Under heavy system load,
-/// this delay may be insufficient, but there is no reliable alternative mechanism.
-#[cfg(target_os = "linux")]
-const CLIPBOARD_SYNC_DELAY_MS: u64 = 50;
-#[cfg(target_os = "linux")]
-const WAYLAND_CLIPBOARD_INPUT_FILTER_WINDOW: Duration = Duration::from_secs(1);
-#[cfg(target_os = "linux")]
-const WAYLAND_CLIPBOARD_INPUT_MAX_RECORDS: usize = 256;
-#[cfg(target_os = "linux")]
-pub(super) const WAYLAND_CLIPBOARD_INPUT_MAX_TEXT_CHARS: usize = 1024;
-
-#[cfg(target_os = "linux")]
-fn cleanup_wayland_clipboard_input_records(records: &mut Vec<(Instant, String)>, now: Instant) {
-    records.retain(|(created_at, _)| {
-        now.saturating_duration_since(*created_at) <= WAYLAND_CLIPBOARD_INPUT_FILTER_WINDOW
-    });
-    let len = records.len();
-    if len > WAYLAND_CLIPBOARD_INPUT_MAX_RECORDS {
-        records.drain(0..(len - WAYLAND_CLIPBOARD_INPUT_MAX_RECORDS));
-    }
-}
-
-#[cfg(target_os = "linux")]
-#[inline]
-fn normalize_wayland_clipboard_input_text(text: &str) -> String {
-    text.chars()
-        .take(WAYLAND_CLIPBOARD_INPUT_MAX_TEXT_CHARS)
-        .collect()
-}
-
-#[cfg(target_os = "linux")]
-#[inline]
-fn get_wayland_clipboard_input_normalized_text(text: &str) -> Option<String> {
-    let normalized = normalize_wayland_clipboard_input_text(text);
-    if normalized.is_empty() {
-        return None;
-    }
-    Some(normalized)
-}
-
-#[cfg(target_os = "linux")]
-#[inline]
-fn record_wayland_clipboard_input_for_sync_filter(text: &str) -> Option<(Instant, String)> {
-    if text.is_empty() || crate::platform::linux::is_x11() {
-        return None;
-    }
-    let normalized = get_wayland_clipboard_input_normalized_text(text)?;
-    let now = Instant::now();
-    let mut records = WAYLAND_CLIPBOARD_INPUT_RECORDS.lock().unwrap();
-    cleanup_wayland_clipboard_input_records(&mut records, now);
-    records.push((now, normalized.clone()));
-    Some((now, normalized))
-}
-
-#[cfg(target_os = "linux")]
-#[inline]
-fn rollback_wayland_clipboard_input_record(record: (Instant, String)) {
-    let (created_at, normalized) = record;
-    let now = Instant::now();
-    let mut records = WAYLAND_CLIPBOARD_INPUT_RECORDS.lock().unwrap();
-    cleanup_wayland_clipboard_input_records(&mut records, now);
-    if let Some(pos) = records
-        .iter()
-        .rposition(|(record_created_at, record_normalized)| {
-            *record_created_at == created_at && *record_normalized == normalized
-        })
-    {
-        records.remove(pos);
-    }
-}
-
-#[cfg(target_os = "linux")]
-pub(super) fn is_recent_wayland_clipboard_input(text: &str) -> bool {
-    if text.is_empty() || crate::platform::linux::is_x11() {
-        return false;
-    }
-    let Some(normalized) = get_wayland_clipboard_input_normalized_text(text) else {
-        return false;
-    };
-    let now = Instant::now();
-    let mut records = WAYLAND_CLIPBOARD_INPUT_RECORDS.lock().unwrap();
-    cleanup_wayland_clipboard_input_records(&mut records, now);
-    records
-        .iter()
-        .any(|(_, record_normalized)| record_normalized == &normalized)
-}
-
-/// Internal: Set clipboard content without delay.
-/// Returns true if clipboard was set successfully.
-#[cfg(target_os = "linux")]
-fn set_clipboard_content(text: &str) -> bool {
-    if let Err(e) = crate::clipboard::set_text_clipboard_with_owner_sync(
-        text,
-        crate::clipboard::ClipboardSide::Host,
-    ) {
-        log::error!(
-            "set_clipboard_content: failed to set clipboard with owner marker: {:?}",
-            e
-        );
-        return false;
-    }
-    true
-}
-
-/// Set clipboard content for paste operation (sync version for use in blocking contexts).
-///
-/// Note: The original clipboard content is intentionally NOT restored after paste.
-/// Restoring clipboard could cause race conditions where subsequent keystrokes
-/// might accidentally paste the old clipboard content instead of the intended input.
-/// This trade-off prioritizes input reliability over preserving clipboard state.
-#[cfg(target_os = "linux")]
-#[inline]
-pub(super) fn set_clipboard_for_paste_sync(text: &str) -> bool {
-    let record = record_wayland_clipboard_input_for_sync_filter(text);
-    if !set_clipboard_content(text) {
-        if let Some(record) = record {
-            rollback_wayland_clipboard_input_record(record);
-        }
-        return false;
-    }
-    std::thread::sleep(std::time::Duration::from_millis(CLIPBOARD_SYNC_DELAY_MS));
-    true
-}
-
-/// Check if a character is ASCII printable (0x20-0x7E).
-#[cfg(target_os = "linux")]
-#[inline]
-pub(super) fn is_ascii_printable(c: char) -> bool {
-    c as u32 >= 0x20 && c as u32 <= 0x7E
-}
-
-/// Input a single character via clipboard + Shift+Insert in server process.
-#[cfg(target_os = "linux")]
-#[inline]
-fn input_char_via_clipboard_server(en: &mut Enigo, chr: char) {
-    input_text_via_clipboard_server(en, &chr.to_string());
-}
-
-/// Input text via clipboard + Shift+Insert in server process.
-/// Shift+Insert is more universal than Ctrl+V, works in both GUI apps and terminals.
-///
-/// Note: Clipboard content is NOT restored after paste - see `set_clipboard_for_paste_sync` for rationale.
-#[cfg(target_os = "linux")]
-fn input_text_via_clipboard_server(en: &mut Enigo, text: &str) {
-    if text.is_empty() {
-        return;
-    }
-    if !set_clipboard_for_paste_sync(text) {
-        return;
-    }
-
-    // Use ENIGO's custom_keyboard directly to avoid creating new IPC connections
-    // which would cause excessive logging and keyboard device creation/destruction
-    if en.key_down(Key::Shift).is_err() {
-        log::error!("input_text_via_clipboard_server: failed to press Shift, skipping paste");
-        return;
-    }
-    if en.key_down(Key::Raw(XKB_KEY_INSERT)).is_err() {
-        log::error!("input_text_via_clipboard_server: failed to press Insert, releasing Shift");
-        en.key_up(Key::Shift);
-        return;
-    }
-    en.key_up(Key::Raw(XKB_KEY_INSERT));
-    en.key_up(Key::Shift);
-
-    // Brief delay to allow the target application to process the paste event.
-    // Empirical value — no reliable synchronization mechanism exists on Wayland.
-    std::thread::sleep(std::time::Duration::from_millis(20));
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -1937,48 +1693,9 @@ fn translate_process_code(code: u32, down: bool) {
 fn translate_keyboard_mode(evt: &KeyEvent) {
     match &evt.union {
         Some(key_event::Union::Seq(seq)) => {
-            // On Wayland:
-            // - uinput mode (--service): keep clipboard handling in this process because
-            //   clipboard is unreliable in root service context.
-            // - rdp_input mode (--server): forward sequence to custom keyboard handler so
-            //   ASCII can use Portal keysym and non-ASCII can use clipboard.
-            #[cfg(target_os = "linux")]
-            if !crate::platform::linux::is_x11() {
-                let mut en = ENIGO.lock().unwrap();
-                if wayland_use_uinput() {
-                    // Check if this is a hotkey (Ctrl/Alt/Meta pressed)
-                    // For hotkeys, we send character-based key events via Enigo instead of
-                    // using the clipboard. This relies on the local keyboard layout for
-                    // mapping characters to physical keys.
-                    // This assumes client and server use the same keyboard layout (common case).
-                    // Note: For non-Latin keyboards (e.g., Arabic), hotkeys may not work
-                    // correctly if the character cannot be mapped to a key via KEY_MAP_LAYOUT.
-                    // This is a known limitation - most common hotkeys (Ctrl+A/C/V/Z) use Latin
-                    // characters which are mappable on most keyboard layouts.
-                    if is_hotkey_modifier_pressed(&mut en) {
-                        // For hotkeys, send character-based key events via Enigo.
-                        // This relies on the local keyboard layout mapping (KEY_MAP_LAYOUT).
-                        for chr in seq.chars() {
-                            if !is_ascii_printable(chr) {
-                                log::warn!(
-                                    "Hotkey with non-ASCII character may not work correctly on non-Latin keyboard layouts"
-                                );
-                            }
-                            en.key_click(Key::Layout(chr));
-                        }
-                        return;
-                    }
-
-                    // Normal text input: release Shift and use clipboard
-                    release_shift_for_char_input(&mut en);
-                    if seq.chars().all(is_ascii_printable) {
-                        en.key_sequence(seq);
-                    } else {
-                        input_text_via_clipboard_server(&mut en, seq);
-                    }
-                    return;
-                }
-            }
+            // R-X13 (§8): the dead Wayland Seq-handler (`if !is_x11() { if wayland_use_uinput() {...} }`
+            // — uinput hotkey-via-enigo + normal-text-via-clipboard) is removed with the uinput module.
+            // The pinned-X11 path below handles the sequence (XTEST/enigo) unconditionally.
 
             // Fr -> US
             // client: Shift + & => 1(send to remote)
@@ -2230,17 +1947,8 @@ async fn send_sas() -> ResultType<()> {
     Ok(())
 }
 
-#[inline]
-#[cfg(target_os = "linux")]
-pub fn wayland_use_uinput() -> bool {
-    // R-X13/R-X12: X11 is the pinned capture+injection backend on this fork, so
-    // the Wayland uinput injection path is structurally disabled — XTEST/enigo
-    // is the sole injector. (Was `!is_x11() && is_server()`; on the Xorg box
-    // is_x11() is already true so this was false at runtime — now false by
-    // construction, and with the service-entry uinput listener removed the
-    // dormant _uinput_* cross-uid sockets are never stood up, R-S11a.)
-    false
-}
+// R-X13 (§8): the wayland_use_uinput() selector + its dead `if false` dispatch guards are removed
+// with the uinput module — XTEST/enigo is the unconditional sole injector on the pinned-X11 fork.
 
 #[cfg(target_os = "linux")]
 pub struct TemporaryMouseMoveHandle {

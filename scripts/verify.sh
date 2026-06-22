@@ -275,6 +275,18 @@ ra6_clean 'pam::Client|try_start_x_session|start_x_session|start_x11|add_xauth_c
 # check_failure / update_failure_with_scope shims — R-T15b had already excised LOGIN_FAILURES, so
 # CPace GUESS_FAILURES (R-P14c) is the sole online-guess limiter). CreateProcessWithLogonW is R-X9.
 ra6_clean 'should_use_terminal_os_login_scope|prepare_terminal_login_for_authorization|handle_administrator_check|get_logon_user_token|is_user_token_admin|LogonUserW|FailureScope|TerminalOsLogin|TERMINAL_OS_LOGIN_FAILED_MSG|try_acquire_os_credential_login_gate|evaluate_os_credential_policy|record_os_credential_failure|update_failure_with_scope|check_failure_with_scope' 'R-X8 terminal OS-login second-credential + its FailureScope/login_failure_check limiter subsystem' || rc=1
+# R-X9: the CONTROLLED-side os-credential ELEVATION (peer OS username+password -> Windows
+# CreateProcessWithLogonW) is excised; only Direct UAC elevation (handle_elevation_request(
+# StartPara::Direct) / platform::elevate) remains. The viewer already stopped SENDING it (R-S18).
+# Removed: the connection.rs ElevationRequest Logon arm, portable_service.rs StartPara::Logon + its
+# match arm, platform/windows.rs create_process_with_logon, and the message.proto
+# ElevationRequestWithLogon message + its `logon` oneof field.
+ra6_clean 'create_process_with_logon|CreateProcessWithLogonW|StartPara::Logon|elevation_request::Union::Logon' 'R-X9 os-credential elevation (CreateProcessWithLogonW)' || rc=1
+if grep -qE 'message +ElevationRequestWithLogon' libs/hbb_common/protos/message.proto; then
+  echo "  FAIL R-X9: message ElevationRequestWithLogon still present in message.proto"; rc=1
+else
+  echo "  ok  R-X9 ElevationRequestWithLogon absent from message.proto"
+fi
 # R-X14 (cont.): the excision is COMPLETE through the build + packaging — with zero pam:: usage the dead
 # `pam` crate dep, its transitive pam-sys libpam runtime link, the .deb libpam0g Depends, and the
 # /etc/pam.d/rustdesk install were all dead weight (a third-party git dep + a runtime-link + a dead

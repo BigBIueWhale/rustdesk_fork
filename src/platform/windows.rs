@@ -2748,60 +2748,8 @@ pub fn ensure_primary_token(user_token: HANDLE) -> ResultType<HANDLE> {
 
 // R-X8: is_user_token_admin removed with handle_administrator_check (its only caller).
 
-pub fn create_process_with_logon(user: &str, pwd: &str, exe: &str, arg: &str) -> ResultType<()> {
-    let last_error_table = HashMap::from([
-        (
-            ERROR_LOGON_FAILURE,
-            "The user name or password is incorrect.",
-        ),
-        (ERROR_ACCESS_DENIED, "Access is denied."),
-    ]);
-
-    unsafe {
-        let user_split = user.split("\\").collect::<Vec<&str>>();
-        let wuser = wide_string(user_split.get(1).unwrap_or(&user));
-        let wpc = wide_string(user_split.get(0).unwrap_or(&""));
-        let wpwd = wide_string(pwd);
-        let cmd = if arg.is_empty() {
-            format!("\"{}\"", exe)
-        } else {
-            format!("\"{}\" {}", exe, arg)
-        };
-        let mut wcmd = wide_string(&cmd);
-        let mut si: STARTUPINFOW = mem::zeroed();
-        si.wShowWindow = SW_HIDE as _;
-        si.lpDesktop = NULL as _;
-        si.cb = std::mem::size_of::<STARTUPINFOW>() as _;
-        si.dwFlags = STARTF_USESHOWWINDOW;
-        let mut pi: PROCESS_INFORMATION = mem::zeroed();
-        let wexe = wide_string(exe);
-        if FALSE
-            == CreateProcessWithLogonW(
-                wuser.as_ptr(),
-                wpc.as_ptr(),
-                wpwd.as_ptr(),
-                LOGON_WITH_PROFILE,
-                wexe.as_ptr(),
-                wcmd.as_mut_ptr(),
-                CREATE_UNICODE_ENVIRONMENT,
-                NULL,
-                NULL as _,
-                &mut si as *mut STARTUPINFOW,
-                &mut pi as *mut PROCESS_INFORMATION,
-            )
-        {
-            let last_error = GetLastError();
-            bail!(
-                "CreateProcessWithLogonW failed : \"{}\", error {}",
-                last_error_table
-                    .get(&last_error)
-                    .unwrap_or(&"Unknown error"),
-                io::Error::from_raw_os_error(last_error as _)
-            );
-        }
-    }
-    return Ok(());
-}
+// R-X9: create_process_with_logon (CreateProcessWithLogonW — peer-OS-credential elevation)
+// removed; only Direct UAC elevation (platform::elevate) remains.
 
 #[inline]
 fn str_to_device_name(name: &str) -> [u16; 32] {

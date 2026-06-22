@@ -2660,12 +2660,8 @@ impl Connection {
                             self.handle_elevation_request(portable_client::StartPara::Direct)
                                 .await;
                         }
-                        Some(elevation_request::Union::Logon(r)) => {
-                            self.handle_elevation_request(portable_client::StartPara::Logon(
-                                r.username, r.password,
-                            ))
-                            .await;
-                        }
+                        // R-X9: the Logon arm (peer OS creds -> CreateProcessWithLogonW
+                        // elevation) is excised; only Direct UAC elevation remains.
                         _ => {}
                     },
                     Some(misc::Union::AudioFormat(format)) => {

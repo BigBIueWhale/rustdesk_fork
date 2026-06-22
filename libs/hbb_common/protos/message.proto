@@ -825,15 +825,11 @@ message BackNotification {
   string impl_key = 4;
 }
 
-message ElevationRequestWithLogon {
-  string username = 1;
-  string password = 2;
-}
-
+// R-X9: ElevationRequestWithLogon (peer OS creds for CreateProcessWithLogonW elevation on
+// the controlled side) removed — only Direct UAC elevation remains.
 message ElevationRequest {
   oneof union {
     bool direct = 1;
-    ElevationRequestWithLogon logon = 2;
   }
 }
 

@@ -161,6 +161,47 @@ stage_pub_cache() {
     '
 }
 
+# ── The vcpkg-built native codecs (R-R1 pinned overlay ports): aom/vpx/yuv/opus ──
+# scrap + magnum-opus (libs/scrap/build.rs; the magnum-opus git dep) link these STATICALLY
+# from VCPKG_ROOT/installed/x64-linux when the linux-pkg-config feature is OFF — the shipped
+# .deb feature set (build-debian.sh: --flutter --unix-file-copy-paste). `vcpkg install`
+# downloads each port's source and compiles it, so it belongs in this ONE networked step; the
+# built x64-linux tree is then staged read-only for the offline build. Built from the repo's
+# patched, pinned res/vcpkg overlay ports atop the baseline registry snapshot (the vcpkg
+# source archive is pinned at VCPKG_BASELINE). vcpkg's bootstrap needs `zip` (in the image).
+stage_vcpkg_natives() {
+    require_cmd docker
+    local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
+    docker image inspect "$builder" >/dev/null 2>&1 || die "deb-builder image missing — build_deb_builder_image must run first"
+    if [ -d "$ONLINE_DIR/vcpkg/installed/x64-linux/lib" ]; then
+        log "vcpkg native codecs already staged, skipping"; return 0
+    fi
+    [ -f "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" ] || die "vcpkg source archive missing — fetch_vcpkg_and_images must run first"
+    log "staging the vcpkg native codecs (aom/libvpx/libyuv/opus, x64-linux static) -> ./online/vcpkg/installed"
+    docker run --rm \
+        -v "$ONLINE_DIR:/online" \
+        -v "$REPO_ROOT/res/vcpkg:/overlay:ro" \
+        "$builder" bash -euo pipefail -c '
+            VR=/tmp/vcpkg; mkdir -p "$VR"
+            tar -C "$VR" --strip-components=1 -xzf /online/vcpkg-'"${VCPKG_BASELINE}"'.tar.gz
+            export VCPKG_DISABLE_METRICS=1
+            # bionic'\''s default gcc-7.5 miscompiles aom AVX2 intrinsics
+            # (disflow_avx2.c: "incompatible types ... __m256i using int"); build the
+            # codecs with gcc-8 (upstream uses gcc-8 for the vcpkg natives too). The
+            # outputs are C-ABI static libs → link fine into the gcc/rust cargo build.
+            export CC=/usr/bin/gcc-8 CXX=/usr/bin/g++-8
+            "$VR"/bootstrap-vcpkg.sh -disableMetrics >/dev/null
+            "$VR"/vcpkg install --triplet x64-linux --overlay-ports=/overlay \
+                aom libvpx libyuv opus
+            # Stage only the x64-linux install tree (lib/*.a + include/) that
+            # scrap/magnum-opus link_vcpkg read via VCPKG_ROOT/installed/x64-linux.
+            mkdir -p /online/vcpkg/installed
+            rm -rf /online/vcpkg/installed/x64-linux
+            cp -a "$VR"/installed/x64-linux /online/vcpkg/installed/x64-linux
+        '
+    log "vcpkg natives staged ($(ls "$ONLINE_DIR"/vcpkg/installed/x64-linux/lib/*.a 2>/dev/null | wc -l) static libs)"
+}
+
 main() {
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     vendor_cargo
@@ -169,6 +210,7 @@ main() {
     build_deb_builder_image
     build_frb_codegen
     stage_pub_cache
+    stage_vcpkg_natives
     # Windows ISO / VS Build Tools are partly evergreen (R-B12(c)): pin the CAPTURED
     # offline layout by SHA-256, documenting publisher-verified vs evergreen.
     log "online-fetch complete — ./online is now offline-buildable. Builds run --network=none."

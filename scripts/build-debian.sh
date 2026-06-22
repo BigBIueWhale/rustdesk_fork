@@ -69,6 +69,12 @@ build_one() {
                 --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview >/dev/null
             LLVM_ROOT="$(echo "$TC"/clang+llvm-*)"
             export LIBCLANG_PATH="$LLVM_ROOT/lib"
+            # The native codecs (aom/vpx/yuv/opus) come from the vcpkg overlay tree that
+            # online-fetch'\''s stage_vcpkg_natives built (R-R1 pinned, x64-linux static).
+            # scrap + magnum-opus link them from VCPKG_ROOT/installed/x64-linux (the shipped
+            # feature set has linux-pkg-config OFF, so build.rs find_package needs VCPKG_ROOT).
+            export VCPKG_ROOT=/online/vcpkg
+            [ -d "$VCPKG_ROOT/installed/x64-linux/lib" ] || { echo "[FATAL] /online/vcpkg/installed/x64-linux missing -- run online-fetch.sh (stage_vcpkg_natives)"; exit 1; }
             # Use a build-time CARGO_HOME so the vendored/offline config does NOT
             # overwrite the repo'\''s TRACKED .cargo/config.toml (which carries the
             # windows/macos rustflags); cargo merges CARGO_HOME/config.toml with it.

@@ -458,7 +458,6 @@ pub fn set_option(key: String, value: String) {
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        let _nat = crate::CheckTestNatType::new();
         Config::set_option(key, value);
     }
 }
@@ -508,7 +507,6 @@ pub fn set_socks(proxy: String, username: String, password: String) {
     ipc::set_socks(socks).ok();
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        let _nat = crate::CheckTestNatType::new();
         if socks.proxy.is_empty() {
             Config::set_socks(None);
         } else {

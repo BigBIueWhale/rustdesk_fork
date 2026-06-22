@@ -554,44 +554,13 @@ audio_rechannel!(audio_rechannel_8_5, 8, 5);
 audio_rechannel!(audio_rechannel_8_6, 8, 6);
 audio_rechannel!(audio_rechannel_8_7, 8, 7);
 
-pub struct CheckTestNatType {
-    is_direct: bool,
-}
-
-impl CheckTestNatType {
-    pub fn new() -> Self {
-        Self {
-            is_direct: Config::get_socks().is_none(),
-        }
-    }
-}
-
-impl Drop for CheckTestNatType {
-    fn drop(&mut self) {
-        let is_direct = Config::get_socks().is_none();
-        if self.is_direct != is_direct {
-            test_nat_type();
-        }
-    }
-}
-
-pub fn test_nat_type() {
-    // R-SV4 / R-D6 / §18 (sovereignty — universal: every artifact, every platform,
-    // every code path): this startup probe is now a NO-OP. The inherited body ran
-    // two egressing probes, BOTH removed (not policy-gated):
-    //   - test_nat_type_ — a NAT-type probe that connected to the rendezvous server
-    //     (and whose reply could re-home the client); excised (below).
-    //   - test_ipv6_sync -> test_ipv6 -> test_bind_ipv6 — which RESOLVES a public
-    //     STUN hostname via DNS (STUNS_V6[0] = "stun.l.google.com:19302") and binds
-    //     a UDP6 socket. That is a startup phone-home + a stray UDP socket, NOT the
-    //     "local, no-egress" detection a stale comment once claimed. Removed here.
-    // The fork keys at the choke point and ships direct-only (R-D4) + v4-only (R-D5),
-    // so no NAT/IPv6 discovery is needed in either role. This startup entry
-    // (main.rs/cli/flutter_ffi; the controlled-service start_all no longer calls it
-    // at all) now dials nobody. The connect-time test_ipv6 caller in client.rs and
-    // the cfg-absent excision of test_nat_type/test_ipv6/STUNS_* are the R-SV4(d)
-    // token-absent follow-on, entangled with the viewer/flutter side.
-}
+// R-SV4(d) / R-S11 / §18: CheckTestNatType (the RAII Drop-guard that fired test_nat_type at arm entry
+// when is_direct flipped) and test_nat_type (the startup NAT/STUN probe — already a no-op after the
+// egressing test_nat_type_ / test_ipv6_sync→test_ipv6→test_bind_ipv6 / STUNS_* probes were excised)
+// are EXCISED — cfg-absent, not stubbed (the spec's bar: "a no-op stub is DIFFERENT from being
+// cfg-absent"). The fork keys at the choke point + ships direct-only (R-D4) + v4-only (R-D5), so no
+// NAT/IPv6 discovery exists in any role, the startup entries dial nobody, and the Drop-guard
+// reachability R-S11 flags is gone with the guard.
 
 // R-SV4 / R-X3 / §18: test_nat_type_ — the NAT-type probe that connected to the
 // rendezvous server (and whose reply's `cu` field could re-home the client) — is

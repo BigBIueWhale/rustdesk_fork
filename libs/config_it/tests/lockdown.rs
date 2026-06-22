@@ -129,7 +129,7 @@ fn socks_is_inert_under_the_proxy_pin() {
     assert_eq!(
         Config::get_network_type(),
         NetworkType::Direct,
-        "R-D6(d)(iii): get_network_type must be Direct (keeps CheckTestNatType is_direct constant)"
+        "R-D6(d)(iii): get_network_type must be Direct (the proxy/socks accessor is pinned inert)"
     );
     assert!(!Config::is_proxy(), "the direct-only box is never a proxy client");
 }

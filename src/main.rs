@@ -12,7 +12,6 @@ fn main() {
         return;
     }
     common::test_rendezvous_server();
-    common::test_nat_type();
     common::global_clean();
 }
 
@@ -79,7 +78,6 @@ fn main() {
             remote_host = options[3].clone();
         }
         common::test_rendezvous_server();
-        common::test_nat_type();
         let key = matches.value_of("key").unwrap_or("").to_owned();
         let token = LocalConfig::get_option("access_token");
         cli::start_one_port_forward(
@@ -92,7 +90,6 @@ fn main() {
         );
     } else if let Some(p) = matches.value_of("connect") {
         common::test_rendezvous_server();
-        common::test_nat_type();
         let key = matches.value_of("key").unwrap_or("").to_owned();
         let token = LocalConfig::get_option("access_token");
         cli::connect_test(p, key, token);

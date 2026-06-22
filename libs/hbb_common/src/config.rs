@@ -117,7 +117,16 @@ const CHARS: &[char] = &[
     'm', 'n', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
 ];
 
-pub const RENDEZVOUS_SERVERS: &[&str] = &["rs-ny.rustdesk.com"];
+// R-SV4 / §18 (dial nobody): the fork is DIRECT-IP ONLY, so there is no sanctioned default
+// rendezvous broker. Upstream baked `rs-ny.rustdesk.com` in here as the fallback used whenever
+// no server is configured. The connect paths are already neutered (the initiator bails closed
+// for non-direct addresses, the health-check heartbeat and peer online-status query are removed)
+// and the latency probe early-returns on <= 1 server, so this default never actually dialed — but
+// baking an upstream endpoint into a "direct-IP only" binary is precisely the sovereignty smell
+// §18 targets, and it leaves a one-line revival from a phone-home. Empty: no hardwired broker,
+// nothing to fall back to. get_rendezvous_server[s]() handle the empty list (drain().next()
+// .unwrap_or_default() / the len<=1 guard), so dialing nobody fails closed instead of upstream.
+pub const RENDEZVOUS_SERVERS: &[&str] = &[];
 pub const RS_PUB_KEY: &str = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=";
 
 pub const RENDEZVOUS_PORT: i32 = 21116;

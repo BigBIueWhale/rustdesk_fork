@@ -904,6 +904,21 @@ ra6_clean 'create_relay_connection|_start_inner|secure_connection|udp_nat_connec
 # refresh). The egress fns (create_online_stream / the OnlineRequest send) are gone; peer_online
 # now reports every peer offline with no network call. (Only `//` comments name them, filtered.)
 ra6_clean 'create_online_stream|set_online_request' 'R-SV viewer online-status egress' || rc=1
+# R-SV4 / §18 (dial nobody): the DEFAULT rendezvous-server list (RENDEZVOUS_SERVERS in
+# hbb_common/config.rs) must stay EMPTY. Upstream baked "rs-ny.rustdesk.com" in as the fallback used
+# whenever no server is configured, so a "direct-IP only" binary still carried a hardwired upstream
+# broker -- one revived caller away from a phone-home. The connect paths are already neutered (the
+# gates above) and the latency probe early-returns on <=1 server, so it never dialed; the const is
+# now &[] for defense-in-depth -- get_rendezvous_server[s]() fall back to nothing, dialing nobody.
+# Two hardened gates (presence-vs-VALUE): (a) structural -- no quoted host on the const's definition
+# line, catching ANY hardwired default (rustdesk or not); (b) value -- no rs-*.rustdesk.com host
+# anywhere in code, catching the host hardcoded elsewhere (`//` comments are filtered).
+if grep -nE 'pub const RENDEZVOUS_SERVERS[^=]*=[^;]*"' libs/hbb_common/src/config.rs; then
+  echo "  FAIL R-SV4/§18: RENDEZVOUS_SERVERS must be empty (&[]) -- no hardwired rendezvous broker baked into the direct-IP binary"; rc=1
+else
+  echo "  ok  R-SV4/§18 RENDEZVOUS_SERVERS default empty (no hardwired rendezvous broker; dial nobody)"
+fi
+ra6_clean 'rs-[a-z]+\.rustdesk\.com' 'R-SV4/§18 hardwired rs-*.rustdesk.com rendezvous host (RENDEZVOUS_SERVERS emptied)' || rc=1
 # R-SV6(b) / R-G4 / §18 (dial nobody): the OIDC ACCOUNT-LOGIN egress is excised. account.rs's
 # auth_task POSTed { deviceInfo: get_login_device_info() } to <api-server>/api/oidc/auth (a
 # device-fingerprint leak), polled /api/oidc/auth-query for an access token, and warmed

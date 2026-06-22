@@ -2700,39 +2700,7 @@ pub fn send_message_to_hnwd(
     return true;
 }
 
-pub fn get_logon_user_token(user: &str, pwd: &str) -> ResultType<HANDLE> {
-    let user_split = user.split("\\").collect::<Vec<&str>>();
-    let wuser = wide_string(user_split.get(1).unwrap_or(&user));
-    let wpc = wide_string(user_split.get(0).unwrap_or(&""));
-    let wpwd = wide_string(pwd);
-    let mut ph_token: HANDLE = std::ptr::null_mut();
-    let res = unsafe {
-        LogonUserW(
-            wuser.as_ptr(),
-            wpc.as_ptr(),
-            wpwd.as_ptr(),
-            LOGON32_LOGON_INTERACTIVE,
-            LOGON32_PROVIDER_DEFAULT,
-            &mut ph_token as _,
-        )
-    };
-    if res == FALSE {
-        bail!(
-            "Failed to log on user {}: {}",
-            user,
-            std::io::Error::last_os_error()
-        );
-    } else {
-        if ph_token.is_null() {
-            bail!(
-                "Failed to log on user {}: {}",
-                user,
-                std::io::Error::last_os_error()
-            );
-        }
-        Ok(ph_token)
-    }
-}
+// R-X8: get_logon_user_token (LogonUserW — the terminal OS second-credential logon) removed.
 
 // Ensure the token returned is a primary token.
 // If the provided token is an impersonation token, it duplicates it to a primary token.
@@ -2778,98 +2746,7 @@ pub fn ensure_primary_token(user_token: HANDLE) -> ResultType<HANDLE> {
     }
 }
 
-pub fn is_user_token_admin(user_token: HANDLE) -> ResultType<bool> {
-    if user_token.is_null() || user_token == INVALID_HANDLE_VALUE {
-        bail!("Invalid user token provided");
-    }
-
-    unsafe {
-        let mut dw_size: DWORD = 0;
-        GetTokenInformation(
-            user_token,
-            TokenGroups,
-            std::ptr::null_mut(),
-            0,
-            &mut dw_size,
-        );
-
-        let last_error = GetLastError();
-        if last_error != ERROR_INSUFFICIENT_BUFFER {
-            bail!(
-                "Failed to get token groups buffer size, error: {}",
-                last_error
-            );
-        }
-        if dw_size == 0 {
-            bail!("Token groups buffer size is zero");
-        }
-
-        let mut buffer = vec![0u8; dw_size as usize];
-        if GetTokenInformation(
-            user_token,
-            TokenGroups,
-            buffer.as_mut_ptr() as *mut _,
-            dw_size,
-            &mut dw_size,
-        ) == FALSE
-        {
-            bail!(
-                "Failed to get token groups information, error: {}",
-                io::Error::last_os_error()
-            );
-        }
-
-        let p_token_groups = buffer.as_ptr() as *const TOKEN_GROUPS;
-        let group_count = (*p_token_groups).GroupCount;
-
-        if group_count == 0 {
-            return Ok(false);
-        }
-
-        let mut nt_authority: SID_IDENTIFIER_AUTHORITY = SID_IDENTIFIER_AUTHORITY {
-            Value: SECURITY_NT_AUTHORITY,
-        };
-        let mut administrators_group: PSID = std::ptr::null_mut();
-        if AllocateAndInitializeSid(
-            &mut nt_authority,
-            2,
-            SECURITY_BUILTIN_DOMAIN_RID,
-            DOMAIN_ALIAS_RID_ADMINS,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            &mut administrators_group,
-        ) == FALSE
-        {
-            bail!(
-                "Failed to allocate administrators group SID, error: {}",
-                io::Error::last_os_error()
-            );
-        }
-        if administrators_group.is_null() {
-            bail!("Failed to create administrators group SID");
-        }
-
-        let mut is_admin = false;
-        let groups =
-            std::slice::from_raw_parts((*p_token_groups).Groups.as_ptr(), group_count as usize);
-        for group in groups {
-            if EqualSid(administrators_group, group.Sid) == TRUE {
-                is_admin = true;
-                break;
-            }
-        }
-
-        if !administrators_group.is_null() {
-            FreeSid(administrators_group);
-        }
-
-        Ok(is_admin)
-    }
-}
+// R-X8: is_user_token_admin removed with handle_administrator_check (its only caller).
 
 pub fn create_process_with_logon(user: &str, pwd: &str, exe: &str, arg: &str) -> ResultType<()> {
     let last_error_table = HashMap::from([

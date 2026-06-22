@@ -1,8 +1,3 @@
-#[cfg(target_os = "windows")]
-use super::login_failure_check::try_acquire_os_credential_login_gate;
-use super::login_failure_check::{
-    evaluate_os_credential_policy, record_os_credential_failure, FailureScope,
-};
 use super::{input_service::*, *};
 #[cfg(feature = "unix-file-copy-paste")]
 use crate::clipboard::try_empty_clipboard_files;
@@ -76,9 +71,8 @@ lazy_static::lazy_static! {
     static ref WAKELOCK_KEEP_AWAKE_OPTION: Arc::<Mutex<Option<bool>>> = Default::default();
 }
 
-
 #[cfg(target_os = "windows")]
-const TERMINAL_OS_LOGIN_FAILED_MSG: &str = "Incorrect username or password.";
+// R-X8: TERMINAL_OS_LOGIN_FAILED_MSG removed with the OS-credential terminal login.
 
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
@@ -98,10 +92,8 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 // CPace key-confirmation choke point, R-P14c). The os_login->PAM desktop-start they guarded was
 // already removed (linux_desktop_manager, 62177b1); headless is also policy-pinned off (R-S16).
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn should_use_terminal_os_login_scope(is_terminal: bool, os_login_username: &str) -> bool {
-    cfg!(target_os = "windows") && is_terminal && !os_login_username.trim().is_empty()
-}
+// R-X8: should_use_terminal_os_login_scope removed — the terminal is SessionUser-only
+// (one PAKE password -> the service user's shell, R-F1); no peer-supplied OS credential.
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 lazy_static::lazy_static! {
@@ -144,7 +136,6 @@ pub struct SessionKey {
     name: String,
     session_id: u64,
 }
-
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct StartCmIpcPara {
@@ -1075,7 +1066,8 @@ impl Connection {
         // R-S9 / R-T15(d): default-DENY — an unset or all-unparseable whitelist blocks (see
         // `whitelist_admits`). The legacy behaviour passed an empty whitelist; that is inverted.
         if !Self::whitelist_admits(&Config::get_option(keys::OPTION_WHITELIST), addr.ip()) {
-            self.send_login_error("Your ip is blocked by the peer").await;
+            self.send_login_error("Your ip is blocked by the peer")
+                .await;
             return false;
         }
         true
@@ -1170,7 +1162,7 @@ impl Connection {
         // was already removed in R-SV7; the viewer-side `send2fa` sender, the `Auth2FA` proto
         // field, src/auth_2fa.rs, the totp-rs dep, and the Sciter 2FA UI are now excised too —
         // R-X7 complete: no 2FA path survives on either side or on the wire.)
-        if let Some(keep_alive) = self.prepare_terminal_login_for_authorization().await {
+        if let Some(keep_alive) = self.prepare_terminal_session_user_for_authorization().await {
             return keep_alive;
         }
         if !self.connect_port_forward_if_needed().await {
@@ -1687,8 +1679,6 @@ impl Connection {
     // R-X7: check_update_temporary_password (the consecutive-wrong-attempt OTP rotation — a
     // remotely-triggerable lockout) is removed with the temporary-password credential.
 
-
-
     #[inline]
     pub fn is_permission_enabled_locally(enable_prefix_option: &str) -> bool {
         #[cfg(feature = "flutter")]
@@ -1891,10 +1881,10 @@ impl Connection {
                 return false;
             }
 
+            // R-X8: terminal cm_ipc starts unconditionally now (was gated on the removed
+            // OS-login scope; SessionUser is the only terminal mode).
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            if !should_use_terminal_os_login_scope(self.terminal, &lr.os_login.username) {
-                self.try_start_cm_ipc();
-            }
+            self.try_start_cm_ipc();
 
             #[cfg(not(target_os = "linux"))]
             let err_msg = "".to_owned();
@@ -1937,13 +1927,7 @@ impl Connection {
             if (password::approve_mode() == ApproveMode::Click && !allow_logon_screen_password)
                 || password::approve_mode() == ApproveMode::Both && !password::has_valid_password()
             {
-                #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                if should_use_terminal_os_login_scope(self.terminal, &lr.os_login.username) {
-                    if let Some(keep_alive) = self.prepare_terminal_login_for_authorization().await
-                    {
-                        return keep_alive;
-                    }
-                }
+                // R-X8: OS-login terminal-prep block removed (SessionUser is prepped post-auth).
                 self.try_start_cm(lr.my_id, lr.my_name, false);
                 if hbb_common::get_version_number(&lr.version)
                     >= hbb_common::get_version_number("1.2.0")
@@ -1954,14 +1938,7 @@ impl Connection {
                 return true;
             } else if lr.password.is_empty() {
                 if err_msg.is_empty() {
-                    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                    if should_use_terminal_os_login_scope(self.terminal, &lr.os_login.username) {
-                        if let Some(keep_alive) =
-                            self.prepare_terminal_login_for_authorization().await
-                        {
-                            return keep_alive;
-                        }
-                    }
+                    // R-X8: OS-login terminal-prep block removed (SessionUser is prepped post-auth).
                     self.try_start_cm(lr.my_id, lr.my_name, false);
                 } else {
                     self.send_login_error(
@@ -1970,10 +1947,9 @@ impl Connection {
                     .await;
                 }
             } else {
-                let (failure, res) = self.check_failure(0).await;
-                if !res {
-                    return true;
-                }
+                // R-X8/R-T15b: the connection-level check_failure/update_failure limiter is
+                // gone (its last consumer was the OS-login scope); CPace GUESS_FAILURES (R-P14c)
+                // is the live online-guess limiter.
                 // R-S6 / R-S2: the redundant password proof collapses into the
                 // PAKE. When the stream is CPace-keyed the peer is already mutually
                 // password-authenticated (R-P14; R-A1 asserts keying before this
@@ -1990,7 +1966,6 @@ impl Connection {
                 // unkeyed stream is rejected outright, never password-validated. Authorization
                 // IS the CPace KEYED edge (R-S6 collapsed the redundant login-time proof).
                 if !self.stream.is_secured() {
-                    self.update_failure_with_scope(failure, false, 0, FailureScope::Default);
                     if err_msg.is_empty() {
                         self.send_login_error(crate::client::LOGIN_MSG_PASSWORD_WRONG)
                             .await;
@@ -2002,7 +1977,6 @@ impl Connection {
                         .await;
                     }
                 } else {
-                    self.update_failure_with_scope(failure, true, 0, FailureScope::Default);
                     if err_msg.is_empty() {
                         #[cfg(target_os = "linux")]
                         self.linux_headless_handle.wait_desktop_cm_ready().await;
@@ -2323,9 +2297,7 @@ impl Connection {
 
                             for msg in out_msgs.into_iter() {
                                 if let Some(message::Union::Cliprdr(cliprdr)) = msg.union.as_ref() {
-                                    if let Some(cliprdr::Union::Files(_)) =
-                                        cliprdr.union.as_ref()
-                                    {
+                                    if let Some(cliprdr::Union::Files(_)) = cliprdr.union.as_ref() {
                                         // Files announcement: not forwarded (egress removed).
                                         continue;
                                     }
@@ -2810,7 +2782,9 @@ impl Connection {
                     {
                         // Terminal is unsupported on mobile — a TerminalAction is ignored.
                         let _ = action;
-                        log::warn!("Terminal action ignored — terminal not available on this build");
+                        log::warn!(
+                            "Terminal action ignored — terminal not available on this build"
+                        );
                     }
                 }
                 _ => {}
@@ -2820,28 +2794,15 @@ impl Connection {
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    fn fill_terminal_user_token(
-        &mut self,
-        _username: &str,
-        _password: &str,
-    ) -> Option<&'static str> {
+    fn fill_terminal_user_token(&mut self) -> Option<&'static str> {
         self.terminal_user_token = Some(TerminalUserToken::SelfUser);
         None
     }
 
-    // Try to fill user token for terminal connection.
-    // If username is empty, use the user token of the current session.
-    // If username is not empty, try to logon and check if the user is an administrator.
-    //    If the user is an administrator, use the user token of current process (SYSTEM).
-    //    If the user is not an administrator, return an error message.
-    // Note: Only local and domain users are supported, Microsoft account (online account) not supported for now.
+    // Fill the terminal user token from the CURRENT session (R-X8: SessionUser only —
+    // no peer-supplied OS credential / administrator logon; LogonUserW excised).
     #[cfg(target_os = "windows")]
-    fn fill_terminal_user_token(&mut self, username: &str, password: &str) -> Option<&'static str> {
-        // No need to check if the password is empty.
-        if !username.is_empty() {
-            return self.handle_administrator_check(username, password);
-        }
-
+    fn fill_terminal_user_token(&mut self) -> Option<&'static str> {
         if crate::platform::is_prelogin() {
             self.terminal_user_token = None;
             return Some("No active console user logged on, please connect and logon first.");
@@ -2855,39 +2816,7 @@ impl Connection {
         None
     }
 
-    #[cfg(target_os = "windows")]
-    fn handle_administrator_check(
-        &mut self,
-        username: &str,
-        password: &str,
-    ) -> Option<&'static str> {
-        let check_admin_res =
-            crate::platform::get_logon_user_token(username, password).map(|token| {
-                let is_token_admin = crate::platform::is_user_token_admin(token);
-                unsafe {
-                    hbb_common::allow_err!(CloseHandle(HANDLE(token as _)));
-                };
-                is_token_admin
-            });
-        match check_admin_res {
-            Ok(Ok(b)) => {
-                if b {
-                    self.terminal_user_token = Some(TerminalUserToken::SelfUser);
-                    None
-                } else {
-                    Some(TERMINAL_OS_LOGIN_FAILED_MSG)
-                }
-            }
-            Ok(Err(e)) => {
-                log::error!("Failed to check if the user is an administrator: {}", e);
-                Some(TERMINAL_OS_LOGIN_FAILED_MSG)
-            }
-            Err(e) => {
-                log::error!("Failed to get logon user token: {}", e);
-                Some(TERMINAL_OS_LOGIN_FAILED_MSG)
-            }
-        }
-    }
+    // R-X8: handle_administrator_check (peer OS-credential admin logon via LogonUserW) removed.
 
     #[cfg(target_os = "windows")]
     fn handle_installed_user(&mut self) -> Option<&'static str> {
@@ -2921,103 +2850,25 @@ impl Connection {
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    async fn prepare_terminal_login_for_authorization(&mut self) -> Option<bool> {
+    async fn prepare_terminal_session_user_for_authorization(&mut self) -> Option<bool> {
         if !self.terminal || self.terminal_user_token.is_some() {
             return None;
         }
-
-        #[derive(Copy, Clone)]
-        enum TerminalAuthorizationMode {
-            OsLogin {
-                failure: ((i32, i32, i32), i32),
-                scope: FailureScope,
-            },
-            SessionUser,
-        }
-
-        let normalized_username = self.lr.os_login.username.trim().to_owned();
-        let auth_mode = if should_use_terminal_os_login_scope(self.terminal, &normalized_username) {
-            // Check failure state
-            let failure_scope = FailureScope::TerminalOsLogin;
-            let (failure, res) = self.check_failure_with_scope(0, failure_scope).await;
-            if !res {
-                log::warn!(
-                    "OS credential login blocked by failure policy: ip={} conn_id={} scope={:?}",
-                    self.ip,
-                    self.inner.id(),
-                    failure_scope
-                );
-                // Terminal OS login is sensitive. Close this connection instead of keeping it
-                // alive for retries on the same socket after a rate-limit block.
-                return Some(false);
-            }
-            TerminalAuthorizationMode::OsLogin {
-                failure,
-                scope: failure_scope,
-            }
-        } else {
-            TerminalAuthorizationMode::SessionUser
-        };
-
-        let is_terminal_os_login = matches!(auth_mode, TerminalAuthorizationMode::OsLogin { .. });
-        let failure_scope = match auth_mode {
-            TerminalAuthorizationMode::OsLogin { scope, .. } => scope,
-            TerminalAuthorizationMode::SessionUser => FailureScope::Default,
-        };
-
-        let username = normalized_username;
-        let password = self.lr.os_login.password.clone();
-        let terminal_login_error = {
-            #[cfg(target_os = "windows")]
-            {
-                // Concurrency gate for terminal OS login with credentials, to prevent brute-force attacks.
-                let _os_login_concurrency_guard = if is_terminal_os_login {
-                    let guard = try_acquire_os_credential_login_gate();
-                    if guard.is_err() {
-                        log::warn!(
-                            "OS credential login blocked by concurrency gate: ip={} conn_id={} scope={:?}",
-                            self.ip,
-                            self.inner.id(),
-                            failure_scope
-                        );
-                        self.send_login_error("Please try 1 minute later").await;
-                        sleep(1.).await;
-                        return Some(false);
-                    }
-                    guard.ok()
-                } else {
-                    None
-                };
-                self.fill_terminal_user_token(&username, &password)
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                self.fill_terminal_user_token(&username, &password)
-            }
-        };
-        if let Some(msg) = terminal_login_error {
-            if let TerminalAuthorizationMode::OsLogin { failure, scope } = auth_mode {
-                self.update_failure_with_scope(failure, false, 0, scope);
-            }
-            let auth_context = if is_terminal_os_login {
-                "OS credential login verification"
-            } else {
-                "Terminal session-user authorization"
-            };
+        // R-X8: terminal authorization is SessionUser-only — the terminal runs as the
+        // service/session user (one PAKE password -> that user's shell, R-F1). The OS
+        // second-credential mode (peer os_login username/password -> LogonUserW -> admin
+        // check) and its rate-limit + concurrency machinery are excised; CPace's
+        // GUESS_FAILURES (R-P14c) is the sole online-guess limiter.
+        if let Some(msg) = self.fill_terminal_user_token() {
             log::warn!(
-                "{} failed: ip={} conn_id={} scope={:?} msg='{}'",
-                auth_context,
+                "Terminal session-user authorization failed: ip={} conn_id={} msg='{}'",
                 self.ip,
                 self.inner.id(),
-                failure_scope,
                 msg
             );
             self.send_login_error(msg).await;
             sleep(1.).await;
             return Some(false);
-        }
-        if let TerminalAuthorizationMode::OsLogin { failure, scope } = auth_mode {
-            self.update_failure_with_scope(failure, true, 0, scope);
         }
 
         if let Some(is_user) =
@@ -3041,80 +2892,20 @@ impl Connection {
                 }
             }
         }
-        if is_terminal_os_login {
-            self.try_start_cm_ipc();
-        }
         None
     }
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
-    async fn prepare_terminal_login_for_authorization(&mut self) -> Option<bool> {
+    async fn prepare_terminal_session_user_for_authorization(&mut self) -> Option<bool> {
         None
     }
 
-    // R-T15(b) / R-S10: the inherited LOGIN_FAILURES limiter and its IPv6-prefix helpers
-    // (`get_ipv6_prefixes` / `bump_failure_entry` / `check_failure_ipv6_prefix`) are EXCISED — they
-    // carried the exact unbounded-growth / never-decaying / full-IPv6-address anti-patterns R-S10
-    // condemns, and on dead paths: the legacy unkeyed/salted-hash login is gone (R-A1 refuses
-    // unkeyed streams before `Connection::start`; R-S2/R-S6 collapsed the password proof into
-    // CPace), so nothing reachably bumped the map. The live online-guess limiter is now
-    // unambiguously the bounded, decaying, per-v4-source `GUESS_FAILURES` in `cpace.rs` (R-P14c).
-    // `check_failure` is retained as a thin Default-scope shim: it defers to the CPace gate
-    // (always-allow here), while the SEPARATE os-credential (terminal) policy is kept via *_with_scope.
-    // (The `update_failure` Default-scope shim was removed with its last caller — the R-X14 headless
-    // OS-auth limiter site; the surviving os-credential writes call update_failure_with_scope directly.)
-
-    fn update_failure_with_scope(
-        &self,
-        (_failure, _time): ((i32, i32, i32), i32),
-        remove: bool,
-        _i: usize,
-        scope: FailureScope,
-    ) {
-        // R-T15(b): only the os-credential (terminal) scope records anything now; the Default-scope
-        // LOGIN_FAILURES limiter is excised — CPace's GUESS_FAILURES (R-P14c) is the live limiter.
-        if matches!(scope, FailureScope::TerminalOsLogin) && !remove {
-            record_os_credential_failure(scope);
-        }
-    }
-
-    async fn check_failure(&mut self, i: usize) -> (((i32, i32, i32), i32), bool) {
-        self.check_failure_with_scope(i, FailureScope::Default)
-            .await
-    }
-
-    async fn check_failure_with_scope(
-        &mut self,
-        i: usize,
-        scope: FailureScope,
-    ) -> (((i32, i32, i32), i32), bool) {
-        let time = (get_time() / 60_000) as i32;
-
-        if matches!(scope, FailureScope::TerminalOsLogin) {
-            let decision = evaluate_os_credential_policy(scope, get_time());
-            let res = if decision.allowed {
-                true
-            } else {
-                log::warn!(
-                    "OS credential login blocked by policy: ip={} conn_id={} i={} msg='{}'",
-                    self.ip,
-                    self.inner.id(),
-                    i,
-                    decision.login_error.as_deref().unwrap_or("")
-                );
-                if let Some(login_error) = decision.login_error {
-                    // Rare branch and currently temporary response copy; translation can be added later if needed.
-                    self.send_login_error(login_error).await;
-                }
-                false
-            };
-            return (((0, 0, 0), time), res);
-        }
-
-        // R-T15(b): Default-scope login-failure limiting is excised — the CPace handshake's
-        // GUESS_FAILURES (R-P14c) is the live online-guess limiter. This layer always allows.
-        (((0, 0, 0), time), true)
-    }
+    // R-T15(b) / R-S10 / R-X8: the entire inherited connection-level failure limiter — the
+    // LOGIN_FAILURES map + its IPv6-prefix helpers AND the check_failure / update_failure_with_scope
+    // shims — is EXCISED. The legacy unkeyed/salted-hash login is gone (R-A1 refuses unkeyed streams
+    // before Connection::start; R-S2/R-S6 collapsed the password proof into CPace), and R-X8 removed
+    // the last consumer (the terminal OS-credential scope). The sole live online-guess limiter is now
+    // the bounded, decaying, per-v4-source GUESS_FAILURES in cpace.rs (R-P14c).
 
     fn refresh_video_display(&self, display: Option<usize>) {
         video_service::refresh();
@@ -4360,9 +4151,6 @@ impl Connection {
     }
 }
 
-
-
-
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 // IPC bootstrap summary:
 // - Resolve target CM socket (headless/non-headless, optional UID-scoped path on Linux).
@@ -5080,8 +4868,6 @@ mod raii {
                 .count()
         }
 
-
-
         pub fn conn_type(&self) -> AuthConnType {
             self.1
         }
@@ -5191,7 +4977,6 @@ mod test {
         assert_eq!(pos.x, 510);
         assert_eq!(pos.y, 510);
     }
-
 }
 
 #[cfg(test)]
@@ -5222,15 +5007,24 @@ mod whitelist_admits_tests {
     fn cidr_match_v4_and_v6() {
         assert!(Connection::whitelist_admits("10.0.0.0/8", ip("10.1.2.3")));
         assert!(!Connection::whitelist_admits("10.0.0.0/8", ip("11.1.2.3")));
-        assert!(Connection::whitelist_admits("2001:db8::/32", ip("2001:db8::5")));
+        assert!(Connection::whitelist_admits(
+            "2001:db8::/32",
+            ip("2001:db8::5")
+        ));
     }
 
     #[test]
     fn entries_are_trimmed() {
         // A natural "a, b" comma-space list MUST honor EVERY entry, not silently drop the
         // whitespace-padded ones (which would leave the admin's whitelist quietly half-applied).
-        assert!(Connection::whitelist_admits("192.168.0.0/16, 10.0.0.0/8", ip("10.1.2.3")));
-        assert!(Connection::whitelist_admits("1.0.0.0/8 , 2.0.0.0/8", ip("2.3.4.5")));
+        assert!(Connection::whitelist_admits(
+            "192.168.0.0/16, 10.0.0.0/8",
+            ip("10.1.2.3")
+        ));
+        assert!(Connection::whitelist_admits(
+            "1.0.0.0/8 , 2.0.0.0/8",
+            ip("2.3.4.5")
+        ));
         assert!(Connection::whitelist_admits(" 0.0.0.0/0 ", ip("8.8.8.8")));
     }
 }

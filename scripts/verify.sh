@@ -265,6 +265,16 @@ ra6_clean 'wayland_use_uinput|should_skip_wayland_clipboard_sync|is_recent_wayla
 # seat0 capture-discovery only; the connection wrapper ignores os_login). These tokens MUST stay
 # absent (the capture-side discovery — get_username/is_headless/seat0 — is kept, R-S14).
 ra6_clean 'pam::Client|try_start_x_session|start_x_session|start_x11|add_xauth_cookie|pam_get_service_name|should_check_linux_headless_os_auth|should_record_linux_headless_os_auth' 'R-X14 os_login->PAM desktop-session-start + the connection.rs headless OS-auth limiter site (R-T15 line 254)' || rc=1
+# R-X8: the terminal OS-login SECOND CREDENTIAL is excised — the terminal is now SessionUser-only
+# (one PAKE password -> the service user's shell, R-F1; should_use_terminal_os_login_scope gone,
+# prepare_terminal_login_for_authorization renamed to prepare_terminal_session_user). What goes to
+# zero: the Windows LogonUserW admin-check (handle_administrator_check / get_logon_user_token /
+# is_user_token_admin) AND the whole per-terminal OS-credential rate-limit + concurrency subsystem
+# (login_failure_check.rs DELETED: FailureScope / TerminalOsLogin / evaluate_os_credential_policy /
+# record_os_credential_failure / try_acquire_os_credential_login_gate, plus the connection.rs
+# check_failure / update_failure_with_scope shims — R-T15b had already excised LOGIN_FAILURES, so
+# CPace GUESS_FAILURES (R-P14c) is the sole online-guess limiter). CreateProcessWithLogonW is R-X9.
+ra6_clean 'should_use_terminal_os_login_scope|prepare_terminal_login_for_authorization|handle_administrator_check|get_logon_user_token|is_user_token_admin|LogonUserW|FailureScope|TerminalOsLogin|TERMINAL_OS_LOGIN_FAILED_MSG|try_acquire_os_credential_login_gate|evaluate_os_credential_policy|record_os_credential_failure|update_failure_with_scope|check_failure_with_scope' 'R-X8 terminal OS-login second-credential + its FailureScope/login_failure_check limiter subsystem' || rc=1
 # R-X14 (cont.): the excision is COMPLETE through the build + packaging — with zero pam:: usage the dead
 # `pam` crate dep, its transitive pam-sys libpam runtime link, the .deb libpam0g Depends, and the
 # /etc/pam.d/rustdesk install were all dead weight (a third-party git dep + a runtime-link + a dead

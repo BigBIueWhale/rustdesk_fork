@@ -64,7 +64,6 @@ pub mod input_service {
 }
 
 mod connection;
-mod login_failure_check;
 pub mod display_service;
 #[cfg(windows)]
 pub mod portable_service;

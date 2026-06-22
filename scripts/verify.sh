@@ -489,6 +489,15 @@ r_d3a_missing=
 grep -qE '^CapabilityBoundingSet='      res/rustdesk.service || r_d3a_missing="$r_d3a_missing CapabilityBoundingSet"
 grep -qE '^RestrictAddressFamilies=AF_UNIX AF_INET$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing RestrictAddressFamilies-v4only"
 grep -qE '^SystemCallFilter=@system-service' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter"
+# The 6 kernel-sandbox directives that were PRESENT but ungated (gap-analysis-3): a regression dropping
+# any silently strips a confinement layer off the internet-exposed root box. Value-anchored (^…=…$) so a
+# weakened value (e.g. RestrictRealtime=no) also fails, not just a deletion.
+grep -qE '^SystemCallFilter=~@mount @reboot @swap$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter-subtraction"
+grep -qE '^ProtectKernelModules=yes$'       res/rustdesk.service || r_d3a_missing="$r_d3a_missing ProtectKernelModules"
+grep -qE '^ProtectKernelTunables=yes$'      res/rustdesk.service || r_d3a_missing="$r_d3a_missing ProtectKernelTunables"
+grep -qE '^RestrictRealtime=yes$'           res/rustdesk.service || r_d3a_missing="$r_d3a_missing RestrictRealtime"
+grep -qE '^LockPersonality=yes$'            res/rustdesk.service || r_d3a_missing="$r_d3a_missing LockPersonality"
+grep -qE '^SystemCallArchitectures=native$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallArchitectures-native"
 grep -qE '^MemoryDenyWriteExecute=yes$'  res/rustdesk.service || r_d3a_missing="$r_d3a_missing MemoryDenyWriteExecute(validated)"
 grep -q 'PR_SET_MDWE' examples/mdwe_codec_probe.rs           || r_d3a_missing="$r_d3a_missing mdwe_codec_probe"
 if [ -n "$r_d3a_missing" ]; then

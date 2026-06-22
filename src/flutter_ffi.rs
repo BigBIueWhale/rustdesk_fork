@@ -2628,15 +2628,11 @@ pub fn main_get_common(key: String) -> String {
     } else if key == "local-permanent-password-set" {
         return ui_interface::is_local_permanent_password_set().to_string();
     } else {
-        if key.starts_with("download-data-") {
-            let id = key.replace("download-data-", "");
-            match crate::hbbs_http::downloader::get_download_data(&id) {
-                Ok(data) => serde_json::to_string(&data).unwrap_or_default(),
-                Err(e) => {
-                    format!("error:{}", e)
-                }
-            }
-        } else if key.starts_with("download-file-") {
+        // R-SV1: the `download-data-` progress-poll key is gone with the dead
+        // hbbs_http::downloader (orphaned by the R-X1 updater excision; nothing ever
+        // started a download). `download-file-` below only computes a release-asset
+        // filename string — no network — and stays for the win/mac packaging path.
+        if key.starts_with("download-file-") {
             let _version = key.replace("download-file-", "");
             #[cfg(target_os = "windows")]
             return match (
@@ -2707,18 +2703,14 @@ pub fn main_set_common(_key: String, _value: String) {
             );
         });
     }
-    // R-X1: the Flutter-UI fetch-and-run twin is excised — the
+    // R-X1 / R-SV1: the Flutter-UI fetch-and-run twin is excised — the
     // download-new-version / update-me / extract-update-dmg keys fetched a
     // server-supplied URL and executed it privileged (via the deleted
     // updater::get_download_file_from_url + platform::update_to /
     // macos::extract_update_dmg). The fork ships its own releases (§12),
-    // SHA-256-verified (R-B2); the generic downloader keys below stay.
-
-    if _key == "remove-downloader" {
-        crate::hbbs_http::downloader::remove(&_value);
-    } else if _key == "cancel-downloader" {
-        crate::hbbs_http::downloader::cancel(&_value);
-    }
+    // SHA-256-verified (R-B2). The generic `remove-downloader`/`cancel-downloader`
+    // keys are gone too: the hbbs_http::downloader they drove is excised — once the
+    // updater was removed nothing ever started a download, so it was pure dead egress.
 
     #[cfg(target_os = "linux")]
     if _key == "clear-gnome-shortcuts-inhibitor-permission" {

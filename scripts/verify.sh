@@ -91,6 +91,17 @@ ra6_clean 'start_lan_listening|spawn_wait_responses|handle_received_peers|RENDEZ
 # caller flutter_ffi::main_wol is then a harmless stub — the Dart WoL peer-card UI removal is the R-G2
 # follow-on). discover() was already a no-op (R-X5).
 ra6_clean 'wol::send_wol' 'R-SV4(c) Wake-on-LAN UDP-broadcast egress (lan::send_wol)' || rc=1
+# R-SV1 / R-X1 / §18: the hbbs_http::downloader reqwest-GET fetch-to-buffer subsystem is EXCISED. It was
+# orphaned by the R-X1 updater excision — its sole starter (the `download-new-version` Flutter key +
+# updater::get_download_file_from_url) was already gone, leaving `download_file` caller-less and the
+# `download-data-`/`remove-downloader`/`cancel-downloader` Dart keys unreachable. Removed wholesale (the
+# module file + the flutter_ffi key handlers) so the binary cannot perform that GET — the code is gone.
+if [ -e src/hbbs_http/downloader.rs ]; then
+  echo "  FAIL R-SV1: the excised hbbs_http/downloader.rs reappeared"; rc=1
+else
+  echo "  ok  R-SV1 hbbs_http/downloader.rs module file absent"
+fi
+ra6_clean 'hbbs_http::downloader|mod downloader|fn do_download' 'R-SV1 downloader call-path/module/worker' || rc=1
 ra6_clean 'DEBUG_BOOT_COMPLETED'                                          'R-X6 fake-boot broadcast'  || rc=1
 # R-X6: the Linux D-Bus deep-link delivery transport (src/server/dbus.rs: session-bus name
 # org.rustdesk.rustdesk, method NewConnection) is EXCISED. It ignored the caller (any co-installed

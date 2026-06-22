@@ -4,15 +4,16 @@ use serde_json::{Map, Value};
 
 #[cfg(feature = "flutter")]
 pub mod account;
-pub mod downloader;
+// R-SV1 / R-X1: hbbs_http::downloader (a reqwest-GET fetch-to-buffer subsystem) is excised — it was
+// orphaned by the R-X1 updater excision: its sole starter (the `download-new-version` Flutter key +
+// the deleted updater::get_download_file_from_url) is gone, so `download_file` had no caller and the
+// `download-data-`/`remove-downloader`/`cancel-downloader` Dart keys were unreachable. Removed, not
+// merely neutralized: the binary cannot perform that GET because the code is gone (sovereign posture).
 mod http_client;
 // R-SV6 / R-SV1: hbbs_http::record_upload (the session-record reqwest POST egress) is excised — the
 // module is removed, not just its is_enable() neutralized. Recording stays local (R-D6, dial nobody).
 pub mod sync;
-pub use http_client::{
-    create_http_client_async, create_http_client_async_with_url, create_http_client_with_url,
-    get_url_for_tls,
-};
+pub use http_client::{create_http_client_async, get_url_for_tls};
 
 #[derive(Debug)]
 pub enum HbbHttpResponse<T> {

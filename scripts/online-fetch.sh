@@ -295,6 +295,35 @@ stage_cargo_ndk() {
     '
 }
 
+# ── The Android SDK (build-tools + platform), via sdkmanager ────────────────────────
+# `flutter build apk` + apksigner need the SDK; online-fetch fetched the cmdline-tools zip,
+# but the build-tools/platform packages are sdkmanager-installed HERE (networked). The exact
+# versions are pinned (ANDROID_BUILD_TOOLS / ANDROID_COMPILE_SDK) and sdkmanager verifies each
+# package's checksum against the SDK repository XML, so the install is reproducible. Staged to
+# ./online/android-sdk (build-tools = aapt2/apksigner/zipalign; platform-N = the android.jar).
+stage_android_sdk() {
+    require_cmd docker
+    local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"
+    docker image inspect "$builder" >/dev/null 2>&1 || die "android-builder image missing — build_android_builder_image must run first"
+    if [ -d "$ONLINE_DIR/android-sdk/build-tools/${ANDROID_BUILD_TOOLS}" ]; then
+        log "android SDK already staged, skipping"; return 0
+    fi
+    [ -f "$ONLINE_DIR/android-cmdline-tools.zip" ] || die "android cmdline-tools zip missing — fetch_toolchains must run first"
+    log "staging the Android SDK (build-tools ${ANDROID_BUILD_TOOLS} + platform-${ANDROID_COMPILE_SDK}) -> ./online/android-sdk"
+    docker run --rm -v "$ONLINE_DIR:/online" "$builder" bash -euo pipefail -c '
+        mkdir -p /tmp/sdk/cmdline-tools
+        unzip -q /online/android-cmdline-tools.zip -d /tmp/sdk/cmdline-tools
+        mv /tmp/sdk/cmdline-tools/cmdline-tools /tmp/sdk/cmdline-tools/latest
+        export ANDROID_SDK_ROOT=/tmp/sdk ANDROID_HOME=/tmp/sdk
+        SDKMGR=/tmp/sdk/cmdline-tools/latest/bin/sdkmanager
+        yes | "$SDKMGR" --licenses >/dev/null 2>&1 || true
+        "$SDKMGR" "platform-tools" "build-tools;'"${ANDROID_BUILD_TOOLS}"'" \
+            "platforms;android-'"${ANDROID_COMPILE_SDK}"'" >/dev/null
+        rm -rf /online/android-sdk
+        cp -a /tmp/sdk /online/android-sdk
+    '
+}
+
 main() {
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     vendor_cargo
@@ -308,6 +337,7 @@ main() {
     stage_android_ndk
     stage_vcpkg_natives_arm64
     stage_cargo_ndk
+    stage_android_sdk
     # Windows ISO / VS Build Tools are partly evergreen (R-B12(c)): pin the CAPTURED
     # offline layout by SHA-256, documenting publisher-verified vs evergreen.
     log "online-fetch complete — ./online is now offline-buildable. Builds run --network=none."

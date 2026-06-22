@@ -24,13 +24,17 @@ FEATURES="--flutter --unix-file-copy-paste"
 # byte-identical. Use the release commit's author date; gen_version MUST honor
 # SOURCE_DATE_EPOCH (the hbb_common patch is tracked in HARDENING_STATUS as R-B2).
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$REPO_ROOT" show -s --format=%ct "$RUSTDESK_COMMIT" 2>/dev/null || echo 1700000000)}"
-IMAGE="ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}"
+# The pinned .deb build image: the digest-pinned ubuntu:18.04 baseline + the system
+# build-deps, baked by online-fetch.sh (the ONE networked step) via Dockerfile.deb-builder.
+# The compile then runs inside it with --network=none.
+IMAGE="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
 
 preflight() {
     require_cmd docker git
     assert_repo_state
     require_online_complete
-    case "$IMAGE" in *"${SHA_PENDING}"*) die "the .deb base image digest is the R-B12 sentinel — record it in pins.env first" ;; esac
+    case "$SHA256_BASEIMAGE_UBUNTU_1804" in *"${SHA_PENDING}"*) die "the ubuntu:18.04 base digest is the R-B12 sentinel — record it in pins.env first" ;; esac
+    docker image inspect "$IMAGE" >/dev/null 2>&1 || die "build image '$IMAGE' not found — run scripts/online-fetch.sh first (it docker-builds it from the pinned ubuntu:18.04 + the system build-deps, Dockerfile.deb-builder)"
     log "preflight OK — building $FEATURES in $IMAGE, offline, SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
 }
 

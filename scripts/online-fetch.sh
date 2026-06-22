@@ -102,11 +102,25 @@ fetch_vcpkg_and_images() {
     done
 }
 
+# ── The pinned .deb build image (R-B7/B8): ubuntu:18.04 + the system build-deps ────
+# build-debian.sh runs the compile with --network=none, so the dev libs upstream's CI
+# apt-installs into ubuntu:18.04 (flutter-build.yml) are baked into a local image HERE,
+# during this one networked step. The toolchains stay in ./online (not in the image).
+build_deb_builder_image() {
+    require_cmd docker
+    case "$SHA256_BASEIMAGE_UBUNTU_1804" in *"${SHA_PENDING}"*) die "base-image digest is the R-B12 sentinel — record it in pins.env first" ;; esac
+    local tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
+    log "docker build: $tag (FROM the pinned ubuntu:18.04 + system build-deps, Dockerfile.deb-builder)"
+    docker build --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_1804}" \
+        -t "$tag" -f "$LIB_DIR/Dockerfile.deb-builder" "$LIB_DIR"
+}
+
 main() {
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     vendor_cargo
     fetch_toolchains
     fetch_vcpkg_and_images
+    build_deb_builder_image
     # Windows ISO / VS Build Tools are partly evergreen (R-B12(c)): pin the CAPTURED
     # offline layout by SHA-256, documenting publisher-verified vs evergreen.
     log "online-fetch complete — ./online is now offline-buildable. Builds run --network=none."

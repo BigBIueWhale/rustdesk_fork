@@ -138,6 +138,29 @@ build_frb_codegen() {
     '
 }
 
+# ── The flutter pub cache (R-B7): hosted + git deps, staged to ./online/pub-cache ──
+# build_one resolves the flutter project --offline from this cache (the committed pubspec.lock
+# pins it, so it is reproducible). Populated HERE (networked) by a real flutter pub get.
+stage_pub_cache() {
+    require_cmd docker
+    local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
+    docker image inspect "$builder" >/dev/null 2>&1 || die "deb-builder image missing — build_deb_builder_image must run first"
+    if [ -d "$ONLINE_DIR/pub-cache/hosted" ] || [ -d "$ONLINE_DIR/pub-cache/git" ]; then
+        log "pub cache already staged, skipping"; return 0
+    fi
+    log "staging the flutter pub cache (hosted + git deps) -> ./online/pub-cache"
+    docker run --rm -v "$ONLINE_DIR:/online" -v "$REPO_ROOT/flutter:/flutterproj:ro" "$builder" bash -euo pipefail -c '
+        TC=/tmp/tc; mkdir -p "$TC"; tar -C "$TC" -xf /online/flutter-*.tar.xz
+        export PATH="$TC/flutter/bin:$PATH"
+        export HOME=/tmp/home; mkdir -p "$HOME"; git config --global --add safe.directory "*"
+        export PUB_CACHE=/online/pub-cache; mkdir -p "$PUB_CACHE"
+        # /flutterproj is RO; pub get writes .dart_tool, so copy to a writable dir. The committed
+        # pubspec.lock pins the versions; the cache fills PUB_CACHE (hosted + the git-dep clones).
+        cp -a /flutterproj /tmp/proj
+        cd /tmp/proj && flutter pub get
+    '
+}
+
 main() {
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     vendor_cargo
@@ -145,6 +168,7 @@ main() {
     fetch_vcpkg_and_images
     build_deb_builder_image
     build_frb_codegen
+    stage_pub_cache
     # Windows ISO / VS Build Tools are partly evergreen (R-B12(c)): pin the CAPTURED
     # offline layout by SHA-256, documenting publisher-verified vs evergreen.
     log "online-fetch complete — ./online is now offline-buildable. Builds run --network=none."

@@ -91,6 +91,16 @@ CFG
             [ -f /online/cargo-vendor-config.toml ] || { echo "[FATAL] /online/cargo-vendor-config.toml missing -- run online-fetch.sh"; exit 1; }
             sed "s#directory = .*#directory = \"/online/cargo-vendor\"#" \
                 /online/cargo-vendor-config.toml >> "$CARGO_HOME/config.toml"
+            # Flutter pub OFFLINE from the staged cache (online-fetch stage_pub_cache).
+            # Fix git "dubious ownership" on the root-owned flutter SDK + the git-dep clones,
+            # set PUB_CACHE, and pre-resolve the project --offline (the committed pubspec.lock
+            # pins it) so the .dart_tool exists -- then FRB build_runner + flutter build use it
+            # without auto-running a networked pub get.
+            export HOME=/tmp/buildhome; mkdir -p "$HOME"
+            git config --global --add safe.directory "*"
+            export PUB_CACHE=/online/pub-cache
+            [ -d "$PUB_CACHE" ] || { echo "[FATAL] /online/pub-cache missing -- run online-fetch.sh (stage_pub_cache)"; exit 1; }
+            ( cd flutter && flutter pub get --offline )
             # FRB codegen first (R-B7: the uncommitted generated_bridge.dart /
             # bridge_generated.rs every build job needs), then upstream build.py
             # with the §3.2 x64-linux features.

@@ -6,7 +6,7 @@
 
 use hbb_common::bytes::Bytes;
 use hbb_common::cpace::{run_initiator, run_responder, DirectionalCipher, HandshakeError};
-use hbb_common::message_proto::{cpace::Union as CpaceUnion, Cpace, CpaceStep3};
+use hbb_common::message_proto::{cpace::Union as CpaceUnion, Cpace, CpaceStep1, CpaceStep3};
 use hbb_common::tcp::FramedStream;
 use tokio::net::{TcpListener, TcpStream};
 
@@ -294,6 +294,35 @@ async fn responder_rejects_out_of_order_first_frame() {
         ..Default::default()
     };
     si.send(&bogus).await.unwrap();
+    assert_eq!(err_of(jr.await.unwrap()), HandshakeError::Protocol);
+    drop(si);
+}
+
+/// R-P14a / R-A10: each handshake step is consumed EXACTLY ONCE. After the responder consumes step ①
+/// (deriving sid_b/g/yb and moving to WAIT_3, having replied step ②), a SECOND ① MUST abort as a
+/// wrong variant for the state — never be re-processed (which would re-derive sid_b / reset the
+/// machine and re-open the half-open/duplicate surface). This is the R-A10 "duplicated step (two ①
+/// frames)" negative, DISTINCT from the out-of-order case above (a future step before its prerequisite).
+#[tokio::test]
+async fn responder_rejects_duplicate_first_frame() {
+    let (si, sr) = loopback_pair().await;
+    let jr = tokio::spawn(async move {
+        let mut sr = sr;
+        run_responder(&mut sr, "pw").await
+    });
+    let mut si = si;
+    let step1 = Cpace {
+        union: Some(CpaceUnion::Step1(CpaceStep1 {
+            sid_a: Bytes::copy_from_slice(&[1u8; 16]),
+            ad_a: Bytes::copy_from_slice(b"viewer"),
+            ..Default::default()
+        })),
+        ..Default::default()
+    };
+    // The first ① is valid: the responder consumes it, replies step ② (which sits unread in si's
+    // buffer), and waits for step ③. The second ① arrives in WAIT_3 — a duplicate/wrong variant.
+    si.send(&step1).await.unwrap();
+    si.send(&step1).await.unwrap();
     assert_eq!(err_of(jr.await.unwrap()), HandshakeError::Protocol);
     drop(si);
 }

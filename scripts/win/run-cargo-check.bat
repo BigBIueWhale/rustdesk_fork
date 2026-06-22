@@ -17,6 +17,8 @@ set "VCPKG_DEFAULT_TRIPLET=x64-windows-static"
 set "LIBCLANG_PATH=C:\Program Files\LLVM\bin"
 set "PATH=C:\Users\builder\.cargo\bin;C:\Program Files\Git\cmd;%PATH%"
 cd /d C:\src
-cargo check --target x86_64-pc-windows-msvc --features %FEATURES% > C:\tools\cc.log 2>&1
-echo RC=%errorlevel%> C:\tools\cc.rc
+cargo check --locked --target x86_64-pc-windows-msvc --features %FEATURES% > C:\tools\cc.log 2>&1
+REM Leading redirect: `echo RC=%errorlevel%>file` would parse a trailing digit + `>`
+REM as a redirect handle (e.g. RC=0 -> empty file). Redirect first, echo second.
+>"C:\tools\cc.rc" echo RC=%errorlevel%
 endlocal

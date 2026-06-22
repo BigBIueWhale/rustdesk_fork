@@ -59,13 +59,15 @@ build_one() {
             # online-fetch.sh materialized (Rust 1.75, Flutter 3.24.5, NDK, LLVM 15,
             # vcpkg snapshot) and put their bins on PATH. vcpkg then builds the
             # native set offline from res/vcpkg overlay ports.
-            for t in /online/rust-*.tar.xz /online/flutter-*.tar.xz /online/llvm-*.tar.xz; do
+            # rust-1.* (NOT rust-*) so the glob does not also grab the android cross-std
+            # online/rust-std-1.75-aarch64-linux-android.tar.xz (added for the .apk build).
+            for t in /online/rust-1.*.tar.xz /online/flutter-*.tar.xz /online/llvm-*.tar.xz; do
                 [ -e "$t" ] && tar -C "$TC" -xf "$t"
             done
             # Rust: the standalone tarball extracts to rust-1.75.0-.../ with an install.sh
             # (there is no top-level bin/) — install it to a prefix. LLVM: the tarball is
             # clang+llvm-15.0.6-.../ — point bindgen at its libclang.
-            "$TC"/rust-*/install.sh --prefix="$TC/rustinstall" --disable-ldconfig \
+            "$TC"/rust-1.*/install.sh --prefix="$TC/rustinstall" --disable-ldconfig \
                 --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview >/dev/null
             LLVM_ROOT="$(echo "$TC"/clang+llvm-*)"
             export LIBCLANG_PATH="$LLVM_ROOT/lib"

@@ -50,7 +50,10 @@ build_apk() {
         "$IMAGE" \
         bash -euo pipefail -c '
             TC=/tmp/tc; mkdir -p "$TC"
-            for t in /online/rust-*.tar.xz /online/flutter-*.tar.xz /online/llvm-*.tar.xz; do
+            # rust-1.* = the host toolchain only; the aarch64-linux-android cross-std
+            # (online/rust-std-1.75-aarch64-linux-android.tar.xz) is installed as an extra
+            # component below — a bare rust-* glob would grab both and break the install.sh glob.
+            for t in /online/rust-1.*.tar.xz /online/flutter-*.tar.xz /online/llvm-*.tar.xz; do
                 [ -e "$t" ] && tar -C "$TC" -xf "$t"
             done
             # NDK r28c + Android cmdline-tools (build-tools 34.0.0, platform-34) from

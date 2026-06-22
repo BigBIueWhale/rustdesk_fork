@@ -27,9 +27,10 @@ pub use permanent_password::{
 };
 use permanent_password::{
     decode_permanent_password_h1_from_hashed_storage, decrypt_permanent_password_prs_storage,
-    decrypt_permanent_password_str_or_original, encode_permanent_password_encrypted_storage_from_h1,
-    encrypt_permanent_password_prs_storage, password_is_empty_or_not_hashed,
-    preset_permanent_password_storage_matches_plain, DEFAULT_SALT_LEN, PASSWORD_ENC_VERSION,
+    decrypt_permanent_password_str_or_original,
+    encode_permanent_password_encrypted_storage_from_h1, encrypt_permanent_password_prs_storage,
+    password_is_empty_or_not_hashed, preset_permanent_password_storage_matches_plain,
+    DEFAULT_SALT_LEN, PASSWORD_ENC_VERSION,
 };
 
 use crate::{
@@ -67,7 +68,7 @@ lazy_static::lazy_static! {
     static ref STATUS: RwLock<Status> = RwLock::new(Status::load());
     static ref ONLINE: Mutex<HashMap<String, i64>> = Default::default();
     pub static ref PROD_RENDEZVOUS_SERVER: RwLock<String> = RwLock::new("".to_owned());
-    pub static ref EXE_RENDEZVOUS_SERVER: RwLock<String> = Default::default();
+    // R-X4: EXE_RENDEZVOUS_SERVER (the exe-name license rendezvous server) removed.
     pub static ref APP_NAME: RwLock<String> = RwLock::new("RustDesk".to_owned());
     static ref KEY_PAIR: Mutex<Option<KeyPair>> = Default::default();
     static ref USER_DEFAULT_CONFIG: RwLock<(UserDefaultConfig, Instant)> = RwLock::new((UserDefaultConfig::load(), Instant::now()));
@@ -947,10 +948,8 @@ impl Config {
     }
 
     pub fn get_rendezvous_server() -> String {
-        let mut rendezvous_server = EXE_RENDEZVOUS_SERVER.read().unwrap().clone();
-        if rendezvous_server.is_empty() {
-            rendezvous_server = Self::get_option("custom-rendezvous-server");
-        }
+        // R-X4: the EXE_RENDEZVOUS_SERVER (exe-name license) override is removed.
+        let mut rendezvous_server = Self::get_option("custom-rendezvous-server");
         if rendezvous_server.is_empty() {
             rendezvous_server = PROD_RENDEZVOUS_SERVER.read().unwrap().clone();
         }
@@ -970,10 +969,7 @@ impl Config {
     }
 
     pub fn get_rendezvous_servers() -> Vec<String> {
-        let s = EXE_RENDEZVOUS_SERVER.read().unwrap().clone();
-        if !s.is_empty() {
-            return vec![s];
-        }
+        // R-X4: the EXE_RENDEZVOUS_SERVER (exe-name license) override is removed.
         let s = Self::get_option("custom-rendezvous-server");
         if !s.is_empty() {
             return vec![s];

@@ -11,9 +11,7 @@ use hbb_common::{
     libc::{c_int, wchar_t},
     log,
     message_proto::{DisplayInfo, Resolution, WindowsSession},
-    sleep,
-    sysinfo::{Pid, System},
-    timeout, tokio,
+    sleep, timeout, tokio,
 };
 use std::{
     collections::HashMap,
@@ -45,21 +43,18 @@ use winapi::{
         minwinbase::STILL_ACTIVE,
         processthreadsapi::{
             GetCurrentProcess, GetCurrentProcessId, GetExitCodeProcess, OpenProcess,
-            OpenProcessToken, ProcessIdToSessionId, PROCESS_INFORMATION, STARTUPINFOW,
+            OpenProcessToken, ProcessIdToSessionId,
         },
-        securitybaseapi::{
-            AllocateAndInitializeSid, DuplicateToken, EqualSid, FreeSid, GetTokenInformation,
-        },
+        securitybaseapi::{DuplicateToken, GetTokenInformation},
         shellapi::ShellExecuteW,
         sysinfoapi::{GetNativeSystemInfo, SYSTEM_INFO},
         winbase::*,
         wingdi::*,
         winnt::{
-            SecurityImpersonation, TokenElevation, TokenGroups, TokenImpersonation, TokenType,
-            DOMAIN_ALIAS_RID_ADMINS, ES_AWAYMODE_REQUIRED, ES_CONTINUOUS, ES_DISPLAY_REQUIRED,
-            ES_SYSTEM_REQUIRED, HANDLE, PROCESS_ALL_ACCESS, PROCESS_QUERY_LIMITED_INFORMATION,
-            PSID, SECURITY_BUILTIN_DOMAIN_RID, SECURITY_NT_AUTHORITY, SID_IDENTIFIER_AUTHORITY,
-            TOKEN_ELEVATION, TOKEN_GROUPS, TOKEN_QUERY, TOKEN_TYPE,
+            SecurityImpersonation, TokenElevation, TokenImpersonation, TokenType,
+            ES_AWAYMODE_REQUIRED, ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED, HANDLE,
+            PROCESS_ALL_ACCESS, PROCESS_QUERY_LIMITED_INFORMATION, TOKEN_ELEVATION, TOKEN_QUERY,
+            TOKEN_TYPE,
         },
         winreg::HKEY_CURRENT_USER,
         winspool::{

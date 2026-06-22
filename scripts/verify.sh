@@ -294,7 +294,7 @@ fi
 # + the install-time config write) -- a server config arriving from the binary's filename, a
 # sovereignty/trust-anchor egress vector on a direct-IP-only fork. The whole module +
 # get_license_from_exe_name + get_license(CustomServer) go to zero.
-ra6_clean 'mod custom_server|get_custom_server_from_string|get_license_from_exe_name|\bCustomServer\b' 'R-X4 custom-rendezvous-server-from-exe-name (custom_server module + get_license_from_exe_name)' || rc=1
+ra6_clean 'mod custom_server|get_custom_server_from_string|get_license_from_exe_name|\bCustomServer\b|EXE_RENDEZVOUS_SERVER' 'R-X4 custom-rendezvous-server-from-exe-name (custom_server module + get_license_from_exe_name + the EXE_RENDEZVOUS_SERVER config-level override)' || rc=1
 # R-X14 (cont.): the excision is COMPLETE through the build + packaging — with zero pam:: usage the dead
 # `pam` crate dep, its transitive pam-sys libpam runtime link, the .deb libpam0g Depends, and the
 # /etc/pam.d/rustdesk install were all dead weight (a third-party git dep + a runtime-link + a dead

@@ -49,6 +49,17 @@ echo "== (1-3) KAT + handshake + policy funnel + R-A4 surface + R-S7 frame/decom
 echo "== (3b) IPC parent-dir hardening behavior tests (R-S11a/R-S11a(b), root-exercised) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::ipc_fs::tests --color never
 
+# (3b-i) IPC service-socket peer-uid AUTHORIZATION policy (R-S11a / §17 root box): the Linux `_service`
+# IPC socket is 0666 (world-connectable so the active non-root user process can reach it), gated at
+# accept-time by is_allowed_service_peer_uid — admits ONLY root (SO_PEERCRED uid 0) or the active-session
+# uid, and FAIL-CLOSED (root-only) when active_uid is unknown — backed by a /proc/pid/exe match against
+# the current binary. test_service_peer_uid_policy pins that boundary; it lives in `ipc::ipc_auth::tests`,
+# which the `ipc::ipc_fs::tests` filter above does NOT match, so it was previously UNGATED. Gate it so the
+# local-privilege-escalation boundary on the root box cannot silently regress (the win/macos peer-policy
+# tests in the same module are cfg-compiled out on this Linux build and simply filter out).
+echo "== (3b-i) IPC service-socket peer-uid authorization policy (R-S11a/§17) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::ipc_auth::tests --color never
+
 # (3b-ii) api-server RESOLUTION sovereignty (R-SV6(d)/R-D6): get_api_server("","") and
 # get_custom_rendezvous_server("") must resolve to "" — no hardwired global host. The upstream
 # "https://admin.rustdesk.com" fallback is excised and PROD_RENDEZVOUS_SERVER stays empty (zero

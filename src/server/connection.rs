@@ -92,26 +92,11 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     x == 0
 }
 
-#[cfg(target_os = "linux")]
-fn should_check_linux_headless_os_auth_before_desktop_start(
-    is_headless_allowed: bool,
-    username: &str,
-) -> bool {
-    is_headless_allowed
-        && !username.trim().is_empty()
-        && linux_desktop_manager::get_username().is_empty()
-}
-
-#[cfg(target_os = "linux")]
-fn should_record_linux_headless_os_auth_failure(
-    is_headless_allowed: bool,
-    username: &str,
-    err_msg: &str,
-) -> bool {
-    is_headless_allowed
-        && !username.trim().is_empty()
-        && err_msg == crate::client::LOGIN_MSG_PASSWORD_WRONG
-}
+// R-X14 / R-T15 (line 254): the Linux-headless OS-auth limiter helpers
+// (should_check/should_record_linux_headless_os_auth_*) are excised — the inherited per-site
+// failure counter for the headless OS-login is gone (the limiter is reconstituted wholesale at the
+// CPace key-confirmation choke point, R-P14c). The os_login->PAM desktop-start they guarded was
+// already removed (linux_desktop_manager, 62177b1); headless is also policy-pinned off (R-S16).
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn should_use_terminal_os_login_scope(is_terminal: bool, os_login_username: &str) -> bool {
@@ -1911,17 +1896,6 @@ impl Connection {
                 self.try_start_cm_ipc();
             }
 
-            #[cfg(target_os = "linux")]
-            if should_check_linux_headless_os_auth_before_desktop_start(
-                self.linux_headless_handle.is_headless_allowed,
-                &lr.os_login.username,
-            ) {
-                let (_failure, res) = self.check_failure(0).await;
-                if !res {
-                    return true;
-                }
-            }
-
             #[cfg(not(target_os = "linux"))]
             let err_msg = "".to_owned();
             #[cfg(target_os = "linux")]
@@ -1932,18 +1906,6 @@ impl Connection {
             // If err is LOGIN_MSG_DESKTOP_SESSION_NOT_READY, just keep this msg and go on checking password.
             if !err_msg.is_empty() && err_msg != crate::client::LOGIN_MSG_DESKTOP_SESSION_NOT_READY
             {
-                #[cfg(target_os = "linux")]
-                if should_record_linux_headless_os_auth_failure(
-                    self.linux_headless_handle.is_headless_allowed,
-                    &lr.os_login.username,
-                    &err_msg,
-                ) {
-                    let (failure, res) = self.check_failure(0).await;
-                    if !res {
-                        return true;
-                    }
-                    self.update_failure(failure, false, 0);
-                }
                 self.send_login_error(err_msg).await;
                 return true;
             }
@@ -3097,11 +3059,10 @@ impl Connection {
     // unkeyed streams before `Connection::start`; R-S2/R-S6 collapsed the password proof into
     // CPace), so nothing reachably bumped the map. The live online-guess limiter is now
     // unambiguously the bounded, decaying, per-v4-source `GUESS_FAILURES` in `cpace.rs` (R-P14c).
-    // `update_failure`/`check_failure` are retained as thin shims: the Default scope defers to the
-    // CPace gate (always-allow here), and the SEPARATE os-credential (terminal) policy is kept.
-    fn update_failure(&self, failure: ((i32, i32, i32), i32), remove: bool, i: usize) {
-        self.update_failure_with_scope(failure, remove, i, FailureScope::Default);
-    }
+    // `check_failure` is retained as a thin Default-scope shim: it defers to the CPace gate
+    // (always-allow here), while the SEPARATE os-credential (terminal) policy is kept via *_with_scope.
+    // (The `update_failure` Default-scope shim was removed with its last caller — the R-X14 headless
+    // OS-auth limiter site; the surviving os-credential writes call update_failure_with_scope directly.)
 
     fn update_failure_with_scope(
         &self,

@@ -264,7 +264,7 @@ ra6_clean 'wayland_use_uinput|should_skip_wayland_clipboard_sync|is_recent_wayla
 # check. The whole X-session-spawn + PAM subsystem is removed (linux_desktop_manager collapsed to
 # seat0 capture-discovery only; the connection wrapper ignores os_login). These tokens MUST stay
 # absent (the capture-side discovery — get_username/is_headless/seat0 — is kept, R-S14).
-ra6_clean 'pam::Client|try_start_x_session|start_x_session|start_x11|add_xauth_cookie|pam_get_service_name' 'R-X14 os_login->PAM desktop-session-start (X-session spawn)' || rc=1
+ra6_clean 'pam::Client|try_start_x_session|start_x_session|start_x11|add_xauth_cookie|pam_get_service_name|should_check_linux_headless_os_auth|should_record_linux_headless_os_auth' 'R-X14 os_login->PAM desktop-session-start + the connection.rs headless OS-auth limiter site (R-T15 line 254)' || rc=1
 # R-X14 (cont.): the excision is COMPLETE through the build + packaging — with zero pam:: usage the dead
 # `pam` crate dep, its transitive pam-sys libpam runtime link, the .deb libpam0g Depends, and the
 # /etc/pam.d/rustdesk install were all dead weight (a third-party git dep + a runtime-link + a dead

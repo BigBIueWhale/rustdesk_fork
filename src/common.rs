@@ -14,7 +14,7 @@ use hbb_common::{
     async_recursion::async_recursion,
     bail, base64,
     bytes::Bytes,
-    config::{self, keys, Config, LocalConfig, CONNECT_TIMEOUT, READ_TIMEOUT, RENDEZVOUS_PORT},
+    config::{self, keys, Config, LocalConfig, CONNECT_TIMEOUT, RENDEZVOUS_PORT},
     futures::future::join_all,
     futures_util::future::poll_fn,
     get_version_number, log,
@@ -28,7 +28,7 @@ use hbb_common::{
         self,
         time::{Duration, Instant, Interval},
     },
-    ResultType, Stream,
+    ResultType,
 };
 
 use crate::{
@@ -1362,30 +1362,6 @@ pub fn pk_to_fingerprint(pk: Vec<u8>) -> String {
             }
         })
         .collect()
-}
-
-#[inline]
-pub async fn get_next_nonkeyexchange_msg(
-    conn: &mut Stream,
-    timeout: Option<u64>,
-) -> Option<RendezvousMessage> {
-    let timeout = timeout.unwrap_or(READ_TIMEOUT);
-    for _ in 0..2 {
-        if let Some(Ok(bytes)) = conn.next_timeout(timeout).await {
-            if let Ok(msg_in) = RendezvousMessage::parse_from_bytes(&bytes) {
-                match &msg_in.union {
-                    Some(rendezvous_message::Union::KeyExchange(_)) => {
-                        continue;
-                    }
-                    _ => {
-                        return Some(msg_in);
-                    }
-                }
-            }
-        }
-        break;
-    }
-    None
 }
 
 #[cfg(all(target_os = "windows", not(target_pointer_width = "64")))]

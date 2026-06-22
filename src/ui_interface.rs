@@ -7,7 +7,6 @@ use hbb_common::{
     directories_next,
     futures::future::join_all,
     log,
-    rendezvous_proto::*,
     tokio,
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -28,8 +27,6 @@ use crate::common::SOFTWARE_UPDATE_URL;
 use crate::hbbs_http::account;
 #[cfg(not(any(target_os = "ios")))]
 use crate::ipc;
-
-type Message = RendezvousMessage;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub type Children = Arc<Mutex<(bool, HashMap<(String, String), Child>)>>;

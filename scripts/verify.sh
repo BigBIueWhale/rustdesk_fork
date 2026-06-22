@@ -378,6 +378,21 @@ if [ -f src/rendezvous_mediator.rs ] || grep -rqI 'rendezvous_mediator' src/ lib
 else
   echo "  ok  R-D4 Stage 3/R-SV10 module renamed rendezvous_mediator -> direct_service (the spec token 'mod rendezvous_mediator' is grep-absent; the module is honestly the direct-only service path)"
 fi
+# R-D4 Stage 4 / R-SV4 / R-SV10 / §8: the rendezvous WIRE PROTOCOL itself is removed from
+# rendezvous.proto. Stage 2 removed the mediator HANDLERS (Rust); this removes the MESSAGES they spoke
+# -- RendezvousMessage (the ~22-variant oneof: RegisterPeer/PunchHole*/RegisterPk*/RequestRelay/
+# RelayResponse/TestNat*/FetchLocalAddr/LocalAddr/ConfigUpdate/SoftwareUpdate/PeerDiscovery/Online*/
+# KeyExchange/HealthCheck/HttpProxy*) + the NatType enum. The fork had ZERO senders + its sole reader
+# (common.rs get_next_nonkeyexchange_msg) was dead. KEPT: ConnType + ControlPermissions + HeaderEntry
+# (the three types still used on the direct path). The binary can no longer encode/parse a rendezvous
+# message (R-SV1 structural absence). The proto comment naming the removed types starts with `//`, so
+# the anchored `^message`/`^enum` greps below do not match it.
+if grep -qE '^message RendezvousMessage|^message PunchHole|^message RegisterPk|^message RequestRelay|^message RelayResponse|^enum NatType' libs/hbb_common/protos/rendezvous.proto; then
+  echo "  FAIL R-D4 Stage 4/R-SV4: the rendezvous wire protocol (RendezvousMessage / PunchHole / NatType / ...) is back in rendezvous.proto"; rc=1
+else
+  echo "  ok  R-D4 Stage 4/R-SV4 rendezvous wire protocol absent from rendezvous.proto (only ConnType/ControlPermissions/HeaderEntry remain)"
+fi
+ra6_clean '\bRendezvousMessage\b|rendezvous_message::|get_next_nonkeyexchange_msg' 'R-D4 Stage 4/R-SV4 RendezvousMessage type + oneof submodule + its dead parser' || rc=1
 # R-SV4/R-SV10 / §18 (sovereignty): the Change-ID flow's rendezvous-dialing register_pk sender is
 # EXCISED. The inherited ui_interface::check_id connect_tcp'd to RENDEZVOUS_PORT and sent RegisterPk
 # (registering the device pk + checking ID availability with the rendezvous) — a sovereignty/egress

@@ -131,7 +131,7 @@ build_frb_codegen() {
     docker run --rm -v "$ONLINE_DIR:/online" "$builder" bash -euo pipefail -c '
         TC=/tmp/tc; mkdir -p "$TC"; tar -C "$TC" -xf /online/rust-*.tar.xz
         "$TC"/rust-*/install.sh --prefix=/tmp/rust --disable-ldconfig \
-            --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu >/dev/null
+            --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview >/dev/null
         export PATH=/tmp/rust/bin:$PATH
         cargo install flutter_rust_bridge_codegen --version '"${FLUTTER_RUST_BRIDGE_VERSION}"' \
             --features uuid --locked --root /online/frb-tool

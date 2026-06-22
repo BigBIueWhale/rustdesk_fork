@@ -66,7 +66,7 @@ build_one() {
             # (there is no top-level bin/) — install it to a prefix. LLVM: the tarball is
             # clang+llvm-15.0.6-.../ — point bindgen at its libclang.
             "$TC"/rust-*/install.sh --prefix="$TC/rustinstall" --disable-ldconfig \
-                --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu >/dev/null
+                --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview >/dev/null
             export LIBCLANG_PATH="$(echo "$TC"/clang+llvm-*/lib)"
             # Use a build-time CARGO_HOME so the vendored/offline config does NOT
             # overwrite the repo'\''s TRACKED .cargo/config.toml (which carries the

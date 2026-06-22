@@ -67,6 +67,11 @@ use hbb_common::{
     },
     ResultType, Stream,
 };
+// do_sync_cpu_usage (cfg-win) carries #[tokio::main], whose expansion names the
+// `tokio` crate; the rustdesk crate reaches tokio only via hbb_common, so bind the
+// name here. cfg(windows)-gated: it is the lone bare-`tokio` user in this file.
+#[cfg(windows)]
+use hbb_common::tokio;
 pub use helper::*;
 use scrap::{
     codec::Decoder,
@@ -832,7 +837,7 @@ impl AudioHandler {
     fn start_audio(&mut self, format0: AudioFormat) -> ResultType<()> {
         let device = AUDIO_HOST
             .default_output_device()
-            .with_context(|| "Failed to get default output device")?;
+            .ok_or_else(|| anyhow!("Failed to get default output device"))?;
         log::info!(
             "Using default output device: \"{}\"",
             device.name().unwrap_or("".to_owned())

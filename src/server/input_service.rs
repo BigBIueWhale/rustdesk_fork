@@ -1940,7 +1940,7 @@ async fn lock_screen_2() {
 async fn send_sas() -> ResultType<()> {
     if crate::platform::is_physical_console_session().unwrap_or(true) {
         let mut stream = crate::ipc::connect(1000, crate::POSTFIX_SERVICE).await?;
-        timeout(1000, stream.send(&crate::ipc::Data::SAS)).await??;
+        hbb_common::timeout(1000, stream.send(&crate::ipc::Data::SAS)).await??;
     } else {
         crate::platform::send_sas();
     };

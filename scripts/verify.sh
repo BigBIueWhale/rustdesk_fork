@@ -434,6 +434,12 @@ grep -q 'try_acquire_owned' src/rendezvous_mediator.rs          || r_t1_missing=
 grep -qE '^MemoryMax=[0-9]+%$'  res/rustdesk.service            || r_t1_missing="$r_t1_missing service:MemoryMax-not-percent"
 grep -qE '^MemoryHigh=[0-9]+%$' res/rustdesk.service            || r_t1_missing="$r_t1_missing service:MemoryHigh-not-percent"
 grep -qE '^TasksMax=[0-9]+$'    res/rustdesk.service            || r_t1_missing="$r_t1_missing service:TasksMax"
+# The fd bound + the auto-restart the R-T1 comment claims but did not check (gap-analysis-3). LimitNOFILE
+# is SECURITY-relevant: upstream's 100000 only serves an fd-exhaustion attacker; the fork pins the bounded
+# 8192 (single-user headroom). Restart=on-failure keeps the headless box up after a crash; RestartSec the delay.
+grep -qE '^LimitNOFILE=8192$'   res/rustdesk.service            || r_t1_missing="$r_t1_missing service:LimitNOFILE(bounded-8192-not-100000)"
+grep -qE '^Restart=on-failure$' res/rustdesk.service            || r_t1_missing="$r_t1_missing service:Restart"
+grep -qE '^RestartSec=[0-9]+$'  res/rustdesk.service            || r_t1_missing="$r_t1_missing service:RestartSec"
 if [ -n "$r_t1_missing" ]; then
   echo "  FAIL R-T1: connection-flood bound / flood-safe observability absent:$r_t1_missing"; rc=1
 else

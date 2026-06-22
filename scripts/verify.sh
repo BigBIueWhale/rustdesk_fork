@@ -453,6 +453,25 @@ if [ -n "$r_t10_missing" ]; then
 else
   echo "  ok  R-T10 TCP keepalive set on accepted peer sockets (SockRef + TcpKeepalive, app deadline primary)"
 fi
+# R-T3 (§20) per-send WRITE-DEADLINE — the in-place half of R-T3. (The dedicated-writer-task half — so
+# the reader/control channels stay pollable DURING a write — is the larger FramedStream-internal refactor
+# tracked in task R-T3; the current loop still blocks for up to one deadline on a wedged write, but it is
+# BOUNDED, not infinite.) A peer that completes the PAKE then stops reading must not wedge the connection's
+# read loop unboundedly: every peer write goes through FramedStream::send_bytes_raw, which bounds the flush
+# by the stream's send-timeout field and R-T2 poisons the stream on a timeout, so the session DROPS instead
+# of blocking forever. That field is honored only when > 0 (tcp.rs `if self.2 > 0`), so the connection MUST
+# install a NON-ZERO deadline via set_send_timeout. Lock the whole chain so it cannot silently regress to an
+# unbounded blocking write (which would hand an idle adversarial peer a per-connection read-loop stall).
+r_t3_missing=
+grep -qE 'conn\.stream\.set_send_timeout\('            src/server/connection.rs   || r_t3_missing="$r_t3_missing set_send_timeout-call"
+grep -qE 'SEND_TIMEOUT_VIDEO: u64 = [1-9]'             src/server/connection.rs   || r_t3_missing="$r_t3_missing nonzero-SEND_TIMEOUT_VIDEO"
+grep -qE 'SEND_TIMEOUT_OTHER: u64 = SEND_TIMEOUT_VIDEO' src/server/connection.rs   || r_t3_missing="$r_t3_missing SEND_TIMEOUT_OTHER"
+grep -qE 'if self\.2 > 0'                              libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing tcp-deadline-apply"
+if [ -n "$r_t3_missing" ]; then
+  echo "  FAIL R-T3: per-send write deadline incomplete:$r_t3_missing"; rc=1
+else
+  echo "  ok  R-T3 per-send write deadline installed (set_send_timeout + non-zero SEND_TIMEOUT_*, applied in send_bytes_raw, R-T2 poison)"
+fi
 # R-T15(b) / R-S10: the inherited LOGIN_FAILURES limiter — unbounded-growth / never-decaying /
 # full-IPv6-keyed, and on dead paths (the legacy unkeyed/salted-hash login is gone) — MUST be
 # excised so the live online-guess limiter is unambiguously the bounded, decaying, per-v4-source

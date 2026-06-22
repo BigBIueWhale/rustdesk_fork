@@ -36,6 +36,56 @@ RustDesk welcomes contribution from everyone. See [CONTRIBUTING.md](docs/CONTRIB
     alt="Get it on Flathub"
     height="80">](https://flathub.org/apps/com.rustdesk.RustDesk)
 
+## Building this hardened fork — local-only & reproducible (§12)
+
+> [!Important]
+> This is a hardened, **direct-IP-only** fork. It is **built locally on the operator's own
+> host, never in the cloud** — every GitHub Actions workflow is **disabled** (renamed to
+> `*.yml.disabled`; see [`.github/workflows/DISABLED.md`](.github/workflows/DISABLED.md)),
+> and Dependabot is off (the dependency world is exactly pinned, not auto-bumped). Builds are
+> off-line and SHA-pinned via [`scripts/pins.env`](scripts/pins.env).
+
+**Shipped build targets (the only ones):**
+
+| Target | How |
+| --- | --- |
+| Debian `.deb` (x86_64) | `scripts/build-debian.sh` — containerized (§12.1) |
+| Windows (x86_64) | an ephemeral **KVM Windows 11 VM** on the same Linux host: `scripts/host-provision.sh` → `scripts/online-fetch.sh` → `scripts/provision-windows-vm.sh` → `scripts/build-windows.ps1` (§12.2) |
+| Android (aarch64) | the §12 Docker flow |
+
+### The Windows 11 ISO you must supply
+
+Windows cannot be cross-built from Linux (MSVC + WiX are Windows-only), so the Windows
+artifact is produced inside a throwaway Win11 VM on the build host. Microsoft's ISO is
+*evergreen* (re-issued over time, not stably published at a fixed URL), so **you acquire it
+yourself and prove it by SHA-256** — the hash, not a URL, is the reproducibility anchor
+(R-B12(c)). Anyone cloning this repo must obtain the **byte-identical** image below:
+
+| Field | Value |
+| --- | --- |
+| **Product / name** | Windows 11, version **22H2** (released 2022-09), **x64**, **English (United States)** — the multi-edition consumer ISO |
+| **SHA-256** | `0df2f173d84d00743dc08ed824fbd174d972929bd84b87fe384ed950f5bdab22` |
+| **Size** | `5,557,432,320` bytes (≈ 5.18 GiB) |
+| **Acquire from** | Microsoft — <https://www.microsoft.com/software-download/windows11> → *Download Windows 11 Disk Image (ISO) for x64 devices* → English (United States) |
+| **Place at** | `online/win11.iso` (git-ignored: pinned, **not** vendored — R-R1) |
+
+Verify it before building:
+
+```sh
+sha256sum online/win11.iso
+# must print exactly:
+# 0df2f173d84d00743dc08ed824fbd174d972929bd84b87fe384ed950f5bdab22  online/win11.iso
+```
+
+If Microsoft's current download yields a different hash (they re-issue the 22H2 media), obtain
+the matching image or re-establish the pin via the audited dual-source bootstrap that
+`scripts/pins.env` documents (R-B12). The remaining pinned resources — the **VS Build Tools**
+offline layout, Rust 1.75, Flutter 3.24.5, LLVM 15.0.6, vcpkg @`120deac3`, the Android NDK — are
+fetched and SHA-verified by `scripts/online-fetch.sh` into the git-ignored `online/` cache;
+`scripts/pins.env` is the authoritative pin list.
+
+---
+
 ## Dependencies
 
 Desktop versions use Flutter or Sciter (deprecated) for GUI, this tutorial is for Sciter only, since it is easier and more friendly to start. Check out our [CI](https://github.com/rustdesk/rustdesk/blob/master/.github/workflows/flutter-build.yml) for building Flutter version.

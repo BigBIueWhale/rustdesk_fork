@@ -9,7 +9,6 @@ import 'package:zxing2/qrcode.dart';
 
 import '../../common.dart';
 import '../../models/platform_model.dart';
-import '../widgets/dialog.dart';
 
 class ScanPage extends StatefulWidget {
   @override
@@ -69,9 +68,18 @@ class _ScanPageState extends State<ScanPage> {
     setState(() {
       this.controller = controller;
     });
-    scanSubscription = controller.scannedDataStream.listen((scanData) {
-      if (scanData.code != null) {
-        showServerSettingFromQr(scanData.code!);
+    scanSubscription = controller.scannedDataStream.listen((scanData) async {
+      final code = scanData.code;
+      if (code == null) return;
+      await controller.pauseCamera();
+      // R-G2 / R-X4 / R-X6: the config-QR -> ID/Relay/API/Key editor path is excised (it was
+      // the trust-anchor-injection surface, the same class as rustdesk://config). Only a
+      // rustdesk:// deep-link is honored, and handleUriLink enforces the R-X6 confirmation and
+      // ignores any embedded key/password. A scan-to-connect-by-ID flow is moot under R-SV5.
+      if (code.startsWith(bind.mainUriPrefixSync())) {
+        handleUriLink(uriString: code);
+      } else {
+        showToast('Invalid QR code');
       }
     });
   }
@@ -100,7 +108,8 @@ class _ScanPageState extends State<ScanPage> {
         if (result.text.startsWith(bind.mainUriPrefixSync())) {
           handleUriLink(uriString: result.text);
         } else {
-          showServerSettingFromQr(result.text);
+          // R-G2 / R-X4: config-QR import (the trust-anchor-injection surface) is excised.
+          showToast('Invalid QR code');
         }
       } catch (e) {
         showToast('No QR code found');
@@ -146,20 +155,4 @@ class _ScanPageState extends State<ScanPage> {
     super.dispose();
   }
 
-  void showServerSettingFromQr(String data) async {
-    closeConnection();
-    await controller?.pauseCamera();
-    if (!data.startsWith('config=')) {
-      showToast('Invalid QR code');
-      return;
-    }
-    try {
-      final sc = ServerConfig.decode(data.substring(7));
-      Timer(Duration(milliseconds: 60), () {
-        showServerSettingsWithValue(sc, gFFI.dialogManager, null);
-      });
-    } catch (e) {
-      showToast('Invalid QR code');
-    }
-  }
 }

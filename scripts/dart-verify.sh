@@ -126,9 +126,17 @@ dg_clean 'LoginWidgetOP|kOpSvgList|kAuthReqTypeOidc|queryOidcLoginOptions' 'R-G4
 # enum value + its tabKeys include + both _settingTabs()/_children() switch cases. Mobile: the
 # ID/Relay-Server + Socks5/Http(s)-Proxy SettingsTiles + the _hideServer/_hideProxy state. Plus the
 # shared changeSocks5Proxy proxy-editor (desktop_setting_page) and showServerSettings dialog
-# (mobile/widgets/dialog.dart) — both now uncalled. (showServerSettingsWithValue stays for the QR
-# scan_page; the mobile "Use WebSocket"/"Deploy" tiles are separate follow-ons.) None may reappear.
+# (mobile/widgets/dialog.dart) — both now uncalled. (The mobile "Use WebSocket"/"Deploy" tiles are
+# separate follow-ons.) None may reappear.
 dg_clean 'SettingsTabKey\.network|changeSocks5Proxy|void showServerSettings\(' 'R-G4 Network/server-config UI (tab + SOCKS + server dialog)'
+# R-G4 / R-X4 / R-X6 / §19 (mobile sibling, now CLOSED): the MOBILE "ID/Relay Server" editor
+# (showServerSettingsWithValue: id/relay/api-server + the trust-anchor `key`), its config-QR entry
+# (showServerSettingFromQr in scan_page — the trust-anchor-injection path, same class as
+# rustdesk://config), the clipboard import/export (ServerConfigImportExportWidgets), and the
+# ServerConfig DTO + setServerConfig/importConfig writers are EXCISED. The desktop twin was already
+# gone; this closes the last config-injection surface on any shipped front-end (the writes were
+# already inert under the R-S16 pins / R-X4 baked anchor — editable-but-inert is the R-S12/R-G1 trap).
+dg_clean 'showServerSettingsWithValue|showServerSettingFromQr|ServerConfigImportExportWidgets|setServerConfig|ID/Relay Server' 'R-G4 mobile server-config editor + config-QR (trust-anchor injection)'
 # R-G4 / R-SV6 / §19: the desktop "Account" settings tab is deleted — the _Account/_AccountState
 # classes (the rustdesk-account login/logout panel) + the SettingsTabKey.account enum value + its
 # tabKeys include + both _settingTabs()/_children() switch cases. A direct-IP fork has no account

@@ -276,10 +276,14 @@ class FfiModel with ChangeNotifier {
     if (secure == null || direct == null) {
       return null;
     } else {
-      final icon =
-          '${secure == true ? 'secure' : 'insecure'}${direct == true ? '' : '_relay'}';
+      // R-G3: always the secure-direct badge. The insecure / secure_relay / insecure_relay
+      // assets are deleted and those states are structurally impossible (§10 PAKE-keyed +
+      // R-SV4/R-D4 direct-only), so the inherited dynamic `assets/$icon.svg` here would both
+      // MISLABEL the channel's actual guarantee AND load a deleted asset (broken render). Mirror
+      // the desktop badges (remote_tab_page.dart:181) + getConnectionText (common.dart:4029),
+      // which already collapse the four secure×direct branches to the one reachable state.
       final iconWidget =
-          SvgPicture.asset('assets/$icon.svg', width: 48, height: 48);
+          SvgPicture.asset('assets/secure.svg', width: 48, height: 48);
       String connectionText =
           getConnectionText(secure!, direct!, cachedPeerData.streamType);
       return Column(

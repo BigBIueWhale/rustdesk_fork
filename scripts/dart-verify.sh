@@ -93,6 +93,16 @@ dg_clean() { # token, label
 # ALWAYS secure+direct (§10 PAKE + R-SV4/R-D4), so a badge that could render "insecure"
 # or "relayed" is both dead and a dangerous security MISLABEL. (secure.svg is the one kept.)
 dg_clean 'insecure\.svg|secure_relay\.svg|insecure_relay\.svg' 'R-G3 insecure/relay security-badge assets'
+# R-G3 (mobile): the literal-asset gate above is BLIND to DYNAMIC construction. The inherited mobile
+# badge (model.dart getConnectionImageText) built `SvgPicture.asset('assets/$icon.svg')` where icon was
+# a secure/insecure + _relay ternary — so the literal grep never saw the deleted insecure/relay names,
+# yet at runtime a non-keyed/relayed peer-info would both MISLABEL the always-secure+direct channel and
+# load a deleted asset. Assert the mobile connection badge is the HARDCODED secure asset, like the
+# desktop tab-page badges (remote_tab_page.dart). (model.dart has no legit dynamic security `assets/$`.)
+if grep -qE "SvgPicture\.asset\(\s*'assets/\\\$" flutter/lib/models/model.dart 2>/dev/null; then
+  echo "  FAIL R-G3: model.dart builds a DYNAMIC 'assets/\$..svg' connection badge (channel-security mislabel + deleted-asset render)"; exit 1
+fi
+echo "  ok  R-G3 mobile connection badge hardcoded secure asset (no dynamic assets/\$ build in model.dart)"
 # R-G4 / R-SV3 / §18: the startup version-check FFI trigger is gone — the app makes no
 # api.rustdesk.com/version call at launch (the updater + version-check are excised).
 dg_clean 'bind\.mainGetSoftwareUpdateUrl' 'R-G4/R-SV3 startup version-check FFI trigger'

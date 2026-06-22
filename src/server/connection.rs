@@ -1430,14 +1430,6 @@ impl Connection {
                     }
                     res.set_peer_info(pi);
                     sub_service = true;
-
-                    #[cfg(target_os = "linux")]
-                    {
-                        // use rdp_input when uinput is not available in wayland. Ex: flatpak
-                        if input_service::wayland_use_rdp_input() {
-                            let _ = setup_rdp_input().await;
-                        }
-                    }
                 }
             }
             self.on_remote_authorized();

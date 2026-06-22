@@ -138,6 +138,18 @@ ra6_clean 'direct-ok'                                                     'R-P3 
 ra6_clean 'RUSTDESK_FORCED_DISPLAY_SERVER'                                'R-X12 display-server knob' || rc=1
 ra6_clean 'gtk_sudo|run_cmds_privileged|"-gtk-sudo"'                      'R-X11 gtk_sudo elevation'  || rc=1
 ra6_clean 'start_uinput_service'                                         'R-X13 dormant uinput listener' || rc=1
+# R-X13 (§8): the rdp_input module — Wayland-portal RDP keyboard/mouse injection via the dbus
+# org.freedesktop.portal.RemoteDesktop session (RdpInputKeyboard/RdpInputMouse as the enigo custom
+# backend) — is EXCISED. XTEST/enigo is the pinned sole injector (wayland_use_rdp_input() was already
+# false by construction), so this was compiled-in dead surface (§8 "removed not disabled"). The module
+# file + setup_rdp_input + the selector + the dead branches are gone. (uinput + the scrap::wayland
+# capture path remain a deferred R-X12/R-X13 stage — task #4.)
+if [ -e src/server/rdp_input.rs ]; then
+  echo "  FAIL R-X13: the excised src/server/rdp_input.rs reappeared"; rc=1
+else
+  echo "  ok  R-X13 rdp_input module file absent"
+fi
+ra6_clean 'RdpInput|fn setup_rdp_input|wayland_use_rdp_input|mod rdp_input' 'R-X13 rdp_input Wayland-portal injection (module/setup/selector)' || rc=1
 # R-X14 (Appendix C #17, a Tier-1-class remote root-context PAM oracle): the os_login -> PAM
 # desktop-session-start in linux_desktop_manager.rs is EXCISED. Upstream let a peer's
 # LoginRequest.os_login drive a real PAM credential check + a root window-manager-launch script to

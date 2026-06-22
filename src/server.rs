@@ -43,8 +43,10 @@ pub use clipboard_service::is_clipboard_service_ok;
 pub(crate) mod wayland;
 #[cfg(target_os = "linux")]
 pub mod uinput;
-#[cfg(target_os = "linux")]
-pub mod rdp_input;
+// R-X13 (§8): the rdp_input module — Wayland-portal RDP keyboard/mouse injection via the dbus
+// org.freedesktop.portal.RemoteDesktop session — is EXCISED. XTEST/enigo is the pinned sole
+// injector (wayland_use_rdp_input() was already false by construction), so this was dead surface.
+// The uinput module + the scrap::wayland capture path remain a deferred R-X12/R-X13 stage (task #4).
 // R-X6: the D-Bus deep-link module (org.rustdesk.rustdesk NewConnection) is excised.
 #[cfg(not(target_os = "android"))]
 pub mod input_service;

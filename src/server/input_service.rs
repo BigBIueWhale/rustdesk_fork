@@ -1,5 +1,3 @@
-#[cfg(target_os = "linux")]
-use super::rdp_input::client::{RdpInputKeyboard, RdpInputMouse};
 use super::*;
 use crate::input::*;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -15,8 +13,6 @@ use hbb_common::{
 use rdev::{self, EventType, Key as RdevKey, KeyCode, RawKey};
 #[cfg(target_os = "macos")]
 use rdev::{CGEventSourceStateID, CGEventTapLocation, VirtualInput};
-#[cfg(target_os = "linux")]
-use scrap::wayland::pipewire::RDP_SESSION_INFO;
 #[cfg(target_os = "linux")]
 use std::sync::mpsc;
 use std::{
@@ -192,9 +188,6 @@ impl LockModesHandler {
                     break;
                 }
             }
-        } else if wayland_use_rdp_input() {
-            // We can't call `en.get_key_state(k)` because there's no api for this.
-            std::thread::sleep(std::time::Duration::from_millis(50));
         }
     }
 
@@ -628,34 +621,9 @@ pub async fn setup_uinput(minx: i32, maxx: i32, miny: i32, maxy: i32) -> ResultT
     Ok(())
 }
 
-#[cfg(target_os = "linux")]
-pub async fn setup_rdp_input() -> ResultType<(), Box<dyn std::error::Error>> {
-    let mut en = ENIGO.lock()?;
-    let rdp_info_lock = RDP_SESSION_INFO.lock()?;
-    let rdp_info = rdp_info_lock.as_ref().ok_or("RDP session is None")?;
-
-    let keyboard = RdpInputKeyboard::new(rdp_info.conn.clone(), rdp_info.session.clone())?;
-    en.set_custom_keyboard(Box::new(keyboard));
-    log::info!("RdpInput keyboard created");
-
-    if let Some(stream) = rdp_info.streams.clone().into_iter().next() {
-        let resolution = rdp_info
-            .resolution
-            .lock()
-            .unwrap()
-            .unwrap_or(stream.get_size());
-        let mouse = RdpInputMouse::new(
-            rdp_info.conn.clone(),
-            rdp_info.session.clone(),
-            stream,
-            resolution,
-        )?;
-        en.set_custom_mouse(Box::new(mouse));
-        log::info!("RdpInput mouse created");
-    }
-
-    Ok(())
-}
+// R-X13 (§8): setup_rdp_input (installed the dbus-portal RdpInputKeyboard/RdpInputMouse as the
+// enigo custom backend) is EXCISED with the rdp_input module — XTEST/enigo is the pinned sole
+// injector. RDP_SESSION_INFO is still read by the deferred uinput path (R-X12/R-X13, task #4).
 
 #[cfg(target_os = "linux")]
 pub async fn update_mouse_resolution(minx: i32, maxx: i32, miny: i32, maxy: i32) -> ResultType<()> {
@@ -2022,12 +1990,6 @@ fn translate_keyboard_mode(evt: &KeyEvent) {
             #[cfg(target_os = "linux")]
             if !crate::platform::linux::is_x11() {
                 let mut en = ENIGO.lock().unwrap();
-                if wayland_use_rdp_input() {
-                    release_shift_for_char_input(&mut en);
-                    en.key_sequence(seq);
-                    return;
-                }
-
                 if wayland_use_uinput() {
                     // Check if this is a hotkey (Ctrl/Alt/Meta pressed)
                     // For hotkeys, we send character-based key events via Enigo instead of
@@ -2322,14 +2284,6 @@ pub fn wayland_use_uinput() -> bool {
     // is_x11() is already true so this was false at runtime — now false by
     // construction, and with the service-entry uinput listener removed the
     // dormant _uinput_* cross-uid sockets are never stood up, R-S11a.)
-    false
-}
-
-#[inline]
-#[cfg(target_os = "linux")]
-pub fn wayland_use_rdp_input() -> bool {
-    // R-X13/R-X12: the Wayland-portal RDP injection path is likewise disabled —
-    // XTEST is the sole backend on the pinned-X11 fork.
     false
 }
 

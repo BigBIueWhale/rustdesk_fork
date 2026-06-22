@@ -406,6 +406,37 @@ async fn r_s17_host_proof_binds_pk_to_the_session() {
     assert!(verify_host_identity(&ti, b"not a HostIdentity frame").is_err());
 }
 
+/// §4.4 hostile-host -> viewer DoS-robustness (R-S17): verify_host_identity parses the PEER-controlled
+/// pk/sig of the HostIdentity frame. A VALID proto carrying a malformed-LENGTH pk (!=32) or sig (!=64)
+/// MUST be REFUSED (HostProof) via PublicKey::from_slice / Signature::from_bytes — never panic the
+/// viewer's keying task. The sibling test above covers wrong-session / tampered-VALUE (last-byte flip,
+/// still 64 bytes) / non-proto garbage — all with VALID-length fields; this guards the from_slice /
+/// from_bytes LENGTH parse itself, which a hostile host on the §4.4 path could otherwise weaponize to
+/// crash the viewer with one short pk.
+#[test]
+fn verify_host_identity_refuses_malformed_length_fields() {
+    use hbb_common::cpace::{verify_host_identity, Transcript};
+    use hbb_common::message_proto::HostIdentity;
+    use hbb_common::protobuf::Message;
+    let t = Transcript {
+        sid: [0u8; 32],
+        ya: [0u8; 32],
+        yb: [0u8; 32],
+    };
+    // A well-formed proto whose pk is 31 bytes (not the Ed25519 32) and sig is 63 bytes (not 64): it
+    // PARSES (past parse_from_bytes), then from_slice/from_bytes REFUSE the wrong lengths -> HostProof.
+    let hi = HostIdentity {
+        pk: Bytes::copy_from_slice(&[1u8; 31]),
+        sig: Bytes::copy_from_slice(&[2u8; 63]),
+        ..Default::default()
+    };
+    let bytes = hi.write_to_bytes().expect("serialize HostIdentity");
+    assert!(
+        verify_host_identity(&t, &bytes).is_err(),
+        "a HostIdentity with malformed-length pk/sig MUST be refused, not panic"
+    );
+}
+
 /// R-S17 WIRE PATH: the responder emits its HostIdentity host-proof as the FIRST
 /// frame AFTER keying, so it travels ENCRYPTED under the session key; the viewer
 /// reads it with the same key and verifies. This exercises the exact transit

@@ -892,8 +892,9 @@ ra6_clean 'relay-hint' 'R-G6 relay-fallback hint emission' || rc=1
 # app-name substitution exclusion that only existed to protect the powered_by_me string.
 ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-bot-tip|powered_by_me)"' '§19 dead lang keys' || rc=1
 # §18 / R-R2b (universal software codec): hwcodec/vram (the GPU/VRAM hardware-codec deps —
-# ffmpeg amf/nvcodec/qsv, a native attack surface AND a build-reproducibility hazard) are
-# compiled out of EVERY build path; the fork is CPU-only software vpx/aom. The optional
+# ffmpeg amf/nvcodec/qsv) AND mediacodec (Android's MediaCodec hardware decode/encode) — each a
+# native attack surface (Appendix C #2b) AND a build-reproducibility hazard — are compiled out of
+# EVERY build path; the fork is CPU-only software vpx/aom. The optional
 # feature DEFINITIONS in Cargo.toml/scrap are inert (never selected) — what this forbids is
 # any build script / CI job / driver that ENABLES them: a `--features …hwcodec/vram…`, a
 # `--hwcodec`/`--vram` flag, a RUSTDESK_FEATURES/extra_features carrying them, or a
@@ -901,18 +902,18 @@ ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-bot-tip|powere
 # `nvram` (a libvirt term in cleanup.sh) is not a match. The desktop scripts dropped it
 # early, but the flutter mobile scripts + the CI matrix + build.py's own flags still
 # selected it until 575859a's follow-on — this locks the universal drop in tree-wide.
-hw_hits=$(grep -RInE 'hwcodec|vram' \
+hw_hits=$(grep -RInE 'hwcodec|vram|mediacodec' \
             --include='*.sh' --include='*.py' --include='*.yml' --include='*.yaml' --include='*.ps1' . 2>/dev/null \
           | grep -vE '/target/|requirements\.html|scripts/verify\.sh' \
           | grep -vE ':[0-9]+:[[:space:]]*#' \
           | grep -viE 'nvram' || true)
 if [ -n "$hw_hits" ]; then
-  echo "  FAIL §18/R-R2b: a build path still ENABLES hwcodec/vram (must be universally compiled out):"
+  echo "  FAIL §18/R-R2b: a build path still ENABLES hwcodec/vram/mediacodec (must be universally compiled out):"
   echo "$hw_hits" | sed 's/^/      /'; rc=1
-elif grep -E '^default *=' Cargo.toml | grep -qiE 'hwcodec|vram'; then
-  echo "  FAIL §18/R-R2b: the Cargo.toml default feature pulls in hwcodec/vram"; rc=1
+elif grep -E '^default *=' Cargo.toml | grep -qiE 'hwcodec|vram|mediacodec'; then
+  echo "  FAIL §18/R-R2b: the Cargo.toml default feature pulls in hwcodec/vram/mediacodec"; rc=1
 else
-  echo "  ok  §18/R-R2b hwcodec/vram never selected in any build path (CPU-only software codec)"
+  echo "  ok  §18/R-R2b hwcodec/vram/mediacodec never selected in any build path (CPU-only software codec)"
 fi
 # R-R2a (§12 / sovereignty): the .deb + systemd is the SOLE Linux package model. The AppImage
 # recipe (whose `update-information` self-updater collides with R-X1 "the fork ships its own

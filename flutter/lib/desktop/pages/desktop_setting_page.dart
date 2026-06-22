@@ -386,7 +386,9 @@ class _GeneralState extends State<_General> {
         if (!isWeb) service(),
         theme(),
         _Card(title: 'Language', children: [language()]),
-        if (!isWeb) hwcodec(),
+        // R-R2b / R-G1 (§19): the "Hardware Codec" card is removed — hwcodec/vram are compiled out of
+        // every build (software vpx/aom only), so mainHasHwcodec()/mainHasVram() are always false and
+        // the card only ever rendered Offstage (hidden ≠ removed, the R-G1 trap).
         if (!isWeb) audio(context),
         if (!isWeb) record(context),
         if (!isWeb) WaylandCard(),
@@ -575,25 +577,8 @@ class _GeneralState extends State<_General> {
     });
   }
 
-  Widget hwcodec() {
-    final hwcodec = bind.mainHasHwcodec();
-    final vram = bind.mainHasVram();
-    return Offstage(
-      offstage: !(hwcodec || vram),
-      child: _Card(title: 'Hardware Codec', children: [
-        _OptionCheckBox(
-          context,
-          'Enable hardware codec',
-          kOptionEnableHwcodec,
-          update: (bool v) {
-            if (v) {
-              bind.mainCheckHwcodec();
-            }
-          },
-        )
-      ]),
-    );
-  }
+  // R-R2b / R-G1 (§19): the hwcodec() "Hardware Codec" card is excised — hwcodec/vram (and Android
+  // mediacodec) are compiled out of every build, so mainHasHwcodec()/mainHasVram() are always false.
 
   Widget audio(BuildContext context) {
     if (bind.isOutgoingOnly()) {

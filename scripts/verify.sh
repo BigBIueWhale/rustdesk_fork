@@ -453,7 +453,7 @@ fi
 # aggregation are gated by R-T1/R-T12 above.)
 r_t12_eb=
 grep -qE 'accept_err_streak'              src/rendezvous_mediator.rs || r_t12_eb="$r_t12_eb no-streak-counter"
-grep -qE '50u64 << accept_err_streak'     src/rendezvous_mediator.rs || r_t12_eb="$r_t12_eb no-escalating-backoff"
+grep -qE '\(50u64 << accept_err_streak\.min\(7\)\)\.min\(5000\)' src/rendezvous_mediator.rs || r_t12_eb="$r_t12_eb no-escalating-bounded-backoff(50<<streak.min7-cap5000)"
 grep -qE 'fn accept_error_class'          src/server.rs              || r_t12_eb="$r_t12_eb no-errno-mapper"
 grep -qE 'libc::EMFILE|libc::ENFILE'      src/server.rs              || r_t12_eb="$r_t12_eb no-EMFILE-map"
 if [ -n "$r_t12_eb" ]; then

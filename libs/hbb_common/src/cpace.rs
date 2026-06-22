@@ -376,17 +376,24 @@ impl DirectionalCipher {
     /// — exactly the case the wire-capture test (R-A9) would not catch, since the
     /// keys are derived internally and never attacker-influenced.
     pub fn new(keys: &DirectionalKeys) -> Self {
-        assert_ne!(
-            keys.send, keys.recv,
-            "R-A5: identical send/recv keys — refusing to engage single-key reuse"
-        );
         // `[u8; 32]` is Copy, so this copies out of the zeroize-on-drop keys.
-        Self {
+        let cipher = Self {
             send_key: Key(keys.send),
             recv_key: Key(keys.recv),
             write_seq: 0,
             read_seq: 0,
-        }
+        };
+        // R-A5: assert distinctness on the ENGAGED cipher state (self.send_key / self.recv_key), NOT
+        // on the derived input `keys`. HKDF's distinct c2s/s2c labels make the inputs distinct by
+        // construction, so a check on `keys` only restates that; the regression R-A5 exists to catch
+        // is a keying-mis-wire in the engagement itself — e.g. `recv_key: Key(keys.send)`, which
+        // engages one key BOTH ways while `keys.send != keys.recv` still holds. Reading back the
+        // engaged fields fails closed on exactly that, the case the wire-capture test (R-A9) can't see.
+        assert_ne!(
+            cipher.send_key.0, cipher.recv_key.0,
+            "R-A5: identical engaged send/recv keys — refusing to engage single-key reuse"
+        );
+        cipher
     }
 
     fn nonce(seq: u64) -> Nonce {

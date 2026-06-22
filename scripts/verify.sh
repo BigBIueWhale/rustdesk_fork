@@ -610,6 +610,20 @@ ra6_clean 'SignedId|set_signed_id|set_public_key|message::Union::PublicKey' 'R-P
 # build, resetting to an already-used nonce and reusing (key, nonce) (catastrophic for the AEAD).
 # Assert the raw compound-increment never returns to cpace.rs's DirectionalCipher.
 ra6_clean 'write_seq *\+=|read_seq *\+=' 'R-A5 unchecked nonce-counter increment (must be checked_add)' || rc=1
+# R-A5: the directional-cipher two-key DISTINCTNESS assert MUST read back the ENGAGED cipher state
+# (self.send_key / self.recv_key), NOT the derived input `keys` — HKDF makes the inputs distinct by
+# construction, so a check on `keys` only restates that; the regression R-A5 exists to catch is a
+# keying-mis-wire that engages one key BOTH ways (e.g. `recv_key: Key(keys.send)`), which the input
+# check passes but the engaged read-back fails closed on. Assert the engaged form is present and the
+# old input-key form (`keys.send, keys.recv` in an assert) is gone.
+r_a5_dist=
+grep -qE 'cipher\.send_key\.0,\s*cipher\.recv_key\.0' libs/hbb_common/src/cpace.rs || r_a5_dist="$r_a5_dist engaged-key-assert-missing"
+grep -qE 'keys\.send, keys\.recv'                     libs/hbb_common/src/cpace.rs && r_a5_dist="$r_a5_dist input-key-assert-still-present"
+if [ -n "$r_a5_dist" ]; then
+  echo "  FAIL R-A5: engaged-key distinctness assert incomplete:$r_a5_dist"; rc=1
+else
+  echo "  ok  R-A5 engaged-cipher send/recv-key distinctness asserted (self.send_key/recv_key, not derived inputs)"
+fi
 # R-A2/R-S2 (authorization is a single keyed-edge choke-point): `self.authorized = true` must appear
 # EXACTLY ONCE in connection.rs — it lives in `send_logon_response_and_keep_alive`, reached only on
 # the CPace-keyed + whitelisted + password-login path, and EVERY privileged inbound handler

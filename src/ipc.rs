@@ -8,7 +8,6 @@ use crate::{
     common::is_server,
     privacy_mode,
     privacy_mode::PrivacyModeState,
-    rendezvous_mediator::RendezvousMediator,
     ui_interface::{get_local_option, set_local_option},
 };
 use bytes::Bytes;
@@ -800,7 +799,6 @@ async fn handle(data: Data, stream: &mut Connection) {
                 } else {
                     Config::set_socks(Some(data));
                 }
-                RendezvousMediator::restart();
                 log::info!("socks updated");
             }
         },

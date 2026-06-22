@@ -514,10 +514,6 @@ pub fn set_socks(proxy: String, username: String, password: String) {
         }
         log::info!("socks updated");
     }
-    #[cfg(target_os = "android")]
-    {
-        crate::RendezvousMediator::restart();
-    }
 }
 
 #[inline]

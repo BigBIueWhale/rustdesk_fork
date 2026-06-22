@@ -16,33 +16,15 @@ use crate::server::{check_zombie, new as new_server, ServerPtr};
 //
 // What remains here is the direct-only service path — `start_direct_only` ->
 // `direct_server`, the single v4, PAKE-gated TCP listener (R-F4/R-D5) — plus the R-A4
-// startup + post-listen socket-surface self-checks, and two no-op shells kept ONLY so
-// the cross-module callers still link (flutter_ffi is behind the `flutter` feature and
-// not in the verify.sh compile-check, so its callers cannot be changed here):
-//   - `RendezvousMediator::restart()` (ipc / flutter_ffi / ui_interface),
-//   - `CheckIfResendPk` (server.rs).
-// Removing those shells + their callers, and the module rename that finally makes
-// `mod rendezvous_mediator` itself grep-absent, is the cross-module / §19 follow-on.
-// (The `NEEDS_DEPLOY` flag + `reset_needs_deploy_notification()` + the `Data::Deployed`
-// IPC arm/sender were the *deploy* shell — now REMOVED with the R-SV6(c)/R-G4 deploy
-// excision: NEEDS_DEPLOY was write-only/dead, and flutter-verify (cargo check --features
-// flutter) + a zero-reference grep cover the android-gated callers verify.sh skips.)
-
-/// A namespace for `restart()`. The rendezvous mediator itself no longer exists; this is
-/// a unit struct kept only so the inherited `RendezvousMediator::restart()` call sites
-/// keep resolving across modules.
-pub struct RendezvousMediator;
-
-impl RendezvousMediator {
-    pub fn restart() {
-        // R-D4: no rendezvous mediator means no registration loop to break and no
-        // connection to restart — the direct listener runs continuously and a config
-        // change (e.g. the permanent password) takes effect on the next connection
-        // (R-S9 live read). Kept as a no-op only so the cross-module callers
-        // (ipc / flutter_ffi / ui_interface) still link.
-        log::debug!("RendezvousMediator::restart(): no-op on the direct-only build");
-    }
-}
+// startup + post-listen socket-surface self-checks. The inherited no-op SHELLS are now all
+// REMOVED: `RendezvousMediator::restart()` + its ipc/flutter_ffi/ui_interface callers,
+// `CheckIfResendPk` + its server.rs construction, and earlier the deploy shell (NEEDS_DEPLOY +
+// reset_needs_deploy_notification + the `Data::Deployed` IPC arm/sender, R-SV6(c)/R-G4). The only
+// cross-module follow-on left is the module RENAME that makes the now-misnamed
+// `mod rendezvous_mediator` (it is really the direct-server module) grep-absent under that name
+// (R-D4 Stage 3) — a pure cosmetic rename across its callers, deferred. (restart() was a provable
+// no-op, so removing it cannot change behavior; flutter-verify [cargo check --features flutter] +
+// zero-reference greps cover the android/macOS-gated callers verify.sh's Linux compile skips.)
 
 fn get_direct_port() -> i32 {
     // R-F4: the direct port is the single PINNED compile-time constant 21118 — never
@@ -408,13 +390,6 @@ async fn direct_server(server: ServerPtr) {
     }
 }
 
-// R-D4: a no-op RAII shell. The original detected a pk change after config-sync and
-// resent `register_pk`; with no registration that is moot. Kept only so its cross-module
-// construction site (`server.rs` wait_initial_config_sync) still links; its removal is a
-// follow-on with the rest of the mediator shell.
-pub struct CheckIfResendPk;
-impl CheckIfResendPk {
-    pub fn new() -> Self {
-        Self
-    }
-}
+// R-D4: the `CheckIfResendPk` no-op RAII shell (the original resent `register_pk` on a post-config-
+// sync pk change — moot with no registration) is REMOVED with the mediator-shell sweep. Its sole
+// construction site was the macOS-gated `server.rs` wait_initial_config_sync.

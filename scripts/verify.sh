@@ -396,7 +396,12 @@ r_t1_missing=
 grep -q 'PREKEY_HANDSHAKE_SLOTS' src/server.rs                  || r_t1_missing="$r_t1_missing server.rs:semaphore"
 grep -q 'fn note_security_event' src/server.rs                  || r_t1_missing="$r_t1_missing server.rs:agg-log"
 grep -q 'try_acquire_owned' src/rendezvous_mediator.rs          || r_t1_missing="$r_t1_missing mediator:acquire-before-spawn"
-grep -q 'MemoryMax=' res/rustdesk.service                       || r_t1_missing="$r_t1_missing service:MemoryMax"
+# R-T1(a): the memory ceilings MUST be host-RELATIVE percentages, NEVER an absolute byte count — an
+# absolute `4G` is a no-op on a 2 GiB box (the spec names this exact regression). Anchored `^…=NN%$`
+# fails on MemoryMax=4G / =2147483648 / =infinity; presence-only greps did not. TasksMax is a count.
+grep -qE '^MemoryMax=[0-9]+%$'  res/rustdesk.service            || r_t1_missing="$r_t1_missing service:MemoryMax-not-percent"
+grep -qE '^MemoryHigh=[0-9]+%$' res/rustdesk.service            || r_t1_missing="$r_t1_missing service:MemoryHigh-not-percent"
+grep -qE '^TasksMax=[0-9]+$'    res/rustdesk.service            || r_t1_missing="$r_t1_missing service:TasksMax"
 if [ -n "$r_t1_missing" ]; then
   echo "  FAIL R-T1: connection-flood bound / flood-safe observability absent:$r_t1_missing"; rc=1
 else
@@ -417,6 +422,30 @@ if [ -n "$r_t12_eb" ]; then
   echo "  FAIL R-T12: accept-error escalating-backoff/errno-map incomplete:$r_t12_eb"; rc=1
 else
   echo "  ok  R-T12 accept-error escalating bounded back-off + EMFILE/ENFILE errno mapping present"
+fi
+# R-SV10 (§18, the FIFTH config funnel): LocalConfig::get_option reads the UNPINNED _local namespace —
+# unlike Config::get_option it has NO PINNED_SETTINGS head-guard (config.rs). CI MUST assert no
+# SECURITY-RELEVANT key resolves through it without a pin or a compile-out (mirroring R-S16(d)(iv)'s
+# get_builtin_option treatment). The spec names enable-check-update — the software-updater egress —
+# which R-SV3 compiles OUT. The other capability-adjacent LocalConfig readers are #[cfg(windows)]
+# (pre-elevate-service @ core_main.rs = the local-pref elevation; the printer-job action @ io_loop.rs),
+# so the Linux build (the cargo-check gate below) compiles them out — unreachable on the deployed box.
+# The remaining readers are benign UI prefs (lang/texture-render/video-dir/input-source/group-panel).
+r_sv10=
+# (a) no LocalConfig reader resolves the updater-egress key, and the const stays UNDEFINED (R-SV3
+#     excised both — only an excision comment remains in config.rs); a re-add of either re-opens it.
+grep -rnE 'LocalConfig::get_option[^)]*(OPTION_ENABLE_CHECK_UPDATE|"enable-check-update")' src libs --include=*.rs | grep -qv '//' && r_sv10="$r_sv10 enable-check-update-reader"
+grep -rqE '^[[:space:]]*pub const OPTION_ENABLE_CHECK_UPDATE' libs/hbb_common/src/config.rs && r_sv10="$r_sv10 OPTION_ENABLE_CHECK_UPDATE-redefined"
+# (b) the local-pref elevation read, IF present, MUST be confined to core_main.rs under #[cfg(windows)]
+preelev_sites=$(grep -rlE 'LocalConfig::get_option\("pre-elevate-service"\)' src --include=*.rs || true)
+if [ -n "$preelev_sites" ]; then
+  [ "$preelev_sites" = "src/core_main.rs" ] || r_sv10="$r_sv10 pre-elevate-service-outside-core_main($preelev_sites)"
+  grep -B6 'LocalConfig::get_option("pre-elevate-service")' src/core_main.rs | grep -q '#\[cfg(windows)\]' || r_sv10="$r_sv10 pre-elevate-service-not-windows-gated"
+fi
+if [ -n "$r_sv10" ]; then
+  echo "  FAIL R-SV10: a security-relevant key resolves through the unpinned LocalConfig funnel:$r_sv10"; rc=1
+else
+  echo "  ok  R-SV10 LocalConfig funnel clean (enable-check-update excised; pre-elevate-service windows-gated)"
 fi
 # R-D3a (§17): the root service unit MUST carry the kernel sandbox (the upstream unit had none),
 # shrinking the blast radius of any memory-corruption bug missed by the §8 excisions. MemoryDenyWriteExecute

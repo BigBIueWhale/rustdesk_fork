@@ -938,6 +938,20 @@ elif grep -E '^default *=' Cargo.toml | grep -qiE 'hwcodec|vram|mediacodec'; the
 else
   echo "  ok  §18/R-R2b hwcodec/vram/mediacodec never selected in any build path (CPU-only software codec)"
 fi
+# R-R2b (native deps): the vcpkg manifest must not pull the hardware-codec native
+# libraries — ffmpeg (the amf/nvcodec/qsv hwaccel backend) and mfx-dispatch (Intel
+# MediaSDK/QSV) — nor their hwaccel override pins (ffnvcodec, amd-amf). The fork's
+# vcpkg.json carries ONLY the CPU-only software set: aom libvpx libyuv opus
+# libjpeg-turbo (+ android oboe/cpu-features). This locks the prune so a manifest edit
+# can't silently re-introduce the GPU/hardware-codec native attack surface — and the
+# multi-hour ffmpeg build that made the §12.2 Windows VM build infeasible. (The
+# hwcodec gate above covers the Rust/feature side; this covers the native-dep side.)
+if [ -f vcpkg.json ] && grep -qE '"(ffmpeg|mfx-dispatch|ffnvcodec|amd-amf)"' vcpkg.json; then
+  echo "  FAIL §18/R-R2b: vcpkg.json still lists a hardware-codec native dep (ffmpeg/mfx-dispatch/ffnvcodec/amd-amf):"
+  grep -nE '"(ffmpeg|mfx-dispatch|ffnvcodec|amd-amf)"' vcpkg.json | sed 's/^/      /'; rc=1
+else
+  echo "  ok  §18/R-R2b vcpkg.json native set is CPU-only software codec (no ffmpeg/mfx-dispatch)"
+fi
 # R-R2a (§12 / sovereignty): the .deb + systemd is the SOLE Linux package model. The AppImage
 # recipe (whose `update-information` self-updater collides with R-X1 "the fork ships its own
 # releases") and the Flatpak manifest (a portal-sandbox, no-systemd posture colliding with

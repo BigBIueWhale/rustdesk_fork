@@ -115,12 +115,36 @@ build_deb_builder_image() {
         -t "$tag" -f "$LIB_DIR/Dockerfile.deb-builder" "$LIB_DIR"
 }
 
+# ── The FRB codegen tool (R-B7): built FOR ubuntu:18.04, staged to ./online/frb-tool ──
+# build_one needs flutter_rust_bridge_codegen to (re)generate the bridge; it cannot
+# `cargo install` it offline (its deps are not in the main vendor set), so build it HERE
+# (networked) in the deb-builder image with the pinned rust — exactly as upstream's
+# bridge.yml does: `cargo install ... --version <pin> --features uuid --locked`.
+build_frb_codegen() {
+    require_cmd docker
+    local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
+    docker image inspect "$builder" >/dev/null 2>&1 || die "deb-builder image missing — build_deb_builder_image must run first"
+    if [ -x "$ONLINE_DIR/frb-tool/bin/flutter_rust_bridge_codegen" ]; then
+        log "frb codegen tool already staged, skipping"; return 0
+    fi
+    log "building flutter_rust_bridge_codegen ${FLUTTER_RUST_BRIDGE_VERSION} for ubuntu:18.04 -> ./online/frb-tool"
+    docker run --rm -v "$ONLINE_DIR:/online" "$builder" bash -euo pipefail -c '
+        TC=/tmp/tc; mkdir -p "$TC"; tar -C "$TC" -xf /online/rust-*.tar.xz
+        "$TC"/rust-*/install.sh --prefix=/tmp/rust --disable-ldconfig \
+            --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu >/dev/null
+        export PATH=/tmp/rust/bin:$PATH
+        cargo install flutter_rust_bridge_codegen --version '"${FLUTTER_RUST_BRIDGE_VERSION}"' \
+            --features uuid --locked --root /online/frb-tool
+    '
+}
+
 main() {
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     vendor_cargo
     fetch_toolchains
     fetch_vcpkg_and_images
     build_deb_builder_image
+    build_frb_codegen
     # Windows ISO / VS Build Tools are partly evergreen (R-B12(c)): pin the CAPTURED
     # offline layout by SHA-256, documenting publisher-verified vs evergreen.
     log "online-fetch complete — ./online is now offline-buildable. Builds run --network=none."

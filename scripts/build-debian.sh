@@ -62,29 +62,35 @@ build_one() {
             for t in /online/rust-*.tar.xz /online/flutter-*.tar.xz /online/llvm-*.tar.xz; do
                 [ -e "$t" ] && tar -C "$TC" -xf "$t"
             done
+            # Rust: the standalone tarball extracts to rust-1.75.0-.../ with an install.sh
+            # (there is no top-level bin/) — install it to a prefix. LLVM: the tarball is
+            # clang+llvm-15.0.6-.../ — point bindgen at its libclang.
+            "$TC"/rust-*/install.sh --prefix="$TC/rustinstall" --disable-ldconfig \
+                --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu >/dev/null
+            export LIBCLANG_PATH="$(echo "$TC"/clang+llvm-*/lib)"
             # Use a build-time CARGO_HOME so the vendored/offline config does NOT
             # overwrite the repo'\''s TRACKED .cargo/config.toml (which carries the
             # windows/macos rustflags); cargo merges CARGO_HOME/config.toml with it.
             export CARGO_HOME=/tmp/cargo-home
             mkdir -p "$CARGO_HOME"
-            export PATH="$TC/flutter/bin:$TC/rust/bin:$CARGO_HOME/bin:$PATH"
+            # The pre-built FRB codegen tool is staged at /online/frb-tool/bin by
+            # online-fetch'\''s build_frb_codegen (built FOR ubuntu:18.04 there).
+            export PATH="$TC/flutter/bin:$TC/rustinstall/bin:/online/frb-tool/bin:$CARGO_HOME/bin:$PATH"
             # Wire cargo to the vendored, lockfile-pinned crate set (R-B10) so the
             # --locked build resolves from ./online/cargo-vendor, never the network.
+            # The vendor_cargo step captured the AUTHORITATIVE [source.*] map (the cargo
+            # vendor output: [source.crates-io] replace-with="vendored-sources", every
+            # git-dep source, and [source.vendored-sources]). Use it verbatim (rewrite its
+            # directory to /online/cargo-vendor) + ONLY add [net] offline. Do NOT also
+            # hand-write a [source.crates-io] -- that duplicates the table and cargo (incl.
+            # cargo-metadata, which FRB codegen runs) rejects it (duplicate key crates-io).
             cat > "$CARGO_HOME/config.toml" <<CFG
-[source.crates-io]
-replace-with = "vendored"
-[source.vendored]
-directory = "/online/cargo-vendor"
 [net]
 offline = true
 CFG
-            # The git deps need their own [source."<url>"] replace-with entries;
-            # online-fetch.sh captures cargo vendor'\''s full config — append it (with
-            # its directory rewritten to /online/cargo-vendor) so --locked resolves
-            # every git dep offline too.
-            [ -f /online/cargo-vendor-config.toml ] && \
-                sed "s#directory = .*#directory = \"/online/cargo-vendor\"#" \
-                    /online/cargo-vendor-config.toml >> "$CARGO_HOME/config.toml"
+            [ -f /online/cargo-vendor-config.toml ] || { echo "[FATAL] /online/cargo-vendor-config.toml missing -- run online-fetch.sh"; exit 1; }
+            sed "s#directory = .*#directory = \"/online/cargo-vendor\"#" \
+                /online/cargo-vendor-config.toml >> "$CARGO_HOME/config.toml"
             # FRB codegen first (R-B7: the uncommitted generated_bridge.dart /
             # bridge_generated.rs every build job needs), then upstream build.py
             # with the §3.2 x64-linux features.

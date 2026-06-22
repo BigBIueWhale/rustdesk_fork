@@ -74,7 +74,9 @@ fetch_toolchains() {
     fetch_verify "https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip" \
         "android-ndk-${ANDROID_NDK_VERSION}.zip" "${SHA256_ANDROID_NDK_R28C}"
     # Android cmdline-tools (then build-tools 34.0.0 / platform-34 via sdkmanager, offline).
-    fetch_verify "https://dl.google.com/android/repository/commandlinetools-linux-latest.zip" \
+    # Versioned build (R-B2 reproducibility): NOT the moving "...-latest.zip" — the exact build
+    # number is pinned in pins.env so a Google "latest" bump can never silently change the artifact.
+    fetch_verify "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_BUILD}_latest.zip" \
         "android-cmdline-tools.zip" "${SHA256_ANDROID_CMDLINE_TOOLS}"
     # LLVM/Clang 15.0.6 (libclang for bindgen determinism, R-B12).
     fetch_verify "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/clang+llvm-${LLVM_VERSION}-x86_64-linux-gnu-ubuntu-18.04.tar.xz" \

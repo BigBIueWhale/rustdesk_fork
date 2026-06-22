@@ -687,7 +687,7 @@ pub async fn start_server(_is_server: bool) {
 /// * `no_server` - If `is_server` is false, whether to start a server if not found.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main]
-pub async fn start_server(is_server: bool, no_server: bool) {
+pub async fn start_server(is_server: bool) {
     use std::sync::Once;
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
@@ -752,13 +752,13 @@ pub async fn start_server(is_server: bool, no_server: bool) {
                 // server — the controlled side starts ONLY via the installed `--service` (one mode,
                 // the installed-service privilege model). The inherited `else { start_server(true) }`
                 // was a SECOND, non-installed-service way to run the controlled side (the portable /
-                // quick-support / run-from-terminal twin R-X10 excises). Removed: both `no_server`
-                // values now just retry the config-sync connect in case a `--service` comes up later
-                // (`no_server` is hence vestigial). The standalone `--service`/`--server` entries
-                // (R-D8) are unaffected — they take the `is_server == true` path above.
-                log::info!("no controlled --service to sync config from yet (GUI viewer-only, R-X10): {err:?}, no_server={no_server}");
+                // quick-support / run-from-terminal twin R-X10 excises). The GUI path now just retries
+                // the config-sync connect in case a `--service` comes up later; the `--no-server` flag
+                // + its vestigial `no_server` param are removed too (R-X10). The standalone
+                // `--service`/`--server` entries (R-D8) are unaffected — `is_server == true` above.
+                log::info!("no controlled --service to sync config from yet (GUI viewer-only, R-X10): {err:?}");
                 hbb_common::sleep(1.0).await;
-                std::thread::spawn(|| start_server(false, true));
+                std::thread::spawn(|| start_server(false));
             }
         }
     }
@@ -898,8 +898,7 @@ async fn sync_and_watch_config_dir(sync_done_tx: Option<tokio::sync::oneshot::Se
                 loop {
                     sleep(CONFIG_SYNC_INTERVAL_SECS).await;
                     let cfg = (Config::get(), Config2::get());
-                    let should_sync =
-                        cfg != cfg0 || (is_root_config_empty && !cfg.0.is_empty());
+                    let should_sync = cfg != cfg0 || (is_root_config_empty && !cfg.0.is_empty());
                     if should_sync {
                         if is_root_config_empty {
                             log::info!("root config is empty, sync our config to root");

@@ -45,7 +45,6 @@ pub fn core_main() -> Option<Vec<String>> {
     let mut _is_run_as_system = false;
     let mut _is_quick_support = false;
     let mut _is_flutter_invoke_new_connection = false;
-    let mut no_server = false;
     let mut arg_exe = Default::default();
     for arg in std::env::args() {
         if i == 0 {
@@ -71,9 +70,9 @@ pub fn core_main() -> Option<Vec<String>> {
                 _is_run_as_system = true;
             } else if arg == "--quick_support" {
                 _is_quick_support = true;
-            } else if arg == "--no-server" {
-                no_server = true;
             } else {
+                // R-X10: the --no-server flag is excised (its no_server param was vestigial — the
+                // controlled side starts only via the installed --service).
                 args.push(arg);
             }
         }
@@ -198,7 +197,7 @@ pub fn core_main() -> Option<Vec<String>> {
             crate::platform::try_remove_temp_update_files();
             hbb_common::config::PeerConfig::preload_peers();
         }
-        std::thread::spawn(move || crate::start_server(false, no_server));
+        std::thread::spawn(move || crate::start_server(false));
     } else {
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         // Root CLI management commands must talk to the user `--server` main IPC.
@@ -347,11 +346,11 @@ pub fn core_main() -> Option<Vec<String>> {
             crate::privacy_mode::restore_reg_connectivity(true, false);
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             {
-                crate::start_server(true, false);
+                crate::start_server(true);
             }
             #[cfg(target_os = "macos")]
             {
-                let handler = std::thread::spawn(move || crate::start_server(true, false));
+                let handler = std::thread::spawn(move || crate::start_server(true));
                 crate::tray::start_tray();
                 // prevent server exit when encountering errors from tray
                 hbb_common::allow_err!(handler.join());
@@ -425,7 +424,9 @@ pub fn core_main() -> Option<Vec<String>> {
             // (R-S17) does not match this key. Seeds ONLY from this explicit operator action,
             // never from a peer message (R-S15).
             if args.len() != 3 {
-                println!("usage: --pin-host <address> <fingerprint-from --get-fingerprint on the box>");
+                println!(
+                    "usage: --pin-host <address> <fingerprint-from --get-fingerprint on the box>"
+                );
                 return None;
             }
             let hex: String = args[2].chars().filter(|c| !c.is_whitespace()).collect();

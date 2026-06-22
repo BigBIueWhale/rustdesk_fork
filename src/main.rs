@@ -95,7 +95,7 @@ fn main() {
         cli::connect_test(p, key, token);
     } else if let Some(p) = matches.value_of("server") {
         log::info!("id={}", hbb_common::config::Config::get_id());
-        crate::start_server(true, false);
+        crate::start_server(true);
     }
     common::global_clean();
 }

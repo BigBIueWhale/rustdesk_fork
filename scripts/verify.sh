@@ -410,6 +410,10 @@ if [ "${r_x10_n:-1}" -eq 0 ]; then
 else
   echo "  FAIL R-X10: a start_server(true) fallback survives in server.rs's is_server==false branch (found ${r_x10_n} non-comment)"; rc=1
 fi
+# R-X10 (cont.): the --no-server flag + its vestigial no_server param are compiled out (the GUI never
+# starts a controlled server, so the flag was redundant; ipc.rs's main-window restart no longer passes
+# it; start_server is now 1-arg). Assert the flag string is absent (R-A6).
+ra6_clean '"--no-server"' 'R-X10 --no-server flag (the GUI never starts a controlled server -> compiled out)' || rc=1
 # R-D6 / §18 (sovereignty): the box never phones home with audit logs. The connection/alarm/file
 # audit POST helpers (post_conn_audit/post_alarm_audit/post_file_audit -> <api-server>/api/audit/*)
 # are EXCISED — absent, not merely api-server-pinned — so an audit-egress leak cannot regress in.

@@ -20,6 +20,14 @@
 # because it needs the advisory-db + a cargo-audit compile — slower, and run in
 # CI / before a release rather than on every inner-loop edit.
 #
+# COMPANION GATE: scripts/apple-conform-check.sh runs the R-R2 apple (macOS/iOS)
+# SOURCE-conformance gate — the retain-and-check invariant + the R-A6 greps on the
+# Apple cfg + a cross-compile `cargo check --target *-apple-*` (the macOS-pinned Rust
+# 1.81). Kept separate because it builds a second toolchain image and cross-checks the
+# apple targets (slower), and apple is NOT a build target (R-R2) — a pre-release / CI
+# gate, not an inner-loop one. The Linux `cargo check` below cannot see the cfg(macos)/
+# cfg(ios) clusters, so that gate is where their hardening is proven.
+#
 # Usage:  scripts/verify.sh
 set -euo pipefail
 

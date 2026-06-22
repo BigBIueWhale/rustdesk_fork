@@ -75,14 +75,17 @@ extern "C" bool InputMonitoringAuthStatus(bool prompt) {
     #endif
 }
 
-extern "C" bool Elevate(char* process, char** args) {
+// R-X9 / R-X11 (macOS source twin): the AuthorizationExecuteWithPrivileges-based `Elevate`
+// — an in-process root-exec primitive that ran a process as root — is excised, together with
+// the osascript-admin `elevate` in macos.rs. Per R-X9 the SOLE macOS privilege transition is
+// the launchd LaunchDaemon/LaunchAgent (launchctl asuser); the fork carries no in-process
+// sudo/Authorization-exec primitive. What remains is an authorization CHECK only — whether
+// the user holds admin rights, for the UI's check_super_user_permission — executing nothing.
+extern "C" bool MacCheckAdminAuthorization() {
     AuthorizationRef authRef;
-    OSStatus status;
-
-    status = AuthorizationCreate(NULL, kAuthorizationEmptyEnvironment,
+    OSStatus status = AuthorizationCreate(NULL, kAuthorizationEmptyEnvironment,
                                 kAuthorizationFlagDefaults, &authRef);
     if (status != errAuthorizationSuccess) {
-        printf("Failed to create AuthorizationRef\n");
         return false;
     }
 
@@ -93,27 +96,8 @@ extern "C" bool Elevate(char* process, char** args) {
                                 kAuthorizationFlagPreAuthorize |
                                 kAuthorizationFlagExtendRights;
     status = AuthorizationCopyRights(authRef, &authRights, kAuthorizationEmptyEnvironment, flags, NULL);
-    if (status != errAuthorizationSuccess) {
-        printf("Failed to authorize\n");
-        return false;
-    }
-
-    if (process != NULL) {
-        FILE *pipe = NULL;
-        status = AuthorizationExecuteWithPrivileges(authRef, process, kAuthorizationFlagDefaults, args, &pipe);
-        if (status != errAuthorizationSuccess) {
-            printf("Failed to run as root\n");
-            AuthorizationFree(authRef, kAuthorizationFlagDefaults);
-            return false;
-        }
-    }
-
     AuthorizationFree(authRef, kAuthorizationFlagDefaults);
-    return true;
-}
-
-extern "C" bool MacCheckAdminAuthorization() {
-    return Elevate(NULL, NULL);
+    return status == errAuthorizationSuccess;
 }
 
 // https://gist.github.com/briankc/025415e25900750f402235dbf1b74e42

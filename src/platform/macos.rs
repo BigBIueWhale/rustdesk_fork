@@ -974,35 +974,11 @@ pub fn check_super_user_permission() -> ResultType<bool> {
     unsafe { Ok(MacCheckAdminAuthorization() == YES) }
 }
 
-pub fn elevate(args: Vec<&str>, prompt: &str) -> ResultType<bool> {
-    let cmd = std::env::current_exe()?;
-    match cmd.to_str() {
-        Some(cmd) => {
-            let mut cmd_with_args = cmd.to_string();
-            for arg in args {
-                cmd_with_args = format!("{} {}", cmd_with_args, arg);
-            }
-            let script = format!(
-                r#"do shell script "{}" with prompt "{}" with administrator privileges"#,
-                cmd_with_args, prompt
-            );
-            match std::process::Command::new("osascript")
-                .arg("-e")
-                .arg(script)
-                .arg(&get_active_username())
-                .status()
-            {
-                Err(e) => {
-                    bail!("Failed to run osascript: {}", e);
-                }
-                Ok(status) => Ok(status.success() && status.code() == Some(0)),
-            }
-        }
-        None => {
-            bail!("Failed to get current exe str");
-        }
-    }
-}
+// R-X9 / R-X11 (macOS source twin): the osascript-admin `elevate` — which re-launched this
+// binary with arbitrary argv as root via `osascript … with administrator privileges` — is
+// excised. It had no caller and was an in-process root-exec primitive; per R-X9 the sole
+// macOS privilege transition is the launchd LaunchDaemon/LaunchAgent (launchctl asuser). Its
+// AuthorizationExecuteWithPrivileges twin `Elevate` is likewise gone from macos.mm.
 
 pub struct WakeLock(Option<keepawake::AwakeHandle>);
 

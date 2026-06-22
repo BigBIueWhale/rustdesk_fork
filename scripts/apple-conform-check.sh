@@ -87,8 +87,9 @@ apple_todo(){ # <regex> <label>  — a PENDING apple excision: report, don't fai
 }
 # completed:
 apple_absent 'fn update_me\b|update_from_dmg|extract_update_dmg|fn update_to\b' 'R-X1 macOS DMG self-updater'
-# pending (flip to apple_absent as each lands):
-apple_todo 'fn elevate\b|bool Elevate\b|AuthorizationExecuteWithPrivileges' 'R-X9/X11 in-process root-exec (osascript elevate / Authorization Elevate)'
+apple_absent 'fn elevate\b|bool Elevate\b|AuthorizationExecuteWithPrivileges' 'R-X9/X11 in-process root-exec (osascript elevate / Authorization Elevate)'
+# pending (flip to apple_absent as each lands): R-X6 macOS _url-IPC sender-auth (start_ipc_url_server)
+# is a POSITIVE assertion handled separately; nothing left to grep-as-absent here.
 
 echo "== (3) rustfmt parse-check of the Rust apple sources (SDK-free syntax gate) =="
 docker run --rm -v "$REPO:/work:ro" -w /work "$IMG" bash -c '

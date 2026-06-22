@@ -715,7 +715,13 @@ fi
 # Connection's Drop (which Rust runs when the run-loop future is dropped at its await), not only in
 # the post-loop tail it previously sat in (where a cancelled session left the console BLANKED — a
 # local-security regression — and the Server map diverged). Gate: the cleanup is in Drop + the tail
-# documents the move. (The CM-child kill_on_drop sub-part of R-T4 is a tracked follow-on.)
+# documents the move. (The CM-child kill_on_drop sub-part of R-T4 is DEFERRED-WITH-REASON, not a
+# pending TODO: the spec assumes the CM child is per-connection, but it is uid-SHARED — before
+# spawning, connection.rs:~4497 does connect_for_uid(uid,"_cm") and REUSES an existing CM, skipping
+# the spawn. A connection-owned kill_on_drop would therefore kill a CM still serving OTHER live
+# connections from the same uid (a cross-connection regression). The correct model for a shared
+# process is the current central CHILD_PROCESS reap + the CM self-exiting when its last IPC client
+# disconnects, so this sub-part MUST NOT be implemented as literally written.)
 r_t4_missing=
 grep -q 'the per-connection cleanup that was previously straight-line' src/server/connection.rs || r_t4_missing="$r_t4_missing drop-cleanup"
 grep -q 'have MOVED into' src/server/connection.rs || r_t4_missing="$r_t4_missing tail-note"

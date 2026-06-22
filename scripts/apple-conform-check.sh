@@ -106,6 +106,23 @@ if grep -qE 'CGEventPost' "$REPO/libs/enigo/src/macos/macos_impl.rs"; then
   note "ok  R-X13 macOS input = CGEvent present (sole injector; no uinput/rdp_input on the apple path)"
 else echo "  FAIL R-X13: the macOS CGEvent injector is missing from libs/enigo/src/macos/macos_impl.rs"; rc=1; fi
 
+echo "== (2c) R-X14 PAM + R-X6/R-S14 deep-link entitlement surface =="
+# R-X14: PAM is absent-by-construction on apple (a negative finding to document; the linux PAM
+# path never existed on macOS/iOS).
+apple_absent 'libpam|pam_authenticate|\bpam::' 'R-X14 PAM (absent-by-construction on apple)'
+# R-X6/R-S14: the rustdesk:// URL scheme stays (CFBundleURLSchemes) but is routed through the
+# explicit-confirmation gate; the Universal-Links surface MUST stay absent — no associated-domains
+# entitlement (macOS+iOS) and no NSUserActivityTypes in the iOS Info.plist (the Handoff/https
+# webpageURL ingress R-X6 names). (Total iOS-entitlement emptiness is separately R-SV8 in verify.sh.)
+# match the actual <key> entitlement element, NOT the bare word (which the hardening COMMENT in
+# Runner.entitlements legitimately contains: "associated-domains stays ABSENT (R-X6)").
+if grep -rqE '<key>[^<]*associated-domains' flutter/macos/Runner/*.entitlements flutter/ios/Runner/*.entitlements 2>/dev/null; then
+  echo "  FAIL R-X6: an associated-domains <key> entitlement is present — opens a Universal-Links deep-link path"; rc=1
+else note "ok  R-X6 no associated-domains entitlement key (macOS+iOS) — Universal-Links surface absent"; fi
+if grep -qE '<key>[^<]*NSUserActivityTypes' flutter/ios/Runner/Info.plist 2>/dev/null; then
+  echo "  FAIL R-X6: NSUserActivityTypes key in the iOS Info.plist — the Handoff/Universal-Links ingress R-X6 strips"; rc=1
+else note "ok  R-X6 no NSUserActivityTypes key in the iOS Info.plist (no https webpageURL deep-link)"; fi
+
 echo "== (3) rustfmt parse-check of the Rust apple sources (SDK-free syntax gate) =="
 docker run --rm -v "$REPO:/work:ro" -w /work "$IMG" bash -c '
   rc=0

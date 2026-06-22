@@ -162,6 +162,13 @@ ra6_clean 'api/devices/deploy|api/devices/cli' 'R-SV6(c) device-deploy/assign eg
 # path). These worker symbols were mediator-internal and are now tree-wide absent — the
 # direct-only service entry (start_direct_only -> direct_server) is all that remains.
 ra6_clean 'handle_request_relay|handle_punch_hole|udp_nat_listen|punch_udp_hole|KcpStream::accept' 'R-D4 Stage 2 mediator relay/punch/KCP protocol' || rc=1
+# R-SV4/R-SV10 / §18 (sovereignty): the Change-ID flow's rendezvous-dialing register_pk sender is
+# EXCISED. The inherited ui_interface::check_id connect_tcp'd to RENDEZVOUS_PORT and sent RegisterPk
+# (registering the device pk + checking ID availability with the rendezvous) — a sovereignty/egress
+# leak (R-D6 "dial nobody") and the register_pk R-SV10 greps absent. change_id_shared_ now stores a
+# changed ID LOCALLY (the ID is a vestigial label — R-SV5 connects by IP, never by ID). Assert no
+# register_pk SENDER (set_register_pk) or the check_id rendezvous-dial helper survives.
+ra6_clean 'set_register_pk|async fn check_id' 'R-SV4/R-SV10 Change-ID register_pk rendezvous-dial' || rc=1
 # R-X10 (§8 run-mode plurality): the GUI/client (`is_server == false`) startup path NEVER auto-starts
 # a controlled server — the controlled side starts ONLY via the installed `--service`/`--server` (one
 # mode, R-D8). The inherited `else { start_server(true) }` fallback in server.rs's `is_server == false`

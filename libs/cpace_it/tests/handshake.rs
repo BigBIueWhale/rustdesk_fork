@@ -327,6 +327,37 @@ async fn responder_rejects_duplicate_first_frame() {
     drop(si);
 }
 
+/// DoS-robustness (unauthenticated, pre-key): every fixed-size handshake field is length-validated via
+/// cpace.rs's `exact::<N>` (which returns HandshakeError::Protocol on a length mismatch) BEFORE any
+/// `copy_from_slice` into the fixed `sid`/`ya`/`yb`/`ta`/`tb` arrays — so a malformed-LENGTH field on
+/// the UNAUTHENTICATED wire is REFUSED, never panicking the responder task. Without `exact::<N>`, a
+/// `sid[..16].copy_from_slice(&sid_a)` with `sid_a.len() != 16` would PANIC (Transcript::from_steps) —
+/// an unauthenticated panic-DoS any peer could trigger pre-key. The other rejection tests all send
+/// VALID-length fields, so this is the only guard on the length-validator itself. The no-panic property
+/// is asserted by `jr.await.unwrap()` succeeding (a panic would surface as a JoinError, failing it).
+#[tokio::test]
+async fn responder_rejects_malformed_length_field() {
+    let (si, sr) = loopback_pair().await;
+    let jr = tokio::spawn(async move {
+        let mut sr = sr;
+        run_responder(&mut sr, "pw").await
+    });
+    let mut si = si;
+    // step ① with a 15-byte sid_a (NOT the required 16): exact::<16> MUST reject it before the
+    // copy_from_slice into sid[..16] that would otherwise panic the task.
+    let step1 = Cpace {
+        union: Some(CpaceUnion::Step1(CpaceStep1 {
+            sid_a: Bytes::copy_from_slice(&[1u8; 15]),
+            ad_a: Bytes::copy_from_slice(b"viewer"),
+            ..Default::default()
+        })),
+        ..Default::default()
+    };
+    si.send(&step1).await.unwrap();
+    assert_eq!(err_of(jr.await.unwrap()), HandshakeError::Protocol);
+    drop(si);
+}
+
 /// R-S17: the responder's HostIdentity host-proof binds the box's Ed25519 public
 /// key to THIS PAKE session. Both sides reconstruct the same transcript; the box
 /// signs `DSI ‖ sid ‖ CI ‖ Ya ‖ Yb`; the viewer verifies it and recovers pk for

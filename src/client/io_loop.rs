@@ -2021,7 +2021,14 @@ impl<T: InvokeUiSession> Remote<T> {
                         if opened.success && !opened.service_id.is_empty() {
                             let mut lc = self.handler.lc.write().unwrap();
                             let key = lc.get_key_terminal_service_id().to_owned();
-                            lc.set_option(key, opened.service_id.clone());
+                            // R-S15 / Appendix C #19: the peer-supplied service_id is persisted to the
+                            // on-disk PeerConfig (via save_config) — bound it (strip control chars +
+                            // clamp to 256) so a keyed-but-hostile host can't write an arbitrary blob,
+                            // the same treatment the impl_key and PeerInfo strings already get.
+                            lc.set_option(
+                                key,
+                                hbb_common::config::bound_peer_config_string(&opened.service_id),
+                            );
                         }
                     }
                     self.handler.handle_terminal_response(response);
@@ -2146,9 +2153,19 @@ impl<T: InvokeUiSession> Remote<T> {
                 // R-S15: bound the peer-supplied impl_key before it reaches the on-disk PeerConfig.
                 hbb_common::config::bound_peer_config_string(&impl_key)
             };
-            config
-                .options
-                .insert("privacy-mode-impl-key".to_string(), impl_key);
+            // R-S15 / Appendix C #19: REJECT a peer-supplied impl_key that is not in the compile-time
+            // get_supported_privacy_mode_impl() set — a keyed-but-hostile host must not persist an
+            // arbitrary privacy-mode-impl-key to our PeerConfig (the bound above is belt-and-suspenders).
+            // On the Linux fork that set is empty (privacy mode is Windows/macOS-only), so no impl_key
+            // is persisted here; on Windows/macOS only a recognized compile-time constant passes.
+            if crate::privacy_mode::get_supported_privacy_mode_impl()
+                .iter()
+                .any(|(k, _)| *k == impl_key.as_str())
+            {
+                config
+                    .options
+                    .insert("privacy-mode-impl-key".to_string(), impl_key);
+            }
         }
         self.handler.save_config(config);
 

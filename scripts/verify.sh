@@ -365,20 +365,26 @@ ra6_clean 'api/heartbeat|api/sysinfo|heartbeat_url|handle_config_options|start_h
 # peer (R-S17) harvested the operator's stored OS creds with no interaction. The responder
 # already ignores os_login (0685c28); deleting the sender completes the symmetric removal.
 ra6_clean 'Some\(OSLogin|\.set_logon\(' 'R-S18 viewer os_login + elevation-with-logon senders' || rc=1
-# R-S15 (Appendix C #19): the viewer's in-session PeerConfig writes from peer-controlled data — the
-# PeerInfo arm's username/hostname/platform (client.rs handle_peer_info) and the BackNotification
-# privacy-mode impl_key (io_loop.rs update_privacy_mode) — MUST be funnelled through
-# hbb_common::config::bound_peer_config_string (strip control chars + clamp length), so a
-# keyed-but-hostile peer cannot inject unbounded/injection strings into the on-disk config. The
-# initiator-side twin of the responder's R-S11 config-write gate. KAT: config_it tests/r_s15.rs.
+# R-S15 (Appendix C #19): the viewer's in-session PeerConfig writes from peer-controlled data MUST be
+# funnelled through a validated allowlist before save_config — a keyed-but-hostile host (§4.4) must not
+# inject unbounded/injection strings into the on-disk config. The initiator-side twin of the responder's
+# R-S11 gate. This gate VALUE-asserts the SPECIFIC named writes are routed (not mere token presence,
+# which passed green despite the service_id sibling write being unbounded): (a) PeerInfo + service_id
+# clamped via hbb_common::config::bound_peer_config_string; (b) the privacy-mode impl_key REJECTED
+# unless it is in the compile-time get_supported_privacy_mode_impl() set. KAT: config_it tests/r_s15.rs.
 r_s15_missing=
 for f in src/client.rs src/client/io_loop.rs; do
-  grep -q 'bound_peer_config_string' "$f" || r_s15_missing="$r_s15_missing $f"
+  grep -q 'bound_peer_config_string' "$f" || r_s15_missing="$r_s15_missing $f:bound-absent"
 done
+# the TerminalResponse.service_id write is bounded — AND the raw unbounded clone is gone (regression guard)
+grep -q 'bound_peer_config_string(&opened.service_id)' src/client/io_loop.rs || r_s15_missing="$r_s15_missing service_id-unbounded"
+grep -qE 'set_option\(key, opened\.service_id\.clone' src/client/io_loop.rs && r_s15_missing="$r_s15_missing service_id-RAW-write-present"
+# the privacy-mode impl_key is allowlist-validated against the supported set before the insert
+grep -q 'get_supported_privacy_mode_impl()' src/client/io_loop.rs || r_s15_missing="$r_s15_missing impl_key-unvalidated"
 if [ -n "$r_s15_missing" ]; then
-  echo "  FAIL R-S15: peer-config-write bound absent in:$r_s15_missing"; rc=1
+  echo "  FAIL R-S15: peer-config-write allowlist gap:$r_s15_missing"; rc=1
 else
-  echo "  ok  R-S15 viewer PeerConfig-write bound present (client.rs + io_loop.rs)"
+  echo "  ok  R-S15 viewer PeerConfig writes routed (PeerInfo+service_id bounded; impl_key validated vs supported set)"
 fi
 # R-T1 / R-T12 (§20 CRITICAL): the DMZ connection-flood bound + flood-safe observability MUST be
 # present — the pre-key handshake semaphore (PREKEY_HANDSHAKE_SLOTS, acquired in the accept loop

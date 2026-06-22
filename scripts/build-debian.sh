@@ -62,11 +62,15 @@ build_one() {
             for t in /online/rust-*.tar.xz /online/flutter-*.tar.xz /online/llvm-*.tar.xz; do
                 [ -e "$t" ] && tar -C "$TC" -xf "$t"
             done
-            export PATH="$TC/flutter/bin:$TC/rust/bin:$HOME/.cargo/bin:$PATH"
+            # Use a build-time CARGO_HOME so the vendored/offline config does NOT
+            # overwrite the repo'\''s TRACKED .cargo/config.toml (which carries the
+            # windows/macos rustflags); cargo merges CARGO_HOME/config.toml with it.
+            export CARGO_HOME=/tmp/cargo-home
+            mkdir -p "$CARGO_HOME"
+            export PATH="$TC/flutter/bin:$TC/rust/bin:$CARGO_HOME/bin:$PATH"
             # Wire cargo to the vendored, lockfile-pinned crate set (R-B10) so the
             # --locked build resolves from ./online/cargo-vendor, never the network.
-            mkdir -p .cargo
-            cat > .cargo/config.toml <<CFG
+            cat > "$CARGO_HOME/config.toml" <<CFG
 [source.crates-io]
 replace-with = "vendored"
 [source.vendored]
@@ -74,13 +78,13 @@ directory = "/online/cargo-vendor"
 [net]
 offline = true
 CFG
-            # The 44 git deps need their own [source."<url>"] replace-with entries;
+            # The git deps need their own [source."<url>"] replace-with entries;
             # online-fetch.sh captures cargo vendor'\''s full config — append it (with
             # its directory rewritten to /online/cargo-vendor) so --locked resolves
             # every git dep offline too.
             [ -f /online/cargo-vendor-config.toml ] && \
                 sed "s#directory = .*#directory = \"/online/cargo-vendor\"#" \
-                    /online/cargo-vendor-config.toml >> .cargo/config.toml
+                    /online/cargo-vendor-config.toml >> "$CARGO_HOME/config.toml"
             # FRB codegen first (R-B7: the uncommitted generated_bridge.dart /
             # bridge_generated.rs every build job needs), then upstream build.py
             # with the §3.2 x64-linux features.

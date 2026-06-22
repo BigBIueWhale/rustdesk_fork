@@ -264,6 +264,13 @@ grep -qE '^pam = '      Cargo.toml  && { echo "  FAIL R-X14: the dead 'pam' crat
 grep -q  'libpam0g'     build.py    && { echo "  FAIL R-X14: the .deb still Depends on libpam0g (the binary has no PAM)"; rc=1; }
 grep -qE 'pam\.d/rustdesk' build.py && { echo "  FAIL R-X14: the .deb still installs the dead /etc/pam.d/rustdesk"; rc=1; }
 [ -e res/pam.d ] && { echo "  FAIL R-X14: the dead res/pam.d/ PAM config files are back"; rc=1; } || true
+# Supply-chain hygiene (§18 sovereignty / §11 dep surface): third-party (git) deps whose ONLY users were
+# excised features stay removed from Cargo.toml, so the dep + its runtime-link + transitive surface cannot
+# silently regrow. pam (R-X14, above) + dbus-crossroads (R-X6, gated at its R-ID) are done; here the two
+# input/transport residuals: evdev (R-X12/X13 -- no raw /dev/input reading; X11+XTEST is the input path)
+# and kcp-sys (R-D5 -- the KCP reliable-UDP transport, exactly what the no-UDP/direct-IP thesis sheds).
+grep -qE '^evdev = ' Cargo.toml && { echo "  FAIL supply-chain: the dead evdev dep (input excision) is back in Cargo.toml"; rc=1; }
+grep -qE '^kcp-sys'  Cargo.toml && { echo "  FAIL supply-chain: the dead kcp-sys dep (KCP reliable-UDP, vs the no-UDP thesis) is back"; rc=1; }
 # R-X7 / §18: the 2FA machinery is FULLY excised. Responder side: the `require_2fa` field, the
 # Auth2fa gate/handler, the trusted-device bypass, the raii session-2FA state (2FA was
 # pinned-off-dead: `2fa`="" so require_2fa was always None ⇒ every branch unreachable). Now also:

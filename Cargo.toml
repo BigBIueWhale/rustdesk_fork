@@ -100,7 +100,9 @@ shutdown_hooks = "0.1"
 # R-SV4(b)/R-D5/R-R3: `stunclient` removed — its only use was the dead NAT-type/IPv6 STUN
 # probes (test_nat_ipv4/test_ipv6 → stun.l.google.com/cloudflare/nextcloud), excised. A
 # direct-IP fork does no NAT traversal, so the STUN client + its transitive deps are dropped.
-kcp-sys= { git = "https://github.com/rustdesk-org/kcp-sys"}
+# R-SV4(b)/R-D5: kcp-sys (the KCP reliable-UDP transport for the relay/rendezvous connect-path) is ALSO
+# dropped -- zero kcp usage remains after the direct-IP / TCP-only connect-path excision; a reliable-UDP
+# transport dep is exactly what the no-UDP thesis sheds (a third-party git dep + its UDP machinery gone).
 reqwest = { version = "0.12", features = ["blocking", "socks", "json", "native-tls", "rustls-tls", "rustls-tls-native-roots", "gzip"], default-features=false }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
@@ -199,7 +201,9 @@ psimple = { package = "libpulse-simple-binding", version = "2.27" }
 pulse = { package = "libpulse-binding", version = "2.27" }
 rust-pulsectl = { git = "https://github.com/rustdesk-org/pulsectl" }
 async-process = "1.7"
-evdev = { git="https://github.com/rustdesk-org/evdev" }
+# R-X12/R-X13: evdev (raw /dev/input device reading) is dropped -- zero evdev:: usage remains after the
+# Wayland/uinput input excision (X11 capture + XTEST/enigo injection is the sole input path); the
+# third-party git dep was dead weight.
 dbus = "0.9"
 # R-X6: dbus-crossroads (the D-Bus SERVER framework) was the dead residual of the excised
 # src/server/dbus.rs (the org.rustdesk.rustdesk NewConnection session-bus injection vector, commit

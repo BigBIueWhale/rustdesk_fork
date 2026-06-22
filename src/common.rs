@@ -1882,6 +1882,29 @@ mod tests {
     };
     use std::collections::HashSet;
 
+    // R-SV6(d) / R-D6 / §18: the api-server resolution MUST default to a sovereign empty string —
+    // no hardwired global host. Upstream returned "https://admin.rustdesk.com" as the fallback and
+    // also derived an api endpoint from the built-in rs-ny.rustdesk.com rendezvous default; the fork
+    // excises both (the admin.rustdesk.com default is gone, and PROD_RENDEZVOUS_SERVER is init-empty
+    // and never written — verified: zero write sites). With empty api-server / custom-rendezvous-server
+    // inputs (those options are themselves pinned empty at the config layer — config_it/lockdown.rs),
+    // the resolver must yield "" so the account/address-book HttpService path (post_request /
+    // main_http_request -> create_http_client_async) dials NOBODY. This test guards the *resolution*
+    // layer (distinct from the config-pin layer) against re-introducing either hardwired host.
+    #[test]
+    fn api_server_resolution_defaults_to_sovereign_empty() {
+        assert_eq!(
+            get_custom_rendezvous_server(String::new()),
+            "",
+            "no built-in rendezvous host may resolve (PROD_RENDEZVOUS_SERVER must stay empty)"
+        );
+        assert_eq!(
+            get_api_server(String::new(), String::new()),
+            "",
+            "no hardwired global api host may resolve (the upstream global-host default is excised)"
+        );
+    }
+
     #[inline]
     fn get_timestamp_secs() -> u128 {
         (std::time::SystemTime::UNIX_EPOCH

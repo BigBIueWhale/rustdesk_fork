@@ -49,6 +49,15 @@ echo "== (1-3) KAT + handshake + policy funnel + R-A4 surface + R-S7 frame/decom
 echo "== (3b) IPC parent-dir hardening behavior tests (R-S11a/R-S11a(b), root-exercised) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::ipc_fs::tests --color never
 
+# (3b-ii) api-server RESOLUTION sovereignty (R-SV6(d)/R-D6): get_api_server("","") and
+# get_custom_rendezvous_server("") must resolve to "" — no hardwired global host. The upstream
+# "https://admin.rustdesk.com" fallback is excised and PROD_RENDEZVOUS_SERVER stays empty (zero
+# write sites), so the account/address-book HttpService egress (post_request / main_http_request
+# -> create_http_client_async) dials NOBODY by default. This guards the resolution layer; the
+# config-pin layer (api-server/custom-rendezvous-server pinned empty) is covered by config_it.
+echo "== (3b-ii) api-server resolution dials-nobody behavior test (R-SV6(d)) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config common::tests::api_server_resolution_defaults_to_sovereign_empty --color never
+
 # (3c) File-transfer write-path safety (R-S8/R-A5): the receive-write opens are NO-FOLLOW
 # (open_recv_write_no_follow / O_NOFOLLOW) so a local symlink swapped in at the target after the
 # path-validation fails the open rather than redirecting root's write (the §4.3 symlink TOCTOU).
@@ -175,6 +184,10 @@ ra6_clean 'api\.telegram\.org|send_2fa_code_to_telegram|get_chatid_telegram' 'R-
 # fork has no server for) — is excised: the endpoint literal + the --deploy CLI driver are
 # gone (deploy_device is a refuse-stub; the §19/R-G4 sweep removes its flutter UI caller).
 ra6_clean 'api/devices/deploy|api/devices/cli' 'R-SV6(c) device-deploy/assign egress' || rc=1
+# R-SV6(d) / R-D6 / §18: the hardwired global api-server default ("https://admin.rustdesk.com")
+# is excised — get_api_server_'s fallback is String::new() (behavior-gated at (3b-ii)). Assert the
+# host literal never returns to the tree (a cheap string backstop for the resolution-layer test).
+ra6_clean 'admin\.rustdesk\.com' 'R-SV6(d) hardwired global api-server default (admin.rustdesk.com)' || rc=1
 # R-D4 Stage 2 / R-SV10: the rendezvous-mediator PROTOCOL is removed from the tree (the
 # register loop + register_pk method, the relay/punch-hole/intranet handlers, the UDP/KCP
 # path). These worker symbols were mediator-internal and are now tree-wide absent — the

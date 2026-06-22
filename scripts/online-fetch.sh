@@ -324,6 +324,34 @@ stage_android_sdk() {
     '
 }
 
+# ── The warm gradle cache (R-B7): GRADLE_USER_HOME, populated by ONE online apk build ──
+# `flutter build apk` drives gradle, which downloads the gradle distribution + the AGP/kotlin/
+# plugin deps from google()/mavenCentral()/gradlePluginPortal(); the offline build_apk
+# (--network=none) cannot. Populate the cache HERE (the ONE networked step) by running the SAME
+# shared android build flow online (APK_MODE=warm, scripts/android-apk-build.sh) — it writes
+# /online/gradle-home AND auto-installs the extra SDK packages gradle pulls (build-tools 30.0.3,
+# platform-33/32 beyond stage_android_sdk's 34.0.0/platform-34). build_apk then copies this cache
+# and builds gradle --offline.
+stage_gradle() {
+    require_cmd docker
+    local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"
+    docker image inspect "$builder" >/dev/null 2>&1 || die "android-builder image missing — build_android_builder_image must run first"
+    if [ -d "$ONLINE_DIR/gradle-home/caches/modules-2" ]; then
+        log "gradle cache already warm, skipping"; return 0
+    fi
+    [ -d "$ONLINE_DIR/android-sdk/build-tools" ] || die "android SDK not staged — stage_android_sdk must run first"
+    [ -d "$ONLINE_DIR/vcpkg/installed/arm64-android" ] || die "arm64-android vcpkg not staged — stage_vcpkg_natives_arm64 must run first"
+    [ -x "$ONLINE_DIR/cargo-ndk-tool/bin/cargo-ndk" ] || die "cargo-ndk not staged — stage_cargo_ndk must run first"
+    log "warming the gradle cache via one online apk build (APK_MODE=warm) -> ./online/gradle-home"
+    docker run --rm \
+        -e APK_MODE=warm \
+        -v "$REPO_ROOT:/src" \
+        -v "$ONLINE_DIR:/online" \
+        -w /src \
+        "$builder" bash /src/scripts/android-apk-build.sh
+    log "gradle cache warmed ($(du -sh "$ONLINE_DIR/gradle-home" 2>/dev/null | cut -f1))"
+}
+
 main() {
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     vendor_cargo
@@ -338,6 +366,7 @@ main() {
     stage_vcpkg_natives_arm64
     stage_cargo_ndk
     stage_android_sdk
+    stage_gradle
     # Windows ISO / VS Build Tools are partly evergreen (R-B12(c)): pin the CAPTURED
     # offline layout by SHA-256, documenting publisher-verified vs evergreen.
     log "online-fetch complete — ./online is now offline-buildable. Builds run --network=none."

@@ -1,5 +1,4 @@
-use hbb_common::{allow_err, config, log, ResultType};
-use std::net::IpAddr;
+use hbb_common::ResultType;
 
 // R-X5 / R-SV1: LAN discovery is REMOVED. The fork is direct-IP only and does NOT
 // broadcast a discovery ping to the LAN — the querier machinery (send_query + the
@@ -13,23 +12,10 @@ pub fn discover() -> ResultType<()> {
     Ok(())
 }
 
-pub fn send_wol(id: String) {
-    let interfaces = default_net::get_interfaces();
-    for peer in &config::LanPeers::load().peers {
-        if peer.id == id {
-            for (_, mac) in peer.ip_mac.iter() {
-                if let Ok(mac_addr) = mac.parse() {
-                    for interface in &interfaces {
-                        for ipv4 in &interface.ipv4 {
-                            // remove below mask check to avoid unexpected bug
-                            // if (u32::from(ipv4.addr) & u32::from(ipv4.netmask)) == (u32::from(peer_ip) & u32::from(ipv4.netmask))
-                            log::info!("Send wol to {mac_addr} of {}", ipv4.addr);
-                            allow_err!(wol::send_wol(mac_addr, None, Some(IpAddr::V4(ipv4.addr))));
-                        }
-                    }
-                }
-            }
-            break;
-        }
-    }
-}
+// R-SV4(c)/R-SV10 / §18: Wake-on-LAN is DROPPED — a deliberate, accepted loss (WoL is LAN-only,
+// moot for the static-IP direct deployment, and orthogonal to the direct-IP-only / sovereign
+// posture). The inherited `send_wol` broadcast WoL magic packets (UDP) over EVERY LAN interface
+// (`wol::send_wol`, iterating `default_net` interfaces × the stored LanPeers MACs) — a viewer-side
+// LAN egress. Now a no-op; its only caller (`flutter_ffi::main_wol`) is a harmless stub until the
+// Dart WoL peer-card action is removed (the R-G2 / R-SV4(c) Discovered-tab/WoL-UI follow-on).
+pub fn send_wol(_id: String) {}

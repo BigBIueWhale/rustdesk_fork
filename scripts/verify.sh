@@ -84,6 +84,13 @@ ra6_clean '"--import-config"|"--remove"|fn import_config'                  'R-X4
 # "removed not disabled" bar + R-A4's zero-UDP runtime check. (lan.rs persists only for WoL +
 # a discover() no-op, a separate R-G2 Discovered-tab follow-on; that residual is the TODO below.)
 ra6_clean 'start_lan_listening|spawn_wait_responses|handle_received_peers|RENDEZVOUS_PORT *\+ *3' 'R-X5 LAN-discovery listener/querier/bind' || rc=1
+# R-SV4(c)/R-SV10 / §18: Wake-on-LAN is DROPPED. The inherited lan::send_wol broadcast WoL magic
+# packets (UDP) over EVERY LAN interface (`wol::send_wol`, iterating default_net interfaces × the
+# stored LanPeer MACs) — a live viewer-side LAN egress at odds with the direct-IP-only/sovereign
+# posture (R-SV5). send_wol is now a NO-OP; assert the wol::send_wol broadcast call is gone (its only
+# caller flutter_ffi::main_wol is then a harmless stub — the Dart WoL peer-card UI removal is the R-G2
+# follow-on). discover() was already a no-op (R-X5).
+ra6_clean 'wol::send_wol' 'R-SV4(c) Wake-on-LAN UDP-broadcast egress (lan::send_wol)' || rc=1
 ra6_clean 'DEBUG_BOOT_COMPLETED'                                          'R-X6 fake-boot broadcast'  || rc=1
 # R-X6: the Linux D-Bus deep-link delivery transport (src/server/dbus.rs: session-bus name
 # org.rustdesk.rustdesk, method NewConnection) is EXCISED. It ignored the caller (any co-installed

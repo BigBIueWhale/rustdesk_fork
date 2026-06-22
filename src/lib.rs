@@ -13,10 +13,13 @@ mod server;
 pub use self::server::*;
 mod client;
 mod lan;
+// R-D4 Stage 3 / R-SV10: the rendezvous mediator is excised; what survives is the direct-only
+// service path (start_direct_only -> direct_server, the single PAKE-gated v4 TCP listener), so the
+// module is honestly named `direct_service` — the inherited mediator module name is grep-absent.
 #[cfg(not(any(target_os = "ios")))]
-mod rendezvous_mediator;
+mod direct_service;
 #[cfg(not(any(target_os = "ios")))]
-pub use self::rendezvous_mediator::*;
+pub use self::direct_service::*;
 /// cbindgen:ignore
 pub mod common;
 #[cfg(not(any(target_os = "ios")))]

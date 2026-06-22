@@ -188,7 +188,7 @@ ra6_clean 'RUSTDESK_FORCED_DISPLAY_SERVER'                                'R-X12
 # R-X12: is_x11() is compile-pinned `true` in BOTH the main crate (src/platform/linux.rs) and scrap
 # (libs/scrap/src/common/mod.rs) — the capture+input backend is X11 with NO runtime display-server
 # selector (the `*IS_X11` detection cache + the is_x11_or_headless() body are gone). Startup-asserted
-# (R-A4, rendezvous_mediator). Guards a regression that re-adds runtime capture/input backend selection.
+# (R-A4, direct_service). Guards a regression that re-adds runtime capture/input backend selection.
 # (The scrap `wayland` feature drop + `mod wayland` compile-out is the remaining R-X12 stage — task #4.)
 r_x12_pin=
 grep -A1 'pub fn is_x11() -> bool {' src/platform/linux.rs        | grep -qE '^\s*true\s*$' || r_x12_pin="$r_x12_pin main-is_x11"
@@ -329,6 +329,16 @@ ra6_clean 'admin\.rustdesk\.com' 'R-SV6(d) hardwired global api-server default (
 # path). These worker symbols were mediator-internal and are now tree-wide absent — the
 # direct-only service entry (start_direct_only -> direct_server) is all that remains.
 ra6_clean 'handle_request_relay|handle_punch_hole|udp_nat_listen|punch_udp_hole|KcpStream::accept' 'R-D4 Stage 2 mediator relay/punch/KCP protocol' || rc=1
+# R-D4 Stage 3 / R-SV10: the inherited `rendezvous_mediator` module is RENAMED to `direct_service`.
+# After Stage 1/2 (the registration/relay/UDP protocol + every no-op shell are gone), the module is
+# honestly the direct-only service path (start_direct_only -> direct_server + the R-A4/R-T* self-
+# checks), so the spec's must-be-absent token `mod rendezvous_mediator` — and the misleading module
+# name itself — are grep-absent across the tree (R-SV10 names `mod rendezvous_mediator` in its set).
+if [ -f src/rendezvous_mediator.rs ] || grep -rqI 'rendezvous_mediator' src/ libs/ --include=*.rs 2>/dev/null; then
+  echo "  FAIL R-D4 Stage 3/R-SV10: the inherited rendezvous_mediator module name is back (it is renamed to direct_service)"; rc=1
+else
+  echo "  ok  R-D4 Stage 3/R-SV10 module renamed rendezvous_mediator -> direct_service (the spec token 'mod rendezvous_mediator' is grep-absent; the module is honestly the direct-only service path)"
+fi
 # R-SV4/R-SV10 / §18 (sovereignty): the Change-ID flow's rendezvous-dialing register_pk sender is
 # EXCISED. The inherited ui_interface::check_id connect_tcp'd to RENDEZVOUS_PORT and sent RegisterPk
 # (registering the device pk + checking ID availability with the rendezvous) — a sovereignty/egress
@@ -448,7 +458,7 @@ fi
 r_t1_missing=
 grep -q 'PREKEY_HANDSHAKE_SLOTS' src/server.rs                  || r_t1_missing="$r_t1_missing server.rs:semaphore"
 grep -q 'fn note_security_event' src/server.rs                  || r_t1_missing="$r_t1_missing server.rs:agg-log"
-grep -q 'try_acquire_owned' src/rendezvous_mediator.rs          || r_t1_missing="$r_t1_missing mediator:acquire-before-spawn"
+grep -q 'try_acquire_owned' src/direct_service.rs          || r_t1_missing="$r_t1_missing mediator:acquire-before-spawn"
 # R-T1(a): the memory ceilings MUST be host-RELATIVE percentages, NEVER an absolute byte count — an
 # absolute `4G` is a no-op on a 2 GiB box (the spec names this exact regression). Anchored `^…=NN%$`
 # fails on MemoryMax=4G / =2147483648 / =infinity; presence-only greps did not. TasksMax is a count.
@@ -473,8 +483,8 @@ fi
 # returns EMFILE, so a fixed sleep still busy-spins. (The 3-way outcome split + rate-limited
 # aggregation are gated by R-T1/R-T12 above.)
 r_t12_eb=
-grep -qE 'accept_err_streak'              src/rendezvous_mediator.rs || r_t12_eb="$r_t12_eb no-streak-counter"
-grep -qE '\(50u64 << accept_err_streak\.min\(7\)\)\.min\(5000\)' src/rendezvous_mediator.rs || r_t12_eb="$r_t12_eb no-escalating-bounded-backoff(50<<streak.min7-cap5000)"
+grep -qE 'accept_err_streak'              src/direct_service.rs || r_t12_eb="$r_t12_eb no-streak-counter"
+grep -qE '\(50u64 << accept_err_streak\.min\(7\)\)\.min\(5000\)' src/direct_service.rs || r_t12_eb="$r_t12_eb no-escalating-bounded-backoff(50<<streak.min7-cap5000)"
 grep -qE 'fn accept_error_class'          src/server.rs              || r_t12_eb="$r_t12_eb no-errno-mapper"
 grep -qE 'libc::EMFILE|libc::ENFILE'      src/server.rs              || r_t12_eb="$r_t12_eb no-EMFILE-map"
 if [ -n "$r_t12_eb" ]; then
@@ -598,7 +608,7 @@ else
   echo "  ok  R-T8/R-T16 single-writer + framing/processing-order contract codified (no second-writer handle)"
 fi
 # R-T9 (§20): graceful shutdown on SIGTERM/SIGINT. A process-wide CancellationToken (server.rs) is
-# cancelled by the signal handler (rendezvous_mediator.rs); the accept loop then stops accepting and
+# cancelled by the signal handler (direct_service.rs); the accept loop then stops accepting and
 # drops its listener, every live session's run-loop drains via its `cancelled()` select-arm
 # (CloseReason -> flush -> CM Close), and a BOUNDED drain deadline — shorter than the unit's
 # TimeoutStopSec — precedes a force-exit(0). The pkill/KillMode=mixed path stays the backstop.
@@ -608,8 +618,8 @@ grep -q 'fn begin_graceful_shutdown' src/server.rs         || r_t9_missing="$r_t
 grep -q 'fn is_shutting_down' src/server.rs                || r_t9_missing="$r_t9_missing is_shutting_down"
 grep -q 'SHUTDOWN_TOKEN' src/server.rs                     || r_t9_missing="$r_t9_missing SHUTDOWN_TOKEN"
 grep -q 'shutdown.cancelled()' src/server/connection.rs    || r_t9_missing="$r_t9_missing conn-drain-arm"
-grep -q 'SignalKind::terminate' src/rendezvous_mediator.rs || r_t9_missing="$r_t9_missing sigterm-handler"
-grep -q 'is_shutting_down()' src/rendezvous_mediator.rs    || r_t9_missing="$r_t9_missing accept-stop"
+grep -q 'SignalKind::terminate' src/direct_service.rs || r_t9_missing="$r_t9_missing sigterm-handler"
+grep -q 'is_shutting_down()' src/direct_service.rs    || r_t9_missing="$r_t9_missing accept-stop"
 grep -qE '^TimeoutStopSec=[1-9][0-9]*$' res/rustdesk.service || r_t9_missing="$r_t9_missing service-TimeoutStopSec(must be a positive drain backstop, =0 is infinite)"
 if [ -n "$r_t9_missing" ]; then
   echo "  FAIL R-T9: graceful-shutdown machinery incomplete:$r_t9_missing"; rc=1
@@ -638,7 +648,7 @@ fi
 r_t15d_missing=
 grep -q 'fn whitelist_admits' src/server/connection.rs    || r_t15d_missing="$r_t15d_missing admits-fn"
 grep -q 'Self::whitelist_admits' src/server/connection.rs || r_t15d_missing="$r_t15d_missing check-uses-admits"
-grep -q 'whitelist_admits(' src/rendezvous_mediator.rs    || r_t15d_missing="$r_t15d_missing a4-selftest"
+grep -q 'whitelist_admits(' src/direct_service.rs    || r_t15d_missing="$r_t15d_missing a4-selftest"
 if grep -q '!whitelist.is_empty()' src/server/connection.rs; then
   r_t15d_missing="$r_t15d_missing legacy-default-allow!"
 fi
@@ -654,8 +664,8 @@ fi
 # Windows), the app 30s deadline staying the portable primary. Gate: the 0.5 dep + accept-site call.
 r_t10_missing=
 grep -q '^socket2 = "0.5"' Cargo.toml                  || r_t10_missing="$r_t10_missing socket2-0.5-dep"
-grep -q 'set_tcp_keepalive' src/rendezvous_mediator.rs || r_t10_missing="$r_t10_missing keepalive-call"
-grep -q 'with_time' src/rendezvous_mediator.rs         || r_t10_missing="$r_t10_missing with_time-knob"
+grep -q 'set_tcp_keepalive' src/direct_service.rs || r_t10_missing="$r_t10_missing keepalive-call"
+grep -q 'with_time' src/direct_service.rs         || r_t10_missing="$r_t10_missing with_time-knob"
 if [ -n "$r_t10_missing" ]; then
   echo "  FAIL R-T10: TCP keepalive on accepted sockets incomplete:$r_t10_missing"; rc=1
 else
@@ -1089,7 +1099,7 @@ fi
 # and no direct-access-port config read exists anywhere.
 r_f4_missing=
 grep -qE 'pub const DIRECT_PORT: i32 = 21118;' libs/hbb_common/src/config.rs || r_f4_missing="$r_f4_missing const-21118"
-grep -qF 'config::DIRECT_PORT' src/rendezvous_mediator.rs                     || r_f4_missing="$r_f4_missing get_direct_port-returns-const"
+grep -qF 'config::DIRECT_PORT' src/direct_service.rs                     || r_f4_missing="$r_f4_missing get_direct_port-returns-const"
 if grep -rInE 'get_option\([^)]*direct-access-port|OPTION_DIRECT_ACCESS_PORT' src libs --include='*.rs' 2>/dev/null | grep -vE ':[0-9]+:[[:space:]]*//' | grep -q .; then
   r_f4_missing="$r_f4_missing direct-access-port-read-present"
 fi

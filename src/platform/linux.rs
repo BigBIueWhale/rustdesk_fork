@@ -2191,7 +2191,7 @@ impl Drop for WallPaperRemover {
 
 // R-X12 (§8): the capture+input backend is pinned to X11. is_x11() is a compile-time `true` — the §17
 // box is Xorg; the Wayland/pipewire scrap path + the RUSTDESK_FORCED_DISPLAY_SERVER override are
-// removed, so there is no runtime selector. Asserted at startup (rendezvous_mediator, R-A4).
+// removed, so there is no runtime selector. Asserted at startup (direct_service, R-A4).
 #[inline]
 pub fn is_x11() -> bool {
     true

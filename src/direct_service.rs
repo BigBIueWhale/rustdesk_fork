@@ -16,15 +16,12 @@ use crate::server::{check_zombie, new as new_server, ServerPtr};
 //
 // What remains here is the direct-only service path — `start_direct_only` ->
 // `direct_server`, the single v4, PAKE-gated TCP listener (R-F4/R-D5) — plus the R-A4
-// startup + post-listen socket-surface self-checks. The inherited no-op SHELLS are now all
-// REMOVED: `RendezvousMediator::restart()` + its ipc/flutter_ffi/ui_interface callers,
-// `CheckIfResendPk` + its server.rs construction, and earlier the deploy shell (NEEDS_DEPLOY +
-// reset_needs_deploy_notification + the `Data::Deployed` IPC arm/sender, R-SV6(c)/R-G4). The only
-// cross-module follow-on left is the module RENAME that makes the now-misnamed
-// `mod rendezvous_mediator` (it is really the direct-server module) grep-absent under that name
-// (R-D4 Stage 3) — a pure cosmetic rename across its callers, deferred. (restart() was a provable
-// no-op, so removing it cannot change behavior; flutter-verify [cargo check --features flutter] +
-// zero-reference greps cover the android/macOS-gated callers verify.sh's Linux compile skips.)
+// startup + post-listen socket-surface self-checks. The inherited no-op SHELLS are all REMOVED:
+// `RendezvousMediator::restart()` + its callers, `CheckIfResendPk`, and the deploy shell
+// (NEEDS_DEPLOY + reset_needs_deploy_notification + the `Data::Deployed` IPC arm/sender, R-SV6(c)).
+// And this file is now RENAMED from the misleading inherited name to `direct_service` (R-D4 Stage 3):
+// it is honestly the direct-only service module, so the old mediator module name is grep-absent
+// (R-SV10). Nothing of the mediator survives in name or symbol — only the direct listener remains.
 
 fn get_direct_port() -> i32 {
     // R-F4: the direct port is the single PINNED compile-time constant 21118 — never

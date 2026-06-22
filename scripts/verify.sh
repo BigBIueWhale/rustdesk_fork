@@ -78,15 +78,25 @@ echo "== (3b-ii) api-server resolution dials-nobody behavior test (R-SV6(d)) =="
 echo "== (3b-iv) trust-anchor get_key ignores a stored override (R-A4/R-X4) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config common::tests::get_key_is_the_pinned_anchor_ignoring_overrides --color never
 
-# (3b-iii) R-S11 / Appendix C #15: the MAIN IPC channel (UI⇄service, 0o0600 same-uid) MUST reject a
-# whole-config SyncConfig(Some) write — Config::set/Config2::set overwrite the ENTIRE config with NO
-# is_option_can_save/pin check, so a same-uid local process could re-pin the trust anchor / undo the
-# §8 excisions + §9 pins from inside. The cross-uid sync uses the peer-uid-gated _service channel; the
-# main channel serves only the SyncConfig(None) read. Behavior-tested AND the loop routes main-channel
-# data through the main_channel_admits_config_write allowlist before handle() (R-A6 reachability).
-echo "== (3b-iii) IPC main-channel whole-config-write rejection (R-S11) =="
+# (3b-iii) R-S11 / Appendix C #15: the MAIN IPC channel (UI⇄service, 0o0600 same-uid) is a config-
+# integrity boundary. main_channel_admits_config_write is a POSITIVE allowlist over the config-mutating
+# arms, rejecting: (a) the whole-config SyncConfig(Some) push (Config::set overwrites the ENTIRE config
+# with NO is_option_can_save/pin check); (b) the Data::Config STRUCT-FIELD writes that bypass
+# is_option_can_save — `id` (+ set_key_confirmed(false)) and `salt` (set_salt's hashed-pw guard is a
+# no-op under the fork's PRS-plaintext) — which have NO legit main-channel writer; (c) Data::Socks(Some)
+# (set_socks, the proxy/local-MITM primitive an Options-key allowlist would miss). The legit operator
+# writes (permanent-password / unlock-pin / voice-call-input) + reads (value=None) pass. The cross-uid
+# sync uses the peer-uid-gated _service channel. Behavior-tested AND the loop routes through the
+# allowlist before handle() (R-A6 reachability), AND the allowlist is asserted POSITIVE (not a one-arm
+# denylist that would let id/salt/Socks through — the exact "missed sibling" the 5th sweep found).
+echo "== (3b-iii) IPC main-channel config-write positive allowlist (R-S11) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_channel_rejects_whole_config_sync_write --color never
-grep -q 'if !main_channel_admits_config_write(&data)' src/ipc.rs || { echo "  FAIL R-S11: the main IPC channel handler does not gate config writes through main_channel_admits_config_write"; rc=1; }
+r_s11=
+grep -q 'if !main_channel_admits_config_write(&data)' src/ipc.rs                       || r_s11="$r_s11 loop-not-wired"
+grep -qE '"permanent-password" \| "unlock-pin" \| "voice-call-input"' src/ipc.rs       || r_s11="$r_s11 no-positive-config-allowlist"
+grep -q 'Data::Socks(Some(_)) => false' src/ipc.rs                                     || r_s11="$r_s11 socks-not-rejected"
+if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel config-write allowlist:$r_s11"; rc=1; else
+  echo "  ok  R-S11 main-channel config-write POSITIVE allowlist (SyncConfig+id+salt+Socks rejected; legit operator writes pass)"; fi
 
 # (3c) File-transfer write-path safety (R-S8/R-A5): the receive-write opens are NO-FOLLOW
 # (open_recv_write_no_follow / O_NOFOLLOW) so a local symlink swapped in at the target after the

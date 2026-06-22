@@ -685,11 +685,35 @@ impl Drop for CheckIfRestart {
 /// legitimate ONLY on the peer-uid-gated `_service` cross-uid channel (the root↔user sync,
 /// server.rs); on the main channel only the `SyncConfig(None)` read-request is legitimate (the
 /// `--server` reads config via it). Reject the whole-config write so the unguarded Config::set is
-/// unreachable from the main-channel handler. (Per-key writes — Data::Options, pinned at
-/// is_option_can_save per R-S16, and Data::Config, the UI's permanent-password set — stay.)
+/// unreachable from the main-channel handler.
+///
+/// R-S11 also names the Data::Config STRUCT-FIELD sub-keys (salt / id + set_key_confirmed(false) /
+/// unlock-pin) and Data::Socks -> set_socks: these bypass is_option_can_save (R-S16) ENTIRELY — they
+/// are identity/credential struct fields + the proxy, NOT options — so the R-S16 pin never covers them.
+/// Make this a POSITIVE allowlist over the config-mutating arms, not a one-arm denylist: only the
+/// legitimate UI/operator Data::Config writes pass; `id` and `salt` (which have NO legitimate
+/// main-channel writer — the UI READS id via value=None, and set_salt's hashed-password guard is a
+/// no-op in the fork's PRS-plaintext model, config.rs) are REJECTED, so a same-uid process cannot
+/// rewrite the device identity or the password salt through the main channel. Data::Socks(Some) (the
+/// proxy / local-MITM primitive, already inert under the pinned proxy-url, R-D6(d)(iii)) is rejected
+/// at the channel too. (permanent-password = the UI password-set; unlock-pin = the --set-unlock-pin /
+/// GUI PIN persist, core_main.rs; voice-call-input = the audio device — all legitimate operator writes.)
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) fn main_channel_admits_config_write(data: &Data) -> bool {
-    !matches!(data, Data::SyncConfig(Some(_)))
+    match data {
+        // Whole-config push: legitimate ONLY on the peer-uid-gated _service channel; on the main
+        // channel only the SyncConfig(None) read-request is.
+        Data::SyncConfig(Some(_)) => false,
+        // Struct-field writes: allow only the legit UI/operator keys. value=None is a READ (allowed by
+        // the `_` arm); id / salt / any other struct-field name is REJECTED.
+        Data::Config((name, Some(_))) => matches!(
+            name.as_str(),
+            "permanent-password" | "unlock-pin" | "voice-call-input"
+        ),
+        // set_socks: the proxy / local-MITM primitive an Options-key allowlist would miss.
+        Data::Socks(Some(_)) => false,
+        _ => true,
+    }
 }
 
 async fn handle(data: Data, stream: &mut Connection) {
@@ -2049,6 +2073,43 @@ mod test {
         );
         assert!(main_channel_admits_config_write(&Data::SyncConfig(None)));
         assert!(main_channel_admits_config_write(&Data::Options(None)));
+        // R-S11 (Appendix C #15): the Data::Config STRUCT-FIELD writes bypass is_option_can_save — the
+        // identity (id) + credential (salt) fields have NO legitimate main-channel writer and MUST be
+        // rejected; the legit UI/operator writes (permanent-password, unlock-pin) stay; a value=None is
+        // a READ and stays.
+        let cfg = |n: &str, v: Option<&str>| Data::Config((n.to_owned(), v.map(|s| s.to_owned())));
+        assert!(
+            !main_channel_admits_config_write(&cfg("id", Some("evil-id"))),
+            "R-S11: a Data::Config id write (rewrites device identity + set_key_confirmed(false)) MUST be rejected"
+        );
+        assert!(
+            !main_channel_admits_config_write(&cfg("salt", Some("evil-salt"))),
+            "R-S11: a Data::Config salt write (set_salt's guard is a no-op under PRS-plaintext) MUST be rejected"
+        );
+        assert!(
+            main_channel_admits_config_write(&cfg("permanent-password", Some("pw"))),
+            "the UI permanent-password set stays legitimate"
+        );
+        assert!(
+            main_channel_admits_config_write(&cfg("unlock-pin", Some("1234"))),
+            "the --set-unlock-pin / GUI PIN set stays legitimate"
+        );
+        assert!(
+            main_channel_admits_config_write(&cfg("id", None)),
+            "a Data::Config id READ (value=None) must be allowed"
+        );
+        // R-S11: the proxy / local-MITM primitive (set_socks) is rejected at the channel (already inert
+        // under the pinned proxy-url, but defense-in-depth at the boundary).
+        assert!(
+            !main_channel_admits_config_write(&Data::Socks(Some(
+                hbb_common::config::Socks5Server::default()
+            ))),
+            "R-S11: a Data::Socks(Some) write MUST be rejected on the main channel"
+        );
+        assert!(
+            main_channel_admits_config_write(&Data::Socks(None)),
+            "a Data::Socks read (None) must be allowed"
+        );
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]

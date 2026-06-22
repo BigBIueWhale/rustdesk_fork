@@ -54,6 +54,9 @@ flutter/web/
 *.qcow2
 # Built artifacts from scripts/build-*.sh (the .deb/.apk/.exe + their SHA-256).
 /dist/
+# The android JNI .so copies — build-android.sh / ndk_arm64.sh stage librustdesk.so
+# + libc++_shared.so into jniLibs at build time (mkdir -p'd, never committed).
+/flutter/android/app/src/main/jniLibs/
 # Build STATE (not cache): what host-provision.sh installed, so cleanup.sh can
 # reverse exactly that (R-B11). Lives outside ./online so a cache wipe cannot
 # strand the reversal.

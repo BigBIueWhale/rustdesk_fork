@@ -202,7 +202,10 @@ async-process = "1.7"
 evdev = { git="https://github.com/rustdesk-org/evdev" }
 dbus = "0.9"
 dbus-crossroads = "0.5"
-pam = { git="https://github.com/rustdesk-org/pam" }
+# R-X14: the `pam` crate (the linux_desktop_manager PAM auth client / desktop-session-spawn oracle) is
+# EXCISED -- zero `pam::` usage remains after that excision, so the dep + its transitive pam-sys libpam
+# link + the .deb libpam0g Depends + the /etc/pam.d/rustdesk install were all dead weight (a third-party
+# git dep dropped, shrinking the supply-chain + runtime-link surface the spec's sovereignty posture wants).
 x11-clipboard = {git="https://github.com/clslaid/x11-clipboard", branch = "feat/store-batch", optional = true}
 x11rb =  {version = "0.12", features = ["all-extensions"], optional = true}
 percent-encoding = {version = "2.3", optional = true}

@@ -252,6 +252,14 @@ ra6_clean 'wayland_use_uinput|should_skip_wayland_clipboard_sync|is_recent_wayla
 # seat0 capture-discovery only; the connection wrapper ignores os_login). These tokens MUST stay
 # absent (the capture-side discovery — get_username/is_headless/seat0 — is kept, R-S14).
 ra6_clean 'pam::Client|try_start_x_session|start_x_session|start_x11|add_xauth_cookie|pam_get_service_name' 'R-X14 os_login->PAM desktop-session-start (X-session spawn)' || rc=1
+# R-X14 (cont.): the excision is COMPLETE through the build + packaging — with zero pam:: usage the dead
+# `pam` crate dep, its transitive pam-sys libpam runtime link, the .deb libpam0g Depends, and the
+# /etc/pam.d/rustdesk install were all dead weight (a third-party git dep + a runtime-link + a dead
+# config). Assert they stay gone so the supply-chain / runtime-link surface cannot silently regrow.
+grep -qE '^pam = '      Cargo.toml  && { echo "  FAIL R-X14: the dead 'pam' crate dep is back in Cargo.toml"; rc=1; }
+grep -q  'libpam0g'     build.py    && { echo "  FAIL R-X14: the .deb still Depends on libpam0g (the binary has no PAM)"; rc=1; }
+grep -qE 'pam\.d/rustdesk' build.py && { echo "  FAIL R-X14: the .deb still installs the dead /etc/pam.d/rustdesk"; rc=1; }
+[ -e res/pam.d ] && { echo "  FAIL R-X14: the dead res/pam.d/ PAM config files are back"; rc=1; } || true
 # R-X7 / §18: the 2FA machinery is FULLY excised. Responder side: the `require_2fa` field, the
 # Auth2fa gate/handler, the trusted-device bypass, the raii session-2FA state (2FA was
 # pinned-off-dead: `2fa`="" so require_2fa was always None ⇒ every branch unreachable). Now also:

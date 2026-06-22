@@ -64,11 +64,6 @@ message FileTransfer {
 
 message ViewCamera {}
 
-message OSLogin {
-  string username = 1;
-  string password = 2;
-}
-
 message LoginRequest {
   string username = 1;
   bytes password = 2;
@@ -84,7 +79,10 @@ message LoginRequest {
   bool video_ack_required = 9;
   uint64 session_id = 10;
   string version = 11;
-  OSLogin os_login = 12;
+  // R-S18 / Appendix C: the peer-supplied OS-login credential (OSLogin os_login = 12) is DELETED
+  // — the viewer never sent it and the responder cleared+ignored it (R-X14), so a malicious or
+  // substituted peer can no longer encode an OS username/password in the LoginRequest at all.
+  // Field 12 is retired (not reused), like hwid's 14 below.
   string my_platform = 13;
   // R-S18 / Appendix C #22: the stable device-fingerprint `hwid` (field 14) is deleted — the viewer
   // no longer auto-sends it (a credential-harvest vector for a malicious/substituted peer) and

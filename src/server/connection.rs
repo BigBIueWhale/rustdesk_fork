@@ -1776,15 +1776,14 @@ impl Connection {
             }
         }
         // After handling CloseReason messages, proceed to process other message types
-        if let Some(message::Union::LoginRequest(mut lr)) = msg.union {
-            // R-X14 / R-S18: the peer MUST NOT select an OS user or trigger a PAM
-            // os-login (the second OS-credential subsystem — try_start_x_session /
-            // pam::Client). CPace's password is the sole credential (R-P1), so strip
-            // any os_login the LoginRequest carries: no PAM / X-session login runs on
-            // the peer's behalf, and the session uses the box's local desktop context
-            // only. (allow-linux-headless=N pins the headless path off; this closes
-            // the peer-driven trigger by construction.)
-            lr.os_login.clear();
+        if let Some(message::Union::LoginRequest(lr)) = msg.union {
+            // R-X14 / R-S18: the peer MUST NOT select an OS user or trigger a PAM os-login (the
+            // second OS-credential subsystem — try_start_x_session / pam::Client). CPace's password
+            // is the sole credential (R-P1). The OSLogin os_login field is now DELETED from
+            // LoginRequest (message.proto, R-S18 cleanup) — the peer cannot even encode an OS
+            // username/password, so no PAM / X-session login can run on its behalf and the session
+            // uses the box's local desktop context only. (allow-linux-headless=N pins the headless
+            // path off; the field deletion closes the peer-driven trigger by construction.)
             self.handle_login_request_without_validation(&lr).await;
             if self.authorized {
                 return true;
@@ -1828,14 +1827,9 @@ impl Connection {
                         sleep(1.).await;
                         return false;
                     }
-                    #[cfg(target_os = "windows")]
-                    if !lr.os_login.username.is_empty() && !crate::platform::is_installed() {
-                        self.send_login_error("Supported only in the installed version.")
-                            .await;
-                        sleep(1.).await;
-                        return false;
-                    }
-
+                    // R-S18: the upstream "os_login.username set but not installed -> refuse"
+                    // check is gone with the os_login field — the fork's terminal is SessionUser-
+                    // only (no peer OS-login), so there is no such request to refuse.
                     self.terminal = true;
                     if let Some(o) = self.options_in_login.as_ref() {
                         self.terminal_persistent =
@@ -1868,11 +1862,10 @@ impl Connection {
                 return false;
             }
 
+            // R-S18: dropped the always-true `os_login.username is empty` clause (the field is
+            // deleted) — the prelogin guard now rests solely on terminal + is_prelogin().
             #[cfg(target_os = "windows")]
-            if self.terminal
-                && lr.os_login.username.trim().is_empty()
-                && crate::platform::is_prelogin()
-            {
+            if self.terminal && crate::platform::is_prelogin() {
                 self.send_login_error(
                     "No active console user logged on, please connect and logon first.",
                 )
@@ -1889,9 +1882,7 @@ impl Connection {
             #[cfg(not(target_os = "linux"))]
             let err_msg = "".to_owned();
             #[cfg(target_os = "linux")]
-            let err_msg = self
-                .linux_headless_handle
-                .try_start_desktop(lr.os_login.as_ref());
+            let err_msg = self.linux_headless_handle.try_start_desktop();
 
             // If err is LOGIN_MSG_DESKTOP_SESSION_NOT_READY, just keep this msg and go on checking password.
             if !err_msg.is_empty() && err_msg != crate::client::LOGIN_MSG_DESKTOP_SESSION_NOT_READY
@@ -4644,12 +4635,13 @@ impl LinuxHeadlessHandle {
         }
     }
 
-    pub fn try_start_desktop(&mut self, _os_login: Option<&OSLogin>) -> String {
-        // R-X14: ignore the peer-supplied os_login entirely — the controlled side never spawns an X
-        // session or authenticates a peer OS credential. The PAM/session-spawn path is excised from
-        // linux_desktop_manager (Appendix C #17), so the collapsed call only reports whether a seat0
-        // desktop session already exists for capture (R-S14). On the shipped build allow-linux-headless
-        // is pinned off (R-S16), so this returns "".
+    pub fn try_start_desktop(&mut self) -> String {
+        // R-X14 / R-S18: there is no peer os_login to consider — the field is deleted from
+        // LoginRequest. The controlled side never spawns an X session or authenticates a peer OS
+        // credential; the PAM/session-spawn path is excised from linux_desktop_manager (Appendix C
+        // #17), so the collapsed call only reports whether a seat0 desktop session already exists
+        // for capture (R-S14). On the shipped build allow-linux-headless is pinned off (R-S16),
+        // so this returns "".
         if self.is_headless_allowed {
             linux_desktop_manager::try_start_desktop("", "")
         } else {

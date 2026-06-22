@@ -2203,11 +2203,11 @@ impl LoginConfigHandler {
             // BOTH on every connect, so a malicious or substituted peer (a different box
             // answering at a pinned address — R-S17) harvested the operator's stored OS
             // creds + fingerprint with no interaction — a client-side leak the
-            // responder-only audit could not see. The responder already ignores os_login
-            // (0685c28, R-X14); deleting the sender completes R-S18's symmetric removal.
-            // (The os-username/os-password options + the Request-Elevation/OS-login UI
-            // that feed them are the §19/R-G4 follow-on; the OSLogin proto-field deletion
-            // is R-S18's message.proto cleanup.) os_login + hwid stay unset (Default).
+            // responder-only audit could not see. The responder already ignored os_login
+            // (0685c28, R-X14); the OSLogin field (12) + hwid (14) are now DELETED from
+            // LoginRequest (message.proto) entirely, so neither can be encoded on the wire —
+            // R-S18's symmetric removal is complete. (The os-username/os-password options +
+            // the Request-Elevation/OS-login UI that feed them are the §19/R-G4 follow-on.)
             avatar,
             ..Default::default()
         };

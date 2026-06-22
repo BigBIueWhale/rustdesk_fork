@@ -456,6 +456,18 @@ ra6_clean 'api/heartbeat|api/sysinfo|heartbeat_url|handle_config_options|start_h
 # peer (R-S17) harvested the operator's stored OS creds with no interaction. The responder
 # already ignores os_login (0685c28); deleting the sender completes the symmetric removal.
 ra6_clean 'Some\(OSLogin|\.set_logon\(|ElevateWithLogon|elevate_with_logon' 'R-S18 viewer os_login + elevation-with-logon senders' || rc=1
+# R-S18 / Appendix C: the OSLogin message + the `os_login` field (12) are now DELETED from
+# message.proto entirely (field 12 retired, not reused) and every responder read is gone. The
+# responder used to clear+ignore a parsed os_login (R-X14); now the peer cannot encode an OS
+# username/password into the LoginRequest AT ALL -- structural absence in the parsed auth protocol,
+# not a runtime strip. (The two cfg(windows) login branches that read os_login.username -- the dead
+# "installed version" refuse + the prelogin guard -- are removed/simplified accordingly.)
+ra6_clean '\bOSLogin\b|\bos_login\b' 'R-S18 OSLogin message + os_login field/reads (peer OS-credential in the parsed LoginRequest)' || rc=1
+if grep -qE '^\s*message OSLogin|^\s*OSLogin +os_login' libs/hbb_common/protos/message.proto; then
+  echo "  FAIL R-S18: the OSLogin message or os_login field declaration is back in message.proto"; rc=1
+else
+  echo "  ok  R-S18 OSLogin message + os_login field absent from message.proto (field 12 retired)"
+fi
 # R-S18 / Appendix C #22 (cont.): the persisted os-username/os-password OPTION READS the spec names
 # for deletion are gone from the Rust viewer — get_option("os-username"/"os-password") + should_auto_login()
 # (which returned the STORED os-password to auto-type into the remote OS on connect, a persisted second

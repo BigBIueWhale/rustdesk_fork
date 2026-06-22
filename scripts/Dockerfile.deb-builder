@@ -7,9 +7,12 @@
 # digest-pinned tarballs), so the image carries only the OS-level dev libs + build tools.
 #
 # FROM the digest-pinned ubuntu:18.04 baseline (the build-arg is SHA256_BASEIMAGE_UBUNTU_1804
-# from pins.env). Dep set = upstream flutter-build.yml's linux list, minus android's
-# openjdk-17 and the fork-excised libpam0g-dev (R-X14), plus the offline-build basics
-# (xz-utils/unzip/build-essential/yasm/python3) and liblzma-dev (flutter).
+# from pins.env). Dep set = upstream flutter-build.yml's flutter build-deb job (the libssl-dev
+# list, flutter-build.yml:1431), minus the fork-excised libpam0g-dev (R-X14) and the unused
+# tree/rpm, plus the offline-build basics (xz-utils/unzip/build-essential/yasm/python3) and
+# liblzma-dev (flutter). libssl-dev IS required — openssl-sys builds against the system OpenSSL
+# via pkg-config. The native codecs (aom/vpx/yuv/opus) are NOT apt deps: they come from the
+# vcpkg overlay (upstream even `apt-get remove`s libopus-dev so its self-compiled one wins).
 #
 # NB (R-B2 refinement): the apt package versions are not individually pinned. bionic is EOL
 # and frozen, so they are effectively stable, and the SAME built image is reused for the
@@ -22,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential ca-certificates clang cmake curl g++ g++-multilib gcc-multilib git \
       libappindicator3-dev libasound2-dev libc6-dev libclang-dev \
       libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev libgtk-3-dev \
-      liblzma-dev libpulse-dev libunwind-dev libva-dev \
+      liblzma-dev libpulse-dev libssl-dev libunwind-dev libva-dev \
       libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
       libxdo-dev libxfixes-dev llvm-dev nasm ninja-build pkg-config \
       python3 unzip wget xz-utils yasm \

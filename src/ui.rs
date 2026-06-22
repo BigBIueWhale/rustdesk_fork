@@ -233,10 +233,6 @@ impl UI {
         install_me(_options, _path, false, false);
     }
 
-    fn update_me(&self, _path: String) {
-        update_me(_path);
-    }
-
     fn run_without_install(&self) {
         run_without_install();
     }
@@ -760,7 +756,6 @@ impl sciter::EventHandler for UI {
         fn get_new_version();
         fn get_version();
         fn get_fingerprint();
-        fn update_me(String);
         fn show_run_without_install();
         fn run_without_install();
         fn get_app_name();

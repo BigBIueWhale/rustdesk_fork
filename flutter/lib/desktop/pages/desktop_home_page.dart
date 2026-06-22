@@ -427,13 +427,9 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           await rustDeskWinManager.closeAllSubWindows();
           bind.mainGotoInstall();
         });
-      } else if (bind.mainIsInstalledLowerVersion()) {
-        return buildInstallCard(
-            "Status", "Your installation is lower version.", "Click to upgrade",
-            () async {
-          await rustDeskWinManager.closeAllSubWindows();
-          bind.mainUpdateMe();
-        });
+        // R-X1 / R-SV2 (§18): the "Click to upgrade" self-update branch is removed — the fetch-and-
+        // run updater (main_update_me -> the platform update_me/update_me_msi root re-install) is
+        // excised; the fork ships SHA-pinned releases (R-B2), never self-updates.
       }
     } else if (isMacOS) {
       final isOutgoingOnly = bind.isOutgoingOnly();

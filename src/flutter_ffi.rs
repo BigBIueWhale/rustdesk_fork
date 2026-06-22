@@ -2272,10 +2272,8 @@ pub fn main_get_new_version() -> SyncReturn<String> {
     SyncReturn(get_new_version())
 }
 
-pub fn main_update_me() -> SyncReturn<bool> {
-    update_me("".to_owned());
-    SyncReturn(true)
-}
+// R-X1 / R-SV2 (§18): main_update_me (the FFI that drove the self-updater) is excised. The fork
+// ships SHA-pinned releases (R-B2), never self-updates.
 
 pub fn set_cur_session_id(session_id: SessionID) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {

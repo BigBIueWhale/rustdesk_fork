@@ -112,10 +112,8 @@ pub fn install_me(_options: String, _path: String, _silent: bool, _debug: bool) 
     });
 }
 
-#[inline]
-pub fn update_me(_path: String) {
-    goto_install();
-}
+// R-X1 / R-SV2 (§18): ui_interface::update_me (the cross-platform self-updater dispatch) is excised —
+// there is no self-update path; the fork ships SHA-pinned releases (R-B2), never fetch-and-run.
 
 #[inline]
 pub fn run_without_install() {

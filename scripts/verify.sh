@@ -131,7 +131,10 @@ echo "== (5) R-A6 forbidden-token greps =="
 ra6_clean() { # token, human label
   local tok="$1" label="$2" hits
   hits=$(grep -RInE "$tok" src libs --include='*.rs' 2>/dev/null \
-           | grep -v '//' | grep -v 'libs/pake' | grep -v 'libs/cpace_it' || true)
+           | grep -v '//' | grep -v 'libs/pake' | grep -v 'libs/cpace_it' \
+           | grep -v 'bridge_generated' || true)  # bridge_generated.rs(.io.rs) are gitignored FRB
+                                                   # output regenerated from flutter_ffi.rs; a gate
+                                                   # validates source, never a derived artifact.
   if [ -n "$hits" ]; then
     echo "  FAIL R-A6: '$label' must be absent but is present:"; echo "$hits" | sed 's/^/      /'
     return 1
@@ -142,6 +145,12 @@ ra6_clean() { # token, human label
 rc=0
 # Completed excisions — these MUST stay at zero (hard gate).
 ra6_clean 'crate::updater|mod updater|"download-new-version"|"update-me"' 'R-X1 auto-updater RCE'    || rc=1
+# R-X1 / R-SV2 / R-A6 — the self-updater FUNCTION surface the string-key gate above missed: the
+# platform fetch-and-run re-install (macOS update_me/update_from_dmg/update_to/extract_update_dmg,
+# Windows update_me/update_to/update_me_msi) + the main_update_me FFI that drove them. R-A6 names
+# update_me/update_from_dmg/extract_update_dmg in its Apple-cfg pass; all must be absent on EVERY
+# source (these clusters are cfg(macos)/cfg(windows), invisible to the Linux cargo check below).
+ra6_clean 'fn update_me\b|main_update_me|update_from_dmg|extract_update_dmg|update_me_msi|fn update_to\b' 'R-X1 self-updater fns (macOS DMG / Windows MSI / FFI)' || rc=1
 ra6_clean 'plugin_framework|install_plugin_with_url|"--plugin-install"'    'R-X2 native-plugin loader' || rc=1
 ra6_clean '"--import-config"|"--remove"|fn import_config'                  'R-X4 trust-anchor CLI gadgets' || rc=1
 # R-X5: the LAN-discovery UDP listener/querier (the 0.0.0.0:RENDEZVOUS_PORT+3=21119 responder that

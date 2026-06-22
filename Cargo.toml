@@ -201,7 +201,10 @@ rust-pulsectl = { git = "https://github.com/rustdesk-org/pulsectl" }
 async-process = "1.7"
 evdev = { git="https://github.com/rustdesk-org/evdev" }
 dbus = "0.9"
-dbus-crossroads = "0.5"
+# R-X6: dbus-crossroads (the D-Bus SERVER framework) was the dead residual of the excised
+# src/server/dbus.rs (the org.rustdesk.rustdesk NewConnection session-bus injection vector, commit
+# e7cb30a) -- zero `dbus_crossroads`/`crossroads::` usage remains, so the dep is dropped. The base `dbus`
+# crate stays (platform/linux.rs still makes a legit session-bus method_call, not the excised server).
 # R-X14: the `pam` crate (the linux_desktop_manager PAM auth client / desktop-session-spawn oracle) is
 # EXCISED -- zero `pam::` usage remains after that excision, so the dep + its transitive pam-sys libpam
 # link + the .deb libpam0g Depends + the /etc/pam.d/rustdesk install were all dead weight (a third-party

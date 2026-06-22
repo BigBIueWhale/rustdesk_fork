@@ -175,6 +175,10 @@ ra6_clean 'DEBUG_BOOT_COMPLETED'                                          'R-X6 
 # are self-handled per-instance (core_main, still behind the R-X6 confirmation gate). \bstart_dbus_server
 # excludes the kept no-op FFI shim main_start_dbus_server (no word boundary before "start").
 ra6_clean 'crate::dbus|org\.rustdesk\.rustdesk|\bstart_dbus_server' 'R-X6 D-Bus deep-link transport (NewConnection)' || rc=1
+# R-X6 (cont.): dbus-crossroads (the D-Bus SERVER framework) was the dead Cargo-dep residual of the
+# excised dbus.rs — zero crossroads:: usage remains, so the dep is dropped. Assert it stays gone (the
+# base `dbus` crate stays for the legit platform/linux.rs session-bus call — do NOT gate that out).
+grep -qE '^dbus-crossroads = ' Cargo.toml && { echo "  FAIL R-X6: the dead dbus-crossroads dep (only the excised dbus.rs used it) is back in Cargo.toml"; rc=1; }
 ra6_clean 'ConfigureUpdate|TestNatResponse'                              'R-X3 server-push config-update + NAT-response rewrite arms' || rc=1
 # R-P3 / R-P14: the inherited insecure direct-mode used a plaintext constant-byte ack ("direct-ok")
 # to admit a peer WITHOUT the PAKE key-confirmation. The fork makes CPace mandatory (R-A1), so any

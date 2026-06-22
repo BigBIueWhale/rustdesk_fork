@@ -923,11 +923,14 @@ async fn handle(data: Data, stream: &mut Connection) {
             );
         }
         Data::TestRendezvousServer => {
-            crate::test_rendezvous_server();
+            // R-SV4(e)/R-S11/R-D6: ignored — the service IPC handler MUST NOT reach a rendezvous dial.
+            // The inherited arm called test_rendezvous_server(), which connect_tcp's to RENDEZVOUS_PORT
+            // to latency-probe each configured rendezvous — a service-entry-reachable outbound probe
+            // ("dial nobody"). The fork is direct-only (R-D4); there is no rendezvous to test.
         }
         Data::Deployed => {
-            crate::rendezvous_mediator::NEEDS_DEPLOY.store(false, Ordering::SeqCst);
-            crate::rendezvous_mediator::RendezvousMediator::restart();
+            // R-SV4(e)/R-S11: no-op — there is no rendezvous mediator to (re)deploy on a direct-only
+            // build (R-D4). The inherited arm flipped NEEDS_DEPLOY + restarted the mediator.
         }
         #[cfg(windows)]
         Data::ControlledSessionCount(_) => {

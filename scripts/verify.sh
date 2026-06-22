@@ -169,6 +169,17 @@ ra6_clean 'handle_request_relay|handle_punch_hole|udp_nat_listen|punch_udp_hole|
 # changed ID LOCALLY (the ID is a vestigial label — R-SV5 connects by IP, never by ID). Assert no
 # register_pk SENDER (set_register_pk) or the check_id rendezvous-dial helper survives.
 ra6_clean 'set_register_pk|async fn check_id' 'R-SV4/R-SV10 Change-ID register_pk rendezvous-dial' || rc=1
+# R-SV4(e)/R-S11: the service IPC handler's mediator-control arm that reaches an OUTBOUND rendezvous
+# DIAL is severed. Data::TestRendezvousServer -> crate::test_rendezvous_server (connect_tcp to
+# RENDEZVOUS_PORT, latency-probing each configured rendezvous) is now a no-op, and Data::Deployed
+# (mediator redeploy) too — so a local IPC message can no longer make the direct-only service dial
+# the rendezvous. (The remaining RendezvousMediator::restart() reaches restart the DIRECT-ONLY path,
+# not the registration — harmless, the mediator itself no longer exists.)
+if grep -qE 'crate::test_rendezvous_server\(\)' src/ipc.rs; then
+  echo "  FAIL R-SV4(e)/R-S11: the IPC handler still reaches test_rendezvous_server (a rendezvous dial)"; rc=1
+else
+  echo "  ok  R-SV4(e)/R-S11 IPC mediator-control rendezvous-dial arm severed (Data::TestRendezvousServer/Deployed no-op)"
+fi
 # R-X10 (§8 run-mode plurality): the GUI/client (`is_server == false`) startup path NEVER auto-starts
 # a controlled server — the controlled side starts ONLY via the installed `--service`/`--server` (one
 # mode, R-D8). The inherited `else { start_server(true) }` fallback in server.rs's `is_server == false`

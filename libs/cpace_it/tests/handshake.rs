@@ -64,6 +64,46 @@ async fn handshake_round_trip_and_two_key_cipher() {
     assert!(self_recv.open(&outbound).is_err());
 }
 
+/// R-P10 / R-A5 / §20 transport security: the per-direction nonce IS the receiver's MONOTONIC read_seq
+/// (DirectionalCipher::open advances it BEFORE secretbox::open, cpace.rs:428), NOT a frame-embedded seq.
+/// So a REPLAYED frame (re-sent) and a REORDERED frame (opened at the wrong position) both present a
+/// different nonce than they were sealed under and FAIL the AEAD — the inherited replay/reorder hole is
+/// closed by construction. A regression to a frame-carried seq, or a read_seq reset, would silently
+/// re-open it; the round-trip / FIFO tests above only ever exercise the IN-ORDER happy path, so this is
+/// the only guard on the replay/reorder property. ([[s20-transport-infiltration-audited]] read-verified
+/// it; this gates it.)
+#[tokio::test]
+async fn directional_cipher_rejects_replay_and_reorder() {
+    let (mut si, mut sr) = loopback_pair().await;
+    let pw = "replay-reorder-test";
+    let (ri, rr) = tokio::join!(run_initiator(&mut si, pw), run_responder(&mut sr, pw));
+    let ki = ri.expect("initiator keys");
+    let kr = rr.expect("responder keys");
+
+    // Two frames sealed IN ORDER under ki.send (seq 1, then seq 2); the receiver opens under
+    // kr.recv == ki.send (mirrored, R-P2).
+    let mut sender = DirectionalCipher::new(&ki);
+    let c0 = sender.seal(b"frame zero"); // nonce(1)
+    let c1 = sender.seal(b"frame one"); // nonce(2)
+
+    // REPLAY: a fresh receiver opens c0 (read_seq->1, nonce(1) == c0's: ok), then re-opens the SAME c0 —
+    // the second open is at read_seq->2's nonce(2), not c0's nonce(1), so the AEAD rejects it.
+    let mut rx_replay = DirectionalCipher::new(&kr);
+    assert_eq!(rx_replay.open(&c0).unwrap(), b"frame zero");
+    assert!(
+        rx_replay.open(&c0).is_err(),
+        "a replayed frame MUST be rejected (the monotonic nonce moved on)"
+    );
+
+    // REORDER: a fresh receiver opens c1 FIRST — c1 was sealed at seq 2 but is opened at read_seq->1's
+    // nonce(1), so the AEAD rejects the out-of-order frame.
+    let mut rx_reorder = DirectionalCipher::new(&kr);
+    assert!(
+        rx_reorder.open(&c1).is_err(),
+        "an out-of-order frame MUST be rejected (sealed at seq 2, opened at the seq-1 nonce)"
+    );
+}
+
 #[tokio::test]
 async fn matching_password_streams_can_exchange_after_keying() {
     let (mut si, mut sr) = loopback_pair().await;

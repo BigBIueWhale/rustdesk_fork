@@ -1,5 +1,3 @@
-use std::sync::atomic::AtomicBool;
-
 use hbb_common::{
     allow_err,
     config::{self, option2bool, Config},
@@ -18,27 +16,17 @@ use crate::server::{check_zombie, new as new_server, ServerPtr};
 //
 // What remains here is the direct-only service path — `start_direct_only` ->
 // `direct_server`, the single v4, PAKE-gated TCP listener (R-F4/R-D5) — plus the R-A4
-// startup + post-listen socket-surface self-checks, and three no-op shells kept ONLY so
+// startup + post-listen socket-surface self-checks, and two no-op shells kept ONLY so
 // the cross-module callers still link (flutter_ffi is behind the `flutter` feature and
 // not in the verify.sh compile-check, so its callers cannot be changed here):
 //   - `RendezvousMediator::restart()` (ipc / flutter_ffi / ui_interface),
-//   - the `NEEDS_DEPLOY` flag + `reset_needs_deploy_notification()` (ipc / flutter_ffi),
 //   - `CheckIfResendPk` (server.rs).
 // Removing those shells + their callers, and the module rename that finally makes
 // `mod rendezvous_mediator` itself grep-absent, is the cross-module / §19 follow-on.
-
-// Cross-module deploy-notification state (Android). The deploy *action* is excised
-// (R-SV6(c)); this remains only because ipc / flutter_ffi still reference it.
-pub(crate) static NEEDS_DEPLOY: AtomicBool = AtomicBool::new(false);
-#[cfg(target_os = "android")]
-static NOTIFIED_NEEDS_DEPLOY: AtomicBool = AtomicBool::new(false);
-
-#[cfg(target_os = "android")]
-pub(crate) fn reset_needs_deploy_notification() {
-    use std::sync::atomic::Ordering;
-    NEEDS_DEPLOY.store(false, Ordering::SeqCst);
-    NOTIFIED_NEEDS_DEPLOY.store(false, Ordering::SeqCst);
-}
+// (The `NEEDS_DEPLOY` flag + `reset_needs_deploy_notification()` + the `Data::Deployed`
+// IPC arm/sender were the *deploy* shell — now REMOVED with the R-SV6(c)/R-G4 deploy
+// excision: NEEDS_DEPLOY was write-only/dead, and flutter-verify (cargo check --features
+// flutter) + a zero-reference grep cover the android-gated callers verify.sh skips.)
 
 /// A namespace for `restart()`. The rendezvous mediator itself no longer exists; this is
 /// a unit struct kept only so the inherited `RendezvousMediator::restart()` call sites

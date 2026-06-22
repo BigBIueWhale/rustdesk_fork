@@ -345,7 +345,6 @@ pub enum Data {
     ClipboardNonFile(Option<(String, Vec<ClipboardNonFile>)>),
     PrivacyModeState((i32, PrivacyModeState, String)),
     TestRendezvousServer,
-    Deployed,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Keyboard(DataKeyboard),
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -962,10 +961,6 @@ async fn handle(data: Data, stream: &mut Connection) {
             // The inherited arm called test_rendezvous_server(), which connect_tcp's to RENDEZVOUS_PORT
             // to latency-probe each configured rendezvous — a service-entry-reachable outbound probe
             // ("dial nobody"). The fork is direct-only (R-D4); there is no rendezvous to test.
-        }
-        Data::Deployed => {
-            // R-SV4(e)/R-S11: no-op — there is no rendezvous mediator to (re)deploy on a direct-only
-            // build (R-D4). The inherited arm flipped NEEDS_DEPLOY + restarted the mediator.
         }
         #[cfg(windows)]
         Data::ControlledSessionCount(_) => {
@@ -1797,12 +1792,10 @@ pub async fn test_rendezvous_server() -> ResultType<()> {
     Ok(())
 }
 
-#[tokio::main(flavor = "current_thread")]
-pub async fn notify_deployed() -> ResultType<()> {
-    let mut c = connect(1000, "").await?;
-    c.send(&Data::Deployed).await?;
-    Ok(())
-}
+// R-SV6(c)/R-D4: `notify_deployed()` (sent `Data::Deployed`) is removed with the deploy excision —
+// device deployment is gone (deploy_device is a refuse-stub), so there was no caller and no arm to
+// receive it. The `Data::Deployed` variant + its no-op handler are gone too. (notify_deployed
+// carried a #[tokio::main] attribute — removed with it.)
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn send_url_scheme(url: String) -> ResultType<()> {

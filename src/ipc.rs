@@ -496,15 +496,9 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                 Ok(Some(data)) => {
                                     // On Linux/macOS, the protected `_service` channel is used only for
                                     // syncing config between root service and the active user process.
-                                    //
-                                    // NOTE: `is_service_ipc_postfix()` also includes `_uinput_*`, but those
-                                    // channels are handled by the dedicated uinput listener/protocol in
-                                    // `src/server/uinput.rs` and therefore do not share this Data enum
-                                    // allowlist. The SyncConfig allowlist here is intentionally scoped to the
-                                    // `_service` channel only.
-                                    //
-                                    // Keep this explicit branch to avoid policy drift between `_service` and
-                                    // uinput IPC paths while still minimizing exposed message surface here.
+                                    // The SyncConfig allowlist below is intentionally scoped to `_service`
+                                    // (the sole service postfix — R-X13 removed the `_uinput_*` channels with
+                                    // the uinput module), minimizing the exposed message surface here.
                                     #[cfg(any(target_os = "linux", target_os = "macos"))]
                                     if postfix == crate::POSTFIX_SERVICE {
                                         if matches!(&data, Data::SyncConfig(_)) {

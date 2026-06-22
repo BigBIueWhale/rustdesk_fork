@@ -77,6 +77,15 @@ echo "== (3b-ii) api-server resolution dials-nobody behavior test (R-SV6(d)) =="
 echo "== (3c) file-transfer no-follow write + path-traversal tests (R-S8/R-A5) =="
 "${RUN[@]}" cargo test -p hbb_common --lib fs::tests --color never
 
+# (3c-i) IPC service-path sharing (R-S11a / R-X13): the `_service` cross-user socket path MUST resolve
+# the SAME under root and the active user (shared `-service/` parent dir) so the user `--server`/UI
+# process can reach the root service, while non-service channels stay per-uid. After R-X13 collapsed
+# is_service_ipc_postfix to `_service`-only (the `_uinput_*` channels excised with the uinput module),
+# this guards that the surviving service channel still shares correctly. (Classification is separately
+# gated by config_it/ipc_socket_mode.rs; this is the path-resolution consequence.)
+echo "== (3c-i) IPC _service path-sharing across uids (R-S11a/R-X13) =="
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_service_ipc_path_is_shared_across_uids --color never
+
 echo "== (4) main crate compile check (hardening is UNCONDITIONAL — one binary, R-R2b) =="
 "${RUN[@]}" cargo check --features linux-pkg-config --color never
 

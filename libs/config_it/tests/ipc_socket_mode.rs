@@ -31,19 +31,19 @@ fn cm_and_data_channels_are_owner_only() {
 }
 
 #[test]
-fn only_root_service_channels_are_world_connectable() {
-    // 0o0666 (world-connectable): ONLY the root-service cross-user channels, by design — the user
-    // `--server`/UI process must reach the root service and its Wayland uinput injectors.
+fn only_service_channel_is_world_connectable() {
+    // 0o0666 (world-connectable): ONLY `_service`, the root-service cross-user channel, by design —
+    // the user `--server`/UI process must reach the root service. R-X13 (§8): the `_uinput_*` Wayland
+    // injection channels that previously shared this classification are gone with the uinput module,
+    // so a `_uinput_*` postfix is now owner-only (asserted below as the regression guard).
     assert!(is_service_ipc_postfix("_service"));
-    assert!(is_service_ipc_postfix("_uinput_control"));
-    assert!(is_service_ipc_postfix("_uinput_keyboard"));
-    // Lookalikes that are NOT the protected set must stay owner-only (no prefix/substring slip).
+    assert!(
+        !is_service_ipc_postfix("_uinput_keyboard"),
+        "the uinput cross-uid channels are excised (R-X13) — `_uinput_*` must NOT be world-connectable"
+    );
+    // A lookalike that is NOT the protected set must stay owner-only (no prefix/substring slip).
     assert!(
         !is_service_ipc_postfix("_service_x"),
         "only an EXACT _service match is world-connectable, not a prefix"
-    );
-    assert!(
-        !is_service_ipc_postfix("_cm_uinput_"),
-        "_uinput_ is matched only as a leading prefix, not anywhere in the string"
     );
 }

@@ -134,12 +134,12 @@ pub const WS_RELAY_PORT: i32 = 21119;
 
 #[inline]
 pub fn is_service_ipc_postfix(postfix: &str) -> bool {
-    // `_service` is a protected cross-user IPC channel used by the root service.
-    //
-    // On Linux Wayland, input injection is implemented via uinput in the root service process.
-    // The user `--server` process must be able to connect to these uinput IPC channels, so they
-    // must share the same IPC parent directory as `_service`.
-    postfix == "_service" || postfix.starts_with("_uinput_")
+    // `_service` is the protected cross-user IPC channel used by the root service (the user
+    // `--server`/UI process connects to it, so it shares the `_service` IPC parent directory and is
+    // world-connectable, gated by accept-time peer-uid authorization). R-X13 (§8): the `_uinput_*`
+    // cross-uid Wayland-injection channels that also carried this classification are gone with the
+    // uinput module, so `_service` is now the SOLE service postfix.
+    postfix == "_service"
 }
 
 // Keep Linux/macOS IPC parent directory rules in one place to avoid drift between
@@ -4057,18 +4057,22 @@ mod tests {
 
     #[test]
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    fn test_uinput_ipc_path_is_shared_across_uids() {
+    fn test_service_ipc_path_is_shared_across_uids() {
+        // R-X13: was test_uinput_ipc_path_is_shared_across_uids. With the `_uinput_*` cross-uid
+        // channels gone (uinput module excised), `_service` is the sole service postfix. The root
+        // service and the user `--server` process must resolve the SAME `_service` socket path
+        // regardless of uid (shared parent dir), while non-service channels stay per-uid.
         const ROOT_UID: u32 = 0;
         const USER_UID: u32 = 1000;
 
-        let path_root = Config::ipc_path_for_uid(ROOT_UID, "_uinput_keyboard");
-        let path_user = Config::ipc_path_for_uid(USER_UID, "_uinput_keyboard");
+        let path_root = Config::ipc_path_for_uid(ROOT_UID, "_service");
+        let path_user = Config::ipc_path_for_uid(USER_UID, "_service");
         assert_eq!(path_root, path_user);
 
         let app_name = APP_NAME.read().unwrap().clone();
         assert!(
             path_root.starts_with(&format!("/tmp/{app_name}-service/")),
-            "unexpected uinput ipc path: {}",
+            "unexpected service ipc path: {}",
             path_root
         );
 

@@ -67,6 +67,10 @@ fetch_toolchains() {
     # Rust 1.75 toolchain (rustup-init or the offline toolchain tarball).
     fetch_verify "https://static.rust-lang.org/dist/rust-${RUST_VERSION}.0-x86_64-unknown-linux-gnu.tar.xz" \
         "rust-${RUST_VERSION}.tar.xz" "${SHA256_RUST_1_75}"
+    # Rust std for aarch64-linux-android — the cargo-ndk JNI cross-compile target (the host
+    # tarball above ships only x86_64). Dated path = the immutable 1.75.0 release (2023-12-28).
+    fetch_verify "https://static.rust-lang.org/dist/2023-12-28/rust-std-${RUST_VERSION}.0-aarch64-linux-android.tar.xz" \
+        "rust-std-${RUST_VERSION}-aarch64-linux-android.tar.xz" "${SHA256_RUST_STD_ANDROID_1_75}"
     # Flutter SDK 3.24.5.
     fetch_verify "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz" \
         "flutter-${FLUTTER_VERSION}.tar.xz" "${SHA256_FLUTTER_3_24_5}"

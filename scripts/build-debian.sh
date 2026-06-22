@@ -67,7 +67,8 @@ build_one() {
             # clang+llvm-15.0.6-.../ — point bindgen at its libclang.
             "$TC"/rust-*/install.sh --prefix="$TC/rustinstall" --disable-ldconfig \
                 --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview >/dev/null
-            export LIBCLANG_PATH="$(echo "$TC"/clang+llvm-*/lib)"
+            LLVM_ROOT="$(echo "$TC"/clang+llvm-*)"
+            export LIBCLANG_PATH="$LLVM_ROOT/lib"
             # Use a build-time CARGO_HOME so the vendored/offline config does NOT
             # overwrite the repo'\''s TRACKED .cargo/config.toml (which carries the
             # windows/macos rustflags); cargo merges CARGO_HOME/config.toml with it.
@@ -76,6 +77,15 @@ build_one() {
             # The pre-built FRB codegen tool is staged at /online/frb-tool/bin by
             # online-fetch'\''s build_frb_codegen (built FOR ubuntu:18.04 there).
             export PATH="$TC/flutter/bin:$TC/rustinstall/bin:/online/frb-tool/bin:$CARGO_HOME/bin:$PATH"
+            # Shadow `flutter` with the offline shim (scripts/flutter-offline-shim.sh): the
+            # flutter wrapper drives `pub` ONLINE (it refreshes pub security advisories, which
+            # _TypeError against the read-only offline cache → rc=1), so route `flutter pub
+            # {run,get}` (FRB ffigen + any implicit get) to `dart --offline`; `flutter build
+            # linux` passes through to the real flutter ($REAL_FLUTTER) unchanged.
+            export REAL_FLUTTER="$TC/flutter/bin/flutter"
+            SHIM=/tmp/flutter-shim; mkdir -p "$SHIM"
+            cp /src/scripts/flutter-offline-shim.sh "$SHIM/flutter"; chmod +x "$SHIM/flutter"
+            export PATH="$SHIM:$PATH"
             # Wire cargo to the vendored, lockfile-pinned crate set (R-B10) so the
             # --locked build resolves from ./online/cargo-vendor, never the network.
             # The vendor_cargo step captured the AUTHORITATIVE [source.*] map (the cargo
@@ -100,15 +110,17 @@ CFG
             git config --global --add safe.directory "*"
             export PUB_CACHE=/online/pub-cache
             [ -d "$PUB_CACHE" ] || { echo "[FATAL] /online/pub-cache missing -- run online-fetch.sh (stage_pub_cache)"; exit 1; }
-            # Use dart pub get (NOT flutter pub get): the flutter wrapper runs a version
-            # self-check that git-fetches github (fails offline, exit 1); dart pub get --offline
-            # resolves the project straight from PUB_CACHE (validated against the staged cache).
+            # Use dart pub get (NOT flutter pub get): the flutter wrapper drives pub ONLINE
+            # (it refreshes pub security advisories, which _TypeError against the read-only
+            # offline cache → rc=1); dart pub get --offline resolves the project straight from
+            # PUB_CACHE, skipping advisories (validated against the staged cache).
             ( cd flutter && dart pub get --offline )
             # FRB codegen first (R-B7: the uncommitted generated_bridge.dart /
             # bridge_generated.rs every build job needs), then upstream build.py
             # with the §3.2 x64-linux features.
             flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
-                --dart-output ./flutter/lib/generated_bridge.dart
+                --dart-output ./flutter/lib/generated_bridge.dart \
+                --llvm-path "$LLVM_ROOT"
             python3 ./build.py '"$features"'
         '
     mkdir -p "$OUT_DIR"

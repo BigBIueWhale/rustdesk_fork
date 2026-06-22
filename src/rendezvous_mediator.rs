@@ -272,6 +272,9 @@ pub async fn start_direct_only() {
 async fn direct_server(server: ServerPtr) {
     let mut listener = None;
     let mut port = 0;
+    // R-T12: the consecutive accept()-error streak, driving the escalating bounded back-off in the
+    // error arm below; reset on any successful accept or the benign 1s poll-timeout.
+    let mut accept_err_streak: u32 = 0;
     loop {
         // R-T9 (§20): on graceful shutdown, stop accepting and drop the listener (returning here
         // drops the `listener` local, so the listening socket closes and new SYNs get an RST), then
@@ -328,6 +331,7 @@ async fn direct_server(server: ServerPtr) {
             }
             match hbb_common::timeout(1000, l.accept()).await {
                 Ok(Ok((stream, addr))) => {
+                    accept_err_streak = 0; // R-T12: a successful accept resets the error back-off
                     stream.set_nodelay(true).ok();
                     // R-T10 (§20): enable TCP keepalive on the accepted peer socket immediately
                     // after set_nodelay — the kernel-level backstop the NAT'd-client reality
@@ -394,14 +398,20 @@ async fn direct_server(server: ServerPtr) {
                     });
                 }
                 Ok(Err(e)) => {
-                    // R-T12: a real accept() error (EMFILE/ENFILE under fd-exhaustion) — observe
-                    // it rate-limited and back off to damp the busy-spin, not silently sleep as
-                    // if idle (which would hide an in-progress flood from the operator).
+                    // R-T12: a real accept() error (EMFILE/ENFILE/WSAEMFILE/WSAENOBUFS under fd/
+                    // resource exhaustion — note_accept_error maps the errno) — observe it
+                    // rate-limited, then back off with an ESCALATING bounded delay, not a flat sleep:
+                    // the kernel keeps signalling the socket readable while accept() returns EMFILE,
+                    // so a fixed sleep still busy-spins. min(50ms·2^streak, 5s) damps the spin yet
+                    // recovers fast once fds free up; the streak resets on the next success/timeout.
                     crate::server::note_accept_error(port as u16, &e);
-                    sleep(0.2).await;
+                    let backoff_ms = (50u64 << accept_err_streak.min(7)).min(5000);
+                    accept_err_streak = accept_err_streak.saturating_add(1);
+                    sleep(backoff_ms as f32 / 1000.0).await;
                 }
                 Err(_) => {
                     // The 1s poll timeout — normal idle; loop to re-check disabled/port.
+                    accept_err_streak = 0; // R-T12: idle, not erroring — reset the back-off
                 }
             }
         } else {

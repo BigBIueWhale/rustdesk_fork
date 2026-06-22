@@ -199,12 +199,35 @@ pub fn note_accept_error(port: u16, err: &std::io::Error) {
         if due {
             *last = Some(std::time::Instant::now());
             log::warn!(
-                "R-T12: accept() failing on :{} — {} (errno={:?}); likely fd/resource exhaustion",
+                "R-T12: accept() failing on :{} — {} (errno={:?}){}",
                 port,
                 err,
-                err.raw_os_error()
+                err.raw_os_error(),
+                accept_error_class(err)
             );
         }
+    }
+}
+
+/// R-T12: map the fd/resource-exhaustion accept() errnos via raw_os_error() so the operator sees the
+/// CAUSE, not a bare number — under the R-T1 connection flood the box hits its fd/socket ceiling and
+/// accept() returns exactly these while the kernel keeps the socket readable (the busy-spin the
+/// escalating back-off damps). EMFILE/ENFILE/ENOBUFS on unix; WSAEMFILE/WSAENOBUFS on Windows.
+fn accept_error_class(err: &std::io::Error) -> &'static str {
+    match err.raw_os_error() {
+        #[cfg(not(windows))]
+        Some(n) if n == hbb_common::libc::EMFILE || n == hbb_common::libc::ENFILE => {
+            " = process/system fd table exhausted (EMFILE/ENFILE)"
+        }
+        #[cfg(not(windows))]
+        Some(n) if n == hbb_common::libc::ENOBUFS || n == hbb_common::libc::ENOMEM => {
+            " = kernel socket buffers/memory exhausted (ENOBUFS/ENOMEM)"
+        }
+        #[cfg(windows)]
+        Some(10024) => " = process socket table exhausted (WSAEMFILE)",
+        #[cfg(windows)]
+        Some(10055) => " = no buffer space (WSAENOBUFS)",
+        _ => " — transient accept error",
     }
 }
 

@@ -387,6 +387,22 @@ if [ -n "$r_t1_missing" ]; then
 else
   echo "  ok  R-T1/R-T12 connection-flood bound + flood-safe observability present"
 fi
+# R-T12 (§20): the accept-error arm MUST (a) MAP the fd/resource-exhaustion errnos (EMFILE/ENFILE/
+# ENOBUFS / WSAEMFILE/WSAENOBUFS) via raw_os_error() so the operator sees the cause, not a bare int,
+# and (b) apply an ESCALATING bounded back-off (a per-streak-counter min(50ms·2^n, 5s)), not a flat
+# sleep — under an fd-exhaustion flood the kernel keeps signalling the socket readable while accept()
+# returns EMFILE, so a fixed sleep still busy-spins. (The 3-way outcome split + rate-limited
+# aggregation are gated by R-T1/R-T12 above.)
+r_t12_eb=
+grep -qE 'accept_err_streak'              src/rendezvous_mediator.rs || r_t12_eb="$r_t12_eb no-streak-counter"
+grep -qE '50u64 << accept_err_streak'     src/rendezvous_mediator.rs || r_t12_eb="$r_t12_eb no-escalating-backoff"
+grep -qE 'fn accept_error_class'          src/server.rs              || r_t12_eb="$r_t12_eb no-errno-mapper"
+grep -qE 'libc::EMFILE|libc::ENFILE'      src/server.rs              || r_t12_eb="$r_t12_eb no-EMFILE-map"
+if [ -n "$r_t12_eb" ]; then
+  echo "  FAIL R-T12: accept-error escalating-backoff/errno-map incomplete:$r_t12_eb"; rc=1
+else
+  echo "  ok  R-T12 accept-error escalating bounded back-off + EMFILE/ENFILE errno mapping present"
+fi
 # R-D3a (§17): the root service unit MUST carry the kernel sandbox (the upstream unit had none),
 # shrinking the blast radius of any memory-corruption bug missed by the §8 excisions. MemoryDenyWriteExecute
 # (W^X) is the code-injection-primitive blocker, ENABLED after examples/mdwe_codec_probe empirically

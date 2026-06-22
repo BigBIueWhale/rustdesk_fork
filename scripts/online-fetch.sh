@@ -119,6 +119,19 @@ build_deb_builder_image() {
         -t "$tag" -f "$LIB_DIR/Dockerfile.deb-builder" "$LIB_DIR"
 }
 
+# ── The pinned .apk build image (R-B7/B8): ubuntu:24.04 + the android build-deps ────
+# build-android.sh runs --network=none; the NDK r28c prebuilt clang needs a modern glibc, so
+# this is FROM ubuntu:24.04 (not the bionic deb-builder). Dockerfile.android-builder bakes the
+# vcpkg/cargo-ndk/gradle system deps; the rust/flutter/NDK toolchains stay in ./online.
+build_android_builder_image() {
+    require_cmd docker
+    case "$SHA256_BASEIMAGE_UBUNTU_2404" in *"${SHA_PENDING}"*) die "base-image digest is the R-B12 sentinel — record it in pins.env first" ;; esac
+    local tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"
+    log "docker build: $tag (FROM the pinned ubuntu:24.04 + android build-deps, Dockerfile.android-builder)"
+    docker build --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_2404}" \
+        -t "$tag" -f "$LIB_DIR/Dockerfile.android-builder" "$LIB_DIR"
+}
+
 # ── The FRB codegen tool (R-B7): built FOR ubuntu:18.04, staged to ./online/frb-tool ──
 # build_one needs flutter_rust_bridge_codegen to (re)generate the bridge; it cannot
 # `cargo install` it offline (its deps are not in the main vendor set), so build it HERE
@@ -224,16 +237,54 @@ stage_android_ndk() {
     rm -rf "$ONLINE_DIR/.ndk-tmp"
 }
 
+# ── The vcpkg-built arm64-android native codecs (R-R1 pinned overlay) ─────────────
+# The android JNI lib (scrap + magnum-opus, cross-compiled by cargo-ndk for
+# aarch64-linux-android) links the codecs STATICALLY from VCPKG_ROOT/installed/arm64-android.
+# vcpkg's arm64-android triplet cross-compiles them with the NDK clang (ANDROID_NDK_HOME) — no
+# host gcc-8 needed (ARM NEON, not x86 AVX2). CLASSIC mode (--overlay-ports + explicit ports),
+# NOT the manifest mode of flutter/build_android_deps.sh: manifest mode needs the vcpkg tree to
+# be a git checkout (to resolve the builtin-baseline), but ./online stages the pinned TARBALL
+# (no .git) — classic mode over the tarball baseline ports + the overlay is equivalent + git-free.
+stage_vcpkg_natives_arm64() {
+    require_cmd docker
+    local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"
+    docker image inspect "$builder" >/dev/null 2>&1 || die "android-builder image missing — build_android_builder_image must run first"
+    if [ -d "$ONLINE_DIR/vcpkg/installed/arm64-android/lib" ]; then
+        log "vcpkg arm64-android codecs already staged, skipping"; return 0
+    fi
+    [ -d "$ONLINE_DIR/android-ndk/toolchains" ] || die "android NDK not extracted — stage_android_ndk must run first"
+    [ -f "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" ] || die "vcpkg source archive missing — fetch_vcpkg_and_images must run first"
+    log "staging the vcpkg arm64-android codecs (aom/libvpx/libyuv/opus) -> ./online/vcpkg/installed/arm64-android"
+    docker run --rm \
+        -v "$ONLINE_DIR:/online" \
+        -v "$REPO_ROOT/res/vcpkg:/overlay:ro" \
+        "$builder" bash -euo pipefail -c '
+            export ANDROID_NDK_HOME=/online/android-ndk
+            VR=/tmp/vcpkg; mkdir -p "$VR"
+            tar -C "$VR" --strip-components=1 -xzf /online/vcpkg-'"${VCPKG_BASELINE}"'.tar.gz
+            export VCPKG_DISABLE_METRICS=1
+            "$VR"/bootstrap-vcpkg.sh -disableMetrics >/dev/null
+            "$VR"/vcpkg install --triplet arm64-android --overlay-ports=/overlay \
+                aom libvpx libyuv opus
+            mkdir -p /online/vcpkg/installed
+            rm -rf /online/vcpkg/installed/arm64-android
+            cp -a "$VR"/installed/arm64-android /online/vcpkg/installed/arm64-android
+        '
+    log "vcpkg arm64-android codecs staged ($(ls "$ONLINE_DIR"/vcpkg/installed/arm64-android/lib/*.a 2>/dev/null | wc -l) static libs)"
+}
+
 main() {
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     vendor_cargo
     fetch_toolchains
     fetch_vcpkg_and_images
     build_deb_builder_image
+    build_android_builder_image
     build_frb_codegen
     stage_pub_cache
     stage_vcpkg_natives
     stage_android_ndk
+    stage_vcpkg_natives_arm64
     # Windows ISO / VS Build Tools are partly evergreen (R-B12(c)): pin the CAPTURED
     # offline layout by SHA-256, documenting publisher-verified vs evergreen.
     log "online-fetch complete — ./online is now offline-buildable. Builds run --network=none."

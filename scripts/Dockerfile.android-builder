@@ -1,0 +1,22 @@
+# scripts/Dockerfile.android-builder — the pinned ubuntu:24.04 .apk build image (R-B7/B8).
+#
+# The Android build (build-android.sh) runs --network=none, so the system tools it needs
+# are baked in HERE during the ONE networked step (online-fetch.sh docker-builds this). The
+# Rust / Flutter / NDK toolchains are NOT in this image — they come from ./online at build
+# time (the digest-pinned tarballs + the extracted /online/android-ndk). Newer than the
+# bionic deb-builder because the NDK r28c prebuilt clang needs a modern glibc (ubuntu:24.04).
+#
+# FROM the digest-pinned ubuntu:24.04 baseline (the build-arg is SHA256_BASEIMAGE_UBUNTU_2404
+# from pins.env). Dep set covers: the vcpkg arm64-android codec build (cmake/ninja/nasm/yasm/
+# zip — the codecs CROSS-compile with the NDK clang, so NO gcc-8 is needed unlike x64-linux),
+# the cargo-ndk JNI lib (libclang for bindgen, libssl-dev for openssl-sys), and `flutter build
+# apk` (openjdk-17 for gradle). The android SDK (build-tools/platform) + gradle cache are
+# staged separately into ./online (sdkmanager / the gradle offline cache).
+ARG BASE_DIGEST
+FROM ubuntu:24.04@${BASE_DIGEST}
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential ca-certificates clang cmake curl git \
+      libclang-dev libssl-dev nasm ninja-build openjdk-17-jdk-headless \
+      pkg-config python3 unzip wget xz-utils yasm zip \
+    && rm -rf /var/lib/apt/lists/*

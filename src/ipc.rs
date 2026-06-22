@@ -516,6 +516,17 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                         }
                                         continue;
                                     }
+                                    // R-S11 / Appendix C #15: reject a whole-config SyncConfig write
+                                    // on the main channel — the unguarded Config::set bypass that could
+                                    // re-pin the trust anchor / undo the §8/§9 pins from inside.
+                                    #[cfg(any(target_os = "linux", target_os = "macos"))]
+                                    if !main_channel_admits_config_write(&data) {
+                                        log::warn!(
+                                            "Rejected a whole-config SyncConfig write on the main IPC channel (R-S11): peer_uid={:?}",
+                                            stream.peer_uid()
+                                        );
+                                        continue;
+                                    }
                                     handle(data, &mut stream).await;
                                 }
                                 Ok(None) => {
@@ -672,6 +683,21 @@ impl Drop for CheckIfRestart {
             )
         }
     }
+}
+
+/// R-S11 / Appendix C #15: the MAIN IPC channel (UI⇄service; on Linux/macOS the 0o0600 same-uid
+/// socket) is a config-integrity boundary. `Data::SyncConfig(Some(_))` drives `Config::set` +
+/// `Config2::set` (config.rs), which overwrite the ENTIRE config with NO is_option_can_save /
+/// pinned-key check — so a same-uid local process could re-pin the trust-anchor key_pair, re-home
+/// id/rendezvous, and undo the §8 excisions + §9 pins from inside. That whole-config PUSH is
+/// legitimate ONLY on the peer-uid-gated `_service` cross-uid channel (the root↔user sync,
+/// server.rs); on the main channel only the `SyncConfig(None)` read-request is legitimate (the
+/// `--server` reads config via it). Reject the whole-config write so the unguarded Config::set is
+/// unreachable from the main-channel handler. (Per-key writes — Data::Options, pinned at
+/// is_option_can_save per R-S16, and Data::Config, the UI's permanent-password set — stay.)
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn main_channel_admits_config_write(data: &Data) -> bool {
+    !matches!(data, Data::SyncConfig(Some(_)))
 }
 
 async fn handle(data: Data, stream: &mut Connection) {
@@ -2015,6 +2041,24 @@ mod test {
     fn verify_ffi_enum_data_size() {
         println!("{}", std::mem::size_of::<Data>());
         assert!(std::mem::size_of::<Data>() <= 120);
+    }
+
+    // R-S11 / Appendix C #15: the MAIN-channel config-write allowlist MUST reject a whole-config
+    // SyncConfig(Some) push (the unguarded Config::set/Config2::set bypass that could re-pin the
+    // trust anchor / undo the §8/§9 pins) while admitting the SyncConfig(None) read-request + the
+    // per-key writes that legitimately stay (Options is pinned at is_option_can_save per R-S16;
+    // Config carries the UI's permanent-password set).
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn main_channel_rejects_whole_config_sync_write() {
+        use hbb_common::config::{Config, Config2};
+        let write = Data::SyncConfig(Some(Box::new((Config::default(), Config2::default()))));
+        assert!(
+            !main_channel_admits_config_write(&write),
+            "R-S11: a whole-config SyncConfig(Some) write MUST be rejected on the main channel"
+        );
+        assert!(main_channel_admits_config_write(&Data::SyncConfig(None)));
+        assert!(main_channel_admits_config_write(&Data::Options(None)));
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]

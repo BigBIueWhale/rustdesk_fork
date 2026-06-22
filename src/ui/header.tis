@@ -62,35 +62,9 @@ function stateChanged() {
 var header;
 var old_window_state = View.WINDOW_SHOWN;
 
-var is_edit_os_password;
-class EditOsPassword: Reactor.Component {
-    function render() {
-        return <span style="margin-left: 12px; padding: 0 6px; display: inline-block;" .link>{svg_edit}</span>;
-    }
-
-    function onMouse(evt) {
-        if (evt.type == Event.MOUSE_DOWN) {
-            is_edit_os_password = true;
-            editOSPassword();
-        }
-    }
-}
-
-function editOSPassword(login=false) {
-    var p0 = handler.get_option('os-password');
-    msgbox("custom-os-password", 'OS Password', p0, "", function(res=null) {
-        if (!res) return;
-        var a0 = handler.get_option('auto-login') != '';
-        var p = (res.password || '').trim();
-        var a = res.autoLogin || false;
-        if (p == p0 && a == a0) return;
-        if (p != p0) handler.set_option('os-password', p);
-        if (a != a0) handler.set_option('auto-login', a ? 'Y' : '');
-        if (p && login) {
-            handler.input_os_password(p, true);
-        }
-      });
-}
+// R-S18 / Appendix C #22: the sciter "OS Password" cluster (the EditOsPassword widget + the
+// editOSPassword get/set os-password persistence dialog) is removed — the fork stores no OS
+// credential. The manual input_os_password remains reachable from the responder side only.
 
 var recording = false;
 
@@ -228,8 +202,7 @@ class Header: Reactor.Component {
     function renderActionPop() {
         return <popup>
             <menu.context #action-options>
-                {keyboard_enabled ? <li #os-password>{translate('OS Password')}<EditOsPassword /></li> : ""}
-                <li #transfer-file>{translate('Transfer file')}</li> 
+                <li #transfer-file>{translate('Transfer file')}</li>
                 <li #tunnel>{translate('TCP tunneling')}</li> 
                 {handler.get_audit_server("conn") && <li #note>{translate('Note')}</li>}
                 <div .separator />
@@ -339,15 +312,6 @@ class Header: Reactor.Component {
         handler.transfer_file();
     }
     
-    event click $(#os-password) (evt) {
-        if (is_edit_os_password) {
-            is_edit_os_password = false;
-            return;
-        }
-        var p = handler.get_option('os-password');
-        if (!p) editOSPassword(true);
-        else handler.input_os_password(p, true);
-    }
 
     event click $(#tunnel) {
         handler.tunnel();

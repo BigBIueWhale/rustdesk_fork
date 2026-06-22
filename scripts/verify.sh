@@ -429,6 +429,13 @@ ra6_clean 'Some\(OSLogin|\.set_logon\(' 'R-S18 viewer os_login + elevation-with-
 # not named by R-S18) stays. NB the sciter src/ui/header.tis "OS Password" menu cluster (.tis runtime
 # script, not the shipped flutter UI, not grepped by this .rs gate) is a tracked follow-on.
 ra6_clean 'get_option\("os-username"\)|get_option\("os-password"\)|fn should_auto_login' 'R-S18 viewer persisted os-credential reads (.rs)' || rc=1
+# R-S18 (sciter UI): the "OS Password" persistence cluster — the EditOsPassword widget +
+# editOSPassword get/set('os-password') dialog — is removed from src/ui/*.tis too (ra6_clean greps
+# .rs only). The sciter UI is the verify build, not shipped, but the source must conform symmetrically.
+if grep -rInE "get_option\('os-password'\)|set_option\('os-password'|editOSPassword|EditOsPassword" src/ui --include='*.tis' 2>/dev/null | grep -qv '//'; then
+  echo "  FAIL R-S18: sciter os-password persistence present in .tis:"; \
+    grep -rInE "get_option\('os-password'\)|set_option\('os-password'|editOSPassword|EditOsPassword" src/ui --include='*.tis' | grep -v '//' | sed 's/^/      /'; rc=1
+else echo "  ok  R-S18 sciter os-password persistence (.tis) absent"; fi
 # R-S15 (Appendix C #19): the viewer's in-session PeerConfig writes from peer-controlled data MUST be
 # funnelled through a validated allowlist before save_config — a keyed-but-hostile host (§4.4) must not
 # inject unbounded/injection strings into the on-disk config. The initiator-side twin of the responder's

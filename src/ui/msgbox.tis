@@ -94,18 +94,13 @@ class MsgboxComponent: Reactor.Component {
             return this.getInputUserPasswordContent();
         } else if (this.type == "session-login-password") {
             return this.getXsessionPasswordContent();
-        } else if (this.type == "custom-os-password") {
-            var ts = this.autoLogin ? { checked: true } : {};
-            return <div .form>
-              <PasswordComponent value={this.content} />
-              <div><button|checkbox(autoLogin) {ts} style="width: *; word-wrap: break-word; overflow-wrap: break-word; white-space: normal; height: auto; overflow: hidden;">{translate('Auto Login')}</button></div>
-              </div>;
         }
+        // R-S18: the "custom-os-password" content (stored OS-password + Auto-Login dialog) is removed.
         return this.content;
     }
 
     function getColor() {
-        if (this.type == "input-password" || this.type == "custom-os-password" || this.type == "session-login" || this.type == "session-login-password") {
+        if (this.type == "input-password" || this.type == "session-login" || this.type == "session-login-password") {
             return "#AD448E";
         }
         if (this.type == "success") {

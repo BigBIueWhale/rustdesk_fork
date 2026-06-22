@@ -120,13 +120,25 @@ CFG
             # (it refreshes pub security advisories, which _TypeError against the read-only
             # offline cache → rc=1); dart pub get --offline resolves the project straight from
             # PUB_CACHE, skipping advisories (validated against the staged cache).
+            export CI=true   # non-interactive flutter (suppress the fresh-HOME first-run prompt)
             ( cd flutter && dart pub get --offline )
+            # `flutter build linux` ALSO re-resolves the flutter SDK'\''s OWN tool package
+            # (packages/flutter_tools) IN-PROCESS and ONLINE — the cold tarball ships it
+            # UNRESOLVED, so it hits pub.dev + the advisories _TypeError. Pre-resolve it OFFLINE
+            # here (its deps are staged in PUB_CACHE by stage_pub_cache) so `flutter build` finds
+            # the .dart_tool fresh and skips the networked re-resolution.
+            ( cd "$TC"/flutter/packages/flutter_tools && dart pub get --offline )
             # FRB codegen first (R-B7: the uncommitted generated_bridge.dart /
             # bridge_generated.rs every build job needs), then upstream build.py
             # with the §3.2 x64-linux features.
+            # --llvm-compiler-opts: give ffigen'\''s libclang the clang BUILTIN-header dir so it
+            # can resolve <stdbool.h>. Without it ffigen emits "[SEVERE] stdbool.h not found" and
+            # DEGRADES every bool-returning binding (e.g. mainPeerHasPassword) to a raw
+            # NativeFunction<Int...> → the flutter `kernel_snapshot` Dart compile then fails.
             flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
                 --dart-output ./flutter/lib/generated_bridge.dart \
-                --llvm-path "$LLVM_ROOT"
+                --llvm-path "$LLVM_ROOT" \
+                --llvm-compiler-opts="-I$(echo "$LLVM_ROOT"/lib/clang/*/include)"
             python3 ./build.py '"$features"'
         '
     mkdir -p "$OUT_DIR"

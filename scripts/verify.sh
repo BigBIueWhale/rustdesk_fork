@@ -919,6 +919,20 @@ else
   echo "  ok  R-SV4/§18 RENDEZVOUS_SERVERS default empty (no hardwired rendezvous broker; dial nobody)"
 fi
 ra6_clean 'rs-[a-z]+\.rustdesk\.com' 'R-SV4/§18 hardwired rs-*.rustdesk.com rendezvous host (RENDEZVOUS_SERVERS emptied)' || rc=1
+# R-SV1 / §8 / §18 (no device fingerprinting): the upstream hbb_common::fingerprint module -- a
+# HARDWARE fingerprint generator (sysinfo-collected cpu brand/speed/cores/mem/platform/arch/addr,
+# obfuscated with a hand-rolled AES: the S-box TABLE + expand_key/gf_mul/add_round_key) that upstream
+# used to identify devices to the rendezvous -- is REMOVED. The fork excised the rendezvous
+# registration that consumed it, orphaning the module (declared `pub mod fingerprint` but ZERO callers
+# tree-wide; the live get_fingerprint/pk_to_fingerprint/--get-fingerprint paths are the UNRELATED
+# Ed25519 PUBLIC-KEY fingerprint for R-S17 host pinning). Gone not disabled: no dead privacy-hostile
+# device-fingerprinting machinery (or hand-rolled crypto) left compiled into the binary.
+if [ -f libs/hbb_common/src/fingerprint.rs ]; then
+  echo "  FAIL R-SV1/§8: the device-fingerprint module (hbb_common/fingerprint.rs) is back"; rc=1
+else
+  echo "  ok  R-SV1/§8 device-fingerprint module removed (hbb_common/fingerprint.rs absent)"
+fi
+ra6_clean 'FingerprintingInfo|get_fingerprinting_info|fn expand_key|fn gf_mul|mod fingerprint' 'R-SV1/§8 device-fingerprint (hardware-id + hand-rolled-AES) machinery' || rc=1
 # R-SV6(b) / R-G4 / §18 (dial nobody): the OIDC ACCOUNT-LOGIN egress is excised. account.rs's
 # auth_task POSTed { deviceInfo: get_login_device_info() } to <api-server>/api/oidc/auth (a
 # device-fingerprint leak), polled /api/oidc/auth-query for an access token, and warmed

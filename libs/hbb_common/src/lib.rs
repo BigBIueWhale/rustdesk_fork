@@ -58,7 +58,6 @@ pub use sysinfo;
 pub use thiserror;
 pub use toml;
 pub use uuid;
-pub mod fingerprint;
 pub use flexi_logger;
 pub mod stream;
 #[cfg(feature = "webrtc")]

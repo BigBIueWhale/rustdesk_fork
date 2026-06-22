@@ -11,19 +11,16 @@ cfg_if! {
         mod quartz;
         pub use self::quartz::*;
     } else if #[cfg(x11)] {
-        cfg_if! {
-            if #[cfg(feature="wayland")] {
-                mod linux;
-                mod wayland;
-                mod x11;
-                pub use self::linux::*;
-                pub use self::wayland::set_map_err;
-                pub use self::x11::PixelBuffer;
-            } else {
-                mod x11;
-                pub use self::x11::*;
-            }
-        }
+        // R-X12 (§8): the Wayland/pipewire capture path is COMPILED OUT — the scrap `wayland` feature
+        // + `mod wayland` (wayland/pipewire.rs, the xdg-portal ScreenCast / restore-token persistence)
+        // are removed. The linux::Display/Capturer enum stays (X11-only — its WAYLAND variant is cfg'd
+        // out in linux.rs) so the capture call sites are unchanged, and linux::set_map_err is a no-op
+        // (the pipewire error-mapper it installed is gone). X11 is the sole, compile-pinned capture
+        // backend (is_x11() == true, R-X12).
+        mod linux;
+        mod x11;
+        pub use self::linux::*;
+        pub use self::x11::PixelBuffer;
     } else if #[cfg(dxgi)] {
         mod dxgi;
         pub use self::dxgi::*;

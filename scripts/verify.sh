@@ -159,6 +159,20 @@ if [ -n "$r_x12_pin" ]; then
 else
   echo "  ok  R-X12 is_x11() compile-pinned true (main + scrap; no runtime display-server selection)"
 fi
+# R-X12 (§8) — the Wayland/pipewire CAPTURE path is COMPILED OUT (the CI-grep deliverable): the scrap
+# `wayland` feature + `mod wayland` (libs/scrap/src/wayland/ — the xdg-portal ScreenCast + restore-token
+# persistence, R-S14) are REMOVED; X11 is the sole compile-pinned capture backend (the gstreamer/dbus/
+# zbus pipewire surface is no longer linked). Asserts the feature enabling + `mod wayland` + the dir absent.
+r_x12_cap=
+grep -qE 'scrap = .*wayland'                Cargo.toml            && r_x12_cap="$r_x12_cap root-scrap-wayland-feature"
+grep -qE '^wayland = \['                     libs/scrap/Cargo.toml && r_x12_cap="$r_x12_cap scrap-wayland-feature"
+grep -rqE '^[[:space:]]*(pub )?mod wayland'   libs/scrap/src        && r_x12_cap="$r_x12_cap scrap-mod-wayland"
+[ -e libs/scrap/src/wayland ]                                      && r_x12_cap="$r_x12_cap scrap-wayland-dir"
+if [ -n "$r_x12_cap" ]; then
+  echo "  FAIL R-X12: Wayland capture not compiled out:$r_x12_cap"; rc=1
+else
+  echo "  ok  R-X12 Wayland/pipewire capture compiled out (no scrap wayland feature / mod wayland / dir)"
+fi
 ra6_clean 'gtk_sudo|run_cmds_privileged|"-gtk-sudo"'                      'R-X11 gtk_sudo elevation'  || rc=1
 ra6_clean 'start_uinput_service'                                         'R-X13 dormant uinput listener' || rc=1
 # R-X13 (§8): the rdp_input module — Wayland-portal RDP keyboard/mouse injection via the dbus

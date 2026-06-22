@@ -14,8 +14,9 @@ pub mod quartz;
 #[cfg(x11)]
 pub mod x11;
 
-#[cfg(all(x11, feature = "wayland"))]
-pub mod wayland;
+// R-X12 (§8): `pub mod wayland` (the xdg-portal ScreenCast / pipewire capture + restore-token
+// persistence) is EXCISED — X11 is the compile-pinned sole capture backend (is_x11()==true), the
+// scrap `wayland` feature is dropped, and libs/scrap/src/wayland/ is removed.
 
 #[cfg(dxgi)]
 pub mod dxgi;

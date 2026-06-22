@@ -1621,20 +1621,9 @@ pub fn main_get_main_display() -> SyncReturn<String> {
             }
         }
 
-        #[cfg(target_os = "linux")]
-        if is_linux_wayland {
-            let displays = scrap::wayland::display::get_displays();
-            if let Some(display) = displays.displays.get(displays.primary) {
-                let logical_size = display
-                    .logical_size
-                    .unwrap_or((display.width, display.height));
-                display_info = serde_json::to_string(&HashMap::from([
-                    ("w", logical_size.0),
-                    ("h", logical_size.1),
-                ]))
-                .unwrap_or_default();
-            }
-        }
+        // R-X12: the Wayland logical-display-size branch (scrap::wayland::display::get_displays) is
+        // removed — Wayland capture is compiled out (X11-pinned, is_x11()==true), so is_linux_wayland
+        // is always false; display_info comes from the X11 path above (the `if !is_linux_wayland`).
     }
     SyncReturn(display_info)
 }

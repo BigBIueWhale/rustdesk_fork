@@ -1,10 +1,6 @@
 use super::*;
-use hbb_common::{allow_err, anyhow, platform::linux::DISTRO};
-use scrap::{
-    is_cursor_embedded, set_map_err,
-    wayland::pipewire::{fill_displays, try_fix_logical_size},
-    Capturer, Display, Frame, TraitCapturer,
-};
+use hbb_common::platform::linux::DISTRO;
+use scrap::{is_cursor_embedded, set_map_err, Capturer, Display, Frame, TraitCapturer};
 use std::collections::HashMap;
 use std::io;
 
@@ -148,15 +144,10 @@ pub(super) async fn check_init() -> ResultType<()> {
                     return Ok(());
                 }
 
-                let mut all = Display::all()?;
-                log::debug!("Initializing displays with fill_displays()");
-                {
-                    let temp_mouse_move_handle = input_service::TemporaryMouseMoveHandle::new();
-                    let move_mouse_to = |x, y| temp_mouse_move_handle.move_mouse_to(x, y);
-                    fill_displays(move_mouse_to, crate::get_cursor_pos, &mut all)?;
-                }
-                log::debug!("Attempting to fix logical size with try_fix_logical_size()");
-                try_fix_logical_size(&mut all);
+                // R-X12: fill_displays + try_fix_logical_size (scrap::wayland::pipewire geometry
+                // helpers) are removed with the Wayland capture path. This `!is_x11()` body is dead
+                // (is_x11()==true) — X11 capture is handled directly by scrap, not via this module.
+                let all = Display::all()?;
                 *PIPEWIRE_INITIALIZED.write().unwrap() = true;
                 let num = all.len();
                 let primary = super::display_service::get_primary_2(&all);

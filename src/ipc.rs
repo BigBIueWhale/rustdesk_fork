@@ -979,21 +979,14 @@ async fn handle(data: Data, stream: &mut Connection) {
                 }
                 #[cfg(target_os = "linux")]
                 {
-                    let v = if opt.is_empty() {
-                        if scrap::wayland::pipewire::is_rdp_session_hold() {
-                            "fake token".to_string()
-                        } else {
-                            "".to_owned()
-                        }
-                    } else {
-                        opt
-                    };
+                    // R-X12: scrap::wayland::pipewire::is_rdp_session_hold() removed (Wayland portal
+                    // capture compiled out, X11-pinned) — no RDP capture session is ever held.
+                    let v = if opt.is_empty() { "".to_owned() } else { opt };
                     Some(v)
                 }
             } else if value == "clear" {
                 set_local_option(key.clone(), "".to_owned());
-                #[cfg(target_os = "linux")]
-                scrap::wayland::pipewire::close_session();
+                // R-X12: scrap::wayland::pipewire::close_session() removed (Wayland capture compiled out).
                 Some("".to_owned())
             } else {
                 None

@@ -10,7 +10,10 @@ authors = ["Ram <quadrupleslap@gmail.com>"]
 edition = "2018"
 
 [features]
-wayland = ["gstreamer", "gstreamer-app", "gstreamer-video", "dbus", "tracing", "zbus"]
+# R-X12 (§8): the `wayland` feature is REMOVED — the Wayland/pipewire/xdg-portal ScreenCast capture
+# (mod wayland) is excised; X11 is the compile-pinned sole capture backend (is_x11()==true). The
+# gstreamer/dbus/zbus/tracing optional deps it pulled are no longer enabled, so the pipewire+dbus
+# capture surface is not linked into the binary.
 mediacodec = ["ndk"]
 linux-pkg-config = ["dep:pkg-config"]
 hwcodec = ["dep:hwcodec"]

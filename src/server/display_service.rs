@@ -306,10 +306,10 @@ pub(super) fn get_display_info(idx: usize) -> Option<DisplayInfo> {
 pub(super) fn check_update_displays(all: &Vec<Display>) {
     // For compatibility: if only one display, scale remains 1.0 and we use the physical size for `uinput`.
     // If there are multiple displays, we use the logical size for `uinput` by setting scale to d.scale().
+    // R-X12: X11 is the pinned capture backend (is_x11()==true) so use_logical_scale is always false —
+    // the Wayland logical-size path + scrap::wayland::display::get_displays() are compiled out.
     #[cfg(target_os = "linux")]
-    let use_logical_scale = !is_x11()
-        && crate::is_server()
-        && scrap::wayland::display::get_displays().displays.len() > 1;
+    let use_logical_scale = false;
     let displays = all
         .iter()
         .map(|d| {

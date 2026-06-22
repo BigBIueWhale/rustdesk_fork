@@ -5145,8 +5145,8 @@ mod raii {
                 display_service::restore_resolutions();
                 #[cfg(windows)]
                 let _ = virtual_display_manager::reset_all();
-                #[cfg(target_os = "linux")]
-                scrap::wayland::pipewire::try_close_session();
+                // R-X12: scrap::wayland::pipewire::try_close_session() removed — the Wayland portal
+                // capture session is compiled out (X11-pinned, is_x11()==true).
             }
             Self::check_wake_lock();
             #[cfg(not(any(target_os = "android", target_os = "ios")))]

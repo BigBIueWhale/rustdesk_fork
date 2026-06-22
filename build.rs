@@ -71,7 +71,10 @@ fn install_android_deps() {
         "cargo:rustc-link-search={}",
         path.join("lib").to_str().unwrap()
     );
-    println!("cargo:rustc-link-lib=ndk_compat");
+    // oboe's vcpkg port at the pinned baseline (1.8.0) folds the old separate
+    // ndk_compat shim into liboboe.a — there is no libndk_compat.a to link, so
+    // upstream's `-lndk_compat` is dead for this oboe version (its symbols arrive
+    // via -loboe + the oboe-sys liboboe-ext.a). R-B5a: pinned vcpkg, not "latest".
     println!("cargo:rustc-link-lib=oboe");
     println!("cargo:rustc-link-lib=c++");
     println!("cargo:rustc-link-lib=OpenSLES");

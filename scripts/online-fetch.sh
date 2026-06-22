@@ -254,7 +254,7 @@ stage_vcpkg_natives_arm64() {
     fi
     [ -d "$ONLINE_DIR/android-ndk/toolchains" ] || die "android NDK not extracted — stage_android_ndk must run first"
     [ -f "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" ] || die "vcpkg source archive missing — fetch_vcpkg_and_images must run first"
-    log "staging the vcpkg arm64-android codecs (aom/libvpx/libyuv/opus) -> ./online/vcpkg/installed/arm64-android"
+    log "staging the vcpkg arm64-android natives (aom/libvpx/libyuv/opus + oboe audio) -> ./online/vcpkg/installed/arm64-android"
     docker run --rm \
         -v "$ONLINE_DIR:/online" \
         -v "$REPO_ROOT/res/vcpkg:/overlay:ro" \
@@ -265,7 +265,7 @@ stage_vcpkg_natives_arm64() {
             export VCPKG_DISABLE_METRICS=1
             "$VR"/bootstrap-vcpkg.sh -disableMetrics >/dev/null
             "$VR"/vcpkg install --triplet arm64-android --overlay-ports=/overlay \
-                aom libvpx libyuv opus
+                aom libvpx libyuv opus oboe
             mkdir -p /online/vcpkg/installed
             rm -rf /online/vcpkg/installed/arm64-android
             cp -a "$VR"/installed/arm64-android /online/vcpkg/installed/arm64-android

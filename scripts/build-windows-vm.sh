@@ -82,7 +82,11 @@ build_media() {
 prep_overlay() {
     log "cloning the golden into a throwaway CoW overlay"
     rm -f "$OVERLAY"
-    qemu-img create -f qcow2 -b "$GOLDEN" -F qcow2 "$OVERLAY" >/dev/null
+    # RELATIVE backing path (basename), created from inside $STATE_DIR, so the backing chain resolves BOTH on
+    # the host (virt-install) AND inside the libguestfs-in-docker container (which mounts $STATE_DIR at /state).
+    # An ABSOLUTE host backing path is a dangling reference in the container -> the appliance qemu can't open
+    # the backing file and exits 1 ("appliance closed the connection unexpectedly / guestfs_launch failed").
+    ( cd "$STATE_DIR" && qemu-img create -f qcow2 -F qcow2 -b "$(basename "$GOLDEN")" "$(basename "$OVERLAY")" >/dev/null )
     # The per-build domain gets a FRESH UEFI nvram (no "Windows Boot Manager" entry — the golden's was
     # not carried over), so seed the removable-media fallback \EFI\BOOT\BOOTX64.EFI from the Windows
     # bootloader; OVMF then boots the disk. libguestfs, root-free.
@@ -97,7 +101,10 @@ prep_overlay() {
 
 run_build() {
     log "booting the transient build VM (--network=none; the golden task runs run-build.ps1, ~30-60min)"
+    # --import: boot the EXISTING golden overlay (no OS install) — without an install method virt-install
+    # refuses ("An install method must be specified"). The first --disk (the overlay) is the boot disk.
     virt-install --connect qemu:///session --name "$DOMAIN" --osinfo win11 --memory 16384 --vcpus 8 \
+        --import \
         --disk "path=$OVERLAY,format=qcow2,bus=sata" \
         --disk "path=$BUILD_ISO,device=cdrom" \
         --disk "path=$OFFLINE_ISO,device=cdrom" \

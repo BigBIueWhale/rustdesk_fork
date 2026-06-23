@@ -72,11 +72,20 @@ build_media() {
             /pub-cache=/online/pub-cache
     ' || die "OFFLINE UDF media build (genisoimage in docker) failed"
     [ -f "$OFFLINE_ISO" ] || die "OFFLINE UDF media not produced"
-    # The OUTPUT disk = a raw FAT image labelled OUTPUT; run-build.ps1 writes dist/ here, the host reads it.
-    log "creating the OUTPUT disk (FAT, label OUTPUT)"
+    # The OUTPUT disk = a PARTITIONED FAT disk (MBR table + one FAT partition, type 0x0c FAT32-LBA, label
+    # OUTPUT). NOT a raw whole-disk FAT ("superfloppy"): Windows does not mount a partition-table-less FAT on a
+    # FIXED (SATA) disk, so the golden's golden-logon.ps1 `Get-Volume -FileSystemLabel OUTPUT` found nothing,
+    # golden-logon.ps1 exited, and run-build.ps1 NEVER ran (diagnosed: zero run-build-progress.txt markers on
+    # two stalls). libguestfs partitions + FAT-formats it root-free; extract() reads /dev/sda1 to match.
+    log "creating the OUTPUT disk (partitioned FAT, label OUTPUT)"
     rm -f "$OUTPUT_IMG"
     qemu-img create -f raw "$OUTPUT_IMG" 3G >/dev/null
-    mkfs.vfat -n OUTPUT "$OUTPUT_IMG" >/dev/null
+    local out_name; out_name="$(basename "$OUTPUT_IMG")"
+    $GL -v "$STATE_DIR:/state" -e OUT_NAME="$out_name" ubuntu:24.04 bash -c '
+      apt-get update -qq >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libguestfs-tools linux-image-generic >/dev/null 2>&1
+      export LIBGUESTFS_BACKEND=direct
+      guestfish -a "/state/$OUT_NAME" run : part-disk /dev/sda mbr : part-set-mbr-id /dev/sda 1 0x0c : mkfs vfat /dev/sda1 label:OUTPUT' \
+      || die "OUTPUT disk partition+format failed"
 }
 
 prep_overlay() {
@@ -129,7 +138,7 @@ extract() {
     $GL -v "$STATE_DIR:/state:ro" -v "$OUT_DIR:/out" ubuntu:24.04 bash -c '
       apt-get update -qq >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libguestfs-tools linux-image-generic >/dev/null 2>&1
       export LIBGUESTFS_BACKEND=direct
-      guestfish --ro -a /state/win-build-output.img run : mount /dev/sda / : glob copy-out "/*" /out' 2>&1 | grep -iE 'error|fail' || true
+      guestfish --ro -a /state/win-build-output.img run : mount /dev/sda1 / : glob copy-out "/*" /out' 2>&1 | grep -iE 'error|fail' || true
     rm -f "$OVERLAY" "$BUILD_ISO" "$OFFLINE_ISO" "$OUTPUT_IMG"
     [ -f "$OUT_DIR/rustdesk-setup.exe" ] || die "no rustdesk-setup.exe produced — see $OUT_DIR/build-log.txt"
     sha256sum "$OUT_DIR/rustdesk-setup.exe" | tee "$OUT_DIR/rustdesk-setup.exe.sha256"

@@ -648,9 +648,11 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
   Widget build(BuildContext context) {
     final crossAxisCount = 4;
     final spacing = 10.0;
-    final canModifyPermission =
-        bind.mainGetBuildinOption(key: kOptionEnablePermChangeInAcceptWindow) !=
-            'N';
+    // R-S16(d)(ii): mid-session permission change (Data::SwitchPermission) is EXCISED -- the IPC arm is
+    // deleted (connection.rs falls to `_ => {}`), so a tap on a CM permission icon was a SILENT NO-OP: the
+    // icon flipped (optimistic setState) but the peer KEPT the capability -- a security action the UI falsely
+    // affirmed as done. Connect-time permissions are pinned + immutable, so render the icons non-interactive.
+    final canModifyPermission = false;
     return Container(
       width: double.infinity,
       height: 160.0,

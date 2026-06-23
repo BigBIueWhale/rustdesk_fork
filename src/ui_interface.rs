@@ -205,6 +205,13 @@ pub fn is_option_fixed(key: &str) -> bool {
             .unwrap()
             .contains_key(key)
         || config::OVERWRITE_SETTINGS.read().unwrap().contains_key(key)
+        // R-S16(d): a key pinned by the controlled-side policy funnel is ALSO immutable — its writes are
+        // rejected by is_option_can_save / the Config::get_option funnel returns the policy verbatim. The
+        // OVERWRITE_* maps only fill from a RustDesk-SIGNED config blob a sovereign fork never has, so without
+        // this every PINNED control (Access-Mode, the permission checkboxes, Stop-service, enable-terminal, …)
+        // rendered EDITABLE and its write then silently no-op'd / snapped back — a control that does nothing.
+        // Reporting pinned keys as fixed greys them, matching the enforced policy (R-G4 / R-X7a / R-X8).
+        || config::keys::PINNED_SETTINGS.iter().any(|(k, _)| *k == key)
 }
 
 #[inline]

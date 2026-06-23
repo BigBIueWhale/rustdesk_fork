@@ -96,9 +96,23 @@ if (-not (Test-Path 'C:\flutter\bin\cache\artifacts\engine\windows-x64')) { Die 
 # overlay). The zip ALSO bundles the resolved deps in its pub cache, so resolve flutter_tools OFFLINE here
 # -> zero pub.dev traffic -> config + precache run fully offline. CONFIRMED in the rdwinvm SSH VM: with this
 # offline resolve, `flutter precache --windows -v` makes 0 pub.dev calls (vs 98 that wedged >30min before).
+# Pre-place the FULL flutter_tools hosted pub cache (incl. its DEV deps: test 1.25.7, test_core, test_api,
+# fake_async, ...) BEFORE the offline resolve. The SDK zip's BUNDLED cache ships only flutter_tools'
+# RUNTIME deps, so `dart pub get --offline` over it alone fails "Because flutter_tools depends on test
+# 1.25.7 which doesn't match any versions, version solving failed". online-fetch stage_flutter_pub_cache
+# staged the complete closure (hosted/ + hosted-hashes/) deterministically; extract it into the builder's
+# pub cache so the resolve below finds every dep with ZERO pub.dev traffic. (Internal layout begins at
+# hosted/ -> it lands as ...\Pub\Cache\hosted\pub.dev\...; bsdtar on Win10+ auto-detects the gzip.)
+Log 'pre-placing the staged flutter_tools pub cache (the DEV deps the SDK-bundled cache lacks)'
+$pc = "$env:LOCALAPPDATA\Pub\Cache"
+New-Item -ItemType Directory -Force -Path $pc | Out-Null
+tar -xf (Join-Path $tc 'flutter-pub-cache.tar.gz') -C $pc
+if (-not (Test-Path (Join-Path $pc 'hosted\pub.dev\test-1.25.7'))) { Die 'flutter_tools pub cache extraction failed -- test-1.25.7 absent after tar; the offline resolve would fail "version solving failed"' }
+Log "flutter_tools pub cache extracted to $pc"
+
 Log 'resolving flutter_tools OFFLINE (kills the ~98 pub.dev metadata calls that stalled the provision)'
 & 'C:\flutter\bin\cache\dart-sdk\bin\dart.exe' pub get --offline --directory 'C:\flutter\packages\flutter_tools'
-if ($LASTEXITCODE -ne 0) { Die "flutter_tools offline pub get failed (exit $LASTEXITCODE) -- the SDK zip's bundled pub cache is incomplete" }
+if ($LASTEXITCODE -ne 0) { Die "flutter_tools offline pub get failed (exit $LASTEXITCODE) -- the staged pub cache (flutter-pub-cache.tar.gz) is incomplete" }
 # config enables the windows desktop; precache reconciles the (already-present) engine. Both offline now, so
 # short bounds suffice -- a stall here would mean the offline resolve above did not take.
 $cfg = Start-Process 'C:\flutter\bin\flutter.bat' -ArgumentList 'config','--no-analytics','--enable-windows-desktop' -PassThru -NoNewWindow

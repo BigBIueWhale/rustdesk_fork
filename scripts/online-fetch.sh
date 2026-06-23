@@ -411,6 +411,41 @@ stage_windows_engine() {
     log "windows flutter engine staged: $out ($(du -h "$out" | cut -f1))"
 }
 
+# ── The windows flutter_tools pub cache (§12.2): hosted deps incl. flutter_tools' DEV deps ──
+# The §12.2 golden-provision's IN-VM `dart pub get --offline` on flutter_tools FAILS over the bundled
+# cache alone: the flutter SDK zip bundles flutter_tools' RUNTIME deps but NOT its DEV deps (test 1.25.7,
+# test_core, test_api, fake_async, …), so `--offline` cannot solve the full set ("Because flutter_tools
+# depends on test 1.25.7 which doesn't match any versions, version solving failed"). The non-offline
+# resolve makes ~98 pub.dev metadata round-trips that STALL over the guest's slirp NAT. So the COMPLETE
+# flutter_tools hosted closure is staged HERE on a real network and shipped into the golden (TOOLCHAINS
+# CD), then pre-placed at the builder's %LOCALAPPDATA%\Pub\Cache so the in-VM resolve is a 0-download.
+# Derived from stage_pub_cache's ./online/pub-cache (the rustdesk `flutter pub get` resolved a superset
+# of flutter_tools' pinned pubspec.lock — docker-verified the 95 hosted pkgs are all present at their
+# pinned versions). We package ONLY hosted/ + hosted-hashes/ (flutter_tools needs no git deps); the
+# internal layout begins at hosted/ so it extracts under a Pub\Cache root. Deterministic tar + gzip -n.
+stage_flutter_pub_cache() {
+    local out="$ONLINE_DIR/flutter-pub-cache.tar.gz"
+    [ -f "$out" ] && { log "windows flutter pub cache already staged, skipping"; return 0; }
+    # stage_pub_cache must have populated ./online/pub-cache first (the hosted closure lives there).
+    [ -d "$ONLINE_DIR/pub-cache/hosted/pub.dev" ] || die "pub-cache/hosted not staged — stage_pub_cache must run first"
+    [ -d "$ONLINE_DIR/pub-cache/hosted-hashes/pub.dev" ] || die "pub-cache/hosted-hashes not staged — stage_pub_cache must run first"
+    log "staging the windows flutter_tools pub cache (hosted + hosted-hashes) -> ./online/flutter-pub-cache.tar.gz"
+    require_cmd docker
+    # Run in a container as root: ./online/pub-cache is root-owned (written by the docker flutter steps).
+    # Deterministic: sorted names + fixed mtime/owner/numeric-owner + gzip -n -> stable R-B12 SHA.
+    docker run --rm -v "$ONLINE_DIR:/online" ubuntu:24.04 bash -euo pipefail -c '
+        cd /online/pub-cache
+        tar --sort=name --mtime=@1700000000 --owner=0 --group=0 --numeric-owner -cf - hosted hosted-hashes \
+            | gzip -n -9 > /online/flutter-pub-cache.tar.gz
+    '
+    [ -f "$out" ] || die "windows flutter pub cache staging failed"
+    # Sanity: flutter_tools' load-bearing DEV dep (test 1.25.7) MUST be in the archive, else the in-VM
+    # offline resolve would still "version solving failed" — the exact failure this step exists to fix.
+    zcat "$out" | tar -t 2>/dev/null | grep -q 'hosted/pub.dev/test-1.25.7/pubspec.yaml' \
+        || die "flutter-pub-cache.tar.gz lacks test-1.25.7 — flutter_tools dev deps missing; the offline resolve would fail"
+    log "windows flutter pub cache staged: $out ($(du -h "$out" | cut -f1))"
+}
+
 main() {
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     vendor_cargo
@@ -428,6 +463,7 @@ main() {
     stage_gradle
     fetch_windows_toolchains
     stage_windows_engine
+    stage_flutter_pub_cache
     # Windows ISO / VS Build Tools are partly evergreen (R-B12(c)): pin the CAPTURED
     # offline layout by SHA-256, documenting publisher-verified vs evergreen.
     log "online-fetch complete — ./online is now offline-buildable. Builds run --network=none."

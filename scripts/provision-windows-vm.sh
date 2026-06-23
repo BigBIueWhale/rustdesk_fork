@@ -44,6 +44,10 @@ preflight() {
     verify_sha256 "$ONLINE_DIR/llvm-windows-${LLVM_VERSION}.exe"       "${SHA256_LLVM_WIN_15_0_6}"
     # The windows flutter engine (offline-staged, deterministic) — pinned by SHA (R-B12), not just existence.
     verify_sha256 "$ONLINE_DIR/flutter-windows-engine.tar.gz"          "${SHA256_FLUTTER_WIN_ENGINE}"
+    # The flutter_tools pub cache (offline-staged, deterministic) — pre-placed before the in-VM offline
+    # flutter_tools resolve; without it `dart pub get --offline` fails "version solving failed" (the
+    # SDK zip's bundled cache lacks flutter_tools' dev deps). Pinned by SHA (R-B12), not just existence.
+    verify_sha256 "$ONLINE_DIR/flutter-pub-cache.tar.gz"               "${SHA256_FLUTTER_PUB_CACHE}"
     for f in "win/Git-2.45.2-64-bit.exe" "win/rust-1.75.0-x86_64-pc-windows-msvc.msi" \
              "win/rustup-init.exe" "vcpkg-${VCPKG_BASELINE}.tar.gz"; do
         [ -f "$ONLINE_DIR/$f" ] || die "windows toolchain artifact missing in ./online: $f (stage it before provisioning)"
@@ -72,7 +76,8 @@ build_media() {
         "/win/Git-2.45.2-64-bit.exe=$ONLINE_DIR/win/Git-2.45.2-64-bit.exe" \
         "/win/rust-1.75.0-x86_64-pc-windows-msvc.msi=$ONLINE_DIR/win/rust-1.75.0-x86_64-pc-windows-msvc.msi" \
         "/win/rustup-init.exe=$ONLINE_DIR/win/rustup-init.exe" \
-        "/flutter-windows-engine.tar.gz=$ONLINE_DIR/flutter-windows-engine.tar.gz"
+        "/flutter-windows-engine.tar.gz=$ONLINE_DIR/flutter-windows-engine.tar.gz" \
+        "/flutter-pub-cache.tar.gz=$ONLINE_DIR/flutter-pub-cache.tar.gz"
 }
 
 # golden_has_done_marker: true iff C:\guest-setup-done.txt exists in the golden qcow2 — the

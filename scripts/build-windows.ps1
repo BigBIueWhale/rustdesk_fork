@@ -21,6 +21,10 @@ $SRC = 'C:\src'             # the repo, shared into the guest read-write
 
 function Die($msg) { Write-Error "[harness:FATAL] $msg"; exit 1 }
 function Assert-Version($expect, $actual, $what) {
+    # $actual may be a MULTI-LINE command capture: `flutter --version` and `clang --version` return a PSObject[]
+    # of lines. `-notmatch` over an array returns the non-matching ELEMENTS (a truthy list), so the check tripped
+    # even though one line carries the version (rustc's single-line output happened to pass). Flatten first.
+    $actual = ($actual | Out-String)
     if ($actual -notmatch [regex]::Escape($expect)) {
         Die "$what version mismatch: expected '$expect', got '$actual' -- pin from pins.env, do not upgrade in place"
     }

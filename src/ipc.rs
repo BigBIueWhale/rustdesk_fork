@@ -46,6 +46,16 @@ use ipc_auth::{
 // is_allowed_service_peer_uid / log_rejected_uinput_connection / peer_uid_from_fd) were the uinput
 // peer-authorization accessors, removed with the uinput module. The _service-channel authorization
 // keeps using is_allowed_service_peer_uid / peer_uid_from_fd INTERNALLY inside ipc_auth.
+// R-X6 (macOS): the `_url` deep-link IPC listener (server::start_ipc_url_server) is a SEPARATE
+// listener that BYPASSES the main handle() service-accept gate, so it MUST authenticate its sender
+// (peer-uid + peer-exe) before honoring a rustdesk:// URL — otherwise any same-uid process could
+// inject a deep-link connect/relay/key. The only legitimate sender is the rustdesk binary itself
+// (ipc::send_url_scheme, from core_main's uni-link self-handler), so the same peer-uid + same-exe
+// policy the protected `_service` channel enforces is exactly the right gate.
+#[cfg(target_os = "macos")]
+pub(crate) fn authorize_url_ipc_sender(stream: &Connection) -> bool {
+    authorize_service_scoped_ipc_connection(stream, "_url")
+}
 #[cfg(target_os = "linux")]
 use ipc_fs::terminal_count_candidate_uids;
 #[cfg(any(target_os = "linux", target_os = "macos"))]

@@ -772,6 +772,14 @@ pub async fn start_ipc_url_server() {
         Ok(mut incoming) => {
             while let Some(Ok(conn)) = incoming.next().await {
                 let mut conn = crate::ipc::Connection::new(conn);
+                // R-X6: authenticate the sender (peer-uid + peer-exe) before honoring any deep-link
+                // URL. This `_url` listener bypasses the main handle() service-accept gate, so without
+                // this any same-uid process could inject a rustdesk:// connect/relay/key; the only
+                // legitimate sender is the rustdesk binary itself (ipc::send_url_scheme).
+                if !crate::ipc::authorize_url_ipc_sender(&conn) {
+                    log::warn!("Rejected an unauthorized sender on the _url IPC channel (R-X6)");
+                    continue;
+                }
                 match conn.next_timeout(1000).await {
                     Ok(Some(data)) => match data {
                         #[cfg(feature = "flutter")]

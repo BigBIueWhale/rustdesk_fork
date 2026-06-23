@@ -196,6 +196,14 @@ ra6_clean 'crate::dbus|org\.rustdesk\.rustdesk|\bstart_dbus_server' 'R-X6 D-Bus 
 # excised dbus.rs — zero crossroads:: usage remains, so the dep is dropped. Assert it stays gone (the
 # base `dbus` crate stays for the legit platform/linux.rs session-bus call — do NOT gate that out).
 grep -qE '^dbus-crossroads = ' Cargo.toml && { echo "  FAIL R-X6: the dead dbus-crossroads dep (only the excised dbus.rs used it) is back in Cargo.toml"; rc=1; }
+# R-X6 (macOS _url sender-auth): the SEPARATE _url deep-link IPC listener (server::start_ipc_url_server)
+# bypasses the main handle() service-accept gate, so it MUST authenticate its sender (peer-uid + peer-exe)
+# like the protected _service channel — else any same-uid process injects a rustdesk:// connect/relay/key.
+if grep -qE 'fn start_ipc_url_server' src/server.rs && ! grep -qE 'authorize_url_ipc_sender' src/server.rs; then
+  echo "  FAIL R-X6: macOS start_ipc_url_server does not authenticate its _url IPC sender (peer-uid+exe)"; rc=1
+else
+  echo "  ok  R-X6 macOS _url IPC listener authenticates its sender (authorize_url_ipc_sender)"
+fi
 ra6_clean 'ConfigureUpdate|TestNatResponse'                              'R-X3 server-push config-update + NAT-response rewrite arms' || rc=1
 # R-P3 / R-P14: the inherited insecure direct-mode used a plaintext constant-byte ack ("direct-ok")
 # to admit a peer WITHOUT the PAKE key-confirmation. The fork makes CPace mandatory (R-A1), so any

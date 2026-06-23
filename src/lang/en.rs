@@ -50,7 +50,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Auto Login", "Auto Login (Only valid if you set \"Lock after session end\")"),
         ("Change Path", "Change path"),
         ("Create Folder", "Create folder"),
-        ("whitelist_tip", "Only whitelisted IP can access me"),
+        ("whitelist_tip", "Only listed IPs/CIDRs can connect. An empty whitelist blocks ALL inbound (the device is unreachable) -- add 0.0.0.0/0 to allow all."),
         ("verification_tip", "A verification code has been sent to the registered email address, enter the verification code to continue logging in."),
         ("whitelist_sep", "Separated by comma, semicolon, spaces or new line"),
         ("Add Tag", "Add tag"),

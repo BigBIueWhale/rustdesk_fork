@@ -965,8 +965,11 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
                           value: hasWhitelist.value,
                           onChanged: enabled && !isOptFixed ? onChanged : null)
                       .marginOnly(right: 5),
+                  // R-S9 / BUG3: the fork whitelist is default-DENY -- an EMPTY whitelist blocks ALL
+                  // inbound (the device is unreachable), the inverse of upstream. So the caution icon
+                  // flags the EMPTY state (looks "off" but is actually unreachable), NOT the set state.
                   Offstage(
-                    offstage: !hasWhitelist.value,
+                    offstage: hasWhitelist.value,
                     child: MouseRegion(
                       child: const Icon(Icons.warning_amber_rounded,
                               color: Color.fromARGB(255, 255, 204, 0))

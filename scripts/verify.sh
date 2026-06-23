@@ -829,6 +829,17 @@ if [ -n "$r_t15d_missing" ]; then
 else
   echo "  ok  R-S9/R-T15(d) whitelist default-deny + R-A4 not-default-open self-test present"
 fi
+# R-S9 / BUG3 (flutter UI correctness): the whitelist SETTINGS UI must agree with the default-DENY backend.
+# Upstream shows the amber caution only when the whitelist is SET (so empty looks "off" = open); on the fork
+# an EMPTY whitelist blocks ALL inbound (the device is unreachable), so the caution icon must flag the EMPTY
+# state instead. Assert the flipped offstage polarity on both desktop + mobile (a regrowth to the upstream
+# `!hasWhitelist`/`!_onlyWhiteList` polarity -- where empty silently looks reachable -- fails here).
+if grep -qF 'offstage: hasWhitelist.value' flutter/lib/desktop/pages/desktop_setting_page.dart \
+   && grep -qF 'offstage: _onlyWhiteList,' flutter/lib/mobile/pages/settings_page.dart; then
+  echo "  ok  R-S9/BUG3 whitelist UI flags the EMPTY (unreachable) state, matching the default-deny backend"
+else
+  echo "  FAIL R-S9/BUG3: whitelist settings UI not re-gated to fork default-deny (empty=unreachable) semantics"; rc=1
+fi
 # R-T10 (§20): TCP keepalive on every accepted peer socket — the kernel backstop the NAT'd-client
 # reality demands (idle/rebinding/sleeping NAT mappings vanish WITHOUT a FIN/RST, so a dead peer
 # would otherwise hold an fd+task+capture+CM until the app deadline). Set at the accept site via

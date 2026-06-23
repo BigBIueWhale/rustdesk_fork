@@ -236,8 +236,10 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
       SettingsTile.switchTile(
         title: Row(children: [
           Expanded(child: Text(translate('Use IP Whitelisting'))),
+          // R-S9 / BUG3: fork whitelist is default-DENY -- EMPTY blocks ALL inbound (unreachable), the
+          // inverse of upstream; flag the EMPTY state (looks "off" but is actually unreachable), not set.
           Offstage(
-                  offstage: !_onlyWhiteList,
+                  offstage: _onlyWhiteList,
                   child: const Icon(Icons.warning_amber_rounded,
                       color: Color.fromARGB(255, 255, 204, 0)))
               .marginOnly(left: 5)

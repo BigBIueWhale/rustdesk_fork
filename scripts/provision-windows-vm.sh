@@ -126,6 +126,11 @@ build_golden() {
     # real cause of repeated 196K stalls. Destroy (may already be off) + undefine; ignore errors.
     virsh -c qemu:///session destroy "$DOMAIN" >/dev/null 2>&1 || true
     virsh -c qemu:///session undefine --nvram "$DOMAIN" >/dev/null 2>&1 || true
+    # NIC model=e1000e (NOT virt-install's default): Win11 ships an inbox e1000e driver but NOT one for the
+    # default qemu NIC, so the default guest has NO working network -> the provision-time `flutter pub get`
+    # residual download fails its TLS handshake ("Handshake error in client"), which ALSO explains the
+    # historical "98-call stall" (= 98 dead-NIC timeouts). The working rdwinvm SSH VM uses e1000e over the
+    # same slirp `-netdev user`, proving the model is the fix. (slirp NAT; the guest never LISTENS.)
     virt-install \
         --name "$DOMAIN" \
         --osinfo win11 \
@@ -135,7 +140,7 @@ build_golden() {
         --disk "path=$TOOLCHAINS_ISO,device=cdrom" \
         --cdrom "$ONLINE_DIR/win11.iso" \
         --boot uefi \
-        --network user \
+        --network user,model=e1000e \
         --graphics vnc,listen=127.0.0.1 \
         --noautoconsole --wait -1 &
     local vi_pid=$!

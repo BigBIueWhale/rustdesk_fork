@@ -67,9 +67,16 @@ function Build {
     $cargoCfg += ((Get-Content (Join-Path $offline 'cargo-vendor-config.toml') -Raw) -replace 'directory = .*', "directory = `"$vendorDir`"")
     Set-Content -Encoding ASCII -Path (Join-Path $env:CARGO_HOME 'config.toml') -Value $cargoCfg
 
-    # --- pub: PUB_CACHE on the attached cache; pre-resolve the project OFFLINE with `dart pub get`
-    # (the `flutter` wrapper drives pub ONLINE -> advisories _TypeError on the read-only cache). The
-    # SDK's own flutter_tools was pre-resolved into the golden (networked provision precache). -------
+    # --- pub: PUB_CACHE on the attached cache; pre-resolve the project OFFLINE. TWO steps:
+    # (1) `dart pub get --offline` -- the proven Dart-level resolve (writes .dart_tool/package_config.json;
+    #     the build-log shows "Got dependencies!" with no advisory/handshake error, so --offline is clean here).
+    # (2) `flutter pub get --offline` -- the FLUTTER-level pub get, which ALSO runs flutter's plugin injection
+    #     and so GENERATES flutter/windows/flutter/generated_plugins.cmake (+ generated_plugin_registrant).
+    # `flutter build windows` is shimmed with --no-pub below to dodge its ONLINE in-build pub get, so the
+    # injection MUST happen here -- otherwise the windows runner CMake aborts: "could not find requested file:
+    # flutter/generated_plugins.cmake" (CMakeLists.txt:71). We keep the bare `dart pub get` as the proven base
+    # and add the flutter one only for the injection; both are --offline + CI=true. `flutter` here is the REAL
+    # flutter (the --no-pub shim is not on PATH until below). The golden's flutter_tools is pre-resolved.
     $env:PUB_CACHE = (Join-Path $offline 'pub-cache')
     $env:CI = 'true'
     $env:FLUTTER_SUPPRESS_ANALYTICS = 'true'
@@ -77,6 +84,8 @@ function Build {
     Push-Location (Join-Path $SRC 'flutter')
     & dart pub get --offline
     if ($LASTEXITCODE -ne 0) { Pop-Location; Die "dart pub get --offline (project) failed ($LASTEXITCODE) -- pub-cache may lack a windows-only package" }
+    & flutter pub get --offline
+    if ($LASTEXITCODE -ne 0) { Pop-Location; Die "flutter pub get --offline (plugin injection) failed ($LASTEXITCODE) -- generated_plugins.cmake will be absent; the flutter wrapper may have reached pub.dev for advisories" }
     Pop-Location
 
     # --- the flutter offline shim: build.py runs `flutter build windows --release`, whose IN-PROCESS

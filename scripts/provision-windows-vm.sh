@@ -29,7 +29,7 @@ AUTOUNATTEND_ISO="$STATE_DIR/autounattend.iso"   # the PROVISION CD: autounatten
 TOOLCHAINS_ISO="$STATE_DIR/toolchains.iso"        # the TOOLCHAINS CD: the staged ./online windows artifacts
 
 preflight() {
-    require_cmd virt-install virsh qemu-img swtpm xorriso
+    require_cmd virt-install virsh qemu-img xorriso
     [ -d /usr/share/OVMF ] || die "OVMF (UEFI firmware) not found — run host-provision.sh first (R-B11)"
     require_online_complete
     [ -f "$SCRIPT_DIR/autounattend.xml" ]    || die "scripts/autounattend.xml missing (the unattended-install answer file)"
@@ -70,7 +70,11 @@ build_golden() {
     mkdir -p "$STATE_DIR"
     [ ! -f "$GOLDEN" ] || { log "golden image already exists: $GOLDEN (delete to rebuild)"; return 0; }
     build_media
-    log "creating golden qcow2 + installing Win11 (TPM 2.0 via swtpm, UEFI via OVMF)"
+    # NB no --tpm: this host's session libvirt offers only TPM 'passthrough' (a physical TPM),
+    # not the swtpm 'emulator' backend, and qemu:///system is permission-denied. autounattend.xml
+    # bypasses Win11 Setup's TPM/SecureBoot gates instead — fine for a throwaway BUILD VM (TPM is
+    # an install gate, not a build input; the .exe/.msi is byte-identical).
+    log "creating golden qcow2 + installing Win11 (UEFI via OVMF; TPM bypassed in autounattend)"
     qemu-img create -f qcow2 "$GOLDEN" 80G
     # The UNATTENDED install: win11.iso boots, Setup auto-applies autounattend.xml off the
     # PROVISION CD (Win11 Pro -> the SATA disk; Setup has the AHCI driver built-in, whereas a
@@ -87,7 +91,6 @@ build_golden() {
         --disk "path=$AUTOUNATTEND_ISO,device=cdrom" \
         --disk "path=$TOOLCHAINS_ISO,device=cdrom" \
         --cdrom "$ONLINE_DIR/win11.iso" \
-        --tpm "backend.type=emulator,backend.version=2.0,model=tpm-crb" \
         --boot uefi \
         --network user \
         --graphics vnc,listen=127.0.0.1 \

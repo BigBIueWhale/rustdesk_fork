@@ -49,6 +49,17 @@
           <InstallTo><DiskID>0</DiskID><PartitionID>3</PartitionID></InstallTo>
         </OSImage>
       </ImageInstall>
+      <!-- This build host's session libvirt only offers TPM 'passthrough' (a physical TPM),
+           not the swtpm 'emulator' backend, and qemu:///system is permission-denied — so the
+           guest has NO TPM. Bypass Win11 Setup's TPM/SecureBoot/RAM/CPU gates (HKLM LabConfig,
+           the documented method). This is a THROWAWAY build VM — TPM is a Win11 install gate,
+           irrelevant to the .exe/.msi it produces; the shipped binary is byte-identical. -->
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add"><Order>1</Order><Path>cmd /c reg add HKLM\System\Setup\LabConfig /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add"><Order>2</Order><Path>cmd /c reg add HKLM\System\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add"><Order>3</Order><Path>cmd /c reg add HKLM\System\Setup\LabConfig /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add"><Order>4</Order><Path>cmd /c reg add HKLM\System\Setup\LabConfig /v BypassCPUCheck /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+      </RunSynchronous>
       <UserData>
         <!-- Generic Win11 Pro KMS client setup key — selects the edition for an unattended
              install; this build VM is never activated/online-licensed (throwaway, R-B8). -->

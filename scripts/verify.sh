@@ -408,18 +408,18 @@ ra6_clean '\bRendezvousMessage\b|rendezvous_message::|get_next_nonkeyexchange_ms
 # changed ID LOCALLY (the ID is a vestigial label — R-SV5 connects by IP, never by ID). Assert no
 # register_pk SENDER (set_register_pk) or the check_id rendezvous-dial helper survives.
 ra6_clean 'set_register_pk|async fn check_id' 'R-SV4/R-SV10 Change-ID register_pk rendezvous-dial' || rc=1
-# R-SV4(e)/R-S11: the service IPC handler's mediator-control arm that reaches an OUTBOUND rendezvous
-# DIAL is severed. Data::TestRendezvousServer -> crate::test_rendezvous_server (connect_tcp to
-# RENDEZVOUS_PORT, latency-probing each configured rendezvous) is now a no-op — so a local IPC
-# message can no longer make the direct-only service dial the rendezvous. (Data::Deployed, the
-# mediator-redeploy arm, is now REMOVED outright with the deploy excision — R-SV6(c)/R-D4 — along
-# with its dead notify_deployed() sender and the NEEDS_DEPLOY flag. The remaining
-# RendezvousMediator::restart() restarts the DIRECT-ONLY path, not the registration — harmless,
-# the mediator itself no longer exists.)
-if grep -qE 'crate::test_rendezvous_server\(\)' src/ipc.rs; then
-  echo "  FAIL R-SV4(e)/R-S11: the IPC handler still reaches test_rendezvous_server (a rendezvous dial)"; rc=1
+# R-SV4(e)/R-S11: the service IPC handler's mediator-control arm that reached an OUTBOUND rendezvous
+# DIAL is REMOVED OUTRIGHT (§8 "removed not disabled"). Upstream's Data::TestRendezvousServer ->
+# crate::test_rendezvous_server (connect_tcp to RENDEZVOUS_PORT, latency-probing each configured
+# rendezvous) was first neutered to a no-op; the whole IPC message is now gone — the variant, its
+# (zero-caller) ipc::test_rendezvous_server sender, AND the no-op handler arm — so a local IPC message
+# can no longer even NAME a rendezvous dial. The dead common::refresh_rendezvous_server wrapper (the
+# message's only would-be caller) is removed with it. (Data::Deployed, the mediator-redeploy arm, is
+# likewise REMOVED — R-SV6(c)/R-D4 — with its dead notify_deployed() sender and the NEEDS_DEPLOY flag.)
+if grep -qE 'TestRendezvousServer' src/ipc.rs || grep -qE 'fn refresh_rendezvous_server' src/common.rs; then
+  echo "  FAIL R-SV4(e)/R-S11: an IPC rendezvous-dial residue survives (Data::TestRendezvousServer in ipc.rs or refresh_rendezvous_server in common.rs must be fully removed)"; rc=1
 else
-  echo "  ok  R-SV4(e)/R-S11 IPC mediator-control rendezvous-dial arm severed (Data::TestRendezvousServer no-op; Data::Deployed removed)"
+  echo "  ok  R-SV4(e)/R-S11 IPC rendezvous-dial message fully removed (Data::TestRendezvousServer variant+sender+handler + refresh_rendezvous_server wrapper gone; Data::Deployed removed)"
 fi
 # R-X10 (§8 run-mode plurality): the GUI/client (`is_server == false`) startup path NEVER auto-starts
 # a controlled server — the controlled side starts ONLY via the installed `--service`/`--server` (one

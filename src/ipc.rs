@@ -343,7 +343,6 @@ pub enum Data {
     #[cfg(target_os = "windows")]
     ClipboardNonFile(Option<(String, Vec<ClipboardNonFile>)>),
     PrivacyModeState((i32, PrivacyModeState, String)),
-    TestRendezvousServer,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Keyboard(DataKeyboard),
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -955,12 +954,6 @@ async fn handle(data: Data, stream: &mut Connection) {
                     ))
                     .await
             );
-        }
-        Data::TestRendezvousServer => {
-            // R-SV4(e)/R-S11/R-D6: ignored — the service IPC handler MUST NOT reach a rendezvous dial.
-            // The inherited arm called test_rendezvous_server(), which connect_tcp's to RENDEZVOUS_PORT
-            // to latency-probe each configured rendezvous — a service-entry-reachable outbound probe
-            // ("dial nobody"). The fork is direct-only (R-D4); there is no rendezvous to test.
         }
         #[cfg(windows)]
         Data::ControlledSessionCount(_) => {
@@ -1784,12 +1777,6 @@ pub async fn get_socks_ws() -> (Option<config::Socks5Server>, String) {
 
 pub fn get_proxy_status() -> bool {
     Config::get_socks().is_some()
-}
-#[tokio::main(flavor = "current_thread")]
-pub async fn test_rendezvous_server() -> ResultType<()> {
-    let mut c = connect(1000, "").await?;
-    c.send(&Data::TestRendezvousServer).await?;
-    Ok(())
 }
 
 // R-SV6(c)/R-D4: `notify_deployed()` (sent `Data::Deployed`) is removed with the deploy excision —

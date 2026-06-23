@@ -90,6 +90,22 @@ fetch_toolchains() {
         "frb-${FLUTTER_RUST_BRIDGE_VERSION}.tar.gz" "${SHA256_FRB_1_80_1}"
 }
 
+# ── Windows toolchains (the §12.2 KVM-VM build; stably-addressable downloads) ──────
+# Windows can't be cross-built from Linux (MSVC + WiX are Windows-only), so these stage
+# into ./online for the guest setup to install OFFLINE (provision-windows-vm.sh mounts
+# ./online as C:\online). The flutter/llvm in fetch_toolchains are the LINUX .tar.xz; the
+# guest needs the WINDOWS distributions. (The Win11 ISO + the VS Build Tools layout are
+# evergreen — not stably SHA-addressable upstream — so they are CAPTURED and pinned
+# separately by SHA per R-B12(c), not fetched here.)
+fetch_windows_toolchains() {
+    # Windows Flutter SDK 3.24.5 — the .zip distribution (the linux .tar.xz won't run on Windows).
+    fetch_verify "https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_${FLUTTER_VERSION}-stable.zip" \
+        "flutter-windows-${FLUTTER_VERSION}.zip" "${SHA256_FLUTTER_WIN_3_24_5}"
+    # NEXT windows-staging steps (each needs its own audited R-B12 pin before wiring here, or
+    # fetch_verify fails closed): windows LLVM/clang (libclang for FRB/bindgen), WiX v4, and the
+    # git / rust-msvc / rustup-init installers already captured in online/win/ (pin them too).
+}
+
 # ── vcpkg registry snapshot + the digest-pinned build base images ─────────────
 fetch_vcpkg_and_images() {
     # vcpkg @ the pinned baseline commit (then `vcpkg install` builds the native
@@ -367,6 +383,7 @@ main() {
     stage_cargo_ndk
     stage_android_sdk
     stage_gradle
+    fetch_windows_toolchains
     # Windows ISO / VS Build Tools are partly evergreen (R-B12(c)): pin the CAPTURED
     # offline layout by SHA-256, documenting publisher-verified vs evergreen.
     log "online-fetch complete — ./online is now offline-buildable. Builds run --network=none."

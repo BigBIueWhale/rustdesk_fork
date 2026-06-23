@@ -55,6 +55,22 @@ Start-Process -Wait -FilePath $vsexe.FullName -ArgumentList @(
 Log 'installing LLVM 15.0.6'
 Start-Process -Wait -FilePath (Join-Path $tc 'llvm-windows-15.0.6.exe') -ArgumentList '/S'
 
+# --- Python 3.11.9 (build.py orchestrator + libs/portable/generate.py brotli) -----------------
+Log 'installing Python 3.11.9 (+ brotli for the portable packer)'
+$pyExit = (Start-Process -Wait -PassThru -FilePath (Join-Path $tc 'python-windows-3.11.9.exe') `
+    -ArgumentList '/quiet','InstallAllUsers=1','PrependPath=1','Include_test=0','Include_pip=1').ExitCode
+if ($pyExit -ne 0) { Die "Python install failed (exit $pyExit)" }
+$pyExe = 'C:\Program Files\Python311\python.exe'
+if (-not (Test-Path $pyExe)) { Die 'Python install did not land python.exe at C:\Program Files\Python311' }
+# build.py shells out to `python3 ./generate.py` (a unix-ism); Windows Python ships python.exe NOT python3.exe
+# (pip3.exe IS created by the installer). Copy one so the build's `python3` resolves.
+Copy-Item $pyExe (Join-Path (Split-Path $pyExe) 'python3.exe') -Force
+# brotli is the ONLY non-stdlib import in libs/portable/generate.py (requirements.txt = just `brotli`). Install
+# it NOW (the provision is networked) so the OFFLINE per-build's `pip3 install -r requirements.txt` is a
+# "Requirement already satisfied" no-op (no network needed at build time).
+$pipExit = (Start-Process -Wait -PassThru -NoNewWindow -FilePath $pyExe -ArgumentList '-m','pip','install','brotli').ExitCode
+if ($pipExit -ne 0) { Die "pip install brotli failed (exit $pipExit)" }
+
 # --- Flutter 3.24.5 (windows) ----------------------------------------------------------------
 Log 'extracting Flutter 3.24.5 (windows) -> C:\flutter'
 Expand-Archive -Force -Path (Join-Path $tc 'flutter-windows-3.24.5.zip') -DestinationPath 'C:\'

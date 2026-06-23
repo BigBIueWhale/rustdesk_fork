@@ -42,6 +42,7 @@ preflight() {
     # The publisher-pinned windows toolchains (online-fetch fetch_windows_toolchains).
     verify_sha256 "$ONLINE_DIR/flutter-windows-${FLUTTER_VERSION}.zip" "${SHA256_FLUTTER_WIN_3_24_5}"
     verify_sha256 "$ONLINE_DIR/llvm-windows-${LLVM_VERSION}.exe"       "${SHA256_LLVM_WIN_15_0_6}"
+    verify_sha256 "$ONLINE_DIR/python-windows-${PYTHON_VERSION}.exe"   "${SHA256_PYTHON_WIN_3_11_9}"
     # The windows flutter engine (offline-staged, deterministic) — pinned by SHA (R-B12), not just existence.
     verify_sha256 "$ONLINE_DIR/flutter-windows-engine.tar.gz"          "${SHA256_FLUTTER_WIN_ENGINE}"
     # The flutter_tools pub cache (offline-staged, deterministic) — pre-placed before the in-VM offline
@@ -71,6 +72,7 @@ build_media() {
     xorriso -as mkisofs -quiet -o "$TOOLCHAINS_ISO" -V TOOLCHAINS -J -R -graft-points \
         "/flutter-windows-${FLUTTER_VERSION}.zip=$ONLINE_DIR/flutter-windows-${FLUTTER_VERSION}.zip" \
         "/llvm-windows-${LLVM_VERSION}.exe=$ONLINE_DIR/llvm-windows-${LLVM_VERSION}.exe" \
+        "/python-windows-${PYTHON_VERSION}.exe=$ONLINE_DIR/python-windows-${PYTHON_VERSION}.exe" \
         "/vs-buildtools.layout.tar=$ONLINE_DIR/vs-buildtools.layout.tar" \
         "/vcpkg-${VCPKG_BASELINE}.tar.gz=$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" \
         "/win/Git-2.45.2-64-bit.exe=$ONLINE_DIR/win/Git-2.45.2-64-bit.exe" \

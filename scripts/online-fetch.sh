@@ -105,6 +105,10 @@ fetch_windows_toolchains() {
     # installs it silently (/S); VS Build Tools' bundled clang is a different, non-pinned version.
     fetch_verify "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/LLVM-${LLVM_VERSION}-win64.exe" \
         "llvm-windows-${LLVM_VERSION}.exe" "${SHA256_LLVM_WIN_15_0_6}"
+    # Python for the §12.2 build host: build.py orchestrates the windows build + libs/portable/generate.py
+    # (imports brotli) packs the portable installer. The golden installs it + `pip install brotli` networked.
+    fetch_verify "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-amd64.exe" \
+        "python-windows-${PYTHON_VERSION}.exe" "${SHA256_PYTHON_WIN_3_11_9}"
     # NEXT windows-staging steps (each needs its own audited R-B12 pin before wiring here, or
     # fetch_verify fails closed): WiX v4, and the git / rust-msvc / rustup-init installers already
     # captured in online/win/ (pin them too).

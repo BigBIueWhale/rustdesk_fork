@@ -1,0 +1,81 @@
+# scripts/win-guest-setup.ps1 — provisions the §12.2 Win11 build guest's toolchain (R-B8).
+#
+# Run ONCE inside the guest at first logon (autounattend.xml FirstLogonCommands) while the VM
+# still has network (the golden-template build is the one networked guest step — like the
+# android stage_gradle). It installs EXACTLY the pinned toolchain from the toolchains CD that
+# provision-windows-vm.sh attaches (the ./online windows artifacts), then the per-build VM is a
+# throwaway CoW overlay run --network=none (build-windows.ps1).
+#
+# Pinned set (pins.env): Rust 1.75 (MSVC), Flutter 3.24.5 (windows), LLVM 15.0.6 (windows),
+# VS Build Tools (MSVC + Win SDK), vcpkg @120deac3, Git. WiX v4 + the vcpkg x64-windows natives
+# are NuGet/vcpkg sets warmed against the repo (res/msi, res/vcpkg) — see the TODO at the end.
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+function Log($m) { Write-Host "[guest-setup] $m" }
+function Die($m) { Write-Error "[guest-setup:FATAL] $m"; exit 1 }
+
+# --- locate the toolchains CD (the drive holding the staged ./online windows artifacts) ------
+$tc = (Get-PSDrive -PSProvider FileSystem |
+       Where-Object { Test-Path (Join-Path $_.Root 'flutter-windows-3.24.5.zip') } |
+       Select-Object -First 1).Root
+if (-not $tc) { Die 'toolchains CD not found (no drive has flutter-windows-3.24.5.zip)' }
+Log "toolchains media: $tc"
+$win = Join-Path $tc 'win'          # the captured installers (Git, rust-msvc.msi, rustup)
+
+# --- Git -------------------------------------------------------------------------------------
+Log 'installing Git'
+Start-Process -Wait -FilePath (Join-Path $win 'Git-2.45.2-64-bit.exe') `
+    -ArgumentList '/VERYSILENT','/NORESTART','/SUPPRESSMSGBOXES','/SP-'
+
+# --- Rust 1.75 (x86_64-pc-windows-msvc), offline .msi ----------------------------------------
+Log 'installing Rust 1.75 (MSVC)'
+Start-Process -Wait -FilePath msiexec.exe `
+    -ArgumentList '/i',(Join-Path $win 'rust-1.75.0-x86_64-pc-windows-msvc.msi'),'/quiet','/norestart'
+
+# --- VS Build Tools (MSVC + Windows SDK) from the offline layout ------------------------------
+Log 'installing VS Build Tools (MSVC + Windows SDK) from the offline layout'
+$vsdir = 'C:\vslayout'
+New-Item -ItemType Directory -Force -Path $vsdir | Out-Null
+tar -xf (Join-Path $tc 'vs-buildtools.layout.tar') -C $vsdir
+$vsexe = Get-ChildItem -Path $vsdir -Recurse -Filter 'vs_*.exe' | Select-Object -First 1
+if (-not $vsexe) { Die 'vs_buildtools bootstrapper not found in the layout' }
+Start-Process -Wait -FilePath $vsexe.FullName -ArgumentList @(
+    '--quiet','--wait','--norestart','--nocache','--noUpdateInstaller',
+    '--add','Microsoft.VisualStudio.Workload.VCTools',
+    '--add','Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
+    '--add','Microsoft.VisualStudio.Component.Windows11SDK.22621',
+    '--includeRecommended')
+
+# --- LLVM/clang 15.0.6 (libclang for FRB/bindgen determinism) --------------------------------
+Log 'installing LLVM 15.0.6'
+Start-Process -Wait -FilePath (Join-Path $tc 'llvm-windows-15.0.6.exe') -ArgumentList '/S'
+
+# --- Flutter 3.24.5 (windows) ----------------------------------------------------------------
+Log 'extracting Flutter 3.24.5 (windows) -> C:\flutter'
+Expand-Archive -Force -Path (Join-Path $tc 'flutter-windows-3.24.5.zip') -DestinationPath 'C:\'
+
+# --- vcpkg @120deac3 -------------------------------------------------------------------------
+Log 'extracting + bootstrapping vcpkg @120deac3 -> C:\vcpkg'
+tar -xf (Join-Path $tc 'vcpkg-120deac3062162151622ca4860575a33844ba10b.tar.gz') -C 'C:\'
+Rename-Item 'C:\vcpkg-120deac3062162151622ca4860575a33844ba10b' 'C:\vcpkg' -ErrorAction SilentlyContinue
+& 'C:\vcpkg\bootstrap-vcpkg.bat' -disableMetrics
+
+# --- machine PATH + env (so build-windows.ps1's Preflight version asserts pass) ---------------
+Log 'setting machine PATH + env'
+$llvmBin = 'C:\Program Files\LLVM\bin'
+$cargoBin = "$env:USERPROFILE\.cargo\bin"               # rust .msi also adds its own; belt + suspenders
+$add = @('C:\flutter\bin', $llvmBin, 'C:\vcpkg', $cargoBin, 'C:\Program Files\Git\cmd')
+$cur = [Environment]::GetEnvironmentVariable('Path','Machine')
+[Environment]::SetEnvironmentVariable('Path', ($cur + ';' + ($add -join ';')), 'Machine')
+[Environment]::SetEnvironmentVariable('LIBCLANG_PATH', $llvmBin, 'Machine')
+[Environment]::SetEnvironmentVariable('VCPKG_ROOT', 'C:\vcpkg', 'Machine')
+
+# --- TODO (provision-time feed warming, needs the repo at C:\src; see windows-build-gap memo) -
+#   * WiX v4: `dotnet restore` a minimal project referencing WixToolset.Sdk/4.0.5 + the 5 wixext
+#     + WcaUtil/DUtil (res/msi's set) -> the global NuGet cache, so the offline per-build restores.
+#   * vcpkg x64-windows natives: `vcpkg install --overlay-ports=C:\src\res\vcpkg aom libvpx
+#     libyuv opus libjpeg-turbo` (the §3.2 set) into the golden, so the offline build links them.
+# Both are slow + repo-coupled; wired when provision-windows-vm.sh mounts C:\src during golden build.
+
+New-Item -ItemType File -Force -Path 'C:\guest-setup-done.txt' | Out-Null
+Log 'guest toolchain provisioning complete'

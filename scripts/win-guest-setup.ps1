@@ -14,6 +14,11 @@ $ProgressPreference = 'SilentlyContinue'
 function Log($m) { Write-Host "[guest-setup] $m" }
 function Die($m) { Write-Error "[guest-setup:FATAL] $m"; exit 1 }
 
+# A reliable transcript — the FirstLogonCommands Tee to guest-setup-log.txt proved unreadable;
+# read this post-mortem via libguestfs (virt-cat C:\setup-transcript.txt) to see where setup stopped.
+try { Start-Transcript -Path 'C:\setup-transcript.txt' -Force | Out-Null } catch { }
+Log "win-guest-setup starting; FS drives: $((Get-PSDrive -PSProvider FileSystem).Name -join ',')"
+
 # --- locate the toolchains CD (the drive holding the staged ./online windows artifacts) ------
 $tc = (Get-PSDrive -PSProvider FileSystem |
        Where-Object { Test-Path (Join-Path $_.Root 'flutter-windows-3.24.5.zip') } |

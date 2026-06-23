@@ -60,7 +60,9 @@ CFG
             --llvm-path "$LLVM_ROOT" \
             --llvm-compiler-opts="-I$(echo "$LLVM_ROOT"/lib/clang/*/include)"
     '
-for f in src/bridge_generated.rs src/bridge_generated.io.rs flutter/lib/generated_bridge.dart; do
+# generated_bridge.freezed.dart is the freezed `part` FRB's internal build_runner produces for
+# generated_bridge.dart's @freezed types (EventToUI ...); the windows --no-pub build ships it (build-windows-vm.sh).
+for f in src/bridge_generated.rs src/bridge_generated.io.rs flutter/lib/generated_bridge.dart flutter/lib/generated_bridge.freezed.dart; do
     [ -f "$REPO_ROOT/$f" ] || die "FRB did not produce $f (the offline flutter-pub/ffigen step failed — see output above)"
 done
-log "FRB bridges generated: src/bridge_generated.rs(.io.rs) + flutter/lib/generated_bridge.dart"
+log "FRB bridges generated: bridge_generated.rs(.io.rs) + generated_bridge.dart(.freezed.dart)"

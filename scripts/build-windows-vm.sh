@@ -44,7 +44,11 @@ build_media() {
     printf '%s' "$SOURCE_DATE_EPOCH" > "$snap/.source_date_epoch"
     # The pre-generated FRB bridges (R-B7) — git archive excludes them (gitignored) and the guest
     # cannot run FRB itself, so ship the host-generated, platform-agnostic bridges on the BUILD CD.
-    for f in src/bridge_generated.rs src/bridge_generated.io.rs flutter/lib/generated_bridge.dart; do
+    # generated_bridge.freezed.dart is the freezed/build_runner `part` of generated_bridge.dart (its
+    # @freezed EventToUI types); the windows build runs --no-pub (no in-VM build_runner) so it MUST be
+    # shipped too, else the dart kernel compile (flutter_assemble) fails "cannot find ...freezed.dart"
+    # + "_$EventToUI not found". It tracks generated_bridge.dart (build_runner regenerates on source change).
+    for f in src/bridge_generated.rs src/bridge_generated.io.rs flutter/lib/generated_bridge.dart flutter/lib/generated_bridge.freezed.dart; do
         [ -f "$REPO_ROOT/$f" ] || die "FRB bridge $f missing — generate_bridges (main) should have produced it"
         mkdir -p "$snap/$(dirname "$f")"; cp "$REPO_ROOT/$f" "$snap/$f"
     done

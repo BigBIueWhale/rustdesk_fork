@@ -94,7 +94,19 @@ build_golden() {
         --boot uefi \
         --network user \
         --graphics vnc,listen=127.0.0.1 \
-        --noautoconsole --wait -1
+        --noautoconsole --wait -1 &
+    local vi_pid=$!
+    # Clear the UEFI "Press any key to boot from CD or DVD" prompt: headless, it otherwise falls
+    # through to "BdsDxe: No bootable option or device was found" and the install never starts.
+    # send-key ENTER (linux keycode 28) through its ~5s window. (This backgrounded script's own
+    # sleeps are fine — only FOREGROUND sleep is harness-blocked.)
+    log "clearing the UEFI boot-from-CD prompt (send-key ENTER)"
+    for _ in $(seq 1 20); do
+        virsh -c qemu:///session send-key "$DOMAIN" --codeset linux 28 >/dev/null 2>&1 || true
+        sleep 1
+    done
+    log "unattended install + toolchain setup underway (~1-2h; the guest powers off when done)"
+    wait "$vi_pid"
     log "golden Win11 template built: $GOLDEN — DO NOT boot it for builds; clone an overlay instead"
 }
 

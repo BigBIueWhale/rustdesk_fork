@@ -163,7 +163,8 @@ pub fn core_main() -> Option<Vec<String>> {
     // R-X6: the D-Bus deep-link transport (org.rustdesk.rustdesk `NewConnection`) is excised — a
     // co-installed same-session app could fire it (a local-IPC injection vector) and it claimed the
     // bus name with replace_existing (a name-hijack). A uni-link is now self-handled by this instance
-    // (the R-X6 confirmation gate still applies), never forwarded over D-Bus to a running one.
+    // (its embedded key/password/relay is stripped per R-X6 before any connect), never forwarded over
+    // D-Bus to a running one.
     #[cfg(all(target_os = "linux", feature = "flutter"))]
     if args.len() > 0 && args[0].starts_with(&crate::get_uri_prefix()) {
         return Some(Vec::new());

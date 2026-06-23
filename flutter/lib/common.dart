@@ -2389,37 +2389,27 @@ List<String>? urlLinkToCmdArgs(Uri uri) {
     }
   }
 
-  var queryParameters =
-      uri.queryParameters.map((k, v) => MapEntry(k.toLowerCase(), v));
-
-  var key = queryParameters["key"];
-  if (id != null) {
-    if (key != null) {
-      id = "$id?key=$key";
-    }
-  }
+  // R-X6: the rustdesk:// deep link is connect-only and MUST NOT carry an embedded trust anchor or
+  // credential. The `?key=` fold (which folded an embedded key into the id and reached the Rust
+  // other_server adoption) is removed, and the `?password=`/`?relay=` query params are not read. The Rust
+  // enforces the same strip as defense-in-depth (client.rs LoginConfigHandler::initialize), since the
+  // raw URI can also reach it via bind.sendUrlScheme. The connection carries no pre-filled secret — the
+  // user authenticates via the normal password prompt. (The explicit deep-link-connect confirmation gate
+  // is layered on top of this strip; see R-X6 / handleUriLink.)
 
   if (isMobile && id != null) {
-    final forceRelay = queryParameters["relay"] != null;
-    final password = queryParameters["password"];
-
-    // Determine connection type based on command
     if (command == '--file-transfer') {
-      connect(Get.context!, id,
-          isFileTransfer: true, forceRelay: forceRelay, password: password);
+      connect(Get.context!, id, isFileTransfer: true);
     } else if (command == '--view-camera') {
-      connect(Get.context!, id,
-          isViewCamera: true, forceRelay: forceRelay, password: password);
+      connect(Get.context!, id, isViewCamera: true);
     } else if (command == '--terminal') {
-      connect(Get.context!, id,
-          isTerminal: true, forceRelay: forceRelay, password: password);
+      connect(Get.context!, id, isTerminal: true);
     } else if (command == 'terminal-admin') {
       setEnvTerminalAdmin();
-      connect(Get.context!, id,
-          isTerminal: true, forceRelay: forceRelay, password: password);
+      connect(Get.context!, id, isTerminal: true);
     } else {
       // Default to remote desktop for '--connect', '--play', or direct connection
-      connect(Get.context!, id, forceRelay: forceRelay, password: password);
+      connect(Get.context!, id);
     }
     return null;
   }
@@ -2428,10 +2418,6 @@ List<String>? urlLinkToCmdArgs(Uri uri) {
   if (command != null && id != null) {
     args.add(command);
     args.add(id);
-    var param = queryParameters;
-    String? password = param["password"];
-    if (password != null) args.addAll(['--password', password]);
-    if (param["relay"] != null) args.add("--relay");
     return args;
   }
 

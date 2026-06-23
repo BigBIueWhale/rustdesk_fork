@@ -74,8 +74,9 @@ class _ScanPageState extends State<ScanPage> {
       await controller.pauseCamera();
       // R-G2 / R-X4 / R-X6: the config-QR -> ID/Relay/API/Key editor path is excised (it was
       // the trust-anchor-injection surface, the same class as rustdesk://config). Only a
-      // rustdesk:// deep-link is honored, and handleUriLink enforces the R-X6 confirmation and
-      // ignores any embedded key/password. A scan-to-connect-by-ID flow is moot under R-SV5.
+      // rustdesk:// deep-link is honored, and its parser (urlLinkToCmdArgs) strips any embedded
+      // key/password/relay so the URI cannot inject a trust anchor or credential (R-X6 — the Rust
+      // core enforces the same strip). A scan-to-connect-by-ID flow is moot under R-SV5.
       if (code.startsWith(bind.mainUriPrefixSync())) {
         handleUriLink(uriString: code);
       } else {

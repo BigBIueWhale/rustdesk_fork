@@ -189,7 +189,7 @@ ra6_clean 'DEBUG_BOOT_COMPLETED'                                          'R-X6 
 # org.rustdesk.rustdesk, method NewConnection) is EXCISED. It ignored the caller (any co-installed
 # same-session app could fire it — a local-IPC injection vector) and claimed the bus name with
 # replace_existing=true (a name-hijack to intercept legitimate links). The module is deleted; uni-links
-# are self-handled per-instance (core_main, still behind the R-X6 confirmation gate). \bstart_dbus_server
+# are self-handled per-instance (core_main); their embedded key/password/relay is stripped (R-X6, below). \bstart_dbus_server
 # excludes the kept no-op FFI shim main_start_dbus_server (no word boundary before "start").
 ra6_clean 'crate::dbus|org\.rustdesk\.rustdesk|\bstart_dbus_server' 'R-X6 D-Bus deep-link transport (NewConnection)' || rc=1
 # R-X6 (cont.): dbus-crossroads (the D-Bus SERVER framework) was the dead Cargo-dep residual of the
@@ -203,6 +203,26 @@ if grep -qE 'fn start_ipc_url_server' src/server.rs && ! grep -qE 'authorize_url
   echo "  FAIL R-X6: macOS start_ipc_url_server does not authenticate its _url IPC sender (peer-uid+exe)"; rc=1
 else
   echo "  ok  R-X6 macOS _url IPC listener authenticates its sender (authorize_url_ipc_sender)"
+fi
+# R-X6 deep-link embedded-credential strip — BOTH layers (a Dart-only strip is bypassable, since the raw
+# URI reaches the Rust core via bind.sendUrlScheme). (1) The Dart parser urlLinkToCmdArgs
+# (flutter/lib/common.dart) MUST NOT fold an embedded ?key= into the id, nor propagate ?password=/?relay=
+# into the connect call or the launch args — a malicious rustdesk:// link must carry no trust anchor/cred.
+if grep -qF '?key=$key' flutter/lib/common.dart || grep -qF "['--password', password]" flutter/lib/common.dart; then
+  echo "  FAIL R-X6: flutter/lib/common.dart deep-link parser still carries an embedded key/password"; rc=1
+elif ! grep -qF 'connect-only and MUST NOT carry an embedded' flutter/lib/common.dart; then
+  echo "  FAIL R-X6: the urlLinkToCmdArgs R-X6 strip marker is gone (regrowth risk)"; rc=1
+else
+  echo "  ok  R-X6 Dart deep-link parser strips embedded key/password/relay"
+fi
+# (2) The Rust core LoginConfigHandler::initialize (src/client.rs) MUST NOT adopt an embedded ?key= into
+# other_server, nor re-adopt a persisted/option-injected other-server-key.
+if grep -qE 'args_map\.remove\("key"\)' src/client.rs; then
+  echo "  FAIL R-X6: src/client.rs still parses an embedded ?key= into other_server"; rc=1
+elif ! grep -qF 'NEVER adopt an embedded' src/client.rs; then
+  echo "  FAIL R-X6: the client.rs ?key= strip marker is gone (regrowth risk)"; rc=1
+else
+  echo "  ok  R-X6 Rust core never adopts an embedded ?key= (other_server key held empty)"
 fi
 ra6_clean 'ConfigureUpdate|TestNatResponse'                              'R-X3 server-push config-update + NAT-response rewrite arms' || rc=1
 # R-P3 / R-P14: the inherited insecure direct-mode used a plaintext constant-byte ack ("direct-ok")

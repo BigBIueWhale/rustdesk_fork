@@ -1295,23 +1295,15 @@ impl LoginConfigHandler {
         if id.contains("@") {
             let mut v = id.split("@");
             let raw_id: &str = v.next().unwrap_or_default();
-            let mut server_key = v.next().unwrap_or_default().split('?');
-            let server = server_key.next().unwrap_or_default();
-            let args = server_key.next().unwrap_or_default();
-            let key = if server == PUBLIC_SERVER {
-                config::RS_PUB_KEY.to_owned()
-            } else {
-                let mut args_map: HashMap<String, &str> = HashMap::new();
-                for arg in args.split('&') {
-                    if let Some(kv) = arg.find('=') {
-                        let k = arg[0..kv].to_lowercase();
-                        let v = &arg[kv + 1..];
-                        args_map.insert(k, v);
-                    }
-                }
-                let key = args_map.remove("key").unwrap_or_default();
-                key.to_owned()
-            };
+            let server = v.next().unwrap_or_default().split('?').next().unwrap_or_default();
+            // R-X6: NEVER adopt an embedded `?key=` trust anchor from a rustdesk:// deep-link URI.
+            // The direct-IP fork keys solely via CPace from the password PRS (the R-S17 host-key pin is
+            // the sole trust anchor), so an attacker-supplied `?key=` must not become other_server's key,
+            // and the persisted `other-server-key` must never be URI-settable. (The `<id>@server` connect
+            // form is itself already dead — Client::_start bails on any non-direct address — but R-X6
+            // mandates this Rust-layer strip as defense-in-depth: the raw URI can reach the core via
+            // bind.sendUrlScheme even when the Dart-parser strip is bypassed.)
+            let key = String::new();
 
             // here we can check <id>/r@server
             let real_id = crate::ui_interface::handle_relay_id(raw_id).to_string();
@@ -1357,12 +1349,9 @@ impl LoginConfigHandler {
             config::option2bool("force-always-relay", &self.get_option("force-always-relay"))
                 || force_relay
                 || Config::is_proxy();
-        if let Some((real_id, server, key)) = &self.other_server {
-            let other_server_key = self.get_option("other-server-key");
-            if !other_server_key.is_empty() && key.is_empty() {
-                self.other_server = Some((real_id.to_owned(), server.to_owned(), other_server_key));
-            }
-        }
+        // R-X6: the persisted `other-server-key` re-adoption is removed — other_server's key is held
+        // empty (never sourced from the deep-link `?key=`; see initialize above), so a stale or
+        // option-injected `other-server-key` can never be re-adopted as a trust anchor.
 
         self.direct = None;
         self.received = false;

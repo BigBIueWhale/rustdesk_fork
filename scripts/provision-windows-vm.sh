@@ -27,6 +27,7 @@ GOLDEN="$STATE_DIR/win11-golden.qcow2"
 DOMAIN="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-golden"
 AUTOUNATTEND_ISO="$STATE_DIR/autounattend.iso"   # the PROVISION CD: autounattend.xml + the setup .ps1
 TOOLCHAINS_ISO="$STATE_DIR/toolchains.iso"        # the TOOLCHAINS CD: the staged ./online windows artifacts
+SRC_ISO="$STATE_DIR/src.iso"                      # the SRC CD: the committed repo (res/vcpkg etc.) for warming
 
 preflight() {
     require_cmd virt-install virsh qemu-img xorriso
@@ -64,6 +65,15 @@ build_media() {
         "/win/Git-2.45.2-64-bit.exe=$ONLINE_DIR/win/Git-2.45.2-64-bit.exe" \
         "/win/rust-1.75.0-x86_64-pc-windows-msvc.msi=$ONLINE_DIR/win/rust-1.75.0-x86_64-pc-windows-msvc.msi" \
         "/win/rustup-init.exe=$ONLINE_DIR/win/rustup-init.exe"
+    # The SRC CD = the COMMITTED repo (git archive HEAD: tracked files only, so no ./online,
+    # ./target, ./.git, ./.harness-state). win-guest-setup.ps1 reads res/vcpkg off it to warm the
+    # vcpkg x64-windows natives into the golden (the per-build is --network=none).
+    log "building the SRC CD (committed repo source for the vcpkg-native warm)"
+    local snap="$STATE_DIR/src-snap"
+    rm -rf "$snap"; mkdir -p "$snap"
+    git -C "$REPO_ROOT" archive --format=tar HEAD | tar -x -C "$snap"
+    ( cd "$snap" && xorriso -as mkisofs -quiet -o "$SRC_ISO" -V SRC -J -R . )
+    rm -rf "$snap"
 }
 
 build_golden() {
@@ -90,6 +100,7 @@ build_golden() {
         --disk "path=$GOLDEN,format=qcow2,bus=sata" \
         --disk "path=$AUTOUNATTEND_ISO,device=cdrom" \
         --disk "path=$TOOLCHAINS_ISO,device=cdrom" \
+        --disk "path=$SRC_ISO,device=cdrom" \
         --cdrom "$ONLINE_DIR/win11.iso" \
         --boot uefi \
         --network user \

@@ -70,12 +70,21 @@ $cur = [Environment]::GetEnvironmentVariable('Path','Machine')
 [Environment]::SetEnvironmentVariable('LIBCLANG_PATH', $llvmBin, 'Machine')
 [Environment]::SetEnvironmentVariable('VCPKG_ROOT', 'C:\vcpkg', 'Machine')
 
-# --- TODO (provision-time feed warming, needs the repo at C:\src; see windows-build-gap memo) -
-#   * WiX v4: `dotnet restore` a minimal project referencing WixToolset.Sdk/4.0.5 + the 5 wixext
-#     + WcaUtil/DUtil (res/msi's set) -> the global NuGet cache, so the offline per-build restores.
-#   * vcpkg x64-windows natives: `vcpkg install --overlay-ports=C:\src\res\vcpkg aom libvpx
-#     libyuv opus libjpeg-turbo` (the §3.2 set) into the golden, so the offline build links them.
-# Both are slow + repo-coupled; wired when provision-windows-vm.sh mounts C:\src during golden build.
+# --- vcpkg §3.2 x64-windows natives — warm them into the golden (the per-build is --network=none) ----
+# Find the SRC CD (the committed repo that provision-windows-vm.sh mounts) for the overlay ports.
+$src = (Get-PSDrive -PSProvider FileSystem |
+        Where-Object { Test-Path (Join-Path $_.Root 'res\vcpkg') } | Select-Object -First 1).Root
+if ($src) {
+    $ports = Join-Path $src 'res\vcpkg'
+    Log "building the vcpkg x64-windows-static natives (overlay-ports $ports) — slow (~30-60min)"
+    & 'C:\vcpkg\vcpkg.exe' install --overlay-ports="$ports" --triplet x64-windows-static `
+        aom libvpx libyuv opus libjpeg-turbo cpu-features
+    if ($LASTEXITCODE -ne 0) { Die "vcpkg install of the x64-windows natives failed (exit $LASTEXITCODE)" }
+} else {
+    Log 'WARN: no SRC CD (res\vcpkg) found — skipped the vcpkg-native warm; the offline build cannot link codecs'
+}
+# TODO (milestone 2, the .msi): warm the WiX v4 NuGet set — needs .NET (add the VS .NET workload) +
+# `dotnet restore res/msi/Package/Package.wixproj` into the global NuGet cache for the offline build.
 
 New-Item -ItemType File -Force -Path 'C:\guest-setup-done.txt' | Out-Null
 Log 'guest toolchain provisioning complete — shutting down (this powered-off image IS the golden)'

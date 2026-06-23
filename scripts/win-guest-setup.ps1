@@ -90,14 +90,21 @@ git config --global --add safe.directory '*'   # avoid git "dubious ownership" o
 Log 'placing the offline-staged windows flutter engine, then reconciling via precache'
 tar -xf (Join-Path $tc 'flutter-windows-engine.tar.gz') -C 'C:\flutter'
 if (-not (Test-Path 'C:\flutter\bin\cache\artifacts\engine\windows-x64')) { Die 'engine extraction failed -- windows-x64 absent after tar (gzip/CD issue)' }
-# config warms flutter_tools (compiles bin\cache\flutter_tools.snapshot from a small pub.dev fetch, baked
-# into the golden so the offline per-build skips it) + enables the windows desktop. Proven <5min over slirp.
+# * The first-run flutter_tools `pub get` is what STALLED the provision over slirp -- it makes ~98 pub.dev
+# package-METADATA round-trips (NOT the engine: the SDK zip already ships the windows engine + a
+# windows-sdk.stamp matching engine.version, so the engine tarball above is a redundant byte-identical
+# overlay). The zip ALSO bundles the resolved deps in its pub cache, so resolve flutter_tools OFFLINE here
+# -> zero pub.dev traffic -> config + precache run fully offline. CONFIRMED in the rdwinvm SSH VM: with this
+# offline resolve, `flutter precache --windows -v` makes 0 pub.dev calls (vs 98 that wedged >30min before).
+Log 'resolving flutter_tools OFFLINE (kills the ~98 pub.dev metadata calls that stalled the provision)'
+& 'C:\flutter\bin\cache\dart-sdk\bin\dart.exe' pub get --offline --directory 'C:\flutter\packages\flutter_tools'
+if ($LASTEXITCODE -ne 0) { Die "flutter_tools offline pub get failed (exit $LASTEXITCODE) -- the SDK zip's bundled pub cache is incomplete" }
+# config enables the windows desktop; precache reconciles the (already-present) engine. Both offline now, so
+# short bounds suffice -- a stall here would mean the offline resolve above did not take.
 $cfg = Start-Process 'C:\flutter\bin\flutter.bat' -ArgumentList 'config','--no-analytics','--enable-windows-desktop' -PassThru -NoNewWindow
-if (-not $cfg.WaitForExit(300000)) { try { $cfg.Kill() } catch {}; Die 'flutter config timed out (>5min) -- flutter_tools pub resolution stalled over slirp' }
-# precache the windows engine -- the slow part. 30min for the bursty slirp fetch; it writes the stamps the
-# offline per-build's `flutter build windows` needs in order to skip its own re-download.
+if (-not $cfg.WaitForExit(300000)) { try { $cfg.Kill() } catch {}; Die 'flutter config timed out (>5min) -- unexpected; flutter_tools was resolved offline' }
 $pc = Start-Process 'C:\flutter\bin\flutter.bat' -ArgumentList 'precache','--windows' -PassThru -NoNewWindow
-if (-not $pc.WaitForExit(1800000)) { try { $pc.Kill() } catch {}; Die 'flutter precache --windows timed out (>30min) -- slirp engine fetch too unreliable; needs a real VM network or a windows-native staged cache' }
+if (-not $pc.WaitForExit(600000)) { try { $pc.Kill() } catch {}; Die 'flutter precache --windows timed out (>10min) -- unexpected; engine present + flutter_tools offline-resolved' }
 if ($pc.ExitCode -ne 0) { Die "flutter precache --windows failed (exit $($pc.ExitCode))" }
 
 # --- vcpkg @120deac3 -------------------------------------------------------------------------

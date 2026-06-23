@@ -64,8 +64,10 @@ offline = true
 function Emit-Artifacts {
     $out = Join-Path $SRC 'dist'
     New-Item -ItemType Directory -Force -Path $out | Out-Null
-    # The portable installer .exe (libs/portable) and the WiX v4 .msi.
-    Get-ChildItem -Path $SRC -Filter 'rustdesk-*win7-install.exe' -Recurse | Select-Object -First 1 |
+    # The portable installer .exe (libs/portable) and the WiX v4 .msi. build.py's
+    # build_flutter_windows renames the portable packer to rustdesk-<version>-install.exe (NOT a
+    # "win7" variant), so the filter must be rustdesk-*install.exe or Emit-Artifacts finds nothing.
+    Get-ChildItem -Path $SRC -Filter 'rustdesk-*install.exe' -Recurse | Select-Object -First 1 |
         ForEach-Object { Copy-Item $_.FullName (Join-Path $out 'rustdesk-setup.exe') }
     Get-ChildItem -Path $SRC -Filter '*.msi' -Recurse | Select-Object -First 1 |
         ForEach-Object { Copy-Item $_.FullName (Join-Path $out 'rustdesk.msi') }

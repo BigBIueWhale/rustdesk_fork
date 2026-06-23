@@ -117,7 +117,19 @@ build_golden() {
         sleep 1
     done
     log "unattended install + toolchain setup underway (~1-2h; the guest powers off when done)"
-    wait "$vi_pid"
+    # virt-install --wait returns at the FIRST guest shutdown — the OS-install REBOOT — not the final
+    # power-off; the guest then keeps running (OOBE -> first-logon -> toolchain + vcpkg-natives ->
+    # Stop-Computer). So reap it, then POLL the domain until it stays shut off. 2 consecutive 60s
+    # "not running" checks skip the transient install/OOBE reboots (libvirt on_reboot=restart brings
+    # those back within seconds), so this fires only on the real Stop-Computer.
+    wait "$vi_pid" 2>/dev/null || true
+    log "waiting for the toolchain + vcpkg-native build, then the golden's real power-off"
+    local off=0 mins=0
+    while [ "$off" -lt 2 ]; do
+        sleep 60; mins=$((mins + 1))
+        if [ "$(virsh -c qemu:///session domstate "$DOMAIN" 2>/dev/null)" = "running" ]; then off=0; else off=$((off + 1)); fi
+        [ "$mins" -gt 180 ] && die "golden provisioning exceeded 3h — check VNC 127.0.0.1 / virt-cat C:\\guest-setup-log.txt"
+    done
     log "golden Win11 template built: $GOLDEN — DO NOT boot it for builds; clone an overlay instead"
 }
 

@@ -77,8 +77,7 @@ build_media() {
         "/win/rust-1.75.0-x86_64-pc-windows-msvc.msi=$ONLINE_DIR/win/rust-1.75.0-x86_64-pc-windows-msvc.msi" \
         "/win/rustup-init.exe=$ONLINE_DIR/win/rustup-init.exe" \
         "/flutter-windows-engine.tar.gz=$ONLINE_DIR/flutter-windows-engine.tar.gz" \
-        "/flutter-pub-cache.tar.gz=$ONLINE_DIR/flutter-pub-cache.tar.gz" \
-        "/flutter_tools-package_config.json=$ONLINE_DIR/flutter_tools-package_config.json"
+        "/flutter-pub-cache.tar.gz=$ONLINE_DIR/flutter-pub-cache.tar.gz"
 }
 
 # golden_has_done_marker: true iff C:\guest-setup-done.txt exists in the golden qcow2 — the

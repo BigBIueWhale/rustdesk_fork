@@ -444,16 +444,10 @@ stage_flutter_pub_cache() {
     zcat "$out" | tar -t 2>/dev/null | grep -q 'hosted/pub.dev/test-1.25.7/pubspec.yaml' \
         || die "flutter-pub-cache.tar.gz lacks test-1.25.7 — flutter_tools dev deps missing; the offline resolve would fail"
     log "windows flutter pub cache staged: $out ($(du -h "$out" | cut -f1))"
-    # Also stage flutter_tools' pre-resolved .dart_tool/package_config.json (97 pinned pkg paths, all under
-    # C:\Users\builder\...\Pub\Cache + C:\flutter\...). The in-VM `dart pub get` on a FRESH flutter_tools makes
-    # a pub.dev advisory/metadata call that --offline does NOT skip and that is FATAL when the fresh-Win11
-    # guest's TLS handshake to pub.dev fails ("Handshake error in client"); seeding this resolution makes that
-    # pub get a 0-network no-op (win-guest-setup copies it into flutter_tools\.dart_tool). Committed, because a
-    # real Windows flutter resolve against THIS cache generated it (can't be produced on the linux fetch host).
-    [ -f "$SCRIPT_DIR/../res/win/flutter_tools-package_config.json" ] \
-        || die "res/win/flutter_tools-package_config.json missing (the flutter_tools .dart_tool seed)"
-    cp "$SCRIPT_DIR/../res/win/flutter_tools-package_config.json" "$ONLINE_DIR/flutter_tools-package_config.json"
-    log "staged flutter_tools .dart_tool seed -> ./online/flutter_tools-package_config.json"
+    # NB the tarball deliberately includes hosted/pub.dev/.cache/ (pub's metadata + advisory cache). The in-VM
+    # win-guest-setup STAMPS that .cache fresh after extraction: the deterministic --mtime above pins it to 2023
+    # so dart would treat the advisory cache as expired and re-fetch it from pub.dev (fatal on the fresh-Win11
+    # guest whose TLS handshake to pub.dev fails). Stamping it NOW keeps the flutter_tools resolve 0-network.
 }
 
 main() {

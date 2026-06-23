@@ -53,12 +53,25 @@ build_media() {
     # The offline cargo-vendor (2.6G) + flutter pub-cache as ONE UDF CD — UDF is Windows-readable AND
     # handles the deep crate paths / large size that plain Joliet (-J) would truncate or reject. One
     # combined CD (not two) keeps the device count low (a 4th provision CD once broke FirstLogonCommands).
-    log "building the OFFLINE UDF media (cargo-vendor + source map + pub-cache)"
+    log "building the OFFLINE UDF media (cargo-vendor + source map + pub-cache) via genisoimage -udf -D"
     rm -f "$OFFLINE_ISO"
-    xorriso -as mkisofs -udf -quiet -V OFFLINE -o "$OFFLINE_ISO" -graft-points \
-        "/cargo-vendor=$ONLINE_DIR/cargo-vendor" \
-        "/cargo-vendor-config.toml=$ONLINE_DIR/cargo-vendor-config.toml" \
-        "/pub-cache=$ONLINE_DIR/pub-cache"
+    # The host xorriso (this libisofs build) lacks UDF -- `-as mkisofs -udf` -> "Unsupported option '-udf'" --
+    # and no UDF tool is installed here, so build the UDF bridge with genisoimage IN A CONTAINER. `-udf` makes
+    # it Windows-readable; `-D` (disable deep-relocation) keeps the deep crate/git paths in place -- WITHOUT it
+    # genisoimage silently DROPS every dir >6 levels ("Directories too deep ... ignored"), e.g. git-dep example/
+    # + .git/ trees, shrinking a ~2.8G medium to ~1G and breaking the offline build. The OFFLINE medium's
+    # byte-layout need NOT be R-B2-deterministic: the .exe is derived from the file CONTENTS (cargo-vendor +
+    # pub-cache, which ARE the pinned inputs), not from this medium's byte order.
+    local off_name; off_name="$(basename "$OFFLINE_ISO")"
+    docker run --rm -v "$ONLINE_DIR:/online:ro" -v "$STATE_DIR:/out" -e OFF_NAME="$off_name" debian:stable-slim bash -euc '
+        apt-get update -qq >/dev/null 2>&1
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq genisoimage >/dev/null 2>&1
+        genisoimage -udf -D -r -quiet -V OFFLINE -o "/out/$OFF_NAME" -graft-points \
+            /cargo-vendor=/online/cargo-vendor \
+            /cargo-vendor-config.toml=/online/cargo-vendor-config.toml \
+            /pub-cache=/online/pub-cache
+    ' || die "OFFLINE UDF media build (genisoimage in docker) failed"
+    [ -f "$OFFLINE_ISO" ] || die "OFFLINE UDF media not produced"
     # The OUTPUT disk = a raw FAT image labelled OUTPUT; run-build.ps1 writes dist/ here, the host reads it.
     log "creating the OUTPUT disk (FAT, label OUTPUT)"
     rm -f "$OUTPUT_IMG"

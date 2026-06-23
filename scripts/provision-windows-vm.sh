@@ -42,9 +42,11 @@ preflight() {
     # The publisher-pinned windows toolchains (online-fetch fetch_windows_toolchains).
     verify_sha256 "$ONLINE_DIR/flutter-windows-${FLUTTER_VERSION}.zip" "${SHA256_FLUTTER_WIN_3_24_5}"
     verify_sha256 "$ONLINE_DIR/llvm-windows-${LLVM_VERSION}.exe"       "${SHA256_LLVM_WIN_15_0_6}"
+    # The windows flutter engine (offline-staged, deterministic) — pinned by SHA (R-B12), not just existence.
+    verify_sha256 "$ONLINE_DIR/flutter-windows-engine.tar.gz"          "${SHA256_FLUTTER_WIN_ENGINE}"
     for f in "win/Git-2.45.2-64-bit.exe" "win/rust-1.75.0-x86_64-pc-windows-msvc.msi" \
-             "win/rustup-init.exe" "vcpkg-${VCPKG_BASELINE}.tar.gz" "flutter-windows-engine.tar.gz"; do
-        [ -f "$ONLINE_DIR/$f" ] || die "windows toolchain artifact missing in ./online: $f (stage it before provisioning; the engine tarball = host flutter precache --windows, see online-fetch)"
+             "win/rustup-init.exe" "vcpkg-${VCPKG_BASELINE}.tar.gz"; do
+        [ -f "$ONLINE_DIR/$f" ] || die "windows toolchain artifact missing in ./online: $f (stage it before provisioning)"
     done
     log "preflight OK — building the golden Win11 template (immutable, pinned)"
 }

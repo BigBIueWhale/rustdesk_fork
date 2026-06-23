@@ -252,6 +252,16 @@ if grep -qF 'android:allowBackup="false"' "$AMF" \
 else
   echo "  FAIL R-X6: Android manifest hardening regressed (allowBackup / a live SYSTEM_ALERT_WINDOW|storage|FloatingWindowService decl / requestLegacyExternalStorage / network-security-config)"; rc=1
 fi
+# R-X6 Android: the dead floating-window / SYSTEM_ALERT_WINDOW Dart UI is excised (commit 917ebd0; the
+# native FloatingWindowService was cut in f8ddac8). Assert no LIVE kSystemAlertWindow reference regrows in
+# the Flutter UI — a regrown overlay-permission request would re-introduce the dropped permission AND the
+# canStartOnBoot silent-disable boot-start bug. (Filter the grep -rn 'file:line:' prefix so the lone
+# explanatory comment in consts.dart is not a false positive.)
+if grep -rn 'kSystemAlertWindow' flutter/lib/ | grep -vE ':[0-9]+:[[:space:]]*//' | grep -q .; then
+  echo "  FAIL R-X6: a live kSystemAlertWindow reference regrew in flutter/lib (floating-window/overlay UI)"; rc=1
+else
+  echo "  ok  R-X6 Android floating-window / SYSTEM_ALERT_WINDOW Dart UI excised (no live ref)"
+fi
 ra6_clean 'ConfigureUpdate|TestNatResponse'                              'R-X3 server-push config-update + NAT-response rewrite arms' || rc=1
 # R-P3 / R-P14: the inherited insecure direct-mode used a plaintext constant-byte ack ("direct-ok")
 # to admit a peer WITHOUT the PAKE key-confirmation. The fork makes CPace mandatory (R-A1), so any

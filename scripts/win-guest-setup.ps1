@@ -112,21 +112,25 @@ Log "flutter_tools pub cache extracted to $pc"
 
 Log 'resolving flutter_tools OFFLINE (kills the ~98 pub.dev metadata calls that stalled the provision)'
 # `dart pub get` ALWAYS attempts a pub.dev security-advisory fetch, even under --offline. When that endpoint
-# is unreachable -- and a fresh Win11 guest's HTTPS to pub.dev fails its TLS handshake -- pub prints a
-# NON-FATAL "Handshake error in client" to STDERR, yet pub get itself SUCCEEDS (exit 0). VERIFIED in the
-# rdwinvm SSH VM with outbound :443 firewall-blocked: it still printed "Got dependencies!" and returned 0.
-# Under $ErrorActionPreference='Stop' that native stderr becomes a fatal NativeCommandError and killed the
-# whole provision here (the real cause of the repeated line-114 Die, NOT a NIC/cache problem -- the staged
-# cache is content-complete). `2>&1` merges the stderr into the success stream so it is not a terminating
-# error; judge success by $LASTEXITCODE. The offline build no longer depends on the guest reaching pub.dev.
-& 'C:\flutter\bin\cache\dart-sdk\bin\dart.exe' pub get --offline --directory 'C:\flutter\packages\flutter_tools' 2>&1
-if ($LASTEXITCODE -ne 0) { Die "flutter_tools offline pub get failed (exit $LASTEXITCODE) -- the staged pub cache (flutter-pub-cache.tar.gz) is incomplete" }
-# config enables the windows desktop; precache reconciles the (already-present) engine. Both offline now, so
-# short bounds suffice -- a stall here would mean the offline resolve above did not take.
-$cfg = Start-Process 'C:\flutter\bin\flutter.bat' -ArgumentList 'config','--no-analytics','--enable-windows-desktop' -PassThru -NoNewWindow
-if (-not $cfg.WaitForExit(300000)) { try { $cfg.Kill() } catch {}; Die 'flutter config timed out (>5min) -- unexpected; flutter_tools was resolved offline' }
-$pc = Start-Process 'C:\flutter\bin\flutter.bat' -ArgumentList 'precache','--windows' -PassThru -NoNewWindow
-if (-not $pc.WaitForExit(600000)) { try { $pc.Kill() } catch {}; Die 'flutter precache --windows timed out (>10min) -- unexpected; engine present + flutter_tools offline-resolved' }
+# is unreachable -- a fresh Win11 guest's HTTPS to pub.dev fails its TLS handshake -- pub prints a NON-FATAL
+# "Handshake error in client" to STDERR, yet pub get itself SUCCEEDS (exit 0; VERIFIED in rdwinvm with :443
+# blocked -- "Got dependencies!", rc=0; the staged cache is content-complete, so the resolve never needs net).
+# BUT this script is launched by autounattend as `& $s *>&1 | Tee`, which routes that native stderr into the
+# pipeline as an ErrorRecord -> under $ErrorActionPreference='Stop' it becomes a FATAL NativeCommandError that
+# killed every provision at this line. A command-level `2>&1` does NOT prevent it inside `*>&1 | Tee` (proven:
+# the 2>&1 build Died identically). FIX: run dart via Start-Process -- a CHILD process whose stderr goes to the
+# console, never this script's pipeline (the exact pattern the flutter config/precache below already use and
+# survive). Judge by ExitCode. (This finally severs the build from the guest ever reaching pub.dev.)
+# -Wait is REQUIRED for a reliable .ExitCode: with `-PassThru` + `WaitForExit` (no -Wait), .ExitCode comes back
+# $null, so `-ne 0` is ALWAYS true and Dies even on success (verified on rdwinvm: -Wait -PassThru -> rc=7,
+# -PassThru+WaitForExit -> rc=[]). -Wait blocks until exit; a genuine hang is caught by the 130m provision wait.
+$pg = Start-Process 'C:\flutter\bin\cache\dart-sdk\bin\dart.exe' `
+    -ArgumentList 'pub','get','--offline','--directory','C:\flutter\packages\flutter_tools' -Wait -PassThru -NoNewWindow
+if ($pg.ExitCode -ne 0) { Die "flutter_tools offline pub get failed (exit $($pg.ExitCode)) -- the staged pub cache (flutter-pub-cache.tar.gz) is incomplete" }
+# config enables the windows desktop; precache reconciles the (already-present, offline-staged) engine.
+$cfg = Start-Process 'C:\flutter\bin\flutter.bat' -ArgumentList 'config','--no-analytics','--enable-windows-desktop' -Wait -PassThru -NoNewWindow
+if ($cfg.ExitCode -ne 0) { Die "flutter config failed (exit $($cfg.ExitCode))" }
+$pc = Start-Process 'C:\flutter\bin\flutter.bat' -ArgumentList 'precache','--windows' -Wait -PassThru -NoNewWindow
 if ($pc.ExitCode -ne 0) { Die "flutter precache --windows failed (exit $($pc.ExitCode))" }
 
 # --- vcpkg @120deac3 -------------------------------------------------------------------------
@@ -152,12 +156,13 @@ $src = (Get-PSDrive -PSProvider FileSystem |
 if ($src) {
     $ports = Join-Path $src 'res\vcpkg'
     Log "building the vcpkg x64-windows-static natives (overlay-ports $ports) -- slow (~30-60min)"
-    # 2>&1 -- same native-stderr-under-Stop guard as the pub get above: vcpkg writes progress/warnings to
-    # stderr, and under ErrorActionPreference=Stop a benign warning would be a fatal NativeCommandError
-    # BEFORE the $LASTEXITCODE check below ever runs. Merge it; judge success by the exit code.
-    & 'C:\vcpkg\vcpkg.exe' install --overlay-ports="$ports" --triplet x64-windows-static `
-        aom libvpx libyuv opus libjpeg-turbo cpu-features 2>&1
-    if ($LASTEXITCODE -ne 0) { Die "vcpkg install of the x64-windows natives failed (exit $LASTEXITCODE)" }
+    # Start-Process -Wait -PassThru (native-stderr decoupling as the dart resolve above + the -Wait the
+    # reliable-ExitCode quirk demands): vcpkg writes progress/warnings to stderr; under autounattend's
+    # `*>&1 | Tee` + ErrorActionPreference=Stop a benign warning would be a fatal NativeCommandError. A CHILD
+    # process's stderr goes to the console, never this script's pipeline. Judge by ExitCode. (A hang -- e.g. a
+    # source download that can't reach the net -- is caught by the 130m provision wait.)
+    $vp = Start-Process 'C:\vcpkg\vcpkg.exe' -ArgumentList 'install',"--overlay-ports=$ports",'--triplet','x64-windows-static','aom','libvpx','libyuv','opus','libjpeg-turbo','cpu-features' -Wait -PassThru -NoNewWindow
+    if ($vp.ExitCode -ne 0) { Die "vcpkg install of the x64-windows natives failed (exit $($vp.ExitCode))" }
 } else {
     Log 'WARN: no SRC CD (res\vcpkg) found -- skipped the vcpkg-native warm; the offline build cannot link codecs'
 }

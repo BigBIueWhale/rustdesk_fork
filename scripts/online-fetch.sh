@@ -392,12 +392,20 @@ stage_windows_engine() {
         export HOME=/tmp/home; mkdir -p "$HOME"; git config --global --add safe.directory "*"
         cd /tmp/flutter
         find bin/cache -type f | sort > /tmp/before.txt
+        touch /tmp/marker
         flutter precache --windows >/dev/null 2>&1
-        find bin/cache -type f | sort > /tmp/after.txt
-        comm -13 /tmp/before.txt /tmp/after.txt > /tmp/new.txt
-        grep -q "artifacts/engine/windows-x64" /tmp/new.txt || { echo "precache produced no windows-x64 engine"; exit 1; }
-        # deterministic: sorted names + fixed mtime/owner + gzip -n (no name/timestamp) -> stable R-B12 SHA
-        tar --sort=name --mtime=@1700000000 --owner=0 --group=0 --numeric-owner -cf - -T /tmp/new.txt | gzip -n -9 > /online/flutter-windows-engine.tar.gz
+        # Stage the NEW files (the engine binaries — they keep PRESERVED-OLD mtimes from the zip, so
+        # find -newer misses them) PLUS the files precache MODIFIED with a fresh mtime (find -newer) --
+        # crucially bin/cache/windows-sdk.stamp, the freshness marker the WINDOWS flutter checks. Without
+        # it the windows flutter RE-DOWNLOADS the engine even though the artifacts are present (the linux
+        # flutter accepts without it, which is why a linux-only verify is misleading; the windows flutter
+        # does not -- this wedged the in-VM precache over slirp). Exclude the transient bin/cache/lockfile.
+        { comm -13 /tmp/before.txt <(find bin/cache -type f | sort); find bin/cache -type f -newer /tmp/marker; } \
+            | sort -u | grep -v "bin/cache/lockfile$" > /tmp/stage.txt
+        grep -q "artifacts/engine/windows-x64" /tmp/stage.txt || { echo "precache produced no windows-x64 engine"; exit 1; }
+        grep -q "windows-sdk.stamp" /tmp/stage.txt || { echo "windows-sdk.stamp not captured -- windows flutter would re-download"; exit 1; }
+        # deterministic: sorted names + fixed mtime/owner + gzip -n -> stable R-B12 SHA
+        tar --sort=name --mtime=@1700000000 --owner=0 --group=0 --numeric-owner -cf - -T /tmp/stage.txt | gzip -n -9 > /online/flutter-windows-engine.tar.gz
     '
     [ -f "$out" ] || die "windows flutter engine staging failed"
     log "windows flutter engine staged: $out ($(du -h "$out" | cut -f1))"

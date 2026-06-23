@@ -86,6 +86,10 @@ git config --global --add safe.directory '*'   # avoid git "dubious ownership" o
 # downloads NOTHING (docker-verified). bsdtar (Windows 10+) auto-detects the gzip.
 Log 'placing the offline-staged windows flutter engine (avoids the slirp CDN stall)'
 tar -xf (Join-Path $tc 'flutter-windows-engine.tar.gz') -C 'C:\flutter'
+# Verify placement. The tarball includes bin/cache/windows-sdk.stamp -- the freshness marker the windows
+# flutter checks; WITHOUT it precache re-downloads the 780MB engine over slirp (the v1 staging missed it).
+if (-not (Test-Path 'C:\flutter\bin\cache\artifacts\engine\windows-x64')) { Die 'engine extraction failed -- windows-x64 absent after tar (gzip/CD issue)' }
+if (-not (Test-Path 'C:\flutter\bin\cache\windows-sdk.stamp')) { Die 'engine stamp missing -- windows-sdk.stamp absent after tar (would trigger a slirp re-download)' }
 # Bound each flutter step (Start-Process + WaitForExit) so a stall fails LOUD + fast, never the silent
 # 90-min poll timeout. With the engine pre-placed neither config nor precache hits the network, so 5min
 # each is ample (a >5min precache here means the pre-placement failed and it fell back to a download).

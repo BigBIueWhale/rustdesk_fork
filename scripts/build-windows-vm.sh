@@ -20,12 +20,17 @@ DOMAIN="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-build"
 OVERLAY="$STATE_DIR/win-build-overlay.qcow2"
 BUILD_ISO="$STATE_DIR/win-build-src.iso"
 OUTPUT_IMG="$STATE_DIR/win-build-output.img"
+OFFLINE_ISO="$STATE_DIR/win-build-offline.iso"   # UDF CD: offline cargo-vendor + its source map + the flutter pub-cache
 GL="docker run --rm --device /dev/kvm"   # the root-free libguestfs-in-docker driver
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$REPO_ROOT" show -s --format=%ct "$RUSTDESK_COMMIT" 2>/dev/null || echo 1700000000)}"
 
 preflight() {
     require_cmd qemu-img virt-install virsh xorriso mkfs.vfat docker git
     [ -f "$GOLDEN" ] || die "golden image missing ($GOLDEN) — run scripts/provision-windows-vm.sh first"
+    # The per-build is --network=none: the offline crate + dart-pkg sets MUST be staged (online-fetch.sh).
+    [ -d "$ONLINE_DIR/cargo-vendor" ]             || die "online/cargo-vendor missing — run scripts/online-fetch.sh"
+    [ -f "$ONLINE_DIR/cargo-vendor-config.toml" ] || die "online/cargo-vendor-config.toml missing — run scripts/online-fetch.sh"
+    [ -d "$ONLINE_DIR/pub-cache" ]                || die "online/pub-cache missing — run scripts/online-fetch.sh (stage_pub_cache)"
     log "preflight OK — per-build over $GOLDEN, offline, SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
 }
 
@@ -37,8 +42,23 @@ build_media() {
     git -C "$REPO_ROOT" archive --format=tar HEAD | tar -x -C "$snap"
     cp "$SCRIPT_DIR/run-build.ps1" "$snap/run-build.ps1"
     printf '%s' "$SOURCE_DATE_EPOCH" > "$snap/.source_date_epoch"
+    # The pre-generated FRB bridges (R-B7) — git archive excludes them (gitignored) and the guest
+    # cannot run FRB itself, so ship the host-generated, platform-agnostic bridges on the BUILD CD.
+    for f in src/bridge_generated.rs src/bridge_generated.io.rs flutter/lib/generated_bridge.dart; do
+        [ -f "$REPO_ROOT/$f" ] || die "FRB bridge $f missing — generate_bridges (main) should have produced it"
+        mkdir -p "$snap/$(dirname "$f")"; cp "$REPO_ROOT/$f" "$snap/$f"
+    done
     ( cd "$snap" && xorriso -as mkisofs -quiet -o "$BUILD_ISO" -V BUILD -J -R . )
     rm -rf "$snap"
+    # The offline cargo-vendor (2.6G) + flutter pub-cache as ONE UDF CD — UDF is Windows-readable AND
+    # handles the deep crate paths / large size that plain Joliet (-J) would truncate or reject. One
+    # combined CD (not two) keeps the device count low (a 4th provision CD once broke FirstLogonCommands).
+    log "building the OFFLINE UDF media (cargo-vendor + source map + pub-cache)"
+    rm -f "$OFFLINE_ISO"
+    xorriso -as mkisofs -udf -quiet -V OFFLINE -o "$OFFLINE_ISO" -graft-points \
+        "/cargo-vendor=$ONLINE_DIR/cargo-vendor" \
+        "/cargo-vendor-config.toml=$ONLINE_DIR/cargo-vendor-config.toml" \
+        "/pub-cache=$ONLINE_DIR/pub-cache"
     # The OUTPUT disk = a raw FAT image labelled OUTPUT; run-build.ps1 writes dist/ here, the host reads it.
     log "creating the OUTPUT disk (FAT, label OUTPUT)"
     rm -f "$OUTPUT_IMG"
@@ -67,6 +87,7 @@ run_build() {
     virt-install --connect qemu:///session --name "$DOMAIN" --osinfo win11 --memory 16384 --vcpus 8 \
         --disk "path=$OVERLAY,format=qcow2,bus=sata" \
         --disk "path=$BUILD_ISO,device=cdrom" \
+        --disk "path=$OFFLINE_ISO,device=cdrom" \
         --disk "path=$OUTPUT_IMG,format=raw,bus=sata" \
         --boot uefi --network none --graphics vnc,listen=127.0.0.1 \
         --noautoconsole --wait -1 &
@@ -89,7 +110,7 @@ extract() {
       apt-get update -qq >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libguestfs-tools linux-image-generic >/dev/null 2>&1
       export LIBGUESTFS_BACKEND=direct
       guestfish --ro -a /state/win-build-output.img run : mount /dev/sda / : glob copy-out "/*" /out' 2>&1 | grep -iE 'error|fail' || true
-    rm -f "$OVERLAY" "$BUILD_ISO" "$OUTPUT_IMG"
+    rm -f "$OVERLAY" "$BUILD_ISO" "$OFFLINE_ISO" "$OUTPUT_IMG"
     [ -f "$OUT_DIR/rustdesk-setup.exe" ] || die "no rustdesk-setup.exe produced — see $OUT_DIR/build-log.txt"
     sha256sum "$OUT_DIR/rustdesk-setup.exe" | tee "$OUT_DIR/rustdesk-setup.exe.sha256"
     [ -f "$OUT_DIR/rustdesk.msi" ] && sha256sum "$OUT_DIR/rustdesk.msi" | tee "$OUT_DIR/rustdesk.msi.sha256" || log "NOTE: no .msi (WiX is milestone 2)"
@@ -97,6 +118,8 @@ extract() {
 
 main() {
     preflight
+    log "pre-generating the FRB bridges on the host (offline; the guest consumes them — R-B7)"
+    bash "$SCRIPT_DIR/frb-codegen.sh"
     build_media
     prep_overlay
     run_build

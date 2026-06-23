@@ -44,20 +44,55 @@ function Build {
     # too). Passed in by provision-windows-vm.sh / the invoker.
     if (-not $env:SOURCE_DATE_EPOCH) { Write-Host "[harness:warn] SOURCE_DATE_EPOCH unset -- build will not be bit-reproducible (R-B2)" }
 
-    # Wire cargo to the vendored, lockfile-pinned crate set staged offline.
-    New-Item -ItemType Directory -Force -Path "$SRC\.cargo" | Out-Null
-    @"
-[source.crates-io]
-replace-with = "vendored"
-[source.vendored]
-directory = "C:/online/cargo-vendor"
-[net]
-offline = true
-"@ | Set-Content "$SRC\.cargo\config.toml"
+    # --- locate the OFFLINE UDF media (cargo-vendor + its source map + pub-cache), attached by
+    # build-windows-vm.sh; drive letters are dynamic, so detect by content. -----------------------
+    $offline = (Get-PSDrive -PSProvider FileSystem |
+                Where-Object { Test-Path (Join-Path $_.Root 'cargo-vendor-config.toml') } |
+                Select-Object -First 1).Root
+    if (-not $offline) { Die 'OFFLINE media not attached (no drive has cargo-vendor-config.toml)' }
+    Write-Host "[harness] offline caches on $offline (cargo-vendor + pub-cache)"
 
-    # FRB codegen (R-B7: the uncommitted generated_bridge.dart / bridge_generated.rs),
-    # then build.py with the sec3.2 x64-windows features minus hwcodec/vram (R-R2b).
-    flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs --dart-output ./flutter/lib/generated_bridge.dart
+    # --- cargo: a build-time CARGO_HOME wired to the vendored crate set (R-B10). DON'T touch the
+    # repo's TRACKED .cargo/config.toml (it carries the windows rustflags); cargo MERGES this over it.
+    # The AUTHORITATIVE [source.*] map is cargo-vendor-config.toml (crates-io + every rustdesk git
+    # dep); rewrite its `directory =` to the vendor drive + prepend [net] offline -- like build-debian.
+    $env:CARGO_HOME = 'C:\cargo-home'
+    New-Item -ItemType Directory -Force -Path $env:CARGO_HOME | Out-Null
+    $vendorDir = (Join-Path $offline 'cargo-vendor') -replace '\\','/'
+    $cargoCfg  = "[net]`r`noffline = true`r`n"
+    $cargoCfg += ((Get-Content (Join-Path $offline 'cargo-vendor-config.toml') -Raw) -replace 'directory = .*', "directory = `"$vendorDir`"")
+    Set-Content -Encoding ASCII -Path (Join-Path $env:CARGO_HOME 'config.toml') -Value $cargoCfg
+
+    # --- pub: PUB_CACHE on the attached cache; pre-resolve the project OFFLINE with `dart pub get`
+    # (the `flutter` wrapper drives pub ONLINE -> advisories _TypeError on the read-only cache). The
+    # SDK's own flutter_tools was pre-resolved into the golden (networked provision precache). -------
+    $env:PUB_CACHE = (Join-Path $offline 'pub-cache')
+    $env:CI = 'true'
+    $env:FLUTTER_SUPPRESS_ANALYTICS = 'true'
+    git config --global --add safe.directory '*'
+    Push-Location (Join-Path $SRC 'flutter')
+    & dart pub get --offline
+    if ($LASTEXITCODE -ne 0) { Pop-Location; Die "dart pub get --offline (project) failed ($LASTEXITCODE) -- pub-cache may lack a windows-only package" }
+    Pop-Location
+
+    # --- the flutter offline shim: build.py runs `flutter build windows --release`, whose IN-PROCESS
+    # pub get drives ONLINE; shadow `flutter` earlier on PATH with a shim that appends --no-pub to
+    # `build` (the project is already resolved above). FRB is NOT run here -- the bridges are
+    # pre-generated on the host (frb-codegen.sh) + shipped on the BUILD CD into $SRC (R-B7). ---------
+    $shim = 'C:\flutter-shim'
+    New-Item -ItemType Directory -Force -Path $shim | Out-Null
+    $env:REAL_FLUTTER = 'C:\flutter\bin\flutter.bat'
+    @'
+@echo off
+if /I "%~1"=="build" (
+    "%REAL_FLUTTER%" %* --no-pub
+) else (
+    "%REAL_FLUTTER%" %*
+)
+'@ | Set-Content -Encoding ASCII (Join-Path $shim 'flutter.bat')
+    $env:PATH = "$shim;$env:PATH"
+
+    # --- the sec3.2 x64-windows build: CPU-only software codec, no hwcodec/vram (R-R2b) ---
     python build.py --flutter
 }
 

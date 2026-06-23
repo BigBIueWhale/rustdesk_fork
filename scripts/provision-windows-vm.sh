@@ -115,6 +115,12 @@ build_golden() {
     # Network is ON for THIS one golden-build step (vcpkg bootstrap + the §3.2 native build +
     # the WiX/NuGet warm) — the NAT'd guest never LISTENS; the per-build overlay is --network=none.
     # VNC binds 127.0.0.1 only (never 0.0.0.0), to diagnose a stuck unattended install.
+    # Clear any stale domain definition holding this qcow2 FIRST: a prior failed/killed run leaves the
+    # domain defined-but-off, and virt-install then errors "Disk ... already in use by other guests"
+    # and never boots the VM -> the done-marker poll waits forever on a 196K (empty) qcow2. This was the
+    # real cause of repeated 196K stalls. Destroy (may already be off) + undefine; ignore errors.
+    virsh -c qemu:///session destroy "$DOMAIN" >/dev/null 2>&1 || true
+    virsh -c qemu:///session undefine --nvram "$DOMAIN" >/dev/null 2>&1 || true
     virt-install \
         --name "$DOMAIN" \
         --osinfo win11 \

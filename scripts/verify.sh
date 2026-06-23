@@ -240,6 +240,18 @@ if grep -qF '["config", "password"].contains(uri.authority)' flutter/lib/common.
 else
   echo "  FAIL R-X6: the rustdesk://config + rustdesk://password WRITE authorities are not provably excised"; rc=1
 fi
+# R-X6 Android manifest hardening (committed d4cb686 + f8ddac8) — lock it against regrowth. The dropped
+# tokens survive only in explanatory comments, so gate on LIVE <uses-permission>/<service> declarations +
+# the allowBackup/requestLegacyExternalStorage attributes + the cleartext-deny network-security-config.
+AMF=flutter/android/app/src/main/AndroidManifest.xml
+if grep -qF 'android:allowBackup="false"' "$AMF" \
+   && ! grep -qE '(uses-permission|<service)[^>]*(SYSTEM_ALERT_WINDOW|READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|FloatingWindowService)' "$AMF" \
+   && ! grep -qE 'android:requestLegacyExternalStorage' "$AMF" \
+   && grep -qF 'cleartextTrafficPermitted="false"' flutter/android/app/src/main/res/xml/network_security_config.xml; then
+  echo "  ok  R-X6 Android manifest hardened (allowBackup=false; no live overlay/legacy-storage/floating-svc decl; cleartext-deny)"
+else
+  echo "  FAIL R-X6: Android manifest hardening regressed (allowBackup / a live SYSTEM_ALERT_WINDOW|storage|FloatingWindowService decl / requestLegacyExternalStorage / network-security-config)"; rc=1
+fi
 ra6_clean 'ConfigureUpdate|TestNatResponse'                              'R-X3 server-push config-update + NAT-response rewrite arms' || rc=1
 # R-P3 / R-P14: the inherited insecure direct-mode used a plaintext constant-byte ack ("direct-ok")
 # to admit a peer WITHOUT the PAKE key-confirmation. The fork makes CPace mandatory (R-A1), so any

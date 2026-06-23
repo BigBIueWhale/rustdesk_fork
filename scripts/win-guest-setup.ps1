@@ -78,25 +78,26 @@ $env:FLUTTER_SUPPRESS_ANALYTICS = 'true'
 # also shells out to `git` against the SDK checkout, so git must resolve here.
 $env:PATH = "C:\Program Files\Git\cmd;C:\flutter\bin;$env:PATH"
 git config --global --add safe.directory '*'   # avoid git "dubious ownership" on the SDK checkout
-# Pre-place the windows flutter ENGINE from the OFFLINE staged tarball. The in-VM `precache --windows`
-# 780MB CDN fetch STALLS mid-transfer over the golden's slirp NAT (confirmed: the download wedged at
-# ~0 disk / 0.14 cores; CI=true fixed the first-run BANNER hang but not the slirp stall). The engine is
-# staged host-side instead (deterministic for the pinned flutter version; ~22s on a real network) and
-# shipped on the TOOLCHAINS CD. With it pre-placed, `flutter precache --windows` validates in ~4s and
-# downloads NOTHING (docker-verified). bsdtar (Windows 10+) auto-detects the gzip.
-Log 'placing the offline-staged windows flutter engine (avoids the slirp CDN stall)'
+# Pre-place the windows flutter ENGINE from the OFFLINE staged tarball, then let `flutter precache
+# --windows` RECONCILE it. NOTE: the linux-staged engine does NOT fully satisfy the WINDOWS flutter's
+# freshness check -- its stamp logic differs from the linux flutter that produced the staging (which
+# docker-verified the staging as a 0-download), so precache here RE-FETCHES the engine over slirp. We
+# cannot skip this: `flutter build windows` re-runs the very same artifact cache.updateAll, so a
+# placed-but-unreconciled engine would just make the OFFLINE per-build try to download too. The fetch is
+# large for slirp -- it moves in ~15 MB/s bursts with stalls between -- so allow 30min (a 5min bound Died
+# the provision twice; a probe showed it still climbing at 1398 MiB when the 5min fired = slow, not
+# wedged). bsdtar (Windows 10+) auto-detects the gzip.
+Log 'placing the offline-staged windows flutter engine, then reconciling via precache'
 tar -xf (Join-Path $tc 'flutter-windows-engine.tar.gz') -C 'C:\flutter'
-# Verify placement. The tarball includes bin/cache/windows-sdk.stamp -- the freshness marker the windows
-# flutter checks; WITHOUT it precache re-downloads the 780MB engine over slirp (the v1 staging missed it).
 if (-not (Test-Path 'C:\flutter\bin\cache\artifacts\engine\windows-x64')) { Die 'engine extraction failed -- windows-x64 absent after tar (gzip/CD issue)' }
-if (-not (Test-Path 'C:\flutter\bin\cache\windows-sdk.stamp')) { Die 'engine stamp missing -- windows-sdk.stamp absent after tar (would trigger a slirp re-download)' }
-# Bound each flutter step (Start-Process + WaitForExit) so a stall fails LOUD + fast, never the silent
-# 90-min poll timeout. With the engine pre-placed neither config nor precache hits the network, so 5min
-# each is ample (a >5min precache here means the pre-placement failed and it fell back to a download).
+# config warms flutter_tools (compiles bin\cache\flutter_tools.snapshot from a small pub.dev fetch, baked
+# into the golden so the offline per-build skips it) + enables the windows desktop. Proven <5min over slirp.
 $cfg = Start-Process 'C:\flutter\bin\flutter.bat' -ArgumentList 'config','--no-analytics','--enable-windows-desktop' -PassThru -NoNewWindow
-if (-not $cfg.WaitForExit(300000)) { try { $cfg.Kill() } catch {}; Die 'flutter config timed out (>5min)' }
+if (-not $cfg.WaitForExit(300000)) { try { $cfg.Kill() } catch {}; Die 'flutter config timed out (>5min) -- flutter_tools pub resolution stalled over slirp' }
+# precache the windows engine -- the slow part. 30min for the bursty slirp fetch; it writes the stamps the
+# offline per-build's `flutter build windows` needs in order to skip its own re-download.
 $pc = Start-Process 'C:\flutter\bin\flutter.bat' -ArgumentList 'precache','--windows' -PassThru -NoNewWindow
-if (-not $pc.WaitForExit(300000)) { try { $pc.Kill() } catch {}; Die 'flutter precache --windows timed out (>5min) -- engine pre-placement likely failed (fell back to a network download)' }
+if (-not $pc.WaitForExit(1800000)) { try { $pc.Kill() } catch {}; Die 'flutter precache --windows timed out (>30min) -- slirp engine fetch too unreliable; needs a real VM network or a windows-native staged cache' }
 if ($pc.ExitCode -ne 0) { Die "flutter precache --windows failed (exit $($pc.ExitCode))" }
 
 # --- vcpkg @120deac3 -------------------------------------------------------------------------

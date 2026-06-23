@@ -156,7 +156,7 @@ build_golden() {
                 log "domain off but no done-marker yet (mins=$mins) — transient reboot, still waiting"
             fi
         fi
-        [ "$mins" -gt 90 ] && die "golden provisioning exceeded 90m without guest-setup-done.txt — setup failed or stuck at the desktop; force the domain off + virt-cat C:\\setup-transcript.txt to find where win-guest-setup stopped"
+        [ "$mins" -gt 130 ] && die "golden provisioning exceeded 130m without guest-setup-done.txt — setup failed or stuck at the desktop; force the domain off + virt-cat C:\\setup-transcript.txt to find where win-guest-setup stopped"
     done
 }
 

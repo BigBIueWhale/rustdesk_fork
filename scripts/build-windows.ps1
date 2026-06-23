@@ -97,7 +97,11 @@ if /I "%~1"=="build" (
     $env:PATH = "$shim;$env:PATH"
 
     # --- the sec3.2 x64-windows build: CPU-only software codec, no hwcodec/vram (R-R2b) ---
+    # Under $ErrorActionPreference='Stop' a NATIVE command's non-zero exit does NOT auto-throw, so check
+    # $LASTEXITCODE explicitly -- otherwise a failed build (e.g. "Python was not found" -> exit 9009) slips
+    # through and Emit-Artifacts reports "complete" with no .exe.
     python build.py --flutter
+    if ($LASTEXITCODE -ne 0) { Die "build.py --flutter failed (exit $LASTEXITCODE) -- Python missing/not on PATH, or the cargo/flutter build errored (see above)" }
 }
 
 function Emit-Artifacts {

@@ -60,8 +60,14 @@ def write_package_metadata(md5_table: dict, output_folder: str, exe: str):
 
 def write_app_metadata(output_folder: str):
     output_path = os.path.join(output_folder, "app_metadata.toml")
+    # R-B2 reproducibility: honor SOURCE_DATE_EPOCH (epoch seconds) for a DETERMINISTIC timestamp instead of the
+    # wall-clock now(). This value is embedded into the portable .exe; with now() it differs every build, and
+    # because the .exe is brotli-packed the delta amplifies across ~the whole file -> the byte-identical
+    # double-build (R-B2) fails. Mirrors hbb_common/lib.rs gen_version's SOURCE_DATE_EPOCH handling.
+    sde = os.environ.get('SOURCE_DATE_EPOCH')
+    ts_ms = int(sde) * 1000 if sde else int(datetime.datetime.now().timestamp() * 1000)
     with open(output_path, "w") as f:
-        f.write(f"timestamp = {int(datetime.datetime.now().timestamp() * 1000)}\n")
+        f.write(f"timestamp = {ts_ms}\n")
     print(f"App metadata has been written to {output_path}")
 
 def build_portable(output_folder: str, target: str):

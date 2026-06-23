@@ -232,6 +232,14 @@ if grep -qF 'confirmDeepLinkConnect' flutter/lib/common.dart && grep -qF 'fromUr
 else
   echo "  FAIL R-X6: the deep-link-connect confirmation gate (confirmDeepLinkConnect/fromUri) is missing"; rc=1
 fi
+# R-X6 deep-link WRITE authorities: rustdesk://config/<b64> (server + key trust-anchor write) and
+# rustdesk://password/<pw> (permanent-password write) MUST be ignored, not honored (the same trust-anchor
+# / credential-injection class as R-X4). Assert urlLinkToCmdArgs still treats them as ignore-return-null.
+if grep -qF '["config", "password"].contains(uri.authority)' flutter/lib/common.dart && grep -qF 'Ignoring rustdesk:// server/credential write authority' flutter/lib/common.dart; then
+  echo "  ok  R-X6 deep-link config/password WRITE authorities are ignored (no trust-anchor/credential write)"
+else
+  echo "  FAIL R-X6: the rustdesk://config + rustdesk://password WRITE authorities are not provably excised"; rc=1
+fi
 ra6_clean 'ConfigureUpdate|TestNatResponse'                              'R-X3 server-push config-update + NAT-response rewrite arms' || rc=1
 # R-P3 / R-P14: the inherited insecure direct-mode used a plaintext constant-byte ack ("direct-ok")
 # to admit a peer WITHOUT the PAKE key-confirmation. The fork makes CPace mandatory (R-A1), so any

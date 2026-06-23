@@ -86,6 +86,30 @@ if ($src) {
 # TODO (milestone 2, the .msi): warm the WiX v4 NuGet set — needs .NET (add the VS .NET workload) +
 # `dotnet restore res/msi/Package/Package.wixproj` into the global NuGet cache for the offline build.
 
+# --- per-build harness: persistent auto-login + a logon task that runs the build CD's run-build.ps1 ----
+# A per-build is a throwaway CoW clone of this golden + a BUILD CD (the repo's run-build.ps1) + an OUTPUT
+# disk. On its boot the golden auto-logins and this task fires golden-logon.ps1, which — ONLY when an OUTPUT
+# disk is attached (so provisioning + ordinary boots no-op) — runs run-build.ps1 off the CD. Keeping the
+# build logic on the CD means it changes without re-provisioning; only this tiny launcher is baked in.
+Log 'installing the per-build logon harness (persistent auto-login + build task)'
+$winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+Set-ItemProperty $winlogon 'AutoAdminLogon'  '1'
+Set-ItemProperty $winlogon 'DefaultUserName' 'builder'
+Set-ItemProperty $winlogon 'DefaultPassword' 'RustdeskBuild!1'
+Remove-ItemProperty $winlogon 'AutoLogonCount' -ErrorAction SilentlyContinue   # persistent, not N-limited
+@'
+# golden-logon.ps1 — runs at every logon; only acts for a per-build (an OUTPUT disk present).
+$out = Get-Volume -ErrorAction SilentlyContinue | Where-Object { $_.FileSystemLabel -eq "OUTPUT" }
+if (-not $out) { exit 0 }
+$rb = Get-PSDrive -PSProvider FileSystem | ForEach-Object { Join-Path $_.Root "run-build.ps1" } |
+      Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($rb) { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $rb }
+'@ | Set-Content -Encoding ASCII 'C:\golden-logon.ps1'
+$act = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\golden-logon.ps1'
+$trg = New-ScheduledTaskTrigger -AtLogOn -User 'builder'
+Register-ScheduledTask -TaskName 'RustdeskPerBuild' -Action $act -Trigger $trg -RunLevel Highest `
+    -User 'builder' -Password 'RustdeskBuild!1' -Force | Out-Null
+
 New-Item -ItemType File -Force -Path 'C:\guest-setup-done.txt' | Out-Null
 Log 'guest toolchain provisioning complete — shutting down (this powered-off image IS the golden)'
 # Shut down so provision-windows-vm.sh's `virt-install --wait` returns and the golden is the

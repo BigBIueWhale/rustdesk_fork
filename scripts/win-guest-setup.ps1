@@ -78,4 +78,8 @@ $cur = [Environment]::GetEnvironmentVariable('Path','Machine')
 # Both are slow + repo-coupled; wired when provision-windows-vm.sh mounts C:\src during golden build.
 
 New-Item -ItemType File -Force -Path 'C:\guest-setup-done.txt' | Out-Null
-Log 'guest toolchain provisioning complete'
+Log 'guest toolchain provisioning complete — shutting down (this powered-off image IS the golden)'
+# Shut down so provision-windows-vm.sh's `virt-install --wait` returns and the golden is the
+# clean, provisioned baseline. A failed setup leaves NO marker + never shuts down -> the wait
+# times out and C:\guest-setup-log.txt (teed by autounattend) shows where it stopped.
+Stop-Computer -Force

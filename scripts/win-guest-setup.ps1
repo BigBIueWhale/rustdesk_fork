@@ -1,20 +1,20 @@
-# scripts/win-guest-setup.ps1 — provisions the §12.2 Win11 build guest's toolchain (R-B8).
+# scripts/win-guest-setup.ps1 -- provisions the sec12.2 Win11 build guest's toolchain (R-B8).
 #
 # Run ONCE inside the guest at first logon (autounattend.xml FirstLogonCommands) while the VM
-# still has network (the golden-template build is the one networked guest step — like the
+# still has network (the golden-template build is the one networked guest step -- like the
 # android stage_gradle). It installs EXACTLY the pinned toolchain from the toolchains CD that
 # provision-windows-vm.sh attaches (the ./online windows artifacts), then the per-build VM is a
 # throwaway CoW overlay run --network=none (build-windows.ps1).
 #
 # Pinned set (pins.env): Rust 1.75 (MSVC), Flutter 3.24.5 (windows), LLVM 15.0.6 (windows),
 # VS Build Tools (MSVC + Win SDK), vcpkg @120deac3, Git. WiX v4 + the vcpkg x64-windows natives
-# are NuGet/vcpkg sets warmed against the repo (res/msi, res/vcpkg) — see the TODO at the end.
+# are NuGet/vcpkg sets warmed against the repo (res/msi, res/vcpkg) -- see the TODO at the end.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 function Log($m) { Write-Host "[guest-setup] $m" }
 function Die($m) { Write-Error "[guest-setup:FATAL] $m"; exit 1 }
 
-# A reliable transcript — the FirstLogonCommands Tee to guest-setup-log.txt proved unreadable;
+# A reliable transcript -- the FirstLogonCommands Tee to guest-setup-log.txt proved unreadable;
 # read this post-mortem via libguestfs (virt-cat C:\setup-transcript.txt) to see where setup stopped.
 try { Start-Transcript -Path 'C:\setup-transcript.txt' -Force | Out-Null } catch { }
 Log "win-guest-setup starting; FS drives: $((Get-PSDrive -PSProvider FileSystem).Name -join ',')"
@@ -75,26 +75,26 @@ $cur = [Environment]::GetEnvironmentVariable('Path','Machine')
 [Environment]::SetEnvironmentVariable('LIBCLANG_PATH', $llvmBin, 'Machine')
 [Environment]::SetEnvironmentVariable('VCPKG_ROOT', 'C:\vcpkg', 'Machine')
 
-# --- vcpkg §3.2 x64-windows natives — warm them into the golden (the per-build is --network=none) ----
+# --- vcpkg sec3.2 x64-windows natives -- warm them into the golden (the per-build is --network=none) ----
 # Find the SRC CD (the committed repo that provision-windows-vm.sh mounts) for the overlay ports.
 $src = (Get-PSDrive -PSProvider FileSystem |
         Where-Object { Test-Path (Join-Path $_.Root 'res\vcpkg') } | Select-Object -First 1).Root
 if ($src) {
     $ports = Join-Path $src 'res\vcpkg'
-    Log "building the vcpkg x64-windows-static natives (overlay-ports $ports) — slow (~30-60min)"
+    Log "building the vcpkg x64-windows-static natives (overlay-ports $ports) -- slow (~30-60min)"
     & 'C:\vcpkg\vcpkg.exe' install --overlay-ports="$ports" --triplet x64-windows-static `
         aom libvpx libyuv opus libjpeg-turbo cpu-features
     if ($LASTEXITCODE -ne 0) { Die "vcpkg install of the x64-windows natives failed (exit $LASTEXITCODE)" }
 } else {
-    Log 'WARN: no SRC CD (res\vcpkg) found — skipped the vcpkg-native warm; the offline build cannot link codecs'
+    Log 'WARN: no SRC CD (res\vcpkg) found -- skipped the vcpkg-native warm; the offline build cannot link codecs'
 }
-# TODO (milestone 2, the .msi): warm the WiX v4 NuGet set — needs .NET (add the VS .NET workload) +
+# TODO (milestone 2, the .msi): warm the WiX v4 NuGet set -- needs .NET (add the VS .NET workload) +
 # `dotnet restore res/msi/Package/Package.wixproj` into the global NuGet cache for the offline build.
 
 # --- per-build harness: persistent auto-login + a logon task that runs the build CD's run-build.ps1 ----
 # A per-build is a throwaway CoW clone of this golden + a BUILD CD (the repo's run-build.ps1) + an OUTPUT
-# disk. On its boot the golden auto-logins and this task fires golden-logon.ps1, which — ONLY when an OUTPUT
-# disk is attached (so provisioning + ordinary boots no-op) — runs run-build.ps1 off the CD. Keeping the
+# disk. On its boot the golden auto-logins and this task fires golden-logon.ps1, which -- ONLY when an OUTPUT
+# disk is attached (so provisioning + ordinary boots no-op) -- runs run-build.ps1 off the CD. Keeping the
 # build logic on the CD means it changes without re-provisioning; only this tiny launcher is baked in.
 Log 'installing the per-build logon harness (persistent auto-login + build task)'
 $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
@@ -103,7 +103,7 @@ Set-ItemProperty $winlogon 'DefaultUserName' 'builder'
 Set-ItemProperty $winlogon 'DefaultPassword' 'RustdeskBuild!1'
 Remove-ItemProperty $winlogon 'AutoLogonCount' -ErrorAction SilentlyContinue   # persistent, not N-limited
 @'
-# golden-logon.ps1 — runs at every logon; only acts for a per-build (an OUTPUT disk present).
+# golden-logon.ps1 -- runs at every logon; only acts for a per-build (an OUTPUT disk present).
 $out = Get-Volume -ErrorAction SilentlyContinue | Where-Object { $_.FileSystemLabel -eq "OUTPUT" }
 if (-not $out) { exit 0 }
 $rb = Get-PSDrive -PSProvider FileSystem | ForEach-Object { Join-Path $_.Root "run-build.ps1" } |
@@ -116,7 +116,7 @@ Register-ScheduledTask -TaskName 'RustdeskPerBuild' -Action $act -Trigger $trg -
     -User 'builder' -Password 'RustdeskBuild!1' -Force | Out-Null
 
 New-Item -ItemType File -Force -Path 'C:\guest-setup-done.txt' | Out-Null
-Log 'guest toolchain provisioning complete — shutting down (this powered-off image IS the golden)'
+Log 'guest toolchain provisioning complete -- shutting down (this powered-off image IS the golden)'
 # Shut down so provision-windows-vm.sh's `virt-install --wait` returns and the golden is the
 # clean, provisioned baseline. A failed setup leaves NO marker + never shuts down -> the wait
 # times out and C:\guest-setup-log.txt (teed by autounattend) shows where it stopped.

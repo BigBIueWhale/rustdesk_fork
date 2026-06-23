@@ -50,12 +50,17 @@ preflight() {
 }
 
 build_media() {
-    # Two small CDs Windows Setup + the first-logon script read. xorriso graft-points map the
-    # already-verified ./online artifacts straight in (no multi-GB copy into a staging dir).
-    log "building the PROVISION CD (autounattend.xml + win-guest-setup.ps1)"
-    xorriso -as mkisofs -quiet -o "$AUTOUNATTEND_ISO" -V PROVISION -J -R -graft-points \
-        "/autounattend.xml=$SCRIPT_DIR/autounattend.xml" \
-        "/win-guest-setup.ps1=$SCRIPT_DIR/win-guest-setup.ps1"
+    # The proven 3-disk config = PROVISION CD + TOOLCHAINS CD + the win11.iso. A 4th (SRC) CD
+    # coincided with Setup never running FirstLogonCommands (no toolchain, no log/transcript), so
+    # res/vcpkg is FOLDED INTO the PROVISION CD instead — win-guest-setup.ps1 reads its overlay ports
+    # from there. The PROVISION CD is built from a staging dir (autounattend.xml + win-guest-setup.ps1
+    # at root, res/ as a subdir Setup ignores).
+    log "building the PROVISION CD (autounattend.xml + win-guest-setup.ps1 + res/ for the vcpkg warm)"
+    local psnap="$STATE_DIR/prov-snap"; rm -rf "$psnap"; mkdir -p "$psnap"
+    cp "$SCRIPT_DIR/autounattend.xml" "$SCRIPT_DIR/win-guest-setup.ps1" "$psnap/"
+    cp -a "$REPO_ROOT/res" "$psnap/res"
+    ( cd "$psnap" && xorriso -as mkisofs -quiet -o "$AUTOUNATTEND_ISO" -V PROVISION -J -R . )
+    rm -rf "$psnap"
     log "building the TOOLCHAINS CD (the staged ./online windows artifacts)"
     xorriso -as mkisofs -quiet -o "$TOOLCHAINS_ISO" -V TOOLCHAINS -J -R -graft-points \
         "/flutter-windows-${FLUTTER_VERSION}.zip=$ONLINE_DIR/flutter-windows-${FLUTTER_VERSION}.zip" \
@@ -65,15 +70,6 @@ build_media() {
         "/win/Git-2.45.2-64-bit.exe=$ONLINE_DIR/win/Git-2.45.2-64-bit.exe" \
         "/win/rust-1.75.0-x86_64-pc-windows-msvc.msi=$ONLINE_DIR/win/rust-1.75.0-x86_64-pc-windows-msvc.msi" \
         "/win/rustup-init.exe=$ONLINE_DIR/win/rustup-init.exe"
-    # The SRC CD = the COMMITTED repo (git archive HEAD: tracked files only, so no ./online,
-    # ./target, ./.git, ./.harness-state). win-guest-setup.ps1 reads res/vcpkg off it to warm the
-    # vcpkg x64-windows natives into the golden (the per-build is --network=none).
-    log "building the SRC CD (committed repo source for the vcpkg-native warm)"
-    local snap="$STATE_DIR/src-snap"
-    rm -rf "$snap"; mkdir -p "$snap"
-    git -C "$REPO_ROOT" archive --format=tar HEAD | tar -x -C "$snap"
-    ( cd "$snap" && xorriso -as mkisofs -quiet -o "$SRC_ISO" -V SRC -J -R . )
-    rm -rf "$snap"
 }
 
 build_golden() {
@@ -100,7 +96,6 @@ build_golden() {
         --disk "path=$GOLDEN,format=qcow2,bus=sata" \
         --disk "path=$AUTOUNATTEND_ISO,device=cdrom" \
         --disk "path=$TOOLCHAINS_ISO,device=cdrom" \
-        --disk "path=$SRC_ISO,device=cdrom" \
         --cdrom "$ONLINE_DIR/win11.iso" \
         --boot uefi \
         --network user \

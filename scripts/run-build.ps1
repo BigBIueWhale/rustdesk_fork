@@ -1,8 +1,8 @@
-# scripts/run-build.ps1 — the per-build job. Lives at the BUILD CD root; the golden's RustdeskPerBuild
+# scripts/run-build.ps1 -- the per-build job. Lives at the BUILD CD root; the golden's RustdeskPerBuild
 # logon task (via C:\golden-logon.ps1) runs it when an OUTPUT disk is attached (i.e. only for a per-build,
 # never during provisioning or a normal boot). Copies the committed repo off the BUILD CD into a writable
 # C:\src, runs build-windows.ps1 (cargo + flutter + the portable installer), writes the artifacts to the
-# OUTPUT disk the host reads, then shuts down so build-windows-vm.sh's wait returns. (R-B7/B9, §12.2.)
+# OUTPUT disk the host reads, then shuts down so build-windows-vm.sh's wait returns. (R-B7/B9, sec12.2.)
 $ErrorActionPreference = 'Continue'
 $out = ((Get-Volume | Where-Object { $_.FileSystemLabel -eq 'OUTPUT' } | Select-Object -First 1).DriveLetter) + ':'
 $cd  = (Get-PSDrive -PSProvider FileSystem | Where-Object { Test-Path (Join-Path $_.Root 'build.py') } | Select-Object -First 1).Root

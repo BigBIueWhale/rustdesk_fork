@@ -1,5 +1,10 @@
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-Ctarget-feature=+crt-static"]
+# crt-static: bundle the VC runtime. /Brepro (R-B2): rustc's link.exe does NOT inherit the LINK=/Brepro env that
+# build-windows.ps1 sets (that one reaches the flutter MSVC links -> rustdesk.exe is already reproducible), so
+# pass it explicitly here. This gives the cargo-built PEs (librustdesk.dll + dylib_virtual_display.dll, embedded
+# in the portable packer, AND the packer .exe itself) a CONTENT-HASH PE TimeDateStamp instead of the wall-clock
+# build time -- the last Windows byte-reproducibility gap (a data.bin md5 diff localized exactly those 2 DLLs).
+rustflags = ["-Ctarget-feature=+crt-static", "-Clink-arg=/Brepro"]
 [target.i686-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static", "-C", "link-args=/NODEFAULTLIB:MSVCRT"]
 [target.'cfg(target_os="macos")']

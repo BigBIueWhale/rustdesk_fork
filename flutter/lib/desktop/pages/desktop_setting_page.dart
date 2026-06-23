@@ -430,7 +430,11 @@ class _GeneralState extends State<_General> {
     }
 
     final hideStopService =
-        bind.mainGetBuildinOption(key: kOptionHideStopService) == 'Y';
+        bind.mainGetBuildinOption(key: kOptionHideStopService) == 'Y' ||
+            // R-S16(d): the fork pins stop-service=N (the service is un-killable by a local write -- never
+            // self-DoS a headless DMZ box). A live "Stop" button would write stop-service=Y, be rejected by
+            // the policy funnel, and stay "Stop" with no feedback. Hide it when pinned (Start still works).
+            isOptionFixed(kOptionStopService);
 
     return Obx(() {
       if (hideStopService && !serviceStop.value) {

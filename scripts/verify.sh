@@ -412,6 +412,24 @@ ra6_clean 'totp|Auth2FA|auth_2fa|generate2fa|verify2fa|set_auth_2fa|add_trusted_
 # handler arm; the CM-side senders use the unqualified `Data::SwitchPermission`
 # (R-G7 GUI surface), so this gate is specific to the widener.
 ra6_clean 'ipc::Data::SwitchPermission'                                  'R-S16(d)(ii) SwitchPermission widener' || rc=1
+# R-S16(d) / flutter UI correctness (the pinned-policy audit): a control whose write the policy funnel
+# rejects must not render as a live, mutating affordance that silently no-ops.
+#  - is_option_fixed() reports PINNED_SETTINGS keys as fixed, so every pinned control auto-greys (BUG4 root).
+#  - the desktop CM mid-session permission icons are non-interactive (Data::SwitchPermission excised; BUG1).
+#  - the desktop "Stop service" button is hidden when stop-service is pinned (BUG4(a): the service is
+#    un-killable by a local write by design; a live button would stay "Stop" with no feedback).
+#  - the mobile audio/file/clipboard permission toggles re-read the stored value after the rejected write,
+#    so the switch flag cannot diverge from the enforced config (BUG4(b)).
+r_s16d_ui=""
+grep -qF 'PINNED_SETTINGS.iter().any' src/ui_interface.rs || r_s16d_ui="$r_s16d_ui is_option_fixed-pinned"
+grep -qF 'final canModifyPermission = false' flutter/lib/desktop/pages/server_page.dart || r_s16d_ui="$r_s16d_ui cm-perms-noninteractive"
+grep -qF 'isOptionFixed(kOptionStopService)' flutter/lib/desktop/pages/desktop_setting_page.dart || r_s16d_ui="$r_s16d_ui stop-service-hide"
+[ "$(grep -cF 'R-S16(d): re-sync the flag to the STORED value' flutter/lib/models/server_model.dart)" -ge 3 ] || r_s16d_ui="$r_s16d_ui mobile-toggle-resync"
+if [ -n "$r_s16d_ui" ]; then
+  echo "  FAIL R-S16(d)/UI: a pinned-policy control reverted to a live silent-no-op affordance:$r_s16d_ui"; rc=1
+else
+  echo "  ok  R-S16(d)/UI pinned controls grey + CM perms inert + Stop-service hidden + mobile toggles re-sync"
+fi
 # R-A6 / R-S2 / R-G4: the switch-sides role-swap feature is FULLY excised. SwitchSidesResponse
 # was a password-bypass + 2FA-skip authorization path (R-S2) — the resume itself was deleted by
 # R-A2 (2cf3ad6), and this removes the rest for structural absence: the 3 proto messages

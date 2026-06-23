@@ -253,6 +253,10 @@ class ServerModel with ChangeNotifier {
     _audioOk = !_audioOk;
     bind.mainSetOption(
         key: kOptionEnableAudio, value: _audioOk ? defaultOptionYes : 'N');
+    // R-S16(d): re-sync the flag to the STORED value. enable-audio is policy-pinned, so the write above is
+    // rejected by the option funnel; without this re-read the local flag would diverge (the toggle reads
+    // "off" while capture stays enabled). A no-op on a non-pinned build (reads back the just-written value).
+    _audioOk = bind.mainGetOptionSync(key: kOptionEnableAudio) != 'N';
     notifyListeners();
   }
 
@@ -274,6 +278,8 @@ class ServerModel with ChangeNotifier {
     bind.mainSetOption(
         key: kOptionEnableFileTransfer,
         value: _fileOk ? defaultOptionYes : 'N');
+    // R-S16(d): re-sync the flag to the STORED value (enable-file-transfer is policy-pinned -> rejected).
+    _fileOk = bind.mainGetOptionSync(key: kOptionEnableFileTransfer) != 'N';
     notifyListeners();
   }
 
@@ -282,6 +288,8 @@ class ServerModel with ChangeNotifier {
     bind.mainSetOption(
         key: kOptionEnableClipboard,
         value: clipboardOk ? defaultOptionYes : 'N');
+    // R-S16(d): re-sync the flag to the STORED value (enable-clipboard is policy-pinned -> rejected).
+    _clipboardOk = bind.mainGetOptionSync(key: kOptionEnableClipboard) != 'N';
     notifyListeners();
   }
 

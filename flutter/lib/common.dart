@@ -2215,6 +2215,9 @@ setEnvTerminalAdmin() {
 // uri link handler
 bool handleUriLink({List<String>? cmdArgs, Uri? uri, String? uriString}) {
   List<String>? args;
+  // R-X6: fromUri marks args derived from a rustdesk:// URI (a deep link) vs raw CLI argv. Only
+  // deep-link-initiated connections are confirmation-gated; the operator's own CLI is connected directly.
+  bool fromUri = false;
   if (cmdArgs != null && cmdArgs.isNotEmpty) {
     args = cmdArgs;
     // rustdesk <uri link>
@@ -2222,14 +2225,17 @@ bool handleUriLink({List<String>? cmdArgs, Uri? uri, String? uriString}) {
       final uri = Uri.tryParse(args[0]);
       if (uri != null) {
         args = urlLinkToCmdArgs(uri);
+        fromUri = true;
       }
     }
   } else if (uri != null) {
     args = urlLinkToCmdArgs(uri);
+    fromUri = true;
   } else if (uriString != null) {
     final uri = Uri.tryParse(uriString);
     if (uri != null) {
       args = urlLinkToCmdArgs(uri);
+      fromUri = true;
     }
   }
   if (args == null) {
@@ -2296,50 +2302,66 @@ bool handleUriLink({List<String>? cmdArgs, Uri? uri, String? uriString}) {
     }
   }
   if (type != null && id != null) {
+    final cid = id;
+    late final VoidCallback doConnect;
     switch (type) {
       case UriLinkType.remoteDesktop:
-        Future.delayed(Duration.zero, () {
-          rustDeskWinManager.newRemoteDesktop(id!,
-              password: password,
-              forceRelay: forceRelay);
-        });
+        doConnect = () => rustDeskWinManager.newRemoteDesktop(cid,
+            password: password, forceRelay: forceRelay);
         break;
       case UriLinkType.fileTransfer:
-        Future.delayed(Duration.zero, () {
-          rustDeskWinManager.newFileTransfer(id!,
-              password: password, forceRelay: forceRelay);
-        });
+        doConnect = () => rustDeskWinManager.newFileTransfer(cid,
+            password: password, forceRelay: forceRelay);
         break;
       case UriLinkType.viewCamera:
-        Future.delayed(Duration.zero, () {
-          rustDeskWinManager.newViewCamera(id!,
-              password: password, forceRelay: forceRelay);
-        });
+        doConnect = () => rustDeskWinManager.newViewCamera(cid,
+            password: password, forceRelay: forceRelay);
         break;
       case UriLinkType.portForward:
-        Future.delayed(Duration.zero, () {
-          rustDeskWinManager.newPortForward(id!, false,
-              password: password, forceRelay: forceRelay);
-        });
+        doConnect = () => rustDeskWinManager.newPortForward(cid, false,
+            password: password, forceRelay: forceRelay);
         break;
       case UriLinkType.rdp:
-        Future.delayed(Duration.zero, () {
-          rustDeskWinManager.newPortForward(id!, true,
-              password: password, forceRelay: forceRelay);
-        });
+        doConnect = () => rustDeskWinManager.newPortForward(cid, true,
+            password: password, forceRelay: forceRelay);
         break;
       case UriLinkType.terminal:
-        Future.delayed(Duration.zero, () {
-          rustDeskWinManager.newTerminal(id!,
-              password: password, forceRelay: forceRelay);
-        });
+        doConnect = () => rustDeskWinManager.newTerminal(cid,
+            password: password, forceRelay: forceRelay);
         break;
     }
+    // R-X6: a deep-link-initiated connection (fromUri) requires explicit user confirmation. The
+    // user-typed CLI form (fromUri == false) is the operator's own command and connects directly.
+    Future.delayed(Duration.zero, () {
+      if (fromUri) {
+        confirmDeepLinkConnect(cid, doConnect);
+      } else {
+        doConnect();
+      }
+    });
 
     return true;
   }
 
   return false;
+}
+
+// R-X6: a rustdesk:// deep link MUST NOT initiate a connection without explicit user confirmation.
+// Routes a deep-link-initiated connect through an OK/Cancel dialog; onConfirm runs only on OK (Cancel
+// just dismisses). The embedded credential / trust-anchor strip is enforced separately (urlLinkToCmdArgs
+// + the Rust core). msgBox (the proven dialog primitive) renders OK+Cancel for a 'custom' type. Only deep
+// links reach this gate — the user-typed CLI is connected directly, ungated.
+void confirmDeepLinkConnect(String id, VoidCallback onConfirm) {
+  msgBox(
+    gFFI.sessionId,
+    'custom',
+    'Connect',
+    'Confirm connecting to "$id" requested by an external link.',
+    '',
+    gFFI.dialogManager,
+    onSubmit: onConfirm,
+    hasCancel: true,
+  );
 }
 
 List<String>? urlLinkToCmdArgs(Uri uri) {
@@ -2398,19 +2420,25 @@ List<String>? urlLinkToCmdArgs(Uri uri) {
   // is layered on top of this strip; see R-X6 / handleUriLink.)
 
   if (isMobile && id != null) {
+    final cid = id;
+    late final VoidCallback doConnect;
     if (command == '--file-transfer') {
-      connect(Get.context!, id, isFileTransfer: true);
+      doConnect = () => connect(Get.context!, cid, isFileTransfer: true);
     } else if (command == '--view-camera') {
-      connect(Get.context!, id, isViewCamera: true);
+      doConnect = () => connect(Get.context!, cid, isViewCamera: true);
     } else if (command == '--terminal') {
-      connect(Get.context!, id, isTerminal: true);
+      doConnect = () => connect(Get.context!, cid, isTerminal: true);
     } else if (command == 'terminal-admin') {
-      setEnvTerminalAdmin();
-      connect(Get.context!, id, isTerminal: true);
+      doConnect = () {
+        setEnvTerminalAdmin();
+        connect(Get.context!, cid, isTerminal: true);
+      };
     } else {
       // Default to remote desktop for '--connect', '--play', or direct connection
-      connect(Get.context!, id);
+      doConnect = () => connect(Get.context!, cid);
     }
+    // R-X6: a mobile deep link always requires explicit confirmation (urlLinkToCmdArgs is deep-link-only).
+    confirmDeepLinkConnect(cid, doConnect);
     return null;
   }
 

@@ -224,6 +224,14 @@ elif ! grep -qF 'NEVER adopt an embedded' src/client.rs; then
 else
   echo "  ok  R-X6 Rust core never adopts an embedded ?key= (other_server key held empty)"
 fi
+# R-X6 confirmation gate: a deep-link-initiated connection MUST be confirmed by the user. The Dart gate
+# (confirmDeepLinkConnect via msgBox) wraps every rustdesk:// connect, routed through the `fromUri`
+# discriminator so the user-typed CLI is NOT gated but every URI-derived connect is.
+if grep -qF 'confirmDeepLinkConnect' flutter/lib/common.dart && grep -qF 'fromUri' flutter/lib/common.dart; then
+  echo "  ok  R-X6 deep-link connect is confirmation-gated (confirmDeepLinkConnect + fromUri)"
+else
+  echo "  FAIL R-X6: the deep-link-connect confirmation gate (confirmDeepLinkConnect/fromUri) is missing"; rc=1
+fi
 ra6_clean 'ConfigureUpdate|TestNatResponse'                              'R-X3 server-push config-update + NAT-response rewrite arms' || rc=1
 # R-P3 / R-P14: the inherited insecure direct-mode used a plaintext constant-byte ack ("direct-ok")
 # to admit a peer WITHOUT the PAKE key-confirmation. The fork makes CPace mandatory (R-A1), so any

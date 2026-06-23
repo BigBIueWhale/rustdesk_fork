@@ -111,7 +111,15 @@ if (-not (Test-Path (Join-Path $pc 'hosted\pub.dev\test-1.25.7'))) { Die 'flutte
 Log "flutter_tools pub cache extracted to $pc"
 
 Log 'resolving flutter_tools OFFLINE (kills the ~98 pub.dev metadata calls that stalled the provision)'
-& 'C:\flutter\bin\cache\dart-sdk\bin\dart.exe' pub get --offline --directory 'C:\flutter\packages\flutter_tools'
+# `dart pub get` ALWAYS attempts a pub.dev security-advisory fetch, even under --offline. When that endpoint
+# is unreachable -- and a fresh Win11 guest's HTTPS to pub.dev fails its TLS handshake -- pub prints a
+# NON-FATAL "Handshake error in client" to STDERR, yet pub get itself SUCCEEDS (exit 0). VERIFIED in the
+# rdwinvm SSH VM with outbound :443 firewall-blocked: it still printed "Got dependencies!" and returned 0.
+# Under $ErrorActionPreference='Stop' that native stderr becomes a fatal NativeCommandError and killed the
+# whole provision here (the real cause of the repeated line-114 Die, NOT a NIC/cache problem -- the staged
+# cache is content-complete). `2>&1` merges the stderr into the success stream so it is not a terminating
+# error; judge success by $LASTEXITCODE. The offline build no longer depends on the guest reaching pub.dev.
+& 'C:\flutter\bin\cache\dart-sdk\bin\dart.exe' pub get --offline --directory 'C:\flutter\packages\flutter_tools' 2>&1
 if ($LASTEXITCODE -ne 0) { Die "flutter_tools offline pub get failed (exit $LASTEXITCODE) -- the staged pub cache (flutter-pub-cache.tar.gz) is incomplete" }
 # config enables the windows desktop; precache reconciles the (already-present) engine. Both offline now, so
 # short bounds suffice -- a stall here would mean the offline resolve above did not take.
@@ -144,8 +152,11 @@ $src = (Get-PSDrive -PSProvider FileSystem |
 if ($src) {
     $ports = Join-Path $src 'res\vcpkg'
     Log "building the vcpkg x64-windows-static natives (overlay-ports $ports) -- slow (~30-60min)"
+    # 2>&1 -- same native-stderr-under-Stop guard as the pub get above: vcpkg writes progress/warnings to
+    # stderr, and under ErrorActionPreference=Stop a benign warning would be a fatal NativeCommandError
+    # BEFORE the $LASTEXITCODE check below ever runs. Merge it; judge success by the exit code.
     & 'C:\vcpkg\vcpkg.exe' install --overlay-ports="$ports" --triplet x64-windows-static `
-        aom libvpx libyuv opus libjpeg-turbo cpu-features
+        aom libvpx libyuv opus libjpeg-turbo cpu-features 2>&1
     if ($LASTEXITCODE -ne 0) { Die "vcpkg install of the x64-windows natives failed (exit $LASTEXITCODE)" }
 } else {
     Log 'WARN: no SRC CD (res\vcpkg) found -- skipped the vcpkg-native warm; the offline build cannot link codecs'

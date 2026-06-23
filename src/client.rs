@@ -1218,7 +1218,6 @@ struct ConnToken {
 pub struct LoginConfigHandler {
     id: String,
     pub conn_type: ConnType,
-    pub is_terminal_admin: bool,
     hash: Hash,
     password: Vec<u8>, // remember password for reconnect
     // R-S16 (viewer twin): the captured RAW plaintext password for the CPace initiator
@@ -1361,11 +1360,6 @@ impl LoginConfigHandler {
         self.shared_password = shared_password;
         self.record_state = false;
         self.record_permission = true;
-
-        // `std::env::remove_var("IS_TERMINAL_ADMIN");` is called in `session_add_sync()` - `flutter_ffi.rs`.
-        let is_terminal_admin = conn_type == ConnType::TERMINAL
-            && std::env::var("IS_TERMINAL_ADMIN").map_or(false, |v| v == "Y");
-        self.is_terminal_admin = is_terminal_admin;
     }
 
     // R-S18 / Appendix C #22: `should_auto_login` is removed. It returned the PERSISTED os-password
@@ -2267,11 +2261,9 @@ impl LoginConfigHandler {
     }
 
     pub fn get_key_terminal_service_id(&self) -> &'static str {
-        if self.is_terminal_admin {
-            "terminal-admin-service-id"
-        } else {
-            "terminal-service-id"
-        }
+        // R-X8/R-X6: the terminal-admin (run-as-administrator) viewer mode is excised, so the terminal
+        // service-id key is always the plain one (the is_terminal_admin distinction is gone).
+        "terminal-service-id"
     }
 }
 
@@ -2944,18 +2936,6 @@ pub async fn handle_hash(
     }
 
     lc.write().unwrap().password = password.clone();
-
-    let is_terminal_admin = lc.read().unwrap().is_terminal_admin;
-    let is_terminal = lc.read().unwrap().conn_type.eq(&ConnType::TERMINAL);
-    if is_terminal && is_terminal_admin {
-        if password.is_empty() {
-            interface.msgbox("terminal-admin-login-password", "", "", "");
-        } else {
-            interface.msgbox("terminal-admin-login", "", "", "");
-        }
-        lc.write().unwrap().hash = hash;
-        return;
-    }
 
     let password = if password.is_empty() {
         // login without password, the remote side can click accept

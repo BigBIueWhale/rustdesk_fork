@@ -166,11 +166,6 @@ pub fn session_add_sync(
         is_shared_password,
         conn_token,
     );
-    // We can't put the remove call together with `std::env::var("IS_TERMINAL_ADMIN")`.
-    // Because there are some `bail!` in `session_add()`, we must make sure `IS_TERMINAL_ADMIN` is removed at last.
-    if is_terminal {
-        std::env::remove_var("IS_TERMINAL_ADMIN");
-    }
 
     if let Err(e) = add_res {
         SyncReturn(format!("Failed to add session with id {}, {}", &id, e))

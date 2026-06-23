@@ -262,6 +262,20 @@ if grep -rn 'kSystemAlertWindow' flutter/lib/ | grep -vE ':[0-9]+:[[:space:]]*//
 else
   echo "  ok  R-X6 Android floating-window / SYSTEM_ALERT_WINDOW Dart UI excised (no live ref)"
 fi
+# R-X8/R-X6 terminal-admin (run-as-administrator) viewer mode -- EXCISED. It set IS_TERMINAL_ADMIN=Y, which
+# client.rs handle_hash short-circuited into a msgbox ("terminal-admin-login") the Flutter model has NO
+# handler for -> a guaranteed blank-dialog dead-end that then closes the connection (a 100%-failure
+# affordance). The field + env + the get_key admin branch + the 5 peer-card menu items + the --terminal-admin
+# CLI + the terminal-admin deep-link are all removed; the plain (non-admin) _terminalAction stays. (The inert
+# terminal-admin-login-tip lang strings are harmless localization data and are intentionally left in place.)
+ra6_clean 'is_terminal_admin|IS_TERMINAL_ADMIN|terminal-admin-service-id' 'R-X8/R-X6 terminal-admin viewer field/env/service-id-key' || rc=1
+if grep -rqE 'setEnvTerminalAdmin|_terminalRunAsAdminAction|IS_TERMINAL_ADMIN|terminal-admin|isTerminalRunAsAdmin' flutter/lib/; then
+  echo "  FAIL R-X8/R-X6: a terminal-admin (run-as-administrator) trigger regrew in flutter/lib"; rc=1
+elif grep -rqF '_terminalAction(context)' flutter/lib/common/widgets/peer_card.dart; then
+  echo "  ok  R-X8/R-X6 terminal-admin viewer mode excised (env/method/menu/CLI/deep-link); non-admin terminal kept"
+else
+  echo "  FAIL R-X8/R-X6: the non-admin _terminalAction was lost (over-excision)"; rc=1
+fi
 ra6_clean 'ConfigureUpdate|TestNatResponse'                              'R-X3 server-push config-update + NAT-response rewrite arms' || rc=1
 # R-P3 / R-P14: the inherited insecure direct-mode used a plaintext constant-byte ack ("direct-ok")
 # to admit a peer WITHOUT the PAKE key-confirmation. The fork makes CPace mandatory (R-A1), so any

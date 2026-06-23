@@ -2208,10 +2208,6 @@ enum UriLinkType {
   terminal,
 }
 
-setEnvTerminalAdmin() {
-  bind.mainSetEnv(key: 'IS_TERMINAL_ADMIN', value: 'Y');
-}
-
 // uri link handler
 bool handleUriLink({List<String>? cmdArgs, Uri? uri, String? uriString}) {
   List<String>? args;
@@ -2280,12 +2276,6 @@ bool handleUriLink({List<String>? cmdArgs, Uri? uri, String? uriString}) {
         i++;
         break;
       case '--terminal':
-        type = UriLinkType.terminal;
-        id = args[i + 1];
-        i++;
-        break;
-      case '--terminal-admin':
-        setEnvTerminalAdmin();
         type = UriLinkType.terminal;
         id = args[i + 1];
         i++;
@@ -2375,7 +2365,6 @@ List<String>? urlLinkToCmdArgs(Uri uri) {
     "port-forward",
     "rdp",
     "terminal",
-    "terminal-admin",
   ];
   if (uri.authority.isEmpty &&
       uri.path.split('').every((char) => char == '/')) {
@@ -2428,11 +2417,6 @@ List<String>? urlLinkToCmdArgs(Uri uri) {
       doConnect = () => connect(Get.context!, cid, isViewCamera: true);
     } else if (command == '--terminal') {
       doConnect = () => connect(Get.context!, cid, isTerminal: true);
-    } else if (command == 'terminal-admin') {
-      doConnect = () {
-        setEnvTerminalAdmin();
-        connect(Get.context!, cid, isTerminal: true);
-      };
     } else {
       // Default to remote desktop for '--connect', '--play', or direct connection
       doConnect = () => connect(Get.context!, cid);

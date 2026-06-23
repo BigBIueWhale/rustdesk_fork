@@ -372,6 +372,37 @@ stage_gradle() {
     log "gradle cache warmed ($(du -sh "$ONLINE_DIR/gradle-home" 2>/dev/null | cut -f1))"
 }
 
+# ── The windows flutter ENGINE (precache --windows): ~780MB of windows-x64{,-profile,-release} ──
+# The §12.2 golden-provision's IN-VM `flutter precache --windows` 780MB CDN fetch STALLS mid-transfer
+# over the guest's slirp NAT, so the engine is staged HERE on a real network (~22s) and shipped into the
+# golden (TOOLCHAINS CD) instead. The LINUX flutter's `precache --windows` pulls the WINDOWS-x64 engine
+# (platform data, host-agnostic); precache writes ONLY artifacts/engine/windows-x64* (no external
+# stamps), so the captured set is the complete cached state — with it pre-placed the in-VM precache
+# validates in ~4s and downloads nothing (docker-verified). Deterministic tar + gzip -n => stable SHA.
+stage_windows_engine() {
+    require_cmd docker
+    local out="$ONLINE_DIR/flutter-windows-engine.tar.gz"
+    [ -f "$out" ] && { log "windows flutter engine already staged, skipping"; return 0; }
+    log "staging the windows flutter engine (linux flutter precache --windows) -> ./online/flutter-windows-engine.tar.gz"
+    docker run --rm -v "$ONLINE_DIR:/online" ubuntu:24.04 bash -euo pipefail -c '
+        apt-get update -qq >/dev/null 2>&1
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git curl ca-certificates unzip xz-utils >/dev/null 2>&1
+        tar -C /tmp -xf /online/flutter-*.tar.xz
+        export PATH=/tmp/flutter/bin:$PATH CI=true
+        export HOME=/tmp/home; mkdir -p "$HOME"; git config --global --add safe.directory "*"
+        cd /tmp/flutter
+        find bin/cache -type f | sort > /tmp/before.txt
+        flutter precache --windows >/dev/null 2>&1
+        find bin/cache -type f | sort > /tmp/after.txt
+        comm -13 /tmp/before.txt /tmp/after.txt > /tmp/new.txt
+        grep -q "artifacts/engine/windows-x64" /tmp/new.txt || { echo "precache produced no windows-x64 engine"; exit 1; }
+        # deterministic: sorted names + fixed mtime/owner + gzip -n (no name/timestamp) -> stable R-B12 SHA
+        tar --sort=name --mtime=@1700000000 --owner=0 --group=0 --numeric-owner -cf - -T /tmp/new.txt | gzip -n -9 > /online/flutter-windows-engine.tar.gz
+    '
+    [ -f "$out" ] || die "windows flutter engine staging failed"
+    log "windows flutter engine staged: $out ($(du -h "$out" | cut -f1))"
+}
+
 main() {
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     vendor_cargo
@@ -388,6 +419,7 @@ main() {
     stage_android_sdk
     stage_gradle
     fetch_windows_toolchains
+    stage_windows_engine
     # Windows ISO / VS Build Tools are partly evergreen (R-B12(c)): pin the CAPTURED
     # offline layout by SHA-256, documenting publisher-verified vs evergreen.
     log "online-fetch complete — ./online is now offline-buildable. Builds run --network=none."

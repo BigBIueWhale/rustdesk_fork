@@ -43,8 +43,8 @@ preflight() {
     verify_sha256 "$ONLINE_DIR/flutter-windows-${FLUTTER_VERSION}.zip" "${SHA256_FLUTTER_WIN_3_24_5}"
     verify_sha256 "$ONLINE_DIR/llvm-windows-${LLVM_VERSION}.exe"       "${SHA256_LLVM_WIN_15_0_6}"
     for f in "win/Git-2.45.2-64-bit.exe" "win/rust-1.75.0-x86_64-pc-windows-msvc.msi" \
-             "win/rustup-init.exe" "vcpkg-${VCPKG_BASELINE}.tar.gz"; do
-        [ -f "$ONLINE_DIR/$f" ] || die "windows toolchain artifact missing in ./online: $f (stage it before provisioning)"
+             "win/rustup-init.exe" "vcpkg-${VCPKG_BASELINE}.tar.gz" "flutter-windows-engine.tar.gz"; do
+        [ -f "$ONLINE_DIR/$f" ] || die "windows toolchain artifact missing in ./online: $f (stage it before provisioning; the engine tarball = host flutter precache --windows, see online-fetch)"
     done
     log "preflight OK — building the golden Win11 template (immutable, pinned)"
 }
@@ -69,7 +69,8 @@ build_media() {
         "/vcpkg-${VCPKG_BASELINE}.tar.gz=$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" \
         "/win/Git-2.45.2-64-bit.exe=$ONLINE_DIR/win/Git-2.45.2-64-bit.exe" \
         "/win/rust-1.75.0-x86_64-pc-windows-msvc.msi=$ONLINE_DIR/win/rust-1.75.0-x86_64-pc-windows-msvc.msi" \
-        "/win/rustup-init.exe=$ONLINE_DIR/win/rustup-init.exe"
+        "/win/rustup-init.exe=$ONLINE_DIR/win/rustup-init.exe" \
+        "/flutter-windows-engine.tar.gz=$ONLINE_DIR/flutter-windows-engine.tar.gz"
 }
 
 # golden_has_done_marker: true iff C:\guest-setup-done.txt exists in the golden qcow2 — the

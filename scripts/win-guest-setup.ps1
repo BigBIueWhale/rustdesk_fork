@@ -78,14 +78,21 @@ $env:FLUTTER_SUPPRESS_ANALYTICS = 'true'
 # also shells out to `git` against the SDK checkout, so git must resolve here.
 $env:PATH = "C:\Program Files\Git\cmd;C:\flutter\bin;$env:PATH"
 git config --global --add safe.directory '*'   # avoid git "dubious ownership" on the SDK checkout
-# Bound each flutter step (Start-Process + WaitForExit) so a stalled first-run/CDN fetch fails LOUD +
-# fast, never the silent 90-min poll timeout the unbounded `&` calls caused. precache pulls ~780MB of
-# windows engine over the golden's slirp NAT (the same NAT that warmed the vcpkg natives), so give it a
-# generous window.
+# Pre-place the windows flutter ENGINE from the OFFLINE staged tarball. The in-VM `precache --windows`
+# 780MB CDN fetch STALLS mid-transfer over the golden's slirp NAT (confirmed: the download wedged at
+# ~0 disk / 0.14 cores; CI=true fixed the first-run BANNER hang but not the slirp stall). The engine is
+# staged host-side instead (deterministic for the pinned flutter version; ~22s on a real network) and
+# shipped on the TOOLCHAINS CD. With it pre-placed, `flutter precache --windows` validates in ~4s and
+# downloads NOTHING (docker-verified). bsdtar (Windows 10+) auto-detects the gzip.
+Log 'placing the offline-staged windows flutter engine (avoids the slirp CDN stall)'
+tar -xf (Join-Path $tc 'flutter-windows-engine.tar.gz') -C 'C:\flutter'
+# Bound each flutter step (Start-Process + WaitForExit) so a stall fails LOUD + fast, never the silent
+# 90-min poll timeout. With the engine pre-placed neither config nor precache hits the network, so 5min
+# each is ample (a >5min precache here means the pre-placement failed and it fell back to a download).
 $cfg = Start-Process 'C:\flutter\bin\flutter.bat' -ArgumentList 'config','--no-analytics','--enable-windows-desktop' -PassThru -NoNewWindow
 if (-not $cfg.WaitForExit(300000)) { try { $cfg.Kill() } catch {}; Die 'flutter config timed out (>5min)' }
 $pc = Start-Process 'C:\flutter\bin\flutter.bat' -ArgumentList 'precache','--windows' -PassThru -NoNewWindow
-if (-not $pc.WaitForExit(1500000)) { try { $pc.Kill() } catch {}; Die 'flutter precache --windows timed out (>25min)' }
+if (-not $pc.WaitForExit(300000)) { try { $pc.Kill() } catch {}; Die 'flutter precache --windows timed out (>5min) -- engine pre-placement likely failed (fell back to a network download)' }
 if ($pc.ExitCode -ne 0) { Die "flutter precache --windows failed (exit $($pc.ExitCode))" }
 
 # --- vcpkg @120deac3 -------------------------------------------------------------------------

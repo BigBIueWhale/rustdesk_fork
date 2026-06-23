@@ -66,16 +66,27 @@ Expand-Archive -Force -Path (Join-Path $tc 'flutter-windows-3.24.5.zip') -Destin
 # also resolves its OWN flutter_tools package ONLINE here -> baked into the golden, so the offline
 # per-build skips that networked re-resolution (build-debian pre-resolves flutter_tools per build).
 Log 'precaching the Flutter windows engine (+ warming flutter_tools) -- networked provision step'
+$env:CI = 'true'                               # CRITICAL: fully non-interactive flutter. Without it the
+                                               # FIRST flutter run prints the analytics/first-run banner and
+                                               # BLOCKS on stdin in the headless guest (the prior hang: ~2% CPU
+                                               # / 0 disk forever). FLUTTER_SUPPRESS_ANALYTICS alone does NOT
+                                               # suppress the banner; CI=true makes it non-blocking. A docker
+                                               # test confirmed precache --windows finishes in ~22s with CI=true.
 $env:FLUTTER_SUPPRESS_ANALYTICS = 'true'
 # git + flutter/dart MUST be on THIS process's PATH now: the persistent machine PATH is set later in
 # this script, and a mid-script install does not retro-add to the running process. flutter precache
-# also shells out to `git` against the SDK checkout, so git must resolve here or it dies (it did:
-# the first precache attempt threw CommandNotFoundException on `git` and aborted win-guest-setup).
+# also shells out to `git` against the SDK checkout, so git must resolve here.
 $env:PATH = "C:\Program Files\Git\cmd;C:\flutter\bin;$env:PATH"
 git config --global --add safe.directory '*'   # avoid git "dubious ownership" on the SDK checkout
-& 'C:\flutter\bin\flutter.bat' config --no-analytics --enable-windows-desktop 2>&1 | Out-Null
-& 'C:\flutter\bin\flutter.bat' precache --windows
-if ($LASTEXITCODE -ne 0) { Die "flutter precache --windows failed (exit $LASTEXITCODE)" }
+# Bound each flutter step (Start-Process + WaitForExit) so a stalled first-run/CDN fetch fails LOUD +
+# fast, never the silent 90-min poll timeout the unbounded `&` calls caused. precache pulls ~780MB of
+# windows engine over the golden's slirp NAT (the same NAT that warmed the vcpkg natives), so give it a
+# generous window.
+$cfg = Start-Process 'C:\flutter\bin\flutter.bat' -ArgumentList 'config','--no-analytics','--enable-windows-desktop' -PassThru -NoNewWindow
+if (-not $cfg.WaitForExit(300000)) { try { $cfg.Kill() } catch {}; Die 'flutter config timed out (>5min)' }
+$pc = Start-Process 'C:\flutter\bin\flutter.bat' -ArgumentList 'precache','--windows' -PassThru -NoNewWindow
+if (-not $pc.WaitForExit(1500000)) { try { $pc.Kill() } catch {}; Die 'flutter precache --windows timed out (>25min)' }
+if ($pc.ExitCode -ne 0) { Die "flutter precache --windows failed (exit $($pc.ExitCode))" }
 
 # --- vcpkg @120deac3 -------------------------------------------------------------------------
 Log 'extracting + bootstrapping vcpkg @120deac3 -> C:\vcpkg'

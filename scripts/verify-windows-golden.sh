@@ -34,6 +34,8 @@ out="$(docker run --rm --device /dev/kvm -v "$STATE_DIR:/state:ro" debian:stable
   virt-ls -a /state/win11-golden.qcow2 / 2>&1 | sort || echo "(virt-ls of C:\\ failed — OS not inspectable)"
   echo "=== C:\\vcpkg\\installed\\x64-windows-static (the warmed sec3.2 natives) ==="
   virt-ls -a /state/win11-golden.qcow2 "/vcpkg/installed/x64-windows-static/lib" 2>/dev/null | head -8 || echo "(absent — vcpkg natives not warmed)"
+  echo "=== C:\\flutter\\bin\\cache\\artifacts\\engine (the precached windows engine, for the offline flutter build) ==="
+  virt-ls -a /state/win11-golden.qcow2 "/flutter/bin/cache/artifacts/engine" 2>/dev/null | grep -i windows || echo "(no windows engine — flutter precache --windows did not run)"
   echo "=== verdict ==="
   if virt-cat -a /state/win11-golden.qcow2 /guest-setup-done.txt >/dev/null 2>&1; then
     echo "GOLDEN-OK: C:\\guest-setup-done.txt present — win-guest-setup.ps1 ran to completion"

@@ -72,6 +72,20 @@ build_media() {
         "/win/rustup-init.exe=$ONLINE_DIR/win/rustup-init.exe"
 }
 
+# golden_has_done_marker: true iff C:\guest-setup-done.txt exists in the golden qcow2 — the
+# DEFINITIVE completion signal (win-guest-setup writes it LAST, right before Stop-Computer). Read
+# read-only via libguestfs-in-docker; the caller MUST invoke this only when the domain is OFF (the
+# qcow2 is write-locked while it runs). A libguestfs error (e.g. a reboot relocked the image
+# mid-read) returns non-zero -> treated as "not done yet", so this never yields a false positive.
+golden_has_done_marker() {
+    docker run --rm --device /dev/kvm -v "$STATE_DIR:/state:ro" debian:stable-slim bash -c '
+        apt-get update -qq >/dev/null 2>&1
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libguestfs-tools linux-image-generic >/dev/null 2>&1
+        export LIBGUESTFS_BACKEND=direct
+        virt-cat -a /state/win11-golden.qcow2 /guest-setup-done.txt >/dev/null 2>&1
+    ' >/dev/null 2>&1
+}
+
 build_golden() {
     mkdir -p "$STATE_DIR"
     [ ! -f "$GOLDEN" ] || { log "golden image already exists: $GOLDEN (delete to rebuild)"; return 0; }
@@ -113,19 +127,34 @@ build_golden() {
     done
     log "unattended install + toolchain setup underway (~1-2h; the guest powers off when done)"
     # virt-install --wait returns at the FIRST guest shutdown — the OS-install REBOOT — not the final
-    # power-off; the guest then keeps running (OOBE -> first-logon -> toolchain + vcpkg-natives ->
-    # Stop-Computer). So reap it, then POLL the domain until it stays shut off. 2 consecutive 60s
-    # "not running" checks skip the transient install/OOBE reboots (libvirt on_reboot=restart brings
-    # those back within seconds), so this fires only on the real Stop-Computer.
+    # power-off. The guest then keeps running (OOBE -> first-logon -> win-guest-setup: toolchain +
+    # precache + vcpkg-natives -> Stop-Computer). A power-off ALONE is NOT completion: the OOBE/logon
+    # reboots also go transiently 'off' (and can exceed 2 min here — that false-tripped the old
+    # off-count heuristic into declaring success before setup even ran), and a FAILED setup leaves the
+    # domain idle at the desktop ('running') forever. So gate completion on the DEFINITIVE marker
+    # C:\guest-setup-done.txt: whenever the domain is stably off (qcow2 unlocked), read the marker via
+    # libguestfs — present => built, absent => a transient reboot (keep waiting) or a real failure (timeout).
     wait "$vi_pid" 2>/dev/null || true
-    log "waiting for the toolchain + vcpkg-native build, then the golden's real power-off"
-    local off=0 mins=0
-    while [ "$off" -lt 2 ]; do
+    log "waiting for win-guest-setup to COMPLETE (gated on guest-setup-done.txt, not a bare power-off)"
+    local mins=0 offstreak=0 checked=0
+    while true; do
         sleep 60; mins=$((mins + 1))
-        if [ "$(virsh -c qemu:///session domstate "$DOMAIN" 2>/dev/null)" = "running" ]; then off=0; else off=$((off + 1)); fi
-        [ "$mins" -gt 180 ] && die "golden provisioning exceeded 3h — check VNC 127.0.0.1 / virt-cat C:\\guest-setup-log.txt"
+        if [ "$(virsh -c qemu:///session domstate "$DOMAIN" 2>/dev/null)" = "running" ]; then
+            offstreak=0; checked=0
+        else
+            offstreak=$((offstreak + 1))
+            # stably off for 2 min => the qcow2 is unlocked; check the marker ONCE per off-streak.
+            if [ "$offstreak" -ge 2 ] && [ "$checked" -eq 0 ]; then
+                checked=1
+                if golden_has_done_marker; then
+                    log "golden Win11 template built: $GOLDEN (guest-setup-done.txt present) — clone an overlay, never boot this"
+                    break
+                fi
+                log "domain off but no done-marker yet (mins=$mins) — transient reboot, still waiting"
+            fi
+        fi
+        [ "$mins" -gt 90 ] && die "golden provisioning exceeded 90m without guest-setup-done.txt — setup failed or stuck at the desktop; force the domain off + virt-cat C:\\setup-transcript.txt to find where win-guest-setup stopped"
     done
-    log "golden Win11 template built: $GOLDEN — DO NOT boot it for builds; clone an overlay instead"
 }
 
 main() {

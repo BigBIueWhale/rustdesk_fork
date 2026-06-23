@@ -59,6 +59,24 @@ Start-Process -Wait -FilePath (Join-Path $tc 'llvm-windows-15.0.6.exe') -Argumen
 Log 'extracting Flutter 3.24.5 (windows) -> C:\flutter'
 Expand-Archive -Force -Path (Join-Path $tc 'flutter-windows-3.24.5.zip') -DestinationPath 'C:\'
 
+# Precache the windows ENGINE artifacts NOW, while the provision guest still has network. The
+# per-build VM runs --network=none, so `flutter build windows` would otherwise fetch the engine
+# (flutter_windows.dll, the C++ wrapper, ...) from the network and fail offline. This is the windows
+# analogue of build-debian relying on the linux engine being in the SDK tarball. First-run flutter
+# also resolves its OWN flutter_tools package ONLINE here -> baked into the golden, so the offline
+# per-build skips that networked re-resolution (build-debian pre-resolves flutter_tools per build).
+Log 'precaching the Flutter windows engine (+ warming flutter_tools) -- networked provision step'
+$env:FLUTTER_SUPPRESS_ANALYTICS = 'true'
+# git + flutter/dart MUST be on THIS process's PATH now: the persistent machine PATH is set later in
+# this script, and a mid-script install does not retro-add to the running process. flutter precache
+# also shells out to `git` against the SDK checkout, so git must resolve here or it dies (it did:
+# the first precache attempt threw CommandNotFoundException on `git` and aborted win-guest-setup).
+$env:PATH = "C:\Program Files\Git\cmd;C:\flutter\bin;$env:PATH"
+git config --global --add safe.directory '*'   # avoid git "dubious ownership" on the SDK checkout
+& 'C:\flutter\bin\flutter.bat' config --no-analytics --enable-windows-desktop 2>&1 | Out-Null
+& 'C:\flutter\bin\flutter.bat' precache --windows
+if ($LASTEXITCODE -ne 0) { Die "flutter precache --windows failed (exit $LASTEXITCODE)" }
+
 # --- vcpkg @120deac3 -------------------------------------------------------------------------
 Log 'extracting + bootstrapping vcpkg @120deac3 -> C:\vcpkg'
 tar -xf (Join-Path $tc 'vcpkg-120deac3062162151622ca4860575a33844ba10b.tar.gz') -C 'C:\'

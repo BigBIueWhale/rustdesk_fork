@@ -101,9 +101,13 @@ fetch_windows_toolchains() {
     # Windows Flutter SDK 3.24.5 — the .zip distribution (the linux .tar.xz won't run on Windows).
     fetch_verify "https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_${FLUTTER_VERSION}-stable.zip" \
         "flutter-windows-${FLUTTER_VERSION}.zip" "${SHA256_FLUTTER_WIN_3_24_5}"
+    # Windows LLVM/clang 15.0.6 installer (libclang for FRB/bindgen determinism, R-B12). The guest
+    # installs it silently (/S); VS Build Tools' bundled clang is a different, non-pinned version.
+    fetch_verify "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/LLVM-${LLVM_VERSION}-win64.exe" \
+        "llvm-windows-${LLVM_VERSION}.exe" "${SHA256_LLVM_WIN_15_0_6}"
     # NEXT windows-staging steps (each needs its own audited R-B12 pin before wiring here, or
-    # fetch_verify fails closed): windows LLVM/clang (libclang for FRB/bindgen), WiX v4, and the
-    # git / rust-msvc / rustup-init installers already captured in online/win/ (pin them too).
+    # fetch_verify fails closed): WiX v4, and the git / rust-msvc / rustup-init installers already
+    # captured in online/win/ (pin them too).
 }
 
 # ── vcpkg registry snapshot + the digest-pinned build base images ─────────────

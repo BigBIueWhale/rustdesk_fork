@@ -315,20 +315,6 @@ class ServerModel with ChangeNotifier {
     return res;
   }
 
-  Future<bool> checkFloatingWindowPermission() async {
-    debugPrint("androidVersion $androidVersion");
-    if (androidVersion < 23) {
-      return false;
-    }
-    if (await AndroidPermissionManager.check(kSystemAlertWindow)) {
-      debugPrint("alert window permission already granted");
-      return true;
-    }
-    var res = await AndroidPermissionManager.request(kSystemAlertWindow);
-    debugPrint("alert window permission request result: $res");
-    return res;
-  }
-
   /// Toggle the screen sharing service.
   toggleService() async {
     if (_isStart) {
@@ -356,9 +342,8 @@ class ServerModel with ChangeNotifier {
       }
     } else {
       await checkRequestNotificationPermission();
-      if (bind.mainGetLocalOption(key: kOptionDisableFloatingWindow) != 'Y') {
-        await checkFloatingWindowPermission();
-      }
+      // R-X6: the floating-window overlay permission request is removed — the native
+      // floating window is excised, so service start no longer asks for SYSTEM_ALERT_WINDOW.
       if (!await AndroidPermissionManager.check(kManageExternalStorage)) {
         await AndroidPermissionManager.request(kManageExternalStorage);
       }
@@ -725,13 +710,10 @@ class ServerModel with ChangeNotifier {
 
   void androidUpdatekeepScreenOn() async {
     if (!isAndroid) return;
-    var floatingWindowDisabled =
-        bind.mainGetLocalOption(key: kOptionDisableFloatingWindow) == "Y" ||
-            !await AndroidPermissionManager.check(kSystemAlertWindow);
-    final keepScreenOn = floatingWindowDisabled
-        ? KeepScreenOn.never
-        : optionToKeepScreenOn(
-            bind.mainGetLocalOption(key: kOptionKeepScreenOn));
+    // R-X6: keep-screen-on now derives from its option alone — the floating-window
+    // gate (SYSTEM_ALERT_WINDOW / disable-floating-window) is excised.
+    final keepScreenOn =
+        optionToKeepScreenOn(bind.mainGetLocalOption(key: kOptionKeepScreenOn));
     final on = ((keepScreenOn == KeepScreenOn.serviceOn) && _isStart) ||
         (keepScreenOn == KeepScreenOn.duringControlled &&
             _clients.map((e) => !e.disconnected).isNotEmpty);

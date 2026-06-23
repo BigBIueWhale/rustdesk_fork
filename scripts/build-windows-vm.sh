@@ -142,7 +142,14 @@ extract() {
     $GL -v "$STATE_DIR:/state:ro" -v "$OUT_DIR:/out" ubuntu:24.04 bash -c '
       apt-get update -qq >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libguestfs-tools linux-image-generic >/dev/null 2>&1
       export LIBGUESTFS_BACKEND=direct
-      guestfish --ro -a /state/win-build-output.img run : mount /dev/sda1 / : glob copy-out "/*" /out' 2>&1 | grep -iE 'error|fail' || true
+      guestfish --ro -a /state/win-build-output.img run : mount /dev/sda1 / : glob copy-out "/*" /out
+      chown -R '"$(id -u):$(id -g)"' /out' 2>&1 | grep -iE 'error|fail' || true
+    # glob copy-out runs as ROOT in the docker -> the extracted files (incl. rustdesk-setup.exe + its
+    # .sha256 from the VM) land root-owned, so the host-side `sha256sum | tee ...sha256` below hit EACCES
+    # AFTER the .exe was already extracted (a SPURIOUS PERBUILD-FAILED). The chown above (still root, in
+    # the docker) hands them to the invoking user so the tee + any later dist/ ops succeed. Drop the
+    # FAT system dirs the copy-out also drags in (they are not artifacts).
+    rm -rf "$OUT_DIR/System Volume Information" "$OUT_DIR/"'$RECYCLE.BIN' 2>/dev/null || true
     rm -f "$OVERLAY" "$BUILD_ISO" "$OFFLINE_ISO" "$OUTPUT_IMG"
     [ -f "$OUT_DIR/rustdesk-setup.exe" ] || die "no rustdesk-setup.exe produced — see $OUT_DIR/build-log.txt"
     sha256sum "$OUT_DIR/rustdesk-setup.exe" | tee "$OUT_DIR/rustdesk-setup.exe.sha256"

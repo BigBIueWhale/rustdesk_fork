@@ -91,7 +91,16 @@ golden_has_done_marker() {
 
 build_golden() {
     mkdir -p "$STATE_DIR"
-    [ ! -f "$GOLDEN" ] || { log "golden image already exists: $GOLDEN (delete to rebuild)"; return 0; }
+    # Reuse an existing golden ONLY if it actually finished (has the done-marker). A qcow2 left behind by
+    # a FAILED provision has no marker — silently reusing it (the old behaviour) falsely reports success on
+    # a stale image, so rebuild it instead. (Delete the marker'd golden by hand to force a fresh rebuild.)
+    if [ -f "$GOLDEN" ]; then
+        if golden_has_done_marker; then
+            log "golden already exists + has the done-marker: $GOLDEN (delete to force a rebuild)"; return 0
+        fi
+        log "golden exists but LACKS the done-marker (stale/failed provision) — deleting + rebuilding: $GOLDEN"
+        rm -f "$GOLDEN"
+    fi
     build_media
     # NB no --tpm: this host's session libvirt offers only TPM 'passthrough' (a physical TPM),
     # not the swtpm 'emulator' backend, and qemu:///system is permission-denied. autounattend.xml

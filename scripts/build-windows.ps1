@@ -47,6 +47,15 @@ function Build {
     # gen_version bakes a reproducible BUILD_DATE (the patch honors it on Windows
     # too). Passed in by provision-windows-vm.sh / the invoker.
     if (-not $env:SOURCE_DATE_EPOCH) { Write-Host "[harness:warn] SOURCE_DATE_EPOCH unset -- build will not be bit-reproducible (R-B2)" }
+    # R-B2 PE determinism: /Brepro makes the MSVC linker stamp a CONTENT-HASH into the PE TimeDateStamp instead
+    # of the wall-clock build time. Inject it via the LINK env var, which EVERY link.exe invocation in the build
+    # honors -- rustc's link (librustdesk.dll + rustdesk-portable-packer.exe), the flutter runner (rustdesk.exe),
+    # and the plugin DLLs. Without it those PE timestamps drift every build, and since the portable packer
+    # brotli-compresses the flutter build dir INTO the final .exe, the deltas amplify across ~97% of it (proved:
+    # build#1 4a7dbe4d vs build#2 7e08ce99, identical source). SOURCE_DATE_EPOCH only fixes the gen_version
+    # BUILD_DATE string, not PE headers -- both are needed for R-B2.
+    $env:LINK = '/Brepro'
+    Write-Host "[harness] R-B2: LINK=/Brepro (reproducible PE TimeDateStamp across rustc + flutter MSVC links)"
 
     # --- locate the OFFLINE UDF media (cargo-vendor + its source map + pub-cache), attached by
     # build-windows-vm.sh; drive letters are dynamic, so detect by content. -----------------------

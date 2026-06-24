@@ -412,30 +412,15 @@ pub fn set_options(m: HashMap<String, String>) {
 
 #[inline]
 pub fn set_option(key: String, value: String) {
-    if &key == "stop-service" {
-        #[cfg(target_os = "macos")]
-        {
-            let is_stop = value == "Y";
-            if is_stop && crate::platform::uninstall_service(true, false) {
-                return;
-            }
-        }
-        #[cfg(any(target_os = "windows", target_os = "linux"))]
-        {
-            if crate::platform::is_installed() {
-                if value == "Y" {
-                    if crate::platform::uninstall_service(true, false) {
-                        return;
-                    }
-                } else {
-                    if crate::platform::install_service() {
-                        return;
-                    }
-                }
-                return;
-            }
-        }
-    } else if &key == "audio-input" {
+    // R-X9/R-X10: the installed desktop service is ALWAYS present + auto-start and is un-killable at
+    // runtime. The `stop-service` set_option special-case (value=="Y" -> uninstall_service, else ->
+    // install_service) is REMOVED so NO local UI/FFI/IPC option-write can disable the headless host's
+    // service — it was the live service-kill path (the sciter "Enable service"/"Start service" toggle,
+    // macos.rs, any ipc::set_option). The key stays pinned "N" + in the is_option_can_save reject set
+    // (R-S16/R-S11), so a write now falls through inert. The sole sanctioned uninstall is the explicit
+    // `--uninstall` CLI (core_main). NB the Android `main_stop_service` foreground-service toggle is a
+    // SEPARATE, legitimate feature (Config::set_option on cfg(android), not this path) and is untouched.
+    if &key == "audio-input" {
         #[cfg(not(target_os = "ios"))]
         crate::audio_service::restart();
     }

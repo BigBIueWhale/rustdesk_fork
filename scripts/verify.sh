@@ -475,6 +475,24 @@ if [ -n "$r_x9_stopsvc" ]; then
 else
   echo "  ok  R-X9/R-X10 stop-service excised from service-creation + direct-listener (always-on/unconditional); key pinned N + un-writable (R-S16/R-S11)"
 fi
+# R-X9/R-X10 (§19): the ui_interface::set_option `stop-service` special-case (value=="Y" -> uninstall_service,
+# else -> install_service) is EXCISED — it was the LIVE runtime service-kill path reachable from the legacy
+# sciter "Enable service"/"Start service" toggle (+ macos.rs + any ipc::set_option), BYPASSING the R-S11
+# config-write reject (it called uninstall_service DIRECTLY, before any Config write). The installed desktop
+# service is un-killable at runtime; the SOLE sanctioned uninstall is the `--uninstall` CLI (core_main). The
+# sciter UI controls (#stop-service menu + #start-service link + their handlers + the hide_stop_service
+# builtin) are removed too — bringing the legacy sciter front-end + the shared set_option to flutter parity
+# (flutter excised its stop-service button earlier). (The Android main_stop_service foreground-service toggle
+# is a SEPARATE, legitimate feature — Config::set_option on cfg(android), not this path — and is KEPT.)
+r_x9_killsvc=
+grep -qE '&key == "stop-service"' src/ui_interface.rs && r_x9_killsvc="$r_x9_killsvc ui_interface-special-case"
+grep -qE '#stop-service|#start-service|set_option\("stop-service"' src/ui/index.tis && r_x9_killsvc="$r_x9_killsvc sciter-control"
+grep -qE 'Enable service|Start service' src/ui/index.tis && r_x9_killsvc="$r_x9_killsvc sciter-label"
+if [ -n "$r_x9_killsvc" ]; then
+  echo "  FAIL R-X9/R-X10: runtime service-kill path still present:$r_x9_killsvc"; rc=1
+else
+  echo "  ok  R-X9/R-X10 runtime service-kill path excised (ui_interface set_option stop-service special-case + sciter Enable/Start-service controls; service un-killable except --uninstall CLI)"
+fi
 # R-D7a (SHOULD): the Android keep-screen-on local-option is hard-pinned to "during controlled" — the
 # never / service-on modes + the settings radio + the KeepScreenOn enum/mappers are excised, so the
 # screen stays on exactly while a controlled session is active (hardcoded in server_model). And the

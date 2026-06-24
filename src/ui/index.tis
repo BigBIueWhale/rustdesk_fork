@@ -15,7 +15,6 @@ const is_custom_client = handler.is_custom_client();
 const disable_ab = handler.is_disable_ab();
 const hide_server_settings = handler.get_builtin_option("hide-server-settings") == "Y";
 const hide_proxy_settings = handler.get_builtin_option("hide-proxy-settings") == "Y";
-const hide_stop_service = handler.get_builtin_option("hide-stop-service") == "Y";
 const disable_change_permanent_password = handler.get_builtin_option("disable-change-permanent-password") == "Y";
 const disable_change_id = handler.get_builtin_option("disable-change-id") == "Y";
 
@@ -67,23 +66,17 @@ class ConnectStatus: Reactor.Component {
     function render() {
         return
             <div .connect-status>
-                <span class={"connect-status-icon connect-status" + (service_stopped ? 0 : connect_status)} />
+                <span class={"connect-status-icon connect-status" + connect_status} />
                 {this.getConnectStatusStr()}
-                {service_stopped ? <span .link #start-service>{translate('Start service')}</span> : ""}
             </div>;
     }
 
     function getConnectStatusStr() {
         // Direct-IP fork: the host just listens. There is no rendezvous
-        // "connecting"/"not ready" state and no public server.
-        if (service_stopped) {
-            return translate("Service is not running");
-        }
+        // "connecting"/"not ready" state and no public server. R-X9/R-X10: the installed
+        // service is un-killable + always running, so there is no "service stopped" /
+        // Start-service state to surface.
         return translate("Ready");
-    }
-
-    event click $(#start-service) () {
-        handler.set_option("stop-service", "");
     }
 }
 
@@ -481,7 +474,6 @@ class MyIdMenu: Reactor.Component {
                 {!disable_settings && <li #whitelist title={translate('whitelist_tip')}>{translate('IP Whitelisting')}</li>}
                 {!disable_settings && !hide_proxy_settings && <li #socks5-server>{translate('Socks5/Http(s) Proxy')}</li>}
                 <div .separator />
-                {(!hide_stop_service || service_stopped) && <li #stop-service class={service_stopped ? "line-through" : "selected"}><span>{svg_checkmark}</span>{translate("Enable service")}</li>}
                 {!disable_settings && is_win && handler.is_installed() ? <ShareRdp /> : ""}
                 {!disable_settings && <DirectServer />}
                 {!disable_change_id && handler.is_ok_change_id() ? <div .separator /> : ""}
@@ -570,8 +562,6 @@ class MyIdMenu: Reactor.Component {
             open_whitelist_dialog();
         } else if (me.id == "socks5-server") {
             open_proxy_dialog();
-        } else if (me.id == "stop-service") {
-            handler.set_option("stop-service", service_stopped ? default_option_no : "Y");
         } else if (me.id == "change-id") {
             var id_label_width = incoming_only ? "50px" : "100px";
             var input_width = incoming_only ? (incoming_only_width - 20) + "px" : "250px";

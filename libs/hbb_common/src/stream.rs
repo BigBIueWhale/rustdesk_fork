@@ -1,15 +1,13 @@
 use crate::{tcp, ResultType};
-#[cfg(feature = "webrtc")]
-use crate::webrtc;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
 
 // The flagship direct path is always TCP. The dead WebSocket transport (never
 // reachable on the direct-IP fork — targets are `IP:port`, never `ws://`) was
-// excised entirely (§8 "removed not disabled"). WebRTC stays feature-gated.
+// excised entirely (§8 "removed not disabled"). The WebRTC transport — a
+// public-server ICE/STUN/TURN path, antithetical to direct-IP-only (R-SV4) — is
+// likewise fully excised, so TCP is now the sole stream variant.
 pub enum Stream {
-    #[cfg(feature = "webrtc")]
-    WebRTC(webrtc::WebRTCStream),
     Tcp(tcp::FramedStream),
 }
 
@@ -17,8 +15,6 @@ impl Stream {
     #[inline]
     pub fn set_raw(&mut self) {
         match self {
-            #[cfg(feature = "webrtc")]
-            Stream::WebRTC(s) => s.set_raw(),
             Stream::Tcp(s) => s.set_raw(),
         }
     }
@@ -26,8 +22,6 @@ impl Stream {
     #[inline]
     pub async fn send_bytes(&mut self, bytes: bytes::Bytes) -> ResultType<()> {
         match self {
-            #[cfg(feature = "webrtc")]
-            Stream::WebRTC(s) => s.send_bytes(bytes).await,
             Stream::Tcp(s) => s.send_bytes(bytes).await,
         }
     }
@@ -35,8 +29,6 @@ impl Stream {
     #[inline]
     pub async fn send_raw(&mut self, bytes: Vec<u8>) -> ResultType<()> {
         match self {
-            #[cfg(feature = "webrtc")]
-            Stream::WebRTC(s) => s.send_raw(bytes).await,
             Stream::Tcp(s) => s.send_raw(bytes).await,
         }
     }
@@ -48,8 +40,6 @@ impl Stream {
     #[inline]
     pub fn set_session_keys(&mut self, keys: crate::cpace::DirectionalKeys) {
         match self {
-            #[cfg(feature = "webrtc")]
-            Stream::WebRTC(s) => s.set_session_keys(keys),
             Stream::Tcp(s) => s.set_session_keys(keys),
         }
     }
@@ -57,8 +47,6 @@ impl Stream {
     #[inline]
     pub fn is_secured(&self) -> bool {
         match self {
-            #[cfg(feature = "webrtc")]
-            Stream::WebRTC(s) => s.is_secured(),
             Stream::Tcp(s) => s.is_secured(),
         }
     }
@@ -69,8 +57,6 @@ impl Stream {
     pub fn as_framed_tcp_mut(&mut self) -> Option<&mut tcp::FramedStream> {
         match self {
             Stream::Tcp(s) => Some(s),
-            #[allow(unreachable_patterns)]
-            _ => None,
         }
     }
 
@@ -80,8 +66,6 @@ impl Stream {
         timeout: u64,
     ) -> Option<Result<bytes::BytesMut, std::io::Error>> {
         match self {
-            #[cfg(feature = "webrtc")]
-            Stream::WebRTC(s) => s.next_timeout(timeout).await,
             Stream::Tcp(s) => s.next_timeout(timeout).await,
         }
     }
@@ -90,8 +74,6 @@ impl Stream {
     #[inline]
     pub async fn send(&mut self, msg: &impl protobuf::Message) -> ResultType<()> {
         match self {
-            #[cfg(feature = "webrtc")]
-            Self::WebRTC(s) => s.send(msg).await,
             Self::Tcp(tcp) => tcp.send(msg).await,
         }
     }
@@ -100,8 +82,6 @@ impl Stream {
     #[inline]
     pub async fn next(&mut self) -> Option<Result<bytes::BytesMut, std::io::Error>> {
         match self {
-            #[cfg(feature = "webrtc")]
-            Self::WebRTC(s) => s.next().await,
             Self::Tcp(tcp) => tcp.next().await,
         }
     }
@@ -109,8 +89,6 @@ impl Stream {
     #[inline]
     pub fn local_addr(&self) -> SocketAddr {
         match self {
-            #[cfg(feature = "webrtc")]
-            Self::WebRTC(s) => s.local_addr(),
             Self::Tcp(tcp) => tcp.local_addr(),
         }
     }
@@ -118,14 +96,5 @@ impl Stream {
     #[inline]
     pub fn from(stream: TcpStream, stream_addr: SocketAddr) -> Self {
         Self::Tcp(tcp::FramedStream::from(stream, stream_addr))
-    }
-
-    #[inline]
-    #[cfg(feature = "webrtc")]
-    pub fn get_webrtc_stream(&self) -> Option<webrtc::WebRTCStream> {
-        match self {
-            Self::WebRTC(s) => Some(s.clone()),
-            _ => None,
-        }
     }
 }

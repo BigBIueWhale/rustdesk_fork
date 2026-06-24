@@ -1141,9 +1141,9 @@ ra6_clean 'api/oidc|fn auth_task' 'R-SV6(b)/R-G4 OIDC account-login egress' || r
 # test_ipv6 -> stun_ipv4_test/stun_ipv6_test resolved + queried hardcoded public STUN servers
 # (stun.l.google.com etc.). A direct-IP fork does no NAT traversal; the probes were dead
 # (test_nat_type is a no-op, df3d12f) and are deleted structurally (R-SV1), with the `stunclient`
-# crate dep dropped. (The other STUN source, `webrtc.rs DEFAULT_ICE_SERVERS`, is DEAD SOURCE — the
-# `webrtc` feature is never enabled in the fork, so that module is not compiled; removing the
-# whole webrtc transport is an un-verifiable-here follow-on, like the Windows/sciter excisions.)
+# crate dep dropped. (The other STUN source, `webrtc.rs DEFAULT_ICE_SERVERS`, is now fully EXCISED —
+# the `mod webrtc` module file, its optional `webrtc` dependency, and the whole ICE/STUN/TURN crate
+# tree are removed outright; the strengthened R-SV4 gate below asserts that absence.)
 ra6_clean 'STUNS_V4|STUNS_V6|stunclient|stun_ipv4_test|stun_ipv6_test|test_nat_ipv4|stun\.l\.google' 'R-SV4(b) common.rs STUN NAT-probes' || rc=1
 # R-SV4(d) / R-S11 / §18: the NAT/STUN startup ENTRY symbols are cfg-ABSENT, not stubbed —
 # test_nat_type (the startup probe, already a no-op after the egressing test_nat_type_/test_ipv6/
@@ -1151,17 +1151,22 @@ ra6_clean 'STUNS_V4|STUNS_V6|stunclient|stun_ipv4_test|stun_ipv6_test|test_nat_i
 # R-S11 reachability concern) are EXCISED, meeting the spec's "a no-op stub is DIFFERENT from being
 # cfg-absent" bar so the sound-symbol-grep holds (the leaves are R-SV4(b) above).
 ra6_clean 'test_nat_type|CheckTestNatType' 'R-SV4(d) NAT/STUN entry symbols (test_nat_type/CheckTestNatType)' || rc=1
-# R-SV4: the WebRTC transport (a second STUN/ICE source — DEFAULT_ICE_SERVERS) MUST NOT be compiled —
-# the hbb_common `webrtc` feature is never ENABLED (the root dep pulls hbb_common with no features and
-# hbb_common's default is empty), so `mod webrtc` (#[cfg(feature="webrtc")]) is absent from every
-# build. This replaces the prior comment-only assertion with a real gate.
+# R-SV4: the WebRTC transport (a second STUN/ICE source — DEFAULT_ICE_SERVERS) is fully EXCISED, not
+# merely compiled-out. "removed not disabled" (§8): the `mod webrtc` module file is deleted, the
+# optional `webrtc` dependency + the `webrtc` cargo feature are gone, no `mod webrtc` survives in
+# lib.rs, no workspace member enables a `webrtc` feature, and the whole ICE/STUN/TURN crate tree
+# (webrtc / webrtc-ice / webrtc-sctp / webrtc-util / ...) is pruned from Cargo.lock. Each is asserted
+# below as presence-of-absence (a strengthening of the prior feature-not-enabled-only gate).
 r_sv4_webrtc=
-grep -qE 'hbb_common = \{[^}]*features = \[[^]]*"webrtc"' Cargo.toml && r_sv4_webrtc="$r_sv4_webrtc root-enables-webrtc"
-grep -qE '^default = \[[^]]*"webrtc"' libs/hbb_common/Cargo.toml && r_sv4_webrtc="$r_sv4_webrtc hbb_common-default-webrtc"
+[ -f libs/hbb_common/src/webrtc.rs ] && r_sv4_webrtc="$r_sv4_webrtc webrtc.rs-present"
+grep -qE '^[[:space:]]*(pub[[:space:]]+)?mod[[:space:]]+webrtc' libs/hbb_common/src/lib.rs && r_sv4_webrtc="$r_sv4_webrtc mod-webrtc-in-lib"
+grep -qE '^[[:space:]]*webrtc[[:space:]]*=' libs/hbb_common/Cargo.toml && r_sv4_webrtc="$r_sv4_webrtc webrtc-dep-or-feature"
+grep -qE 'features[[:space:]]*=[[:space:]]*\[[^]]*"webrtc"' Cargo.toml libs/*/Cargo.toml && r_sv4_webrtc="$r_sv4_webrtc member-enables-webrtc"
+grep -qiE '^name = "webrtc(-(ice|sctp|util|srtp|data|media|mdns))?"$' Cargo.lock && r_sv4_webrtc="$r_sv4_webrtc webrtc-crates-in-lock"
 if [ -n "$r_sv4_webrtc" ]; then
-  echo "  FAIL R-SV4: the webrtc transport feature is enabled:$r_sv4_webrtc"; rc=1
+  echo "  FAIL R-SV4: the webrtc transport is not fully excised:$r_sv4_webrtc"; rc=1
 else
-  echo "  ok  R-SV4 webrtc transport feature not enabled (no STUN/ICE DEFAULT_ICE_SERVERS compiled)"
+  echo "  ok  R-SV4 webrtc transport fully excised (no module, no dep/feature, no ICE/STUN/TURN crates in Cargo.lock)"
 fi
 # R-G6 / R-SV4: the direct-only fork has no relay to fall back to, so the inherited
 # connection-failure "relay-hint" advice (try a relay / add the "/r" suffix) is dead and

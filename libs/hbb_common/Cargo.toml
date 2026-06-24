@@ -8,7 +8,6 @@ edition = "2018"
 
 [features]
 default = []
-webrtc = ["dep:webrtc"]
 # The `lockdown` build-split feature has been RETIRED (spec R-S16(a), R-R2b): the
 # PINNED_SETTINGS policy + the get_option/is_option_can_save funnel (src/config.rs)
 # and the R-A3 set_raw assert (src/tcp.rs) are now UNCONDITIONAL — enforced by every
@@ -73,7 +72,6 @@ rustls-pki-types = "1.11"
 rustls-native-certs = "0.8"
 webpki-roots = "1.0.4"
 async-recursion = "1.1"
-webrtc = { version = "0.14.0", optional = true }
 libloading = "0.8"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
@@ -86,12 +84,14 @@ protobuf-codegen = { version = "3.7" }
 
 [dev-dependencies]
 clap = "4.5.51"
-# R-SV4: webrtc is excised from the fork (the feature stays compiled-out; CI asserts it absent).
-# The only consumer of a `webrtc` dev-dependency was examples/webrtc.rs (a dead WebRTC demo, removed),
-# and that dev-dep also failed to build on the pinned Rust 1.75 (its `sdp`/`webrtc-util` transitives
-# use the 1.87 `is_multiple_of`), which blocked `cargo test -p hbb_common` entirely — so the fs/path
-# safety tests (R-S8) could never run. Dropped. (webrtc remains in Cargo.lock via the optional
-# feature-dep above, so this changes no locked versions.)
+# R-SV4: the WebRTC transport is FULLY EXCISED from the fork — `mod webrtc`
+# (libs/hbb_common/src/webrtc.rs, a public-server ICE/STUN/TURN path antithetical to
+# direct-IP-only) and its optional `webrtc` dependency are removed outright ("removed
+# not disabled"), which prunes the whole webrtc/sdp/stun/turn/dtls crate tree from
+# Cargo.lock. The only consumer of a `webrtc` dev-dependency had been examples/webrtc.rs
+# (a dead WebRTC demo, removed); that dev-dep also failed to build on the pinned Rust
+# 1.75 (its `sdp`/`webrtc-util` transitives use the 1.87 `is_multiple_of`), which had
+# blocked `cargo test -p hbb_common` (the R-S8 fs/path safety tests).
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = [

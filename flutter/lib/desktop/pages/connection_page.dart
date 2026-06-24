@@ -75,12 +75,11 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
               width: 8,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(4),
-                color: _svcStopped.value ||
-                        stateGlobal.svcStatus.value == SvcStatus.connecting
+                // R-G2: direct-IP — green when the service is listening, warn when stopped; the
+                // rendezvous connecting/ready dot states are gone.
+                color: _svcStopped.value
                     ? kColorWarn
-                    : (stateGlobal.svcStatus.value == SvcStatus.ready
-                        ? Color.fromARGB(255, 50, 190, 166)
-                        : Color.fromARGB(255, 224, 79, 95)),
+                    : Color.fromARGB(255, 50, 190, 166),
               ),
             ).marginSymmetric(horizontal: em),
             Container(
@@ -111,30 +110,20 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
   _buildConnStatusMsg() {
     widget.onSvcStatusChanged?.call();
     return Text(
+      // R-G2/R-G8: direct-IP — no rendezvous "connecting to the network"/"not ready" states; the
+      // controlled side just listens on the pinned direct port (config::DIRECT_PORT = 21118).
       _svcStopped.value
           ? translate("Service is not running")
-          : stateGlobal.svcStatus.value == SvcStatus.connecting
-              ? translate("connecting_status")
-              : stateGlobal.svcStatus.value == SvcStatus.notReady
-                  ? translate("not_ready_status")
-                  : translate('Ready'),
+          : translate("Listening on :21118"),
       style: TextStyle(fontSize: em),
     );
   }
 
   updateStatus() async {
+    // R-G2: the rendezvous status_num (connecting/ready) is gone; only the live video-connection
+    // count is still surfaced (the direct-IP controlled side is "listening" whenever it runs).
     final status =
         jsonDecode(await bind.mainGetConnectStatus()) as Map<String, dynamic>;
-    final statusNum = status['status_num'] as int;
-    if (statusNum == 0) {
-      stateGlobal.svcStatus.value = SvcStatus.connecting;
-    } else if (statusNum == -1) {
-      stateGlobal.svcStatus.value = SvcStatus.notReady;
-    } else if (statusNum == 1) {
-      stateGlobal.svcStatus.value = SvcStatus.ready;
-    } else {
-      stateGlobal.svcStatus.value = SvcStatus.notReady;
-    }
     try {
       stateGlobal.videoConnCount.value = status['video_conn_count'] as int;
     } catch (_) {}

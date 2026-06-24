@@ -262,6 +262,34 @@ async fn responder_rejects_oversize_pre_pake_frame() {
 }
 
 #[tokio::test]
+async fn initiator_rejects_oversize_pre_pake_frame() {
+    // R-S7 / R-P14b — the CLIENT-SIDE twin of `responder_rejects_oversize_pre_pake_frame`, and the
+    // direct analog of the libssh2 CVE-2026-55200 (pre-auth heap overflow) / CVE-2026-55199 (pre-auth
+    // resource-exhaustion) threat model: a MALICIOUS HOST attacking a viewer/client PRE-AUTH. libssh2
+    // is client-only, so its whole critical surface is "what a hostile server does to you when you
+    // dial out" — our fork is BOTH roles, so the viewer's pre-auth read path must be exactly as
+    // bulletproof as the host's. The initiator caps frames at 4 KiB (MAX_CPACE_PACKET) BEFORE its
+    // first read (cpace.rs:274); a hostile responder that answers step ① with an oversize frame must
+    // be rejected at the length prefix (HandshakeError::Io), never buffered — the viewer refuses to
+    // allocate for an unauthenticated server. Pins the client half of "bulletproof on BOTH sides".
+    let (si, mut sr) = loopback_pair().await;
+    let ji = tokio::spawn(async move {
+        let mut si = si;
+        run_initiator(&mut si, "frame-cap-pw").await
+    });
+    // The malicious host raises ITS OWN cap (a hostile server emits whatever size it likes) and,
+    // instead of a valid step ②, blasts a 5 KiB raw frame on the still-UNKEYED stream. The
+    // initiator's 4 KiB DECODE cap must reject it at the length prefix, before any body allocation.
+    sr.set_max_packet_length(64 * 1024);
+    sr.send_raw(vec![0x5au8; 5 * 1024]).await.ok(); // 5 KiB > the 4 KiB pre-PAKE cap
+    assert_eq!(
+        err_of(ji.await.unwrap()),
+        HandshakeError::Io,
+        "R-S7/R-P14b: a malicious host's oversize (>4 KiB) pre-PAKE frame must abort the viewer at the cap, never buffer"
+    );
+}
+
+#[tokio::test]
 async fn wrong_password_aborts_at_confirmation() {
     let (si, sr) = loopback_pair().await;
     // Spawn so the responder's abort drops its stream and frees the initiator

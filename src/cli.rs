@@ -93,11 +93,6 @@ impl Interface for Session {
         self.lc.write().unwrap().handle_peer_info(&pi);
     }
 
-    async fn handle_hash(&self, pass: &str, hash: Hash, peer: &mut Stream) {
-        // R-X7: removed a debug log that printed the (now-excised) temporary password.
-        handle_hash(self.lc.clone(), &pass, hash, self, peer).await;
-    }
-
     async fn handle_login_from_ui(
         &self,
         os_username: String,
@@ -146,13 +141,9 @@ pub async fn connect_test(id: &str, key: String, token: String) {
                         }
                         Ok(Some(Ok(bytes))) => {
                             if let Ok(msg_in) = Message::parse_from_bytes(&bytes) {
-                                match msg_in.union {
-                                    Some(message::Union::Hash(hash)) => {
-                                        log::info!("Got hash");
-                                        break;
-                                    }
-                                    _ => {}
-                                }
+                                // R-T15c: the server no longer sends a `Hash` challenge to break on
+                                // (CPace is the sole authenticator); the loop ends on EOF/timeout.
+                                let _ = msg_in.union;
                             }
                         }
                         _ => {}

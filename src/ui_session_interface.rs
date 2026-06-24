@@ -41,7 +41,7 @@ use uuid::Uuid;
 
 use crate::client::io_loop::Remote;
 use crate::client::{
-    check_if_retry, handle_hash, handle_login_error, handle_login_from_ui, handle_test_delay,
+    check_if_retry, handle_login_error, handle_login_from_ui, handle_test_delay,
     input_os_password, send_mouse, send_pointer_device_event, FileManager, Key, LoginConfigHandler,
     QualityStatus, KEY_MAP,
 };
@@ -1831,10 +1831,6 @@ impl<T: InvokeUiSession> Interface for Session<T> {
         } else {
             self.password.clone()
         }
-    }
-
-    async fn handle_hash(&self, pass: &str, hash: Hash, peer: &mut Stream) {
-        handle_hash(self.lc.clone(), pass, hash, self, peer).await;
     }
 
     async fn handle_login_from_ui(

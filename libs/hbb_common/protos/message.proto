@@ -321,11 +321,6 @@ message CursorPosition {
   sint32 y = 2;
 }
 
-message Hash {
-  string salt = 1;
-  string challenge = 2;
-}
-
 enum ClipboardFormat {
   Text = 0;
   Rtf = 1;
@@ -980,13 +975,12 @@ message TerminalResponse {
 }
 
 message Message {
-  reserved 3, 4; // R-P5: signed_id (3) + public_key (4) excised — CPace (§10) replaces the keying
+  reserved 3, 4, 9; // R-P5: signed_id (3) + public_key (4) excised — CPace (§10) keys; R-T15c: Hash (9) excised — CPace is the sole authenticator
   oneof union {
     TestDelay test_delay = 5;
     VideoFrame video_frame = 6;
     LoginRequest login_request = 7;
     LoginResponse login_response = 8;
-    Hash hash = 9;
     MouseEvent mouse_event = 10;
     AudioFrame audio_frame = 11;
     CursorData cursor_data = 12;

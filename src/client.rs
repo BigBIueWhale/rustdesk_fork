@@ -1198,24 +1198,17 @@ impl PasswordSource {
         }
     }
 
-    // Whether the password is shared ab password
-    pub fn is_shared_ab(&self, password: &[u8], hash: &Hash) -> bool {
+    // Whether the password is shared ab password.
+    // R-T15c: the legacy salt-and-compare (`equal`: SHA256(plaintext + hash.salt) == connected-hash) is
+    // gone with the `Hash` challenge -- under CPace the connecting `password` (the old salted hash) is
+    // always empty here, so this collapses to the SharedAb-variant gate (still consulted by the
+    // persistence path to avoid syncing a shared-ab secret per-peer; the AB paths are a §19/R-G2/R-G4
+    // follow-on).
+    pub fn is_shared_ab(&self, password: &[u8]) -> bool {
         if password.is_empty() {
             return false;
         }
-        match self {
-            PasswordSource::SharedAb(p) => Self::equal(p, password, hash),
-            _ => false,
-        }
-    }
-
-    //  Whether the password equals to the connected password
-    fn equal(password: &str, connected_password: &[u8], hash: &Hash) -> bool {
-        let mut hasher = Sha256::new();
-        hasher.update(password);
-        hasher.update(&hash.salt);
-        let res = hasher.finalize();
-        connected_password[..] == res[..]
+        matches!(self, PasswordSource::SharedAb(_))
     }
 }
 
@@ -1231,7 +1224,6 @@ struct ConnToken {
 pub struct LoginConfigHandler {
     id: String,
     pub conn_type: ConnType,
-    hash: Hash,
     password: Vec<u8>, // remember password for reconnect
     // R-S16 (viewer twin): the captured RAW plaintext password for the CPace initiator
     // (the secret itself, not the `password` salted hash). Set from the user-entered
@@ -2012,13 +2004,12 @@ impl LoginConfigHandler {
         let password = self.password.clone();
         let password0 = config.password.clone();
         let remember = self.remember;
-        let hash = self.hash.clone();
         if remember {
             // remember is true: use PeerConfig password or ui login
             // not sync shared password to recent
             if !password.is_empty()
                 && password != password0
-                && !self.password_source.is_shared_ab(&password, &hash)
+                && !self.password_source.is_shared_ab(&password)
             {
                 config.password = password.clone();
                 log::debug!("remember password of {}", self.id);
@@ -2062,7 +2053,7 @@ impl LoginConfigHandler {
         {
             // sync connected password to personal ab automatically if it is not shared password
             if !config.password.is_empty()
-                && !self.password_source.is_shared_ab(&password, &hash)
+                && !self.password_source.is_shared_ab(&password)
                 && !self.password_source.is_personal_ab(&password)
             {
                 let hash = base64::encode(config.password.clone(), base64::Variant::Original);
@@ -2884,120 +2875,6 @@ pub fn handle_login_error(
 }
 
 
-/// Handle hash message sent by peer.
-/// Hash will be used for login.
-///
-/// # Arguments
-///
-/// * `lc` - Login config.
-/// * `hash` - Hash sent by peer.
-/// * `interface` - [`Interface`] for sending data.
-/// * `peer` - [`Stream`] for communicating with peer.
-pub async fn handle_hash(
-    lc: Arc<RwLock<LoginConfigHandler>>,
-    password_preset: &str,
-    hash: Hash,
-    interface: &impl Interface,
-    peer: &mut Stream,
-) {
-    lc.write().unwrap().hash = hash.clone();
-    // Take care of password application order
-
-    // last password
-    let mut password = lc.read().unwrap().password.clone();
-    // preset password
-    if password.is_empty() {
-        if !password_preset.is_empty() {
-            let mut hasher = Sha256::new();
-            hasher.update(password_preset);
-            hasher.update(&hash.salt);
-            let res = hasher.finalize();
-            password = res[..].into();
-            lc.write().unwrap().password_source = Default::default();
-        }
-    }
-    // shared password
-    // Currently it's used only when click shared ab peer card
-    let shared_password = lc.write().unwrap().shared_password.take();
-    if let Some(shared_password) = shared_password {
-        if !shared_password.is_empty() {
-            let mut hasher = Sha256::new();
-            hasher.update(shared_password.clone());
-            hasher.update(&hash.salt);
-            let res = hasher.finalize();
-            password = res[..].into();
-            lc.write().unwrap().password_source = PasswordSource::SharedAb(shared_password);
-        }
-    }
-    // peer config password
-    if password.is_empty() {
-        password = lc.read().unwrap().config.password.clone();
-        if !password.is_empty() {
-            lc.write().unwrap().password_source = Default::default();
-        }
-    }
-    // personal ab password
-    if password.is_empty() {
-        try_get_password_from_personal_ab(lc.clone(), &mut password);
-    }
-
-    if password.is_empty() {
-        let p = crate::ui_interface::get_builtin_option(keys::OPTION_DEFAULT_CONNECT_PASSWORD);
-        if !p.is_empty() {
-            let mut hasher = Sha256::new();
-            hasher.update(p.clone());
-            hasher.update(&hash.salt);
-            let res = hasher.finalize();
-            password = res[..].into();
-            lc.write().unwrap().password_source = PasswordSource::SharedAb(p); // reuse SharedAb here
-        }
-    }
-
-    lc.write().unwrap().password = password.clone();
-
-    let password = if password.is_empty() {
-        // login without password, the remote side can click accept
-        interface.msgbox("input-password", "Password Required", "", "");
-        Vec::new()
-    } else {
-        let mut hasher = Sha256::new();
-        hasher.update(&password);
-        hasher.update(&hash.challenge);
-        hasher.finalize()[..].into()
-    };
-
-    // R-S18 / Appendix C #22: the persisted os-username/os-password options are deleted, so the
-    // viewer no longer reads a stored OS credential to send to the peer. (send_login/create_login_msg
-    // already ignore the os-cred params — the vestigial param threading is the tolerated §19/R-G4
-    // follow-on; passing empty strings keeps no second-credential on the wire.)
-    send_login(lc.clone(), String::new(), String::new(), password, peer).await;
-    lc.write().unwrap().hash = hash;
-}
-
-#[inline]
-fn try_get_password_from_personal_ab(lc: Arc<RwLock<LoginConfigHandler>>, password: &mut Vec<u8>) {
-    let access_token = LocalConfig::get_option("access_token");
-    let ab = config::Ab::load();
-    if !access_token.is_empty() && access_token == ab.access_token {
-        let id = lc.read().unwrap().id.clone();
-        if let Some(ab) = ab.ab_entries.iter().find(|a| a.personal()) {
-            if let Some(p) = ab
-                .peers
-                .iter()
-                .find_map(|p| if p.id == id { Some(p) } else { None })
-            {
-                if let Ok(hash_password) = base64::decode(p.hash.clone(), base64::Variant::Original)
-                {
-                    if !hash_password.is_empty() {
-                        *password = hash_password.clone();
-                        lc.write().unwrap().password_source =
-                            PasswordSource::PersonalAb(hash_password);
-                    }
-                }
-            }
-        }
-    }
-}
 
 /// Send login message to peer.
 ///
@@ -3040,35 +2917,19 @@ pub async fn handle_login_from_ui(
     remember: bool,
     peer: &mut Stream,
 ) {
-    let mut hash_password = if password.is_empty() {
-        let mut password2 = lc.read().unwrap().password.clone();
-        if password2.is_empty() {
-            password2 = lc.read().unwrap().config.password.clone();
-            if !password2.is_empty() {
-                lc.write().unwrap().password_source = Default::default();
-            }
-        }
-        password2
-    } else {
-        lc.write().unwrap().password_source = Default::default();
-        // R-S16 (viewer twin): capture the RAW plaintext as the CPace PRS BEFORE it is
-        // hashed away below — the balanced PAKE keys from the password itself, not the
-        // salted hash. Persisted (when `remember`) by the peer-info save path.
-        lc.write().unwrap().password_prs = password.clone().into_bytes();
-        let mut hasher = Sha256::new();
-        hasher.update(password);
-        hasher.update(&lc.read().unwrap().hash.salt);
-        let res = hasher.finalize();
-        lc.write().unwrap().remember = remember;
-        res[..].into()
-    };
-    lc.write().unwrap().password = hash_password.clone();
-    let mut hasher2 = Sha256::new();
-    hasher2.update(&hash_password[..]);
-    hasher2.update(&lc.read().unwrap().hash.challenge);
-    hash_password = hasher2.finalize()[..].to_vec();
-
-    send_login(lc.clone(), os_username, os_password, hash_password, peer).await;
+    // R-T15c: CPace (at keying) is the SOLE authenticator -- no salted-hash is computed or sent. A
+    // non-empty UI password is captured as the R-S16 PRS (the balanced PAKE keys from the password
+    // itself; the next reconnect's key_initiator consumes it) and `remember` recorded; the login itself
+    // carries an EMPTY wire-password, since the keyed session is already authenticated -- mirroring the
+    // proactive login in Client::start. self.password stays empty, so the peer-info save path persists
+    // ONLY the PRS (the legacy salted-hash `password` field is dead under the collapse).
+    if !password.is_empty() {
+        let mut w = lc.write().unwrap();
+        w.password_source = Default::default();
+        w.password_prs = password.into_bytes();
+        w.remember = remember;
+    }
+    send_login(lc.clone(), os_username, os_password, Vec::new(), peer).await;
 }
 
 
@@ -3084,7 +2945,6 @@ pub trait Interface: Send + Clone + 'static + Sized {
     fn on_error(&self, err: &str) {
         self.msgbox("error", "Error", err, "");
     }
-    async fn handle_hash(&self, pass: &str, hash: Hash, peer: &mut Stream);
     async fn handle_login_from_ui(
         &self,
         os_username: String,

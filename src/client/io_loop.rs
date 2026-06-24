@@ -1297,11 +1297,8 @@ impl<T: InvokeUiSession> Remote<T> {
                         }
                     }
                 }
-                Some(message::Union::Hash(hash)) => {
-                    self.handler
-                        .handle_hash(&self.handler.password.clone(), hash, peer)
-                        .await;
-                }
+                // R-T15c: the server no longer sends `Hash` (CPace is the sole authenticator); the
+                // viewer logs in PROACTIVELY in Client::start, so there is no reactive Hash arm.
                 Some(message::Union::LoginResponse(lr)) => match lr.union {
                     Some(login_response::Union::Error(err)) => {
                         if err == client::REQUIRE_2FA {

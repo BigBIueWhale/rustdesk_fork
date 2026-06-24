@@ -450,10 +450,21 @@ else echo "  ok  R-A6/R-S2 switch-sides proto absent"; fi
 # responder authorizes purely on the CPace KEYED edge. The call site now reads `!is_secured()`
 # alone (fail-closed: an unkeyed stream is rejected, never password-validated). The 30-s
 # recent-session resume `is_recent_session` + its entire dead SESSIONS cache (the only populator
-# was `validate_password`, so it was never filled) are deleted too; the lone remaining FSM token
-# is the `Hash{salt,challenge}` emission `set_hash` — still the viewer's login trigger, whose
-# removal needs the prompt-flow rework (a dedicated follow-on).
+# was `validate_password`, so it was never filled) are deleted too. The `Hash{salt,challenge}` FSM is
+# now FULLY collapsed (R-T15c, gated immediately below): no set_hash emission, no handle_hash responder,
+# no reactive Union::Hash arm; the viewer logs in proactively (CPace is the sole authenticator).
 ra6_clean 'validate_password|verify_h1|is_recent_session'               'R-S2 post-key oracle + recent-session resume' || rc=1
+# R-T15c: the legacy Hash challenge/response is collapsed end-to-end. The server emits no Hash (no
+# set_hash), there is no handle_hash responder or reactive Union::Hash arm, and the proto Hash message +
+# its field 9 are gone (9 reserved). The viewer sends its login PROACTIVELY in Client::start once the
+# stream is CPace-keyed + host-proof-verified. (be052d9 PRS-hoist + a68618a server/proactive-login + the
+# dead-code/proto cleanup; client::tests pin the PRS-persistence the collapse depends on.)
+r_t15c=
+grep -rqE 'set_hash\(|fn handle_hash|\.handle_hash\(|Union::Hash' src/ --include=*.rs && r_t15c="$r_t15c rust-Hash-FSM-present"
+grep -qE 'message Hash\b|Hash +hash *=' libs/hbb_common/protos/message.proto && r_t15c="$r_t15c proto-Hash-present"
+grep -qE 'reserved 3, 4, 9' libs/hbb_common/protos/message.proto || r_t15c="$r_t15c proto-field9-not-reserved"
+if [ -n "$r_t15c" ]; then echo "  FAIL R-T15c Hash challenge/response collapse:$r_t15c"; rc=1; else
+  echo "  ok  R-T15c -> Hash challenge collapsed (no set_hash/handle_hash/Union::Hash in Rust; proto Hash + field 9 gone, 9 reserved)"; fi
 # R-SV7 / §18: the Telegram 2FA push/enrollment egress (a hardcoded api.telegram.org
 # POST that leaked the box id + peer IP, gated on `bot`/`2fa` not `api-server`, so the
 # R-D6 api-server pin never silenced it) is excised from the tree — structurally

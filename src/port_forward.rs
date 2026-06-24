@@ -137,9 +137,9 @@ async fn connect_and_login(
                     }
                     let msg_in = Message::parse_from_bytes(&bytes)?;
                     match msg_in.union {
-                        Some(message::Union::Hash(hash)) => {
-                            interface.handle_hash(password, hash, &mut stream).await;
-                        }
+                        // R-T15c: no `Hash` arm -- the server no longer sends a Hash challenge (CPace
+                        // is the sole authenticator); port-forward is itself dead in the fork (enable-
+                        // tunnel=N), so the login-trigger path here is moot.
                         Some(message::Union::LoginResponse(lr)) => match lr.union {
                             Some(login_response::Union::Error(err)) => {
                                 if !interface.handle_login_error(&err) {

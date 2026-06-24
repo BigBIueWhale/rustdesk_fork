@@ -71,7 +71,20 @@ function Build {
     # dep); rewrite its `directory =` to the vendor drive + prepend [net] offline -- like build-debian.
     $env:CARGO_HOME = 'C:\cargo-home'
     New-Item -ItemType Directory -Force -Path $env:CARGO_HOME | Out-Null
-    $vendorDir = (Join-Path $offline 'cargo-vendor') -replace '\\','/'
+    # R-B2 (drive-letter determinism): the OFFLINE CD's drive letter is NON-DETERMINISTIC across builds
+    # (build A enumerated it as E:, build B as F: -- Windows orders the attached SCSI/SATA media in a
+    # varying sequence). cargo bakes the vendored-crate SOURCE PATHS into the PEs it compiles (panic
+    # strings, #[track_caller] locations, debug info) -- and the .cargo/config.toml rustflags note above
+    # confirms librustdesk.dll + dylib_virtual_display.dll are exactly those cargo PEs. So a drive-letter
+    # shift changes ~968 path bytes in those two DLLs, which the portable packer brotli-amplifies to ~96%
+    # of rustdesk-setup.exe AND WiX CAB-packs into the .msi -> both differ build-to-build (PROVEN by
+    # databin_diff: only those two DLLs differed, every delta being "E:\cargo-vendor" vs "F:\cargo-vendor").
+    # Copy the vendor to a FIXED path on C: (always the system drive) and point cargo there, so the
+    # embedded source paths are byte-identical every build regardless of the CD's drive letter.
+    $vendorDir = 'C:/cargo-vendor'
+    if (Test-Path 'C:\cargo-vendor') { Remove-Item -Recurse -Force 'C:\cargo-vendor' }
+    Write-Host "[harness] copying cargo-vendor from $offline to C:\cargo-vendor (R-B2: drive-letter-stable embedded paths)"
+    Copy-Item -Recurse -Force (Join-Path $offline 'cargo-vendor') 'C:\cargo-vendor'
     $cargoCfg  = "[net]`r`noffline = true`r`n"
     $cargoCfg += ((Get-Content (Join-Path $offline 'cargo-vendor-config.toml') -Raw) -replace 'directory = .*', "directory = `"$vendorDir`"")
     Set-Content -Encoding ASCII -Path (Join-Path $env:CARGO_HOME 'config.toml') -Value $cargoCfg

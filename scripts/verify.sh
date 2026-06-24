@@ -433,6 +433,24 @@ if [ -n "$r_x9_stopsvc" ]; then
 else
   echo "  ok  R-X9/R-X10 stop-service excised from service-creation + direct-listener (always-on/unconditional); key pinned N + un-writable (R-S16/R-S11)"
 fi
+# R-D7a (SHOULD): the Android keep-screen-on local-option is hard-pinned to "during controlled" — the
+# never / service-on modes + the settings radio + the KeepScreenOn enum/mappers are excised, so the
+# screen stays on exactly while a controlled session is active (hardcoded in server_model). And the
+# foreground service's onStartCommand stays START_NOT_STICKY so a service restart never re-enters
+# capture outside a confirmed PAKE session (R-S14). (FOLLOW-ON: the dead useVP9 Kotlin capture branch —
+# needs the android build to validate.)
+r_d7a=
+sp=flutter/lib/mobile/pages/settings_page.dart
+grep -qE 'enum KeepScreenOn|KeepScreenOn\.(never|serviceOn)' "$sp" && r_d7a="$r_d7a keep-screen-on-modes-present"
+grep -qF "title: 'Keep screen on'" "$sp" && r_d7a="$r_d7a keep-screen-on-radio-present"
+ms=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
+grep -qE 'return START_NOT_STICKY' "$ms" || r_d7a="$r_d7a onStartCommand-not-START_NOT_STICKY"
+grep -qE 'return START_STICKY|START_REDELIVER_INTENT' "$ms" && r_d7a="$r_d7a sticky-restart-present"
+if [ -n "$r_d7a" ]; then
+  echo "  FAIL R-D7a: android keep-screen-on not pinned or onStartCommand not START_NOT_STICKY:$r_d7a"; rc=1
+else
+  echo "  ok  R-D7a android keep-screen-on hard-pinned during-controlled (never/service-on + radio + enum excised); onStartCommand START_NOT_STICKY"
+fi
 # R-X4 (custom_server): the custom-rendezvous-server-from-exe-name feature is excised. The installer
 # could embed a rendezvous/api server in the exe NAME (rustdesk-host=... ; rustdesk-licensed-<b64>.exe),
 # parsed by custom_server.rs and injected as custom-rendezvous-server / api-server at 4 sites

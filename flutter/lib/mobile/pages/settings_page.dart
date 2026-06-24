@@ -36,33 +36,9 @@ class SettingsPage extends StatefulWidget implements PageShape {
 
 // R-G8 / §19 (de-brand): the rustdesk.com `url` const is removed with its (de-branded) uses.
 
-enum KeepScreenOn {
-  never,
-  duringControlled,
-  serviceOn,
-}
-
-String _keepScreenOnToOption(KeepScreenOn value) {
-  switch (value) {
-    case KeepScreenOn.never:
-      return 'never';
-    case KeepScreenOn.duringControlled:
-      return 'during-controlled';
-    case KeepScreenOn.serviceOn:
-      return 'service-on';
-  }
-}
-
-KeepScreenOn optionToKeepScreenOn(String value) {
-  switch (value) {
-    case 'never':
-      return KeepScreenOn.never;
-    case 'service-on':
-      return KeepScreenOn.serviceOn;
-    default:
-      return KeepScreenOn.duringControlled;
-  }
-}
+// R-D7a: keep-screen-on is hard-pinned to "during controlled" — the screen stays on while a
+// controlled session is active. The user-selectable never / service-on modes (the enum, the
+// option mappers, and the settings radio) are excised; the behavior is fixed in server_model.
 
 class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   final _hasIgnoreBattery =
@@ -70,7 +46,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   var _ignoreBatteryOpt = false;
   var _enableStartOnBoot = false;
   var _showTerminalExtraKeys = false;
-  var _keepScreenOn = KeepScreenOn.duringControlled;
   var _enableAbr = false;
   var _onlyWhiteList = false;
   var _enableRecordSession = false;
@@ -135,13 +110,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
       if (enableStartOnBoot != _enableStartOnBoot) {
         update = true;
         _enableStartOnBoot = enableStartOnBoot;
-      }
-
-      final keepScreenOn = optionToKeepScreenOn(
-          bind.mainGetLocalOption(key: kOptionKeepScreenOn));
-      if (keepScreenOn != _keepScreenOn) {
-        update = true;
-        _keepScreenOn = keepScreenOn;
       }
 
       final fingerprint = await bind.mainGetFingerprint();
@@ -414,30 +382,10 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
       ),
     );
 
-    // R-X6: the "Floating window" switch is removed — the native floating window
-    // (FloatingWindowService + SYSTEM_ALERT_WINDOW) is excised, so there is nothing
-    // to toggle. "Keep screen on" now derives from its option alone.
-
-    enhancementsTiles.add(_getPopupDialogRadioEntry(
-      title: 'Keep screen on',
-      list: [
-        _RadioEntry('Never', _keepScreenOnToOption(KeepScreenOn.never)),
-        _RadioEntry('During controlled',
-            _keepScreenOnToOption(KeepScreenOn.duringControlled)),
-        _RadioEntry('During service is on',
-            _keepScreenOnToOption(KeepScreenOn.serviceOn)),
-      ],
-      getter: () => _keepScreenOnToOption(
-          optionToKeepScreenOn(bind.mainGetLocalOption(key: kOptionKeepScreenOn))),
-      asyncSetter: isOptionFixed(kOptionKeepScreenOn)
-          ? null
-          : (value) async {
-              await bind.mainSetLocalOption(
-                  key: kOptionKeepScreenOn, value: value);
-              setState(() => _keepScreenOn = optionToKeepScreenOn(value));
-              gFFI.serverModel.androidUpdatekeepScreenOn();
-            },
-    ));
+    // R-X6: the "Floating window" switch is removed (the native FloatingWindowService /
+    // SYSTEM_ALERT_WINDOW is excised). R-D7a: the "Keep screen on" radio is removed too — it is
+    // hard-pinned to "during controlled" (the screen stays on while a controlled session is
+    // active), so there is no enhancement toggle to show; the behavior lives in server_model.
 
     final disabledSettings = bind.isDisableSettings();
     final hideSecuritySettings =

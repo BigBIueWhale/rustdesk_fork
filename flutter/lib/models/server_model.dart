@@ -718,13 +718,10 @@ class ServerModel with ChangeNotifier {
 
   void androidUpdatekeepScreenOn() async {
     if (!isAndroid) return;
-    // R-X6: keep-screen-on now derives from its option alone — the floating-window
-    // gate (SYSTEM_ALERT_WINDOW / disable-floating-window) is excised.
-    final keepScreenOn =
-        optionToKeepScreenOn(bind.mainGetLocalOption(key: kOptionKeepScreenOn));
-    final on = ((keepScreenOn == KeepScreenOn.serviceOn) && _isStart) ||
-        (keepScreenOn == KeepScreenOn.duringControlled &&
-            _clients.map((e) => !e.disconnected).isNotEmpty);
+    // R-D7a: keep-screen-on is hard-pinned to "during controlled" — the never / service-on modes
+    // are excised, so the screen stays on exactly while a controlled session is active. (R-X6 had
+    // already decoupled this from the excised floating-window gate.)
+    final on = _clients.map((e) => !e.disconnected).isNotEmpty;
     if (on) {
       WakelockManager.enable(_wakelockKey, isServer: true);
     } else {

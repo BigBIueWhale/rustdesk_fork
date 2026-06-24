@@ -31,6 +31,7 @@ preflight() {
     [ -d "$ONLINE_DIR/cargo-vendor" ]             || die "online/cargo-vendor missing — run scripts/online-fetch.sh"
     [ -f "$ONLINE_DIR/cargo-vendor-config.toml" ] || die "online/cargo-vendor-config.toml missing — run scripts/online-fetch.sh"
     [ -d "$ONLINE_DIR/pub-cache" ]                || die "online/pub-cache missing — run scripts/online-fetch.sh (stage_pub_cache)"
+    [ -f "$ONLINE_DIR/wix-nuget.tar.gz" ]         || die "online/wix-nuget.tar.gz missing — run scripts/online-fetch.sh (stage_windows_wix_nuget); the .msi WiX NuGet set"
     log "preflight OK — per-build over $GOLDEN, offline, SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
 }
 
@@ -70,10 +71,15 @@ build_media() {
     docker run --rm -v "$ONLINE_DIR:/online:ro" -v "$STATE_DIR:/out" -e OFF_NAME="$off_name" debian:stable-slim bash -euc '
         apt-get update -qq >/dev/null 2>&1
         DEBIAN_FRONTEND=noninteractive apt-get install -y -qq genisoimage >/dev/null 2>&1
+        # The WiX NuGet set (for the .msi) ships on this same OFFLINE CD; /online is ro, so extract the
+        # staged tar to a writable /tmp dir and graft it (build-windows.ps1 copies it off the CD to a
+        # writable global-packages dir + sets NUGET_PACKAGES for the offline msbuild restore).
+        mkdir -p /tmp/wix-nuget && tar xzf /online/wix-nuget.tar.gz -C /tmp/wix-nuget
         genisoimage -udf -D -r -quiet -V OFFLINE -o "/out/$OFF_NAME" -graft-points \
             /cargo-vendor=/online/cargo-vendor \
             /cargo-vendor-config.toml=/online/cargo-vendor-config.toml \
-            /pub-cache=/online/pub-cache
+            /pub-cache=/online/pub-cache \
+            /wix-nuget=/tmp/wix-nuget
     ' || die "OFFLINE UDF media build (genisoimage in docker) failed"
     [ -f "$OFFLINE_ISO" ] || die "OFFLINE UDF media not produced"
     # The OUTPUT disk = a PARTITIONED FAT disk (MBR table + one FAT partition, type 0x0c FAT32-LBA, label

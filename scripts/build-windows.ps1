@@ -120,6 +120,43 @@ if /I "%~1"=="build" (
     # through and Emit-Artifacts reports "complete" with no .exe.
     python build.py --flutter
     if ($LASTEXITCODE -ne 0) { Die "build.py --flutter failed (exit $LASTEXITCODE) -- Python missing/not on PATH, or the cargo/flutter build errored (see above)" }
+
+    # --- the WiX v4 .msi (R-B7/B9) -- a SEPARATE step: build.py only runs the portable packer (the .exe),
+    # so this mirrors upstream's flutter-build.yml "Build msi" (preprocess.py --arp -d <dist>; restore;
+    # msbuild msi.sln). NO .NET SDK needed -- VS msbuild + .NET Framework (golden) + the WiX NuGet build it.
+    # OFFLINE: the WiX NuGet set (WixToolset.Sdk + the 5 .wixext + DUtil/WcaUtil) is staged on the OFFLINE
+    # UDF CD at $offline\wix-nuget; copy it to a WRITABLE global-packages dir (UDF is read-only; NuGet writes
+    # there) and force an offline restore via a <clear/>-sources NuGet.config + NUGET_PACKAGES, so msbuild
+    # resolves WixToolset.Sdk/4.0.5 from the cache with no network. preprocess.py reads the dist's
+    # rustdesk.exe (--build-date/--version), so it runs against the real flutter dist build.py just produced.
+    $wixSrc = Join-Path $offline 'wix-nuget'
+    if (-not (Test-Path (Join-Path $wixSrc 'wixtoolset.sdk'))) { Die ".msi: OFFLINE media lacks wix-nuget\wixtoolset.sdk (staged WiX NuGet cache) -- run online-fetch.sh stage_windows_wix_nuget" }
+    $wixPkgs = 'C:\wix-nuget'
+    if (Test-Path $wixPkgs) { Remove-Item -Recurse -Force $wixPkgs }
+    New-Item -ItemType Directory -Force -Path $wixPkgs | Out-Null
+    Copy-Item -Recurse -Force (Join-Path $wixSrc '*') $wixPkgs
+    $env:NUGET_PACKAGES = $wixPkgs                       # the MSBuild-SDK resolver reads this to find WixToolset.Sdk
+    $nugetCfg = Join-Path $env:TEMP 'offline-nuget.config'
+    @"
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <config><add key="globalPackagesFolder" value="$wixPkgs" /></config>
+  <packageSources><clear /></packageSources>
+</configuration>
+"@ | Set-Content -Encoding UTF8 $nugetCfg
+    $msiDist = Join-Path $SRC 'flutter\build\windows\x64\runner\Release'
+    if (-not (Test-Path (Join-Path $msiDist 'rustdesk.exe'))) { Die ".msi: flutter dist (rustdesk.exe) not at $msiDist -- build.py --flutter should produce it" }
+    Push-Location (Join-Path $SRC 'res\msi')
+    python preprocess.py --arp -d $msiDist
+    if ($LASTEXITCODE -ne 0) { Pop-Location; Die "res/msi/preprocess.py --arp failed ($LASTEXITCODE)" }
+    msbuild msi.sln -t:restore -p:RestoreConfigFile=$nugetCfg -p:Configuration=Release -p:Platform=x64
+    if ($LASTEXITCODE -ne 0) { Pop-Location; Die "msbuild -t:restore (WiX NuGet, OFFLINE from $wixPkgs) failed ($LASTEXITCODE) -- staged cache incomplete, or the SDK resolver wanted the network" }
+    msbuild msi.sln -p:RestoreConfigFile=$nugetCfg -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10
+    if ($LASTEXITCODE -ne 0) { Pop-Location; Die "msbuild msi.sln (WiX .msi build) failed ($LASTEXITCODE)" }
+    Pop-Location
+    $msiOut = Join-Path $SRC 'res\msi\Package\bin\x64\Release\en-us\Package.msi'
+    if (-not (Test-Path $msiOut)) { Die ".msi: expected output not produced at $msiOut" }
+    Write-Host "[harness] .msi built (R-B7): $msiOut"
 }
 
 function Emit-Artifacts {

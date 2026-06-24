@@ -1371,6 +1371,18 @@ grep -qF 'ProductCode="$(var.ProductCode)"' res/msi/Package/Package.wxs || r_b2m
 if [ -n "$r_b2msi" ]; then echo "  FAIL R-B2 .msi-generator determinism:$r_b2msi"; rc=1; else
   echo "  ok  R-B2 .msi generator -> deterministic GUIDs+order (ProductCode/component/upgrade uuid5, sorted glob, no uuid4 calls, Package.wxs pins ProductCode)"; fi
 
+echo "== (7) capability-key pin completeness (R-S16(d)/R-G1/R-D2) =="
+# Every controlled-side capability key is a compile-time PINNED_SETTINGS entry; none is left
+# operator-settable. allow-remote-config-modification was the one omission (config_it covers the funnel
+# MECHANISM, but not that this specific key is in the table). Pinned "N" -> no remote config-write AND
+# canBeBlocked() stays true under the pinned access-mode=custom, so the local settings UI stays
+# block-masked during a session. Assert it cannot silently drop back out.
+if grep -qE '\(OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION, *"N"\)' libs/hbb_common/src/config.rs; then
+  echo "  ok  R-S16(d)/R-G1 allow-remote-config-modification pinned 'N' in PINNED_SETTINGS (no capability key left live)"
+else
+  echo "  FAIL R-S16(d): allow-remote-config-modification missing from PINNED_SETTINGS (capability key left operator-settable)"; rc=1
+fi
+
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod lan:R-X5 lan.rs residual (WoL send_wol + discover no-op; the discovery LISTENER is excised + hard-gated above — full removal is the R-G2 Discovered-tab/WoL-UI follow-on)' \
          'terminal_helper:R-X8 terminal' 'mod custom_server:R-X4 custom_server module — NB ALSO used by src/platform/windows.rs (get_license/get_license_from_exe_name, the dead custom-rendezvous-server-from-exe-name feature) which this mod-decl grep does NOT count; its removal edits the cfg(windows) build (un-validatable in the Linux docker), so R-X4 is WINDOWS-BUILD-BLOCKED, not a clean Linux excision'; do

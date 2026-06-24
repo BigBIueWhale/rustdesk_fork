@@ -3235,6 +3235,12 @@ pub mod keys {
         (OPTION_ENABLE_BLOCK_INPUT, "N"),
         (OPTION_ENABLE_PRIVACY_MODE, "N"),
         (OPTION_ENABLE_REMOTE_PRINTER, "N"),
+        // No remote modification of the controlled box's config: the §11 controlled-side policy is a
+        // compile-time table (R-D2/R-S16(d)). This was the ONE capability key left operator-settable
+        // (R-G1: removed/greyed, never live) — every sibling above is pinned. Pinning it "N" also keeps
+        // canBeBlocked() true under the pinned access-mode="custom", so the local settings UI stays
+        // block-masked during a remote session (the operator can no longer disable that mask).
+        (OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION, "N"),
         // No TOTP, no Telegram-bot push (R-X7, R-D6); trusted-devices is fully excised, not just pinned.
         ("2fa", ""),
         ("bot", ""),

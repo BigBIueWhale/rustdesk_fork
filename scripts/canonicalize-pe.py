@@ -96,14 +96,26 @@ def sort_version_info(d):
         while k + 2 <= st_end and u16(d, k) != 0:
             key += d[k:k + 2]
             k += 2
-        entries.append((bytes(key).decode('utf-16-le', 'replace'), bytes(d[q:blk_end])))
+        entries.append((bytes(key).decode('utf-16-le', 'replace'), bytes(d[q:blk_end]), elen))
         q = blk_end
     if len(entries) < 2:
         return 0
     region = first
-    rebuilt = b''.join(b for _, b in sorted(entries, key=lambda x: x[0]))
+    ordered = sorted(entries, key=lambda x: x[0])
+    rebuilt = b''.join(b for _, b, _ in ordered)
     end = region + len(rebuilt)
     d[region:end] = rebuilt                          # same total length -> in-place reorder
+    # R-B2: winres computes the StringFileInfo + StringTable wLength fields EXCLUDING the last child's
+    # trailing DWORD pad, so the HashMap child order shifts them by +/- that pad even though the bytes and
+    # the total size are identical -- the sole residual non-determinism AFTER sorting (observed: a 2-byte
+    # delta in exactly these two fields). Sorting fixes which child is last, so recompute both fields
+    # deterministically from it (sfi wLength = its header to st_start + the recomputed st wLength).
+    last_blk, last_elen = ordered[-1][1], ordered[-1][2]
+    last_pad = len(last_blk) - last_elen
+    new_st_len = (first - st_start) + len(rebuilt) - last_pad
+    struct.pack_into('<H', d, st_start, new_st_len)
+    sfi_start = sfi_key - 6
+    struct.pack_into('<H', d, sfi_start, (st_start - sfi_start) + new_st_len)
     return len(entries)
 
 if __name__ == '__main__':

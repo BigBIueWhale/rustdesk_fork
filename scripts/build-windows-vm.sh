@@ -168,6 +168,18 @@ extract() {
     # The .msi is now REQUIRED (build-windows.ps1 builds it via the WiX msbuild step); a missing one means
     # that step failed -- fail LOUD rather than silently shipping only the .exe (R-B7/§12.2 .exe AND .msi).
     [ -f "$OUT_DIR/rustdesk.msi" ] || die "no rustdesk.msi produced — the WiX .msi step (build-windows.ps1) failed; see $OUT_DIR/build-log.txt"
+    # R-B2: canonicalize the .msi's OLE2 \x05SummaryInformation -- the package-code GUID (PID_REVNUMBER,
+    # random per build) + the create/last-save FILETIMEs are the SOLE .msi non-determinism (PROVEN against
+    # the REAL WiX .msi: canon -> deterministic package code {3A06D467..} + FILETIMEs zeroed to 1601, the
+    # .msi stays valid; the CAB + tables are deterministic). olefile is NOT stdlib (unlike canonicalize-pe.py
+    # for the .exe), so run it in the pinned debian image. The package code is a deterministic uuid5 of the
+    # Cargo.toml version (same per version -> byte-reproducible). Then record the canonicalized SHA.
+    local msi_ver; msi_ver="$(grep -m1 '^version' "$REPO_ROOT/Cargo.toml" | sed 's/.*=[[:space:]]*"\(.*\)".*/\1/')"
+    docker run --rm -e MSI_VER="$msi_ver" -v "$OUT_DIR:/out" -v "$SCRIPT_DIR:/s:ro" debian:stable-slim bash -euc '
+        apt-get update -qq >/dev/null 2>&1
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 python3-olefile >/dev/null 2>&1
+        python3 /s/canonicalize-msi.py /out/rustdesk.msi "$MSI_VER"
+    ' || die ".msi OLE2 canonicalization (R-B2) failed"
     sha256sum "$OUT_DIR/rustdesk.msi" | tee "$OUT_DIR/rustdesk.msi.sha256"
 }
 

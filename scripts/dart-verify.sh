@@ -195,6 +195,12 @@ dg_clean 'enterUserLoginDialog|enterUserLoginAndPasswordDialog|osUsernameControl
 # relay; WoL is the R-SV4(c) accepted loss). The relay-hint dialog the Rust core fed is gone
 # too (the core now emits a plain error, R-G6). All removed at the widget, not greyed (R-G1).
 dg_clean '_forceAlwaysRelayAction|_isForceAlwaysRelay|kOptionForceAlwaysRelay|_wolAction|showRelayHintDialog' 'R-G6 relay-fallback + WoL peer-card actions'
+# R-G2 / R-G8 / §19: the connection-status row's rendezvous strings — connecting_status ("Connecting
+# to the RustDesk network…") and not_ready_status — are repurposed away: the controlled side just
+# shows "Listening on :21118", so neither is rendered on desktop (OnlineStatusWidget) or mobile
+# (server_page ConnectionStateNotification). Neither may reappear as a rendered string (the keys carry
+# the R-G8 upstream-brand "RustDesk network" nomenclature). Closes the audit's P3 dead-lang-key gap.
+dg_clean 'connecting_status|not_ready_status' 'R-G2/R-G8 rendezvous status-row strings'
 # R-X7 / R-G4 / R-G1 (the one-time-password UI is fully excised, not greyed): R-X7 removed the
 # TEMPORARY_PASSWORD backend and R-S16 pins verification-method=use-permanent-password, so the
 # rotating-OTP surface is dead. The desktop home board's OTP label+refresh (buildPasswordBoard2,

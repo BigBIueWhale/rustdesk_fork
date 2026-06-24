@@ -5,8 +5,6 @@ import 'package:get/get.dart';
 import '../consts.dart';
 import './platform_model.dart';
 
-enum SvcStatus { notReady, connecting, ready }
-
 class StateGlobal {
   int _windowId = -1;
   final RxBool _fullscreen = false.obs;
@@ -16,7 +14,6 @@ class StateGlobal {
   final RxDouble _resizeEdgeSize = RxDouble(windowResizeEdgeSize);
   final RxDouble _windowBorderWidth = RxDouble(kWindowBorderWidth);
   final RxBool showRemoteToolBar = false.obs;
-  final svcStatus = SvcStatus.notReady.obs;
   final RxInt videoConnCount = 0.obs;
   final RxBool isFocused = false.obs;
   // for mobile and web

@@ -383,26 +383,13 @@ class ServerInfo extends StatelessWidget {
     }
 
     Widget ConnectionStateNotification() {
-      if (serverModel.connectStatus == -1) {
-        return Row(children: [
-          const Icon(Icons.warning_amber_sharp,
-                  color: colorNegative, size: iconSize)
-              .marginOnly(right: iconMarginRight),
-          Expanded(child: Text(translate('not_ready_status')))
-        ]);
-      } else if (serverModel.connectStatus == 0) {
-        return Row(children: [
-          SizedBox(width: 20, height: 20, child: CircularProgressIndicator())
-              .marginOnly(left: 4, right: iconMarginRight),
-          Expanded(child: Text(translate('connecting_status')))
-        ]);
-      } else {
-        return Row(children: [
-          const Icon(Icons.check, color: colorPositive, size: iconSize)
-              .marginOnly(right: iconMarginRight),
-          Expanded(child: Text(translate('Ready')))
-        ]);
-      }
+      // R-G2/R-G8: direct-IP — the controlled side listens on the pinned direct port
+      // (config::DIRECT_PORT = 21118); there is no rendezvous "connecting"/"not ready" state.
+      return Row(children: [
+        const Icon(Icons.check, color: colorPositive, size: iconSize)
+            .marginOnly(right: iconMarginRight),
+        Expanded(child: Text(translate('Listening on :21118')))
+      ]);
     }
 
     return PaddingCard(

@@ -157,6 +157,18 @@ extract() {
     # FAT system dirs the copy-out also drags in (they are not artifacts).
     rm -rf "$OUT_DIR/System Volume Information" "$OUT_DIR/"'$RECYCLE.BIN' 2>/dev/null || true
     rm -f "$OVERLAY" "$BUILD_ISO" "$OFFLINE_ISO" "$OUTPUT_IMG"
+    # HONESTY GATE (added 2026-06-24): run-build.ps1 writes `build-windows.ps1 exit=N` to
+    # run-build-progress.txt. extract() MUST fail when N != 0 — otherwise a failed in-VM compile silently
+    # ships the STALE rustdesk-setup.exe left in the golden's warm target\release by a prior build (the exe
+    # FILE exists, so the `-f` check below passes), reporting a FALSE success with a byte-identical .exe.
+    # (Diagnosed: an R-X9 cfg-windows error E0433 shipped the prior 3ea44c8f .exe with build-windows.ps1
+    # exit=1 yet build-windows-vm.sh exit 0.) The marker is the ground truth for the in-VM build.
+    if [ -f "$OUT_DIR/run-build-progress.txt" ]; then
+        bw_exit="$(grep -oE 'build-windows\.ps1 exit=[-0-9]+' "$OUT_DIR/run-build-progress.txt" | tail -1 | grep -oE '[-0-9]+$')"
+        [ "$bw_exit" = "0" ] || die "in-VM build FAILED (build-windows.ps1 exit=${bw_exit:-<absent>}) — the extracted rustdesk-setup.exe is STALE (prior build's, from the golden's warm target). See $OUT_DIR/build-log.txt"
+    else
+        die "run-build-progress.txt absent from the OUTPUT disk — the in-VM build never reached a phase marker; see $OUT_DIR/build-log.txt"
+    fi
     [ -f "$OUT_DIR/rustdesk-setup.exe" ] || die "no rustdesk-setup.exe produced — see $OUT_DIR/build-log.txt"
     # R-B2: canonicalize the portable packer's own PE so the .exe is BYTE-reproducible. Every CONTENT source is
     # already pinned (/Brepro PE timestamps for flutter+cargo, SOURCE_DATE_EPOCH for app_metadata/gen_version ->

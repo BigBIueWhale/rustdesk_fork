@@ -165,7 +165,10 @@ extract() {
     # the first two and sorts the version strings. PROVEN: two pre-canonical builds -> identical SHA after this.
     python3 "$SCRIPT_DIR/canonicalize-pe.py" "$OUT_DIR/rustdesk-setup.exe"
     sha256sum "$OUT_DIR/rustdesk-setup.exe" | tee "$OUT_DIR/rustdesk-setup.exe.sha256"
-    [ -f "$OUT_DIR/rustdesk.msi" ] && sha256sum "$OUT_DIR/rustdesk.msi" | tee "$OUT_DIR/rustdesk.msi.sha256" || log "NOTE: no .msi (WiX is milestone 2)"
+    # The .msi is now REQUIRED (build-windows.ps1 builds it via the WiX msbuild step); a missing one means
+    # that step failed -- fail LOUD rather than silently shipping only the .exe (R-B7/§12.2 .exe AND .msi).
+    [ -f "$OUT_DIR/rustdesk.msi" ] || die "no rustdesk.msi produced — the WiX .msi step (build-windows.ps1) failed; see $OUT_DIR/build-log.txt"
+    sha256sum "$OUT_DIR/rustdesk.msi" | tee "$OUT_DIR/rustdesk.msi.sha256"
 }
 
 main() {

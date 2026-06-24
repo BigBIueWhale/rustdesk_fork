@@ -146,6 +146,14 @@ if /I "%~1"=="build" (
 "@ | Set-Content -Encoding UTF8 $nugetCfg
     $msiDist = Join-Path $SRC 'flutter\build\windows\x64\runner\Release'
     if (-not (Test-Path (Join-Path $msiDist 'rustdesk.exe'))) { Die ".msi: flutter dist (rustdesk.exe) not at $msiDist -- build.py --flutter should produce it" }
+    # msbuild lives in the VS install dir, NOT on PATH by default (the golden has no CI "Add MSBuild to
+    # PATH" step). Locate it via vswhere (-products * so it finds BuildTools, not just full VS) + prepend.
+    $vsw = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
+    $vsPath = (& $vsw -products * -latest -property installationPath 2>$null | Select-Object -First 1)
+    if (-not $vsPath) { Die ".msi: vswhere found no VS install (need VS BuildTools with MSBuild)" }
+    $msbuildDir = Join-Path $vsPath 'MSBuild\Current\Bin'
+    if (-not (Test-Path (Join-Path $msbuildDir 'MSBuild.exe'))) { Die ".msi: MSBuild.exe not under $msbuildDir" }
+    $env:PATH = "$msbuildDir;$env:PATH"
     Push-Location (Join-Path $SRC 'res\msi')
     python preprocess.py --arp -d $msiDist
     if ($LASTEXITCODE -ne 0) { Pop-Location; Die "res/msi/preprocess.py --arp failed ($LASTEXITCODE)" }

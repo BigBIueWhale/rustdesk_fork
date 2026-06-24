@@ -1144,6 +1144,21 @@ ra6_clean 'relay-hint' 'R-G6 relay-fallback hint emission' || rc=1
 # the "Powered by RustDesk" badge). Removed from all 51 lang tables + the lang.rs RustDesk
 # app-name substitution exclusion that only existed to protect the powered_by_me string.
 ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-bot-tip|powered_by_me)"' '§19 dead lang keys' || rc=1
+# R-G2/R-SV9 (connect-box hint, MUST): the id_input_tip/web_id_input_tip help text (rendered LIVE
+# at flutter connection_page_title.dart) teaches ONLY the direct-IP accept-set (an IP, or a domain
+# with a port) — NOT the stock RustDesk syntax it shipped: "<id>@public" (RustDesk's PUBLIC
+# rendezvous server — a §18 sovereignty breach), "<id>@<server>?key=" (relay/other-server
+# routing), or "/r" (force-relay). The 50 stale locale translations were DELETED so every locale
+# falls back to the corrected en (en fallback: src/lang.rs:226); a re-add of the ID/relay/public
+# syntax in ANY locale fails here.
+tip_bad=
+grep -rhE '\("(web_)?id_input_tip",' src/lang/*.rs | grep -qE '@public|\?key=|/r"' && tip_bad="$tip_bad relay/public-syntax"
+grep -q '("id_input_tip",' src/lang/en.rs || tip_bad="$tip_bad en-id_input_tip-missing"
+if [ -n "$tip_bad" ]; then
+  echo "  FAIL R-G2/R-SV9: connect-box hint teaches non-direct-IP syntax / en tip missing:$tip_bad"; rc=1
+else
+  echo "  ok  R-G2/R-SV9 connect-box hint teaches direct-IP only (no ID/relay/@public/?key=)"
+fi
 # §18 / R-R2b (universal software codec): hwcodec/vram (the GPU/VRAM hardware-codec deps —
 # ffmpeg amf/nvcodec/qsv) AND mediacodec (Android's MediaCodec hardware decode/encode) — each a
 # native attack surface (Appendix C #2b) AND a build-reproducibility hazard — are compiled out of

@@ -61,10 +61,6 @@ impl InvokeUiCM for SciterHandler {
         self.call("changeLanguage", &make_args!());
     }
 
-    fn show_elevation(&self, show: bool) {
-        self.call("showElevation", &make_args!(show));
-    }
-
     fn update_voice_call_state(&self, client: &crate::ui_cm_interface::Client) {
         self.call(
             "updateVoiceCallState",
@@ -146,14 +142,6 @@ impl SciterConnectionManager {
         crate::client::translate(name)
     }
 
-    fn can_elevate(&self) -> bool {
-        crate::ui_cm_interface::can_elevate()
-    }
-
-    fn elevate_portable(&self, id: i32) {
-        crate::ui_cm_interface::elevate_portable(id);
-    }
-
     fn get_option(&self, key: String) -> String {
         crate::ui_interface::get_option(key)
     }
@@ -188,8 +176,6 @@ impl sciter::EventHandler for SciterConnectionManager {
         fn authorize(i32);
         fn switch_permission(i32, String, bool);
         fn send_msg(i32, String);
-        fn can_elevate();
-        fn elevate_portable(i32);
         fn get_option(String);
         fn get_builtin_option(String);
         fn hide_cm();

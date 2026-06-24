@@ -191,8 +191,6 @@ pub trait InvokeUiCM: Send + Clone + 'static + Sized {
 
     fn change_language(&self);
 
-    fn show_elevation(&self, show: bool);
-
     fn update_voice_call_state(&self, client: &Client);
 
     fn file_transfer_log(&self, action: &str, log: &str);
@@ -312,11 +310,6 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         }
 
         self.ui_handler.remove_connection(id, close);
-    }
-
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn show_elevation(&self, show: bool) {
-        self.ui_handler.show_elevation(show);
     }
 
     #[cfg(not(target_os = "ios"))]
@@ -641,9 +634,6 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                 Data::Language(lang) => {
                                     LocalConfig::set_option("lang".to_owned(), lang);
                                     self.cm.change_language();
-                                }
-                                Data::DataPortableService(ipc::DataPortableService::CmShowElevation(show)) => {
-                                    self.cm.show_elevation(show);
                                 }
                                 Data::StartVoiceCall => {
                                     self.cm.voice_call_started(self.conn_id);
@@ -1630,25 +1620,6 @@ fn cm_inner_send(id: i32, data: Data) {
     } else {
         for s in lock.values() {
             allow_err!(s.tx.send(data.clone()));
-        }
-    }
-}
-
-pub fn can_elevate() -> bool {
-    #[cfg(windows)]
-    return !crate::platform::is_installed();
-    #[cfg(not(windows))]
-    return false;
-}
-
-pub fn elevate_portable(_id: i32) {
-    #[cfg(windows)]
-    {
-        let lock = CLIENTS.read().unwrap();
-        if let Some(s) = lock.get(&_id) {
-            allow_err!(s.tx.send(ipc::Data::DataPortableService(
-                ipc::DataPortableService::RequestStart
-            )));
         }
     }
 }

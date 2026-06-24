@@ -2074,15 +2074,6 @@ pub fn cm_switch_permission(conn_id: i32, name: String, enabled: bool) {
     crate::ui_cm_interface::switch_permission(conn_id, name, enabled)
 }
 
-pub fn cm_can_elevate() -> SyncReturn<bool> {
-    SyncReturn(crate::ui_cm_interface::can_elevate())
-}
-
-pub fn cm_elevate_portable(conn_id: i32) {
-    #[cfg(not(any(target_os = "ios")))]
-    crate::ui_cm_interface::elevate_portable(conn_id);
-}
-
 pub fn cm_get_config(name: String) -> String {
     #[cfg(not(target_os = "ios"))]
     {

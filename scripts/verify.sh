@@ -490,6 +490,20 @@ ra6_clean 'fn portable_service_listener_security_attributes|fn authorize_windows
 # AuthResult variants (handshake-only) are all dead. (The DataPortableService RequestStart/CmShowElevation
 # variants + the CM elevation UI are a SEPARATE follow-on — Layer 2b.)
 ra6_clean 'fn generate_one_time_ipc_token|fn constant_time_ipc_token_eq|fn portable_service_ipc_handshake|const IPC_TOKEN_LEN|PORTABLE_SERVICE_IPC_HANDSHAKE_TIMEOUT_MS' 'R-X9 orphaned portable-service IPC token-handshake (slices 2-4 follow-on, Layer 2a)' || rc=1
+# R-X9 (slices 2-4 follow-on, Layer 2b): the dead CM "elevate" UI + the DataPortableService IPC data-enum.
+# b3e8485 removed the SERVER-side portable-service/peer-elevation, leaving the CM elevate button + its
+# transport orphaned. Excised: elevate_portable (sent DataPortableService::RequestStart to a deleted
+# receiver), show_elevation + the Data::DataPortableService(CmShowElevation) reader (nothing sent it),
+# can_elevate (gated the button), and — every remaining variant then being dead — the WHOLE
+# DataPortableService enum + the Data::DataPortableService arm. Across Rust + sciter cm.tis + flutter.
+ra6_clean 'enum DataPortableService|fn elevate_portable|fn show_elevation|fn can_elevate' 'R-X9 CM elevation UI + DataPortableService enum (slices 2-4 follow-on, Layer 2b)' || rc=1
+r_x9_2b=
+{ grep -rE 'cmCanElevate|cm_can_elevate|elevatePortable|sessionElevatePortable|DataPortableService' flutter/lib src/ui/cm.tis 2>/dev/null | grep -v '//' | grep -q . ; } && r_x9_2b="present"
+if [ -n "$r_x9_2b" ]; then
+  echo "  FAIL R-X9 Layer 2b: CM-elevation dart/sciter residue still present"; rc=1
+else
+  echo "  ok  R-X9 Layer 2b CM-elevation dart/sciter residue (cmCanElevate/elevatePortable/DataPortableService) excised"
+fi
 # R-X9/R-X10/R-A6: the stop-service runtime toggle no longer gates the controlled-side SERVICE
 # creation (windows.rs get_create_service / linux.rs check_if_stop_service + switch_service) or the
 # direct LISTENER (direct_service.rs) — the installed service is always created + auto-start and the

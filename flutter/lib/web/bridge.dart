@@ -1335,14 +1335,6 @@ class RustdeskImpl {
     throw UnimplementedError("cmSwitchPermission");
   }
 
-  bool cmCanElevate({dynamic hint}) {
-    throw UnimplementedError("cmCanElevate");
-  }
-
-  Future<void> cmElevatePortable({required int connId, dynamic hint}) {
-    throw UnimplementedError("cmElevatePortable");
-  }
-
   Future<String> cmGetConfig({required String name, dynamic hint}) {
     throw UnimplementedError("cmGetConfig");
   }

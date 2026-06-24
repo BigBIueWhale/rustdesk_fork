@@ -867,11 +867,6 @@ class _CmControlPanel extends StatelessWidget {
   }
 
   buildAuthorized(BuildContext context) {
-    final bool canElevate = bind.cmCanElevate();
-    final model = Provider.of<ServerModel>(context);
-    final showElevation = canElevate &&
-        model.showElevation &&
-        client.type_() == ClientType.remote;
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
@@ -994,24 +989,6 @@ class _CmControlPanel extends StatelessWidget {
             ],
           ),
         ),
-        Offstage(
-          offstage: !showElevation,
-          child: buildButton(
-            context,
-            color: MyTheme.accent,
-            onClick: () {
-              handleElevate(context);
-              windowManager.minimize();
-            },
-            icon: Icon(
-              Icons.security_rounded,
-              color: Colors.white,
-              size: 14,
-            ),
-            text: 'Elevate',
-            textColor: Colors.white,
-          ),
-        ),
         Row(
           children: [
             Expanded(
@@ -1047,31 +1024,11 @@ class _CmControlPanel extends StatelessWidget {
   }
 
   buildUnAuthorized(BuildContext context) {
-    final bool canElevate = bind.cmCanElevate();
     final model = Provider.of<ServerModel>(context);
-    final showElevation = canElevate &&
-        model.showElevation &&
-        client.type_() == ClientType.remote;
     final showAccept = model.approveMode != 'password';
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        Offstage(
-          offstage: !showElevation || !showAccept,
-          child: buildButton(context, color: Colors.green[700], onClick: () {
-            handleAccept(context);
-            handleElevate(context);
-            windowManager.minimize();
-          },
-              text: 'Accept and Elevate',
-              icon: Icon(
-                Icons.security_rounded,
-                color: Colors.white,
-                size: 14,
-              ),
-              textColor: Colors.white,
-              tooltip: 'accept_and_elevate_btn_tooltip'),
-        ),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -1176,12 +1133,6 @@ class _CmControlPanel extends StatelessWidget {
   void handleAccept(BuildContext context) {
     final model = Provider.of<ServerModel>(context, listen: false);
     model.sendLoginResponse(client, true);
-  }
-
-  void handleElevate(BuildContext context) {
-    final model = Provider.of<ServerModel>(context, listen: false);
-    model.setShowElevation(false);
-    bind.cmElevatePortable(connId: client.id);
   }
 
   void handleClose() async {

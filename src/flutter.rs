@@ -1499,10 +1499,6 @@ pub mod connection_manager {
             self.push_event::<&str>("language", &[]);
         }
 
-        fn show_elevation(&self, show: bool) {
-            self.push_event("show_elevation", &[("show", &show.to_string())]);
-        }
-
         fn update_voice_call_state(&self, client: &crate::ui_cm_interface::Client) {
             let client_json = serde_json::to_string(&client).unwrap_or("".into());
             // send to Android service, active notification no matter UI is shown or not.

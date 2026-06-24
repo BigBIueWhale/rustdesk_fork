@@ -398,11 +398,9 @@ impl Proxy {
                 let stream =
                     super::timeout(self.ms_timeout, self.http_connect(stream, &target_addr))
                         .await??;
-                Ok(FramedStream(
+                Ok(FramedStream::from_parts(
                     Framed::new(DynTcpStream(Box::new(stream)), SecretboxCodec::new()),
                     addr,
-                    0,
-                    false, // R-T2: a fresh stream is not poisoned
                 ))
             }
             ProxyScheme::Https { .. } => {
@@ -439,11 +437,9 @@ impl Proxy {
                         crate::bail!("Unreachable, TlsType::Plain in HTTPS proxy");
                     }
                 };
-                Ok(FramedStream(
+                Ok(FramedStream::from_parts(
                     Framed::new(stream, SecretboxCodec::new()),
                     addr,
-                    0,
-                    false, // R-T2: a fresh stream is not poisoned
                 ))
             }
             ProxyScheme::Socks5 { .. } => {
@@ -466,11 +462,9 @@ impl Proxy {
                     )
                     .await??
                 };
-                Ok(FramedStream(
+                Ok(FramedStream::from_parts(
                     Framed::new(DynTcpStream(Box::new(stream)), SecretboxCodec::new()),
                     addr,
-                    0,
-                    false, // R-T2: a fresh stream is not poisoned
                 ))
             }
         };

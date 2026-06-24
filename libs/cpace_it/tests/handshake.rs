@@ -315,6 +315,41 @@ fn directional_cipher_refuses_identical_keys() {
     assert!(result.is_err(), "R-A5: identical send/recv keys must abort");
 }
 
+/// R-T3 (§20): a full writer channel MUST be the liveness signal to DROP the connection (send_raw ->
+/// Err), NOT block the caller. The defect a writer task fixes: a back-pressured inline write stalls the
+/// `select!` loop, so reads + the liveness timer go unpolled for up to the R-T2 deadline. Here the
+/// receiver NEVER reads, so the socket recv buffer + the bounded writer channel fill; post-R-T3 send_raw
+/// errors within 2 s (GREEN), pre-R-T3 it blocks past 2 s -> the timeout fires -> `errored` stays false
+/// -> RED. (Companion to the FIFO + seal-ordering-under-backpressure tests; the smoke is the integration
+/// net.)
+#[tokio::test]
+async fn r_t3_full_writer_channel_drops_not_blocks() {
+    use std::time::Duration;
+    let (mut si, mut sr) = loopback_pair().await;
+    let pw = "r-t3-backpressure";
+    let (ri, rr) = tokio::join!(run_initiator(&mut si, pw), run_responder(&mut sr, pw));
+    si.set_session_keys(ri.expect("initiator keys"));
+    sr.set_session_keys(rr.expect("responder keys"));
+    // sr (the controlled host) NEVER reads -> the socket recv buffer fills -> si's writer channel fills.
+    let big = vec![0xCDu8; 64 * 1024]; // 64 KiB sealed frames
+    let mut errored = false;
+    for _ in 0..2000 {
+        match tokio::time::timeout(Duration::from_secs(2), si.send_raw(big.clone())).await {
+            Ok(Ok(())) => continue, // enqueued (channel not yet full)
+            Ok(Err(_)) => {
+                errored = true;
+                break;
+            } // FULL -> connection dropped (the R-T3 liveness signal)
+            Err(_) => break, // BLOCKED past 2 s -> pre-R-T3 inline-write behavior -> red
+        }
+    }
+    drop(sr); // keep the receiver (hence the socket) alive through the push loop above
+    assert!(
+        errored,
+        "R-T3: a full writer channel MUST drop the connection (send_raw -> Err), not block the caller"
+    );
+}
+
 #[tokio::test]
 async fn responder_rejects_out_of_order_first_frame() {
     let (si, sr) = loopback_pair().await;

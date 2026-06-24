@@ -26,6 +26,10 @@ use pake::{channel_identifier, Initiator, PakeError, Responder, Step1, Step2, St
 use protobuf::Message as _;
 use sodiumoxide::crypto::secretbox::{self, Key, Nonce};
 use sodiumoxide::crypto::sign;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 
 /// Per-step bounded-read deadline (R-P14b). Matches the inherited
 /// CONNECT_TIMEOUT/READ_TIMEOUT of 18 s; the timeout is the sole bound on a peer
@@ -359,49 +363,32 @@ pub fn verify_host_identity(t: &Transcript, bytes: &[u8]) -> HResult<Vec<u8>> {
 /// nonce LE64(1)). Because send and recv keys differ, identical counters from 0
 /// are safe, and one MUST NOT collapse to a single key. Replaces the inherited
 /// `tcp::Encrypt(Key, u64, u64)` at the choke-point cutover.
-pub struct DirectionalCipher {
-    send_key: Key,
-    recv_key: Key,
-    write_seq: u64,
-    read_seq: u64,
+///
+/// R-T3 (§20): the seal and open halves are split into [`SealCipher`] (the
+/// single-producer send side — owned by `FramedStream::send_bytes` so the nonce
+/// advances in exact channel-FIFO order) and [`OpenCipher`] (the read-side codec).
+/// The halves touch DISJOINT state — send_key/write_seq vs recv_key/read_seq — so
+/// the writer-task relocation needs no lock. [`DirectionalCipher`] is retained as a
+/// thin wrapper over the two halves for the round-trip self-test (R-A9); the live
+/// transport drives the halves directly via [`split_session_keys`].
+
+/// The shared nonce derivation — the pre-incremented per-direction counter, LE64
+/// in the low 8 bytes (first nonce LE64(1)). Identical for seal and open.
+fn cipher_nonce(seq: u64) -> Nonce {
+    let mut nonce = Nonce([0u8; secretbox::NONCEBYTES]);
+    nonce.0[..std::mem::size_of::<u64>()].copy_from_slice(&seq.to_le_bytes());
+    nonce
 }
 
-impl DirectionalCipher {
-    /// Install the role-oriented keys from a completed handshake (R-P2).
-    ///
-    /// R-A5: the secretbox layer MUST have two **distinct** per-direction keys
-    /// engaged — never one shared key both ways (the inherited catastrophic
-    /// `(key, nonce)` reuse). HKDF's distinct c2s/s2c labels guarantee this by
-    /// construction; the assertion fail-closes on a keying-mis-wire *regression*
-    /// — exactly the case the wire-capture test (R-A9) would not catch, since the
-    /// keys are derived internally and never attacker-influenced.
-    pub fn new(keys: &DirectionalKeys) -> Self {
-        // `[u8; 32]` is Copy, so this copies out of the zeroize-on-drop keys.
-        let cipher = Self {
-            send_key: Key(keys.send),
-            recv_key: Key(keys.recv),
-            write_seq: 0,
-            read_seq: 0,
-        };
-        // R-A5: assert distinctness on the ENGAGED cipher state (self.send_key / self.recv_key), NOT
-        // on the derived input `keys`. HKDF's distinct c2s/s2c labels make the inputs distinct by
-        // construction, so a check on `keys` only restates that; the regression R-A5 exists to catch
-        // is a keying-mis-wire in the engagement itself — e.g. `recv_key: Key(keys.send)`, which
-        // engages one key BOTH ways while `keys.send != keys.recv` still holds. Reading back the
-        // engaged fields fails closed on exactly that, the case the wire-capture test (R-A9) can't see.
-        assert_ne!(
-            cipher.send_key.0, cipher.recv_key.0,
-            "R-A5: identical engaged send/recv keys — refusing to engage single-key reuse"
-        );
-        cipher
-    }
+/// The send half (R-T3 producer side) — owns the send key and the write counter.
+/// A single producer (`FramedStream::send_bytes`) owns one of these, so `write_seq`
+/// is a plain `u64` (never shared, so no atomic).
+pub struct SealCipher {
+    send_key: Key,
+    write_seq: u64,
+}
 
-    fn nonce(seq: u64) -> Nonce {
-        let mut nonce = Nonce([0u8; secretbox::NONCEBYTES]);
-        nonce.0[..std::mem::size_of::<u64>()].copy_from_slice(&seq.to_le_bytes());
-        nonce
-    }
-
+impl SealCipher {
     /// Seal an outbound frame under the send key (R-P10).
     ///
     /// R-A5: the per-direction nonce IS this monotonic counter, so it MUST NEVER wrap — a wrap
@@ -416,24 +403,126 @@ impl DirectionalCipher {
             .write_seq
             .checked_add(1)
             .expect("R-A5: send nonce-counter exhausted (2^64 frames) — fail-closed, never reuse a nonce");
-        secretbox::seal(plaintext, &Self::nonce(self.write_seq), &self.send_key)
+        secretbox::seal(plaintext, &cipher_nonce(self.write_seq), &self.send_key)
     }
 
+    /// TEST-SUPPORT (R-A8/R-T7 runtime validation): overwrite the send key with a fixed
+    /// non-matching value so the next `seal` yields ciphertext the peer's recv key cannot open —
+    /// simulating a forged/injected frame from a party without the matching key. Benign: it
+    /// corrupts ONLY this stream's send direction (worst case: the peer drops our own connection);
+    /// it cannot leak plaintext, weaken the peer, or bypass auth. Sole caller: the `probe_client`
+    /// injection smoke. (Not reachable by a remote peer — it is a local, send-only self-corruption.)
+    pub fn corrupt_key_for_test(&mut self) {
+        self.send_key = Key([0x42u8; secretbox::KEYBYTES]);
+    }
+}
+
+/// The recv half (R-T3 codec side) — owns the recv key and the read counter.
+///
+/// `read_seq` lives behind an `Arc<AtomicU64>` so `FramedStream::recv_counter` can
+/// observe the count after this codec is moved into the (split) read half of the
+/// Framed transport — `tokio_util`'s `SplitStream` exposes no codec accessor. The
+/// producer side never touches it, and `open` is the SOLE writer (a single read
+/// task), so `Relaxed` is sufficient (no cross-thread happens-before rides on it).
+pub struct OpenCipher {
+    recv_key: Key,
+    read_seq: Arc<AtomicU64>,
+}
+
+impl OpenCipher {
     /// Open an inbound frame under the recv key (R-P10).
     ///
     /// R-A5 (recv side): the recv nonce-counter MUST NOT wrap either (a wrap would accept a frame
     /// under a reused recv nonce). At exhaustion, reject the frame (`Err`) so the connection tears
-    /// down fail-closed — never reset the counter.
+    /// down fail-closed — never reset the counter. `fetch_add` returns the PREVIOUS value, so the
+    /// nonce is the new value `prev + 1` (identical to the old `checked_add`-then-use), and a `prev`
+    /// of `u64::MAX` means the increment just wrapped the counter to 0 → reuse → reject. The
+    /// connection tears down on that `Err`, so the wrapped-to-0 counter is never observed again.
+    ///
+    /// R-T5: this is the SOLE writer of `read_seq` and advances it with no `.await` between the read
+    /// and the advance, so a cancelled `FramedStream::next` can neither replay nor skip a counter.
     pub fn open(&mut self, ciphertext: &[u8]) -> Result<Vec<u8>, ()> {
-        self.read_seq = self.read_seq.checked_add(1).ok_or(())?;
-        secretbox::open(ciphertext, &Self::nonce(self.read_seq), &self.recv_key)
+        let prev = self.read_seq.fetch_add(1, Ordering::Relaxed);
+        if prev == u64::MAX {
+            return Err(());
+        }
+        secretbox::open(ciphertext, &cipher_nonce(prev + 1), &self.recv_key)
     }
 
     /// The recv counter — exposed for the R-T5 cancellation-safety regression test (a dropped
     /// `FramedStream::next` MUST NOT advance it).
     #[inline]
     pub fn read_seq(&self) -> u64 {
-        self.read_seq
+        self.read_seq.load(Ordering::Relaxed)
+    }
+
+    /// A clone of the shared read-counter handle, for `FramedStream::recv_counter` to observe the
+    /// count after this `OpenCipher` is moved into the split read half (R-T3).
+    #[inline]
+    pub fn read_seq_handle(&self) -> Arc<AtomicU64> {
+        self.read_seq.clone()
+    }
+}
+
+/// Split a completed handshake's role-oriented keys into the two cipher halves (R-T3).
+///
+/// R-A5: the secretbox layer MUST have two **distinct** per-direction keys engaged — never one
+/// shared key both ways (the inherited catastrophic `(key, nonce)` reuse). HKDF's distinct c2s/s2c
+/// labels guarantee this by construction; the assertion fail-closes on a keying-mis-wire *regression*
+/// — exactly the case the wire-capture test (R-A9) would not catch, since the keys are derived
+/// internally and never attacker-influenced. The check is on the ENGAGED key material: a mis-wire
+/// like `recv_key: Key(keys.send)` engages one key both ways while `keys.send != keys.recv` still
+/// holds, and reading back the engaged fields fails closed on exactly that.
+pub fn split_session_keys(keys: &DirectionalKeys) -> (SealCipher, OpenCipher) {
+    // `[u8; 32]` is Copy, so this copies out of the zeroize-on-drop keys.
+    let send_key = Key(keys.send);
+    let recv_key = Key(keys.recv);
+    assert_ne!(
+        send_key.0, recv_key.0,
+        "R-A5: identical engaged send/recv keys — refusing to engage single-key reuse"
+    );
+    (
+        SealCipher {
+            send_key,
+            write_seq: 0,
+        },
+        OpenCipher {
+            recv_key,
+            read_seq: Arc::new(AtomicU64::new(0)),
+        },
+    )
+}
+
+/// The two-key cipher as a single object — retained as a thin wrapper over the
+/// [`SealCipher`] + [`OpenCipher`] halves for the round-trip self-test (R-A9). The
+/// live transport uses the halves directly via the R-T3 writer-task split.
+pub struct DirectionalCipher {
+    seal: SealCipher,
+    open: OpenCipher,
+}
+
+impl DirectionalCipher {
+    /// Install the role-oriented keys from a completed handshake (R-P2).
+    pub fn new(keys: &DirectionalKeys) -> Self {
+        let (seal, open) = split_session_keys(keys);
+        Self { seal, open }
+    }
+
+    /// Seal an outbound frame under the send key (R-P10).
+    pub fn seal(&mut self, plaintext: &[u8]) -> Vec<u8> {
+        self.seal.seal(plaintext)
+    }
+
+    /// Open an inbound frame under the recv key (R-P10).
+    pub fn open(&mut self, ciphertext: &[u8]) -> Result<Vec<u8>, ()> {
+        self.open.open(ciphertext)
+    }
+
+    /// The recv counter — exposed for the R-T5 cancellation-safety regression test (a dropped
+    /// `FramedStream::next` MUST NOT advance it).
+    #[inline]
+    pub fn read_seq(&self) -> u64 {
+        self.open.read_seq()
     }
 }
 

@@ -1,22 +1,31 @@
 use crate::{
     bail, bytes_codec::BytesCodec, config::Socks5Server,
-    cpace::{DirectionalCipher, DirectionalKeys},
+    cpace::{split_session_keys, DirectionalKeys, OpenCipher, SealCipher},
     proxy::Proxy, ResultType,
 };
 use anyhow::Context as AnyhowCtx;
 use bytes::{BufMut, Bytes, BytesMut};
-use futures::{SinkExt, StreamExt};
+use futures::{
+    stream::{SplitSink, SplitStream},
+    SinkExt, StreamExt,
+};
 use protobuf::Message;
 use std::{
     io::{self, Error, ErrorKind},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     ops::{Deref, DerefMut},
     pin::Pin,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
     task::{Context, Poll},
 };
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     net::{lookup_host, TcpListener, TcpSocket, ToSocketAddrs},
+    sync::mpsc,
+    task::JoinHandle,
 };
 use tokio_socks::IntoTargetAddr;
 use tokio_util::codec::{Decoder, Encoder, Framed};
@@ -24,80 +33,36 @@ use tokio_util::codec::{Decoder, Encoder, Framed};
 pub trait TcpStreamTrait: AsyncRead + AsyncWrite + Unpin {}
 pub struct DynTcpStream(pub Box<dyn TcpStreamTrait + Send + Sync>);
 
-/// The cipher engaged on a stream after keying — the CPace two-key per-direction
-/// cipher ([`DirectionalCipher`], R-P2/R-P10). The legacy single-key `Encrypt`
-/// secretbox form (the `SignedId`/`box_` bootstrap) was removed at R-A6: every
-/// caller now keys via [`FramedStream::set_session_keys`], so the keyed edge is
-/// two-key only. The enum is retained as a thin wrapper so the R-T7 fold-in dec
-/// logic stays in one place.
-pub enum StreamCipher {
-    Dual(DirectionalCipher),
-}
-
-impl StreamCipher {
-    #[inline]
-    pub fn enc(&mut self, data: &[u8]) -> Vec<u8> {
-        match self {
-            StreamCipher::Dual(d) => d.seal(data),
-        }
-    }
-
-    #[inline]
-    pub fn dec(&mut self, bytes: &mut BytesMut) -> Result<(), Error> {
-        match self {
-            StreamCipher::Dual(d) => {
-                // R-T7 (§20): authenticate EVERY frame on the keyed stream — there is no
-                // ≤1-byte passthrough. A genuine sealed frame is always >= MACBYTES (16 bytes:
-                // seal appends a 16-byte tag even to a 0-byte plaintext), so any shorter frame
-                // cannot be a valid ciphertext and MUST fail closed at the AEAD — closing the
-                // one path by which a byte could reach the application parser unauthenticated
-                // (also the worst-case carryover channel for R-T6). secretbox::open rejects
-                // len < MACBYTES, so a tiny injected frame is a clean decryption error.
-                match d.open(bytes) {
-                    Ok(res) => {
-                        bytes.clear();
-                        bytes.put_slice(&res);
-                        Ok(())
-                    }
-                    Err(()) => Err(Error::new(ErrorKind::Other, "decryption error")),
-                }
-            }
-        }
-    }
-
-    /// The recv counter (`read_seq`) — exposed for the R-T5 cancellation-safety regression test
-    /// (a dropped `next()` MUST NOT advance it): the `DirectionalCipher`'s `read_seq`.
-    #[inline]
-    pub fn read_seq(&self) -> u64 {
-        match self {
-            StreamCipher::Dual(d) => d.read_seq(),
-        }
-    }
-}
-
-/// R-T5 (§20): the length codec with decryption FOLDED IN — the structural form of the
-/// reassemble → authenticate → parse order.
+/// R-T5/R-T7 (§20): the length codec with the recv-side AEAD FOLDED IN — the structural form of the
+/// reassemble → authenticate → parse order on the read half.
 ///
 /// `decode` reassembles exactly ONE complete frame (the stateful `Head`/`Data(n)` machine of the
 /// inner [`BytesCodec`]) and THEN, in the same synchronous call with **no `.await` between**,
-/// authenticates + decrypts it and advances the recv counter (`read_seq`). Because the counter
-/// lives in this `Framed`-owned codec and the decrypt is part of the value `StreamExt::next`
-/// atomically yields, a dropped `next()` (a `select!`/`timeout` losing the race) consumes zero
-/// bytes and never advances `read_seq` — inheriting tokio-util's documented cancel-safety verbatim,
-/// *structurally* rather than by the incidental ordering of an external decrypt step. A partial
-/// frame returns `Ok(None)` (buffered, no counter advance), so a dropped poll never half-consumes.
-/// `encode` symmetrically seals the plaintext under the send key (advancing `write_seq`) THEN
-/// length-frames it, so on the single-writer side (R-T8) seal order == wire order.
+/// authenticates + decrypts it under the recv key (advancing `read_seq` inside the [`OpenCipher`]).
+/// Because the counter lives in this `Framed`-owned codec and the decrypt is part of the value
+/// `StreamExt::next` atomically yields, a dropped `next()` (a `select!`/`timeout` losing the race)
+/// consumes zero bytes and never advances `read_seq` — inheriting tokio-util's documented
+/// cancel-safety verbatim, *structurally* rather than by the incidental ordering of an external
+/// decrypt step. A partial frame returns `Ok(None)` (buffered, no counter advance), so a dropped
+/// poll never half-consumes.
+///
+/// R-T3 (§20): `encode` is the inverse-asymmetric half — it ONLY length-frames, it does NOT seal.
+/// The send-side seal (advancing `write_seq`) happens on the single-producer enqueue side
+/// ([`FramedStream::send_bytes`]) so the nonce advances in exact channel-FIFO order, and the
+/// dedicated writer task (the sole sink consumer, R-T8) feeds already-sealed frames here to be
+/// length-framed only. Seal order == channel order == wire order.
 pub struct SecretboxCodec {
     inner: BytesCodec,
-    cipher: Option<StreamCipher>,
+    /// The recv-direction cipher (R-T3): present once keyed, used by `decode` only. The send
+    /// direction's [`SealCipher`] lives on the producer side ([`FramedStream`]), never in the codec.
+    open_cipher: Option<OpenCipher>,
 }
 
 impl SecretboxCodec {
     pub(crate) fn new() -> Self {
         Self {
             inner: BytesCodec::new(),
-            cipher: None,
+            open_cipher: None,
         }
     }
     #[inline]
@@ -123,10 +88,22 @@ impl Decoder for SecretboxCodec {
         // counter advance, so a dropped poll never half-consumes.
         match self.inner.decode(src)? {
             Some(mut frame) => {
-                // (2) authenticate + decrypt the WHOLE frame, advancing read_seq INSIDE decode —
-                // R-T7 (every keyed frame AEAD-authenticated) lives in StreamCipher::dec.
-                if let Some(cipher) = self.cipher.as_mut() {
-                    cipher.dec(&mut frame)?;
+                // (2) authenticate + decrypt the WHOLE frame, advancing read_seq INSIDE decode.
+                // R-T7 (§20): authenticate EVERY frame on the keyed stream — there is no ≤1-byte
+                // passthrough. A genuine sealed frame is always >= MACBYTES (16 bytes: seal appends
+                // a 16-byte tag even to a 0-byte plaintext), so any shorter frame cannot be a valid
+                // ciphertext and MUST fail closed at the AEAD — closing the one path by which a byte
+                // could reach the application parser unauthenticated (also the worst-case carryover
+                // channel for R-T6). `secretbox::open` rejects len < MACBYTES, so a tiny injected
+                // frame is a clean decryption error.
+                if let Some(open) = self.open_cipher.as_mut() {
+                    match open.open(&frame) {
+                        Ok(plain) => {
+                            frame.clear();
+                            frame.put_slice(&plain);
+                        }
+                        Err(()) => return Err(Error::new(ErrorKind::Other, "decryption error")),
+                    }
                 }
                 Ok(Some(frame))
             }
@@ -139,40 +116,43 @@ impl Encoder<Bytes> for SecretboxCodec {
     type Error = Error;
 
     fn encode(&mut self, data: Bytes, dst: &mut BytesMut) -> Result<(), Error> {
-        // seal under the send key (advancing write_seq) THEN length-frame.
-        let framed_input = match self.cipher.as_mut() {
-            Some(cipher) => Bytes::from(cipher.enc(&data)),
-            None => data,
-        };
-        self.inner.encode(framed_input, dst)
+        // R-T3: length-frame ONLY — the producer (`FramedStream::send_bytes`) already sealed the
+        // bytes under the send key before enqueuing them to the writer task. Pre-key, `data` is a
+        // raw handshake frame; post-key, it is sealed ciphertext. Either way the codec just frames.
+        self.inner.encode(data, dst)
     }
 }
 
 /// A length-delimited, optionally-keyed TCP message stream.
 ///
-/// # Single-writer contract (R-T8, §20)
+/// # Single-writer contract (R-T8 / R-T3, §20)
 ///
 /// **Each `FramedStream` has exactly one writer.** Two concurrent writers would
 /// byte-interleave their encoded frames on the wire — a permanent framing desync,
-/// and on a keyed stream (field `.2 = Some`) garbage ciphertext that fails every
-/// subsequent Poly1305 tag. The invariant is kept *structural*, not conventional,
-/// so a refactor cannot silently break it:
+/// and on a keyed stream garbage ciphertext that fails every subsequent Poly1305
+/// tag. The invariant is kept *structural*, not conventional, so a refactor cannot
+/// silently break it:
 ///
 /// * every write method (`send`/`send_raw`/`send_bytes`) takes `&mut self`, so the
 ///   borrow checker alone forbids two simultaneous writers;
 /// * the type owns its socket through a `Box<dyn>` (`DynTcpStream`) and is
 ///   deliberately **not** `Clone` — there is no way to obtain a second owner;
-/// * the stream is **never** `.split()` into independent read/write halves, and
-///   **never** wrapped in `Arc<Mutex<_>>` for writing.
+/// * the ONLY `.split()` is the R-T3 keying transition (`set_session_keys`): it
+///   splits the `Framed` into the read half (kept here) and a write half moved into
+///   a SINGLE dedicated writer task — the sole sink consumer — so the split yields
+///   one reader + one writer, never two writers; the stream is **never** wrapped in
+///   `Arc<Mutex<_>>` for writing.
 ///
 /// The fork's many output producers (video / audio / clipboard / camera / the
 /// connection-manager) therefore do **not** hold the stream; each holds a *clone of
-/// an `mpsc` sender*, and the single task that owns the `FramedStream` is the sole
-/// drainer of that channel and the sole writer of the socket. `seal` advances the
-/// write counter on that single-producer drain side, so flush order = seal order =
-/// wire order (the nonce never races). A second writable handle must remain a
-/// compile-visible error, never a silent wire corruption — `scripts/verify.sh`
-/// gates against `.split()` / `Arc<Mutex<FramedStream>>` as a backstop.
+/// an `mpsc` sender*, and the single run-loop task that owns the `FramedStream`
+/// enqueues into the writer channel (non-blocking). `seal` advances the write
+/// counter on that single-producer enqueue side (R-T3), and the lone writer task
+/// drains the channel in FIFO order, so seal order = channel order = wire order (the
+/// nonce never races). A second writable handle must remain a compile-visible error,
+/// never a silent wire corruption — `scripts/verify.sh` gates that the only
+/// `.split()` is the R-T3 writer-task one and that no `Arc<Mutex<FramedStream>>`
+/// write-wrapper exists.
 ///
 /// # Framing + processing-order contract (R-T16 / R-T5 / R-T7, §20)
 ///
@@ -208,13 +188,12 @@ impl Encoder<Bytes> for SecretboxCodec {
 /// [`FramedStream::next`] (R-T14).
 ///
 /// # Field layout
-/// `.0` framed socket whose codec ([`SecretboxCodec`]) OWNS the engaged cipher (R-T5: the recv
-/// counter lives in the `Framed`-owned codec, so a dropped `next()` cannot desync it) · `.1` peer
-/// addr · `.2` per-send write timeout (ms; 0 = none) · `.3` poison flag (R-T2).
-pub struct FramedStream(
-    pub Framed<DynTcpStream, SecretboxCodec>,
-    pub SocketAddr,
-    pub u64,
+/// `state` the keying-state machine — pre-key holds the whole [`Framed`]; post-key (R-T3) holds the
+/// read half ([`SplitStream`]) plus the send-side [`SealCipher`] and the bounded channel to the
+/// dedicated writer task · `local_addr` peer addr · `poison` flag (R-T2).
+pub struct FramedStream {
+    state: StreamState,
+    local_addr: SocketAddr,
     // R-T2 (§20): the poison flag. Set on ANY send/recv error so the stream can never be
     // reused after a failure. On a keyed stream `seal` pre-increments the write nonce before
     // the bytes are flushed; if a future edit kept looping after a send error and reused the
@@ -222,21 +201,40 @@ pub struct FramedStream(
     // nonce, permanently desyncing the c2s direction. Poisoning makes "a send/recv error is
     // fatal-to-the-connection" a structural invariant rather than a per-call-site convention —
     // `send_bytes`/`next` short-circuit to an error / EOF once it is set.
-    pub bool,
-);
-
-impl Deref for FramedStream {
-    type Target = Framed<DynTcpStream, SecretboxCodec>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+    poison: bool,
 }
 
-impl DerefMut for FramedStream {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
+/// The keying-state machine of a [`FramedStream`] (R-T3, §20).
+enum StreamState {
+    /// Pre-key: the whole [`Framed`] on one task — the CPace handshake reads and writes it
+    /// sequentially (request/response), so no split is needed yet.
+    Unkeyed(Framed<DynTcpStream, SecretboxCodec>),
+    /// Post-key: the read half stays on the owning task (decode + recv-AEAD, R-T5-cancel-safe); the
+    /// write half is owned by a dedicated writer task fed already-sealed frames over a bounded
+    /// channel (R-T3/R-T8 single-writer).
+    Keyed(KeyedStream),
+    /// A transient placeholder held ONLY across the synchronous body of
+    /// [`FramedStream::set_session_keys`] while the [`Framed`] is moved out to be split.
+    /// `set_session_keys` is not `async`, so no other method can ever observe this — they treat it
+    /// as `unreachable!()`.
+    Keying,
+}
+
+/// The post-key half of a [`FramedStream`] (R-T3).
+struct KeyedStream {
+    /// The read half — decode + recv-AEAD happen here (R-T5 cancel-safe).
+    read: SplitStream<Framed<DynTcpStream, SecretboxCodec>>,
+    /// The send-side cipher (R-T3): `send_bytes` seals on this single-producer enqueue side so the
+    /// nonce advances in exact channel-FIFO order.
+    seal: SealCipher,
+    /// Bounded channel of ALREADY-SEALED frames to the sole writer task (R-T8). A full channel is
+    /// the back-pressure liveness signal — `send_bytes` drops the connection rather than block.
+    writer_tx: mpsc::Sender<Bytes>,
+    /// A handle to the codec's recv counter, so `recv_counter` can read `read_seq` after the codec
+    /// is moved into `read` (the `SplitStream` exposes no codec accessor).
+    read_seq: Arc<AtomicU64>,
+    /// The dedicated writer task — aborted on drop so a write blocked on a dead socket cannot leak.
+    writer: JoinHandle<()>,
 }
 
 impl Deref for DynTcpStream {
@@ -312,11 +310,9 @@ impl FramedStream {
                 {
                     stream.set_nodelay(true).ok();
                     let addr = stream.local_addr()?;
-                    return Ok(Self(
+                    return Ok(Self::from_parts(
                         Framed::new(DynTcpStream(Box::new(stream)), SecretboxCodec::new()),
                         addr,
-                        0,
-                        false, // R-T2: a fresh stream is not poisoned
                     ));
                 }
             }
@@ -337,52 +333,72 @@ impl FramedStream {
         proxy.connect::<T>(target, local_addr).await
     }
 
-    pub fn local_addr(&self) -> SocketAddr {
-        self.1
+    /// Build an unkeyed stream from a framed socket (R-T2: fresh = not poisoned; the per-send
+    /// timeout starts at 0/none). The single tuple-free constructor — `new`/`from` and the proxy
+    /// connectors all funnel through here so the keying-state machine has one entry point.
+    pub(crate) fn from_parts(
+        framed: Framed<DynTcpStream, SecretboxCodec>,
+        local_addr: SocketAddr,
+    ) -> Self {
+        Self {
+            state: StreamState::Unkeyed(framed),
+            local_addr,
+            poison: false,
+        }
     }
 
-    pub fn set_send_timeout(&mut self, ms: u64) {
-        self.2 = ms;
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local_addr
     }
 
     pub fn from(stream: impl TcpStreamTrait + Send + Sync + 'static, addr: SocketAddr) -> Self {
-        Self(
+        Self::from_parts(
             Framed::new(DynTcpStream(Box::new(stream)), SecretboxCodec::new()),
             addr,
-            0,
-            false, // R-T2: a fresh stream is not poisoned
         )
     }
 
     pub fn set_raw(&mut self) {
-        // R-A3 / R-S5: a keyed session stream MUST NOT be downgraded to raw — stripping
-        // the engaged secretbox would leak plaintext, and keeping it would break framing
-        // (raw mode cannot delimit framed secretbox output). The only caller is the
-        // port-forward/tunnel, which is policy-disabled on the box (enable-tunnel=N,
-        // R-S16, now unconditional), so a keyed stream must never reach here; assert it
-        // fail-closed on every build (R-A3/R-R2b) rather than silently downgrade.
-        assert!(
-            self.0.codec().cipher.is_none(),
-            "R-A3: set_raw on a keyed session stream — refusing to downgrade"
-        );
-        self.0.codec_mut().set_raw();
+        // R-A3 / R-S5: a keyed session stream MUST NOT be downgraded to raw — stripping the engaged
+        // secretbox would leak plaintext, and keeping it would break framing (raw mode cannot
+        // delimit framed secretbox output). The only caller is the port-forward/tunnel, which is
+        // policy-disabled on the box (enable-tunnel=N, R-S16, now unconditional), so a keyed stream
+        // must never reach here; fail closed on every build (R-A3/R-R2b) rather than downgrade.
+        match &mut self.state {
+            StreamState::Unkeyed(framed) => framed.codec_mut().set_raw(),
+            StreamState::Keyed(_) => {
+                panic!("R-A3: set_raw on a keyed session stream — refusing to downgrade")
+            }
+            StreamState::Keying => unreachable!("set_raw observed a mid-keying stream"),
+        }
     }
 
-    /// Cap the inbound frame length before the first byte is read. Used to bound
-    /// the attacker-reachable pre-key parser to the small CPace handshake frames
-    /// (R-S7 / R-P14b): an oversize frame then aborts fail-closed at the codec.
+    /// Cap the inbound frame length before the first byte is read. Used to bound the
+    /// attacker-reachable pre-key parser to the small CPace handshake frames (R-S7 / R-P14b): an
+    /// oversize frame then aborts fail-closed at the codec. Pre-key only — the cap is fixed at keying.
     pub fn set_max_packet_length(&mut self, n: usize) {
-        self.0.codec_mut().set_max_packet_length(n);
+        match &mut self.state {
+            StreamState::Unkeyed(framed) => framed.codec_mut().set_max_packet_length(n),
+            StreamState::Keyed(_) => {
+                panic!("R-S7: set_max_packet_length after keying — the cap is fixed at set_session_keys")
+            }
+            StreamState::Keying => {
+                unreachable!("set_max_packet_length observed a mid-keying stream")
+            }
+        }
     }
 
     pub fn is_secured(&self) -> bool {
-        self.0.codec().cipher.is_some()
+        matches!(self.state, StreamState::Keyed(_))
     }
 
     /// The recv counter (`read_seq`) of the engaged cipher, or 0 if unkeyed — exposed for the
     /// R-T5 cancellation-safety regression test (a dropped `next()` MUST NOT advance it).
     pub fn recv_counter(&self) -> u64 {
-        self.0.codec().cipher.as_ref().map_or(0, |c| c.read_seq())
+        match &self.state {
+            StreamState::Keyed(k) => k.read_seq.load(Ordering::Relaxed),
+            _ => 0,
+        }
     }
 
     #[inline]
@@ -392,32 +408,55 @@ impl FramedStream {
 
     #[inline]
     pub async fn send_raw(&mut self, msg: Vec<u8>) -> ResultType<()> {
-        // R-T5: encryption (and the write_seq advance) is folded into the codec's `encode`; this
-        // just enqueues the plaintext frame, which the SecretboxCodec seals then length-frames.
+        // The keyed path seals the plaintext on this single-producer side (R-T3) then enqueues it to
+        // the writer task; the unkeyed (handshake) path frames it raw. `send_bytes` is the one choke.
         self.send_bytes(bytes::Bytes::from(msg)).await
     }
 
     #[inline]
     pub async fn send_bytes(&mut self, bytes: Bytes) -> ResultType<()> {
         // R-T2: a poisoned stream is never reused (a prior send/recv error was fatal).
-        if self.3 {
+        if self.poison {
             bail!("R-T2: refusing to send on a poisoned stream (a prior send/recv error)");
         }
         let r = self.send_bytes_raw(bytes).await;
         if r.is_err() {
-            // R-T2: a send error (incl. a write timeout) is fatal — poison so a later edit
-            // cannot reuse the stream and re-flush stale ciphertext under an advanced nonce.
-            self.3 = true;
+            // R-T2: a send error (a write failure, or the R-T3 writer channel full/closed) is fatal
+            // — poison so a later edit cannot reuse the stream and re-flush under an advanced nonce.
+            self.poison = true;
         }
         r
     }
 
     #[inline]
     async fn send_bytes_raw(&mut self, bytes: Bytes) -> ResultType<()> {
-        if self.2 > 0 {
-            super::timeout(self.2, self.0.send(bytes)).await??;
-        } else {
-            self.0.send(bytes).await?;
+        match &mut self.state {
+            StreamState::Unkeyed(framed) => {
+                // Pre-key handshake: a direct framed send (raw — the codec only length-frames). The
+                // handshake is request/response on one task and its steps are tiny, so a send never
+                // blocks; once keyed, R-T3's bounded writer channel is what bounds back-pressure.
+                framed.send(bytes).await?;
+            }
+            StreamState::Keyed(k) => {
+                // R-T3 (§20): seal on THIS single-producer enqueue side so the nonce advances in
+                // exact channel-FIFO order (R-T8: the writer task is the sole consumer, so flush
+                // order == seal order == wire order), then enqueue NON-BLOCKING. A full bounded
+                // channel is the back-pressure liveness signal (replacing R-T2's per-write timeout):
+                // the peer can't drain, so the connection is dropped here (`try_send` Err →
+                // `send_bytes` poisons) rather than the run-loop blocking inside a `select!` branch.
+                let sealed = Bytes::from(k.seal.seal(&bytes));
+                k.writer_tx.try_send(sealed).map_err(|e| match e {
+                    mpsc::error::TrySendError::Full(_) => {
+                        anyhow::anyhow!(
+                            "R-T3: writer channel full — dropping the back-pressured connection"
+                        )
+                    }
+                    mpsc::error::TrySendError::Closed(_) => {
+                        anyhow::anyhow!("R-T3: writer task gone — connection is dead")
+                    }
+                })?;
+            }
+            StreamState::Keying => unreachable!("send_bytes observed a mid-keying stream"),
         }
         Ok(())
     }
@@ -425,13 +464,15 @@ impl FramedStream {
     #[inline]
     pub async fn next(&mut self) -> Option<Result<BytesMut, Error>> {
         // R-T2: a poisoned stream behaves as EOF — never read again after a fatal error.
-        if self.3 {
+        if self.poison {
             return None;
         }
         // R-T5 (§20): reassembly AND decryption+`read_seq` advance happen atomically INSIDE the
         // codec's `decode` (see `SecretboxCodec`) — there is no `.await` between a frame leaving the
         // buffer and the AEAD `open`, so the recv counter advances only on a frame actually
-        // delivered, and a decrypt/auth failure (R-T7) surfaces here as `Some(Err(_))`.
+        // delivered, and a decrypt/auth failure (R-T7) surfaces here as `Some(Err(_))`. Post-key the
+        // read half is a `SplitStream` (R-T3) that forwards the same `Framed`-owned codec `decode`,
+        // so this property is unchanged by the writer-task split.
         //
         // R-T14 (§20) — cross-backend cancellation-safety basis (the foundation R-T5 relies on):
         // dropping THIS read future (because `select!`/`timeout` chose another branch) consumes
@@ -444,11 +485,15 @@ impl FramedStream {
         // mio's TcpStream path), so dropping the future only unlinks a readiness waiter. This MUST
         // NOT be "fixed" with a hand-rolled overlapped / `WSARecv` read: that would reintroduce the
         // very per-OS hazard (a kernel buffer consuming bytes into a dropped future) this avoids.
-        let res = self.0.next().await;
+        let res = match &mut self.state {
+            StreamState::Unkeyed(framed) => framed.next().await,
+            StreamState::Keyed(k) => k.read.next().await,
+            StreamState::Keying => unreachable!("next observed a mid-keying stream"),
+        };
         if matches!(res, Some(Err(_))) {
             // R-T2: a read / framing / decrypt-auth failure is fatal — poison the stream so it is
             // never reused (the decrypt now lives in the codec, so this one check covers both).
-            self.3 = true;
+            self.poison = true;
         }
         res
     }
@@ -462,21 +507,93 @@ impl FramedStream {
         }
     }
 
-    /// Engage the CPace two-key per-direction cipher after a confirmed handshake
-    /// (R-P2/R-P10). The keys are role-oriented (the caller's send/recv slots),
-    /// so a single key can never end up engaged in both directions.
+    /// Engage the CPace two-key per-direction cipher after a confirmed handshake (R-P2/R-P10), and
+    /// restructure to the R-T3 writer-task transport. The keys are role-oriented (the caller's
+    /// send/recv slots), so a single key can never end up engaged in both directions.
+    ///
+    /// This splits the `Framed`: the read half stays here (decode + recv-AEAD), and the write half
+    /// is moved into a dedicated writer task (R-T3) that is the SOLE sink consumer (R-T8). It is a
+    /// synchronous one-shot Unkeyed → Keyed transition; the transient `Keying` state it swaps in is
+    /// never observed because no `.await` sits between the take and the re-set.
     pub fn set_session_keys(&mut self, keys: DirectionalKeys) {
+        let mut framed = match std::mem::replace(&mut self.state, StreamState::Keying) {
+            StreamState::Unkeyed(framed) => framed,
+            _ => panic!("R-P2: set_session_keys on an already-keyed (or keying) stream"),
+        };
         // R-A5: a keyed session stream MUST carry a BOUNDED frame cap before any keyed byte flows.
         // The handshake (cpace.rs) sets MAX_SESSION_PACKET before handing the keys here, so the cap
         // is never the BytesCodec `usize::MAX` default at this choke-point. Assert it fail-closed —
-        // an unbounded keyed read would be a speculative-allocation DoS (R-S7), and the assertion
-        // is what R-A5 mandates ("max_packet_length is set, not usize::MAX, on every connection").
+        // an unbounded keyed read would be a speculative-allocation DoS (R-S7), and the assertion is
+        // what R-A5 mandates ("max_packet_length is set, not usize::MAX, on every connection").
         assert!(
-            self.0.codec().max_packet_length() != usize::MAX,
+            framed.codec().max_packet_length() != usize::MAX,
             "R-A5: keyed stream has an unbounded frame cap (usize::MAX) — the handshake must set MAX_SESSION_PACKET first"
         );
-        // R-T5: the cipher lives in the Framed-owned codec.
-        self.0.codec_mut().cipher = Some(StreamCipher::Dual(DirectionalCipher::new(&keys)));
+        // Split the keys into the producer's SealCipher + the read-codec's OpenCipher (R-T3); R-A5
+        // distinctness is asserted inside split_session_keys.
+        let (seal, open) = split_session_keys(&keys);
+        let read_seq = open.read_seq_handle();
+        // Engage the recv cipher in the codec for DECODE (the encode side stays raw — the producer
+        // pre-seals), then split: the read half stays here, the write half feeds the writer task.
+        framed.codec_mut().open_cipher = Some(open);
+        let (sink, read) = framed.split();
+        let (writer_tx, writer_rx) = mpsc::channel::<Bytes>(WRITER_CHANNEL_CAP);
+        let writer = tokio::spawn(writer_task(sink, writer_rx));
+        self.state = StreamState::Keyed(KeyedStream {
+            read,
+            seal,
+            writer_tx,
+            read_seq,
+            writer,
+        });
+    }
+
+    /// TEST-SUPPORT (R-A8/R-T7 runtime validation): garble the engaged SEND key so the next
+    /// `send_bytes` produces a frame the peer's recv-AEAD MUST reject — simulating a forged/injected
+    /// frame from a party without the matching key. Benign (corrupts only THIS stream's send
+    /// direction; cannot leak plaintext or bypass auth). No-op pre-key. Sole caller: probe_client.
+    pub fn corrupt_send_key_for_test(&mut self) {
+        if let StreamState::Keyed(k) = &mut self.state {
+            k.seal.corrupt_key_for_test();
+        }
+    }
+}
+
+/// R-T3 (§20): the bounded writer-channel capacity. The channel buffers already-sealed outbound
+/// frames between the run-loop (producer, non-blocking enqueue) and the dedicated writer task (sole
+/// consumer). It is sized for headroom against normal bursts while keeping a stuck/back-pressured
+/// peer detectable: when it fills, `send_bytes` drops the connection rather than block the loop
+/// (replacing R-T2's per-write timeout). Outbound frames are server-generated (their size bounded by
+/// the encoder, not attacker-controlled), so the buffer is not an attacker-driven memory lever.
+const WRITER_CHANNEL_CAP: usize = 512;
+
+/// R-T3/R-T8 (§20): the dedicated writer task — the SOLE consumer of the split sink. It drains
+/// already-sealed frames in channel-FIFO order (so flush order == seal order == wire order) and
+/// writes each. A socket write error ends the task (the connection is dead); `send_bytes` then
+/// observes the closed channel on its next enqueue and poisons the stream (R-T2).
+async fn writer_task(
+    mut sink: SplitSink<Framed<DynTcpStream, SecretboxCodec>, Bytes>,
+    mut writer_rx: mpsc::Receiver<Bytes>,
+) {
+    while let Some(frame) = writer_rx.recv().await {
+        if sink.send(frame).await.is_err() {
+            break;
+        }
+    }
+    // The channel closed (the FramedStream dropped) or a write failed — close the sink to flush and
+    // shut the write half down cleanly (R-T9).
+    let _ = sink.close().await;
+}
+
+impl Drop for FramedStream {
+    fn drop(&mut self) {
+        // R-T3: tear down the writer task so a write blocked on a dead/back-pressured socket cannot
+        // leak the task (and its half of the split `Framed`, holding the socket open) past the
+        // connection's lifetime. Dropping `writer_tx` also closes the channel, but an abort is
+        // immediate even if the task is parked inside `sink.send`.
+        if let StreamState::Keyed(k) = &self.state {
+            k.writer.abort();
+        }
     }
 }
 

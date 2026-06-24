@@ -757,13 +757,13 @@ fi
 # R-T2 (§20): the FramedStream poison flag. A keyed stream's write nonce is pre-incremented by
 # `seal` before the ciphertext is flushed; reusing a stream after a send error would re-flush
 # stale bytes under an advanced nonce and permanently desync the c2s direction. The poison flag
-# (the `pub bool` tuple field, `.3` after R-T5 folded the cipher into the codec) makes "a
-# send/recv error is fatal-to-the-connection" structural: send_bytes bails when poisoned and sets
+# (the `poison: bool` field, after R-T3 restructured FramedStream to the keying-state machine) makes
+# "a send/recv error is fatal-to-the-connection" structural: send_bytes bails when poisoned and sets
 # it on any send error; next() returns EOF when poisoned and sets it on any read OR (now codec-fold)
 # decrypt/auth failure. Presence gate: the short-circuit guard (>=2 sites: send_bytes + next) and
 # the poison-set (>=2 sites: send error, and next's unified read/decrypt error).
-r_t2_guard=$(grep -c 'if self.3 {' libs/hbb_common/src/tcp.rs 2>/dev/null || true)
-r_t2_set=$(grep -c 'self.3 = true' libs/hbb_common/src/tcp.rs 2>/dev/null || true)
+r_t2_guard=$(grep -c 'if self.poison {' libs/hbb_common/src/tcp.rs 2>/dev/null || true)
+r_t2_set=$(grep -c 'self.poison = true' libs/hbb_common/src/tcp.rs 2>/dev/null || true)
 if [ "${r_t2_guard:-0}" -ge 2 ] && [ "${r_t2_set:-0}" -ge 2 ]; then
   echo "  ok  R-T2 FramedStream poison flag present (guard x$r_t2_guard, poison-set x$r_t2_set)"
 else
@@ -797,9 +797,15 @@ r_t8_missing=
 grep -q 'Single-writer contract (R-T8' libs/hbb_common/src/tcp.rs        || r_t8_missing="$r_t8_missing tcp-writer-doc"
 grep -q 'Framing + processing-order contract (R-T16' libs/hbb_common/src/tcp.rs || r_t8_missing="$r_t8_missing tcp-framing-doc"
 grep -q 'the single writer' src/server/connection.rs                     || r_t8_missing="$r_t8_missing conn-stream-doc"
-if grep -n '\.split()' libs/hbb_common/src/tcp.rs 2>/dev/null | grep -vq '///'; then
-  r_t8_missing="$r_t8_missing tcp-split!"
+# R-T3 introduces exactly ONE controlled split — set_session_keys splits the keyed Framed so the write
+# half goes to the SOLE dedicated writer task (single-writer preserved, NOT a second writer). Forbid any
+# OTHER code split, and assert this one has the R-T3 shape feeding writer_task (doc `///` mentions excluded).
+code_splits=$(grep -n '\.split()' libs/hbb_common/src/tcp.rs 2>/dev/null | grep -v '///' | wc -l)
+if [ "$code_splits" != "1" ]; then
+  r_t8_missing="$r_t8_missing tcp-split-count=$code_splits(want exactly the 1 R-T3 writer-task split)!"
 fi
+grep -q 'let (sink, read) = framed.split();' libs/hbb_common/src/tcp.rs || r_t8_missing="$r_t8_missing rt3-split-shape"
+grep -q 'tokio::spawn(writer_task(sink,'     libs/hbb_common/src/tcp.rs || r_t8_missing="$r_t8_missing rt3-sole-writer-consumer"
 if grep -rn 'Arc<.*Mutex<.*FramedStream' src libs/hbb_common/src 2>/dev/null | grep -vq '///'; then
   r_t8_missing="$r_t8_missing arc-mutex-framedstream!"
 fi
@@ -883,24 +889,30 @@ if [ -n "$r_t10_missing" ]; then
 else
   echo "  ok  R-T10 TCP keepalive set on accepted peer sockets (SockRef + TcpKeepalive, app deadline primary)"
 fi
-# R-T3 (§20) per-send WRITE-DEADLINE — the in-place half of R-T3. (The dedicated-writer-task half — so
-# the reader/control channels stay pollable DURING a write — is the larger FramedStream-internal refactor
-# tracked in task R-T3; the current loop still blocks for up to one deadline on a wedged write, but it is
-# BOUNDED, not infinite.) A peer that completes the PAKE then stops reading must not wedge the connection's
-# read loop unboundedly: every peer write goes through FramedStream::send_bytes_raw, which bounds the flush
-# by the stream's send-timeout field and R-T2 poisons the stream on a timeout, so the session DROPS instead
-# of blocking forever. That field is honored only when > 0 (tcp.rs `if self.2 > 0`), so the connection MUST
-# install a NON-ZERO deadline via set_send_timeout. Lock the whole chain so it cannot silently regress to an
-# unbounded blocking write (which would hand an idle adversarial peer a per-connection read-loop stall).
+# R-T3 (§20): the dedicated WRITER TASK so the reader/control channels stay pollable DURING a write.
+# set_session_keys splits the keyed Framed — the read half stays on the run-loop (decode + recv-AEAD),
+# the write half moves into a SINGLE dedicated writer task (the sole sink consumer, R-T8) fed an mpsc of
+# ALREADY-SEALED frames. The run-loop's send_bytes SEALS on the single-producer enqueue side (the nonce
+# advances in channel-FIFO order) then try_sends NON-BLOCKING; a full BOUNDED channel is the back-pressure
+# liveness signal that DROPS the connection — REPLACING R-T2's per-write deadline (so the old
+# set_send_timeout-on-the-keyed-session is GONE). Lock the chain so it cannot regress to a send().await
+# inside a select! branch (which would freeze reads/CM/timers for the duration of one write).
 r_t3_missing=
-grep -qE 'conn\.stream\.set_send_timeout\('            src/server/connection.rs   || r_t3_missing="$r_t3_missing set_send_timeout-call"
-grep -qE 'SEND_TIMEOUT_VIDEO: u64 = [1-9]'             src/server/connection.rs   || r_t3_missing="$r_t3_missing nonzero-SEND_TIMEOUT_VIDEO"
-grep -qE 'SEND_TIMEOUT_OTHER: u64 = SEND_TIMEOUT_VIDEO' src/server/connection.rs   || r_t3_missing="$r_t3_missing SEND_TIMEOUT_OTHER"
-grep -qE 'if self\.2 > 0'                              libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing tcp-deadline-apply"
+grep -q 'async fn writer_task('          libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing writer-task-fn"
+grep -q 'tokio::spawn(writer_task(sink,' libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing spawn-sole-writer"
+grep -q 'const WRITER_CHANNEL_CAP'       libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing bounded-channel"
+grep -q 'writer_tx.try_send'             libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing nonblocking-enqueue"
+grep -q 'TrySendError::Full'             libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing full-drops-connection"
+grep -q 'k.seal.seal(&bytes)'            libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing producer-side-seal"
+# R-T2's per-write deadline is REPLACED by the channel bound — the keyed session must NOT install a
+# set_send_timeout (a stale one would be a misleading no-op now that the keyed path uses try_send).
+if grep -q 'set_send_timeout' src/server/connection.rs libs/hbb_common/src/stream.rs; then
+  r_t3_missing="$r_t3_missing stale-set_send_timeout!"
+fi
 if [ -n "$r_t3_missing" ]; then
-  echo "  FAIL R-T3: per-send write deadline incomplete:$r_t3_missing"; rc=1
+  echo "  FAIL R-T3: dedicated writer-task transport incomplete:$r_t3_missing"; rc=1
 else
-  echo "  ok  R-T3 per-send write deadline installed (set_send_timeout + non-zero SEND_TIMEOUT_*, applied in send_bytes_raw, R-T2 poison)"
+  echo "  ok  R-T3 dedicated writer task (split sink -> sole writer, producer-side seal, bounded back-pressure drop replaces the per-write deadline)"
 fi
 # R-T15(b) / R-S10: the inherited LOGIN_FAILURES limiter — unbounded-growth / never-decaying /
 # full-IPv6-keyed, and on dead paths (the legacy unkeyed/salted-hash login is gone) — MUST be
@@ -993,19 +1005,19 @@ ra6_clean 'SignedId|set_signed_id|set_public_key|message::Union::PublicKey' 'R-P
 # build, resetting to an already-used nonce and reusing (key, nonce) (catastrophic for the AEAD).
 # Assert the raw compound-increment never returns to cpace.rs's DirectionalCipher.
 ra6_clean 'write_seq *\+=|read_seq *\+=' 'R-A5 unchecked nonce-counter increment (must be checked_add)' || rc=1
-# R-A5: the directional-cipher two-key DISTINCTNESS assert MUST read back the ENGAGED cipher state
-# (self.send_key / self.recv_key), NOT the derived input `keys` — HKDF makes the inputs distinct by
+# R-A5: the directional-cipher two-key DISTINCTNESS assert MUST read back the ENGAGED key material
+# (the send_key / recv_key built in split_session_keys), NOT the derived input `keys` — HKDF makes inputs distinct by
 # construction, so a check on `keys` only restates that; the regression R-A5 exists to catch is a
 # keying-mis-wire that engages one key BOTH ways (e.g. `recv_key: Key(keys.send)`), which the input
 # check passes but the engaged read-back fails closed on. Assert the engaged form is present and the
 # old input-key form (`keys.send, keys.recv` in an assert) is gone.
 r_a5_dist=
-grep -qE 'cipher\.send_key\.0,\s*cipher\.recv_key\.0' libs/hbb_common/src/cpace.rs || r_a5_dist="$r_a5_dist engaged-key-assert-missing"
+grep -qE 'send_key\.0,\s*recv_key\.0' libs/hbb_common/src/cpace.rs || r_a5_dist="$r_a5_dist engaged-key-assert-missing"
 grep -qE 'keys\.send, keys\.recv'                     libs/hbb_common/src/cpace.rs && r_a5_dist="$r_a5_dist input-key-assert-still-present"
 if [ -n "$r_a5_dist" ]; then
   echo "  FAIL R-A5: engaged-key distinctness assert incomplete:$r_a5_dist"; rc=1
 else
-  echo "  ok  R-A5 engaged-cipher send/recv-key distinctness asserted (self.send_key/recv_key, not derived inputs)"
+  echo "  ok  R-A5 engaged-cipher send/recv-key distinctness asserted (engaged send_key/recv_key in split_session_keys, not derived inputs)"
 fi
 # R-A2/R-S2 (authorization is a single keyed-edge choke-point): `self.authorized = true` must appear
 # EXACTLY ONCE in connection.rs — it lives in `send_logon_response_and_keep_alive`, reached only on
@@ -1318,19 +1330,19 @@ fi
 # defaulted off", §1; acceptance criterion 3). The fork seals it in two layers: (1) enable-tunnel=N is
 # pinned in PINNED_SETTINGS (gated above under R-S16), so the only set_raw caller — the port-forward
 # loop (connection.rs try_port_forward_loop) — is policy-unreachable; and (2) FramedStream::set_raw is
-# made FAIL-CLOSED — it asserts the codec carries no engaged cipher (cipher.is_none()) and PANICS
+# made FAIL-CLOSED — it matches the keying state, sets raw ONLY on the unkeyed codec and PANICS
 # rather than downgrade a keyed stream (R-A3, "absent or assert-only" per R-A6). Layer 2 is the
 # structural backstop: were a future edit to re-reach set_raw on a keyed stream, it aborts instead of
 # leaking plaintext. Gate that the R-A3 downgrade-refusal assert stays present — its removal would
 # silently restore the plaintext tunnel, so the absence IS the regression (a presence gate).
 r_s5_missing=
 grep -q 'fn set_raw' libs/hbb_common/src/tcp.rs                                || r_s5_missing="$r_s5_missing set_raw-fn"
-grep -qF 'cipher.is_none()' libs/hbb_common/src/tcp.rs                          || r_s5_missing="$r_s5_missing cipher-guard"
+grep -qF 'Unkeyed(framed) => framed.codec_mut().set_raw()' libs/hbb_common/src/tcp.rs || r_s5_missing="$r_s5_missing unkeyed-only-raw"
 grep -qF 'R-A3: set_raw on a keyed session stream' libs/hbb_common/src/tcp.rs   || r_s5_missing="$r_s5_missing a3-assert"
 if [ -n "$r_s5_missing" ]; then
-  echo "  FAIL R-S5/R-A3: the set_raw plaintext-tunnel seal regressed (FramedStream::set_raw must fail-closed assert cipher.is_none(), refusing to downgrade a keyed session stream):$r_s5_missing"; rc=1
+  echo "  FAIL R-S5/R-A3: the set_raw plaintext-tunnel seal regressed (FramedStream::set_raw must fail-closed — raw only on the unkeyed codec, panic on a keyed stream — refusing to downgrade):$r_s5_missing"; rc=1
 else
-  echo "  ok  R-S5/R-A3 set_raw seal intact (fail-closed assert refuses to strip a keyed session stream; enable-tunnel=N pins the only caller unreachable)"
+  echo "  ok  R-S5/R-A3 set_raw seal intact (fail-closed: raw only on the unkeyed codec, panics on a keyed stream; enable-tunnel=N pins the only caller unreachable)"
 fi
 # R-X7 (Rust OTP excision): the rotating one-time (temporary) password is EXCISED from the Rust tree
 # — the permanent password is the sole credential and sole CPace PRS (R-S9/R-P1). R-A6 lists

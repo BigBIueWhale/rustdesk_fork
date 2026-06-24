@@ -15,15 +15,6 @@ pub enum Stream {
 
 impl Stream {
     #[inline]
-    pub fn set_send_timeout(&mut self, ms: u64) {
-        match self {
-            #[cfg(feature = "webrtc")]
-            Stream::WebRTC(s) => s.set_send_timeout(ms),
-            Stream::Tcp(s) => s.set_send_timeout(ms),
-        }
-    }
-
-    #[inline]
     pub fn set_raw(&mut self) {
         match self {
             #[cfg(feature = "webrtc")]

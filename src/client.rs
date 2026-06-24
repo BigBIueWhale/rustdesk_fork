@@ -2008,14 +2008,19 @@ impl LoginConfigHandler {
                 && !self.password_source.is_shared_ab(&password, &hash)
             {
                 config.password = password.clone();
-                // R-S16 (viewer twin): persist the captured plaintext CPace PRS alongside
-                // the hash. Guarded on non-empty so a hash-only reconnect (saved password,
-                // no UI prompt this session → `password_prs` empty) does NOT wipe a
-                // previously stored PRS that `config` was just loaded with.
-                if !self.password_prs.is_empty() {
-                    config.password_prs = self.password_prs.clone();
-                }
                 log::debug!("remember password of {}", self.id);
+            }
+            // R-S16 (viewer twin) / R-T15c: persist the captured plaintext CPace PRS whenever the user
+            // chose to remember -- HOISTED out of the legacy salted-hash (`password`) gate above. Under
+            // the Hash-challenge collapse the proactive login carries an EMPTY `password` (CPace already
+            // authenticated this session), so that gate never runs and the freshly-onboarded PRS (staged
+            // in key_initiator) would never reach disk -> the next connect could not re-key (R-S9
+            // fail-closed). `self.password_prs` is non-empty ONLY in the onboarding case (the shared-ab
+            // and stored-PRS keying paths leave it empty, client.rs ~250-268), so this never persists a
+            // shared-ab secret per-peer; the non-empty guard still stops a no-prompt reconnect (PRS empty
+            // this session) from wiping a previously stored PRS.
+            if !self.password_prs.is_empty() {
+                config.password_prs = self.password_prs.clone();
             }
         } else {
             if self.password_source.is_personal_ab(&password) {
@@ -3346,6 +3351,86 @@ pub mod peer_online {
     // call. (The flutter peer-list online dots are a §19/R-G follow-on; with this they never light.)
     pub async fn query_online_states<F: FnOnce(Vec<String>, Vec<String>)>(ids: Vec<String>, f: F) {
         f(Vec::new(), ids);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // R-T15c: the viewer-persistence DECISIONS in `handle_peer_info` are plain config-layer Rust (no
+    // GUI), so they unit-test headlessly -- isolating PeerConfig via XDG_CONFIG_HOME. These pin the
+    // PRS-persistence behaviour the legacy-`Hash`-challenge collapse depends on (the same assurance
+    // layer the landed viewer-CPace keying accepted). Run with --test-threads=1 (the verify.sh gate).
+    use super::*;
+    use std::sync::Once;
+
+    static INIT: Once = Once::new();
+
+    // Redirect PeerConfig::{store,load} to a per-process temp dir: directories_next::ProjectDirs honours
+    // XDG_CONFIG_HOME on Linux, and config::patch() is a no-op for a non-"/root" path. Each test uses a
+    // unique peer id, so the single shared dir never collides.
+    fn isolate() {
+        INIT.call_once(|| {
+            let dir = std::env::temp_dir().join(format!("rd-client-test-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::env::set_var("XDG_CONFIG_HOME", &dir);
+        });
+    }
+
+    fn handler(id: &str) -> LoginConfigHandler {
+        let mut h = LoginConfigHandler::default();
+        h.id = id.to_string();
+        h.remember = true;
+        h
+    }
+
+    // CRUX: under the collapse the proactive login carries an EMPTY legacy `password` (CPace already
+    // authenticated), so the onboarding PRS (staged in key_initiator) must still persist -- i.e. the PRS
+    // save must NOT be gated on `!password.is_empty()`. RED before the hoist, GREEN after.
+    #[test]
+    fn prs_persists_on_empty_salted_hash() {
+        isolate();
+        let id = "rt15c-prs-persist";
+        let mut h = handler(id);
+        h.password = Vec::new(); // the post-collapse empty legacy hash
+        h.password_prs = b"plaintext-prs".to_vec();
+        h.handle_peer_info(&PeerInfo::new());
+        assert_eq!(
+            PeerConfig::load(id).password_prs,
+            b"plaintext-prs".to_vec(),
+            "the onboarding PRS must persist even with an empty legacy password (else R-S9 fail-closed reconnect)"
+        );
+    }
+
+    // The non-empty guard must survive the hoist: a session that captured NO fresh PRS (a no-prompt
+    // reconnect, password_prs empty) must not wipe a previously stored PRS.
+    #[test]
+    fn prs_not_wiped_when_unset() {
+        isolate();
+        let id = "rt15c-prs-nowipe";
+        let mut pre = PeerConfig::default();
+        pre.password_prs = b"stored-prs".to_vec();
+        pre.store(id);
+        let mut h = handler(id);
+        h.password = b"legacy-hash".to_vec(); // non-empty so the legacy block runs
+        h.password_prs = Vec::new(); // none captured this session
+        h.handle_peer_info(&PeerInfo::new());
+        assert_eq!(PeerConfig::load(id).password_prs, b"stored-prs".to_vec());
+    }
+
+    // remember=false forgets the stored password AND PRS.
+    #[test]
+    fn forget_clears_prs() {
+        isolate();
+        let id = "rt15c-prs-forget";
+        let mut pre = PeerConfig::default();
+        pre.password = b"legacy-hash".to_vec();
+        pre.password_prs = b"stored-prs".to_vec();
+        pre.store(id);
+        let mut h = handler(id);
+        h.remember = false;
+        h.handle_peer_info(&PeerInfo::new());
+        assert!(PeerConfig::load(id).password_prs.is_empty());
     }
 }
 

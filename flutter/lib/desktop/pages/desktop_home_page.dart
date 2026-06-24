@@ -55,6 +55,10 @@ class _DesktopHomePageState extends State<DesktopHomePage>
 
   final GlobalKey _childKey = GlobalKey();
 
+  // R-G2: the home board surfaces the box's Ed25519 fingerprint (its R-S17 identity that a viewer
+  // pins), not a numeric rendezvous ID. Fetched once here — it is static for the box's lifetime.
+  final Future<String> _fingerprintFuture = bind.mainGetFingerprint();
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -186,7 +190,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   }
 
   buildIDBoard(BuildContext context) {
-    final model = gFFI.serverModel;
     return Container(
       margin: const EdgeInsets.only(left: 20, right: 11),
       height: 57,
@@ -211,7 +214,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          translate("ID"),
+                          translate("Fingerprint"),
                           style: TextStyle(
                               fontSize: 14,
                               color: Theme.of(context)
@@ -225,23 +228,22 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                     ),
                   ),
                   Flexible(
-                    child: GestureDetector(
-                      onDoubleTap: () {
-                        Clipboard.setData(
-                            ClipboardData(text: model.serverId.text));
-                        showToast(translate("Copied"));
+                    child: FutureBuilder<String>(
+                      future: _fingerprintFuture,
+                      builder: (context, snapshot) {
+                        final fp = snapshot.data ?? '';
+                        return GestureDetector(
+                          onDoubleTap: () {
+                            Clipboard.setData(ClipboardData(text: fp));
+                            showToast(translate("Copied"));
+                          },
+                          child: Text(
+                            fp,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 22),
+                          ).marginOnly(top: 8),
+                        );
                       },
-                      child: TextFormField(
-                        controller: model.serverId,
-                        readOnly: true,
-                        decoration: InputDecoration(
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.only(top: 10, bottom: 10),
-                        ),
-                        style: TextStyle(
-                          fontSize: 22,
-                        ),
-                      ).workaroundFreezeLinuxMint(),
                     ),
                   )
                 ],

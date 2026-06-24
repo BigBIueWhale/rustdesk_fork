@@ -760,10 +760,6 @@ abstract class BasePeerCard extends StatelessWidget {
                 bind.mainLoadFavPeers();
               }
               break;
-            case PeerTabIndex.lan:
-              await bind.mainRemoveDiscovered(id: id);
-              bind.mainLoadLanPeers();
-              break;
             case PeerTabIndex.ab:
               await gFFI.abModel.deletePeers([id]);
               break;
@@ -1010,57 +1006,6 @@ class FavoritePeerCard extends BasePeerCard {
   @protected
   @override
   void _update() => bind.mainLoadFavPeers();
-}
-
-class DiscoveredPeerCard extends BasePeerCard {
-  DiscoveredPeerCard({required Peer peer, EdgeInsets? menuPadding, Key? key})
-      : super(
-            peer: peer,
-            tab: PeerTabIndex.lan,
-            menuPadding: menuPadding,
-            key: key);
-
-  @override
-  Future<List<MenuEntryBase<String>>> _buildMenuItems(
-      BuildContext context) async {
-    final List<MenuEntryBase<String>> menuItems = [
-      _connectAction(context),
-      _transferFileAction(context),
-      _viewCameraAction(context),
-      _terminalAction(context),
-    ];
-
-    final List favs = (await bind.mainGetFav()).toList();
-
-    if (isDesktop && peer.platform != kPeerPlatformAndroid) {
-      menuItems.add(_tcpTunnelingAction(context));
-    }
-    // menuItems.add(await _openNewConnInOptAction(peer.id));
-    if (isWindows && peer.platform == kPeerPlatformWindows) {
-      menuItems.add(_rdpAction(context, peer.id));
-    }
-    if (isWindows) {
-      menuItems.add(_createShortCutAction(peer.id));
-    }
-
-    if (!favs.contains(peer.id)) {
-      menuItems.add(_addFavAction(peer.id));
-    } else {
-      menuItems.add(_rmFavAction(peer.id, () async {}));
-    }
-
-    if (gFFI.userModel.userName.isNotEmpty) {
-      menuItems.add(_addToAb(peer));
-    }
-
-    menuItems.add(MenuEntryDivider());
-    menuItems.add(_removeAction(peer.id));
-    return menuItems;
-  }
-
-  @protected
-  @override
-  void _update() => bind.mainLoadLanPeers();
 }
 
 class AddressBookPeerCard extends BasePeerCard {

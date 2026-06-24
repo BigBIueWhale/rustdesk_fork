@@ -434,9 +434,6 @@ abstract class BasePeersView extends StatelessWidget {
       case PeerTabIndex.fav:
         peers = gFFI.favoritePeersModel;
         break;
-      case PeerTabIndex.lan:
-        peers = gFFI.lanPeersModel;
-        break;
       case PeerTabIndex.ab:
         peers = gFFI.abModel.peersModel;
         break;
@@ -488,27 +485,6 @@ class FavoritePeersView extends BasePeersView {
   Widget build(BuildContext context) {
     final widget = super.build(context);
     bind.mainLoadFavPeers();
-    return widget;
-  }
-}
-
-class DiscoveredPeersView extends BasePeersView {
-  DiscoveredPeersView(
-      {Key? key, EdgeInsets? menuPadding, ScrollController? scrollController})
-      : super(
-          key: key,
-          peerTabIndex: PeerTabIndex.lan,
-          peerCardBuilder: (Peer peer) => DiscoveredPeerCard(
-            peer: peer,
-            menuPadding: menuPadding,
-          ),
-        );
-
-  @override
-  Widget build(BuildContext context) {
-    final widget = super.build(context);
-    bind.mainLoadLanPeers();
-    bind.mainDiscover();
     return widget;
   }
 }

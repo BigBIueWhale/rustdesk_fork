@@ -13,7 +13,6 @@ import 'model.dart';
 enum PeerTabIndex {
   recent,
   fav,
-  lan,
   ab,
   group,
 }
@@ -22,32 +21,30 @@ class PeerTabModel with ChangeNotifier {
   WeakReference<FFI> parent;
   int get currentTab => _currentTab;
   int _currentTab = 0; // index in tabNames
-  static const int maxTabCount = 5;
+  static const int maxTabCount = 4;
   static const List<String> tabNames = [
     'Recent sessions',
     'Favorites',
-    'Discovered',
     'Address book',
     'Accessible devices',
   ];
   static const List<IconData> icons = [
     Icons.access_time_filled,
     Icons.star,
-    Icons.explore,
     IconFont.addressBook,
     IconFont.deviceGroupFill,
   ];
   List<bool> isEnabled = List.from([
     true,
     true,
-    !isWeb && bind.mainGetLocalOption(key: "disable-discovery-panel") != "Y",
     // R-G2 / R-SV6: the Address Book and "Accessible devices" (group) tabs are
     // account-synced. A direct-IP fork has NO account server (R-SV6) — `userModel
     // .isLogin` is always false — so these tabs only ever rendered a dead "Login"
     // button (the address book was, in effect, unreachable). They are hardcoded
     // structurally off here (not via the flippable disable-ab/-account runtime
-    // config). Recent/Favorites/Discovered are the local, login-free peer lists
-    // (R-SV5). The full compile-out of the abModel/groupModel/login subsystem
+    // config). Recent/Favorites are the local, login-free peer lists (R-SV5); the
+    // Discovered/LAN tab is REMOVED (R-G2: no lan.rs listener, R-X5/R-D7a). The
+    // full compile-out of the abModel/groupModel/login subsystem
     // (~170 abModel refs woven through peer_card/peers_view/autocomplete) is a
     // dedicated follow-on tracked in HARDENING_STATUS §19.
     false, // address book (account-synced — structurally off)

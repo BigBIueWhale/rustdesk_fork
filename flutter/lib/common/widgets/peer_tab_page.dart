@@ -50,9 +50,6 @@ class _PeerTabPageState extends State<PeerTabPage>
     _TabEntry(FavoritePeersView(
       menuPadding: _menuPadding(),
     )),
-    _TabEntry(DiscoveredPeersView(
-      menuPadding: _menuPadding(),
-    )),
     _TabEntry(
         AddressBook(
           menuPadding: _menuPadding(),
@@ -408,20 +405,16 @@ class _PeerTabPageState extends State<PeerTabPage>
                 await bind.mainStoreFav(favs: favs);
                 bind.mainLoadFavPeers();
                 break;
+              // R-G2: the Discovered/LAN tab was removed, so the index-keyed delete switch shifts —
+              // index 2 is now the address book (was index 3), 3 is the group (handled by default).
               case 2:
-                for (var p in peers) {
-                  await bind.mainRemoveDiscovered(id: p.id);
-                }
-                bind.mainLoadLanPeers();
-                break;
-              case 3:
                 await gFFI.abModel.deletePeers(peers.map((p) => p.id).toList());
                 break;
               default:
                 break;
             }
             gFFI.peerTabModel.setMultiSelectionMode(false);
-            if (model.currentTab != 3) showToast(translate('Successful'));
+            if (model.currentTab != 2) showToast(translate('Successful'));
           }
 
           deleteConfirmDialog(onSubmit, translate('Delete'));

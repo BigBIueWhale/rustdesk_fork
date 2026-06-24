@@ -16,6 +16,7 @@ pub fn discover() -> ResultType<()> {
 // moot for the static-IP direct deployment, and orthogonal to the direct-IP-only / sovereign
 // posture). The inherited `send_wol` broadcast WoL magic packets (UDP) over EVERY LAN interface
 // (`wol::send_wol`, iterating `default_net` interfaces × the stored LanPeers MACs) — a viewer-side
-// LAN egress. Now a no-op; its only caller (`flutter_ffi::main_wol`) is a harmless stub until the
-// Dart WoL peer-card action is removed (the R-G2 / R-SV4(c) Discovered-tab/WoL-UI follow-on).
+// LAN egress. Now a no-op; the flutter caller (`flutter_ffi::main_wol`) and the Dart WoL peer-card
+// action are both REMOVED (R-X5 flutter slice + R-G6) — the sole surviving caller is the sciter
+// `ui.rs::send_wol`, excised with the rest of the sciter lan UI in the R-X5 sciter follow-on.
 pub fn send_wol(_id: String) {}

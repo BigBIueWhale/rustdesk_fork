@@ -822,10 +822,6 @@ class RustdeskImpl {
     throw UnimplementedError("mainGetPeerSync");
   }
 
-  Future<String> mainGetLanPeers({dynamic hint}) {
-    throw UnimplementedError("mainGetLanPeers");
-  }
-
   Future<String> mainGetConnectStatus({dynamic hint}) {
     return Future(
         () => js.context.callMethod('getByName', ["get_conn_status"]));
@@ -839,10 +835,6 @@ class RustdeskImpl {
     return Future(() =>
         js.context.callMethod('getByName', ["is_using_public_server"]) ==
         'true');
-  }
-
-  Future<void> mainDiscover({dynamic hint}) {
-    throw UnimplementedError("mainDiscover");
   }
 
   Future<String> mainGetApiServer({dynamic hint}) {
@@ -1011,10 +1003,6 @@ class RustdeskImpl {
     return js.context.callMethod('getByName', ['load_recent_peers_sync']);
   }
 
-  String mainLoadLanPeersSync({dynamic hint}) {
-    return '{}';
-  }
-
   Future<String> mainLoadRecentPeersForAb(
       {required String filter, dynamic hint}) {
     throw UnimplementedError("mainLoadRecentPeersForAb");
@@ -1022,14 +1010,6 @@ class RustdeskImpl {
 
   Future<void> mainLoadFavPeers({dynamic hint}) {
     return Future(() => js.context.callMethod('getByName', ['load_fav_peers']));
-  }
-
-  Future<void> mainLoadLanPeers({dynamic hint}) {
-    throw UnimplementedError("mainLoadLanPeers");
-  }
-
-  Future<void> mainRemoveDiscovered({required String id, dynamic hint}) {
-    throw UnimplementedError("mainRemoveDiscovered");
   }
 
   Future<void> mainChangeTheme({required String dark, dynamic hint}) {
@@ -1319,10 +1299,6 @@ class RustdeskImpl {
 
   Future<double> mainGetMouseTime({dynamic hint}) {
     throw UnimplementedError("mainGetMouseTime");
-  }
-
-  Future<void> mainWol({required String id, dynamic hint}) {
-    throw UnimplementedError("mainWol");
   }
 
   Future<void> mainCreateShortcut({required String id, dynamic hint}) {

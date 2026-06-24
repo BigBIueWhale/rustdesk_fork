@@ -38,7 +38,6 @@ class PeerSortType {
 class LoadEvent {
   static const String recent = 'load_recent_peers';
   static const String favorite = 'load_fav_peers';
-  static const String lan = 'load_lan_peers';
   static const String addressBook = 'load_address_book_peers';
   static const String group = 'load_group_peers';
 }
@@ -46,7 +45,6 @@ class LoadEvent {
 class PeersModelName {
   static const String recent = 'recent peer';
   static const String favorite = 'fav peer';
-  static const String lan = 'discovered peer';
   static const String addressBook = 'address book peer';
   static const String group = 'group peer';
 }
@@ -92,7 +90,6 @@ class _PeersViewState extends State<_PeersView>
   final HashMap<String, String> _emptyMessages = HashMap.from({
     LoadEvent.recent: 'empty_recent_tip',
     LoadEvent.favorite: 'empty_favorite_tip',
-    LoadEvent.lan: 'empty_lan_tip',
     LoadEvent.addressBook: 'empty_address_book_tip',
   });
   final space = (isDesktop || isWebDesktop) ? 12.0 : 8.0;

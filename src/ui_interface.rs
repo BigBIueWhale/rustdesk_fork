@@ -746,14 +746,6 @@ pub fn create_shortcut(_id: String) {
     crate::platform::windows::create_shortcut(&_id).ok();
 }
 
-#[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
-#[inline]
-pub fn discover() {
-    std::thread::spawn(move || {
-        allow_err!(crate::lan::discover());
-    });
-}
-
 #[cfg(feature = "flutter")]
 pub fn peer_to_map(id: String, p: PeerConfig) -> HashMap<&'static str, String> {
     use hbb_common::sodiumoxide::base64;

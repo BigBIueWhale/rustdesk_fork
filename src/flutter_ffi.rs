@@ -1104,10 +1104,6 @@ pub fn main_get_peer_sync(id: String) -> SyncReturn<String> {
     SyncReturn(serde_json::to_string(&conf).unwrap_or("".to_string()))
 }
 
-pub fn main_get_lan_peers() -> String {
-    serde_json::to_string(&get_lan_peers()).unwrap_or_default()
-}
-
 pub fn main_get_connect_status() -> String {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
@@ -1130,10 +1126,6 @@ pub fn main_check_connect_status() {
 
 pub fn main_is_using_public_server() -> bool {
     crate::using_public_server()
-}
-
-pub fn main_discover() {
-    discover();
 }
 
 pub fn main_get_api_server() -> String {
@@ -1524,24 +1516,6 @@ pub fn main_load_fav_peers() {
     } else {
         push_to_flutter("".to_owned());
     }
-}
-
-pub fn main_load_lan_peers() {
-    let data = HashMap::from([
-        ("name", "load_lan_peers".to_owned()),
-        (
-            "peers",
-            serde_json::to_string(&get_lan_peers()).unwrap_or_default(),
-        ),
-    ]);
-    let _res = flutter::push_global_event(
-        flutter::APP_TYPE_MAIN,
-        serde_json::ser::to_string(&data).unwrap_or("".to_owned()),
-    );
-}
-
-pub fn main_remove_discovered(id: String) {
-    remove_discovered(id);
 }
 
 fn main_broadcast_message(data: &HashMap<&str, &str>) {
@@ -2093,12 +2067,6 @@ pub fn main_get_mouse_time() -> f64 {
     {
         0.0
     }
-}
-
-pub fn main_wol(id: String) {
-    // TODO: move send_wol outside.
-    #[cfg(not(any(target_os = "ios")))]
-    crate::lan::send_wol(id)
 }
 
 pub fn main_create_shortcut(_id: String) {

@@ -3408,7 +3408,6 @@ class FFI {
   late final TextureModel textureModel; //session
   late final Peers recentPeersModel; // global
   late final Peers favoritePeersModel; // global
-  late final Peers lanPeersModel; // global
 
   // Terminal model registry for multiple terminals
   final Map<int, TerminalModel> _terminalModels = {};
@@ -3442,8 +3441,6 @@ class FFI {
         name: PeersModelName.favorite,
         loadEvent: LoadEvent.favorite,
         getInitPeers: null);
-    lanPeersModel = Peers(
-        name: PeersModelName.lan, loadEvent: LoadEvent.lan, getInitPeers: null);
   }
 
   /// Mobile reuse FFI

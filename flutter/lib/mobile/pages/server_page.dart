@@ -359,8 +359,10 @@ class ScamWarningDialogState extends State<ScamWarningDialog> {
 }
 
 class ServerInfo extends StatelessWidget {
-  final model = gFFI.serverModel;
   final emptyController = TextEditingController(text: "-");
+  // R-G2: surface the box's Ed25519 fingerprint (its R-S17 identity a viewer pins), not a numeric
+  // ID. Static so it is fetched once for the app's lifetime (the fingerprint never changes).
+  static final Future<String> _fingerprintFuture = bind.mainGetFingerprint();
 
   ServerInfo({Key? key}) : super(key: key);
 
@@ -398,26 +400,38 @@ class ServerInfo extends StatelessWidget {
           // ID
           children: [
             Row(children: [
-              const Icon(Icons.perm_identity,
+              const Icon(Icons.fingerprint,
                       color: Colors.grey, size: iconSize)
                   .marginOnly(right: iconMarginRight),
               Text(
-                translate('ID'),
+                translate('Fingerprint'),
                 style: textStyleHeading,
               )
             ]),
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text(
-                model.serverId.value.text,
-                style: textStyleValue,
-              ),
-              IconButton(
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(Icons.copy_outlined),
-                  onPressed: () {
-                    copyToClipboard(model.serverId.value.text.trim());
-                  })
-            ]).marginOnly(left: 39, bottom: 10),
+            FutureBuilder<String>(
+              future: _fingerprintFuture,
+              builder: (context, snapshot) {
+                final fp = snapshot.data ?? '';
+                return Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          fp,
+                          style: const TextStyle(
+                              fontSize: 16.0, fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                          visualDensity: VisualDensity.compact,
+                          icon: Icon(Icons.copy_outlined),
+                          onPressed: () {
+                            copyToClipboard(fp.trim());
+                          })
+                    ]).marginOnly(left: 39, bottom: 10);
+              },
+            ),
             // R-G4/R-X7/R-G1: the rotating OTP display/refresh row is removed — that credential is
             // excised (R-X7), so under the pinned use-permanent-password policy (R-S16) this row
             // showed only a dead "-"; the permanent password (the fork's sole credential) is set via

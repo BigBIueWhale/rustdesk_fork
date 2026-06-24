@@ -21,12 +21,10 @@ class AllPeersLoader {
   void init(void Function(VoidCallback) setState) {
     this.setState = setState;
     gFFI.recentPeersModel.addListener(_mergeAllPeers);
-    gFFI.lanPeersModel.addListener(_mergeAllPeers);
   }
 
   void clear() {
     gFFI.recentPeersModel.removeListener(_mergeAllPeers);
-    gFFI.lanPeersModel.removeListener(_mergeAllPeers);
   }
 
   Future<void> getAllPeers() async {
@@ -38,9 +36,6 @@ class AllPeersLoader {
     if (gFFI.recentPeersModel.peers.isEmpty) {
       bind.mainLoadRecentPeers();
     }
-    if (gFFI.lanPeersModel.peers.isEmpty) {
-      bind.mainLoadLanPeers();
-    }
     final startTime = DateTime.now();
     _mergeAllPeers();
     final diffTime = DateTime.now().difference(startTime).inMilliseconds;
@@ -50,17 +45,10 @@ class AllPeersLoader {
   }
 
   void _mergeAllPeers() {
-    // R-G2/R-SV6: a direct-IP fork has no account address book or groups — the autocomplete
-    // suggests only the local Discovered (LAN) + Recent peers.
+    // R-G2/R-SV6 + R-X5: a direct-IP fork has no account address book/groups and no LAN
+    // discovery — the autocomplete suggests only the local Recent peers.
     List<Peer> parsedPeers = [];
     Set<String> peerIds = {};
-    for (final peer in gFFI.lanPeersModel.peers) {
-      if (!peerIds.contains(peer.id)) {
-        parsedPeers.add(peer);
-        peerIds.add(peer.id);
-      }
-    }
-
     for (final peer in gFFI.recentPeersModel.peers) {
       if (!peerIds.contains(peer.id)) {
         parsedPeers.add(peer);

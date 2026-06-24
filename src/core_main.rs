@@ -133,13 +133,7 @@ pub fn core_main() -> Option<Vec<String>> {
     // the portable run-mode (is_quick_support_exe / pre-elevate-service / is_elevated all
     // fed the now-deleted portable-service start path).
     let mut log_name = "".to_owned();
-    // Keep portable-service logs under a stable directory name.
-    let has_portable_service_shmem_arg = args
-        .iter()
-        .any(|arg| arg.starts_with("--portable-service-shmem-name="));
-    if has_portable_service_shmem_arg {
-        log_name = "portable-service".to_owned();
-    } else if args.len() > 0 && args[0].starts_with("--") {
+    if args.len() > 0 && args[0].starts_with("--") {
         let name = args[0].replace("--", "");
         if !name.is_empty() {
             log_name = name;

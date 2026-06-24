@@ -11,8 +11,9 @@ use crate::keyboard::client::map_key_to_control_key;
 use crate::platform::linux_desktop_manager;
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 use crate::platform::WallPaperRemover;
-#[cfg(windows)]
-use crate::portable_service::client as portable_client;
+// R-X9 (slices 2-4): the `portable_service::client as portable_client` import is excised
+// with the portable run-mode (the CM RequestStart->start_portable_service trigger and the
+// portable_check running-state probe are removed below).
 use crate::{
     client::{
         new_voice_call_request, new_voice_call_response, start_audio_thread, MediaData, MediaSender,
@@ -609,12 +610,10 @@ impl Connection {
                             };
                             conn.send(msg_out).await;
                         }
-                        #[cfg(windows)]
-                        ipc::Data::DataPortableService(ipc::DataPortableService::RequestStart) => {
-                            if let Err(e) = portable_client::start_portable_service(portable_client::StartPara::Direct) {
-                                log::error!("Failed to start portable service from cm: {:?}", e);
-                            }
-                        }
+                        // R-X9 (slices 2-4): the CM `DataPortableService::RequestStart` ->
+                        // start_portable_service handler is excised — the portable SYSTEM
+                        // helper is gone. Such a message now falls through to the catch-all
+                        // `_ => {}` below and is ignored (no portable process is ever started).
                         ipc::Data::VoiceCallResponse(accepted) => {
                             conn.handle_voice_call(accepted).await;
                         }
@@ -3813,36 +3812,28 @@ impl Connection {
         ALIVE_CONNS.lock().unwrap().clone()
     }
 
+    // R-X9 (slices 2-4): the portable-service running-state half of this check is excised.
+    // The portable SYSTEM helper is gone, so `portable_client::running()` is permanently
+    // false; the `CmShowElevation` prompt send and the `portable_service_running` misc
+    // (proto field 20, also excised) are removed. The UAC / foreground-window-elevated
+    // status senders are KEPT and unchanged in behavior: their old `!running` guard term
+    // was always true on the installed-service fork (portable never ran), so they now send
+    // on any value change exactly as before.
     #[cfg(windows)]
     fn portable_check(&mut self) {
         if self.portable.is_installed || !self.is_remote() || !self.keyboard {
             return;
         }
-        let running = portable_client::running();
-        let show_elevation = !running;
-        self.send_to_cm(ipc::Data::DataPortableService(
-            ipc::DataPortableService::CmShowElevation(show_elevation),
-        ));
         if self.authorized {
             let p = &mut self.portable;
-            if Some(running) != p.last_running {
-                p.last_running = Some(running);
-                let mut misc = Misc::new();
-                misc.set_portable_service_running(running);
-                let mut msg = Message::new();
-                msg.set_misc(misc);
-                self.inner.send(msg.into());
-            }
             let uac = crate::video_service::IS_UAC_RUNNING.lock().unwrap().clone();
             if p.last_uac != uac {
                 p.last_uac = uac;
-                if !uac || !running {
-                    let mut misc = Misc::new();
-                    misc.set_uac(uac);
-                    let mut msg = Message::new();
-                    msg.set_misc(misc);
-                    self.inner.send(msg.into());
-                }
+                let mut misc = Misc::new();
+                misc.set_uac(uac);
+                let mut msg = Message::new();
+                msg.set_misc(misc);
+                self.inner.send(msg.into());
             }
             let foreground_window_elevated = crate::video_service::IS_FOREGROUND_WINDOW_ELEVATED
                 .lock()
@@ -3850,13 +3841,11 @@ impl Connection {
                 .clone();
             if p.last_foreground_window_elevated != foreground_window_elevated {
                 p.last_foreground_window_elevated = foreground_window_elevated;
-                if !foreground_window_elevated || !running {
-                    let mut misc = Misc::new();
-                    misc.set_foreground_window_elevated(foreground_window_elevated);
-                    let mut msg = Message::new();
-                    msg.set_misc(misc);
-                    self.inner.send(msg.into());
-                }
+                let mut misc = Misc::new();
+                misc.set_foreground_window_elevated(foreground_window_elevated);
+                let mut msg = Message::new();
+                msg.set_misc(misc);
+                self.inner.send(msg.into());
             }
         }
     }
@@ -4506,7 +4495,8 @@ pub fn on_printer_data(data: Vec<u8>) {
 pub struct PortableState {
     pub last_uac: bool,
     pub last_foreground_window_elevated: bool,
-    pub last_running: Option<bool>,
+    // R-X9 (slices 2-4): `last_running` (portable-service running-state tracking) removed
+    // with the portable run-mode; the UAC / foreground-elevated trackers are kept.
     pub is_installed: bool,
 }
 
@@ -4517,7 +4507,6 @@ impl Default for PortableState {
             is_installed: crate::platform::is_installed(),
             last_uac: Default::default(),
             last_foreground_window_elevated: Default::default(),
-            last_running: Default::default(),
         }
     }
 }

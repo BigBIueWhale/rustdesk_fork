@@ -846,7 +846,9 @@ message Misc {
     bool foreground_window_elevated = 16;
     bool stop_service = 17;
     // R-X9: peer-triggered elevation (elevation_request 18 / elevation_response 19) excised.
-    bool portable_service_running = 20;
+    // R-X9 (slices 2-4): portable_service_running (20) excised with the portable run-mode —
+    // the host never sets it (the sender in connection.rs::portable_check is removed) and
+    // the viewer no longer reads it. Field number 20 is retired (not reused).
     // Deprecated since 1.2.4, use `change_display_resolution` (36) instead.
     // But we must keep it for compatibility when peer version < 1.2.4.
     Resolution change_resolution = 24;

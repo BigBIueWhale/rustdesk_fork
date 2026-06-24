@@ -1671,7 +1671,8 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn clipboard(&self, content: String);
     fn cancel_msgbox(&self, tag: &str);
     fn switch_back(&self, id: &str);
-    fn portable_service_running(&self, running: bool);
+    // R-X9 (slices 2-4): `portable_service_running` (the viewer-side portable-service
+    // status callback for the excised proto field 20) is removed from the Interface.
     fn on_voice_call_started(&self);
     fn on_voice_call_closed(&self, reason: &str);
     fn on_voice_call_waiting(&self);

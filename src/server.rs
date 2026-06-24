@@ -65,8 +65,8 @@ pub mod input_service {
 
 mod connection;
 pub mod display_service;
-#[cfg(windows)]
-pub mod portable_service;
+// R-X9 (slices 2-4): `pub mod portable_service;` is excised — the portable SYSTEM run-mode
+// is removed; the installed LocalSystem service is the sole controlled entry.
 mod service;
 mod video_qos;
 pub mod video_service;

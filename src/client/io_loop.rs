@@ -1858,9 +1858,9 @@ impl<T: InvokeUiSession> Remote<T> {
                             }
                         }
                     }
-                    Some(misc::Union::PortableServiceRunning(b)) => {
-                        self.handler.portable_service_running(b);
-                    }
+                    // R-X9 (slices 2-4): the `PortableServiceRunning` Misc variant (proto
+                    // field 20) is excised with the portable run-mode — the host never sends
+                    // it; the viewer-side status handler is removed too.
                     Some(misc::Union::SupportedEncoding(e)) => {
                         log::info!("update supported encoding:{:?}", e);
                         self.handler.lc.write().unwrap().supported_encoding = e;

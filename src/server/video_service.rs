@@ -42,7 +42,11 @@ use hbb_common::{
 use scrap::hwcodec::{HwRamEncoder, HwRamEncoderConfig};
 #[cfg(feature = "vram")]
 use scrap::vram::{VRamEncoder, VRamEncoderConfig};
-#[cfg(not(windows))]
+// R-X9 (slices 2-4): `Capturer` is now used on ALL platforms in `create_capturer` — the
+// Windows portable-service capture route was excised, so the direct `Capturer::new` path
+// (formerly the `#[cfg(not(windows))]` arm) is unconditional. The import was previously
+// `#[cfg(not(windows))]`-gated because Windows went through portable_service::client; it is
+// valid on Windows (the deleted portable_service.rs used `scrap::Capturer` there too).
 use scrap::Capturer;
 use scrap::{
     aom::AomEncoderConfig,
@@ -286,22 +290,14 @@ fn create_capturer(
     match c {
         Some(c1) => return Ok(c1),
         None => {
-            #[cfg(windows)]
-            {
-                log::debug!("Create capturer dxgi|gdi");
-                return crate::portable_service::client::create_capturer(
-                    _current,
-                    display,
-                    _portable_service_running,
-                );
-            }
-            #[cfg(not(windows))]
-            {
-                log::debug!("Create capturer from scrap");
-                return Ok(Box::new(
-                    Capturer::new(display).with_context(|| "Failed to create capturer")?,
-                ));
-            }
+            // R-X9: the portable-service capturer route is excised (the SYSTEM portable
+            // helper is dead on the installed-service fork); always create the direct
+            // dxgi|gdi/scrap capturer — this is exactly what the old non-portable `else`
+            // branch did on both platforms.
+            log::debug!("Create capturer from scrap");
+            return Ok(Box::new(
+                Capturer::new(display).with_context(|| "Failed to create capturer")?,
+            ));
         }
     };
 }
@@ -555,9 +551,8 @@ fn run(vs: VideoService) -> ResultType<()> {
         }
     };
 
-    #[cfg(windows)]
-    let last_portable_service_running = crate::portable_service::client::running();
-    #[cfg(not(windows))]
+    // R-X9: the portable SYSTEM service is excised, so it never runs — this is a
+    // constant `false` on every platform now (was a windows-only live query).
     let last_portable_service_running = false;
 
     let display_idx = vs.idx;
@@ -679,11 +674,9 @@ fn run(vs: VideoService) -> ResultType<()> {
             );
             bail!("SWITCH");
         }
-        #[cfg(windows)]
-        if last_portable_service_running != crate::portable_service::client::running() {
-            log::info!("switch due to portable service running changed");
-            bail!("SWITCH");
-        }
+        // R-X9: the "portable service running changed" SWITCH trigger is excised — the
+        // portable SYSTEM service is gone, so its running-state is a constant `false` and
+        // can never change. (Was: bail!("SWITCH") on last != client::running().)
         if Encoder::use_i444(&encoder_cfg) != use_i444 {
             log::info!("switch due to i444 changed");
             bail!("SWITCH");
@@ -699,9 +692,10 @@ fn run(vs: VideoService) -> ResultType<()> {
         }
         #[cfg(windows)]
         {
-            if crate::platform::windows::desktop_changed()
-                && !crate::portable_service::client::running()
-            {
+            // R-X9: the `&& !portable_service::client::running()` guard is excised — the
+            // portable service is gone (running() was always going to be false here), so a
+            // desktop change always bails. Behaviorally identical (it was `&& !false`).
+            if crate::platform::windows::desktop_changed() {
                 bail!("Desktop changed");
             }
         }

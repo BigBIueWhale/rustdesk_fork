@@ -657,9 +657,9 @@ pub fn handle_mouse(
         QUEUE.exec_async(move || handle_mouse_(&evt, conn, username, argb, simulate, show_cursor));
         return;
     }
-    #[cfg(windows)]
-    crate::portable_service::client::handle_mouse(evt, conn, username, argb, simulate, show_cursor);
-    #[cfg(not(windows))]
+    // R-X9: the portable-service input route is excised (the SYSTEM portable helper is
+    // dead on the installed-service fork); inject directly on every platform — this is the
+    // old non-portable `else` branch (portable_service::client::handle_mouse's else arm).
     handle_mouse_(evt, conn, username, argb, simulate, show_cursor);
 }
 
@@ -673,9 +673,8 @@ pub fn handle_pointer(evt: &PointerDeviceEvent, conn: i32) {
         QUEUE.exec_async(move || handle_pointer_(&evt, conn));
         return;
     }
-    #[cfg(windows)]
-    crate::portable_service::client::handle_pointer(evt, conn);
-    #[cfg(not(windows))]
+    // R-X9: the portable-service pointer route is excised; inject directly on every
+    // platform (the old non-portable `else` branch of portable_service::client::handle_pointer).
     handle_pointer_(evt, conn);
 }
 
@@ -1242,7 +1241,9 @@ pub fn handle_key(evt: &KeyEvent) {
 #[inline]
 #[cfg(target_os = "windows")]
 pub fn handle_key(evt: &KeyEvent) {
-    crate::portable_service::client::handle_key(evt);
+    // R-X9: the portable-service key route is excised; inject directly (the old
+    // non-portable `else` branch of portable_service::client::handle_key).
+    handle_key_(evt);
 }
 
 #[inline]

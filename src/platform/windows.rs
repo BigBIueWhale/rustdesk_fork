@@ -177,7 +177,9 @@ pub fn get_cursor() -> ResultType<Option<u64>> {
         #[allow(invalid_value)]
         let mut ci: CURSORINFO = mem::MaybeUninit::uninit().assume_init();
         ci.cbSize = std::mem::size_of::<CURSORINFO>() as _;
-        if crate::portable_service::client::get_cursor_info(&mut ci) == FALSE {
+        // R-X9: the portable-service cursor route is excised; query the cursor directly
+        // (the old non-portable `else` branch of portable_service::client::get_cursor_info).
+        if GetCursorInfo(&mut ci) == FALSE {
             return Err(io::Error::last_os_error().into());
         }
         if ci.flags & CURSOR_SHOWING == 0 {
@@ -2340,127 +2342,19 @@ pub fn run_background(exe: &str, arg: &str) -> ResultType<bool> {
     }
 }
 
-pub fn run_uac(exe: &str, arg: &str) -> ResultType<bool> {
-    let wop = wide_string("runas");
-    let wexe = wide_string(exe);
-    let warg;
-    unsafe {
-        let ret = ShellExecuteW(
-            NULL as _,
-            wop.as_ptr() as _,
-            wexe.as_ptr() as _,
-            if arg.is_empty() {
-                NULL as _
-            } else {
-                warg = wide_string(arg);
-                warg.as_ptr() as _
-            },
-            NULL as _,
-            SW_SHOWNORMAL,
-        );
-        return Ok(ret as i32 > 32);
-    }
-}
-
+// R-X9 (slices 2-4): `run_uac` (ShellExecuteW "runas" self-relaunch), `elevate`,
+// `run_as_system` (impersonate_system token-theft to SYSTEM), and
+// `elevate_or_run_as_system` (the --elevate/--run-as-system/--quick_support /
+// --portable-service run-mode dispatch that started the portable SYSTEM helper) are
+// excised. On the installed-service fork the sole controlled entry is the installed
+// LocalSystem service (`--service` -> launch_privileged_process / CreateProcessAsUserW
+// -> `--server` -> `--tray`); there is no interactive UAC elevation and no
+// peer-OS-credential / token-theft escalation. `check_super_user_permission` (still used
+// by the R-X11 UI via ui_interface / flutter_ffi::main_check_super_user_permission) is
+// converted to a PASSIVE elevation check: it reports whether this process is already
+// elevated, and never relaunches anything via UAC.
 pub fn check_super_user_permission() -> ResultType<bool> {
-    run_uac(
-        std::env::current_exe()?
-            .to_string_lossy()
-            .to_string()
-            .as_str(),
-        "--version",
-    )
-}
-
-pub fn elevate(arg: &str) -> ResultType<bool> {
-    run_uac(
-        std::env::current_exe()?
-            .to_string_lossy()
-            .to_string()
-            .as_str(),
-        arg,
-    )
-}
-
-pub fn run_as_system(arg: &str) -> ResultType<()> {
-    let exe = std::env::current_exe()?.to_string_lossy().to_string();
-    if impersonate_system::run_as_system(&exe, arg).is_err() {
-        bail!(format!("Failed to run {} as system", exe));
-    }
-    Ok(())
-}
-
-pub fn elevate_or_run_as_system(is_setup: bool, is_elevate: bool, is_run_as_system: bool) {
-    // avoid possible run recursively due to failed run.
-    log::info!(
-        "elevate: {} -> {:?}, run_as_system: {} -> {}",
-        is_elevate,
-        is_elevated(None),
-        is_run_as_system,
-        crate::username(),
-    );
-    let mut arg_elevate = if is_setup {
-        "--noinstall --elevate"
-    } else {
-        "--elevate"
-    }
-    .to_owned();
-    let mut arg_run_as_system = if is_setup {
-        "--noinstall --run-as-system"
-    } else {
-        "--run-as-system"
-    }
-    .to_owned();
-    let shmem_name_from_args = crate::portable_service::portable_service_shmem_name_from_args();
-    if shmem_name_from_args.is_none() && crate::portable_service::has_portable_service_shmem_arg() {
-        log::error!("Invalid portable service shared memory argument, aborting elevation flow");
-        // This is a malformed bootstrap argument in a privilege-sensitive path.
-        // Keep fail-closed process termination here to avoid continuing elevation
-        // with inconsistent shared-memory contract.
-        std::process::exit(1);
-    }
-    if let Some(shmem_name) = shmem_name_from_args {
-        let shmem_arg = crate::portable_service::portable_service_shmem_arg(&shmem_name);
-        arg_elevate.push(' ');
-        arg_elevate.push_str(&shmem_arg);
-        arg_run_as_system.push(' ');
-        arg_run_as_system.push_str(&shmem_arg);
-    }
-    if is_root() {
-        if is_run_as_system {
-            log::info!("run portable service");
-            crate::portable_service::server::run_portable_service();
-        }
-    } else {
-        match is_elevated(None) {
-            Ok(elevated) => {
-                if elevated {
-                    if !is_run_as_system {
-                        if run_as_system(arg_run_as_system.as_str()).is_ok() {
-                            std::process::exit(0);
-                        } else {
-                            log::error!(
-                                "Failed to run as system, error {}",
-                                io::Error::last_os_error()
-                            );
-                        }
-                    }
-                } else {
-                    if !is_elevate {
-                        if let Ok(true) = elevate(arg_elevate.as_str()) {
-                            std::process::exit(0);
-                        } else {
-                            log::error!("Failed to elevate, error {}", io::Error::last_os_error());
-                        }
-                    }
-                }
-            }
-            Err(_) => log::error!(
-                "Failed to get elevation status, error {}",
-                io::Error::last_os_error()
-            ),
-        }
-    }
+    is_elevated(None)
 }
 
 pub fn is_elevated(process_id: Option<DWORD>) -> ResultType<bool> {
@@ -2729,7 +2623,8 @@ pub fn ensure_primary_token(user_token: HANDLE) -> ResultType<HANDLE> {
 // R-X8: is_user_token_admin removed with handle_administrator_check (its only caller).
 
 // R-X9: create_process_with_logon (CreateProcessWithLogonW — peer-OS-credential elevation)
-// removed; only Direct UAC elevation (platform::elevate) remains.
+// removed. Slices 2-4 also remove the remaining interactive UAC elevation
+// (run_uac/elevate) and the run_as_system token-theft; no elevation self-relaunch remains.
 
 #[inline]
 fn str_to_device_name(name: &str) -> [u16; 32] {

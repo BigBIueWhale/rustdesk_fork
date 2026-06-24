@@ -2248,8 +2248,9 @@ pub fn main_account_auth_result() -> String {
 
 pub fn main_on_main_window_close() {
     // may called more than one times
-    #[cfg(windows)]
-    crate::portable_service::client::drop_portable_service_shared_memory();
+    // R-X9 (slices 2-4): the portable-service shared-memory teardown
+    // (drop_portable_service_shared_memory) is excised — the portable run-mode and its
+    // shared memory no longer exist, so there is nothing to release on window close.
 }
 
 pub fn main_current_is_wayland() -> SyncReturn<bool> {

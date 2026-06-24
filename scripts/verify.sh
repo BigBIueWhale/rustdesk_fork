@@ -403,18 +403,45 @@ ra6_clean 'should_use_terminal_os_login_scope|prepare_terminal_login_for_authori
 # handle_elevation_request), and the viewer sender (io_loop Data::ElevateDirect arm + ElevationResponse
 # reader, ui_session_interface elevate_direct, flutter_ffi session_elevate_direct, client.rs
 # Data::ElevateDirect). The sole sanctioned privilege transition is the installed-service
-# winlogon-token launch (kept). uac(15)/foreground_window_elevated(16)/portable_service_running(20)
-# are a separate status feature, kept. (Patterns are code-specific so the "...excised" comments the
-# removal left behind do not self-trip the grep.)
+# winlogon-token launch (kept). uac(15)/foreground_window_elevated(16) are a separate status
+# feature, kept. portable_service_running(20) is now ALSO excised — see the slices-2-4 gate
+# below. (Patterns are code-specific so the "...excised" comments the removal left behind do
+# not self-trip the grep.)
 ra6_clean 'create_process_with_logon|CreateProcessWithLogonW|StartPara::Logon|elevation_request::Union' 'R-X9 os-credential elevation (CreateProcessWithLogonW / Logon arm)' || rc=1
 ra6_clean 'fn handle_elevation_request|Data::ElevateDirect|fn elevate_direct|fn session_elevate_direct|set_elevation_request|set_elevation_response|misc::Union::ElevationRequest|misc::Union::ElevationResponse' 'R-X9 Direct peer-triggered elevation (handle_elevation_request / ElevateDirect / ElevationRequest|Response)' || rc=1
 r_x9_proto=
 grep -qE 'message +ElevationRequest(WithLogon)?\b' libs/hbb_common/protos/message.proto && r_x9_proto="$r_x9_proto ElevationRequest-msg"
 grep -qE 'elevation_request *= *18|elevation_response *= *19' libs/hbb_common/protos/message.proto && r_x9_proto="$r_x9_proto elevation-field"
+# R-X9 (slices 2-4): portable_service_running (Misc field 20) excised — the host never sets it
+# (the connection.rs::portable_check sender is removed) and the viewer never reads it.
+grep -qE 'portable_service_running *= *20' libs/hbb_common/protos/message.proto && r_x9_proto="$r_x9_proto portable_service_running-field"
 if [ -n "$r_x9_proto" ]; then
   echo "  FAIL R-X9: peer-elevation proto surface still present:$r_x9_proto"; rc=1
 else
-  echo "  ok  R-X9 ElevationRequest message + elevation_request/response Misc fields absent from message.proto"
+  echo "  ok  R-X9 ElevationRequest message + elevation_request/response + portable_service_running(20) Misc fields absent from message.proto"
+fi
+# R-X9 (slices 2-4): the Windows portable/un-installed run-mode + quick-support + interactive
+# (UAC/token-theft) elevation are excised — "removed not disabled". src/server/portable_service.rs
+# (the SYSTEM helper) is deleted; its capture/input/cursor routes are inlined to the direct path
+# (video_service create_capturer -> Capturer::new; input_service handle_mouse/pointer/key -> *_;
+# windows.rs get_cursor -> GetCursorInfo). run_uac / elevate / run_as_system / elevate_or_run_as_system
+# + the core_main --elevate/--run-as-system/--quick_support dispatch + the CM DataPortableService::
+# RequestStart trigger + the portable_service_running sender are gone; impersonate_system (token-theft)
+# + shared_memory (capture shmem) deps removed. The installed LocalSystem service (launch_privileged_
+# process / CreateProcessAsUserW, KEPT) is the SOLE controlled entry. check_super_user_permission is
+# KEPT (R-X11 UI) but converted to a passive is_elevated() check — no UAC self-relaunch. (Patterns are
+# code-specific; the "...excised" // comments the removal left are stripped by ra6_clean's `grep -v //`.
+# NOTE: the now-orphaned portable-service IPC subsystem [ipc.rs handshake/DataPortableService + ipc/auth.rs
+# peer-auth + acl.rs shmem-ACL] and the dead libs/portable packer crate are removed in follow-on commits.)
+ra6_clean 'pub mod portable_service|crate::portable_service::|portable_service::client|portable_service::server|fn run_uac|fn run_as_system|fn elevate_or_run_as_system|pub fn elevate\(arg: &str|impersonate_system::|set_quick_support|start_portable_service|set_portable_service_running|misc::Union::PortableServiceRunning|drop_portable_service_shared_memory' 'R-X9 portable run-mode + quick-support + interactive elevation (slices 2-4)' || rc=1
+# R-X9 slices 2-4: the impersonate_system (SYSTEM token-theft, drove run_as_system) + shared_memory
+# (portable capture shmem) Cargo deps are removed — both were used only by the excised portable_service.
+r_x9_deps=
+grep -qE '^impersonate_system =|^shared_memory =' Cargo.toml && r_x9_deps="$r_x9_deps cargo-dep-present"
+if [ -n "$r_x9_deps" ]; then
+  echo "  FAIL R-X9: portable-service Cargo deps still present:$r_x9_deps"; rc=1
+else
+  echo "  ok  R-X9 impersonate_system + shared_memory Cargo deps removed (slices 2-4)"
 fi
 # R-X9/R-X10/R-A6: the stop-service runtime toggle no longer gates the controlled-side SERVICE
 # creation (windows.rs get_create_service / linux.rs check_if_stop_service + switch_service) or the

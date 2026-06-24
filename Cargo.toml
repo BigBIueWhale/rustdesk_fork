@@ -160,8 +160,9 @@ winreg = "0.11"
 windows-service = "0.6"
 virtual_display = { path = "libs/virtual_display" }
 remote_printer = { path = "libs/remote_printer" }
-impersonate_system = { git = "https://github.com/rustdesk-org/impersonate-system" }
-shared_memory = "0.12"
+# R-X9 (slices 2-4): `impersonate_system` (SYSTEM token-theft for run_as_system) and
+# `shared_memory` (portable-service capture shmem) removed with the portable run-mode —
+# both were used only by the excised src/server/portable_service.rs.
 tauri-winrt-notification = "0.1"
 runas = "1.2"
 

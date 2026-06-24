@@ -41,9 +41,9 @@ pub fn core_main() -> Option<Vec<String>> {
     let mut args = Vec::new();
     let mut flutter_args = Vec::new();
     let mut i = 0;
-    let mut _is_elevate = false;
-    let mut _is_run_as_system = false;
-    let mut _is_quick_support = false;
+    // R-X9 (slices 2-4): the --elevate / --run-as-system / --quick_support flags are
+    // excised — the portable run-mode and interactive/token-theft elevation they drove
+    // are gone; the installed LocalSystem service is the sole controlled entry.
     let mut _is_flutter_invoke_new_connection = false;
     let mut arg_exe = Default::default();
     for arg in std::env::args() {
@@ -64,17 +64,11 @@ pub fn core_main() -> Option<Vec<String>> {
             {
                 _is_flutter_invoke_new_connection = true;
             }
-            if arg == "--elevate" {
-                _is_elevate = true;
-            } else if arg == "--run-as-system" {
-                _is_run_as_system = true;
-            } else if arg == "--quick_support" {
-                _is_quick_support = true;
-            } else {
-                // R-X10: the --no-server flag is excised (its no_server param was vestigial — the
-                // controlled side starts only via the installed --service).
-                args.push(arg);
-            }
+            // R-X9 (slices 2-4): the --elevate / --run-as-system / --quick_support arg arms
+            // are excised with the portable run-mode + elevation dispatch.
+            // R-X10: the --no-server flag is excised (its no_server param was vestigial — the
+            // controlled side starts only via the installed --service).
+            args.push(arg);
         }
         i += 1;
     }
@@ -135,15 +129,9 @@ pub fn core_main() -> Option<Vec<String>> {
             return None;
         }
     }
-    #[cfg(windows)]
-    {
-        _is_quick_support |= !crate::platform::is_installed()
-            && args.is_empty()
-            && (is_quick_support_exe(&arg_exe)
-                || config::LocalConfig::get_option("pre-elevate-service") == "Y"
-                || (!click_setup && crate::platform::is_elevated(None).unwrap_or(false)));
-        crate::portable_service::client::set_quick_support(_is_quick_support);
-    }
+    // R-X9 (slices 2-4): the quick-support detection + `set_quick_support` is excised with
+    // the portable run-mode (is_quick_support_exe / pre-elevate-service / is_elevated all
+    // fed the now-deleted portable-service start path).
     let mut log_name = "".to_owned();
     // Keep portable-service logs under a stable directory name.
     let has_portable_service_shmem_arg = args
@@ -170,23 +158,11 @@ pub fn core_main() -> Option<Vec<String>> {
         return Some(Vec::new());
     }
 
-    #[cfg(windows)]
-    if !crate::platform::is_installed()
-        && args.is_empty()
-        && _is_quick_support
-        && !_is_elevate
-        && !_is_run_as_system
-    {
-        use crate::portable_service::client;
-        if let Err(e) = client::start_portable_service(client::StartPara::Direct) {
-            log::error!("Failed to start portable service: {:?}", e);
-        }
-    }
-    #[cfg(windows)]
-    if !crate::platform::is_installed() && (_is_elevate || _is_run_as_system) {
-        crate::platform::elevate_or_run_as_system(click_setup, _is_elevate, _is_run_as_system);
-        return None;
-    }
+    // R-X9 (slices 2-4): the Windows run-mode dispatch is excised — the
+    // quick-support -> start_portable_service launch and the
+    // --elevate/--run-as-system -> elevate_or_run_as_system escalation are gone. On the
+    // installed-service fork the controlled side is reached only via `--service`
+    // (launch_privileged_process / CreateProcessAsUserW -> `--server` -> `--tray`).
     if args.is_empty() || crate::common::is_empty_uni_link(&args[0]) {
         #[cfg(target_os = "macos")]
         {
@@ -271,13 +247,9 @@ pub fn core_main() -> Option<Vec<String>> {
                     );
                 }
                 return None;
-            } else if args[0] == "--portable-service" {
-                crate::platform::elevate_or_run_as_system(
-                    click_setup,
-                    _is_elevate,
-                    _is_run_as_system,
-                );
-                return None;
+            // R-X9 (slices 2-4): the `--portable-service` arg handler is excised — it
+            // dispatched into elevate_or_run_as_system to stand up the portable SYSTEM
+            // helper, which is gone.
             } else if args[0] == "--uninstall-amyuni-idd" {
                 #[cfg(windows)]
                 hbb_common::allow_err!(
@@ -790,11 +762,5 @@ mod tests {
     }
 }
 
-/// Check if the executable is a Quick Support version.
-/// Note: This function must be kept in sync with `libs/portable/src/main.rs`.
-#[cfg(windows)]
-#[inline]
-fn is_quick_support_exe(exe: &str) -> bool {
-    let exe = exe.to_lowercase();
-    exe.contains("-qs-") || exe.contains("-qs.exe") || exe.contains("_qs.exe")
-}
+// R-X9 (slices 2-4): `is_quick_support_exe` is excised — quick-support detection drove
+// the now-deleted portable run-mode; the installed-service fork has a single entry path.

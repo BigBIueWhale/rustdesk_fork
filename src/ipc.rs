@@ -73,14 +73,6 @@ use std::{
 
 // IPC actions here.
 pub const IPC_ACTION_CLOSE: &str = "close";
-#[cfg(target_os = "windows")]
-const PORTABLE_SERVICE_IPC_HANDSHAKE_TIMEOUT_MS: u64 = 3_000;
-#[cfg(target_os = "windows")]
-pub(crate) const IPC_TOKEN_LEN: usize = 64;
-#[cfg(target_os = "windows")]
-const IPC_TOKEN_RANDOM_BYTES: usize = IPC_TOKEN_LEN / 2;
-#[cfg(target_os = "windows")]
-const _: () = assert!(IPC_TOKEN_LEN % 2 == 0);
 pub static EXIT_RECV_CLOSE: AtomicBool = AtomicBool::new(true);
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -281,8 +273,6 @@ pub enum DataControl {
 pub enum DataPortableService {
     Ping,
     Pong,
-    AuthToken(String),
-    AuthResult(bool),
     ConnCount(Option<usize>),
     Mouse((Vec<u8>, i32, String, u32, bool, bool)),
     Pointer((Vec<u8>, i32)),
@@ -1074,96 +1064,6 @@ async fn handle(data: Data, stream: &mut Connection) {
         }
         _ => {}
     };
-}
-
-#[cfg(target_os = "windows")]
-pub(crate) fn generate_one_time_ipc_token() -> ResultType<String> {
-    use hbb_common::rand::{rngs::OsRng, RngCore as _};
-    use std::fmt::Write as _;
-
-    let mut random_bytes = [0u8; IPC_TOKEN_RANDOM_BYTES];
-    let mut rng = OsRng;
-    rng.try_fill_bytes(&mut random_bytes).map_err(|err| {
-        hbb_common::anyhow::anyhow!(
-            "failed to generate portable service ipc token from OsRng: {}",
-            err
-        )
-    })?;
-
-    let mut token = String::with_capacity(IPC_TOKEN_LEN);
-    for byte in random_bytes {
-        let _ = write!(token, "{:02x}", byte);
-    }
-    Ok(token)
-}
-
-#[cfg(target_os = "windows")]
-pub(crate) fn constant_time_ipc_token_eq(expected: &str, candidate: &str) -> bool {
-    if expected.len() != IPC_TOKEN_LEN || candidate.len() != IPC_TOKEN_LEN {
-        return false;
-    }
-    expected
-        .as_bytes()
-        .iter()
-        .zip(candidate.as_bytes().iter())
-        .fold(0u8, |diff, (left, right)| diff | (*left ^ *right))
-        == 0
-}
-
-#[cfg(target_os = "windows")]
-pub(crate) async fn portable_service_ipc_handshake_as_client<T>(
-    stream: &mut ConnectionTmpl<T>,
-    token: &str,
-) -> ResultType<()>
-where
-    T: AsyncRead + AsyncWrite + std::marker::Unpin,
-{
-    stream
-        .send(&Data::DataPortableService(DataPortableService::AuthToken(
-            token.to_owned(),
-        )))
-        .await?;
-    match stream
-        .next_timeout(PORTABLE_SERVICE_IPC_HANDSHAKE_TIMEOUT_MS)
-        .await?
-    {
-        Some(Data::DataPortableService(DataPortableService::AuthResult(true))) => Ok(()),
-        Some(Data::DataPortableService(DataPortableService::AuthResult(false))) => {
-            bail!("portable service ipc handshake was rejected by server")
-        }
-        Some(_) | None => bail!("portable service ipc handshake returned an unexpected response"),
-    }
-}
-
-#[cfg(target_os = "windows")]
-pub(crate) async fn portable_service_ipc_handshake_as_server<T, F>(
-    stream: &mut ConnectionTmpl<T>,
-    mut validate_token: F,
-) -> ResultType<()>
-where
-    T: AsyncRead + AsyncWrite + std::marker::Unpin,
-    // Token validators must use `constant_time_ipc_token_eq` or an equivalent
-    // fixed-length comparison; this handshake is part of the privilege boundary.
-    F: FnMut(&str) -> bool,
-{
-    let authorized = match stream
-        .next_timeout(PORTABLE_SERVICE_IPC_HANDSHAKE_TIMEOUT_MS)
-        .await?
-    {
-        Some(Data::DataPortableService(DataPortableService::AuthToken(token))) => {
-            validate_token(&token)
-        }
-        Some(_) | None => false,
-    };
-    stream
-        .send(&Data::DataPortableService(DataPortableService::AuthResult(
-            authorized,
-        )))
-        .await?;
-    if !authorized {
-        bail!("portable service ipc handshake failed")
-    }
-    Ok(())
 }
 
 #[inline]

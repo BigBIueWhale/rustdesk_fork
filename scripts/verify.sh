@@ -458,6 +458,14 @@ fi
 # ever passed `_portable_service`). (Still follow-on: Layer-2 token handshake + DataPortableService
 # data-enum [needs ui_cm_interface CmShowElevation/RequestStart] + acl.rs shmem-ACL.)
 ra6_clean 'fn portable_service_listener_security_attributes|fn authorize_windows_portable_service_ipc_connection|fn is_allowed_windows_portable_service_peer|fn portable_service_helper_is_trusted|fn windows_portable_service_ipc_allows_logon_helper_executable|fn portable_service_authorization_status_for_session|fn portable_service_logon_helper_paths|postfix == "_portable_service"' 'R-X9 orphaned portable-service IPC peer-auth + listener (slices 2-4 follow-on)' || rc=1
+# R-X9 (slices 2-4 follow-on, Layer 2a): the orphaned portable-service IPC TOKEN-HANDSHAKE cluster is
+# excised — the portable SYSTEM helper that did the one-time-token handshake over the `_portable_service`
+# pipe is deleted, so generate_one_time_ipc_token + constant_time_ipc_token_eq + the IPC_TOKEN_LEN/
+# RANDOM_BYTES consts + PORTABLE_SERVICE_IPC_HANDSHAKE_TIMEOUT_MS + the two handshake fns
+# (portable_service_ipc_handshake_as_client/_server, ZERO callers) + the DataPortableService AuthToken/
+# AuthResult variants (handshake-only) are all dead. (The DataPortableService RequestStart/CmShowElevation
+# variants + the CM elevation UI are a SEPARATE follow-on — Layer 2b.)
+ra6_clean 'fn generate_one_time_ipc_token|fn constant_time_ipc_token_eq|fn portable_service_ipc_handshake|const IPC_TOKEN_LEN|PORTABLE_SERVICE_IPC_HANDSHAKE_TIMEOUT_MS' 'R-X9 orphaned portable-service IPC token-handshake (slices 2-4 follow-on, Layer 2a)' || rc=1
 # R-X9/R-X10/R-A6: the stop-service runtime toggle no longer gates the controlled-side SERVICE
 # creation (windows.rs get_create_service / linux.rs check_if_stop_service + switch_service) or the
 # direct LISTENER (direct_service.rs) — the installed service is always created + auto-start and the

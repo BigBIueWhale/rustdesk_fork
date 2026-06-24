@@ -105,6 +105,21 @@ grep -qE '"permanent-password" \| "unlock-pin" \| "voice-call-input"' src/ipc.rs
 grep -q 'Data::Socks(Some(_)) => false' src/ipc.rs                                     || r_s11="$r_s11 socks-not-rejected"
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel config-write allowlist:$r_s11"; rc=1; else
   echo "  ok  R-S11 main-channel config-write POSITIVE allowlist (SyncConfig+id+salt+Socks rejected; legit operator writes pass)"; fi
+# (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
+# the is_option_can_save-BYPASSING config writes inside handle() — set_socks / set_permanent_password /
+# set_id / set_salt / set_key_confirmed / set_unlock_pin / the whole-config Config::set+Config2::set —
+# MUST each sit in a Data arm that main_channel_admits_config_write DENIES (Socks(Some) / the non-
+# whitelisted Config struct-fields / SyncConfig(Some)). The `_ => true` catch-all would let a NEW
+# bypassing write (a new Data arm) reach Config unguarded on the main channel — the exact regression.
+# set_options is EXCLUDED (it self-filters via is_option_can_save, R-S16); HwCodecConfig::set is a
+# separate hwcodec store (compiled out, R-R2b), excluded by the \b before Config. Pin the count: a new
+# bypassing write trips this, forcing the author to deny its Data variant in main_channel_admits.
+hb_cfg_writes=$(awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -cE '\bConfig::set_socks|\bConfig::set_permanent_password|\bConfig::set_id|\bConfig::set_salt|\bConfig::set_key_confirmed|\bConfig::set_unlock_pin|\bConfig::set\(|\bConfig2::set\(')
+if [ "$hb_cfg_writes" != "9" ]; then
+  echo "  FAIL R-S11/R-A6: handle() now has $hb_cfg_writes is_option_can_save-bypassing config-writes (expected 9). A config-write was added/removed — ensure any NEW one's Data variant is DENIED by main_channel_admits_config_write (never the _ => true default), then update this count."; rc=1
+else
+  echo "  ok  R-S11/R-A6 the 9 is_option_can_save-bypassing config-writes in handle() are all reached via main_channel_admits-denied arms (Socks/Config-nonwhitelist/SyncConfig) — no new bypassing write"
+fi
 
 # (3c) File-transfer write-path safety (R-S8/R-A5): the receive-write opens are NO-FOLLOW
 # (open_recv_write_no_follow / O_NOFOLLOW) so a local symlink swapped in at the target after the

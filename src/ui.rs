@@ -273,10 +273,6 @@ impl UI {
         set_peer_option(id, name, value)
     }
 
-    fn using_public_server(&self) -> bool {
-        crate::using_public_server()
-    }
-
     fn is_incoming_only(&self) -> bool {
         hbb_common::config::is_incoming_only()
     }
@@ -691,7 +687,6 @@ impl sciter::EventHandler for UI {
         fn t(String);
         fn get_api_server();
         fn is_xfce();
-        fn using_public_server();
         fn is_custom_client();
         fn is_outgoing_only();
         fn is_incoming_only();

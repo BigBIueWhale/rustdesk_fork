@@ -30,7 +30,6 @@ var app;
 var tmp = handler.get_connect_status();
 var connect_status = tmp[0];
 var service_stopped = handler.get_option("stop-service") == "Y";
-var using_public_server = handler.using_public_server();
 var software_update_url = "";
 var key_confirmed = tmp[1];
 var system_error = "";
@@ -482,12 +481,10 @@ class MyIdMenu: Reactor.Component {
                 {!disable_settings && <div .separator />}
                 {!disable_settings && <li #whitelist title={translate('whitelist_tip')}>{translate('IP Whitelisting')}</li>}
                 {!disable_settings && !hide_proxy_settings && <li #socks5-server>{translate('Socks5/Http(s) Proxy')}</li>}
-                {!disable_settings && !using_public_server && <li #allow-insecure-tls-fallback><span>{svg_checkmark}</span>{translate('Allow insecure TLS fallback')}</li>}
                 <div .separator />
                 {(!hide_stop_service || service_stopped) && <li #stop-service class={service_stopped ? "line-through" : "selected"}><span>{svg_checkmark}</span>{translate("Enable service")}</li>}
                 {!disable_settings && is_win && handler.is_installed() ? <ShareRdp /> : ""}
                 {!disable_settings && <DirectServer />}
-                {!disable_settings && false && handler.using_public_server() && <li #allow-always-relay><span>{svg_checkmark}</span>{translate('Always connect via relay')}</li>}
                 {!disable_change_id && handler.is_ok_change_id() ? <div .separator /> : ""}
                 {!disable_account && (accountLabel ?
                 <li #logout>{translate('Logout')} ({accountLabel})</li> :
@@ -1327,11 +1324,6 @@ function checkConnectStatus() {
         if (tmp != service_stopped) {
             service_stopped = tmp;
             app.update();
-        }
-        tmp = handler.using_public_server();
-        if (tmp != using_public_server) {
-            using_public_server = tmp;
-            app.connect_status.update();
         }
         tmp = handler.get_connect_status();
         if (tmp[0] != connect_status) {

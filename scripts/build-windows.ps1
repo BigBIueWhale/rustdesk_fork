@@ -136,6 +136,19 @@ if /I "%~1"=="build" (
     New-Item -ItemType Directory -Force -Path $wixPkgs | Out-Null
     Copy-Item -Recurse -Force (Join-Path $wixSrc '*') $wixPkgs
     $env:NUGET_PACKAGES = $wixPkgs                       # the MSBuild-SDK resolver reads this to find WixToolset.Sdk
+    # The CustomActions.vcxproj (C++) uses the OLD packages.config NuGet format for WixToolset.DUtil +
+    # WcaUtil (native), which `msbuild -t:restore` (PackageReference-only) does NOT restore -> the build
+    # dies "references NuGet package(s) that are missing ... WixToolset.DUtil.4.0.5\build\...props". Populate
+    # res/msi/packages/ DIRECTLY from the staged global-packages cache: the package contents are identical,
+    # only the top-level folder name differs (wixtoolset.dutil/4.0.5 -> WixToolset.DUtil.4.0.5), which
+    # satisfies the vcxproj's <Import ...> + <Error Condition="!Exists(...)"> packages.config checks.
+    foreach ($p in @('WixToolset.DUtil','WixToolset.WcaUtil')) {
+        $pSrc = Join-Path $wixPkgs ("{0}\4.0.5" -f $p.ToLower())
+        if (-not (Test-Path $pSrc)) { Die ".msi: staged cache lacks $pSrc (the vcxproj packages.config dep)" }
+        $pDst = Join-Path $SRC ("res\msi\packages\{0}.4.0.5" -f $p)
+        New-Item -ItemType Directory -Force $pDst | Out-Null
+        Copy-Item -Recurse -Force (Join-Path $pSrc '*') $pDst
+    }
     $nugetCfg = Join-Path $env:TEMP 'offline-nuget.config'
     @"
 <?xml version="1.0" encoding="utf-8"?>

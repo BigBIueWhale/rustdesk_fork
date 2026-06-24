@@ -2432,52 +2432,6 @@ pub fn send_url_scheme(_url: String) {
     std::thread::spawn(move || crate::handle_url_scheme(_url));
 }
 
-// Plugin framework excised (R-X2); these FFI exports are retained as no-op stubs
-// so the generated Dart bridge contract is unchanged. The Dart-side plugin UI and
-// these stubs are removed (with a bridge regen) by the §19 conformance sweep.
-#[inline]
-pub fn plugin_event(_id: String, _peer: String, _event: Vec<u8>) {}
-
-pub fn plugin_register_event_stream(_id: String, _event2ui: StreamSink<EventToUI>) {}
-
-#[inline]
-pub fn plugin_get_session_option(
-    _id: String,
-    _peer: String,
-    _key: String,
-) -> SyncReturn<Option<String>> {
-    SyncReturn(None)
-}
-
-#[inline]
-pub fn plugin_set_session_option(_id: String, _peer: String, _key: String, _value: String) {}
-
-#[inline]
-pub fn plugin_get_shared_option(_id: String, _key: String) -> SyncReturn<Option<String>> {
-    SyncReturn(None)
-}
-
-#[inline]
-pub fn plugin_set_shared_option(_id: String, _key: String, _value: String) {}
-
-#[inline]
-pub fn plugin_reload(_id: String) {}
-
-#[inline]
-pub fn plugin_enable(_id: String, _v: bool) -> SyncReturn<()> {
-    SyncReturn(())
-}
-
-pub fn plugin_is_enabled(_id: String) -> SyncReturn<bool> {
-    SyncReturn(false)
-}
-
-pub fn plugin_sync_ui(_sync_to: String) {}
-
-pub fn plugin_list_reload() {}
-
-pub fn plugin_install(_id: String, _b: bool) {}
-
 pub fn is_support_multi_ui_session(version: String) -> SyncReturn<bool> {
     SyncReturn(crate::common::is_support_multi_ui_session(&version))
 }

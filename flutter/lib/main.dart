@@ -29,9 +29,6 @@ import 'mobile/pages/home_page.dart';
 import 'mobile/pages/server_page.dart';
 import 'models/platform_model.dart';
 
-import 'package:flutter_hbb/plugin/handlers.dart'
-    if (dart.library.html) 'package:flutter_hbb/web/plugin/handlers.dart';
-
 /// Basic window and launch properties.
 int? kWindowId;
 WindowType? kWindowType;
@@ -141,8 +138,6 @@ void runMainApp(bool startService) async {
   await bind.mainCheckConnectStatus();
   if (startService) {
     gFFI.serverModel.startService();
-    bind.pluginSyncUi(syncTo: kAppTypeMain);
-    bind.pluginListReload();
   }
   gFFI.userModel.refreshCurrentUser();
   runApp(App());
@@ -568,12 +563,10 @@ _registerEventHandler() {
       reloadAllWindows();
     });
   }
-  // Register native handlers.
-  if (isDesktop) {
-    platformFFI.registerEventHandler('native_ui', 'native_ui', (evt) async {
-      NativeUiHandler.instance.onEvent(evt);
-    });
-  }
+  // R-X2 / §19: the 'native_ui' handler is removed — its sole dispatcher (NativeUiHandler in
+  // plugin/handlers.dart) drove the excised plugin framework (register_ui_entry →
+  // PluginUiManager, plugin-callback peer selection). The Rust plugin framework that fired this
+  // event is gone, so it never arrives. The handler + its Dart UI are deleted with the framework.
   // R-G4 / R-SV6(c) / §18: the 'android_needs_deploy' handler is removed — device deployment
   // (the /api/devices/deploy account-registration egress) is excised (deploy_device is a refuse-
   // stub), and the Android mediator that fired NEEDS_DEPLOY is gone (R-D4), so this event never

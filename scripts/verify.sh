@@ -160,6 +160,19 @@ ra6_clean 'crate::updater|mod updater|"download-new-version"|"update-me"' 'R-X1 
 # source (these clusters are cfg(macos)/cfg(windows), invisible to the Linux cargo check below).
 ra6_clean 'fn update_me\b|main_update_me|update_from_dmg|extract_update_dmg|update_me_msi|fn update_to\b' 'R-X1 self-updater fns (macOS DMG / Windows MSI / FFI)' || rc=1
 ra6_clean 'plugin_framework|install_plugin_with_url|"--plugin-install"'    'R-X2 native-plugin loader' || rc=1
+# R-X2 (extended, post-excision lock-in): the plugin framework is fully REMOVED, not merely the
+# loader token above. The proto wire messages (2f201b6), the 13 flutter_ffi no-op stubs, and the
+# 9-file flutter/lib/plugin/ Dart tree are all gone. Assert they stay absent. (PrvOnFailedPlugin is
+# a LIVE back_notification::PrivacyModeState, NOT the framework — deliberately not matched here.)
+rx2_bad=
+[ -n "$(find flutter/lib/plugin flutter/lib/web/plugin -name '*.dart' 2>/dev/null)" ] && rx2_bad="$rx2_bad dart-plugin-tree"
+grep -rqE 'pub fn plugin_' src/flutter_ffi.rs && rx2_bad="$rx2_bad flutter_ffi-stubs"
+grep -qE 'message PluginRequest|message PluginFailure' libs/hbb_common/protos/message.proto && rx2_bad="$rx2_bad proto-plugin-messages"
+if [ -n "$rx2_bad" ]; then
+  echo "  FAIL R-X2: plugin framework residue (MUST be fully excised):$rx2_bad"; rc=1
+else
+  echo "  ok  R-X2 plugin framework fully excised (no Dart tree, no flutter_ffi plugin_* stubs, no proto Plugin messages)"
+fi
 ra6_clean '"--import-config"|"--remove"|fn import_config'                  'R-X4 trust-anchor CLI gadgets' || rc=1
 # R-X5: the LAN-discovery UDP listener/querier (the 0.0.0.0:RENDEZVOUS_PORT+3=21119 responder that
 # disclosed MAC/ID/hostname/active-username/platform, removed in 322aebb) MUST stay absent — §8's

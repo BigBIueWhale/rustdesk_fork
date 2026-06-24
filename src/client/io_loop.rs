@@ -72,7 +72,6 @@ pub struct Remote<T: InvokeUiSession> {
     client_conn_id: i32, // used for file clipboard
     data_count: Arc<AtomicUsize>,
     video_format: CodecFormat,
-    elevation_requested: bool,
     peer_info: ParsedPeerInfo,
     video_threads: HashMap<usize, VideoThread>,
     chroma: Arc<RwLock<Option<Chroma>>>,
@@ -121,7 +120,6 @@ impl<T: InvokeUiSession> Remote<T> {
             video_format: CodecFormat::Unknown,
             stop_voice_call_sender: None,
             voice_call_request_timestamp: None,
-            elevation_requested: false,
             peer_info: Default::default(),
             video_threads: Default::default(),
             chroma: Default::default(),
@@ -916,19 +914,6 @@ impl<T: InvokeUiSession> Remote<T> {
                 self.handler.lc.write().unwrap().record_state = start;
                 self.update_record_state();
             }
-            Data::ElevateDirect => {
-                let mut request = ElevationRequest::new();
-                request.set_direct(true);
-                let mut misc = Misc::new();
-                misc.set_elevation_request(request);
-                let mut msg = Message::new();
-                msg.set_misc(misc);
-                allow_err!(peer.send(&msg).await);
-                self.elevation_requested = true;
-            }
-            // R-S18 / R-X9: the Data::ElevateWithLogon arm is removed with the variant — the viewer
-            // never sends ElevationRequestWithLogon (peer OS creds -> CreateProcessWithLogonW). The
-            // non-credential Data::ElevateDirect (UAC) above stays pending the R-X9 server cut.
             Data::NewVoiceCall => {
                 let msg = new_voice_call_request(true);
                 // Save the voice call request timestamp for the further validation.
@@ -1873,25 +1858,8 @@ impl<T: InvokeUiSession> Remote<T> {
                             }
                         }
                     }
-                    Some(misc::Union::ElevationResponse(err)) => {
-                        if err.is_empty() {
-                            self.handler.msgbox("wait-uac", "", "", "");
-                        } else {
-                            self.handler.cancel_msgbox("wait-uac");
-                            self.handler
-                                .msgbox("elevation-error", "Elevation Error", &err, "");
-                        }
-                    }
                     Some(misc::Union::PortableServiceRunning(b)) => {
                         self.handler.portable_service_running(b);
-                        if self.elevation_requested && b {
-                            self.handler.msgbox(
-                                "custom-nocancel-success",
-                                "Successful",
-                                "Elevate successfully",
-                                "",
-                            );
-                        }
                     }
                     Some(misc::Union::SupportedEncoding(e)) => {
                         log::info!("update supported encoding:{:?}", e);

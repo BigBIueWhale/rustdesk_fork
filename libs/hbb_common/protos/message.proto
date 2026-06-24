@@ -818,14 +818,6 @@ message BackNotification {
   string impl_key = 4;
 }
 
-// R-X9: ElevationRequestWithLogon (peer OS creds for CreateProcessWithLogonW elevation on
-// the controlled side) removed — only Direct UAC elevation remains.
-message ElevationRequest {
-  oneof union {
-    bool direct = 1;
-  }
-}
-
 message WindowsSessions {
   repeated WindowsSession sessions = 1;
   uint32 current_sid = 2;
@@ -853,8 +845,7 @@ message Misc {
     bool uac = 15;
     bool foreground_window_elevated = 16;
     bool stop_service = 17;
-    ElevationRequest elevation_request = 18;
-    string elevation_response = 19;
+    // R-X9: peer-triggered elevation (elevation_request 18 / elevation_response 19) excised.
     bool portable_service_running = 20;
     // Deprecated since 1.2.4, use `change_display_resolution` (36) instead.
     // But we must keep it for compatibility when peer version < 1.2.4.

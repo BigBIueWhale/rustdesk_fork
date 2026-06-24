@@ -661,11 +661,6 @@ class RustdeskImpl {
     throw UnimplementedError("sessionResumeJob");
   }
 
-  Future<void> sessionElevateDirect(
-      {required UuidValue sessionId, dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', ['elevate_direct']));
-  }
-
   Future<void> sessionElevateWithLogon(
       {required UuidValue sessionId,
       required String username,

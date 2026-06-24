@@ -394,17 +394,27 @@ ra6_clean 'pam::Client|try_start_x_session|start_x_session|start_x11|add_xauth_c
 # check_failure / update_failure_with_scope shims — R-T15b had already excised LOGIN_FAILURES, so
 # CPace GUESS_FAILURES (R-P14c) is the sole online-guess limiter). CreateProcessWithLogonW is R-X9.
 ra6_clean 'should_use_terminal_os_login_scope|prepare_terminal_login_for_authorization|handle_administrator_check|get_logon_user_token|is_user_token_admin|LogonUserW|FailureScope|TerminalOsLogin|TERMINAL_OS_LOGIN_FAILED_MSG|try_acquire_os_credential_login_gate|evaluate_os_credential_policy|record_os_credential_failure|update_failure_with_scope|check_failure_with_scope' 'R-X8 terminal OS-login second-credential + its FailureScope/login_failure_check limiter subsystem' || rc=1
-# R-X9: the CONTROLLED-side os-credential ELEVATION (peer OS username+password -> Windows
-# CreateProcessWithLogonW) is excised; only Direct UAC elevation (handle_elevation_request(
-# StartPara::Direct) / platform::elevate) remains. The viewer already stopped SENDING it (R-S18).
-# Removed: the connection.rs ElevationRequest Logon arm, portable_service.rs StartPara::Logon + its
-# match arm, platform/windows.rs create_process_with_logon, and the message.proto
-# ElevationRequestWithLogon message + its `logon` oneof field.
-ra6_clean 'create_process_with_logon|CreateProcessWithLogonW|StartPara::Logon|elevation_request::Union::Logon' 'R-X9 os-credential elevation (CreateProcessWithLogonW)' || rc=1
-if grep -qE 'message +ElevationRequestWithLogon' libs/hbb_common/protos/message.proto; then
-  echo "  FAIL R-X9: message ElevationRequestWithLogon still present in message.proto"; rc=1
+# R-X9: the peer-triggered elevation feature is FULLY excised — a connected peer can no longer ask
+# the controlled box to spawn a SYSTEM service. BOTH routes are gone: the OS-credential path (peer
+# username+password -> Windows CreateProcessWithLogonW, ElevationRequestWithLogon) AND — newly — the
+# Direct UAC path (Misc::ElevationRequest -> handle_elevation_request -> start_portable_service).
+# Removed across the wire (message.proto ElevationRequest msg + elevation_request 18 /
+# elevation_response 19 Misc fields), the cfg(windows) server (connection.rs dispatch arm +
+# handle_elevation_request), and the viewer sender (io_loop Data::ElevateDirect arm + ElevationResponse
+# reader, ui_session_interface elevate_direct, flutter_ffi session_elevate_direct, client.rs
+# Data::ElevateDirect). The sole sanctioned privilege transition is the installed-service
+# winlogon-token launch (kept). uac(15)/foreground_window_elevated(16)/portable_service_running(20)
+# are a separate status feature, kept. (Patterns are code-specific so the "...excised" comments the
+# removal left behind do not self-trip the grep.)
+ra6_clean 'create_process_with_logon|CreateProcessWithLogonW|StartPara::Logon|elevation_request::Union' 'R-X9 os-credential elevation (CreateProcessWithLogonW / Logon arm)' || rc=1
+ra6_clean 'fn handle_elevation_request|Data::ElevateDirect|fn elevate_direct|fn session_elevate_direct|set_elevation_request|set_elevation_response|misc::Union::ElevationRequest|misc::Union::ElevationResponse' 'R-X9 Direct peer-triggered elevation (handle_elevation_request / ElevateDirect / ElevationRequest|Response)' || rc=1
+r_x9_proto=
+grep -qE 'message +ElevationRequest(WithLogon)?\b' libs/hbb_common/protos/message.proto && r_x9_proto="$r_x9_proto ElevationRequest-msg"
+grep -qE 'elevation_request *= *18|elevation_response *= *19' libs/hbb_common/protos/message.proto && r_x9_proto="$r_x9_proto elevation-field"
+if [ -n "$r_x9_proto" ]; then
+  echo "  FAIL R-X9: peer-elevation proto surface still present:$r_x9_proto"; rc=1
 else
-  echo "  ok  R-X9 ElevationRequestWithLogon absent from message.proto"
+  echo "  ok  R-X9 ElevationRequest message + elevation_request/response Misc fields absent from message.proto"
 fi
 # R-X4 (custom_server): the custom-rendezvous-server-from-exe-name feature is excised. The installer
 # could embed a rendezvous/api server in the exe NAME (rustdesk-host=... ; rustdesk-licensed-<b64>.exe),

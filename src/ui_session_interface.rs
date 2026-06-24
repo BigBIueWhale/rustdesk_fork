@@ -1460,10 +1460,7 @@ impl<T: InvokeUiSession> Session<T> {
         self.update_transfer_list();
     }
 
-    pub fn elevate_direct(&self) {
-        self.send(Data::ElevateDirect);
-    }
-    // R-S18 / R-X9: elevate_with_logon (sent peer OS creds for CreateProcessWithLogonW) is excised.
+    // R-S18 / R-X9: elevate_direct (peer-triggered UAC elevation) + elevate_with_logon (peer OS creds) are both excised.
 
     #[cfg(any(target_os = "android", target_os = "ios", not(feature = "flutter")))]
     pub fn switch_sides(&self) {}

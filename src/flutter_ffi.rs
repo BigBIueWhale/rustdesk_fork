@@ -898,16 +898,9 @@ pub fn session_rename_file(
     }
 }
 
-pub fn session_elevate_direct(session_id: SessionID) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.elevate_direct();
-    }
-}
-
-// R-S18 / R-X9 (R-A6 §18): session_elevate_with_logon — the FFI that sent peer-supplied OS
-// credentials to drive a Windows CreateProcessWithLogonW elevation on the controlled side — is
-// excised (a second OS credential the PAKE does not subsume). The non-credential UAC path
-// (session_elevate_direct) stays pending the R-X9 server-side handle_elevation_request removal.
+// R-S18 / R-X9 (R-A6 §18): session_elevate_with_logon (peer OS creds -> CreateProcessWithLogonW)
+// and session_elevate_direct (peer-triggered UAC elevation) are both excised — a peer must not be
+// able to drive a SYSTEM-service elevation on the controlled side post-PAKE.
 
 pub fn session_change_resolution(session_id: SessionID, display: i32, width: i32, height: i32) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {

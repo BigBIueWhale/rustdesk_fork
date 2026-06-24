@@ -3043,8 +3043,7 @@ pub enum Data {
     AddJob((i32, JobType, String, String, i32, bool, bool)),
     ResumeJob((i32, bool)),
     RecordScreen(bool),
-    ElevateDirect,
-    // R-S18 / R-X9: ElevateWithLogon (peer-supplied OS creds -> CreateProcessWithLogonW) excised.
+    // R-S18 / R-X9: ElevateDirect (peer-triggered UAC) + ElevateWithLogon (peer OS creds -> CreateProcessWithLogonW) excised.
     NewVoiceCall,
     CloseVoiceCall,
     ResetDecoder(Option<usize>),

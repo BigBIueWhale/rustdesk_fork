@@ -2629,16 +2629,6 @@ impl Connection {
                             }
                         }
                     }
-                    #[cfg(windows)]
-                    Some(misc::Union::ElevationRequest(r)) => match r.union {
-                        Some(elevation_request::Union::Direct(_)) => {
-                            self.handle_elevation_request(portable_client::StartPara::Direct)
-                                .await;
-                        }
-                        // R-X9: the Logon arm (peer OS creds -> CreateProcessWithLogonW
-                        // elevation) is excised; only Direct UAC elevation remains.
-                        _ => {}
-                    },
                     Some(misc::Union::AudioFormat(format)) => {
                         if !self.disable_audio {
                             // Drop the audio sender previously.
@@ -2948,28 +2938,6 @@ impl Connection {
         }
         lock.subscribe(&new_service_name, self.inner.clone(), true);
         self.display_idx = display_idx;
-    }
-
-    #[cfg(windows)]
-    async fn handle_elevation_request(&mut self, para: portable_client::StartPara) {
-        let mut err;
-        if !self.keyboard {
-            err = "No permission".to_string();
-        } else {
-            err = "No need to elevate".to_string();
-            if !crate::platform::is_installed() && !portable_client::running() {
-                err = portable_client::start_portable_service(para)
-                    .err()
-                    .map_or("".to_string(), |e| e.to_string());
-            }
-        }
-
-        let mut misc = Misc::new();
-        misc.set_elevation_response(err);
-        let mut msg = Message::new();
-        msg.set_misc(misc);
-        self.send(msg).await;
-        self.update_auto_disconnect_timer();
     }
 
     async fn capture_displays(&mut self, add: &[usize], sub: &[usize], set: &[usize]) {

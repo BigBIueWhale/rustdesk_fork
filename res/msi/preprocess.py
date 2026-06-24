@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import json
+import os
 import sys
 import uuid
 import argparse
@@ -40,7 +41,11 @@ g_arpsystemcomponent = {
 }
 
 def default_revision_version():
-    return int(datetime.datetime.now().timestamp() / 60)
+    # R-B2 reproducibility: honor SOURCE_DATE_EPOCH (epoch seconds) instead of the wall-clock now(), so the .msi's
+    # revision version (and thus its bytes) is deterministic across builds. build-windows.ps1 sets SOURCE_DATE_EPOCH.
+    sde = os.environ.get("SOURCE_DATE_EPOCH")
+    ts = int(sde) if sde else datetime.datetime.now().timestamp()
+    return int(ts / 60)
 
 def make_parser():
     parser = argparse.ArgumentParser(description="Msi preprocess script.")

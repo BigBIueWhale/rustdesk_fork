@@ -275,6 +275,19 @@ impl Client {
                 if !x.0 .0.is_secured() {
                     bail!("R-A1: refusing to proceed on an unkeyed stream (initiator, fail-closed)");
                 }
+                // R-T15c: CPace has authenticated the password (the keying choke-point above), so the
+                // legacy server `Hash` challenge that used to REACTIVELY trigger the viewer's login
+                // (handle_hash) is gone. Send the login PROACTIVELY now that the stream is keyed +
+                // host-proof-verified, with an EMPTY password (no salted-hash second credential). The
+                // `probe_client login` smoke mode proves the server authorizes this keyed empty-pw login.
+                send_login(
+                    interface.get_lch(),
+                    String::new(),
+                    String::new(),
+                    Vec::new(),
+                    &mut x.0 .0,
+                )
+                .await;
                 Ok((x.0, x.1))
             }
         }

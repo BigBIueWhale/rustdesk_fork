@@ -183,7 +183,6 @@ pub struct Connection {
     // frame/seal order equals wire order. See `FramedStream`'s contract doc in hbb_common.
     stream: super::Stream,
     server: super::ServerPtrWeak,
-    hash: Hash,
     read_jobs: Vec<fs::TransferJob>,
     timer: crate::RustDeskInterval,
     file_timer: crate::RustDeskInterval,
@@ -327,12 +326,7 @@ impl Connection {
         let _raii_id = raii::ConnectionID::new(id);
         let _raii_control_permissions_id =
             raii::ControlPermissionsID::new(id, &control_permissions);
-        let salt = Config::get_effective_permanent_password_salt();
-        let hash = Hash {
-            salt,
-            challenge: Config::get_auto_password(6),
-            ..Default::default()
-        };
+        // R-T15c: no legacy `Hash` challenge is constructed/sent -- CPace is the sole authenticator.
         let (tx_from_cm_holder, mut rx_from_cm) = mpsc::unbounded_channel::<ipc::Data>();
         // holding tx_from_cm_holder to avoid cpu burning of rx_from_cm.recv when all sender closed
         let tx_from_cm = tx_from_cm_holder.clone();
@@ -361,7 +355,6 @@ impl Connection {
             display_idx: *display_service::PRIMARY_DISPLAY_IDX,
             stream,
             server,
-            hash,
             read_jobs: Vec::new(),
             timer: crate::rustdesk_interval(time::interval(SEC30)),
             file_timer: crate::rustdesk_interval(time::interval(SEC30)),
@@ -1086,9 +1079,8 @@ impl Connection {
             }
         }
         self.ip = addr.ip().to_string();
-        let mut msg_out = Message::new();
-        msg_out.set_hash(self.hash.clone());
-        self.send(msg_out).await;
+        // R-T15c: the server no longer sends a `Hash` challenge here -- under CPace the viewer sends its
+        // login proactively (Client::start) the moment the keyed stream + host-proof are verified.
         true
     }
 

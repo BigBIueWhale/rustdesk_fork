@@ -87,7 +87,6 @@ pub mod input {
 }
 
 lazy_static::lazy_static! {
-    pub static ref SOFTWARE_UPDATE_URL: Arc<Mutex<String>> = Default::default();
     pub static ref DEVICE_ID: Arc<Mutex<String>> = Default::default();
     pub static ref DEVICE_NAME: Arc<Mutex<String>> = Default::default();
 }
@@ -803,15 +802,6 @@ pub fn is_modifier(evt: &KeyEvent) -> bool {
     } else {
         false
     }
-}
-
-pub fn check_software_update() {
-    // R-SV3 / §18 (sovereignty — universal: every artifact, every platform, every
-    // code path): NO version-check phone-home. The fork never queries an external
-    // version endpoint; the egress worker that POSTed to the upstream version API
-    // is removed, not merely policy-gated. (The fetch-and-run auto-updater is
-    // excised separately, R-X1.) The update URL therefore stays empty.
-    *SOFTWARE_UPDATE_URL.lock().unwrap() = String::new();
 }
 
 #[inline]

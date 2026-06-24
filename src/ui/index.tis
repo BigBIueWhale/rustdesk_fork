@@ -29,7 +29,6 @@ var app;
 var tmp = handler.get_connect_status();
 var connect_status = tmp[0];
 var service_stopped = handler.get_option("stop-service") == "Y";
-var software_update_url = "";
 var key_confirmed = tmp[1];
 var system_error = "";
 
@@ -1270,11 +1269,6 @@ function checkConnectStatus() {
         tmp = handler.get_error();
         if (system_error != tmp) {
             system_error = tmp;
-            app.update();
-        }
-        tmp = handler.get_software_update_url();
-        if (tmp != software_update_url) {
-            software_update_url = tmp;
             app.update();
         }
         if (handler.recent_sessions_updated()) {

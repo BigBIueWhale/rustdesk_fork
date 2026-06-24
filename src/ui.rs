@@ -102,7 +102,6 @@ pub fn start(args: &mut [String]) {
     }
     if args.is_empty() {
         std::thread::spawn(move || check_zombie());
-        crate::common::check_software_update();
         frame.event_handler(UI {});
         frame.sciter_handler(UIHostHandler {});
         page = "index.html";
@@ -495,14 +494,6 @@ impl UI {
         current_is_wayland()
     }
 
-    fn get_software_update_url(&self) -> String {
-        crate::SOFTWARE_UPDATE_URL.lock().unwrap().clone()
-    }
-
-    fn get_new_version(&self) -> String {
-        get_new_version()
-    }
-
     fn get_version(&self) -> String {
         get_version()
     }
@@ -513,29 +504,6 @@ impl UI {
 
     fn get_app_name(&self) -> String {
         get_app_name()
-    }
-
-    fn get_software_ext(&self) -> String {
-        #[cfg(windows)]
-        let p = "exe";
-        #[cfg(target_os = "macos")]
-        let p = "dmg";
-        #[cfg(target_os = "linux")]
-        let p = "deb";
-        p.to_owned()
-    }
-
-    fn get_software_store_path(&self) -> String {
-        let mut p = std::env::temp_dir();
-        let name = crate::SOFTWARE_UPDATE_URL
-            .lock()
-            .unwrap()
-            .split("/")
-            .last()
-            .map(|x| x.to_owned())
-            .unwrap_or(crate::get_app_name());
-        p.push(name);
-        format!("{}.{}", p.to_string_lossy(), self.get_software_ext())
     }
 
     fn create_shortcut(&self, _id: String) {
@@ -716,15 +684,11 @@ impl sciter::EventHandler for UI {
         fn get_sound_inputs();
         fn set_options(Value);
         fn set_option(String, String);
-        fn get_software_update_url();
-        fn get_new_version();
         fn get_version();
         fn get_fingerprint();
         fn show_run_without_install();
         fn run_without_install();
         fn get_app_name();
-        fn get_software_store_path();
-        fn get_software_ext();
         fn open_url(String);
         fn change_id(String);
         fn get_async_job_status();

@@ -184,6 +184,20 @@ if grep -qE 'class UpdateMe|class UpgradeMe|handler\.update_me' src/ui/index.tis
 else
   echo "  ok  R-X1/R-SV3 sciter self-update widgets (UpdateMe/UpgradeMe + handler.update_me) excised"
 fi
+# R-X1/R-SV3/§8: the self-update-CHECK backend is now EXCISED (previously only NEUTERED). With the
+# UpdateMe/UpgradeMe widgets gone (their sole consumers), the whole chain is dead and removed "not
+# disabled": the SOFTWARE_UPDATE_URL static + check_software_update() (which only set it empty) + the
+# version/store-path helpers (get_new_version / get_software_store_path / get_software_ext /
+# get_software_update_url) + the flutter FFIs (main_get_software_update_url / main_get_new_version) +
+# the index.tis software_update_url var+poll. (The fork ships SHA-pinned releases, R-B2; never checks.)
+r_sv3_upd=
+{ grep -rE 'SOFTWARE_UPDATE_URL|fn check_software_update|fn main_get_software_update_url|fn main_get_new_version|fn get_software_store_path' --include='*.rs' src libs 2>/dev/null | grep -v '//' | grep -q . ; } && r_sv3_upd="$r_sv3_upd rs-chain"
+grep -qE 'software_update_url' src/ui/index.tis && r_sv3_upd="$r_sv3_upd sciter-var"
+if [ -n "$r_sv3_upd" ]; then
+  echo "  FAIL R-X1/R-SV3: self-update-check chain still present:$r_sv3_upd"; rc=1
+else
+  echo "  ok  R-X1/R-SV3 self-update-check chain excised (SOFTWARE_UPDATE_URL + check_software_update + version/store-path helpers + flutter FFIs + sciter var)"
+fi
 ra6_clean 'plugin_framework|install_plugin_with_url|"--plugin-install"'    'R-X2 native-plugin loader' || rc=1
 # R-X2 (extended, post-excision lock-in): the plugin framework is fully REMOVED, not merely the
 # loader token above. The proto wire messages (2f201b6), the 13 flutter_ffi no-op stubs, and the

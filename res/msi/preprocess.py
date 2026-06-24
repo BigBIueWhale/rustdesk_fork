@@ -120,7 +120,9 @@ def insert_components_between_tags(lines, index_start, app_name, dist_dir):
     indent = g_indent_unit * 3
     path = Path(dist_dir)
     idx = 1
-    for file_path in path.glob("**/*"):
+    # sorted(): glob's filesystem order is not stable, so without it the component rows land in a
+    # different order each build -> different .msi bytes (breaks the recorded-SHA bar, R-B2).
+    for file_path in sorted(path.glob("**/*")):
         if file_path.is_file():
             if file_path.name.lower() == f"{app_name}.exe".lower():
                 continue
@@ -133,8 +135,14 @@ def insert_components_between_tags(lines, index_start, app_name, dist_dir):
             # Don't generate Component Id and File Id like 'Component_{idx}' and 'File_{idx}'
             # because it will cause error
             # "Error WIX0130	The primary key 'xxxx' is duplicated in table 'Directory'"
+            # Deterministic per-file component GUID = uuid5 of the file's stable relative path:
+            # a same-version rebuild stays byte-identical (R-B2) where uuid4() randomized every
+            # build, and a stable per-component GUID is also the WiX-correct rule (a component
+            # keeps its GUID across builds, so component-rules/patching stay sound).
+            rel = file_path.relative_to(path).as_posix()
+            comp_guid = uuid.uuid5(uuid.NAMESPACE_OID, app_name + "/" + rel)
             to_insert_lines = f"""
-{indent}<Component Guid="{uuid.uuid4()}" {dir_attr}>
+{indent}<Component Guid="{comp_guid}" {dir_attr}>
 {indent}{g_indent_unit}<File Source="{file_path.as_posix()}" KeyPath="yes" Checksum="yes" />
 {indent}</Component>
 """
@@ -158,6 +166,12 @@ def gen_auto_component(app_name, dist_dir):
 def gen_pre_vars(args, dist_dir):
     def func(lines, index_start):
         upgrade_code = uuid.uuid5(uuid.NAMESPACE_OID, app_name + ".exe")
+        # ProductCode: WiX 4 auto-generates a *new random* ProductCode on every build when the
+        # <Package> element omits it -> a same-version rebuild yields different .msi bytes and the
+        # recorded-SHA bar (R-B2) cannot be met. Pin it to a deterministic uuid5 of name+version:
+        # stable for a given version (byte-reproducible), yet still distinct per version so the
+        # major-upgrade path (Fragments/Upgrades.wxs) still detects + replaces the older install.
+        product_code = uuid.uuid5(uuid.NAMESPACE_OID, app_name + "-" + g_version + ".msi")
 
         indent = g_indent_unit * 1
         to_insert_lines = [
@@ -173,6 +187,7 @@ def gen_pre_vars(args, dist_dir):
             "\n",
             f"{indent}<!-- The UpgradeCode must be consistent for each product. ! -->\n"
             f'{indent}<?define UpgradeCode = "{upgrade_code}" ?>\n',
+            f'{indent}<?define ProductCode = "{product_code}" ?>\n',
         ]
 
         for i, line in enumerate(to_insert_lines):
@@ -212,7 +227,11 @@ def gen_upgrade_info():
 
         vs = g_version.split(".")
         major = vs[0]
-        upgrade_id = uuid.uuid4()
+        # <Upgrade Id> must be THIS product's UpgradeCode for the major-upgrade search to detect
+        # older installs (and so RemoveExistingProducts can replace them). Upstream's uuid4()
+        # searched a *random* code -> it matched nothing (silently broken upgrades) AND randomized
+        # the .msi every build. Reuse the deterministic UpgradeCode (== gen_pre_vars): correct + R-B2.
+        upgrade_id = uuid.uuid5(uuid.NAMESPACE_OID, app_name + ".exe")
         to_insert_lines = [
             f'{indent}<Upgrade Id="{upgrade_id}">\n',
             f'{indent}{g_indent_unit}<UpgradeVersion Property="OLD_VERSION_FOUND" Minimum="{major}.0.0" Maximum="{major}.99.99" IncludeMinimum="yes" IncludeMaximum="yes" OnlyDetect="no" IgnoreRemoveFailure="yes" MigrateFeatures="yes" />\n',

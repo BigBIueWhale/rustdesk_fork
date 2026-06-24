@@ -152,6 +152,12 @@ extract() {
     rm -rf "$OUT_DIR/System Volume Information" "$OUT_DIR/"'$RECYCLE.BIN' 2>/dev/null || true
     rm -f "$OVERLAY" "$BUILD_ISO" "$OFFLINE_ISO" "$OUTPUT_IMG"
     [ -f "$OUT_DIR/rustdesk-setup.exe" ] || die "no rustdesk-setup.exe produced — see $OUT_DIR/build-log.txt"
+    # R-B2: canonicalize the portable packer's own PE so the .exe is BYTE-reproducible. Every CONTENT source is
+    # already pinned (/Brepro PE timestamps for flutter+cargo, SOURCE_DATE_EPOCH for app_metadata/gen_version ->
+    # the 78 embedded files are byte-identical). The lone residuals are the packer's COFF TimeDateStamp + the
+    # MSVC /Brepro debug-repro hash + winres's HashMap-ordered VS_VERSION_INFO strings; canonicalize-pe.py zeros
+    # the first two and sorts the version strings. PROVEN: two pre-canonical builds -> identical SHA after this.
+    python3 "$SCRIPT_DIR/canonicalize-pe.py" "$OUT_DIR/rustdesk-setup.exe"
     sha256sum "$OUT_DIR/rustdesk-setup.exe" | tee "$OUT_DIR/rustdesk-setup.exe.sha256"
     [ -f "$OUT_DIR/rustdesk.msi" ] && sha256sum "$OUT_DIR/rustdesk.msi" | tee "$OUT_DIR/rustdesk.msi.sha256" || log "NOTE: no .msi (WiX is milestone 2)"
 }

@@ -1458,6 +1458,23 @@ grep -qF '_zero_cab_filetimes' scripts/canonicalize-msi.py || r_b2post="$r_b2pos
 grep -qF '_zero_root_filetime' scripts/canonicalize-msi.py || r_b2post="$r_b2post msi-no-root-zero"
 if [ -n "$r_b2post" ]; then echo "  FAIL R-B2 post-process canonicalizers:$r_b2post"; rc=1; else
   echo "  ok  R-B2 post-process -> canonicalize-pe recomputes VS_VERSION_INFO wLengths; canonicalize-msi zeroes CAB+OLE2-root timestamps"; fi
+# (6c) R-B5b/B8/B9/B10 build-reproducibility STRUCTURE (MUST): each automated build splits a network-on
+# fetch from a `--network=none` COMPILE (so "no fetch at compile time", R-B5b, is structural not
+# trusted), off a DIGEST-pinned base image (R-B8), resolves cargo from the vendored lockfile set
+# (R-B10), and self-verifies the artifact SHA-256 (R-B2). And NO build stage binds 0.0.0.0 (R-D3
+# loopback-only). The R-B2 gates above cover .exe/.msi byte-determinism; this covers the SCRIPT shape.
+echo "== (6c) build-reproducibility structure (R-B5b/B8/B9/B10 two-stage, digest-pinned, offline compile) =="
+rb_struct=
+for f in scripts/build-debian.sh scripts/build-android.sh; do
+  grep -q -- '--network=none' "$f" || rb_struct="$rb_struct ${f##*/}:no-offline-compile"
+done
+grep -qE 'FROM ubuntu:[0-9.]+@' scripts/Dockerfile.deb-builder     || rb_struct="$rb_struct deb-base-not-digest-pinned"
+grep -qE 'FROM ubuntu:[0-9.]+@' scripts/Dockerfile.android-builder || rb_struct="$rb_struct android-base-not-digest-pinned"
+grep -q 'cargo-vendor' scripts/build-debian.sh                     || rb_struct="$rb_struct debian:no-vendored-cargo"
+grep -qE 'sha256sum|\.sha256' scripts/build-android.sh             || rb_struct="$rb_struct android:no-self-verify"
+grep -rq '0\.0\.0\.0' scripts/build-debian.sh scripts/build-android.sh scripts/build-windows.ps1 scripts/run-build.ps1 2>/dev/null && rb_struct="$rb_struct external-listener-in-build"
+if [ -n "$rb_struct" ]; then echo "  FAIL R-B5b/B8/B9/B10 build-reproducibility structure regressed:$rb_struct"; rc=1; else
+  echo "  ok  R-B5b/B8/B9/B10 builds: digest-pinned base + --network=none offline compile (vendored cargo) + SHA self-verify (debian+android); no 0.0.0.0 (R-D3)"; fi
 
 echo "== (7) capability-key pin completeness (R-S16(d)/R-G1/R-D2) =="
 # Every controlled-side capability key is a compile-time PINNED_SETTINGS entry; none is left

@@ -1005,25 +1005,11 @@ pub fn main_set_option(key: String, value: String) {
         );
     }
 
-    // If `is_allow_tls_fallback` and https proxy is used, we need to restart rendezvous mediator.
-    // No need to check if https proxy is used, because this option does not change frequently
-    // and restarting mediator is safe even https proxy is not used.
-    let is_allow_tls_fallback = key.eq(config::keys::OPTION_ALLOW_INSECURE_TLS_FALLBACK);
-    if is_allow_tls_fallback
-        || key.eq("custom-rendezvous-server")
-        || key.eq(config::keys::OPTION_ALLOW_WEBSOCKET)
-        || key.eq(config::keys::OPTION_DISABLE_UDP)
-        || key.eq("api-server")
-    {
-        if is_allow_tls_fallback {
-            hbb_common::tls::reset_tls_cache();
-        }
-        set_option(key, value.clone());
-        #[cfg(any(target_os = "android", target_os = "ios", feature = "cli"))]
-        crate::common::test_rendezvous_server();
-    } else {
-        set_option(key, value.clone());
-    }
+    // R-D4/R-G1/R-D5/R-SV6: the mediator-restart-on-network-option-change is REMOVED. Every option it
+    // watched is excised or inert — custom-rendezvous-server/api-server are lockdown-pinned, the
+    // rendezvous mediator is gone (test_rendezvous_server dials nobody, R-D6), and allow-websocket/
+    // disable-udp/allow-insecure-tls-fallback are dead. Just persist the option.
+    set_option(key, value.clone());
 }
 
 pub fn main_get_options() -> String {

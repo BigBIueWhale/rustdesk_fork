@@ -1740,11 +1740,6 @@ pub fn verify_login(_raw: &str, _id: &str) -> bool {
     */
 }
 
-#[inline]
-pub fn is_udp_disabled() -> bool {
-    Config::get_option(keys::OPTION_DISABLE_UDP) == "Y"
-}
-
 // R-SV4 / R-D6: test_ipv6_sync (the synchronous wrapper that spawned test_ipv6 at
 // process startup) is REMOVED — it was the only reach to the STUN-resolving
 // test_bind_ipv6 from the startup path (test_nat_type), and that DNS resolution +

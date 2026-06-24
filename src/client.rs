@@ -47,7 +47,7 @@ use hbb_common::{
     bail,
     config::{
         self, keys, Config, LocalConfig, PeerConfig, PeerInfoSerde, Resolution,
-        CONNECT_TIMEOUT, READ_TIMEOUT, RELAY_PORT,
+        CONNECT_TIMEOUT, DIRECT_PORT, READ_TIMEOUT,
     },
     fs::JobType,
     get_version_number, log,
@@ -317,7 +317,7 @@ impl Client {
         if hbb_common::is_ip_str(peer) {
             return Ok((
                 (
-                    connect_tcp_local(check_port(peer, RELAY_PORT + 1), None, CONNECT_TIMEOUT)
+                    connect_tcp_local(check_port(peer, DIRECT_PORT), None, CONNECT_TIMEOUT)
                         .await?,
                     true,
                     None,

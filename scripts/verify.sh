@@ -1386,10 +1386,16 @@ grep -qF 'config::DIRECT_PORT' src/direct_service.rs                     || r_f4
 if grep -rInE 'get_option\([^)]*direct-access-port|OPTION_DIRECT_ACCESS_PORT' src libs --include='*.rs' 2>/dev/null | grep -vE ':[0-9]+:[[:space:]]*//' | grep -q .; then
   r_f4_missing="$r_f4_missing direct-access-port-read-present"
 fi
+# (fork-specific) the CLIENT connect-default port is the pinned DIRECT_PORT literal too — client.rs
+# once derived it as `RELAY_PORT + 1` (the same forbidden derivation the listener avoids); and the
+# excised relay/WebSocket transports leave NO port const (RELAY_PORT/WS_RENDEZVOUS_PORT/WS_RELAY_PORT).
+grep -q 'check_port(peer, DIRECT_PORT)' src/client.rs || r_f4_missing="$r_f4_missing client-connect-default-not-DIRECT_PORT"
+grep -qE 'check_port\([^,]+,[[:space:]]*[A-Z_]+_PORT[[:space:]]*\+' src/client.rs && r_f4_missing="$r_f4_missing client-derived-connect-port"
+grep -qE 'pub const (RELAY_PORT|WS_RENDEZVOUS_PORT|WS_RELAY_PORT)\b' libs/hbb_common/src/config.rs && r_f4_missing="$r_f4_missing relay/ws-port-vestige"
 if [ -n "$r_f4_missing" ]; then
   echo "  FAIL R-F4: the direct port must be the pinned compile-time literal 21118 (config::DIRECT_PORT), never the RENDEZVOUS_PORT+2 derivation or a runtime direct-access-port option:$r_f4_missing"; rc=1
 else
-  echo "  ok  R-F4 direct port pinned to the compile-time literal 21118 (get_direct_port returns config::DIRECT_PORT; no direct-access-port config read; CI KAT be16=527e holds)"
+  echo "  ok  R-F4 direct port pinned to the literal 21118 (listener get_direct_port + client connect-default both = config::DIRECT_PORT, no derivation; no direct-access-port config read; no relay/ws port vestige; CI KAT be16=527e holds)"
 fi
 
 echo "== (6) .msi generator determinism (R-B2) =="

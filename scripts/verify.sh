@@ -174,6 +174,16 @@ ra6_clean 'crate::updater|mod updater|"download-new-version"|"update-me"' 'R-X1 
 # update_me/update_from_dmg/extract_update_dmg in its Apple-cfg pass; all must be absent on EVERY
 # source (these clusters are cfg(macos)/cfg(windows), invisible to the Linux cargo check below).
 ra6_clean 'fn update_me\b|main_update_me|update_from_dmg|extract_update_dmg|update_me_msi|fn update_to\b' 'R-X1 self-updater fns (macOS DMG / Windows MSI / FFI)' || rc=1
+# R-X1/R-SV3 (§19): the legacy SCITER self-update DISPLAY widgets are excised (ra6_clean is *.rs-only, so
+# this .tis gate is separate). UpgradeMe was REACHABLE (windows, lower-version installed) and its "Click to
+# upgrade" called the excised `handler.update_me` FFI -> a runtime error; UpdateMe (gated on the never-set
+# software_update_url) opened rustdesk.com/download. The fork ships its own releases (R-X1) + never
+# phones home (R-SV3); the sciter front-end now matches the hardened core + the flutter side.
+if grep -qE 'class UpdateMe|class UpgradeMe|handler\.update_me' src/ui/index.tis; then
+  echo "  FAIL R-X1/§19: sciter self-update widget(s) (UpdateMe/UpgradeMe/handler.update_me) still present in index.tis"; rc=1
+else
+  echo "  ok  R-X1/R-SV3 sciter self-update widgets (UpdateMe/UpgradeMe + handler.update_me) excised"
+fi
 ra6_clean 'plugin_framework|install_plugin_with_url|"--plugin-install"'    'R-X2 native-plugin loader' || rc=1
 # R-X2 (extended, post-excision lock-in): the plugin framework is fully REMOVED, not merely the
 # loader token above. The proto wire messages (2f201b6), the 13 flutter_ffi no-op stubs, and the

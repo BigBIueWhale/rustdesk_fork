@@ -1371,6 +1371,22 @@ grep -qF 'ProductCode="$(var.ProductCode)"' res/msi/Package/Package.wxs || r_b2m
 if [ -n "$r_b2msi" ]; then echo "  FAIL R-B2 .msi-generator determinism:$r_b2msi"; rc=1; else
   echo "  ok  R-B2 .msi generator -> deterministic GUIDs+order (ProductCode/component/upgrade uuid5, sorted glob, no uuid4 calls, Package.wxs pins ProductCode)"; fi
 
+echo "== (6b) R-B2 post-process canonicalizers (.exe + .msi) =="
+# The host-side canonicalizers (run in build-windows-vm.sh extract()) MUST normalize the residual
+# build-non-determinism a same-commit double-build exposed AFTER the vendor-path fix: (1) canonicalize-pe.py
+# recomputes the VS_VERSION_INFO StringFileInfo/StringTable parent wLengths AFTER sorting the String
+# children -- winres 0.1.12 HashMap-orders them AND computes those wLengths excluding the last child's
+# trailing pad, so the order shifts them +/-2 (commit b7feea2); (2) canonicalize-msi.py zeroes every CAB
+# CFFILE DOS date/time + the OLE2 Root Entry modify FILETIME, both WiX build wall-clock (commit aa8e65a).
+# Proven: with these the real double-build .exe AND .msi converge byte-identically.
+r_b2post=
+grep -qF 'new_st_len' scripts/canonicalize-pe.py          || r_b2post="$r_b2post pe-no-wLength-recompute"
+grep -qF 'sfi_start' scripts/canonicalize-pe.py           || r_b2post="$r_b2post pe-no-sfi-recompute"
+grep -qF '_zero_cab_filetimes' scripts/canonicalize-msi.py || r_b2post="$r_b2post msi-no-cab-zero"
+grep -qF '_zero_root_filetime' scripts/canonicalize-msi.py || r_b2post="$r_b2post msi-no-root-zero"
+if [ -n "$r_b2post" ]; then echo "  FAIL R-B2 post-process canonicalizers:$r_b2post"; rc=1; else
+  echo "  ok  R-B2 post-process -> canonicalize-pe recomputes VS_VERSION_INFO wLengths; canonicalize-msi zeroes CAB+OLE2-root timestamps"; fi
+
 echo "== (7) capability-key pin completeness (R-S16(d)/R-G1/R-D2) =="
 # Every controlled-side capability key is a compile-time PINNED_SETTINGS entry; none is left
 # operator-settable. allow-remote-config-modification was the one omission (config_it covers the funnel

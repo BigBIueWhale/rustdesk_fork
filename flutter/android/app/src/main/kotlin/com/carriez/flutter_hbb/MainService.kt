@@ -30,7 +30,6 @@ import android.os.*
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Surface
-import android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT
 import android.view.WindowManager
 import androidx.annotation.Keep
 import androidx.annotation.RequiresApi
@@ -38,7 +37,6 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
-import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 import org.json.JSONException
 import org.json.JSONObject
@@ -51,14 +49,9 @@ const val DEFAULT_NOTIFY_TEXT = "Service is running"
 const val DEFAULT_NOTIFY_ID = 1
 const val NOTIFY_ID_OFFSET = 100
 
-const val MIME_TYPE = MediaFormat.MIMETYPE_VIDEO_VP9
-
 // video const
 
 const val MAX_SCREEN_SIZE = 1200
-
-const val VIDEO_KEY_BIT_RATE = 1024_000
-const val VIDEO_KEY_FRAME_RATE = 30
 
 class MainService : Service() {
 
@@ -207,7 +200,6 @@ class MainService : Service() {
     }
 
     private val logTag = "LOG_SERVICE"
-    private val useVP9 = false
     private val binder = LocalBinder()
 
     private var reuseVirtualDisplay = Build.VERSION.SDK_INT > 33
@@ -215,8 +207,6 @@ class MainService : Service() {
     // video
     private var mediaProjection: MediaProjection? = null
     private var surface: Surface? = null
-    private val sendVP9Thread = Executors.newSingleThreadExecutor()
-    private var videoEncoder: MediaCodec? = null
     private var imageReader: ImageReader? = null
     private var virtualDisplay: VirtualDisplay? = null
 
@@ -363,35 +353,31 @@ class MainService : Service() {
 
     @SuppressLint("WrongConstant")
     private fun createSurface(): Surface? {
-        return if (useVP9) {
-            // TODO
-            null
-        } else {
-            Log.d(logTag, "ImageReader.newInstance:INFO:$SCREEN_INFO")
-            imageReader =
-                ImageReader.newInstance(
-                    SCREEN_INFO.width,
-                    SCREEN_INFO.height,
-                    PixelFormat.RGBA_8888,
-                    4
-                ).apply {
-                    setOnImageAvailableListener({ imageReader: ImageReader ->
-                        try {
-                            // If not call acquireLatestImage, listener will not be called again
-                            imageReader.acquireLatestImage().use { image ->
-                                if (image == null || !isStart) return@setOnImageAvailableListener
-                                val planes = image.planes
-                                val buffer = planes[0].buffer
-                                buffer.rewind()
-                                FFI.onVideoFrameUpdate(buffer)
-                            }
-                        } catch (ignored: java.lang.Exception) {
+        // R-D7a: useVP9 excised — the raw ImageReader is the single capture encoder.
+        Log.d(logTag, "ImageReader.newInstance:INFO:$SCREEN_INFO")
+        imageReader =
+            ImageReader.newInstance(
+                SCREEN_INFO.width,
+                SCREEN_INFO.height,
+                PixelFormat.RGBA_8888,
+                4
+            ).apply {
+                setOnImageAvailableListener({ imageReader: ImageReader ->
+                    try {
+                        // If not call acquireLatestImage, listener will not be called again
+                        imageReader.acquireLatestImage().use { image ->
+                            if (image == null || !isStart) return@setOnImageAvailableListener
+                            val planes = image.planes
+                            val buffer = planes[0].buffer
+                            buffer.rewind()
+                            FFI.onVideoFrameUpdate(buffer)
                         }
-                    }, serviceHandler)
-                }
-            Log.d(logTag, "ImageReader.setOnImageAvailableListener done")
-            imageReader?.surface
-        }
+                    } catch (ignored: java.lang.Exception) {
+                    }
+                }, serviceHandler)
+            }
+        Log.d(logTag, "ImageReader.setOnImageAvailableListener done")
+        return imageReader?.surface
     }
 
     fun onVoiceCallStarted(): Boolean {
@@ -415,11 +401,7 @@ class MainService : Service() {
         Log.d(logTag, "Start Capture")
         surface = createSurface()
 
-        if (useVP9) {
-            startVP9VideoRecorder(mediaProjection!!)
-        } else {
-            startRawVideoRecorder(mediaProjection!!)
-        }
+        startRawVideoRecorder(mediaProjection!!)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!audioRecordHandle.createAudioRecorder(false, mediaProjection)) {
@@ -455,15 +437,9 @@ class MainService : Service() {
         // https://github.com/rustdesk/rustdesk/issues/4118#issuecomment-1515666629
         imageReader?.close()
         imageReader = null
-        videoEncoder?.let {
-            it.signalEndOfInputStream()
-            it.stop()
-            it.release()
-        }
         if (!reuseVirtualDisplay) {
             virtualDisplay = null
         }
-        videoEncoder = null
         // suface needs to be release after `imageReader.close()` to imageReader access released surface
         // https://github.com/rustdesk/rustdesk/issues/4118#issuecomment-1515666629
         surface?.release()
@@ -516,19 +492,6 @@ class MainService : Service() {
         createOrSetVirtualDisplay(mp, surface!!)
     }
 
-    private fun startVP9VideoRecorder(mp: MediaProjection) {
-        createMediaCodec()
-        videoEncoder?.let {
-            surface = it.createInputSurface()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                surface!!.setFrameRate(1F, FRAME_RATE_COMPATIBILITY_DEFAULT)
-            }
-            it.setCallback(cb)
-            it.start()
-            createOrSetVirtualDisplay(mp, surface!!)
-        }
-    }
-
     // https://github.com/bk138/droidVNC-NG/blob/b79af62db5a1c08ed94e6a91464859ffed6f4e97/app/src/main/java/net/christianbeier/droidvnc_ng/MediaProjectionService.java#L250
     // Reuse virtualDisplay if it exists, to avoid media projection confirmation dialog every connection.
     private fun createOrSetVirtualDisplay(mp: MediaProjection, s: Surface) {
@@ -547,49 +510,6 @@ class MainService : Service() {
             Log.w(logTag, "createOrSetVirtualDisplay: got SecurityException, re-requesting confirmation");
             // This initiates a prompt dialog for the user to confirm screen projection.
             requestMediaProjection()
-        }
-    }
-
-    private val cb: MediaCodec.Callback = object : MediaCodec.Callback() {
-        override fun onInputBufferAvailable(codec: MediaCodec, index: Int) {}
-        override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {}
-
-        override fun onOutputBufferAvailable(
-            codec: MediaCodec,
-            index: Int,
-            info: MediaCodec.BufferInfo
-        ) {
-            codec.getOutputBuffer(index)?.let { buf ->
-                sendVP9Thread.execute {
-                    val byteArray = ByteArray(buf.limit())
-                    buf.get(byteArray)
-                    // sendVp9(byteArray)
-                    codec.releaseOutputBuffer(index, false)
-                }
-            }
-        }
-
-        override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {
-            Log.e(logTag, "MediaCodec.Callback error:$e")
-        }
-    }
-
-    private fun createMediaCodec() {
-        Log.d(logTag, "MediaFormat.MIMETYPE_VIDEO_VP9 :$MIME_TYPE")
-        videoEncoder = MediaCodec.createEncoderByType(MIME_TYPE)
-        val mFormat =
-            MediaFormat.createVideoFormat(MIME_TYPE, SCREEN_INFO.width, SCREEN_INFO.height)
-        mFormat.setInteger(MediaFormat.KEY_BIT_RATE, VIDEO_KEY_BIT_RATE)
-        mFormat.setInteger(MediaFormat.KEY_FRAME_RATE, VIDEO_KEY_FRAME_RATE)
-        mFormat.setInteger(
-            MediaFormat.KEY_COLOR_FORMAT,
-            MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible
-        )
-        mFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 5)
-        try {
-            videoEncoder!!.configure(mFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        } catch (e: Exception) {
-            Log.e(logTag, "mEncoder.configure fail!")
         }
     }
 

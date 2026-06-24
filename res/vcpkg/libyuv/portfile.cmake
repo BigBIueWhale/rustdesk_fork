@@ -1,13 +1,34 @@
 vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
-vcpkg_from_git(
-    OUT_SOURCE_PATH SOURCE_PATH
-    URL https://chromium.googlesource.com/libyuv/libyuv
-    REF 0faf8dd0e004520a61a603a4d2996d5ecc80dc3f
-    # Check https://chromium.googlesource.com/libyuv/libyuv/+/refs/heads/main/include/libyuv/version.h for a version!
-    PATCHES
-        fix-cmakelists.patch
-)
+# R-B12(a): pin the libyuv source by SHA512 of a deterministic capture, not a bare git REF
+# (gitiles `+archive` is NON-reproducible; R-R1 forbids vendoring). online-fetch.sh's
+# stage_vcpkg_distfiles writes a reproducible `git archive | gzip -n` of the pinned commit into
+# ./online and this consumes it, SHA512-verified (scripts/pins.env: SHA512_LIBYUV); the full git
+# commit SHA-1 is the upstream content anchor. Hosts without the ./online capture (Windows golden
+# VM) fall back to the git-SHA-1 commit pin (git verifies the tree on checkout) — see aom portfile.
+set(_libyuv_archive "/online/libyuv-0faf8dd0e004520a61a603a4d2996d5ecc80dc3f.tar.gz")
+if(EXISTS "${_libyuv_archive}")
+    vcpkg_download_distfile(_libyuv_tgz
+        URLS "file://${_libyuv_archive}"
+        FILENAME "libyuv-0faf8dd0.tar.gz"
+        SHA512 be6b343ab6c62e8f2d1571fedf25f5facbf7cd7fe8e1cc4949dab7549ad15f962c91ea43bf567785e54382d7689514f6b66d61bd56b3f38ba54ef51c5fd0da9b
+    )
+    vcpkg_extract_source_archive(SOURCE_PATH
+        ARCHIVE "${_libyuv_tgz}"
+        NO_REMOVE_ONE_LEVEL
+        PATCHES
+            fix-cmakelists.patch
+    )
+else()
+    vcpkg_from_git(
+        OUT_SOURCE_PATH SOURCE_PATH
+        URL https://chromium.googlesource.com/libyuv/libyuv
+        REF 0faf8dd0e004520a61a603a4d2996d5ecc80dc3f
+        # Check https://chromium.googlesource.com/libyuv/libyuv/+/refs/heads/main/include/libyuv/version.h for a version!
+        PATCHES
+            fix-cmakelists.patch
+    )
+endif()
 
 vcpkg_cmake_get_vars(cmake_vars_file)
 include("${cmake_vars_file}")

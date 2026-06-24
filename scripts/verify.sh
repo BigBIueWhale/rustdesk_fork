@@ -1508,6 +1508,36 @@ grep -rq '0\.0\.0\.0' scripts/build-debian.sh scripts/build-android.sh scripts/b
 if [ -n "$rb_struct" ]; then echo "  FAIL R-B5b/B8/B9/B10 build-reproducibility structure regressed:$rb_struct"; rc=1; else
   echo "  ok  R-B5b/B8/B9/B10 builds: digest-pinned base + --network=none offline compile (vendored cargo) + SHA self-verify (debian+android); no 0.0.0.0 (R-D3)"; fi
 
+# (6d) R-B12(a): the aom + libyuv vcpkg overlay distfiles are SHA512-pinned, not fetched by a bare
+# git REF. gitiles `+archive` is empirically non-reproducible (so a URL SHA-pin is impossible) and
+# R-R1 forbids vendoring — so online-fetch's stage_vcpkg_distfiles captures a REPRODUCIBLE
+# `git archive | gzip -n` of the pinned commit into ./online and the portfiles consume it
+# SHA512-verified (file://), with vcpkg_from_git as the capture-less (Windows-VM) fallback. Assert
+# each portfile carries a 128-hex SHA512 (the captured pin) AND a 40-hex commit REF (the fallback
+# anchor), the SHA512 equals the non-sentinel pins.env value, and the capture stage is defined+wired.
+echo "== (6d) R-B12(a) aom/libyuv vcpkg distfile SHA512 pinning =="
+r_b12a=
+for port in aom libyuv; do
+  pf="res/vcpkg/$port/portfile.cmake"
+  grep -qE 'vcpkg_download_distfile' "$pf" || r_b12a="$r_b12a $port-no-download_distfile"
+  grep -qE 'SHA512 [0-9a-f]{128}' "$pf"    || r_b12a="$r_b12a $port-no-sha512"
+  grep -qE 'REF [0-9a-f]{40}' "$pf"         || r_b12a="$r_b12a $port-no-full-commit-fallback"
+done
+for var in SHA512_AOM_3_12_1 SHA512_LIBYUV; do
+  val=$(grep -E "^$var=" scripts/pins.env | sed -E 's/^[^"]*"([^"]*)".*/\1/')
+  case "$val" in
+    ""|*PENDING*|*__*) r_b12a="$r_b12a $var-unset-or-sentinel" ;;
+    *) grep -qE "SHA512 $val" res/vcpkg/aom/portfile.cmake res/vcpkg/libyuv/portfile.cmake || r_b12a="$r_b12a $var-not-in-portfile" ;;
+  esac
+done
+grep -qE '^stage_vcpkg_distfiles\(\)' scripts/online-fetch.sh        || r_b12a="$r_b12a capture-stage-undefined"
+grep -qE '^[[:space:]]*stage_vcpkg_distfiles$' scripts/online-fetch.sh || r_b12a="$r_b12a capture-stage-not-wired"
+if [ -n "$r_b12a" ]; then
+  echo "  FAIL R-B12(a): aom/libyuv distfile pinning incomplete:$r_b12a"; rc=1
+else
+  echo "  ok  R-B12(a) aom/libyuv vcpkg distfiles SHA512-pinned via ./online capture + full-commit fallback + stage wired"
+fi
+
 echo "== (7) capability-key pin completeness (R-S16(d)/R-G1/R-D2) =="
 # Every controlled-side capability key is a compile-time PINNED_SETTINGS entry; none is left
 # operator-settable. allow-remote-config-modification was the one omission (config_it covers the funnel

@@ -202,6 +202,48 @@ stage_pub_cache() {
     '
 }
 
+# ── The aom/libyuv vcpkg distfiles (R-B12(a)): captured as a REPRODUCIBLE git archive ───
+# libvpx/opus pin SHA512 via vcpkg_from_github; aom/libyuv fetch from googlesource, whose gitiles
+# `+archive` tarballs are EMPIRICALLY non-reproducible (two fetches differ — even decompressed),
+# so the URL can't be SHA-pinned and R-R1 forbids vendoring. Capture a deterministic
+# `git archive --format=tar | gzip -n` of the pinned commit into ./online + verify its SHA512
+# against pins.env; the aom/libyuv overlay portfiles then consume /online/<port>-<commit>.tar.gz
+# (file://, SHA512-verified) on the Linux build hosts — both stage_vcpkg_natives + _arm64 mount the
+# SAME file. (The Windows golden VM has no ./online capture, so its portfile falls back to
+# vcpkg_from_git.) MUST run before stage_vcpkg_natives[_arm64]. The archive is byte-deterministic
+# given the image's git (these SHA512 were computed in this deb-builder, git 2.17.1 — re-pin if it
+# changes; same class as the SHA256_VCPKG_120DEAC3 GitHub-archive caveat in pins.env).
+stage_vcpkg_distfiles() {
+    require_cmd docker
+    local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
+    docker image inspect "$builder" >/dev/null 2>&1 || die "deb-builder image missing — build_deb_builder_image must run first"
+    local aom_tgz="$ONLINE_DIR/aom-${AOM_COMMIT}.tar.gz" yuv_tgz="$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz"
+    if [ -f "$aom_tgz" ] && [ -f "$yuv_tgz" ]; then
+        log "vcpkg distfiles (aom/libyuv) already captured, skipping"; return 0
+    fi
+    case "$SHA512_AOM_3_12_1$SHA512_LIBYUV" in
+        *"${SHA_PENDING}"*) die "aom/libyuv distfile SHA512 is the R-B12 sentinel — record it in pins.env first" ;;
+    esac
+    log "capturing the aom/libyuv vcpkg distfiles (reproducible git archive | gzip -n) -> ./online"
+    docker run --rm \
+        -v "$ONLINE_DIR:/online" \
+        -e AOM_COMMIT="$AOM_COMMIT" -e LIBYUV_COMMIT="$LIBYUV_COMMIT" \
+        -e SHA512_AOM_3_12_1="$SHA512_AOM_3_12_1" -e SHA512_LIBYUV="$SHA512_LIBYUV" \
+        "$builder" bash -euo pipefail -c '
+            gen() { # url commit out want-sha512
+                rm -rf /tmp/src; mkdir -p /tmp/src; cd /tmp/src; git init -q; git remote add origin "$1"
+                git fetch -q --depth 1 origin "$2" 2>/dev/null || { cd /tmp; rm -rf /tmp/src; git clone -q "$1" /tmp/src >/dev/null 2>&1; cd /tmp/src; }
+                git -c core.autocrlf=false archive --format=tar "$2" | gzip -n > "$3"
+                local got; got=$(sha512sum "$3" | cut -d" " -f1)
+                [ "$got" = "$4" ] || { echo "R-B12(a) SHA512 MISMATCH $3: got $got want $4" >&2; exit 1; }
+            }
+            gen https://aomedia.googlesource.com/aom            "$AOM_COMMIT"    "/online/aom-${AOM_COMMIT}.tar.gz"       "$SHA512_AOM_3_12_1"
+            gen https://chromium.googlesource.com/libyuv/libyuv "$LIBYUV_COMMIT" "/online/libyuv-${LIBYUV_COMMIT}.tar.gz" "$SHA512_LIBYUV"
+            echo "aom + libyuv distfiles captured + SHA512-verified"
+        '
+    log "vcpkg distfiles captured (aom + libyuv, SHA512-verified)"
+}
+
 # ── The vcpkg-built native codecs (R-R1 pinned overlay ports): aom/vpx/yuv/opus ──
 # scrap + magnum-opus (libs/scrap/build.rs; the magnum-opus git dep) link these STATICALLY
 # from VCPKG_ROOT/installed/x64-linux when the linux-pkg-config feature is OFF — the shipped
@@ -496,6 +538,7 @@ main() {
     build_android_builder_image
     build_frb_codegen
     stage_pub_cache
+    stage_vcpkg_distfiles
     stage_vcpkg_natives
     stage_android_ndk
     stage_vcpkg_natives_arm64

@@ -327,7 +327,6 @@ class SessionList: Reactor.Component {
                     <li #connect>{translate('Connect')}</li>
                     <li #transfer>{translate('Transfer file')}</li>
                     <li #tunnel>{translate('TCP tunneling')}</li>
-                    <li #force-always-relay><span>{svg_checkmark}</span>{translate('Always connect via relay')}</li>
                     <li #rdp>RDP<EditRdpPort /></li>
                     <div .separator />
                     <li #rename>{translate('Rename')}</li>
@@ -402,11 +401,6 @@ class SessionList: Reactor.Component {
         // https://sciter.com/forums/topic/replacecustomize-context-menu/
         var menu = this.$(menu#remote-context);
         current_menu_peer_id = id;
-        var el = this.$(li#force-always-relay);
-        if (el) {
-          var force = handler.get_peer_option(id, "force-always-relay");
-          el.attributes.toggleClass("selected", force == "Y");
-        }
         var conn = this.$(menu #connect);
         if (conn) {
           var alias = me.parent.parent.$(#alias);
@@ -495,9 +489,6 @@ class SessionList: Reactor.Component {
                     }
                     app.update();
                 });
-        } else if (action == "force-always-relay") {
-            var force = handler.get_peer_option(id, "force-always-relay");
-            handler.set_peer_option(id, "force-always-relay", force == "Y" ? "" : "Y");
         } else if (action == "edit-tag") {
             var peer;
             for (var v in ab.peers) {

@@ -78,23 +78,16 @@ class Header: Reactor.Component {
     function render() {
         var icon_conn;
         var title_conn;
-        if (this.secure_connection && this.direct_connection) {
+        // R-D4/R-SV4: the relay/rendezvous transport is excised — a connection is ALWAYS direct,
+        // so the "Relayed ..." states (and the Relay->TCP stream-type rename below) are unreachable.
+        if (this.secure_connection) {
             icon_conn = svg_secure;
             title_conn = translate("Direct and encrypted connection");
-        } else if (this.secure_connection && !this.direct_connection) {
-            icon_conn = svg_secure_relay;
-            title_conn = translate("Relayed and encrypted connection");
-        } else if (!this.secure_connection && this.direct_connection) {
+        } else {
             icon_conn = svg_insecure;
             title_conn = translate("Direct and unencrypted connection");
-        } else {
-            icon_conn = svg_insecure_relay;
-            title_conn = translate("Relayed and unencrypted connection");
         }
         var stream_type = this.stream_type;
-        if (stream_type == "Relay") {
-            stream_type = "TCP";
-        }
         if (stream_type) {
             title_conn += " (" + stream_type + ")";
         }

@@ -387,7 +387,8 @@ class _ConnectionPageState extends State<ConnectionPage>
                               contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 15, vertical: 13)),
                           controller: fieldTextEditingController,
-                          inputFormatters: [IDTextInputFormatter()],
+                          // R-G2: no numeric ID grouping — the connect box takes a direct address
+                          // (IP/host:port), validated at connect() (isDirectAddress), not formatted.
                           onChanged: (v) {
                             _idController.id = v;
                           },

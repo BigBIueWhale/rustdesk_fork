@@ -222,7 +222,8 @@ class _ConnectionPageState extends State<ConnectionPage> {
                             color: MyTheme.darkGray,
                           ),
                         ),
-                        inputFormatters: [IDTextInputFormatter()],
+                        // R-G2: no numeric ID grouping — the connect box takes a direct address
+                        // (IP/host:port), validated at connect() (isDirectAddress), not formatted.
                         onSubmitted: (_) {
                           onConnect();
                         },

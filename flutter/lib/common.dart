@@ -2498,11 +2498,11 @@ connect(BuildContext context, String id,
     try {
       if (Get.isRegistered<IDTextEditingController>()) {
         final idController = Get.find<IDTextEditingController>();
-        idController.text = formatID(id);
+        idController.text = trimID(id);
       }
       if (Get.isRegistered<TextEditingController>()) {
         final fieldTextEditingController = Get.find<TextEditingController>();
-        fieldTextEditingController.text = formatID(id);
+        fieldTextEditingController.text = trimID(id);
       }
     } catch (_) {}
   }

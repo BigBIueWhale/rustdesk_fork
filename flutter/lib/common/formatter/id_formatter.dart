@@ -6,7 +6,8 @@ class IDTextEditingController extends TextEditingController {
 
   String get id => trimID(value.text);
 
-  set id(String newID) => text = formatID(newID);
+  // R-G2: a direct-address fork does not space-group numeric IDs — just strip spaces (no formatID).
+  set id(String newID) => text = trimID(newID);
 }
 
 class IDTextInputFormatter extends TextInputFormatter {

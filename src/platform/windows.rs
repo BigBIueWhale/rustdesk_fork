@@ -2949,7 +2949,6 @@ impl Drop for WakeLock {
 pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
     log::info!("Uninstalling service...");
     let filter = format!(" /FI \"PID ne {}\"", get_current_pid());
-    Config::set_option("stop-service".into(), "Y".into());
     let cmds = format!(
         "
     chcp 65001
@@ -2963,7 +2962,6 @@ pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
         broker_exe = WIN_TOPMOST_INJECTED_PROCESS_EXE,
     );
     if let Err(err) = run_cmds(cmds, false, "uninstall") {
-        Config::set_option("stop-service".into(), "".into());
         log::debug!("{err}");
         return true;
     }
@@ -2978,7 +2976,6 @@ pub fn install_service() -> bool {
     let tmp_path = std::env::temp_dir().to_string_lossy().to_string();
     let tray_shortcut = get_tray_shortcut(&path, &exe, &exe, &tmp_path).unwrap_or_default();
     let filter = format!(" /FI \"PID ne {}\"", get_current_pid());
-    Config::set_option("stop-service".into(), "".into());
     crate::ipc::EXIT_RECV_CLOSE.store(false, Ordering::Relaxed);
     let cmds = format!(
         "
@@ -2995,7 +2992,6 @@ if exist \"{tray_shortcut}\" del /f /q \"{tray_shortcut}\"
         create_service = get_create_service(&exe),
     );
     if let Err(err) = run_cmds(cmds, false, "install") {
-        Config::set_option("stop-service".into(), "Y".into());
         crate::ipc::EXIT_RECV_CLOSE.store(true, Ordering::Relaxed);
         log::debug!("{err}");
         return true;
@@ -3096,18 +3092,14 @@ fn get_create_service(exe: &str) -> String {
     if config::is_outgoing_only() {
         return "".to_string();
     }
-    let stop = Config::get_option("stop-service") == "Y";
-    if stop {
-        format!("
-if exist \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{app_name} Tray.lnk\" del /f /q \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{app_name} Tray.lnk\"
-", app_name = crate::get_app_name())
-    } else {
-        format!("
+    // R-X9: the installed service is ALWAYS created + auto-start; the runtime-writable stop-service
+    // toggle that could suppress it (a local --option/IPC write) is excised — the key stays pinned
+    // "N" in PINNED_SETTINGS (R-S16) and is not IPC-writable (R-S11).
+    format!("
 sc create {app_name} binpath= \"\\\"{exe}\\\" --service\" start= auto DisplayName= \"{app_name} Service\"
 sc start {app_name}
 ",
     app_name = crate::get_app_name())
-    }
 }
 
 fn run_after_run_cmds(silent: bool) {
@@ -3119,9 +3111,8 @@ fn run_after_run_cmds(silent: bool) {
             .creation_flags(winapi::um::winbase::CREATE_NO_WINDOW)
             .spawn());
     }
-    if Config::get_option("stop-service") != "Y" {
-        allow_err!(std::process::Command::new(&exe).arg("--tray").spawn());
-    }
+    // R-X9: the stop-service toggle is excised — the tray (re)spawns with the always-present service.
+    allow_err!(std::process::Command::new(&exe).arg("--tray").spawn());
     std::thread::sleep(std::time::Duration::from_millis(300));
 }
 

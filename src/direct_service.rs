@@ -1,6 +1,6 @@
 use hbb_common::{
     allow_err,
-    config::{self, option2bool, Config},
+    config::{self, Config},
     log, sleep, tokio,
 };
 
@@ -251,16 +251,13 @@ async fn direct_server(server: ServerPtr) {
             log::info!("R-T9: shutdown — direct_server stops accepting");
             return;
         }
-        // R-D4 / R-F4: the direct listener is UNCONDITIONAL — it is the box's only
-        // inbound path (§17), so it has no enable-toggle at all. Upstream's
-        // `direct-server` option (which gated the listener) is now REMOVED from the
-        // tree entirely — the UI + the OPTION_DIRECT_SERVER const + its option2bool
-        // branch (R-G4 / R-SV1). R-F4 pins the port as the compile-time constant
-        // get_direct_port() → 21118, never a runtime option. Only the pinned
-        // stop-service=N (R-S16) is honored, and it is
-        // always N, so the box never self-stops listening.
-        let disabled = option2bool("stop-service", &Config::get_option("stop-service"));
-        if !disabled && listener.is_none() {
+        // R-D4 / R-F4 / R-X9: the direct listener is UNCONDITIONAL — it is the box's only
+        // inbound path (§17), so it has no enable-toggle at all. Upstream's `direct-server`
+        // option (which gated the listener) was REMOVED from the tree entirely (R-G4 / R-SV1),
+        // and the stop-service runtime toggle that could suppress it is now excised too (R-X9):
+        // the listener reads no option to decide whether to start — it always starts. R-F4 pins
+        // the port as the compile-time constant get_direct_port() → 21118, never a runtime option.
+        if listener.is_none() {
             port = get_direct_port();
             match hbb_common::tcp::listen_any_v4(port as _).await {
                 Ok(l) => {
@@ -291,7 +288,7 @@ async fn direct_server(server: ServerPtr) {
             }
         }
         if let Some(l) = listener.as_mut() {
-            if disabled || port != get_direct_port() {
+            if port != get_direct_port() {
                 log::info!("Exit direct access listen");
                 listener = None;
                 continue;

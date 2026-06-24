@@ -779,7 +779,6 @@ fn force_stop_server() {
 }
 
 pub fn start_os_service() {
-    check_if_stop_service();
     stop_rustdesk_servers();
     stop_subprocess();
     // R-X13: the dormant uinput IPC listener is NOT stood up — on the pinned-X11
@@ -2036,13 +2035,15 @@ pub fn run_me_with(secs: u32) {
         .ok();
 }
 
-fn switch_service(stop: bool) -> String {
+fn switch_service() -> String {
     // SECURITY: Use trusted home directory lookup via getpwuid instead of $HOME env var
     // to prevent confused-deputy attacks where an attacker manipulates environment variables.
     let home = get_home_dir_trusted()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
-    Config::set_option("stop-service".into(), if stop { "Y" } else { "" }.into());
+    // R-X9/R-X10: the stop-service runtime toggle is excised (pinned "N", R-S16); this now only
+    // migrates the user config to the root service account's tree (R-D2). The installed service is
+    // always present + auto-start — no local --option/IPC write can disable it.
     if !home.is_empty() && home != "/root" && !Config::get().is_empty() {
         let app_name_lower = crate::get_app_name().to_lowercase();
         let app_name0 = crate::get_app_name();
@@ -2066,13 +2067,12 @@ pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
         return false;
     }
     log::info!("Uninstalling service...");
-    let cp = switch_service(true);
+    let cp = switch_service();
     let app_name = crate::get_app_name().to_lowercase();
     // systemctl kill rustdesk --tray, execute cp first
     if !run_cmds_status(&format!(
         "{cp} systemctl disable {app_name}; systemctl stop {app_name};"
     )) {
-        Config::set_option("stop-service".into(), "".into());
         return true;
     }
     // systemctl stop will kill child processes, below may not be executed.
@@ -2088,23 +2088,14 @@ pub fn install_service() -> bool {
         return false;
     }
     log::info!("Installing service...");
-    let cp = switch_service(false);
+    let cp = switch_service();
     let app_name = crate::get_app_name().to_lowercase();
     if !run_cmds_status(&format!(
         "{cp} systemctl enable {app_name}; systemctl start {app_name};"
     )) {
-        Config::set_option("stop-service".into(), "Y".into());
+        log::error!("Failed to enable/start the {app_name} service");
     }
     true
-}
-
-fn check_if_stop_service() {
-    if Config::get_option("stop-service".into()) == "Y" {
-        let app_name = crate::get_app_name().to_lowercase();
-        allow_err!(run_cmds(&format!(
-            "systemctl disable {app_name}; systemctl stop {app_name}"
-        )));
-    }
 }
 
 pub fn check_autostart_config() -> ResultType<()> {

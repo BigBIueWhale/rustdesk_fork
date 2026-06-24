@@ -416,6 +416,23 @@ if [ -n "$r_x9_proto" ]; then
 else
   echo "  ok  R-X9 ElevationRequest message + elevation_request/response Misc fields absent from message.proto"
 fi
+# R-X9/R-X10/R-A6: the stop-service runtime toggle no longer gates the controlled-side SERVICE
+# creation (windows.rs get_create_service / linux.rs check_if_stop_service + switch_service) or the
+# direct LISTENER (direct_service.rs) — the installed service is always created + auto-start and the
+# direct listener starts UNCONDITIONALLY (reads no option, R-A4/R-D4). "removed not disabled": no
+# get/set_option("stop-service"), option2bool, or check_if_stop_service in that machinery. The key
+# stays pinned "N" in PINNED_SETTINGS (R-S16) + in the is_option_can_save reject set (R-S11) — the
+# un-writable guarantee. (The flutter/sciter "Stop service" UI button + its FFI/macOS writers are a
+# documented follow-on; all pinned-safe/dead.)
+r_x9_stopsvc=
+grep -qE 'Config::(get|set)_option\([^)]*"stop-service"|option2bool\("stop-service"|fn check_if_stop_service' src/platform/windows.rs src/platform/linux.rs src/direct_service.rs && r_x9_stopsvc="$r_x9_stopsvc service-listener-reads-toggle"
+grep -qE '\("stop-service", *"N"\)' libs/hbb_common/src/config.rs || r_x9_stopsvc="$r_x9_stopsvc pin-removed"
+grep -qE 'option == "stop-service"' libs/hbb_common/src/config.rs || r_x9_stopsvc="$r_x9_stopsvc not-in-reject-set"
+if [ -n "$r_x9_stopsvc" ]; then
+  echo "  FAIL R-X9: stop-service service/listener machinery not clean or pin/guard removed:$r_x9_stopsvc"; rc=1
+else
+  echo "  ok  R-X9/R-X10 stop-service excised from service-creation + direct-listener (always-on/unconditional); key pinned N + un-writable (R-S16/R-S11)"
+fi
 # R-X4 (custom_server): the custom-rendezvous-server-from-exe-name feature is excised. The installer
 # could embed a rendezvous/api server in the exe NAME (rustdesk-host=... ; rustdesk-licensed-<b64>.exe),
 # parsed by custom_server.rs and injected as custom-rendezvous-server / api-server at 4 sites

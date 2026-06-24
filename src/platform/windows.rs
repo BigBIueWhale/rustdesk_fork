@@ -1212,22 +1212,6 @@ pub fn get_active_user_home() -> Option<PathBuf> {
     None
 }
 
-#[cfg(not(feature = "flutter"))]
-#[inline]
-pub fn portable_service_logon_helper_paths() -> Option<(PathBuf, PathBuf)> {
-    // Keep parity with history for now: derive LocalAppData from user profile path.
-    // If users report redirected/non-standard LocalAppData issues, switch to:
-    // `BaseDirs::new()?.data_local_dir()` for Known Folder-based resolution.
-    let user_dir = hbb_common::directories_next::UserDirs::new()?;
-    let dir = user_dir
-        .home_dir()
-        .join("AppData")
-        .join("Local")
-        .join("rustdesk-sciter");
-    let dst = dir.join("rustdesk.exe");
-    Some((dir, dst))
-}
-
 pub fn is_prelogin() -> bool {
     let Some(username) = get_current_session_username() else {
         return false;

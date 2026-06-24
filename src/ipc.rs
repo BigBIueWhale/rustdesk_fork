@@ -30,18 +30,13 @@ use hbb_common::{
     ResultType,
 };
 #[cfg(windows)]
-pub(crate) use ipc_auth::authorize_windows_portable_service_ipc_connection;
-#[cfg(windows)]
 pub(crate) use ipc_auth::ensure_peer_executable_matches_current_by_pid_opt;
 #[cfg(windows)]
 pub(crate) use ipc_auth::log_rejected_windows_ipc_connection;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use ipc_auth::{active_uid, authorize_service_scoped_ipc_connection};
 #[cfg(windows)]
-use ipc_auth::{
-    authorize_windows_main_ipc_connection, portable_service_listener_security_attributes,
-    should_allow_everyone_create_on_windows,
-};
+use ipc_auth::{authorize_windows_main_ipc_connection, should_allow_everyone_create_on_windows};
 // R-X13 (§8): the ipc_auth re-exports (ensure_peer_executable_matches_current_by_fd /
 // is_allowed_service_peer_uid / log_rejected_uinput_connection / peer_uid_from_fd) were the uinput
 // peer-authorization accessors, removed with the uinput module. The _service-channel authorization
@@ -486,7 +481,6 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                     if postfix.is_empty() {
                         // Windows main IPC (`postfix == ""`) is authorized here.
                         // Other security-sensitive channels use dedicated authorization paths:
-                        // - `_portable_service`: portable-service listener + handshake policy
                         // - service-scoped postfixes: service-specific listener/authorization
                         if !authorize_windows_main_ipc_connection(&stream, &postfix) {
                             continue;
@@ -576,9 +570,7 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
     let security_attrs = {
         #[cfg(windows)]
         {
-            if postfix == "_portable_service" {
-                portable_service_listener_security_attributes()
-            } else if should_allow_everyone_create_on_windows(postfix) {
+            if should_allow_everyone_create_on_windows(postfix) {
                 SecurityAttributes::allow_everyone_create()
             } else {
                 Ok(SecurityAttributes::empty())
@@ -593,12 +585,6 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
         Ok(attr) => endpoint.set_security_attributes(attr),
         Err(err) => {
             log::error!("Failed to set ipc{} security: {}", postfix, err);
-            #[cfg(windows)]
-            if postfix == "_portable_service" {
-                // Fail closed for `_portable_service` when SDDL construction fails.
-                // This endpoint is security-critical and must not start with default ACLs.
-                return Err(err.into());
-            }
         }
     };
     match endpoint.incoming() {

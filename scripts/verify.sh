@@ -431,8 +431,10 @@ fi
 # process / CreateProcessAsUserW, KEPT) is the SOLE controlled entry. check_super_user_permission is
 # KEPT (R-X11 UI) but converted to a passive is_elevated() check — no UAC self-relaunch. (Patterns are
 # code-specific; the "...excised" // comments the removal left are stripped by ra6_clean's `grep -v //`.
-# NOTE: the now-orphaned portable-service IPC subsystem [ipc.rs handshake/DataPortableService + ipc/auth.rs
-# peer-auth + acl.rs shmem-ACL] and the dead libs/portable packer crate are removed in follow-on commits.)
+# NOTE: the orphaned portable-service IPC PEER-AUTH + LISTENER [ipc/auth.rs + ipc.rs `_portable_service`
+# branch + windows.rs portable_service_logon_helper_paths] is now removed + gated just below. Still
+# follow-on: the Layer-2 token handshake + DataPortableService data-enum [ipc.rs, needs ui_cm_interface] +
+# acl.rs shmem-ACL. (libs/portable is NOT dead — it is the live rustdesk-portable-packer installer.))
 ra6_clean 'pub mod portable_service|crate::portable_service::|portable_service::client|portable_service::server|fn run_uac|fn run_as_system|fn elevate_or_run_as_system|pub fn elevate\(arg: &str|impersonate_system::|set_quick_support|start_portable_service|set_portable_service_running|misc::Union::PortableServiceRunning|drop_portable_service_shared_memory' 'R-X9 portable run-mode + quick-support + interactive elevation (slices 2-4)' || rc=1
 # R-X9 slices 2-4: the impersonate_system (SYSTEM token-theft, drove run_as_system) + shared_memory
 # (portable capture shmem) Cargo deps are removed — both were used only by the excised portable_service.
@@ -443,6 +445,19 @@ if [ -n "$r_x9_deps" ]; then
 else
   echo "  ok  R-X9 impersonate_system + shared_memory Cargo deps removed (slices 2-4)"
 fi
+# R-X9 (slices 2-4 follow-on): the orphaned portable-service IPC PEER-AUTH + LISTENER subsystem is excised
+# (ipc/auth.rs + ipc.rs + windows.rs). The deleted portable SYSTEM helper connected over the
+# `_portable_service` named pipe, so its peer-authenticator (authorize_windows_portable_service_ipc_connection
+# + is_allowed_windows_portable_service_peer + the logon-helper exe-trust exception
+# windows_portable_service_ipc_allows_logon_helper_executable / portable_service_helper_is_trusted /
+# windows.rs portable_service_logon_helper_paths), the listener SDDL builder
+# (portable_service_listener_security_attributes) + the new_listener `_portable_service` branch, and the
+# trait method portable_service_authorization_status_for_session are all removed. KEPT: the LIVE main-IPC
+# auth (authorize_windows_main_ipc_connection) + the `_service`-channel auth + ensure_peer_executable_
+# matches_current_by_pid (now WITHOUT the dead portable exception — behaviorally identical, no live caller
+# ever passed `_portable_service`). (Still follow-on: Layer-2 token handshake + DataPortableService
+# data-enum [needs ui_cm_interface CmShowElevation/RequestStart] + acl.rs shmem-ACL.)
+ra6_clean 'fn portable_service_listener_security_attributes|fn authorize_windows_portable_service_ipc_connection|fn is_allowed_windows_portable_service_peer|fn portable_service_helper_is_trusted|fn windows_portable_service_ipc_allows_logon_helper_executable|fn portable_service_authorization_status_for_session|fn portable_service_logon_helper_paths|postfix == "_portable_service"' 'R-X9 orphaned portable-service IPC peer-auth + listener (slices 2-4 follow-on)' || rc=1
 # R-X9/R-X10/R-A6: the stop-service runtime toggle no longer gates the controlled-side SERVICE
 # creation (windows.rs get_create_service / linux.rs check_if_stop_service + switch_service) or the
 # direct LISTENER (direct_service.rs) — the installed service is always created + auto-start and the

@@ -1168,6 +1168,19 @@ if [ -n "$r_sv4_webrtc" ]; then
 else
   echo "  ok  R-SV4 webrtc transport fully excised (no module, no dep/feature, no ICE/STUN/TURN crates in Cargo.lock)"
 fi
+# R-D5 / R-SV4 / R-G1: config-option keys + an IPC vestige orphaned by the UDP / webrtc / WebSocket
+# excisions are REMOVED, not just left unread — OPTION_DISABLE_UDP (the UDP transport is gone) +
+# OPTION_ICE_SERVERS (its only reader was the now-deleted webrtc.rs get_ice_servers) const keys and
+# their KEYS_SETTINGS entries, plus the dead Data::SocksWs proxy-IPC path (get_socks_ws had zero
+# callers; the live proxy getter is Data::Socks). "removed not disabled" (§8/R-G4).
+r_deadopt=
+grep -qE 'OPTION_DISABLE_UDP|OPTION_ICE_SERVERS' libs/hbb_common/src/config.rs && r_deadopt="$r_deadopt config-dead-option-key"
+grep -qE 'SocksWs|get_socks_ws' src/ipc.rs && r_deadopt="$r_deadopt socksws-ipc-vestige"
+if [ -n "$r_deadopt" ]; then
+  echo "  FAIL R-D5/R-SV4/R-G1: dead option-key / IPC vestige still present:$r_deadopt"; rc=1
+else
+  echo "  ok  R-D5/R-SV4/R-G1 dead UDP/ICE option keys + SocksWs proxy-IPC vestige absent"
+fi
 # R-G6 / R-SV4: the direct-only fork has no relay to fall back to, so the inherited
 # connection-failure "relay-hint" advice (try a relay / add the "/r" suffix) is dead and
 # misdirecting. on_establish_connection_error now always surfaces the plain error msgbox;

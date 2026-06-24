@@ -18,7 +18,7 @@ use hbb_common::anyhow;
 use hbb_common::{
     allow_err, bail, bytes,
     bytes_codec::BytesCodec,
-    config::{self, keys::OPTION_ALLOW_WEBSOCKET, Config, Config2},
+    config::{self, Config, Config2},
     futures::StreamExt as _,
     futures_util::sink::SinkExt,
     log, timeout,
@@ -460,7 +460,6 @@ pub enum Data {
     TerminalSessionCount(usize),
     #[cfg(target_os = "windows")]
     PortForwardSessionCount(Option<usize>),
-    SocksWs(Option<Box<(Option<config::Socks5Server>, String)>>),
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Whiteboard((String, crate::whiteboard::CustomEvent)),
     ControlPermissionsRemoteModify(Option<bool>),
@@ -812,19 +811,6 @@ async fn handle(data: Data, stream: &mut Connection) {
                 }
                 log::info!("socks updated");
             }
-        },
-        Data::SocksWs(s) => match s {
-            None => {
-                allow_err!(
-                    stream
-                        .send(&Data::SocksWs(Some(Box::new((
-                            Config::get_socks(),
-                            Config::get_option(OPTION_ALLOW_WEBSOCKET)
-                        )))))
-                        .await
-                );
-            }
-            _ => {}
         },
         #[cfg(feature = "flutter")]
         Data::VideoConnCount(None) => {
@@ -1760,29 +1746,6 @@ pub async fn set_socks(value: config::Socks5Server) -> ResultType<()> {
         .send(&Data::Socks(Some(value)))
         .await?;
     Ok(())
-}
-
-async fn get_socks_ws_(ms_timeout: u64) -> ResultType<(Option<config::Socks5Server>, String)> {
-    let mut c = connect(ms_timeout, "").await?;
-    c.send(&Data::SocksWs(None)).await?;
-    if let Some(Data::SocksWs(Some(value))) = c.next_timeout(ms_timeout).await? {
-        Config::set_socks(value.0.clone());
-        Config::set_option(OPTION_ALLOW_WEBSOCKET.to_string(), value.1.clone());
-        Ok(*value)
-    } else {
-        Ok((
-            Config::get_socks(),
-            Config::get_option(OPTION_ALLOW_WEBSOCKET),
-        ))
-    }
-}
-
-#[tokio::main(flavor = "current_thread")]
-pub async fn get_socks_ws() -> (Option<config::Socks5Server>, String) {
-    get_socks_ws_(1_000).await.unwrap_or((
-        Config::get_socks(),
-        Config::get_option(OPTION_ALLOW_WEBSOCKET),
-    ))
 }
 
 pub fn get_proxy_status() -> bool {

@@ -2925,7 +2925,6 @@ pub mod keys {
     pub const OPTION_TRACKPAD_SPEED: &str = "trackpad-speed";
     pub const OPTION_REGISTER_DEVICE: &str = "register-device";
     pub const OPTION_RELAY_SERVER: &str = "relay-server";
-    pub const OPTION_ICE_SERVERS: &str = "ice-servers";
     /// Maximum number of files allowed during a single file transfer request.
     ///
     /// Key: `file-transfer-max-files`.
@@ -2936,7 +2935,6 @@ pub mod keys {
     /// - If set to 0, a safe built-in default is used (see DEFAULT_MAX_VALIDATED_FILES).
     /// - If unset, negative, or non-integer, no explicit limit is enforced for backward compatibility.
     pub const OPTION_FILE_TRANSFER_MAX_FILES: &str = "file-transfer-max-files";
-    pub const OPTION_DISABLE_UDP: &str = "disable-udp";
     pub const OPTION_ALLOW_INSECURE_TLS_FALLBACK: &str = "allow-insecure-tls-fallback";
     pub const OPTION_SHOW_VIRTUAL_MOUSE: &str = "show-virtual-mouse";
     // joystick is the virtual mouse.
@@ -3142,8 +3140,6 @@ pub mod keys {
         OPTION_ENABLE_DIRECTX_CAPTURE,
         OPTION_ENABLE_ANDROID_SOFTWARE_ENCODING_HALF_SCALE,
         OPTION_RELAY_SERVER,
-        OPTION_ICE_SERVERS,
-        OPTION_DISABLE_UDP,
         OPTION_ALLOW_INSECURE_TLS_FALLBACK,
         OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS,
         // R-G4/R-X1: OPTION_ALLOW_AUTO_UPDATE removed (the updater is excised — nothing to set).

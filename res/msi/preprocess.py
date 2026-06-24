@@ -538,7 +538,13 @@ def replace_component_guids_in_wxs():
         for i, line in enumerate(lines):
             match = re.search(r'Component.+Guid="([^"]+)"', line)
             if match:
-                lines[i] = re.sub(r'Guid="[^"]+"', f'Guid="{uuid.uuid4()}"', line)
+                # Deterministic re-stamp = uuid5 of (app_name + the template's original GUID): re-brands
+                # each hardcoded component uniquely for a RENAMED fork (this runs only when app_name !=
+                # "RustDesk"), but a same-version rebuild stays byte-identical (R-B2) -- uuid4() randomized
+                # it every build. (Dead for the default app_name="RustDesk" build, but fixed so a rebrand
+                # stays reproducible and no uuid4 lingers in the .msi generator.)
+                new_guid = uuid.uuid5(uuid.NAMESPACE_OID, app_name + ":" + match.group(1))
+                lines[i] = re.sub(r'Guid="[^"]+"', lambda m: f'Guid="{new_guid}"', line)
 
         with open(file_path, "w", encoding="utf-8") as f:
             f.writelines(lines)

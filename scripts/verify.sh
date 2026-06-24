@@ -1354,6 +1354,23 @@ else
   echo "  ok  R-F4 direct port pinned to the compile-time literal 21118 (get_direct_port returns config::DIRECT_PORT; no direct-access-port config read; CI KAT be16=527e holds)"
 fi
 
+echo "== (6) .msi generator determinism (R-B2) =="
+# The WiX .msi generator (res/msi/preprocess.py) MUST emit DETERMINISTIC GUIDs + a sorted component
+# order, so a same-host same-version .msi rebuild is byte-identical (the recorded-SHA bar, R-B2). Every
+# GUID is a uuid5 of a STABLE key (ProductCode=name+version, components=relpath, UpgradeCode/upgrade-id=
+# name) and the dist glob is sorted; NO uuid.uuid4() call (random per build) survives -- incl. the
+# rename-path replace_component_guids_in_wxs. Package.wxs pins the ProductCode attr (else WiX 4
+# auto-generates a fresh ProductCode each build). Guards the f2f7eb2 + line-541 determinism fixes.
+r_b2msi=
+grep -qF 'uuid.uuid4(' res/msi/preprocess.py                            && r_b2msi="$r_b2msi uuid4-call-present"
+grep -qF 'product_code = uuid.uuid5' res/msi/preprocess.py              || r_b2msi="$r_b2msi ProductCode-not-uuid5"
+grep -qF 'comp_guid = uuid.uuid5' res/msi/preprocess.py                 || r_b2msi="$r_b2msi component-not-uuid5"
+grep -qF 'sorted(path.glob' res/msi/preprocess.py                       || r_b2msi="$r_b2msi glob-not-sorted"
+grep -qF 'upgrade_id = uuid.uuid5' res/msi/preprocess.py                || r_b2msi="$r_b2msi upgradeid-not-uuid5"
+grep -qF 'ProductCode="$(var.ProductCode)"' res/msi/Package/Package.wxs || r_b2msi="$r_b2msi wxs-ProductCode-unpinned"
+if [ -n "$r_b2msi" ]; then echo "  FAIL R-B2 .msi-generator determinism:$r_b2msi"; rc=1; else
+  echo "  ok  R-B2 .msi generator -> deterministic GUIDs+order (ProductCode/component/upgrade uuid5, sorted glob, no uuid4 calls, Package.wxs pins ProductCode)"; fi
+
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
 for t in 'mod lan:R-X5 lan.rs residual (WoL send_wol + discover no-op; the discovery LISTENER is excised + hard-gated above — full removal is the R-G2 Discovered-tab/WoL-UI follow-on)' \
          'terminal_helper:R-X8 terminal' 'mod custom_server:R-X4 custom_server module — NB ALSO used by src/platform/windows.rs (get_license/get_license_from_exe_name, the dead custom-rendezvous-server-from-exe-name feature) which this mod-decl grep does NOT count; its removal edits the cfg(windows) build (un-validatable in the Linux docker), so R-X4 is WINDOWS-BUILD-BLOCKED, not a clean Linux excision'; do

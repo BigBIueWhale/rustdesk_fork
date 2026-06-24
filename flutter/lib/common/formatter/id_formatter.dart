@@ -58,3 +58,25 @@ String formatID(String id) {
 String trimID(String id) {
   return id.replaceAll(' ', '');
 }
+
+// R-G2/R-SV10: the fork is direct-IP-only. These mirror hbb_common's accept-set VERBATIM
+// (`is_ipv4_str` / `is_ipv6_str` / `is_domain_port_str`, libs/hbb_common/src/lib.rs:403/414/430),
+// which the Rust choke point enforces (src/client.rs:315/331, bailing on anything else at :353). A
+// bare numeric RustDesk ID — the relay/rendezvous addressing the fork deleted — matches none.
+final _ipv4Re = RegExp(
+    r'^(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(:\d+)?$');
+final _ipv6Re = RegExp(
+    r'^((([a-fA-F0-9]{1,4}:{1,2})+[a-fA-F0-9]{1,4})|(\[([a-fA-F0-9]{1,4}:{1,2})+[a-fA-F0-9]{1,4}\]:\d+))$');
+final _domainPortRe = RegExp(
+    r'^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z-]{0,61}[a-z]:\d{1,5}$',
+    caseSensitive: false);
+
+/// R-G2/R-SV10: true iff [s] is a DIRECT address the fork can connect to — `<ipv4>[:port]`,
+/// `<ipv6>` / `[<ipv6>]:port`, or `<domain>:port`. A bare numeric RustDesk ID is REJECTED (returns
+/// false). Mirrors `hbb_common::is_ip_str || is_domain_port_str` so the connect UI and the
+/// `client.rs` choke point agree on exactly one accept-set.
+bool isDirectAddress(String s) {
+  final t = s.trim();
+  if (t.isEmpty) return false;
+  return _ipv4Re.hasMatch(t) || _ipv6Re.hasMatch(t) || _domainPortRe.hasMatch(t);
+}

@@ -74,6 +74,12 @@ echo "== flutter pub get + full FRB codegen + flutter analyze lib/ (zero-errors 
     echo "DART-VERIFY: FAILED — $errs error(s) in lib/"
     exit 1
   fi
+  # R-SV10 (requirements.html:693): a test MUST prove a bare-ID input is rejected. Run the
+  # isDirectAddress unit test (the connect-box validator the connect() choke uses to fail closed).
+  # Pure-dart (id_formatter + flutter SDK only, no bridge) - runs headless, binds no socket. A test
+  # failure aborts the gate under set -e, so a regression that re-admitted bare IDs turns it red.
+  echo "  == R-SV10 flutter test: address_validator (bare-ID rejection) =="
+  flutter test test/address_validator_test.dart
 '
 echo "== §19 / R-A6 Dart-layer grep (dead GUI tokens absent) =="
 # Extends the R-A6/R-SV10 grep set into the Dart + asset layers (§19's CI hook). Each

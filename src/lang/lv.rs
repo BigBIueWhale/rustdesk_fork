@@ -708,7 +708,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Allow insecure TLS fallback", "Atļaut nedrošu TLS rezerves protokolu"),
         ("allow-insecure-tls-fallback-tip", "Pēc noklusējuma RustDesk pārbauda servera sertifikātu protokoliem, izmantojot TLS.\nJa šī opcija ir iespējota, RustDesk izlaidīs verifikācijas soli un turpinās darbību verifikācijas kļūmes gadījumā."),
         ("Disable UDP", "Atspējot UDP"),
-        ("disable-udp-tip", "Nosaka, vai izmantot tikai TCP.\nKad šī opcija ir iespējota, RustDesk vairs neizmantos UDP 21116, tā vietā tiks izmantots TCP 21116."),
         ("server-oss-not-support-tip", "PIEZĪME. RustDesk servera OSS neietver šo funkciju."),
         ("input note here", "ievadiet piezīmi šeit"),
         ("note-at-conn-end-tip", "Pieprasīt piezīmi savienojuma beigās"),

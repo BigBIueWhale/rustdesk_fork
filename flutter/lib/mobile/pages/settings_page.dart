@@ -80,7 +80,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   var _fingerprint = "";
   var _buildDate = "";
   var _autoDisconnectTimeout = "";
-  var _disableUdp = false;
   var _isUsingPublicServer = false;
   var _preventSleepWhileConnected = true;
 
@@ -90,7 +89,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
     _onlyWhiteList = whitelistNotEmpty();
     _enableRecordSession = option2bool(kOptionEnableRecordSession,
         bind.mainGetOptionSync(key: kOptionEnableRecordSession));
-    _disableUdp = bind.mainGetOptionSync(key: kOptionDisableUdp) == 'Y';
     _autoRecordIncomingSession = option2bool(kOptionAllowAutoRecordIncoming,
         bind.mainGetOptionSync(key: kOptionAllowAutoRecordIncoming));
     _autoRecordOutgoingSession = option2bool(kOptionAllowAutoRecordOutgoing,
@@ -451,22 +449,8 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
           // R-G4 / R-SV6(c) / §18: the "Deploy" tile is removed — device deployment (the
           // /api/devices/deploy account-registration egress) is excised; deploy_device is a
           // refuse-stub and a sovereign, direct-IP fork has no account server to deploy to.
-          if (isAndroid && !outgoingOnly && !_isUsingPublicServer)
-            SettingsTile.switchTile(
-              title: Text(translate('Disable UDP')),
-              initialValue: _disableUdp,
-              onToggle: isOptionFixed(kOptionDisableUdp)
-                  ? null
-                  : (v) async {
-                      await bind.mainSetOption(
-                          key: kOptionDisableUdp, value: v ? 'Y' : 'N');
-                      final newValue =
-                          bind.mainGetOptionSync(key: kOptionDisableUdp) == 'Y';
-                      setState(() {
-                        _disableUdp = newValue;
-                      });
-                    },
-            ),
+          // R-D5: the "Disable UDP" toggle is removed — the KCP-UDP transport is excised, so
+          // there is no UDP to disable (this fork is direct TCP only).
           SettingsTile(
               title: Text(translate('Language')),
               leading: Icon(Icons.translate),

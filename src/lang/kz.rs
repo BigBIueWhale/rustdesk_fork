@@ -708,7 +708,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Allow insecure TLS fallback", "Қатерлі TLS қайтуына рұқсат ету"),
         ("allow-insecure-tls-fallback-tip", "Әдепкіде RustDesk TLS қолданатын протоколдар үшін сербер сертификатын тексереді.\nБұл опция қосылғанда, RustDesk тексеру сәтсіз болған жағдайда тексеру қадамын өткізіп жіберуге қайтып, жалғастырады."),
         ("Disable UDP", "UDP-ні өшіру"),
-        ("disable-udp-tip", "Тек TCP қолданатынын-қолданбайтынын басқарады.\nБұл опция қосылғанда, RustDesk енді UDP 21116 қолданбайды, оның орнына TCP 21116 қолданылады."),
         ("server-oss-not-support-tip", "ЕСКЕРТПЕ: RustDesk server OSS бұл ерекшелікті қамтымайды."),
         ("input note here", "осында нота еңгізіңіз"),
         ("note-at-conn-end-tip", "Қосылым соңында нота сұрау"),

@@ -708,7 +708,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Allow insecure TLS fallback", "Cho phép hạ cấp TLS không an toàn"),
         ("allow-insecure-tls-fallback-tip", "Cho phép kết nối nếu máy chủ dùng TLS cũ."),
         ("Disable UDP", "Tắt UDP"),
-        ("disable-udp-tip", "Chỉ sử dụng TCP để kết nối."),
         ("server-oss-not-support-tip", "Máy chủ mã nguồn mở không hỗ trợ tính năng này."),
         ("input note here", "nhập ghi chú tại đây"),
         ("note-at-conn-end-tip", "Hiện ghi chú khi kết thúc phiên"),

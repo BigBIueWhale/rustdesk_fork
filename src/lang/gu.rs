@@ -708,7 +708,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Allow insecure TLS fallback", "અસુરક્ષિત TLS ફોલબેકની મંજૂરી આપો"),
         ("allow-insecure-tls-fallback-tip", "જૂના સર્વર માટે વાપરો."),
         ("Disable UDP", "UDP અક્ષમ કરો"),
-        ("disable-udp-tip", "કનેક્શન સમસ્યાઓ માટે UDP બંધ કરો."),
         ("server-oss-not-support-tip", "OSS સર્વર આને સપોર્ટ કરતું નથી."),
         ("input note here", "અહીં નોંધ લખો"),
         ("note-at-conn-end-tip", "કનેક્શનના અંતે નોંધ બતાવો"),

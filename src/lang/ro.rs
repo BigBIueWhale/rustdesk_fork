@@ -708,7 +708,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Allow insecure TLS fallback", "Permite revenirea la TLS nesecurizat"),
         ("allow-insecure-tls-fallback-tip", "Permite conexiunile cu certificate TLS nevalide sau expirate. Nu este recomandat din motive de securitate."),
         ("Disable UDP", "Dezactivează UDP"),
-        ("disable-udp-tip", "Dezactivează conexiunile UDP și folosește doar TCP. Poate reduce performanța conexiunii."),
         ("server-oss-not-support-tip", "Serverul open-source nu suportă această funcție. Folosește RustDesk Pro pentru funcționalitate completă."),
         ("input note here", "Introdu o notă aici"),
         ("note-at-conn-end-tip", "Afișează această notă la sfârșitul sesiunii de conexiune."),

@@ -1181,10 +1181,10 @@ ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-bot-tip|powere
 # + API Server + setup_server_tip cluster (R-G4/R-SV1, the rendezvous/relay/API server config dialog),
 # and Use WebSocket (R-G1). Removed from all 51 lang tables. Scoped to src/lang/ — the flutter excision
 # COMMENTS still legitimately name "ID/Relay Server", so the tree-wide ra6_clean form would false-trip.
-if grep -rqE '\("(empty_lan_tip|connecting_status|not_ready_status|ID/Relay Server|ID Server|Relay Server|Relay Connection|API Server|setup_server_tip|Use WebSocket|disable-udp-tip)",' src/lang/; then
+if grep -rqE '\("(empty_lan_tip|connecting_status|not_ready_status|ID/Relay Server|ID Server|Relay Server|Relay Connection|API Server|setup_server_tip|Use WebSocket|disable-udp-tip|Allow insecure TLS fallback|Discovered)",' src/lang/; then
   echo "  FAIL §19: a removed dead rendezvous/relay/lan/WS lang key was re-added to a src/lang/ table"; rc=1
 else
-  echo "  ok  §19 dead rendezvous/relay/lan/WS lang keys absent (11: empty_lan_tip + status + ID/Relay/API-server cluster + setup_server_tip + Use-WebSocket + disable-udp-tip)"
+  echo "  ok  §19 dead rendezvous/relay/lan/WS lang keys absent (13: empty_lan_tip + status + ID/Relay/API-server cluster + setup_server_tip + Use-WebSocket + disable-udp-tip + Allow-insecure-TLS-fallback + Discovered)"
 fi
 # R-G2/R-SV9 (connect-box hint, MUST): the id_input_tip/web_id_input_tip help text (rendered LIVE
 # at flutter connection_page_title.dart) teaches ONLY the direct-IP accept-set (an IP, or a domain

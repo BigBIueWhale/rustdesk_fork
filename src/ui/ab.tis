@@ -329,9 +329,8 @@ class SessionList: Reactor.Component {
                     <li #tunnel>{translate('TCP tunneling')}</li>
                     <li #force-always-relay><span>{svg_checkmark}</span>{translate('Always connect via relay')}</li>
                     <li #rdp>RDP<EditRdpPort /></li>
-                    <li #wol>{translate('WOL')}</li>
                     <div .separator />
-                    {this.type != "lan" && <li #rename>{translate('Rename')}</li>}
+                    <li #rename>{translate('Rename')}</li>
                     {this.type != "fav" && <li #remove>{translate('Remove')}</li>}
                     {is_win && <li #shortcut>{translate('Create desktop shortcut')}</li>}
                     <li #forget-password>{translate('Forget Password')}</li>
@@ -430,8 +429,6 @@ class SessionList: Reactor.Component {
             createNewConnect(id, "connect");
         } else if (action == "transfer") {
             createNewConnect(id, "file-transfer");
-        } else if (action == "wol") {
-            handler.send_wol(id);
         } else if (action == "remove") {
             if (this.type == "ab") {
                 for (var i = 0; i < ab.peers.length; ++i) {
@@ -442,9 +439,6 @@ class SessionList: Reactor.Component {
                         break;
                     }
                 }
-            } else if (this.type == "lan") {
-                handler.remove_discovered(id);
-                app.update();
             } else {
                 handler.remove_peer(id);
                 app.update();
@@ -542,15 +536,13 @@ class MultipleSessions: Reactor.Component {
                     <div style="width:*" .sessions-tab #sessions-type>
                         <span class={!type ? 'active' : 'inactive'}>{translate('Recent sessions')}</span>
                         <span #fav class={type == "fav" ? 'active' : 'inactive'}>{translate('Favorites')}</span>
-                        {handler.is_installed() && <span #lan class={type == "lan" ? 'active' : 'inactive'}>{translate('Discovered')}</span>}
                         {!disable_account && !disable_ab && <span #ab class={type == "ab" ? 'active' : 'inactive'}>{translate('Address book')}</span>}
                     </div>
                     {!this.hidden && !(disable_account && type == "ab") && <SearchBar type={type} />}
                     {!this.hidden && !(disable_account && type == "ab") && <SessionStyle type={type} />}
                 </div>
-                {!this.hidden && 
+                {!this.hidden &&
                 ((type == "fav" && <Favorites />) ||
-                (type == "lan" && handler.is_installed() && <LanPeers />) ||
                 (type == "ab" && !disable_account && !disable_ab && <AddressBook />) ||
                 <SessionList sessions={handler.get_recent_sessions()} />)}
             </div>;
@@ -569,9 +561,6 @@ class MultipleSessions: Reactor.Component {
     }
 
     event click $(div#sessions-type span.inactive) (_, el) {
-        if (el.id == "lan") {
-            discover();
-        }
         handler.set_local_option('show-sessions-type', el.id || "");
         this.stupidUpdate();
     }
@@ -592,37 +581,6 @@ class MultipleSessions: Reactor.Component {
                 "max-width": maxWidth + "px",
             };
         }
-    }
-}
-
-function discover() {
-    handler.discover();
-    var tries = 15;
-    function update() {
-        self.timer(300ms, function() {
-            tries -= 1;
-            if (tries == 0) return;
-            update();
-            var p = (app || {}).multipleSessions;
-            if (p) {
-                p.update();
-            }
-        });
-    }
-    update();
-}
-
-if (getSessionsType() == "lan" && handler.is_installed()) {
-    discover();
-}
-
-class LanPeers: Reactor.Component {
-    function render() {
-        var sessions = [];
-        try {
-            sessions = JSON.parse(handler.get_lan_peers());
-        } catch (_) {}
-        return <SessionList sessions={sessions} type="lan" />;
     }
 }
 

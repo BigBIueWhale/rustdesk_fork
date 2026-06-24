@@ -2308,63 +2308,12 @@ impl LocalConfig {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct DiscoveryPeer {
-    #[serde(default, deserialize_with = "deserialize_string")]
-    pub id: String,
-    #[serde(default, deserialize_with = "deserialize_string")]
-    pub username: String,
-    #[serde(default, deserialize_with = "deserialize_string")]
-    pub hostname: String,
-    #[serde(default, deserialize_with = "deserialize_string")]
-    pub platform: String,
-    #[serde(default, deserialize_with = "deserialize_bool")]
-    pub online: bool,
-    #[serde(default, deserialize_with = "deserialize_hashmap_string_string")]
-    pub ip_mac: HashMap<String, String>,
-}
-
-impl DiscoveryPeer {
-    pub fn is_same_peer(&self, other: &DiscoveryPeer) -> bool {
-        self.id == other.id && self.username == other.username
-    }
-}
-
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct LanPeers {
-    #[serde(default, deserialize_with = "deserialize_vec_discoverypeer")]
-    pub peers: Vec<DiscoveryPeer>,
-}
-
-impl LanPeers {
-    pub fn load() -> LanPeers {
-        let _lock = CONFIG.read().unwrap();
-        match confy::load_path(Config::file_("_lan_peers")) {
-            Ok(peers) => peers,
-            Err(err) => {
-                log::error!("Failed to load lan peers: {}", err);
-                Default::default()
-            }
-        }
-    }
-
-    pub fn store(peers: &[DiscoveryPeer]) {
-        let f = LanPeers {
-            peers: peers.to_owned(),
-        };
-        if let Err(err) = store_path(Config::file_("_lan_peers"), f) {
-            log::error!("Failed to store lan peers: {}", err);
-        }
-    }
-
-    pub fn modify_time() -> crate::ResultType<u64> {
-        let p = Config::file_("_lan_peers");
-        Ok(fs::metadata(p)?
-            .modified()?
-            .duration_since(SystemTime::UNIX_EPOCH)?
-            .as_millis() as _)
-    }
-}
+// R-X5 / R-SV1 / R-D7a: LAN discovery is REMOVED. The `DiscoveryPeer` / `LanPeers` config types
+// (the `_lan_peers` store that cached discovered MAC/ID/hostname/username/platform) are excised —
+// the discovery listener/querier that populated them is gone (322aebb), the sciter Discovered-tab
+// UI + ui_interface::get_lan_peers/remove_discovered are excised, and the flutter favorites merge
+// no longer reads it. Nothing reads or writes `_lan_peers` anymore. (`deserialize_vec_discoverypeer`
+// went with the struct.)
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct UserDefaultConfig {
@@ -2745,7 +2694,6 @@ deserialize_default!(deserialize_i32, i32);
 deserialize_default!(deserialize_vec_u8, Vec<u8>);
 deserialize_default!(deserialize_vec_string, Vec<String>);
 deserialize_default!(deserialize_vec_i32_string_i32, Vec<(i32, String, i32)>);
-deserialize_default!(deserialize_vec_discoverypeer, Vec<DiscoveryPeer>);
 deserialize_default!(deserialize_vec_abpeer, Vec<AbPeer>);
 deserialize_default!(deserialize_vec_abentry, Vec<AbEntry>);
 deserialize_default!(deserialize_vec_groupuser, Vec<GroupUser>);

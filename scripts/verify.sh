@@ -191,15 +191,18 @@ fi
 ra6_clean '"--import-config"|"--remove"|fn import_config'                  'R-X4 trust-anchor CLI gadgets' || rc=1
 # R-X5: the LAN-discovery UDP listener/querier (the 0.0.0.0:RENDEZVOUS_PORT+3=21119 responder that
 # disclosed MAC/ID/hostname/active-username/platform, removed in 322aebb) MUST stay absent — §8's
-# "removed not disabled" bar + R-A4's zero-UDP runtime check. (lan.rs persists only for WoL +
-# a discover() no-op, a separate R-G2 Discovered-tab follow-on; that residual is the TODO below.)
+# "removed not disabled" bar + R-A4's zero-UDP runtime check.
 ra6_clean 'start_lan_listening|spawn_wait_responses|handle_received_peers|RENDEZVOUS_PORT *\+ *3' 'R-X5 LAN-discovery listener/querier/bind' || rc=1
+# R-X5 / R-D7a (full cross-harness excision): the lan module + its UI + config store are now ENTIRELY
+# gone — `mod lan` (the discover()/send_wol() no-op stubs), the flutter FFIs (62cb593), the sciter
+# Discovered-tab (ab.tis) + ui.rs trait/decls, ui_interface::get_lan_peers/remove_discovered, and the
+# config::LanPeers/DiscoveryPeer `_lan_peers` store + deserialize_vec_discoverypeer. None may return.
+ra6_clean 'crate::lan::|mod lan;|LanPeers|DiscoveryPeer|fn get_lan_peers|fn remove_discovered|deserialize_vec_discoverypeer' 'R-X5 lan module/UI/config cluster fully excised' || rc=1
 # R-SV4(c)/R-SV10 / §18: Wake-on-LAN is DROPPED. The inherited lan::send_wol broadcast WoL magic
 # packets (UDP) over EVERY LAN interface (`wol::send_wol`, iterating default_net interfaces × the
 # stored LanPeer MACs) — a live viewer-side LAN egress at odds with the direct-IP-only/sovereign
-# posture (R-SV5). send_wol is now a NO-OP; assert the wol::send_wol broadcast call is gone (its only
-# caller flutter_ffi::main_wol is then a harmless stub — the Dart WoL peer-card UI removal is the R-G2
-# follow-on). discover() was already a no-op (R-X5).
+# posture (R-SV5). The whole send_wol path (and lan.rs itself) is now excised; assert the
+# wol::send_wol broadcast call stays absent.
 ra6_clean 'wol::send_wol' 'R-SV4(c) Wake-on-LAN UDP-broadcast egress (lan::send_wol)' || rc=1
 # R-SV1 / R-X1 / §18: the hbbs_http::downloader reqwest-GET fetch-to-buffer subsystem is EXCISED. It was
 # orphaned by the R-X1 updater excision — its sole starter (the `download-new-version` Flutter key +
@@ -1500,8 +1503,7 @@ else
 fi
 
 echo "== pending excisions (informational TODO, not yet a hard gate) =="
-for t in 'mod lan:R-X5 lan.rs residual (WoL send_wol + discover no-op; the discovery LISTENER is excised + hard-gated above — full removal is the R-G2 Discovered-tab/WoL-UI follow-on)' \
-         'terminal_helper:R-X8 terminal' 'mod custom_server:R-X4 custom_server module — NB ALSO used by src/platform/windows.rs (get_license/get_license_from_exe_name, the dead custom-rendezvous-server-from-exe-name feature) which this mod-decl grep does NOT count; its removal edits the cfg(windows) build (un-validatable in the Linux docker), so R-X4 is WINDOWS-BUILD-BLOCKED, not a clean Linux excision'; do
+for t in 'terminal_helper:R-X8 terminal' 'mod custom_server:R-X4 custom_server module — NB ALSO used by src/platform/windows.rs (get_license/get_license_from_exe_name, the dead custom-rendezvous-server-from-exe-name feature) which this mod-decl grep does NOT count; its removal edits the cfg(windows) build (un-validatable in the Linux docker), so R-X4 is WINDOWS-BUILD-BLOCKED, not a clean Linux excision'; do
   tok=${t%%:*}; lbl=${t#*:}
   n=$(grep -RIl "$tok" src libs --include='*.rs' 2>/dev/null | grep -v 'libs/pake' | wc -l | tr -d ' ' || true)
   echo "  TODO $lbl — still referenced in $n file(s)"

@@ -13,7 +13,7 @@ use crate::{
 };
 use flutter_rust_bridge::{StreamSink, SyncReturn};
 use hbb_common::{
-    config::{self, LocalConfig, PeerConfig, PeerInfoSerde},
+    config::{self, LocalConfig, PeerConfig},
     fs, lazy_static, log,
     rendezvous_proto::ConnType,
     ResultType,
@@ -1472,27 +1472,11 @@ pub fn main_load_fav_peers() {
     };
     if !config::APP_DIR.read().unwrap().is_empty() {
         let favs = get_fav();
-        let mut recent = PeerConfig::peers(Some(favs.clone()));
-        let mut lan = config::LanPeers::load()
-            .peers
-            .iter()
-            .filter(|d| favs.contains(&d.id) && recent.iter().all(|r| r.0 != d.id))
-            .map(|d| {
-                (
-                    d.id.clone(),
-                    SystemTime::UNIX_EPOCH,
-                    PeerConfig {
-                        info: PeerInfoSerde {
-                            username: d.username.clone(),
-                            hostname: d.hostname.clone(),
-                            platform: d.platform.clone(),
-                        },
-                        ..Default::default()
-                    },
-                )
-            })
-            .collect();
-        recent.append(&mut lan);
+        // R-X5 / R-D7a: LAN discovery is excised. The former merge of favorite LAN peers
+        // (config::LanPeers::load()) is removed with the rest of the lan machinery — nothing
+        // populates the _lan_peers store anymore (the discovery listener/querier is gone), so the
+        // merge was dead. Favorites come solely from the persisted PeerConfig peers now.
+        let recent = PeerConfig::peers(Some(favs.clone()));
         let peers: Vec<HashMap<&str, String>> = recent
             .into_iter()
             .map(|(id, _, p)| peer_to_map(id, p))

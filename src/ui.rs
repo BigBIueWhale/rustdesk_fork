@@ -467,14 +467,6 @@ impl UI {
         PeerConfig::remove(&id);
     }
 
-    fn remove_discovered(&mut self, id: String) {
-        remove_discovered(id);
-    }
-
-    fn send_wol(&mut self, id: String) {
-        crate::lan::send_wol(id)
-    }
-
     fn new_remote(&mut self, id: String, remote_type: String, force_relay: bool) {
         new_remote(id, remote_type, force_relay)
     }
@@ -549,27 +541,6 @@ impl UI {
     fn create_shortcut(&self, _id: String) {
         #[cfg(windows)]
         create_shortcut(_id)
-    }
-
-    fn discover(&self) {
-        std::thread::spawn(move || {
-            allow_err!(crate::lan::discover());
-        });
-    }
-
-    fn get_lan_peers(&self) -> String {
-        // let peers = get_lan_peers()
-        //     .into_iter()
-        //     .map(|mut peer| {
-        //         (
-        //             peer.remove("id").unwrap_or_default(),
-        //             peer.remove("username").unwrap_or_default(),
-        //             peer.remove("hostname").unwrap_or_default(),
-        //             peer.remove("platform").unwrap_or_default(),
-        //         )
-        //     })
-        //     .collect::<Vec<(String, String, String, String)>>();
-        serde_json::to_string(&get_lan_peers()).unwrap_or_default()
     }
 
     fn get_uuid(&self) -> String {
@@ -703,9 +674,7 @@ impl sciter::EventHandler for UI {
         fn closing(i32, i32, i32, i32);
         fn get_size();
         fn new_remote(String, String, bool);
-        fn send_wol(String);
         fn remove_peer(String);
-        fn remove_discovered(String);
         fn get_connect_status();
         fn get_mouse_time();
         fn check_mouse_time();
@@ -762,8 +731,6 @@ impl sciter::EventHandler for UI {
         fn post_request(String, String, String);
         fn is_ok_change_id();
         fn create_shortcut(String);
-        fn discover();
-        fn get_lan_peers();
         fn get_uuid();
         fn has_hwcodec();
         fn has_vram();

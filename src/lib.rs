@@ -12,7 +12,10 @@ mod server;
 #[cfg(not(any(target_os = "ios")))]
 pub use self::server::*;
 mod client;
-mod lan;
+// R-X5 / R-SV1 / R-D7a: LAN discovery is fully removed (the `mod lan` no-op stubs — discover()
+// and send_wol() — are gone, along with the sciter Discovered-tab UI, ui_interface get_lan_peers/
+// remove_discovered, and config::LanPeers). The discovery LISTENER/querier was already excised
+// (322aebb); this completes the "removed not disabled" excision cross-harness.
 // R-D4 Stage 3 / R-SV10: the rendezvous mediator is excised; what survives is the direct-only
 // service path (start_direct_only -> direct_server, the single PAKE-gated v4 TCP listener), so the
 // module is honestly named `direct_service` — the inherited mediator module name is grep-absent.

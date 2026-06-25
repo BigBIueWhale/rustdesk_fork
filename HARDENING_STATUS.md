@@ -78,6 +78,15 @@ the spec — gate coverage itself is part of the work.
   is CLI (`--list-known-hosts`/`--forget-host`). UNBUILT: a *dedicated* GUI mismatch dialog (old-vs-new
   fingerprint + friction-bearing re-pin) and a Flutter manage-hosts view. A real Flutter deliverable —
   the substitution defense already works; this is the UX surface R-G5 names. **Top remaining MUST.**
+  Concrete plan (mirror the WORKING seed flow): seed = Rust `self.msgbox("host-not-pinned-prompt",…)`
+  (client.rs:3009) → `model.dart:886` → `hostNotPinnedDialog` (dialog.dart:682) → `bind.sessionPinHost`.
+  For mismatch (client.rs:403 `get_pinned_pk` → currently `bail!` the loud error): push a new
+  `host-mismatch-prompt` carrying old+new fingerprints, render a FRICTION-bearing `hostMismatchDialog`
+  (type/confirm the new fp, no default-focused OK; R-S17), and on confirm call a new
+  `session_forget_and_repin` (reuse host_pin's forget+pin). MUST stay fail-closed: no response / CLI /
+  headless = abort (today's `bail!`). For the manage view: expose host_pin's list+forget over FFI
+  (the CLI `--list-known-hosts`/`--forget-host` already use them) + a Flutter settings page. SECURITY-
+  SENSITIVE (it changes the pin-compare path from bail→interactive) — preserve fail-closed at every step.
 - **Windows double-build assertion (R-B2, MED)** — `build-windows-vm.sh` records one SHA but has no
   A==B rebuild-compare (Debian's `build-debian.sh` does). R-B2 wants byte-repro PROVEN by double build;
   needs the §12.2 VM to add+validate, so deferred to a Windows-build effort.

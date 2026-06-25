@@ -1724,12 +1724,18 @@ else
   echo "  FAIL R-S16(d): allow-remote-config-modification missing from PINNED_SETTINGS (capability key left operator-settable)"; rc=1
 fi
 
-echo "== pending excisions (informational TODO, not yet a hard gate) =="
-for t in 'terminal_helper:R-X8 terminal' 'mod custom_server:R-X4 custom_server module — NB ALSO used by src/platform/windows.rs (get_license/get_license_from_exe_name, the dead custom-rendezvous-server-from-exe-name feature) which this mod-decl grep does NOT count; its removal edits the cfg(windows) build (un-validatable in the Linux docker), so R-X4 is WINDOWS-BUILD-BLOCKED, not a clean Linux excision'; do
-  tok=${t%%:*}; lbl=${t#*:}
-  n=$(grep -RIl "$tok" src libs --include='*.rs' 2>/dev/null | grep -v 'libs/pake' | wc -l | tr -d ' ' || true)
-  echo "  TODO $lbl — still referenced in $n file(s)"
-done
+echo "== pending excisions =="
+# NONE remain (both former informational-TODO entries resolved 2026-06-25, confirmed by a full-spec
+# completion audit):
+#  - R-X4 custom_server: REMOVED — the R-A6 hard gate above asserts mod custom_server /
+#    get_custom_server_from_string / get_license_from_exe_name / CustomServer / EXE_RENDEZVOUS_SERVER all
+#    absent; get_key() returns the baked RS_PUB_KEY unconditionally (override ignored, regression-tested).
+#    (The old TODO was a FALSE POSITIVE: its `mod custom_server` grep matched the removal-COMMENT this gate left.)
+#  - R-X8 terminal_helper/terminal_service: these modules INTENTIONALLY remain per §14 — "the session-type
+#    code stays in the one binary (its existence is a non-goal to remove)" / "the terminal session type may
+#    stay buildable." R-X8's MUSTs are the immutable enable-terminal=N pin + the refused LoginRequest.Terminal
+#    arm + the ignored TerminalAction + the os_login (R-S18) deletion — all hard-gated above; NOT a module excision.
+echo "  ok  no pending excisions (R-X4 custom_server removed + hard-gated; R-X8 terminal modules stay per §14, MUSTs gated)"
 
 if [ "$rc" -ne 0 ]; then
   echo "VERIFY: FAILED (a completed-excision R-A6 gate regressed)"; exit 1

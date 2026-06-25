@@ -504,6 +504,13 @@ if [ -n "$r_x9_2b" ]; then
 else
   echo "  ok  R-X9 Layer 2b CM-elevation dart/sciter residue (cmCanElevate/elevatePortable/DataPortableService) excised"
 fi
+# R-X9 (slices 2-4 follow-on, Layer 5 — COMPLETES the portable-service IPC excision): the dead cfg(windows)
+# shared-memory ACL in src/platform/windows/acl.rs. The portable SYSTEM helper that mmap'd the shmem (+ its
+# ACL hardening) is deleted, so set_path_permission_for_portable_service_shmem_dir/file +
+# validate_path_for_portable_service_shmem_dir + the private impls + current_process_user_sid_string (its
+# last non-shmem user, ipc/auth.rs, went in Layer 3+4) + the windows.rs re-exports + the shmem tests are
+# all dead. KEPT: the generic set_path_permission + sid_string_to_local_alloc_guard (still live).
+ra6_clean 'fn set_path_permission_for_portable_service_shmem|fn validate_path_for_portable_service_shmem_dir|fn validate_portable_service_shmem_dir_target|fn current_process_user_sid_string' 'R-X9 portable-service shmem-ACL + current_process_user_sid_string (slices 2-4 follow-on, Layer 5)' || rc=1
 # R-X9/R-X10/R-A6: the stop-service runtime toggle no longer gates the controlled-side SERVICE
 # creation (windows.rs get_create_service / linux.rs check_if_stop_service + switch_service) or the
 # direct LISTENER (direct_service.rs) — the installed service is always created + auto-start and the

@@ -1561,6 +1561,18 @@ if [ -n "$rx7a_hits" ]; then
 else
   echo "  ok  R-X7a/R-G1 no flutter UI writes the pinned verification-method/approve-mode selectors (removed not greyed; display-reads only)"
 fi
+# R-X7a/R-G1 (SCITER parity): the legacy sciter PasswordArea must not expose the EXCISED OTP controls
+# either (R-X7 removed the one-time-password machinery from Rust + flutter; this closes the sciter half).
+# Removed from src/ui/index.tis: the one-time-password display component (PasswordEyeArea), the OTP length
+# menu (TemporaryPasswordLengthMenu), the #use-temporary-password / #use-both-passwords verification-method
+# radios, the update_temporary_password FFI call, + the stale "One-time Password" area title. KEPT (live /
+# pinned-but-meaningful greyed-pin pattern): #set-password/#clear-password (the permanent CPace credential)
+# + #use-permanent-password + the #approve-mode-* radios.
+if grep -qE 'class PasswordEyeArea|class TemporaryPasswordLengthMenu|#use-temporary-password|#use-both-passwords|update_temporary_password' src/ui/index.tis; then
+  echo "  FAIL R-X7a (sciter): index.tis still exposes excised-OTP controls (PasswordEyeArea/TemporaryPasswordLengthMenu/#use-temporary-password/#use-both-passwords/update_temporary_password)"; rc=1
+else
+  echo "  ok  R-X7a (sciter) excised-OTP controls removed from index.tis (one-time display + length menu + use-temporary/both radios + FFI); permanent set/clear + use-permanent + approve-mode kept"
+fi
 # R-S5 / R-A3 (seal the set_raw plaintext-tunnel escape — Appendix C #4, a Tier-1 finding): upstream's
 # port-forward/RDP tunnel calls FramedStream::set_raw AFTER login to DROP the secretbox, so the
 # tunnelled bytes cross an otherwise-keyed session in plaintext ("the plaintext path is deleted, not

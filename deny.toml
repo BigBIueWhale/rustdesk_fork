@@ -17,13 +17,16 @@
 #   RUSTSEC-2025-0055  tracing-subscriber 0.3.19 -> 0.3.20. ANSI-escape log poison.
 # All four compile-verified on the pinned 1.75 toolchain (lockdown on + off).
 #
-# This config targets `cargo deny check advisories`. The cargo-audit twin
-# (`audit.toml` with the same ignore IDs) and the Dart `osv-scanner` gate are
-# the remaining R-R3 wiring. The audit MUST run against a PINNED advisory-db
-# snapshot recorded in the build provenance (R-B10/R-B12): cargo-audit 0.21.1
-# is the last release supporting rustc 1.74/1.75, and it cannot parse the newest
-# (2026-schema) advisory-db entries — so the snapshot and the tool version are
-# themselves pins.
+# This config targets `cargo deny check advisories`. The cargo-audit twin runs
+# from scripts/audit.sh, which derives its --ignore flags from THIS file (the
+# single accept-list source). The Dart `osv-scanner` gate is now WIRED too —
+# scripts/dart-audit.sh (with scripts/Dockerfile.dart-audit + the Dart accept-list
+# scripts/dart-audit-ignores.txt) mirrors this gate for flutter/pubspec.lock,
+# offline against a PINNED OSV "Pub" db snapshot. The audit MUST run against a
+# PINNED advisory-db snapshot recorded in the build provenance (R-B10/R-B12):
+# cargo-audit 0.21.1 is the last release supporting rustc 1.74/1.75, and it cannot
+# parse the newest (2026-schema) advisory-db entries — so the snapshot and the tool
+# version are themselves pins (and so are osv-scanner's version + its OSV snapshot).
 
 [advisories]
 db-urls = ["https://github.com/RustSec/advisory-db"]

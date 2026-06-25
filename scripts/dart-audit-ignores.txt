@@ -1,0 +1,22 @@
+# scripts/dart-audit-ignores.txt — the Dart/Pub R-R3 advisory accept-list.
+#
+# The single source of truth for consciously-accepted OSV advisories against
+# flutter/pubspec.lock — the Dart-side analogue of deny.toml's `ignore` list for
+# the Rust crate graph. scripts/dart-audit.sh reads ONLY this file to decide what
+# to suppress, so the tool and the policy never drift (the same discipline as
+# audit.sh deriving its cargo-audit --ignore flags from deny.toml).
+#
+# FORMAT: one advisory per line.
+#     <OSV-ID>   # reason — why this is consciously accepted (mirror deny.toml)
+# The <OSV-ID> is the id osv-scanner prints (e.g. GHSA-xxxx-xxxx-xxxx, or a
+# CVE-/PYSEC-style id). Blank lines and lines beginning with '#' are comments.
+# Every entry MUST carry a reason: this is R-R3's "ignore + reason", not a blanket
+# suppression. An advisory with no entry here makes the gate FAIL (fail-closed).
+#
+# ── current state ──
+# EMPTY by design: as of the pinned OSV Pub snapshot (pins.env OSV_DB_PUB_SHA256,
+# 2026-06-02), `osv-scanner --offline` against flutter/pubspec.lock reports NO
+# advisories — the gate is green with zero accepts. (e.g. the two `archive` < 3.3.8
+# advisories GHSA-9v85-q87q-g4vg / GHSA-r285-q736-9v95 in the snapshot do not apply:
+# the lockfile pins archive 3.6.1.) Add an entry here ONLY when a real, reviewed,
+# non-remediable advisory appears — each with its reason — never to silence noise.

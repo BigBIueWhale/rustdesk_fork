@@ -16,9 +16,12 @@
 # vcpkg flow in build-debian.sh). Exit non-zero if any gate fails.
 #
 # COMPANION GATE: scripts/audit.sh runs the R-R3/R-A7 dependency-advisory check
-# (cargo-audit against deny.toml + a pinned advisory-db). It is kept separate
-# because it needs the advisory-db + a cargo-audit compile — slower, and run in
-# CI / before a release rather than on every inner-loop edit.
+# for the Rust crate graph (cargo-audit against deny.toml + a pinned advisory-db),
+# and scripts/dart-audit.sh is its Dart-side mirror (osv-scanner against
+# flutter/pubspec.lock + the deny-style accept-list scripts/dart-audit-ignores.txt,
+# offline against a pinned OSV "Pub" snapshot). Both are kept separate because they
+# need an advisory-db + a tool fetch/compile — slower, and run in CI / before a
+# release rather than on every inner-loop edit.
 #
 # COMPANION GATE: scripts/apple-conform-check.sh runs the R-R2 apple (macOS/iOS)
 # SOURCE-conformance gate — the retain-and-check invariant + the R-A6 greps on the

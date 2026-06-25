@@ -1,0 +1,46 @@
+# scripts/Dockerfile.dart-audit — the DART half of the R-R3 dependency-advisory gate.
+#
+# The Rust half is scripts/Dockerfile.audit (cargo-audit + a pinned RustSec
+# advisory-db). This is its mirror for the resolved Pub/Dart dependency graph
+# (flutter/pubspec.lock): it bakes Google's OSV-Scanner at a PINNED version plus
+# a PINNED snapshot of the OSV "Pub" advisory database, so scripts/dart-audit.sh
+# can run the scan --offline — it never queries the live OSV API at run time, and
+# the verdict is reproducible against a fixed snapshot (R-B10/R-B12 provenance),
+# exactly like the cargo-audit twin against ADVISORY_DB_COMMIT.
+#
+# Two pins are load-bearing and verified DURING this build (fail-closed on drift):
+#   * the osv-scanner binary  -> OSV_SCANNER_SHA256  (pins.env)
+#   * the OSV Pub db snapshot  -> OSV_DB_PUB_SHA256  (pins.env)
+# online-fetch / CI docker-builds this image during the ONE networked step; the
+# resulting image is self-contained, so the gate itself needs no network.
+#
+# FROM the digest-pinned ubuntu:18.04 baseline (the same SHA256_BASEIMAGE_UBUNTU_1804
+# already provenance'd in pins.env for the .deb builder). osv-scanner ships as a
+# statically-linked Go binary, so the base only needs ca-certificates + curl for
+# the one build-time fetch — no runtime libs.
+ARG BASE_DIGEST
+FROM ubuntu:18.04@${BASE_DIGEST}
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── 1. the pinned OSV-Scanner binary (verified against the pins.env SHA-256) ──
+ARG OSV_SCANNER_VERSION
+ARG OSV_SCANNER_SHA256
+RUN curl -fsSL -o /usr/local/bin/osv-scanner \
+      "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64" \
+    && echo "${OSV_SCANNER_SHA256}  /usr/local/bin/osv-scanner" | sha256sum -c - \
+    && chmod 0755 /usr/local/bin/osv-scanner \
+    && osv-scanner --version
+
+# ── 2. the pinned OSV "Pub" advisory-db snapshot (verified against pins.env) ──
+# osv-scanner --offline reads {OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY}/osv-scanner/
+# <ecosystem>/all.zip. Bake the Pub snapshot there so the scan is fully offline.
+ARG OSV_DB_PUB_SHA256
+ENV OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY=/opt/osv-db
+RUN mkdir -p /opt/osv-db/osv-scanner/Pub \
+    && curl -fsSL -o /opt/osv-db/osv-scanner/Pub/all.zip \
+      "https://osv-vulnerabilities.storage.googleapis.com/Pub/all.zip" \
+    && echo "${OSV_DB_PUB_SHA256}  /opt/osv-db/osv-scanner/Pub/all.zip" | sha256sum -c -

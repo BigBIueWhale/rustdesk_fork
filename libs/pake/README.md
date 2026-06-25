@@ -44,7 +44,8 @@ All line references are to `src/lib.rs` unless noted; the test vectors live in
     [`docs/TRANSPORT-SECURITY.md`](../../docs/TRANSPORT-SECURITY.md).
   * The online-guess limiter that `PakeError::Confirmation` feeds (R-S10).
   * The host-key pin / host-proof that binds the responder's long-term identity
-    on top of this PAKE (R-S17, `src/client.rs`).
+    on top of this PAKE (R-S17, `src/client.rs`). Documented in
+    [`docs/HOST-KEY-PIN.md`](../../docs/HOST-KEY-PIN.md).
 
 ---
 

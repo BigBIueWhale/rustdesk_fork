@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 class IDTextEditingController extends TextEditingController {
   IDTextEditingController({String? text}) : super(text: text);
@@ -8,30 +7,6 @@ class IDTextEditingController extends TextEditingController {
 
   // R-G2: a direct-address fork does not space-group numeric IDs — just strip spaces (no formatID).
   set id(String newID) => text = trimID(newID);
-}
-
-class IDTextInputFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue, TextEditingValue newValue) {
-    if (newValue.text.isEmpty) {
-      return newValue.copyWith(text: '');
-    } else if (newValue.text.compareTo(oldValue.text) == 0) {
-      return newValue;
-    } else {
-      int selectionIndexFromTheRight =
-          newValue.text.length - newValue.selection.extentOffset;
-      String newID = formatID(newValue.text);
-      return TextEditingValue(
-        text: newID,
-        selection: TextSelection.collapsed(
-          offset: newID.length - selectionIndexFromTheRight,
-        ),
-        // https://github.com/flutter/flutter/issues/78066#issuecomment-797869906
-        composing: newValue.composing,
-      );
-    }
-  }
 }
 
 String formatID(String id) {

@@ -774,10 +774,20 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
                 // R-G4 / R-SV5 (§19): the 'ID' card (Change-ID) is removed — the numeric ID is
                 // dead under the direct-IP model (R-SV5); the box is reached by <ip|domain>:port.
                 more(context),
+                // R-S17/R-G5: the known_hosts manage/forget view (the SSH known_hosts twin).
+                knownHosts(context),
               ]),
             ),
           ],
         )).marginOnly(bottom: _kListViewBottomMargin);
+  }
+
+  // R-S17/R-G5: the known_hosts manage/forget view (the GUI twin of --list-known-hosts /
+  // --forget-host). Lists the pinned hosts (address + fingerprint) and lets the operator forget
+  // a legitimately re-keyed or decommissioned box; the next connect re-seeds (TOFU). The host
+  // pin is the viewer's substitution defense (R-S17), so managing it is a first-class GUI surface.
+  Widget knownHosts(BuildContext context) {
+    return _Card(title: 'Known hosts', children: [const KnownHostsManager()]);
   }
 
   Widget permissions(context) {

@@ -430,6 +430,18 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                 });
               },
             ),
+          // R-S17/R-G5: the known_hosts manage/forget view (the SSH known_hosts twin) — list
+          // pinned hosts + forget a re-keyed/decommissioned box (next connect re-seeds, TOFU).
+          SettingsTile(
+            title: Text(translate('Known hosts')),
+            leading: Icon(Icons.verified_user_outlined),
+            trailing: Icon(Icons.arrow_forward_ios),
+            onPressed: (context) {
+              Navigator.push(context, MaterialPageRoute(builder: (context) {
+                return _KnownHostsPage();
+              }));
+            },
+          ),
         ]),
         // R-R2b / R-G1 (§19): no "Hardware Codec" section — hwcodec/vram AND mediacodec (Android's
         // hardware codec) are compiled out of every build (software vpx/aom only), so the toggle was
@@ -561,6 +573,21 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
               }));
             })
       ],
+    );
+  }
+}
+
+// R-S17/R-G5: the mobile known_hosts manage/forget page (the GUI twin of --list-known-hosts /
+// --forget-host) — the substitution-defense pin store (R-S17) is managed as a first-class surface.
+class _KnownHostsPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(translate('Known hosts'))),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: const KnownHostsManager(),
+      ),
     );
   }
 }

@@ -1563,10 +1563,18 @@ grep -q 'host-not-pinned-prompt' flutter/lib/models/model.dart 2>/dev/null      
 grep -q 'void hostMismatchDialog' flutter/lib/common/widgets/dialog.dart 2>/dev/null   || r_g5_missing="$r_g5_missing mismatch-dialog"
 grep -q 'host-mismatch-prompt' flutter/lib/models/model.dart 2>/dev/null               || r_g5_missing="$r_g5_missing mismatch-dispatch"
 grep -q '"host-mismatch-prompt"' src/client.rs 2>/dev/null                             || r_g5_missing="$r_g5_missing mismatch-rust-route"
+# R-S17/R-G5: the manage/forget-host VIEW (the GUI twin of --list-known-hosts/--forget-host) MUST
+# exist on every viewer front-end — the KnownHostsManager widget + its FFI (main_list_pinned_hosts /
+# main_forget_pinned_host), embedded in the desktop Safety tab AND the mobile settings.
+grep -q 'class KnownHostsManager' flutter/lib/common/widgets/dialog.dart 2>/dev/null        || r_g5_missing="$r_g5_missing manage-widget"
+grep -q 'fn main_list_pinned_hosts' src/flutter_ffi.rs 2>/dev/null                          || r_g5_missing="$r_g5_missing manage-ffi-list"
+grep -q 'fn main_forget_pinned_host' src/flutter_ffi.rs 2>/dev/null                         || r_g5_missing="$r_g5_missing manage-ffi-forget"
+grep -q 'KnownHostsManager' flutter/lib/desktop/pages/desktop_setting_page.dart 2>/dev/null || r_g5_missing="$r_g5_missing manage-desktop"
+grep -q 'KnownHostsManager' flutter/lib/mobile/pages/settings_page.dart 2>/dev/null         || r_g5_missing="$r_g5_missing manage-mobile"
 if [ -n "$r_g5_missing" ]; then
-  echo "  FAIL R-G5/R-S17: the host-key-pin GUI dialogs are missing (the MITM-defense UI must stay; their absence reverts to trust-on-first-use):$r_g5_missing"; rc=1
+  echo "  FAIL R-G5/R-S17: a host-key-pin GUI surface is missing (the MITM-defense UI must stay; absence reverts to trust-on-first-use or drops manage/forget):$r_g5_missing"; rc=1
 else
-  echo "  ok  R-G5/R-S17 host-key-pin dialogs present (first-contact seed -> sessionPinHost; mismatch warning -> friction-bearing type-the-fingerprint re-pin; no silent trust-on-first-use)"
+  echo "  ok  R-G5/R-S17 ALL host-key-pin GUI surfaces present (seed dialog + mismatch friction-re-pin dialog + manage/forget-host view on desktop & mobile; no silent trust-on-first-use)"
 fi
 # R-S17 / §19 closing-gate POSITIVE assertion: the headless box must be able to disclose its OWN Ed25519
 # fingerprint out-of-band so the operator can verify the viewer's first-connect seed — `--get-fingerprint`

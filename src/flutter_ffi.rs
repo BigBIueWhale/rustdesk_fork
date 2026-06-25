@@ -1676,6 +1676,32 @@ pub fn main_get_fingerprint() -> String {
     get_fingerprint()
 }
 
+// R-S17/R-G5: the known_hosts MANAGE view's data — the pinned hosts as
+// [{"address":..,"fingerprint":..}, ...]. The GUI twin of the `--list-known-hosts` CLI;
+// the pin store keeps the raw pk as hex, so convert to the displayed fingerprint here
+// (mirroring core_main's --list-known-hosts decode).
+pub fn main_list_pinned_hosts() -> String {
+    let v: Vec<serde_json::Value> = hbb_common::host_pin::list_pinned()
+        .into_iter()
+        .map(|(addr, hex)| {
+            let bytes: Option<Vec<u8>> = (0..hex.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(hex.get(i..i + 2).unwrap_or(""), 16).ok())
+                .collect();
+            let fp = bytes.map(crate::common::pk_to_fingerprint).unwrap_or(hex);
+            serde_json::json!({ "address": addr, "fingerprint": fp })
+        })
+        .collect();
+    serde_json::to_string(&v).unwrap_or_default()
+}
+
+// R-S17/R-G5: forget a pin (the GUI twin of `--forget-host`) — a legitimately re-keyed or
+// decommissioned box. The next connect re-seeds via the TOFU prompt (R-S17). A deliberate
+// settings action; it is NOT reachable from any peer message (R-S15), only the manage view.
+pub fn main_forget_pinned_host(address: String) -> bool {
+    hbb_common::host_pin::remove_pinned(&address).is_ok()
+}
+
 pub fn cm_get_clients_state() -> String {
     crate::ui_cm_interface::get_clients_state()
 }

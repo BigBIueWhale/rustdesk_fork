@@ -801,6 +801,97 @@ void hostMismatchDialog(SessionID sessionId, OverlayDialogManager dialogManager,
   });
 }
 
+// R-S17/R-G5: the known_hosts MANAGE view — lists the pinned hosts (address + fingerprint) and
+// forgets one (the GUI twin of --list-known-hosts / --forget-host). Forget is deliberate (a
+// confirmation); the next connection re-seeds via the TOFU prompt (R-S17). Reads ONLY the local
+// pin store via the main FFI — never a peer message (R-S15). Shared by the desktop Safety tab and
+// the mobile settings, so the manage/forget-host view exists on every viewer front-end (R-G5).
+class KnownHostsManager extends StatefulWidget {
+  const KnownHostsManager({Key? key}) : super(key: key);
+
+  @override
+  State<KnownHostsManager> createState() => _KnownHostsManagerState();
+}
+
+class _KnownHostsManagerState extends State<KnownHostsManager> {
+  List<dynamic> _hosts = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final raw = await bind.mainListPinnedHosts();
+      if (!mounted) return;
+      setState(() => _hosts = jsonDecode(raw) as List);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _hosts = []);
+    }
+  }
+
+  Future<void> _forget(String address) async {
+    final res = await gFFI.dialogManager.show((setState, close, context) {
+      return CustomAlertDialog(
+        title: Text(translate('Forget')),
+        content: Text(
+            '${translate('Forget the pinned host key for')} "$address"?\n\n${translate('The next connection will prompt to pin it again (trust-on-first-use).')}'),
+        actions: [
+          dialogButton('Cancel', onPressed: () => close(false), isOutline: true),
+          dialogButton('Forget', onPressed: () => close(true)),
+        ],
+        onCancel: () => close(false),
+      );
+    });
+    if (res != true) return;
+    await bind.mainForgetPinnedHost(address: address);
+    await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hosts.isEmpty) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Text(translate('No pinned hosts yet.'),
+            style: TextStyle(color: Theme.of(context).hintColor)),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: _hosts.map((h) {
+        final address = (h['address'] ?? '').toString();
+        final fp = (h['fingerprint'] ?? '').toString();
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(address,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    SelectableText(fp, style: const TextStyle(fontSize: 12)),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: translate('Forget'),
+                onPressed: () => _forget(address),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
 // R-S18/R-X8: the connect-time password dialog (rd-password only). The os-username/os-password
 // fields it used to carry — the operator's OS credentials pushed to the host — are removed: the
 // viewer never solicits OS creds (the host-triggered os-login prompts are gone, the responder

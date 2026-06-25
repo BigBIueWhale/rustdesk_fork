@@ -887,6 +887,12 @@ class FfiModel with ChangeNotifier {
       // R-S17/R-G5 (first-connect pin seed): the box keyed but is not pinned yet. Show its
       // fingerprint to confirm out-of-band, then pin + reconnect on accept.
       hostNotPinnedDialog(sessionId, dialogManager, text);
+    } else if (type == 'host-mismatch-prompt') {
+      // R-S17/R-G5: the box presented a DIFFERENT host key than the one pinned (possible
+      // substitution / MITM). Show the known_hosts-style warning (old vs new fingerprint, in
+      // `text`) with a FRICTION-BEARING re-pin — the operator must type the new fingerprint
+      // (carried in `link`) to enable it. Fail-closed until then.
+      hostMismatchDialog(sessionId, dialogManager, text, link);
     } else if (type == 'restarting') {
       showMsgBox(sessionId, type, title, text, link, false, dialogManager,
           hasCancel: false);

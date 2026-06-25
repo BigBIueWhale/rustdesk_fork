@@ -404,10 +404,20 @@ impl Client {
             // Known host: the box proved the SAME key the operator pinned out-of-band.
             Some(pinned) if pinned == pk_b => {}
             // A box that knows the password but presents a DIFFERENT host key — the
-            // substitution R-S17 exists to catch. Refuse; never auto-re-pin.
-            Some(_) => bail!(
-                "R-S17: HOST KEY MISMATCH for {peer_addr} — the box presented a different host key than the one pinned. Refusing (possible substitution/MITM). If the box was legitimately re-keyed, run `--forget-host {peer_addr}` and re-pin."
-            ),
+            // substitution R-S17 exists to catch. Refuse the keying (fail-closed). R-G5: stash
+            // the VERIFIED new key so the GUI mismatch dialog's FRICTION-BEARING re-pin (the
+            // operator must TYPE the new fingerprint, after verifying it out-of-band) can pin it
+            // — never a default-OK click-through. Headless/CLI has no dialog, so the bail stands
+            // and the pin is changed only by an explicit `--forget-host` + reconnect. Show old
+            // vs new fingerprints so the operator can see exactly what changed.
+            Some(pinned) => {
+                let old_fp = crate::common::pk_to_fingerprint(pinned);
+                let new_fp = crate::common::pk_to_fingerprint(pk_b.clone());
+                lch.write().unwrap().pending_host_pk = Some(pk_b.clone());
+                bail!(
+                    "R-S17: HOST KEY MISMATCH for {peer_addr} — the box presented a DIFFERENT host key than the one pinned (possible substitution / MITM).\n    pinned (old):    {old_fp}\n    presented (new): {new_fp}\nVerify the new fingerprint out-of-band (`--get-fingerprint` on the box) BEFORE re-pinning. Refusing until you re-pin (GUI: type the new fingerprint to confirm; CLI: `--forget-host {peer_addr}` then reconnect)."
+                );
+            }
             // First contact, no pin. NO silent trust-on-first-use (R-S17): require an
             // explicit, out-of-band-verified seed. Print the fingerprint to compare against
             // the box's `--get-fingerprint`, then pin via `--pin-host`.
@@ -3007,6 +3017,25 @@ pub trait Interface: Send + Clone + 'static + Sized {
         // the loud error (no easy bypass; the operator must `--forget-host` to re-pin).
         if cfg!(feature = "flutter") && err.contains("is not pinned") {
             self.msgbox("host-not-pinned-prompt", "Unknown host", &text, "");
+            return;
+        }
+        // R-S17/R-G5: a HOST KEY MISMATCH (the box presented a different key than pinned —
+        // possible substitution/MITM). The keying stashed the VERIFIED new key (pending_host_pk);
+        // show a stark known_hosts-style warning dialog (old vs new fingerprints, in `text`) with
+        // a FRICTION-BEARING re-pin: the dialog requires the operator to type the new fingerprint,
+        // which it matches against `link` (the new fp) — no default-focused OK. Headless/CLI has
+        // no dialog, so the bail above stands (fail-closed). This is the GUI form of R-S17's
+        // "abort unless the user explicitly re-pins"; the re-pin overwrites the old pin.
+        if cfg!(feature = "flutter") && err.contains("HOST KEY MISMATCH") {
+            let new_fp = self
+                .get_lch()
+                .read()
+                .unwrap()
+                .pending_host_pk
+                .clone()
+                .map(crate::common::pk_to_fingerprint)
+                .unwrap_or_default();
+            self.msgbox("host-mismatch-prompt", "Host key changed", &text, &new_fp);
             return;
         }
         // R-G6/R-SV4: a direct connection that fails is TERMINAL — there is no relay to

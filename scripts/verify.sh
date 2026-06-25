@@ -1557,10 +1557,16 @@ r_g5_missing=
 grep -q 'void hostNotPinnedDialog' flutter/lib/common/widgets/dialog.dart 2>/dev/null || r_g5_missing="$r_g5_missing seed-dialog"
 grep -q 'bind.sessionPinHost' flutter/lib/common/widgets/dialog.dart 2>/dev/null       || r_g5_missing="$r_g5_missing pin-action"
 grep -q 'host-not-pinned-prompt' flutter/lib/models/model.dart 2>/dev/null             || r_g5_missing="$r_g5_missing prompt-dispatch"
+# R-S17/R-G5: the MISMATCH warning dialog (the known_hosts "HOST IDENTIFICATION CHANGED" analog)
+# MUST also exist — a friction-bearing re-pin (type the new fingerprint, no default-OK), routed from
+# the Rust pin-compare (client.rs emits host-mismatch-prompt with the new fp as the msgbox link).
+grep -q 'void hostMismatchDialog' flutter/lib/common/widgets/dialog.dart 2>/dev/null   || r_g5_missing="$r_g5_missing mismatch-dialog"
+grep -q 'host-mismatch-prompt' flutter/lib/models/model.dart 2>/dev/null               || r_g5_missing="$r_g5_missing mismatch-dispatch"
+grep -q '"host-mismatch-prompt"' src/client.rs 2>/dev/null                             || r_g5_missing="$r_g5_missing mismatch-rust-route"
 if [ -n "$r_g5_missing" ]; then
   echo "  FAIL R-G5/R-S17: the host-key-pin GUI dialogs are missing (the MITM-defense UI must stay; their absence reverts to trust-on-first-use):$r_g5_missing"; rc=1
 else
-  echo "  ok  R-G5/R-S17 host-key-pin dialogs present (first-contact fingerprint seed -> sessionPinHost; no silent trust-on-first-use)"
+  echo "  ok  R-G5/R-S17 host-key-pin dialogs present (first-contact seed -> sessionPinHost; mismatch warning -> friction-bearing type-the-fingerprint re-pin; no silent trust-on-first-use)"
 fi
 # R-S17 / §19 closing-gate POSITIVE assertion: the headless box must be able to disclose its OWN Ed25519
 # fingerprint out-of-band so the operator can verify the viewer's first-connect seed — `--get-fingerprint`

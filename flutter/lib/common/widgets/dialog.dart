@@ -726,6 +726,81 @@ void hostNotPinnedDialog(
   });
 }
 
+// R-S17/R-G5: the host-key MISMATCH warning dialog — the `known_hosts` "WARNING: REMOTE HOST
+// IDENTIFICATION HAS CHANGED" analog. Unlike the seed (a trust-on-first-use accept), re-pinning a
+// MISMATCHED host is FRICTION-BEARING (R-S17): the operator must TYPE the new fingerprint exactly
+// (after verifying it out-of-band), there is no default-focused OK (the Re-pin button stays
+// disabled until the typed fingerprint matches), and the destructive action is styled as a risk.
+// `newFingerprint` is the verified new fp (the msgbox `link`) the typed input must match; `text`
+// carries the human-readable old-vs-new warning. On cancel the connection is closed (fail-closed);
+// the keying already stashed the verified new key, so Re-pin overwrites the old pin and reconnects.
+void hostMismatchDialog(SessionID sessionId, OverlayDialogManager dialogManager,
+    String text, String newFingerprint) async {
+  dialogManager.dismissAll();
+  final controller = TextEditingController();
+  // hex-only, case-insensitive compare so any fingerprint format the operator types matches.
+  String norm(String s) => s.replaceAll(RegExp(r'[^0-9a-fA-F]'), '').toLowerCase();
+  final wantHex = norm(newFingerprint);
+  dialogManager.show((setState, close, context) {
+    cancel() {
+      close();
+      closeConnection();
+    }
+
+    final matches = wantHex.isNotEmpty && norm(controller.text) == wantHex;
+    submit() {
+      if (!matches) return;
+      // Overwrites the old pin with the verified new key (set_pinned_pk), then reconnects.
+      bind.sessionPinHost(sessionId: sessionId);
+      close();
+      dialogManager.showLoading(translate('Connecting...'),
+          onCancel: closeConnection);
+    }
+
+    return CustomAlertDialog(
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.gpp_bad, color: Colors.red),
+          Text(translate('Host key changed')).paddingOnly(left: 10),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectableText(text, style: TextStyle(fontSize: 14)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: controller,
+            autofocus: false,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              border: const OutlineInputBorder(),
+              labelText: translate(
+                  'Type the new fingerprint to re-pin (substitution risk)'),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        dialogButton(
+          'Cancel',
+          icon: Icon(Icons.close_rounded),
+          onPressed: cancel,
+          isOutline: true,
+        ),
+        dialogButton(
+          'Re-pin',
+          icon: Icon(Icons.warning_amber_rounded),
+          onPressed: matches ? submit : null,
+        ),
+      ],
+      onCancel: cancel,
+    );
+  });
+}
+
 // R-S18/R-X8: the connect-time password dialog (rd-password only). The os-username/os-password
 // fields it used to carry — the operator's OS credentials pushed to the host — are removed: the
 // viewer never solicits OS creds (the host-triggered os-login prompts are gone, the responder

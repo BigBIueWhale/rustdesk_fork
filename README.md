@@ -15,26 +15,29 @@
 
 Chat with us: [Discord](https://discord.gg/nDceKgxnkV) | [Twitter](https://twitter.com/rustdesk) | [Reddit](https://www.reddit.com/r/rustdesk) | [YouTube](https://www.youtube.com/@rustdesk)
 
-[![RustDesk Server Pro](https://img.shields.io/badge/RustDesk%20Server%20Pro-Advanced%20Features-blue)](https://rustdesk.com/pricing.html)
+> [!WARNING]
+> **This is not upstream RustDesk, and the tagline above does not describe it.** This is a hardened,
+> opinionated, **direct-IP-only** fork — built to reach a *known* host by address and to be, on the
+> wire, **as defensible as SSH**. It is the opposite of "zero-config, no concerns about security":
+> there is **no rendezvous/relay server, no public ID, no LAN discovery, no auto-updater, no plugin
+> loader, no one-time passwords, and no key/server override** — those paths are **deleted from the
+> source tree** (removed, not merely disabled). Every inbound connection is mutually
+> password-authenticated by a **CPace PAKE** before any application byte crosses the wire, and the
+> program **refuses to start** unless that — and its sovereign, zero-egress posture — can be asserted
+> at runtime (R-A4). There are **no prebuilt downloads**: you build the single binary yourself,
+> locally and reproducibly (see the build section below), and connect to a box by its IP address.
 
-Yet another remote desktop solution, written in Rust. Works out of the box with no configuration required. You have full control of your data, with no concerns about security. You can use our rendezvous/relay server, [set up your own](https://rustdesk.com/server), or [write your own rendezvous/relay server](https://github.com/rustdesk/rustdesk-server-demo).
+### Security assurance — read before you expose a box
 
-![image](https://user-images.githubusercontent.com/71636191/171661982-430285f0-2e12-4b1d-9957-4a58e375304d.png)
-
-RustDesk welcomes contribution from everyone. See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for help getting started.
-
-[**FAQ**](https://github.com/rustdesk/rustdesk/wiki/FAQ)
-
-[**BINARY DOWNLOAD**](https://github.com/rustdesk/rustdesk/releases)
-
-[**NIGHTLY BUILD**](https://github.com/rustdesk/rustdesk/releases/tag/nightly)
-
-[<img src="https://f-droid.org/badge/get-it-on.png"
-    alt="Get it on F-Droid"
-    height="80">](https://f-droid.org/en/packages/com.carriez.flutter_hbb)
-[<img src="https://flathub.org/api/badge?svg&locale=en"
-    alt="Get it on Flathub"
-    height="80">](https://flathub.org/apps/com.rustdesk.RustDesk)
+The sole transport authenticator is one mandatory **CPace** balanced PAKE (CFRG draft-21), specified
+to the byte and pinned to its published **and** fork test vectors (16 known-answer tests, R-V2); the
+construction's assurance rests on that byte-level spec, those vectors, and an in-tree adversarial test
+suite (R-V3). The design and implementation were reviewed adversarially from independent angles —
+first-contact MITM, replay, downgrade, timing, and transcript/nonce reuse (R-V1). **The in-tree CPace
+implementation has NOT been independently audited by an outside cryptography expert** (R-V3); treat
+that as the standing limitation until such an audit is obtained. The full, honest implementation
+status — what is verified, what is deferred, and the known residuals — is in
+[`HARDENING_STATUS.md`](./HARDENING_STATUS.md).
 
 ## Building this hardened fork — local-only & reproducible (§12)
 
@@ -86,7 +89,15 @@ fetched and SHA-verified by `scripts/online-fetch.sh` into the git-ignored `onli
 
 ---
 
-## Dependencies
+> [!NOTE]
+> **Everything below is upstream RustDesk's original build documentation**, kept for development
+> reference only. It describes the **legacy Sciter** GUI and several Linux distributions — but the
+> hardened fork **ships Flutter-only** (Sciter is not shipped, R-B6) and its **reproducible release
+> build is the containerized per-host scripts documented above** (and in `AGENTS.md` / `scripts/`).
+> Treat the `sciter.dll` downloads and the non-Debian package steps below as upstream history, not
+> the fork's shipped path.
+
+## Dependencies (upstream legacy)
 
 Desktop versions use Flutter or Sciter (deprecated) for GUI, this tutorial is for Sciter only, since it is easier and more friendly to start. Check out our [CI](https://github.com/rustdesk/rustdesk/blob/master/.github/workflows/flutter-build.yml) for building Flutter version.
 
@@ -208,17 +219,20 @@ Please ensure that you run these commands from the root of the RustDesk reposito
 
 ## File Structure
 
-- **[libs/hbb_common](https://github.com/rustdesk/rustdesk/tree/master/libs/hbb_common)**: video codec, config, tcp/udp wrapper, protobuf, fs functions for file transfer, and some other utility functions
-- **[libs/scrap](https://github.com/rustdesk/rustdesk/tree/master/libs/scrap)**: screen capture
-- **[libs/enigo](https://github.com/rustdesk/rustdesk/tree/master/libs/enigo)**: platform specific keyboard/mouse control
-- **[libs/clipboard](https://github.com/rustdesk/rustdesk/tree/master/libs/clipboard)**: file copy and paste implementation for Windows, Linux, macOS.
-- **[src/ui](https://github.com/rustdesk/rustdesk/tree/master/src/ui)**: obsolete Sciter UI (deprecated)
-- **[src/server](https://github.com/rustdesk/rustdesk/tree/master/src/server)**: audio/clipboard/input/video services, and network connections
-- **[src/client.rs](https://github.com/rustdesk/rustdesk/tree/master/src/client.rs)**: start a peer connection
-- **[src/rendezvous_mediator.rs](https://github.com/rustdesk/rustdesk/tree/master/src/rendezvous_mediator.rs)**: Communicate with [rustdesk-server](https://github.com/rustdesk/rustdesk-server), wait for remote direct (TCP hole punching) or relayed connection
-- **[src/platform](https://github.com/rustdesk/rustdesk/tree/master/src/platform)**: platform specific code
-- **[flutter](https://github.com/rustdesk/rustdesk/tree/master/flutter)**: Flutter code for desktop and mobile
-- **[flutter/web/js](https://github.com/rustdesk/rustdesk/tree/master/flutter/web/v1/js)**: JavaScript for Flutter web client
+Paths are relative to this repository — a self-contained monorepo (`hbb_common` is absorbed in-tree, not a submodule; R-R1).
+
+- **[libs/hbb_common](libs/hbb_common)**: video codec, config, tcp/udp wrapper, protobuf, fs functions for file transfer, and the shared utility functions
+- **[libs/pake](libs/pake)**: the **CPace PAKE** — the fork's sole transport authenticator (KAT-verified; R-V2/R-V3)
+- **[libs/scrap](libs/scrap)**: screen capture
+- **[libs/enigo](libs/enigo)**: platform-specific keyboard/mouse control
+- **[libs/clipboard](libs/clipboard)**: file copy/paste for Windows, Linux, macOS
+- **[src/server](src/server)**: audio/clipboard/input/video services and inbound `--server` connection handling
+- **[src/client.rs](src/client.rs)**: start a direct, PAKE-keyed peer connection by IP
+- **[src/platform](src/platform)**: platform-specific code
+- **[flutter](flutter)**: Flutter code for desktop and mobile — **the shipped UI**
+- **[src/ui](src/ui)** / `src/ui.rs`: the legacy Sciter UI — **not shipped** (binaries are Flutter-only, R-B6); kept buildable only for the docker verify/smoke harness
+
+**Removed from upstream** (direct-IP-only, §8 — CI-proven absent by `scripts/verify.sh`): `src/rendezvous_mediator.rs` (the rendezvous/relay client), the web client (`flutter/web`), the auto-updater, the plugin loader, and the LAN-discovery, switch-sides, and one-time-password paths. See [`HARDENING_STATUS.md`](./HARDENING_STATUS.md).
 
 ## Screenshots
 

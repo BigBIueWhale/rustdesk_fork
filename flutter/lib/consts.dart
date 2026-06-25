@@ -432,8 +432,8 @@ const kAndroid13Notification = "android.permission.POST_NOTIFICATIONS";
 /// Android channel invoke type key
 class AndroidChannel {
   static final kStartAction = "start_action";
-  static final kGetStartOnBootOpt = "get_start_on_boot_opt";
-  static final kSetStartOnBootOpt = "set_start_on_boot_opt";
+  // R-G7 (§19): kGetStartOnBootOpt/kSetStartOnBootOpt removed with the "Start on boot"
+  // toggle — boot-start is re-homed unconditionally in the native BootReceiver.
   static final kSyncAppDirConfigPath = "sync_app_dir";
 }
 

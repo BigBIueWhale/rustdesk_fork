@@ -636,6 +636,32 @@ if [ -n "$r_s16d_ui" ]; then
 else
   echo "  ok  R-S16(d)/UI pinned controls grey + CM perms inert + Stop-service hidden + mobile toggles re-sync"
 fi
+# R-G7 (§19): the Android controlled-side UI conformance — two literal removals the §19 sweep mandates.
+#  (1) CLICK-TO-ACCEPT dropped: the incoming-connection login dialog passes a NULL accept callback, so
+#      showClientDialog renders no "Accept" button AND binds no Enter->accept (approve-mode is pinned
+#      'password', R-S9/R-S16 -> acceptance is automatic post-PAKE). Any `sendLoginResponse(_, true)`
+#      sender, or dropping the `onSubmit != null` guard, re-opens the click-to-accept path R-G7 forbids.
+#      (The post-auth in-session voice-call request keeps its accept via a non-null onSubmit -- a kept
+#      audio capability, not the pre-auth accept path.)
+#  (2) The user-settable "Start on boot" toggle is REMOVED and boot-start is re-homed on
+#      RECEIVE_BOOT_COMPLETED ALONE -- no KEY_START_ON_BOOT_OPT prefs gate in BootReceiver (one mode, no
+#      runtime knob, R-D2) -- with the battery-optimization onboarding the spec requires kept RELOCATED
+#      to server_model.toggleService (service-start), so the auto-start capability is "not left silently
+#      broken". A regrown toggle (the get/set channel keys, the switchTile, or the prefs gate) would
+#      restore the forbidden knob; a missing battery-opt request would silently break boot-start.
+r_g7=""
+grep -rqE 'sendLoginResponse\([^)]*true' flutter/lib/ && r_g7="$r_g7 android-login-accept-path"
+grep -qF 'if (onSubmit != null) dialogButton("Accept"' flutter/lib/models/server_model.dart || r_g7="$r_g7 conditional-accept-missing"
+grep -qF 'onSubmit: onSubmit == null ? null : submit' flutter/lib/models/server_model.dart || r_g7="$r_g7 conditional-onsubmit-missing"
+{ grep -rn 'kGetStartOnBootOpt\|kSetStartOnBootOpt' flutter/lib/ | grep -qvE ':[0-9]+:[[:space:]]*//'; } && r_g7="$r_g7 start-on-boot-channel-live"
+grep -rqF "translate('Start on boot')" flutter/lib/ && r_g7="$r_g7 start-on-boot-toggle"
+grep -qF 'getBoolean(KEY_START_ON_BOOT_OPT' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/BootReceiver.kt && r_g7="$r_g7 bootreceiver-toggle-gate"
+grep -qF 'kRequestIgnoreBatteryOptimizations' flutter/lib/models/server_model.dart || r_g7="$r_g7 battery-opt-not-relocated"
+if [ -n "$r_g7" ]; then
+  echo "  FAIL R-G7: Android controlled-side UI conformance regressed:$r_g7"; rc=1
+else
+  echo "  ok  R-G7 Android: login click-to-accept dropped (null accept -> no button, no Enter) + Start-on-boot toggle removed, boot re-homed on RECEIVE_BOOT_COMPLETED alone (battery-opt onboarding relocated to service-start)"
+fi
 # R-A6 / R-S2 / R-G4: the switch-sides role-swap feature is FULLY excised. SwitchSidesResponse
 # was a password-bypass + 2FA-skip authorization path (R-S2) — the resume itself was deleted by
 # R-A2 (2cf3ad6), and this removes the rest for structural absence: the 3 proto messages

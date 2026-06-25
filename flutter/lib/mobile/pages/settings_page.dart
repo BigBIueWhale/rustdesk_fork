@@ -44,7 +44,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   final _hasIgnoreBattery =
       false; //androidVersion >= 26; // remove because not work on every device
   var _ignoreBatteryOpt = false;
-  var _enableStartOnBoot = false;
   var _showTerminalExtraKeys = false;
   var _enableAbr = false;
   var _onlyWhiteList = false;
@@ -92,25 +91,8 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
         }
       }
 
-      if (await checkAndUpdateStartOnBoot()) {
-        update = true;
-      }
-
-      // R-X6: boot-start depends only on ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS
-      // (SYSTEM_ALERT_WINDOW dropped with the excised floating window).
-      var enableStartOnBoot =
-          await gFFI.invokeMethod(AndroidChannel.kGetStartOnBootOpt);
-      if (enableStartOnBoot) {
-        if (!await canStartOnBoot()) {
-          enableStartOnBoot = false;
-          gFFI.invokeMethod(AndroidChannel.kSetStartOnBootOpt, false);
-        }
-      }
-
-      if (enableStartOnBoot != _enableStartOnBoot) {
-        update = true;
-        _enableStartOnBoot = enableStartOnBoot;
-      }
+      // R-G7 (§19): the "Start on boot" toggle is removed; boot-start is re-homed in the
+      // native BootReceiver (RECEIVE_BOOT_COMPLETED alone), so there is no opt to read here.
 
       final fingerprint = await bind.mainGetFingerprint();
       if (_fingerprint != fingerprint) {
@@ -147,8 +129,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       () async {
         final ibs = await checkAndUpdateIgnoreBatteryStatus();
-        final sob = await checkAndUpdateStartOnBoot();
-        if (ibs || sob) {
+        if (ibs) {
           setState(() {});
         }
       }();
@@ -166,17 +147,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<bool> checkAndUpdateStartOnBoot() async {
-    if (!await canStartOnBoot() && _enableStartOnBoot) {
-      _enableStartOnBoot = false;
-      debugPrint(
-          "checkAndUpdateStartOnBoot and set _enableStartOnBoot -> false");
-      gFFI.invokeMethod(AndroidChannel.kSetStartOnBootOpt, false);
-      return true;
-    } else {
-      return false;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -337,30 +307,11 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                 }
               }));
     }
-    enhancementsTiles.add(SettingsTile.switchTile(
-        initialValue: _enableStartOnBoot,
-        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(translate('Start on boot')),
-          Text(
-              '* ${translate('Start the screen sharing service on boot, requires special permissions')}',
-              style: Theme.of(context).textTheme.bodySmall),
-        ]),
-        onToggle: (toValue) async {
-          if (toValue) {
-            // R-X6: boot-start needs only the battery-optimization exemption; the
-            // SYSTEM_ALERT_WINDOW request is dropped with the excised floating window.
-            if (!await AndroidPermissionManager.check(
-                kRequestIgnoreBatteryOptimizations)) {
-              if (!await AndroidPermissionManager.request(
-                  kRequestIgnoreBatteryOptimizations)) {
-                return;
-              }
-            }
-          }
-          setState(() => _enableStartOnBoot = toValue);
-
-          gFFI.invokeMethod(AndroidChannel.kSetStartOnBootOpt, toValue);
-        }));
+    // R-G7 (§19): the user-settable "Start on boot" toggle is removed — the hardened
+    // controlled box has no runtime knobs (R-D2). Boot-start is re-homed unconditionally in
+    // the native BootReceiver (RECEIVE_BOOT_COMPLETED alone, gated only on the battery-opt
+    // exemption requested at service-start, server_model.toggleService), so the kept
+    // auto-start capability is not left silently broken.
 
     // R-G4 / R-SV3: the "Check for software update on startup" toggle is removed — the
     // version-check + updater are excised, so there is nothing to toggle (dial nobody).
@@ -546,17 +497,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
       ],
     );
     return settings;
-  }
-
-  Future<bool> canStartOnBoot() async {
-    // R-X6: boot-start depends only on ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS,
-    // mirroring the severed Kotlin BootReceiver. The old SYSTEM_ALERT_WINDOW gate is
-    // dropped — that permission is no longer in the manifest (it became un-grantable),
-    // so gating on it would silently refuse boot-start (the spec-forbidden silent disable).
-    if (_hasIgnoreBattery && !_ignoreBatteryOpt) {
-      return false;
-    }
-    return true;
   }
 
   defaultDisplaySection() {

@@ -352,6 +352,17 @@ class ServerModel with ChangeNotifier {
       if (!await AndroidPermissionManager.check(kManageExternalStorage)) {
         await AndroidPermissionManager.request(kManageExternalStorage);
       }
+      // R-G7 (§19): the user-settable "Start on boot" toggle is removed — the controlled
+      // box auto-starts on boot unconditionally (BootReceiver, re-homed on
+      // RECEIVE_BOOT_COMPLETED alone, gated only on the battery-optimization exemption).
+      // The battery-optimization onboarding the spec requires kept is relocated here, to the
+      // service-start moment: granting it both keeps the foreground service alive under Doze
+      // and lets the re-homed BootReceiver actually start the service on the next boot
+      // (so the kept capability is not "left silently broken", R-G7).
+      if (!await AndroidPermissionManager.check(
+          kRequestIgnoreBatteryOptimizations)) {
+        await AndroidPermissionManager.request(kRequestIgnoreBatteryOptimizations);
+      }
       final res = await parent.target?.dialogManager
           .show<bool>((setState, close, context) {
         submit() => close(true);
@@ -551,7 +562,11 @@ class ServerModel with ChangeNotifier {
       'Do you accept?',
       'android_new_connection_tip',
       () => sendLoginResponse(client, false),
-      () => sendLoginResponse(client, true),
+      // R-G7/R-S9 (§19): the incoming-connection click-to-accept path is dropped
+      // entirely — approve-mode is pinned 'password', so acceptance is automatic
+      // post-PAKE. A null accept callback makes this dialog reject-only (Dismiss):
+      // no Accept button AND no Enter→accept binding (see showClientDialog).
+      null,
     );
   }
 
@@ -572,7 +587,7 @@ class ServerModel with ChangeNotifier {
   }
 
   showClientDialog(Client client, String title, String contentTitle,
-      String content, VoidCallback onCancel, VoidCallback onSubmit) {
+      String content, VoidCallback onCancel, VoidCallback? onSubmit) {
     parent.target?.dialogManager.show((setState, close, context) {
       cancel() {
         onCancel();
@@ -580,7 +595,7 @@ class ServerModel with ChangeNotifier {
       }
 
       submit() {
-        onSubmit();
+        onSubmit?.call();
         close();
       }
 
@@ -605,10 +620,16 @@ class ServerModel with ChangeNotifier {
         ),
         actions: [
           dialogButton("Dismiss", onPressed: cancel, isOutline: true),
-          // R-G7 / R-S9 (§19): the click-to-accept "Accept" action is removed — approve-mode is
-          // pinned 'password', so acceptance is automatic; only "Dismiss" (reject) survives.
+          // R-G7 / R-S9 (§19): for the incoming-connection login dialog the accept
+          // callback is null, so NO "Accept" button is shown — approve-mode is pinned
+          // 'password', acceptance is automatic, only "Dismiss" (reject) survives.
+          // A non-null onSubmit (the post-auth in-session voice-call request, a kept
+          // audio capability) still renders its Accept action.
+          if (onSubmit != null) dialogButton("Accept", onPressed: submit),
         ],
-        onSubmit: submit,
+        // Enter binds to accept ONLY when there is an accept action — so the
+        // reject-only login dialog has no Enter→accept path either (R-G7).
+        onSubmit: onSubmit == null ? null : submit,
         onCancel: cancel,
       );
     }, tag: getLoginDialogTag(client.id));

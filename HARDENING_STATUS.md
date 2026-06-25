@@ -5,6 +5,51 @@ This fork is being built **into** the hardened RustDesk specified by
 how far the implementation has progressed against that normative spec, and what
 each unfinished item needs.
 
+## SESSION UPDATE (2026-06-25, later) — R-G7 Android UI-conformance gaps found + CLOSED; stale claims corrected
+
+A fresh adversarial re-audit (three read-only lenses: Sciter-drop integrity, R-G5/R-S17 host-pin GUI
+fail-closed, and a strict-literal full-spec MUST sweep, each tracing code not gates) **confirmed the
+security core sound and the Sciter drop + R-S17 GUI complete**, but the strict sweep found **two genuine
+literal-MUST gaps in R-G7's Android surface** — both now **CLOSED + gated** this session:
+
+- **R-G7(1) — Android incoming-connection click-to-accept residual.** The login dialog's visible Accept
+  button was already removed, but `showClientDialog` still bound `onSubmit→sendLoginResponse(true)`, and
+  `CustomAlertDialog` maps Enter→onSubmit — so **pressing Enter still accepted** (dead on the pinned
+  password config, but the spec mandates dropping the path). FIX: `onSubmit` made nullable; the login
+  dialog passes `null` → no Accept button AND no Enter→accept. The post-auth voice-call request keeps its
+  accept (a kept audio capability) via a non-null callback. (`flutter/lib/models/server_model.dart`.)
+- **R-G7(4) — the user-settable "Start on boot" toggle was RETAINED.** The prior "deliberate retention"
+  rationale misread the spec: R-G7 mandates *removing the toggle AND re-homing boot-start on
+  `RECEIVE_BOOT_COMPLETED` alone, "not left silently broken."* The retention rationale ("removing it
+  freezes boot-start to never-fire") is true only of removal *without* the re-home the spec prescribes.
+  FIX: toggle removed (`settings_page.dart`); `BootReceiver.kt` re-homed (the `KEY_START_ON_BOOT_OPT`
+  prefs gate dropped → fires on boot whenever the legitimate battery-opt exemption is granted, one mode,
+  no knob, R-D2); the **battery-optimization onboarding the spec requires kept is relocated** from the
+  removed toggle to `server_model.toggleService` (service-start), so the capability is *not* silently
+  broken; dead Dart/Kotlin plumbing (`get/set_start_on_boot_opt` channel keys + handlers + constants)
+  removed. **Validated:** `dart-verify.sh` (flutter analyze) GREEN; new `verify.sh` R-G7 anti-regression
+  gate green (6 checks); Kotlin `when`-block + BootReceiver structurally checked.
+
+**Stale claims in this file corrected by this session's findings:**
+- The "§19 GUI DONE — *both* the flutter and the legacy sciter front-ends" line (below) is **stale**: the
+  Sciter UI was DELETED end-to-end (commit `0d2c882`); Flutter is the **sole** front-end. The Sciter-drop
+  audit confirmed it is complete (no dangling refs, tree compiles, verify.sh absence-gate sound).
+- "R-G5 … **Top remaining MUST** … UNBUILT" (below) is **stale**: commit `43e2b62` built the friction-bearing
+  mismatch dialog + the Flutter manage-hosts view; the R-S17 GUI audit confirmed it is fail-closed and
+  complete (headless/CLI hard-fails at the Rust `bail!`; the pin store is unwritable from any peer-message
+  arm; the HostIdentity Ed25519 sig is verified before the pin-compare before any Message/decode).
+- **R-A9 framing corrected.** R-A9's RDP-tunnel-ciphertext property is **met structurally** — `set_raw`
+  *panics* on a keyed stream (R-S5/R-A3, `tcp.rs`), so there is no code path that tunnels plaintext, and
+  this is gate-asserted. `smoke-server.sh` stage 9 *does* run an in-repo loopback wire-capture (no
+  plaintext, on a post-key LoginRequest canary) — so R-A9 is **not** "wholly external." What remains
+  external is only the **two-host** RDP-tunnel wire-capture demonstration (a real network), alongside
+  R-A8's two-host active-MITM and R-V3's independent expert audit — the honestly-disclosed external set.
+
+**Windows R-B2 re-confirmed (2026-06-25):** the §12.2 KVM double-build asserted **A==B byte-identical**
+(`rustdesk-setup.exe` `0e78a736…`, `rustdesk.msi` `de067563…`, exit 0) — the last in-repo R-B2 MUST holds.
+
+---
+
 ## CURRENT STATE — security core DONE; a fresh adversarial audit reopened real in-repo gaps (2026-06-25)
 
 **Correction to the earlier "in-repo COMPLETE" claim.** A four-lens adversarial re-audit

@@ -8,7 +8,6 @@ import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import com.hjq.permissions.XXPermissions
-import io.flutter.embedding.android.FlutterActivity
 
 class BootReceiver : BroadcastReceiver() {
     private val logTag = "tagBootReceiver"
@@ -17,14 +16,16 @@ class BootReceiver : BroadcastReceiver() {
         Log.d(logTag, "onReceive ${intent.action}")
 
         if (Intent.ACTION_BOOT_COMPLETED == intent.action) {
-            // check SharedPreferences config
-            val prefs = context.getSharedPreferences(KEY_SHARED_PREFERENCES, FlutterActivity.MODE_PRIVATE)
-            if (!prefs.getBoolean(KEY_START_ON_BOOT_OPT, false)) {
-                Log.d(logTag, "KEY_START_ON_BOOT_OPT is false")
-                return
-            }
-            // check pre-permission (R-X6: SYSTEM_ALERT_WINDOW dropped with the floating
-            // window; boot-auto-start needs only the battery-optimization exemption)
+            // R-G7 (§19): the user-settable "Start on boot" toggle is removed; boot-start is
+            // re-homed on RECEIVE_BOOT_COMPLETED ALONE (no KEY_START_ON_BOOT_OPT gate) so the
+            // hardened controlled box auto-starts unconditionally — one mode, no runtime knob
+            // (R-D2). The only remaining gate is the legitimate battery-optimization exemption
+            // (the kept onboarding, requested at service-start), which Android requires to
+            // start a foreground service from boot; without it we must not attempt the start
+            // (ForegroundServiceStartNotAllowedException) — that is a real OS constraint, not
+            // a toggle, so this is "re-homed, not left silently broken".
+            // (R-X6: the old SYSTEM_ALERT_WINDOW dependency was already severed with the
+            // excised floating window.)
             if (!XXPermissions.isGranted(context, REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)){
                 Log.d(logTag, "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS is not granted")
                 return

@@ -230,21 +230,9 @@ class MainActivity : FlutterActivity() {
                     rdClipboardManager?.syncClipboard(true)
                     result.success(true)
                 }
-                GET_START_ON_BOOT_OPT -> {
-                    val prefs = getSharedPreferences(KEY_SHARED_PREFERENCES, MODE_PRIVATE)
-                    result.success(prefs.getBoolean(KEY_START_ON_BOOT_OPT, false))
-                }
-                SET_START_ON_BOOT_OPT -> {
-                    if (call.arguments is Boolean) {
-                        val prefs = getSharedPreferences(KEY_SHARED_PREFERENCES, MODE_PRIVATE)
-                        val edit = prefs.edit()
-                        edit.putBoolean(KEY_START_ON_BOOT_OPT, call.arguments as Boolean)
-                        edit.apply()
-                        result.success(true)
-                    } else {
-                        result.success(false)
-                    }
-                }
+                // R-G7 (§19): the get/set "Start on boot" platform-channel handlers are
+                // removed with the toggle — boot-start is re-homed unconditionally in
+                // BootReceiver (RECEIVE_BOOT_COMPLETED alone), so there is no opt to read/write.
                 SYNC_APP_DIR_CONFIG_PATH -> {
                     if (call.arguments is String) {
                         val prefs = getSharedPreferences(KEY_SHARED_PREFERENCES, MODE_PRIVATE)

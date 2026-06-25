@@ -43,6 +43,13 @@ preflight() {
 build_one() {
     local profile="$1" features="$2" tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-$1"
     log "building profile '$profile' (features: $features)"
+    # HONESTY GATE (the af8746f class): build.py renames the freshly built package to
+    # $REPO_ROOT/rustdesk-<version>.deb, and the post-build step copies whatever
+    # rustdesk-*.deb it finds there. A PRIOR run leaves one behind (root-owned), so if a
+    # build fails WITHOUT producing a new one, that STALE .deb would be picked up and shipped
+    # as a false success. Remove any pre-existing rustdesk-*.deb up front (these are
+    # git-ignored artifacts) so the gate below can ONLY find a package THIS run produced.
+    rm -f "$REPO_ROOT"/rustdesk-*.deb
     docker run --rm \
         --name "$tag" \
         --network=none \
@@ -118,18 +125,36 @@ CFG
             git config --global --add safe.directory "*"
             export PUB_CACHE=/online/pub-cache
             [ -d "$PUB_CACHE" ] || { echo "[FATAL] /online/pub-cache missing -- run online-fetch.sh (stage_pub_cache)"; exit 1; }
-            # Use dart pub get (NOT flutter pub get): the flutter wrapper drives pub ONLINE
-            # (it refreshes pub security advisories, which _TypeError against the read-only
-            # offline cache → rc=1); dart pub get --offline resolves the project straight from
-            # PUB_CACHE, skipping advisories (validated against the staged cache).
+            # Resolve the project: dart pub get --offline reads straight from PUB_CACHE and
+            # skips advisories (validated against the staged cache). It is the ONLINE flutter
+            # wrapper pub get that refreshes pub security advisories and _TypeErrors against the
+            # read-only offline cache → rc=1; `--offline` (here and the flutter injection below)
+            # avoids that advisories fetch entirely.
             export CI=true   # non-interactive flutter (suppress the fresh-HOME first-run prompt)
             ( cd flutter && dart pub get --offline )
-            # `flutter build linux` ALSO re-resolves the flutter SDK'\''s OWN tool package
-            # (packages/flutter_tools) IN-PROCESS and ONLINE — the cold tarball ships it
-            # UNRESOLVED, so it hits pub.dev + the advisories _TypeError. Pre-resolve it OFFLINE
-            # here (its deps are staged in PUB_CACHE by stage_pub_cache) so `flutter build` finds
-            # the .dart_tool fresh and skips the networked re-resolution.
+            # Pre-resolve the flutter SDK'\''s OWN tool package (packages/flutter_tools) OFFLINE before
+            # ANY `flutter` invocation: the cold tarball ships it UNRESOLVED, and the first `flutter ...`
+            # would otherwise re-resolve it IN-PROCESS + ONLINE (pub.dev + the advisories _TypeError).
+            # Its deps are staged in PUB_CACHE by stage_pub_cache. Must precede the injection + build below.
             ( cd "$TC"/flutter/packages/flutter_tools && dart pub get --offline )
+            # Plugin injection (R-B7), mirroring build-windows.ps1:107-110. `dart pub get`
+            # resolves the project (writes .dart_tool) but does NOT run flutter'\''s plugin
+            # injection, which is what (re)generates flutter/linux/flutter/generated_plugins.cmake
+            # + flutter/linux/flutter/ephemeral/.plugin_symlinks/* + flutter/.flutter-plugins{,-dependencies}.
+            # The git-ignored ephemeral symlinks are stale across runs -- a prior build wrote them
+            # pointing at /root/.pub-cache (its PUB_CACHE), so under THIS build'\''s PUB_CACHE=/online/pub-cache
+            # they DANGLE and `flutter build linux` CMake-aborts: "add_subdirectory given source
+            # flutter/ephemeral/.plugin_symlinks/<plugin>/linux which is not an existing directory"
+            # (generated_plugins.cmake:23). Run the FLUTTER-level pub get to re-inject them against the
+            # current PUB_CACHE. Use $REAL_FLUTTER (NOT the shim, which routes `pub get`->`dart pub get`
+            # and so SKIPS injection) with --offline: only the ONLINE wrapper pub get refreshes the
+            # advisories that _TypeError on the read-only cache; `flutter pub get --offline` resolves
+            # straight from PUB_CACHE WITHOUT advisories (proven: "Got dependencies!", rc=0), so the
+            # injection runs clean offline. The regenerated symlinks resolve under /online/pub-cache and
+            # each <plugin>/linux exists. (.flutter-plugins-dependencies carries a wall-clock date_created,
+            # but it is git-ignored build-input metadata referenced by nothing in build/linux/.../bundle/,
+            # so it never reaches the .deb payload -- R-B2 unaffected, enforced by the DOUBLE_BUILD A==B gate.)
+            ( cd flutter && "$REAL_FLUTTER" pub get --offline )
             # FRB codegen first (R-B7: the uncommitted generated_bridge.dart /
             # bridge_generated.rs every build job needs), then upstream build.py
             # with the §3.2 x64-linux features.
@@ -144,8 +169,13 @@ CFG
             python3 ./build.py '"$features"'
         '
     mkdir -p "$OUT_DIR"
+    # build.py fails loud (system2 → sys.exit(-1)) on any step, so a non-zero docker run already
+    # aborts under set -e. This is the second line of defence: with the stale .deb purged above,
+    # a missing rustdesk-*.deb now unambiguously means build.py did NOT emit one (e.g. flutter
+    # build linux failed) -- fail loud rather than ship nothing/something stale.
     local deb
-    deb="$(ls -1 "$REPO_ROOT"/rustdesk-*.deb 2>/dev/null | head -1)" || die "no .deb produced"
+    deb="$(ls -1 "$REPO_ROOT"/rustdesk-*.deb 2>/dev/null | head -1 || true)"
+    [ -n "$deb" ] && [ -f "$deb" ] || die "no rustdesk-*.deb produced — build.py did not emit a package (flutter build linux likely failed); see the build output above"
     cp "$deb" "$OUT_DIR/rustdesk-${profile}.deb"
     sha256sum "$OUT_DIR/rustdesk-${profile}.deb" | tee "$OUT_DIR/rustdesk-${profile}.deb.sha256"
 }

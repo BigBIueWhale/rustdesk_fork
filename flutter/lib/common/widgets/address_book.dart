@@ -482,6 +482,15 @@ class _AddressBookState extends State<AddressBook> {
         String id = idController.id;
         if (id.isEmpty) {
           // pass
+        } else if (!isDirectAddress(id)) {
+          // R-G2/R-SV5: the address book is keyed to REACHABLE addresses, not RustDesk IDs
+          // (connect-by-ID is removed). Reject a bare ID at the store too, matching the connect
+          // box — otherwise a stored bare ID is dead weight (it can never be connected to).
+          setState(() {
+            isInProgress = false;
+            errorMsg = translate('Direct address required (IP or host:port)');
+          });
+          return;
         } else {
           if (gFFI.abModel.idContainByCurrent(id)) {
             setState(() {

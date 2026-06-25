@@ -163,7 +163,6 @@ pub async fn start_one_port_forward(
     key: String,
     token: String,
 ) {
-    crate::common::test_rendezvous_server();
     let (sender, mut receiver) = mpsc::unbounded_channel::<Data>();
     let handler = Session::new(&id, sender);
     if let Err(err) = crate::port_forward::listen(

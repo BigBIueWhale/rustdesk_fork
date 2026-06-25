@@ -502,6 +502,25 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                         );
                                         continue;
                                     }
+                                    // R-S11: the SAME per-arm config-write allowlist binds the WINDOWS
+                                    // main pipe (postfix == ""; the only postfix `start()` is ever called
+                                    // with on Windows). Windows has no `_service` channel and no
+                                    // SO_PEERCRED peer_uid, but the same Data variants (whole-config
+                                    // SyncConfig(Some), id/salt struct-field writes, Socks(Some) proxy)
+                                    // MUST be rejected here so that even a same-session, same-executable
+                                    // process (already the only peer admitted by
+                                    // authorize_windows_main_ipc_connection) cannot re-pin the host
+                                    // key_pair / id / salt or install a local proxy from inside — the
+                                    // config-integrity boundary R-S11 mandates "per write-arm", on every
+                                    // shipped artifact, not Linux/macOS alone.
+                                    #[cfg(target_os = "windows")]
+                                    if !main_channel_admits_config_write(&data) {
+                                        log::warn!(
+                                            "Rejected a config write on the main IPC channel (R-S11): data_kind={:?}",
+                                            std::mem::discriminant(&data)
+                                        );
+                                        continue;
+                                    }
                                     handle(data, &mut stream).await;
                                 }
                                 Ok(None) => {
@@ -665,7 +684,7 @@ impl Drop for CheckIfRestart {
 /// proxy / local-MITM primitive, already inert under the pinned proxy-url, R-D6(d)(iii)) is rejected
 /// at the channel too. (permanent-password = the UI password-set; unlock-pin = the --set-unlock-pin /
 /// GUI PIN persist, core_main.rs; voice-call-input = the audio device — all legitimate operator writes.)
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) fn main_channel_admits_config_write(data: &Data) -> bool {
     match data {
         // Whole-config push: legitimate ONLY on the peer-uid-gated _service channel; on the main

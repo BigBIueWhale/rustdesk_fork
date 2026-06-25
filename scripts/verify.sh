@@ -106,8 +106,16 @@ r_s11=
 grep -q 'if !main_channel_admits_config_write(&data)' src/ipc.rs                       || r_s11="$r_s11 loop-not-wired"
 grep -qE '"permanent-password" \| "unlock-pin" \| "voice-call-input"' src/ipc.rs       || r_s11="$r_s11 no-positive-config-allowlist"
 grep -q 'Data::Socks(Some(_)) => false' src/ipc.rs                                     || r_s11="$r_s11 socks-not-rejected"
+# R-S11 binds EVERY shipped artifact, not Linux/macOS alone (Windows .exe/.msi are shipped). The
+# allowlist MUST also guard the Windows main pipe (postfix == ""). Because the linux/macos gate logs
+# stream.peer_uid() (unix-only, SO_PEERCRED), Windows needs its OWN cfg(windows) gate calling the same
+# allowlist fn — so there must be >=2 gate call sites and the fn must be cfg'd for windows. Without this
+# a same-session/same-exe process could Data::SyncConfig(Some)/Config(id|salt) the host key_pair on the
+# Windows artifact (the linux-only gate + the linux-cfg unit test are blind to it).
+[ "$(grep -c 'if !main_channel_admits_config_write(&data)' src/ipc.rs)" -ge 2 ]        || r_s11="$r_s11 windows-main-pipe-gate-missing"
+grep -B1 'pub(crate) fn main_channel_admits_config_write' src/ipc.rs | grep -q 'windows' || r_s11="$r_s11 allowlist-fn-not-cfg-windows"
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel config-write allowlist:$r_s11"; rc=1; else
-  echo "  ok  R-S11 main-channel config-write POSITIVE allowlist (SyncConfig+id+salt+Socks rejected; legit operator writes pass)"; fi
+  echo "  ok  R-S11 main-channel config-write POSITIVE allowlist (SyncConfig+id+salt+Socks rejected; legit operator writes pass; gate binds Linux/macOS AND the Windows main pipe)"; fi
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() — set_socks / set_permanent_password /
 # set_id / set_salt / set_key_confirmed / set_unlock_pin / the whole-config Config::set+Config2::set —
@@ -723,6 +731,14 @@ if grep -qE 'TestRendezvousServer' src/ipc.rs || grep -qE 'fn refresh_rendezvous
 else
   echo "  ok  R-SV4(e)/R-S11 IPC rendezvous-dial message fully removed (Data::TestRendezvousServer variant+sender+handler + refresh_rendezvous_server wrapper gone; Data::Deployed removed)"
 fi
+# R-SV4(d)/R-SV10 (sovereignty): the rendezvous-server LATENCY PROBE itself — crate::test_rendezvous_server,
+# which spawned a startup outbound connect_tcp to RENDEZVOUS_PORT on each configured broker to pick the
+# fastest one — is EXCISED outright (the function AND every caller: src/main.rs flutter/cli mains,
+# src/cli.rs, src/flutter_ffi.rs). The fork is direct-IP only (RENDEZVOUS_SERVERS empty, R-SV4) so there
+# is NO broker to probe; R-SV10's symbol list names test_rendezvous_server as one that MUST be absent —
+# not merely dead-by-empty-config (a config-write to rendezvous-servers + serial could otherwise revive
+# its egress). Assert the symbol is gone (explanatory comments excepted by ra6_clean's `//` filter).
+ra6_clean 'test_rendezvous_server' 'R-SV4(d)/R-SV10 rendezvous-server latency-probe startup phone-home' || rc=1
 # R-X10 (§8 run-mode plurality): the GUI/client (`is_server == false`) startup path NEVER auto-starts
 # a controlled server — the controlled side starts ONLY via the installed `--service`/`--server` (one
 # mode, R-D8). The inherited `else { start_server(true) }` fallback in server.rs's `is_server == false`
@@ -1546,6 +1562,20 @@ if [ -n "$r_g5_missing" ]; then
   echo "  FAIL R-G5/R-S17: the host-key-pin GUI dialogs are missing (the MITM-defense UI must stay; their absence reverts to trust-on-first-use):$r_g5_missing"; rc=1
 else
   echo "  ok  R-G5/R-S17 host-key-pin dialogs present (first-contact fingerprint seed -> sessionPinHost; no silent trust-on-first-use)"
+fi
+# R-S17 / §19 closing-gate POSITIVE assertion: the headless box must be able to disclose its OWN Ed25519
+# fingerprint out-of-band so the operator can verify the viewer's first-connect seed — `--get-fingerprint`
+# in core_main.rs printing pk_to_fingerprint(get_key_pair().1). The §19 closing box names this as a
+# REQUIRED positive CI check (alongside the seed dialog + bare-ID rejection, both already gated); it was
+# the one missing one. Without --get-fingerprint the R-S17 substitution defense is un-bootstrappable on
+# the very headless box it protects.
+r_getfp=
+grep -q '"--get-fingerprint"' src/core_main.rs                                        || r_getfp="$r_getfp arm-missing"
+grep -q 'pk_to_fingerprint(config::Config::get_key_pair().1)' src/core_main.rs        || r_getfp="$r_getfp wrong-key-source"
+if [ -n "$r_getfp" ]; then
+  echo "  FAIL R-S17 --get-fingerprint bootstrap CLI:$r_getfp (the host's substitution-defense seed is un-readable headless)"; rc=1
+else
+  echo "  ok  R-S17 --get-fingerprint present in core_main.rs (prints pk_to_fingerprint(get_key_pair().1) — the headless seed-disclosure the §19 closing-gate mandates)"
 fi
 # R-X7a / R-G1 (no inert pinned-policy SELECTOR survives — removed, not greyed): verification-method +
 # approve-mode are R-S16-pinned (use-permanent-password / password), so a UI that PRESENTS+WRITES them

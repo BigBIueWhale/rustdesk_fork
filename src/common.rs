@@ -14,8 +14,7 @@ use hbb_common::{
     async_recursion::async_recursion,
     bail, base64,
     bytes::Bytes,
-    config::{self, keys, Config, LocalConfig, CONNECT_TIMEOUT, RENDEZVOUS_PORT},
-    futures::future::join_all,
+    config::{self, keys, Config, LocalConfig},
     futures_util::future::poll_fn,
     get_version_number, log,
     message_proto::*,
@@ -611,39 +610,13 @@ pub async fn get_nat_type(ms_timeout: u64) -> i32 {
     crate::ipc::get_nat_type(ms_timeout).await
 }
 
-// used for client to test which server is faster in case stop-servic=Y
-#[tokio::main(flavor = "current_thread")]
-async fn test_rendezvous_server_() {
-    let servers = Config::get_rendezvous_servers();
-    if servers.len() <= 1 {
-        return;
-    }
-    let mut futs = Vec::new();
-    for host in servers {
-        futs.push(tokio::spawn(async move {
-            let tm = std::time::Instant::now();
-            if socket_client::connect_tcp(
-                crate::check_port(&host, RENDEZVOUS_PORT),
-                CONNECT_TIMEOUT,
-            )
-            .await
-            .is_ok()
-            {
-                let elapsed = tm.elapsed().as_micros();
-                Config::update_latency(&host, elapsed as _);
-            } else {
-                Config::update_latency(&host, -1);
-            }
-        }));
-    }
-    join_all(futs).await;
-    Config::reset_online();
-}
-
-// #[cfg(any(target_os = "android", target_os = "ios", feature = "cli"))]
-pub fn test_rendezvous_server() {
-    std::thread::spawn(test_rendezvous_server_);
-}
+// R-SV4(d)/R-SV10: the rendezvous-server latency probe is EXCISED. It used to
+// spawn a startup outbound `connect_tcp` to RENDEZVOUS_PORT on each configured
+// rendezvous host to pick the fastest broker. The fork is direct-IP only —
+// `RENDEZVOUS_SERVERS` is empty (R-SV4) so there is no broker to probe — and the
+// spec names `test_rendezvous_server` as a sovereignty symbol that MUST be
+// absent, not merely dead. The function and all of its callers are removed so the
+// R-SV10 grep is sound (no startup phone-home a config-write could ever revive).
 
 pub fn run_me<T: AsRef<std::ffi::OsStr>>(args: Vec<T>) -> std::io::Result<std::process::Child> {
     #[cfg(target_os = "linux")]

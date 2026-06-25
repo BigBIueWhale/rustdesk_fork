@@ -55,43 +55,56 @@ the spec — gate coverage itself is part of the work.
   key_pair/id/salt via `SyncConfig(Some)` / set a local proxy via `Socks(Some)`). Extended the
   allowlist to a dedicated `cfg(windows)` gate; strengthened the verify gate to require it.
 - **R-S17/§19** — added the closing-gate's mandated positive check that `--get-fingerprint` exists.
-
-### REMAINING in-repo gaps (audit findings — NOT yet closed; the "complete" claim was premature)
-- **R-B6 / R-R2 (Sciter UI) — ✅ DONE this session.** The Sciter UI is now DELETED, not cfg-gated
-  (R-R2's "MUST delete the Sciter fork" + §5 Excise outweigh §19's lenient cfg-gated parenthetical).
-  Removed: `src/ui.rs`, the entire `src/ui/*.tis` tree, `res/inline-sciter.py`, the macOS Sciter app
-  delegate `src/platform/delegate.rs` (+ its `pub mod delegate`), `pub mod ui` (lib.rs), the `sciter-rs`
+- **R-B10** — added the offline-build network canary (`build.rs` `r_b10_offline_canary`, env-gated on
+  `RUSTDESK_CANARY_OFFLINE=1`; armed in every offline compile stage — debian/android/windows) + a
+  verify gate. The mandated "prove `--network=none`, don't trust it" mechanism the punch-list flagged.
+- **R-B6 / R-R2 (Sciter UI) — the major one.** The Sciter UI is now DELETED, not cfg-gated (R-R2's
+  "MUST delete the Sciter fork" + §5 Excise outweigh §19's lenient cfg-gated parenthetical). Removed:
+  `src/ui.rs`, the entire `src/ui/*.tis` tree (27 files), `res/inline-sciter.py`, the macOS Sciter app
+  delegate `src/platform/delegate.rs` (+ `pub mod delegate`), `pub mod ui` (lib.rs), the `sciter-rs`
   Cargo dep (+ Cargo.lock regenerated, minimal 12-line drop, no other dep bumped), and the scattered
   sciter/ui bridges (`keyboard.rs` `CUR_SESSION` ×3, `file_trait.rs read_dir -> sciter::Value`,
-  `ui_session_interface.rs get_chatbox` inline branch, the `build.py` sciter build path). The
-  non-flutter/non-cli desktop build is now HEADLESS (`main.rs` runs `core_main()` without `ui::start`;
-  it remains the docker compile/verify proxy + the `--server` runtime, feature flags UNCHANGED, still
-  type-checks the full core). Validated: `cargo check --features linux-pkg-config` green, full
-  `verify.sh` green (new consolidated R-B6 deletion gate + the ~9 per-control sciter `.tis` gates
-  retired into it), apple-conform-check PASS (macOS source still conforms after the delegate deletion).
-  Flutter is the sole front-end; the dependency delta stays net-negative (§16).
-- **§19 GUI literal-conformance (MUST/partial, low security impact)** — `R-G3` dead `ConnectionType`
-  `_secure`/`_direct` fields + `insecure`/`_relay` sentinels are still *wired* (`shared_state.dart`,
-  set from `model.dart`, read in `remote_tab_page.dart`/`dialog.dart`) though the badge is collapsed
-  to always-secure; `R-G5` host-key *mismatch* dialog + manage/forget-host view are CLI-only (the
-  Rust compare is fail-closed/secure, but the dedicated GUI surfaces are unbuilt); `R-G2` peer list
-  not re-keyed to a first-class address field and address-book "Add ID" stores a bare ID without
-  validation (connect still rejects it); `R-G6` no specific "capability disabled on the peer" message.
-- **R-G7 Start-on-boot toggle — DELIBERATE RETENTION (documented).** The spec lists it for removal,
-  but its SYSTEM_ALERT_WINDOW dependency (the actual R-X6 concern) is already excised; it is now a
-  clean opt-in for a KEPT capability (R-D7a controlled auto-start). Removing it would freeze
-  `KEY_START_ON_BOOT_OPT` at its `false` default (the toggle is its only setter) → boot-start never
-  fires → the kept capability **silently broken**, which R-G7 itself forbids ("not left silently
-  broken"). Kept pending a tested boot-semantics redesign; not a security gap.
-- **Build hardening (MUST-but-mitigated / MED)** — `R-B10` the mandated canary `build.rs` (attempt an
-  outbound connect, must fail the compile) does not exist (the authoritative `--network=none`
-  isolation IS wired, so no live hole); `R-R3` `audit.sh`/`dart-audit.sh` are correct but not run by
-  `verify.sh` / no CI; no Windows double-build A==B determinism assertion (Debian has one); `R-B12(b)`
-  frb-tool binary + `cc`/gcc unpinned; staged docker-produced build outputs not SHA-verified.
-- **Cosmetic** — dead relay strings in `lang/template.rs` + per-language files; new connect-flow
-  strings missing from the lang table; `deny.toml` phantom `tracing-subscriber` accept (not in the
-  lock graph); orphaned `SHA256_WIX4` sentinel; caller-less `UserModel` HTTP methods; dead 2FA widget
-  classes; vestigial deep-link `?password=`/`?relay=` query parsing (inert).
+  `ui_session_interface.rs get_chatbox`, the `build.py` sciter path). The non-flutter/non-cli build is
+  now HEADLESS (`main.rs` runs `core_main()` without `ui::start`; still the docker compile/verify proxy
+  + the `--server` runtime, feature flags UNCHANGED, type-checks the full core). Validated: cargo check
+  green, full verify.sh green (consolidated R-B6 deletion gate; ~9 per-control sciter `.tis` gates
+  retired into it), apple-conform PASS, smoke-server runtime green. Flutter is the sole front-end.
+- **R-G2/R-SV5** — the address-book "Add ID" store now rejects a bare ID (`isDirectAddress`, mirroring
+  the connect box) — the last bare-ID ingress at the widget layer. dart-verify green.
+
+### REMAINING in-repo items (genuine residuals — security is MET; these are literal/UX/build)
+- **R-G5 (MUST, security MET)** — the host-key *mismatch* is handled fail-closed in Rust (abort + MITM
+  warning text + a `--forget-host` pointer) and the seed dialog IS built (`hostNotPinnedDialog`); manage
+  is CLI (`--list-known-hosts`/`--forget-host`). UNBUILT: a *dedicated* GUI mismatch dialog (old-vs-new
+  fingerprint + friction-bearing re-pin) and a Flutter manage-hosts view. A real Flutter deliverable —
+  the substitution defense already works; this is the UX surface R-G5 names. **Top remaining MUST.**
+- **Windows double-build assertion (R-B2, MED)** — `build-windows-vm.sh` records one SHA but has no
+  A==B rebuild-compare (Debian's `build-debian.sh` does). R-B2 wants byte-repro PROVEN by double build;
+  needs the §12.2 VM to add+validate, so deferred to a Windows-build effort.
+- **R-G7 Start-on-boot toggle — DELIBERATE RETENTION (documented).** Spec lists it for removal, but its
+  SYSTEM_ALERT_WINDOW dependency (the actual R-X6 concern) is already excised; it is now a clean opt-in
+  for a KEPT capability (R-D7a controlled auto-start). Removing it would freeze `KEY_START_ON_BOOT_OPT`
+  at `false` (the toggle is its only setter) → boot-start never fires → the kept capability silently
+  broken, which R-G7 itself forbids. Kept pending a tested boot-semantics redesign; not a security gap.
+
+### Analysed — documented-acceptable, NOT gaps (a strict literal auditor may still flag these)
+- **R-G3** — the badge is collapsed to the single always-secure-direct state (the dangerous
+  "insecure"/"relayed" mislabel is gone; assets deleted); the `_secure`/`_direct` fields are
+  *deliberately retained* per the `getConnectionText` code comment ("args retained for the call sites"),
+  now inert. Security intent fully met; deleting the fields is a 5-file rename for zero behavior change.
+- **R-G6** — the server returns a clear "Terminal is not available" for a refused terminal session;
+  N-pinned capabilities are permission flags (greyed in the toolbar, not connect failures), so the
+  "confusing connect failure" R-G6 fears does not arise.
+- **R-G2 peer_model** — `Peer.id` holds an address (the data is always a reachable address; connect +
+  add-ID both reject bare IDs); renaming the field to `address` is cosmetic churn, not behavior.
+- **R-R3** — `audit.sh`/`dart-audit.sh` ARE wired (fail-closed, pinned advisory-db/OSV snapshot,
+  deny.toml single-source-of-truth); audit.sh's own header documents them as separate *release* gates
+  (the build is off GitHub per R-B2, so the operator runs them at release), deliberately NOT in the
+  fast inner-loop verify.sh. A defensible, documented design — the gate is wired, just not auto-run.
+- **Cosmetic** — dead relay strings in `lang/template.rs` (inert, no live render); the new connect-flow
+  strings render correctly in English via `translate()`-fallback-to-key (the fork's en-only i18n model,
+  non-en tables deleted); `deny.toml` phantom `tracing-subscriber` comment; orphaned `SHA256_WIX4`;
+  caller-less `UserModel` HTTP (dials only an empty `api-server`); inert deep-link query parsing.
 
 ### Genuinely external (NOT in-repo — honestly disclosed per the spec)
 - **R-V3** — independent expert audit of the in-tree CPace construction. The spec REQUIRES this

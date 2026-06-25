@@ -203,6 +203,28 @@ main() {
     prep_overlay
     run_build
     extract
+    # R-B2 double-build — the assertion build-debian.sh already makes, now mirrored for Windows.
+    # (Android is EXEMPT by §12.1: "Integrity is the recorded SHA-256, NOT cross-rebuild byte-identity".
+    # Windows is NOT exempt — it ACHIEVES byte-identity via canonicalize-pe/canonicalize-msi + the FIXED
+    # golden + SOURCE_DATE_EPOCH-pinned BUILD_DATE — so a second build of identical source MUST be
+    # byte-identical (A==B), or the recorded-SHA bar is unfalsifiable.) Default-on like build-debian;
+    # DOUBLE_BUILD=0 skips it for a quick single build (the 2nd VM cycle is the slow part).
+    if [ "${DOUBLE_BUILD:-1}" = "1" ]; then
+        local exe1 msi1
+        exe1="$(awk '{print $1}' "$OUT_DIR/rustdesk-setup.exe.sha256")"
+        msi1="$(awk '{print $1}' "$OUT_DIR/rustdesk.msi.sha256")"
+        log "R-B2 double-build: rebuilding the same source from the byte-identical golden to assert A==B"
+        local saved_out="$OUT_DIR"
+        OUT_DIR="$saved_out/_rebuild"; rm -rf "$OUT_DIR"
+        build_media; prep_overlay; run_build; extract
+        local exe2 msi2
+        exe2="$(awk '{print $1}' "$OUT_DIR/rustdesk-setup.exe.sha256")"
+        msi2="$(awk '{print $1}' "$OUT_DIR/rustdesk.msi.sha256")"
+        rm -rf "$OUT_DIR"; OUT_DIR="$saved_out"
+        [ "$exe1" = "$exe2" ] || die "R-B2 double-build .exe SHA mismatch ($exe1 vs $exe2) — fix PE/BUILD_DATE determinism"
+        [ "$msi1" = "$msi2" ] || die "R-B2 double-build .msi SHA mismatch ($msi1 vs $msi2) — fix MSI canonicalizer determinism"
+        log "R-B2 double-build determinism OK (A==B): exe=$exe1 msi=$msi1"
+    fi
     log "build-windows-vm.sh complete: $OUT_DIR (the per-build overlay was destroyed — R-B2 from the golden)"
 }
 

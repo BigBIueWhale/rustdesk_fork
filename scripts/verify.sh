@@ -1712,8 +1712,13 @@ grep -qE 'FROM ubuntu:[0-9.]+@' scripts/Dockerfile.android-builder || rb_struct=
 grep -q 'cargo-vendor' scripts/build-debian.sh                     || rb_struct="$rb_struct debian:no-vendored-cargo"
 grep -qE 'sha256sum|\.sha256' scripts/build-android.sh             || rb_struct="$rb_struct android:no-self-verify"
 grep -rq '0\.0\.0\.0' scripts/build-debian.sh scripts/build-android.sh scripts/build-windows.ps1 scripts/run-build.ps1 2>/dev/null && rb_struct="$rb_struct external-listener-in-build"
+# R-B2: Debian AND Windows MUST assert byte-reproducibility by a DOUBLE BUILD (build the same source
+# twice, require byte-identical SHA-256). Android is EXEMPT (§12.1 line: "Integrity is the recorded
+# SHA-256, NOT cross-rebuild byte-identity" — apksigner re-padding makes byte-identity impractical).
+{ grep -q 'DOUBLE_BUILD' scripts/build-debian.sh    && grep -q 'double-build SHA mismatch' scripts/build-debian.sh; }        || rb_struct="$rb_struct debian:no-double-build-assert"
+{ grep -q 'DOUBLE_BUILD' scripts/build-windows-vm.sh && grep -q 'double-build .* SHA mismatch' scripts/build-windows-vm.sh; } || rb_struct="$rb_struct windows:no-double-build-assert"
 if [ -n "$rb_struct" ]; then echo "  FAIL R-B5b/B8/B9/B10 build-reproducibility structure regressed:$rb_struct"; rc=1; else
-  echo "  ok  R-B5b/B8/B9/B10 builds: digest-pinned base + --network=none offline compile (vendored cargo) + SHA self-verify (debian+android); no 0.0.0.0 (R-D3)"; fi
+  echo "  ok  R-B5b/B8/B9/B10 builds: digest-pinned base + --network=none offline compile + SHA self-verify + R-B2 double-build A==B assertion (debian & windows; android exempt §12.1); no 0.0.0.0 (R-D3)"; fi
 
 # (6c-i) R-B10 the offline-build network CANARY (MUST — "proven, not trusted"): the spec mandates a
 # canary build.rs that attempts an outbound connect and FAILS the compile if the network is reachable,

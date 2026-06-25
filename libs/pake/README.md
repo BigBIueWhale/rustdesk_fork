@@ -39,7 +39,9 @@ All line references are to `src/lib.rs` unless noted; the test vectors live in
     (`libs/hbb_common/src/tcp.rs`), R-P14.
   * The AEAD transport that *consumes* `DirectionalKeys` — XSalsa20-Poly1305
     `secretbox`, the `SealCipher`/`OpenCipher` split, the dedicated writer task,
-    and per-frame sequencing (R-T2/T3/T5/T7, `tcp.rs`).
+    and per-frame sequencing (R-T2/T3/T5/T7, `tcp.rs`). Documented as the
+    companion audit-scope half in
+    [`docs/TRANSPORT-SECURITY.md`](../../docs/TRANSPORT-SECURITY.md).
   * The online-guess limiter that `PakeError::Confirmation` feeds (R-S10).
   * The host-key pin / host-proof that binds the responder's long-term identity
     on top of this PAKE (R-S17, `src/client.rs`).

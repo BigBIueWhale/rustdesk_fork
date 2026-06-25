@@ -65,6 +65,21 @@ the spec — gate coverage itself is part of the work.
   the cfg-gated state ("verified: ... `#[cfg(not(...flutter...))]` and every shipped target builds
   `--flutter`"). Resolve deliberately: either actually drop Sciter (and repoint the verify/smoke
   build off the sciter config) or record the §19-based cfg-gated reading as the binding interpretation.
+  **R-R2 says "MUST delete the Sciter fork" — so the deletion-philosophy (§5 Excise) reading wins over
+  §19's lenient parenthetical; the drop is the correct completion path.** Blast radius mapped (do as a
+  FOCUSED effort, re-validate verify+smoke after EACH step — it touches the verification foundation):
+  (1) delete `src/ui.rs`, `src/ui/*.tis`, `res/inline-sciter.py`; remove `pub mod ui;` (lib.rs:36).
+  (2) verify/smoke build `--features linux-pkg-config` (no flutter/cli) TODAY compiles `mod ui` and
+  `main.rs:29` calls `ui::start(args)` — prefer the HEADLESS option: make the
+  `cfg(not(any(android,ios,cli,flutter))) fn main()` run `core_main()` WITHOUT `ui::start` (this build
+  is never shipped — shipped = flutter — it is only the docker compile-check + the smoke `--server`
+  runtime, which needs no GUI). Keeps verify/smoke feature flags UNCHANGED (still type-checks the core).
+  (3) fix the scattered non-ui sciter/ui refs: `src/platform/delegate.rs` + `src/client/file_trait.rs`
+  (`use sciter`/`sciter::`), `src/keyboard.rs` + `src/client/file_trait.rs` (`ui::`) — gate out/remove.
+  (4) remove `sciter-rs` from Cargo.toml + REGENERATE Cargo.lock in the networked devcheck (the build
+  is `--locked`, so the lock MUST match). (5) add a verify.sh gate: `sciter-rs` absent from Cargo.toml,
+  no `src/ui/*.tis`, no `mod ui`, no `res/inline-sciter.py`. (6) re-run verify + smoke green. Until done,
+  the cfg-gated state holds (shipped artifacts never link Sciter).
 - **§19 GUI literal-conformance (MUST/partial, low security impact)** — `R-G3` dead `ConnectionType`
   `_secure`/`_direct` fields + `insecure`/`_relay` sentinels are still *wired* (`shared_state.dart`,
   set from `model.dart`, read in `remote_tab_page.dart`/`dialog.dart`) though the badge is collapsed

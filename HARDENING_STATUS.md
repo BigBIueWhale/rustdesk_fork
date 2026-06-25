@@ -5,14 +5,21 @@ This fork is being built **into** the hardened RustDesk specified by
 how far the implementation has progressed against that normative spec, and what
 each unfinished item needs.
 
-## CURRENT STATE — in-repo implementation COMPLETE (2026-06-25; supersedes the working-log below)
+## CURRENT STATE — security core DONE; a fresh adversarial audit reopened real in-repo gaps (2026-06-25)
 
-Two independent full-spec completion audits (each reading all 851 lines of
-`requirements.html` and cross-checking the current code) confirm the **in-repo
-implementation is finished, in full, and correctly**, and `scripts/verify.sh` exits 0 with
-every gate green. The detailed per-item log further down records the implementation
-*journey*; several of its "REMAINING"/"NOT done" notes — notably the viewer-keying and
-§19-GUI entries — are now **STALE**, superseded by this section and the git history.
+**Correction to the earlier "in-repo COMPLETE" claim.** A four-lens adversarial re-audit
+(crypto/transport · excisions/sovereignty · builds · GUI), each reading the full
+`requirements.html` and *tracing actual reachability against the code* rather than trusting the
+green `verify.sh`, confirmed the **security/cryptographic/transport core is genuinely sound**
+(see the DONE list below) but **disproved "in-repo complete in full."** It found real MUST-level
+conformance gaps that the green `verify.sh` was structurally blind to — because several gates are
+cfg-unaware (a Linux-cfg test build + symbol greps nobody added the symbol to). Two were code-traced
+and **fixed** this session (commit `eeb3dc9`); others remain. So the honest status is: **core
+DONE + validated; a bounded set of in-repo conformance items (mostly §19-GUI literal-conformance,
+R-B6, and build-hardening) remain.** The lesson: a green `verify.sh` proves the gates it has, not
+the spec — gate coverage itself is part of the work.
+
+### Genuinely DONE + validated (the audit confirmed these)
 
 - **Security core (§7/§9/§10/§11/§20) — DONE + runtime-validated.** The single mandatory
   CPace PAKE at the transport choke point keys *all* inbound transports before any application
@@ -38,8 +45,50 @@ every gate green. The detailed per-item log further down records the implementat
   hardened core (the last residuals — a sciter stop-service *vulnerability*, the auto-update toggle,
   relay residue, self-update widgets, and the OTP password-mode UI — were all removed).
 
-**The ONLY remaining items are NOT in-repo implementation tasks — they are external prerequisites,
-honestly disclosed per the spec:**
+### FIXED this session (commit `eeb3dc9`)
+- **R-SV4(d)/R-SV10** — `test_rendezvous_server` (a startup outbound `connect_tcp` to RENDEZVOUS_PORT
+  on each configured broker) was present AND live-called (main.rs/cli.rs/flutter_ffi.rs). Excised the
+  function + every caller; added an `ra6_clean` absence gate. (Dead in the empty-RENDEZVOUS_SERVERS
+  default, but a config-write away from live egress, and R-SV10 names the symbol.)
+- **R-S11** — the main-channel config-write allowlist was `cfg(linux,macos)`-only, leaving the
+  **shipped Windows** main IPC pipe unguarded (a same-session/same-exe process could rewrite the host
+  key_pair/id/salt via `SyncConfig(Some)` / set a local proxy via `Socks(Some)`). Extended the
+  allowlist to a dedicated `cfg(windows)` gate; strengthened the verify gate to require it.
+- **R-S17/§19** — added the closing-gate's mandated positive check that `--get-fingerprint` exists.
+
+### REMAINING in-repo gaps (audit findings — NOT yet closed; the "complete" claim was premature)
+- **R-B6 (MUST, decision needed)** — the Sciter UI is NOT dropped: `sciter-rs` is an unconditional
+  Cargo dep (`Cargo.toml:115`), and `src/ui.rs` + `src/ui/*.tis` + `res/inline-sciter.py` remain and
+  *compile* in the `verify.sh`/`smoke` config (`--features linux-pkg-config`, no `flutter`). The
+  shipped artifacts (`--flutter`) exclude it. This is a genuine spec-internal tension: R-B6 + §13 +
+  §16 + the §5 Excise definition say *delete the fork + .tis tree*, while §19's parenthetical accepts
+  the cfg-gated state ("verified: ... `#[cfg(not(...flutter...))]` and every shipped target builds
+  `--flutter`"). Resolve deliberately: either actually drop Sciter (and repoint the verify/smoke
+  build off the sciter config) or record the §19-based cfg-gated reading as the binding interpretation.
+- **§19 GUI literal-conformance (MUST/partial, low security impact)** — `R-G3` dead `ConnectionType`
+  `_secure`/`_direct` fields + `insecure`/`_relay` sentinels are still *wired* (`shared_state.dart`,
+  set from `model.dart`, read in `remote_tab_page.dart`/`dialog.dart`) though the badge is collapsed
+  to always-secure; `R-G5` host-key *mismatch* dialog + manage/forget-host view are CLI-only (the
+  Rust compare is fail-closed/secure, but the dedicated GUI surfaces are unbuilt); `R-G2` peer list
+  not re-keyed to a first-class address field and address-book "Add ID" stores a bare ID without
+  validation (connect still rejects it); `R-G6` no specific "capability disabled on the peer" message.
+- **R-G7 Start-on-boot toggle — DELIBERATE RETENTION (documented).** The spec lists it for removal,
+  but its SYSTEM_ALERT_WINDOW dependency (the actual R-X6 concern) is already excised; it is now a
+  clean opt-in for a KEPT capability (R-D7a controlled auto-start). Removing it would freeze
+  `KEY_START_ON_BOOT_OPT` at its `false` default (the toggle is its only setter) → boot-start never
+  fires → the kept capability **silently broken**, which R-G7 itself forbids ("not left silently
+  broken"). Kept pending a tested boot-semantics redesign; not a security gap.
+- **Build hardening (MUST-but-mitigated / MED)** — `R-B10` the mandated canary `build.rs` (attempt an
+  outbound connect, must fail the compile) does not exist (the authoritative `--network=none`
+  isolation IS wired, so no live hole); `R-R3` `audit.sh`/`dart-audit.sh` are correct but not run by
+  `verify.sh` / no CI; no Windows double-build A==B determinism assertion (Debian has one); `R-B12(b)`
+  frb-tool binary + `cc`/gcc unpinned; staged docker-produced build outputs not SHA-verified.
+- **Cosmetic** — dead relay strings in `lang/template.rs` + per-language files; new connect-flow
+  strings missing from the lang table; `deny.toml` phantom `tracing-subscriber` accept (not in the
+  lock graph); orphaned `SHA256_WIX4` sentinel; caller-less `UserModel` HTTP methods; dead 2FA widget
+  classes; vestigial deep-link `?password=`/`?relay=` query parsing (inert).
+
+### Genuinely external (NOT in-repo — honestly disclosed per the spec)
 - **R-V3** — independent expert audit of the in-tree CPace construction. The spec REQUIRES this
   *before exposed operation* and mandates that the "not independently audited" disclosure stand
   until then; that disclosure is in place. The audit is a third-party act, not code.

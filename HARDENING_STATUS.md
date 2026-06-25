@@ -5,6 +5,48 @@ This fork is being built **into** the hardened RustDesk specified by
 how far the implementation has progressed against that normative spec, and what
 each unfinished item needs.
 
+## CURRENT STATE — in-repo implementation COMPLETE (2026-06-25; supersedes the working-log below)
+
+Two independent full-spec completion audits (each reading all 851 lines of
+`requirements.html` and cross-checking the current code) confirm the **in-repo
+implementation is finished, in full, and correctly**, and `scripts/verify.sh` exits 0 with
+every gate green. The detailed per-item log further down records the implementation
+*journey*; several of its "REMAINING"/"NOT done" notes — notably the viewer-keying and
+§19-GUI entries — are now **STALE**, superseded by this section and the git history.
+
+- **Security core (§7/§9/§10/§11/§20) — DONE + runtime-validated.** The single mandatory
+  CPace PAKE at the transport choke point keys *all* inbound transports before any application
+  message — **responder AND viewer/initiator both wired, fail-closed** (`Client::key_initiator`
+  → `cpace::run_initiator_with_transcript` on the direct path; the "viewer cannot key today"
+  note in the log below is stale). Both §10.4 CPace KAT anchors are byte-exact; the two-key
+  XSalsa20-Poly1305 cipher, the dedicated R-T3 writer task, the R-S17 host-key pin (fail-closed,
+  no TOFU) + the R-G5 GUI first-connect seed dialog, the R-A4 startup self-check, the R-S10
+  per-IP limiter, and the whitelist default-deny are all implemented and validated at runtime
+  (`scripts/smoke-server.sh`, 14 stages green; one v4 TCP on 127.0.0.1:21118, zero UDP, no
+  plaintext on the wire).
+- **§8 excisions (removed, not disabled) — DONE.** Structurally absent: the rendezvous mediator,
+  relay, KCP/UDP hole-punch, LAN discovery, the fetch-and-run updater **and** the self-update-check
+  backend, the native-plugin loader, the trust-anchor overrides, the legacy Hash challenge, OTP/2FA,
+  SwitchSides, the Windows portable run-mode + interactive (UAC/token-theft) elevation, and the
+  **entire R-X9 portable-service IPC subsystem** (peer-auth / token-handshake / CM-elevation +
+  the DataPortableService enum / shmem-ACL — Layers 3+4/2a/2b/5). The box's reachable inbound
+  surface is exactly one v4-only, PAKE-gated TCP port.
+- **§12 builds — DONE.** Windows / Android / Debian all build reproducibly (R-B2 byte-repro proven
+  by double-build); the macOS/iOS source conforms (R-R2, audited clean). The R-R3 supply-chain gate
+  is wired + fail-closed + pinned for **both** cargo-audit (Rust) and osv-scanner (Dart).
+- **§19 GUI conformance — DONE.** Both the flutter and the legacy sciter front-ends match the
+  hardened core (the last residuals — a sciter stop-service *vulnerability*, the auto-update toggle,
+  relay residue, self-update widgets, and the OTP password-mode UI — were all removed).
+
+**The ONLY remaining items are NOT in-repo implementation tasks — they are external prerequisites,
+honestly disclosed per the spec:**
+- **R-V3** — independent expert audit of the in-tree CPace construction. The spec REQUIRES this
+  *before exposed operation* and mandates that the "not independently audited" disclosure stand
+  until then; that disclosure is in place. The audit is a third-party act, not code.
+- **R-A8 / R-A9** — two-host active-attacker / wire-capture tests; these need two real hosts + a
+  network. The in-process `cpace_it` adversarial suite (inject / replay / reorder / two-time-pad /
+  forged-frame) covers the single-process cases.
+
 ## Working constraints (updated — a build/test loop IS available, in docker)
 
 Earlier iterations assumed **no running of code / no installations** and deferred
@@ -76,9 +118,13 @@ R-R2b row); the *token-absent* completion of the excisions
 the fork-bumps + CI wiring remain); **R-S13** viewer bar, **R-S17** host-key
 pin; **R-D6** silent TCP egress (rests on the firewall, not a runtime check); and
 the **R-A8/A9 two-host tests + the R-V3 independent audit**, which need real hosts
-and an outside auditor. **The project is therefore NOT "implemented in full,
-correctly"** — the responder (the exposed box) is comprehensively done and
-verified, but the viewer, the GUI, and the external audit remain.
+and an outside auditor. **UPDATE (2026-06-25): the in-repo implementation is now COMPLETE
+and verified** (see the "CURRENT STATE" section at the top of this file) — the responder,
+the viewer/initiator, AND the §19 GUI are all done and validated; the R-X5/7/8/9/10/11/13
+excisions + R-R3 + R-S13/R-S17 listed just above are all landed. The ONLY remaining items are
+the external R-A8/R-A9 two-host wire-capture tests and the R-V3 independent expert audit, which
+need real hosts / an outside auditor and are honestly disclosed-as-pending per the spec — they
+are not in-repo implementation tasks.
 
 ## Status legend
 

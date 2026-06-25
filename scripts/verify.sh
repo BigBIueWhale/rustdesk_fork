@@ -1712,6 +1712,23 @@ grep -rq '0\.0\.0\.0' scripts/build-debian.sh scripts/build-android.sh scripts/b
 if [ -n "$rb_struct" ]; then echo "  FAIL R-B5b/B8/B9/B10 build-reproducibility structure regressed:$rb_struct"; rc=1; else
   echo "  ok  R-B5b/B8/B9/B10 builds: digest-pinned base + --network=none offline compile (vendored cargo) + SHA self-verify (debian+android); no 0.0.0.0 (R-D3)"; fi
 
+# (6c-i) R-B10 the offline-build network CANARY (MUST — "proven, not trusted"): the spec mandates a
+# canary build.rs that attempts an outbound connect and FAILS the compile if the network is reachable,
+# so the --network=none isolation is positively proven, not merely assumed. build.rs carries the
+# env-gated canary (RUSTDESK_CANARY_OFFLINE=1 -> probe a literal IP; a SUCCESSFUL connect panics) and
+# EVERY offline compile stage arms it. The env-gate makes it a no-op in dev/verify builds (which have
+# network), so it can only fire when a build CLAIMING to be offline can in fact reach the network.
+echo "== (6c-i) R-B10 offline-build network canary (proven, not trusted) =="
+r_b10=
+grep -q 'fn r_b10_offline_canary' build.rs                                  || r_b10="$r_b10 canary-fn-missing"
+grep -q 'RUSTDESK_CANARY_OFFLINE' build.rs                                  || r_b10="$r_b10 canary-not-env-gated"
+grep -q 'r_b10_offline_canary()' build.rs                                   || r_b10="$r_b10 canary-not-called"
+grep -q 'RUSTDESK_CANARY_OFFLINE=1' scripts/build-debian.sh                 || r_b10="$r_b10 debian-not-armed"
+grep -q 'RUSTDESK_CANARY_OFFLINE=1' scripts/build-android.sh                || r_b10="$r_b10 android-not-armed"
+grep -q "RUSTDESK_CANARY_OFFLINE = '1'" scripts/build-windows.ps1          || r_b10="$r_b10 windows-not-armed"
+if [ -n "$r_b10" ]; then echo "  FAIL R-B10 offline-build canary:$r_b10"; rc=1; else
+  echo "  ok  R-B10 offline-build network canary present (build.rs, env-gated) + armed in every offline compile stage (debian/android/windows) — a reachable network during an --network=none build fails the compile"; fi
+
 # (6d) R-B12(a): the aom + libyuv vcpkg overlay distfiles are SHA512-pinned, not fetched by a bare
 # git REF. gitiles `+archive` is empirically non-reproducible (so a URL SHA-pin is impossible) and
 # R-R1 forbids vendoring — so online-fetch's stage_vcpkg_distfiles captures a REPRODUCIBLE

@@ -127,6 +127,11 @@ if /I "%~1"=="build" (
 '@ | Set-Content -Encoding ASCII (Join-Path $shim 'flutter.bat')
     $env:PATH = "$shim;$env:PATH"
 
+    # R-B10: arm the offline-build network canary (build.rs). The per-build VM is --network=none, so the
+    # canary's probe connect fails (no-op) and the build proceeds; if the VM ever had network during a
+    # build, the canary panics rather than risk a leaked compile-time fetch breaking R-B2 reproducibility.
+    $env:RUSTDESK_CANARY_OFFLINE = '1'
+
     # --- the sec3.2 x64-windows build: CPU-only software codec, no hwcodec/vram (R-R2b) ---
     # Under $ErrorActionPreference='Stop' a NATIVE command's non-zero exit does NOT auto-throw, so check
     # $LASTEXITCODE explicitly -- otherwise a failed build (e.g. "Python was not found" -> exit 9009) slips

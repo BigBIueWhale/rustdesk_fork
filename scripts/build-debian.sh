@@ -54,6 +54,7 @@ build_one() {
         --name "$tag" \
         --network=none \
         -e SOURCE_DATE_EPOCH \
+        -e RUSTDESK_CANARY_OFFLINE=1 \
         -v "$REPO_ROOT:/src" \
         -v "$ONLINE_DIR:/online:ro" \
         -w /src \

@@ -49,6 +49,7 @@ build_apk() {
         --name "${HARNESS_PREFIX:-rustdesk-fork-harness}-apk" \
         --network=none \
         -e SOURCE_DATE_EPOCH \
+        -e RUSTDESK_CANARY_OFFLINE=1 \
         -e APK_MODE=offline \
         -v "$REPO_ROOT:/src" \
         -v "$ONLINE_DIR:/online:ro" \

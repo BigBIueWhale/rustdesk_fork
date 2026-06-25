@@ -80,7 +80,41 @@ fn install_android_deps() {
     println!("cargo:rustc-link-lib=OpenSLES");
 }
 
+// R-B10: the offline-build network canary. The fork's release artifacts are compiled in a
+// network-isolated container (`--network=none`, build-debian.sh / build-android.sh /
+// build-windows-vm.sh) so "no fetch at compile time" is a PROVEN property, not a trusted one.
+// This makes the proof ACTIVE: when the offline compile stage sets RUSTDESK_CANARY_OFFLINE=1,
+// attempt a short outbound TCP connect to a couple of literal anycast IPs (no DNS needed). A
+// SUCCESS means the container is NOT isolated — a build.rs/cargo/vcpkg/gradle fetch could have
+// leaked in and broken byte-reproducibility (R-B2) — so the build MUST fail. The expected
+// offline result (connect failure / network-unreachable) is a no-op. The env var is ABSENT in
+// dev builds and in the verify.sh cargo-check (which legitimately have network), so this can
+// NEVER break a networked build; it only fires when a build that CLAIMS to be offline can in
+// fact reach the network. Belt-and-suspenders to the `--network=none` namespace itself.
+fn r_b10_offline_canary() {
+    println!("cargo:rerun-if-env-changed=RUSTDESK_CANARY_OFFLINE");
+    if std::env::var("RUSTDESK_CANARY_OFFLINE").as_deref() != Ok("1") {
+        return;
+    }
+    use std::net::{SocketAddr, TcpStream};
+    use std::time::Duration;
+    for probe in ["1.1.1.1:443", "8.8.8.8:443", "9.9.9.9:443"] {
+        if let Ok(sa) = probe.parse::<SocketAddr>() {
+            if TcpStream::connect_timeout(&sa, Duration::from_millis(800)).is_ok() {
+                panic!(
+                    "R-B10 offline-build canary: outbound TCP to {probe} SUCCEEDED during a build \
+                     flagged RUSTDESK_CANARY_OFFLINE=1. The compile container is NOT network-isolated \
+                     — a compile-time fetch could leak in and break byte-reproducibility (R-B2). \
+                     Refusing to build. Run the compile stage under --network=none."
+                );
+            }
+        }
+    }
+    println!("cargo:warning=R-B10 canary: build confirmed network-isolated (offline compile stage).");
+}
+
 fn main() {
+    r_b10_offline_canary();
     hbb_common::gen_version();
     install_android_deps();
     #[cfg(all(windows, feature = "inline"))]

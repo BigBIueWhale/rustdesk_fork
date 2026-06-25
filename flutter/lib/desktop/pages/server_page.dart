@@ -701,21 +701,9 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
                         translate('Enable audio'),
                         canModify: canModifyPermission,
                       ),
-                      buildPermissionIcon(
-                        client.recording,
-                        Icons.videocam_rounded,
-                        (enabled) {
-                          bind.cmSwitchPermission(
-                              connId: client.id,
-                              name: "recording",
-                              enabled: enabled);
-                          setState(() {
-                            client.recording = enabled;
-                          });
-                        },
-                        translate('Enable recording session'),
-                        canModify: canModifyPermission,
-                      ),
+                      // R-G7 (§19): the camera-view 'recording' chip is removed — recording is an
+                      // N-pinned capability (see the non-camera branch below); only the audio
+                      // content-capability chip remains here.
                     ]
                   : [
                       buildPermissionIcon(
@@ -778,69 +766,13 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
                         translate('Enable file copy and paste'),
                         canModify: canModifyPermission,
                       ),
-                      buildPermissionIcon(
-                        client.restart,
-                        Icons.restart_alt_rounded,
-                        (enabled) {
-                          bind.cmSwitchPermission(
-                              connId: client.id,
-                              name: "restart",
-                              enabled: enabled);
-                          setState(() {
-                            client.restart = enabled;
-                          });
-                        },
-                        translate('Enable remote restart'),
-                        canModify: canModifyPermission,
-                      ),
-                      buildPermissionIcon(
-                        client.recording,
-                        Icons.videocam_rounded,
-                        (enabled) {
-                          bind.cmSwitchPermission(
-                              connId: client.id,
-                              name: "recording",
-                              enabled: enabled);
-                          setState(() {
-                            client.recording = enabled;
-                          });
-                        },
-                        translate('Enable recording session'),
-                        canModify: canModifyPermission,
-                      ),
-                      // only windows support block input
-                      if (isWindows)
-                        buildPermissionIcon(
-                          client.blockInput,
-                          Icons.block,
-                          (enabled) {
-                            bind.cmSwitchPermission(
-                                connId: client.id,
-                                name: "block_input",
-                                enabled: enabled);
-                            setState(() {
-                              client.blockInput = enabled;
-                            });
-                          },
-                          translate('Enable blocking user input'),
-                          canModify: canModifyPermission,
-                        ),
-                      if (bind.mainSupportedPrivacyModeImpls() != '[]')
-                        buildPermissionIcon(
-                          client.privacyMode,
-                          Icons.visibility_off,
-                          (enabled) {
-                            bind.cmSwitchPermission(
-                                connId: client.id,
-                                name: "privacy_mode",
-                                enabled: enabled);
-                            setState(() {
-                              client.privacyMode = enabled;
-                            });
-                          },
-                          translate('Enable privacy mode'),
-                          canModify: canModifyPermission,
-                        )
+                      // R-G7 / R-S16(d)(ii) (§19): the per-connection permission chips for the
+                      // N-PINNED capabilities (restart / recording / block-input / privacy-mode —
+                      // also terminal/printer, which never had chips here) are REMOVED. Those
+                      // capabilities are pinned-off and the runtime SwitchPermission widener is
+                      // excised, so a chip could neither show a real state nor widen one — it would
+                      // imply a control that cannot act. Only the content-capability chips
+                      // (keyboard / clipboard / audio / file) survive, rendered read-only.
                     ],
             ),
           ),
@@ -1024,31 +956,16 @@ class _CmControlPanel extends StatelessWidget {
   }
 
   buildUnAuthorized(BuildContext context) {
-    final model = Provider.of<ServerModel>(context);
-    final showAccept = model.approveMode != 'password';
+    // R-G7 / R-S9 / R-S16 (§19): the click-to-accept path is REMOVED. approve-mode is pinned
+    // 'password' (R-S9), so the accept is automatic — the manual "Accept" button (the dead
+    // `approveMode != 'password'` branch) cannot be reached and is gone; only "Cancel"
+    // (disconnect) survives for the operator.
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (showAccept)
-              Expanded(
-                child: Column(
-                  children: [
-                    buildButton(
-                      context,
-                      color: MyTheme.accent,
-                      onClick: () {
-                        handleAccept(context);
-                        windowManager.minimize();
-                      },
-                      text: 'Accept',
-                      textColor: Colors.white,
-                    ),
-                  ],
-                ),
-              ),
             Expanded(
               child: buildButton(
                 context,
@@ -1130,10 +1047,8 @@ class _CmControlPanel extends StatelessWidget {
     bind.cmCloseConnection(connId: client.id);
   }
 
-  void handleAccept(BuildContext context) {
-    final model = Provider.of<ServerModel>(context, listen: false);
-    model.sendLoginResponse(client, true);
-  }
+  // R-G7 (§19): handleAccept (the manual click-to-accept sender) is removed with the Accept
+  // button — approve-mode is pinned 'password', so acceptance is automatic.
 
   void handleClose() async {
     await bind.cmRemoveDisconnectedConnection(connId: client.id);

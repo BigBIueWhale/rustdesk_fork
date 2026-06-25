@@ -220,7 +220,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("network_error_tip", "Please check your network connection, then click retry."),
         ("enable-trusted-devices-tip", "Skip 2FA verification on trusted devices"),
         ("one-way-file-transfer-tip", "One-way file transfer is enabled on the controlled side."),
-        ("web_id_input_tip", "Enter the host's direct address: an IP address or a domain with a port, e.g. 192.168.1.50:21118. Connections are direct only. No ID, no relay, no public server."),
+        ("account_login_unavailable_tip", "Account login is unavailable: this is a serverless, direct-IP fork (it dials nobody)."),
         ("new-version-of-{}-tip", "There is a new version of {} available"),
         ("View camera", "View camera"),
         ("upgrade_remote_rustdesk_client_to_{}_tip", "Please upgrade the RustDesk client to version {} or newer on the remote side!"),

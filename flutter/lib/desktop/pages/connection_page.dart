@@ -293,7 +293,7 @@ class _ConnectionPageState extends State<ConnectionPage>
       child: Ink(
         child: Column(
           children: [
-            getConnectionPageTitle(context, false).marginOnly(bottom: 15),
+            getConnectionPageTitle(context).marginOnly(bottom: 15),
             Row(
               children: [
                 Expanded(

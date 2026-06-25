@@ -771,22 +771,13 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
                 // R-X7 / §18: the '2FA' settings card (2FA + Telegram bot + trusted devices)
                 // is removed — 2FA is excised (pinned-off-dead); the box authenticates by the
                 // CPace permanent password (R-S6). The `tfa()` builder is deleted with it.
-                if (!isChangeIdDisabled())
-                  _Card(title: 'ID', children: [changeId()]),
+                // R-G4 / R-SV5 (§19): the 'ID' card (Change-ID) is removed — the numeric ID is
+                // dead under the direct-IP model (R-SV5); the box is reached by <ip|domain>:port.
                 more(context),
               ]),
             ),
           ],
         )).marginOnly(bottom: _kListViewBottomMargin);
-  }
-
-  Widget changeId() {
-    return ChangeNotifierProvider.value(
-        value: gFFI.serverModel,
-        child: Consumer<ServerModel>(builder: ((context, model, child) {
-          return _Button('Change ID', changeIdDialog,
-              enabled: !locked && model.connectStatus > 0);
-        })));
   }
 
   Widget permissions(context) {

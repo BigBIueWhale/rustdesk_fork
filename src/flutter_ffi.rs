@@ -929,9 +929,10 @@ pub fn main_get_login_device_info() -> SyncReturn<String> {
     SyncReturn(get_login_device_info_json())
 }
 
-pub fn main_change_id(new_id: String) {
-    change_id(new_id)
-}
+// R-G4 / R-SV5 (§19): the Flutter `main_change_id` export is removed — the Change-ID UI
+// (dialog.dart changeIdDialog) is excised because the numeric RustDesk ID is dead under the
+// direct-IP model (R-SV5). The Sciter `change_id`/`change_id_shared` path (ui.rs/ui_interface.rs)
+// is a separate, kept (R-B6) surface and is untouched.
 
 pub fn main_get_async_status() -> String {
     get_async_job_status()

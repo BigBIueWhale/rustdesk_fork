@@ -4,7 +4,7 @@ import 'package:get/get.dart';
 
 import '../../common.dart';
 
-Widget getConnectionPageTitle(BuildContext context, bool isWeb) {
+Widget getConnectionPageTitle(BuildContext context) {
   return Row(
     children: [
       Expanded(
@@ -20,7 +20,7 @@ Widget getConnectionPageTitle(BuildContext context, bool isWeb) {
           ).marginOnly(right: 4),
           Tooltip(
             waitDuration: Duration(milliseconds: 300),
-            message: translate(isWeb ? "web_id_input_tip" : "id_input_tip"),
+            message: translate("id_input_tip"),
             child: Icon(
               Icons.help_outline_outlined,
               size: 16,

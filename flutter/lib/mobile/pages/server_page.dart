@@ -45,16 +45,10 @@ class _DropDownAction extends StatelessWidget {
         itemBuilder: (context) {
           // R-G4/R-S9/R-X7: approve-mode (pinned "password"), verification-method (pinned
           // "use-permanent-password") and the one-time-password path (R-X7) are all dead — the
-          // accept-mode / OTP / verification-method menu items are removed. Only "Change ID" and
-          // "Set permanent password" remain (the permanent password is the fork's sole credential).
+          // accept-mode / OTP / verification-method menu items are removed. Change-ID is removed
+          // too (R-G4/R-SV5: the numeric ID is dead under the direct-IP model). Only "Set permanent
+          // password" remains (the permanent password is the fork's sole credential).
           return [
-            if (!isChangeIdDisabled())
-              PopupMenuItem(
-                enabled: gFFI.serverModel.connectStatus > 0,
-                value: "changeID",
-                child: Text(translate("Change ID")),
-              ),
-            if (!isChangeIdDisabled()) const PopupMenuDivider(),
             if (!isChangePermanentPasswordDisabled())
               PopupMenuItem(
                 value: "setPermanentPassword",
@@ -63,9 +57,7 @@ class _DropDownAction extends StatelessWidget {
           ];
         },
         onSelected: (value) async {
-          if (value == "changeID") {
-            changeIdDialog();
-          } else if (value == "setPermanentPassword") {
+          if (value == "setPermanentPassword") {
             setPasswordDialog();
           }
         })
@@ -637,19 +629,14 @@ class ConnectionManager extends StatelessWidget {
   }
 
   Widget _buildNewConnectionHint(ServerModel serverModel, Client client) {
+    // R-G7 / R-S9 (§19): the click-to-accept "Accept" button is removed — approve-mode is pinned
+    // 'password', so acceptance is automatic; only "Dismiss" (reject) survives.
     return Row(mainAxisAlignment: MainAxisAlignment.end, children: [
       TextButton(
           child: Text(translate("Dismiss")),
           onPressed: () {
             serverModel.sendLoginResponse(client, false);
           }).marginOnly(right: 15),
-      if (serverModel.approveMode != 'password')
-        ElevatedButton.icon(
-            icon: const Icon(Icons.check),
-            label: Text(translate("Accept")),
-            onPressed: () {
-              serverModel.sendLoginResponse(client, true);
-            }),
     ]);
   }
 
@@ -660,19 +647,14 @@ class ConnectionManager extends StatelessWidget {
         translate("android_new_voice_call_tip"),
         style: Theme.of(context).textTheme.bodyMedium,
       ).marginOnly(bottom: 5),
+      // R-G7 / R-S9 (§19): the click-to-accept "Accept" button is removed — approve-mode is
+      // pinned 'password', so acceptance is automatic; only "Dismiss" (reject) survives.
       Row(mainAxisAlignment: MainAxisAlignment.end, children: [
         TextButton(
             child: Text(translate("Dismiss")),
             onPressed: () {
               serverModel.handleVoiceCall(client, false);
             }).marginOnly(right: 15),
-        if (serverModel.approveMode != 'password')
-          ElevatedButton.icon(
-              icon: const Icon(Icons.check),
-              label: Text(translate("Accept")),
-              onPressed: () {
-                serverModel.handleVoiceCall(client, true);
-              }),
       ])
     ];
   }

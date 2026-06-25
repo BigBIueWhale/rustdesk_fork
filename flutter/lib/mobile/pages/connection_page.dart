@@ -321,7 +321,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
     );
     final child = Column(children: [
       if (isWebDesktop)
-        getConnectionPageTitle(context, true)
+        getConnectionPageTitle(context)
             .marginOnly(bottom: 10, top: 15, left: 12),
       w
     ]);

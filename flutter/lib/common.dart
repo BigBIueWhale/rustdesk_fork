@@ -3691,8 +3691,8 @@ bool isChangePermanentPasswordDisabled() =>
     bind.mainGetBuildinOption(key: kOptionDisableChangePermanentPassword) ==
     'Y';
 
-bool isChangeIdDisabled() =>
-    bind.mainGetBuildinOption(key: kOptionDisableChangeId) == 'Y';
+// R-G4 / R-SV5 (§19): isChangeIdDisabled() is removed with the Change-ID UI — the numeric ID is
+// dead under the direct-IP model, so there is no Change-ID control left to gate.
 
 bool isUnlockPinDisabled() =>
     bind.mainGetBuildinOption(key: kOptionDisableUnlockPin) == 'Y';

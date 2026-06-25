@@ -8,7 +8,8 @@ import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:get/get.dart';
 import 'package:path/path.dart';
-import 'package:url_launcher/url_launcher_string.dart';
+// R-G8 / §19 (de-brand): the url_launcher import is dropped — the rustdesk.com EULA/privacy link
+// it opened on the install page was already removed (a sovereign fork links to no upstream).
 import 'package:window_manager/window_manager.dart';
 
 class InstallPage extends StatefulWidget {

@@ -605,8 +605,8 @@ class ServerModel with ChangeNotifier {
         ),
         actions: [
           dialogButton("Dismiss", onPressed: cancel, isOutline: true),
-          if (approveMode != 'password')
-            dialogButton("Accept", onPressed: submit),
+          // R-G7 / R-S9 (§19): the click-to-accept "Accept" action is removed — approve-mode is
+          // pinned 'password', so acceptance is automatic; only "Dismiss" (reject) survives.
         ],
         onSubmit: submit,
         onCancel: cancel,

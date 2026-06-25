@@ -14,8 +14,9 @@ pub mod win_device;
 #[cfg(target_os = "macos")]
 pub mod macos;
 
-#[cfg(target_os = "macos")]
-pub mod delegate;
+// R-B6/R-R2: `mod delegate` (the macOS Sciter NSApplication menubar/dock app-handler over
+// `sciter::Host`) is DELETED with the Sciter UI — its only callers were in the deleted src/ui.rs,
+// and it linked the `sciter-rs` fork. The Flutter macOS build uses its own app-lifecycle handling.
 
 #[cfg(target_os = "linux")]
 pub mod linux;

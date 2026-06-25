@@ -185,15 +185,22 @@ ra6_clean 'crate::updater|mod updater|"download-new-version"|"update-me"' 'R-X1 
 # update_me/update_from_dmg/extract_update_dmg in its Apple-cfg pass; all must be absent on EVERY
 # source (these clusters are cfg(macos)/cfg(windows), invisible to the Linux cargo check below).
 ra6_clean 'fn update_me\b|main_update_me|update_from_dmg|extract_update_dmg|update_me_msi|fn update_to\b' 'R-X1 self-updater fns (macOS DMG / Windows MSI / FFI)' || rc=1
-# R-X1/R-SV3 (§19): the legacy SCITER self-update DISPLAY widgets are excised (ra6_clean is *.rs-only, so
-# this .tis gate is separate). UpgradeMe was REACHABLE (windows, lower-version installed) and its "Click to
-# upgrade" called the excised `handler.update_me` FFI -> a runtime error; UpdateMe (gated on the never-set
-# software_update_url) opened rustdesk.com/download. The fork ships its own releases (R-X1) + never
-# phones home (R-SV3); the sciter front-end now matches the hardened core + the flutter side.
-if grep -qE 'class UpdateMe|class UpgradeMe|handler\.update_me' src/ui/index.tis; then
-  echo "  FAIL R-X1/§19: sciter self-update widget(s) (UpdateMe/UpgradeMe/handler.update_me) still present in index.tis"; rc=1
-else
-  echo "  ok  R-X1/R-SV3 sciter self-update widgets (UpdateMe/UpgradeMe + handler.update_me) excised"
+# R-B6/R-R2 (§19): the legacy Sciter UI is DELETED, not merely cfg-gated out of the shipped (--flutter)
+# artifacts — R-R2's "MUST delete the Sciter fork" + the §5 Excise bar ("cannot be re-enabled") outweigh
+# §19's lenient cfg-gated parenthetical. Flutter is the sole front-end. Previously ~9 gates here each
+# checked an individual sciter .tis control was excised; the whole stack is now gone, so this ONE gate
+# asserts the deletion and the per-control .tis gates are retired with it (their flutter/.rs halves stay).
+r_b6=
+[ -e src/ui.rs ]                && r_b6="$r_b6 src/ui.rs-present"
+[ -d src/ui ]                   && r_b6="$r_b6 src/ui/.tis-tree-present"
+[ -e res/inline-sciter.py ]     && r_b6="$r_b6 inline-sciter.py-present"
+[ -e src/platform/delegate.rs ] && r_b6="$r_b6 macos-sciter-delegate-present"
+grep -qE '^\s*sciter-rs\s*=' Cargo.toml  && r_b6="$r_b6 sciter-rs-dep-in-Cargo.toml"
+grep -q 'name = "sciter-rs"' Cargo.lock && r_b6="$r_b6 sciter-rs-in-Cargo.lock"
+grep -qE '^\s*pub mod ui;' src/lib.rs   && r_b6="$r_b6 mod-ui-still-declared"
+{ grep -rInE 'sciter::|crate::ui::' src/ libs/ --include='*.rs' 2>/dev/null | grep -v '//' | grep -q . ; } && r_b6="$r_b6 sciter/mod-ui-rust-ref-remains"
+if [ -n "$r_b6" ]; then echo "  FAIL R-B6/R-R2 Sciter UI not fully deleted:$r_b6"; rc=1; else
+  echo "  ok  R-B6/R-R2 Sciter UI fully DELETED (src/ui.rs + src/ui/*.tis + res/inline-sciter.py + macOS delegate + sciter-rs dep/lock + mod ui + all sciter::/crate::ui:: refs gone — Flutter is the sole front-end)"
 fi
 # R-X1/R-SV3/§8: the self-update-CHECK backend is now EXCISED (previously only NEUTERED). With the
 # UpdateMe/UpgradeMe widgets gone (their sole consumers), the whole chain is dead and removed "not
@@ -203,11 +210,10 @@ fi
 # the index.tis software_update_url var+poll. (The fork ships SHA-pinned releases, R-B2; never checks.)
 r_sv3_upd=
 { grep -rE 'SOFTWARE_UPDATE_URL|fn check_software_update|fn main_get_software_update_url|fn main_get_new_version|fn get_software_store_path' --include='*.rs' src libs 2>/dev/null | grep -v '//' | grep -q . ; } && r_sv3_upd="$r_sv3_upd rs-chain"
-grep -qE 'software_update_url' src/ui/index.tis && r_sv3_upd="$r_sv3_upd sciter-var"
 if [ -n "$r_sv3_upd" ]; then
   echo "  FAIL R-X1/R-SV3: self-update-check chain still present:$r_sv3_upd"; rc=1
 else
-  echo "  ok  R-X1/R-SV3 self-update-check chain excised (SOFTWARE_UPDATE_URL + check_software_update + version/store-path helpers + flutter FFIs + sciter var)"
+  echo "  ok  R-X1/R-SV3 self-update-check chain excised (SOFTWARE_UPDATE_URL + check_software_update + version/store-path helpers + flutter FFIs; the sciter var is gone with the Sciter UI, R-B6)"
 fi
 ra6_clean 'plugin_framework|install_plugin_with_url|"--plugin-install"'    'R-X2 native-plugin loader' || rc=1
 # R-X2 (extended, post-excision lock-in): the plugin framework is fully REMOVED, not merely the
@@ -509,7 +515,7 @@ ra6_clean 'fn generate_one_time_ipc_token|fn constant_time_ipc_token_eq|fn porta
 # DataPortableService enum + the Data::DataPortableService arm. Across Rust + sciter cm.tis + flutter.
 ra6_clean 'enum DataPortableService|fn elevate_portable|fn show_elevation|fn can_elevate' 'R-X9 CM elevation UI + DataPortableService enum (slices 2-4 follow-on, Layer 2b)' || rc=1
 r_x9_2b=
-{ grep -rE 'cmCanElevate|cm_can_elevate|elevatePortable|sessionElevatePortable|DataPortableService' flutter/lib src/ui/cm.tis 2>/dev/null | grep -v '//' | grep -q . ; } && r_x9_2b="present"
+{ grep -rE 'cmCanElevate|cm_can_elevate|elevatePortable|sessionElevatePortable|DataPortableService' flutter/lib 2>/dev/null | grep -v '//' | grep -q . ; } && r_x9_2b="present"
 if [ -n "$r_x9_2b" ]; then
   echo "  FAIL R-X9 Layer 2b: CM-elevation dart/sciter residue still present"; rc=1
 else
@@ -550,8 +556,7 @@ fi
 # is a SEPARATE, legitimate feature — Config::set_option on cfg(android), not this path — and is KEPT.)
 r_x9_killsvc=
 grep -qE '&key == "stop-service"' src/ui_interface.rs && r_x9_killsvc="$r_x9_killsvc ui_interface-special-case"
-grep -qE '#stop-service|#start-service|set_option\("stop-service"' src/ui/index.tis && r_x9_killsvc="$r_x9_killsvc sciter-control"
-grep -qE 'Enable service|Start service' src/ui/index.tis && r_x9_killsvc="$r_x9_killsvc sciter-label"
+# (the sciter #stop-service/#start-service/Enable-service controls are gone with the Sciter UI, R-B6)
 if [ -n "$r_x9_killsvc" ]; then
   echo "  FAIL R-X9/R-X10: runtime service-kill path still present:$r_x9_killsvc"; rc=1
 else
@@ -813,16 +818,10 @@ fi
 # for deletion are gone from the Rust viewer — get_option("os-username"/"os-password") + should_auto_login()
 # (which returned the STORED os-password to auto-type into the remote OS on connect, a persisted second
 # OS credential). The manual input_os_password path (operator types a FRESH password — not persisted,
-# not named by R-S18) stays. NB the sciter src/ui/header.tis "OS Password" menu cluster (.tis runtime
-# script, not the shipped flutter UI, not grepped by this .rs gate) is a tracked follow-on.
+# not named by R-S18) stays.
 ra6_clean 'get_option\("os-username"\)|get_option\("os-password"\)|fn should_auto_login' 'R-S18 viewer persisted os-credential reads (.rs)' || rc=1
-# R-S18 (sciter UI): the "OS Password" persistence cluster — the EditOsPassword widget +
-# editOSPassword get/set('os-password') dialog — is removed from src/ui/*.tis too (ra6_clean greps
-# .rs only). The sciter UI is the verify build, not shipped, but the source must conform symmetrically.
-if grep -rInE "get_option\('os-password'\)|set_option\('os-password'|editOSPassword|EditOsPassword" src/ui --include='*.tis' 2>/dev/null | grep -qv '//'; then
-  echo "  FAIL R-S18: sciter os-password persistence present in .tis:"; \
-    grep -rInE "get_option\('os-password'\)|set_option\('os-password'|editOSPassword|EditOsPassword" src/ui --include='*.tis' | grep -v '//' | sed 's/^/      /'; rc=1
-else echo "  ok  R-S18 sciter os-password persistence (.tis) absent"; fi
+# (The former sciter "OS Password" persistence cluster in src/ui/header.tis is gone with the entire
+# Sciter UI — R-B6 — so that .tis gate is subsumed by the R-B6 deletion gate above.)
 # R-S15 (Appendix C #19): the viewer's in-session PeerConfig writes from peer-controlled data MUST be
 # funnelled through a validated allowlist before save_config — a keyed-but-hostile host (§4.4) must not
 # inject unbounded/injection strings into the on-disk config. The initiator-side twin of the responder's
@@ -1488,7 +1487,7 @@ fi
 # de-branding pass needing an operator-resource decision; not yet gated.) Gate the MUST: no
 # `http://`-scheme rustdesk/github link in the UI front-ends (.tis / .dart). The common.rs is_public
 # unit-test string is a .rs test, not a UI link, so it is out of scope.
-rsv9_http=$(grep -rInE 'http://[^ ]*(rustdesk|github)' src/ui flutter/lib --include='*.tis' --include='*.dart' 2>/dev/null || true)
+rsv9_http=$(grep -rInE 'http://[^ ]*(rustdesk|github)' flutter/lib --include='*.dart' 2>/dev/null || true)
 if [ -n "$rsv9_http" ]; then
   echo "  FAIL R-SV9: a plaintext-http rustdesk/github link remains in a front-end (MUST be https or removed):"; echo "$rsv9_http" | sed 's/^/      /'; rc=1
 else
@@ -1591,18 +1590,8 @@ if [ -n "$rx7a_hits" ]; then
 else
   echo "  ok  R-X7a/R-G1 no flutter UI writes the pinned verification-method/approve-mode selectors (removed not greyed; display-reads only)"
 fi
-# R-X7a/R-G1 (SCITER parity): the legacy sciter PasswordArea must not expose the EXCISED OTP controls
-# either (R-X7 removed the one-time-password machinery from Rust + flutter; this closes the sciter half).
-# Removed from src/ui/index.tis: the one-time-password display component (PasswordEyeArea), the OTP length
-# menu (TemporaryPasswordLengthMenu), the #use-temporary-password / #use-both-passwords verification-method
-# radios, the update_temporary_password FFI call, + the stale "One-time Password" area title. KEPT (live /
-# pinned-but-meaningful greyed-pin pattern): #set-password/#clear-password (the permanent CPace credential)
-# + #use-permanent-password + the #approve-mode-* radios.
-if grep -qE 'class PasswordEyeArea|class TemporaryPasswordLengthMenu|#use-temporary-password|#use-both-passwords|update_temporary_password' src/ui/index.tis; then
-  echo "  FAIL R-X7a (sciter): index.tis still exposes excised-OTP controls (PasswordEyeArea/TemporaryPasswordLengthMenu/#use-temporary-password/#use-both-passwords/update_temporary_password)"; rc=1
-else
-  echo "  ok  R-X7a (sciter) excised-OTP controls removed from index.tis (one-time display + length menu + use-temporary/both radios + FFI); permanent set/clear + use-permanent + approve-mode kept"
-fi
+# (The former R-X7a SCITER-parity OTP gate on src/ui/index.tis is retired — the entire Sciter UI is
+# deleted, R-B6, so its excised-OTP controls are gone by construction; the flutter R-X7a gate above stays.)
 # R-S5 / R-A3 (seal the set_raw plaintext-tunnel escape — Appendix C #4, a Tier-1 finding): upstream's
 # port-forward/RDP tunnel calls FramedStream::set_raw AFTER login to DROP the secretbox, so the
 # tunnelled bytes cross an otherwise-keyed session in plaintext ("the plaintext path is deleted, not

@@ -112,7 +112,9 @@ ringbuf = "0.3"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 mac_address = "1.1"
-sciter-rs = { git = "https://github.com/rustdesk-org/rust-sciter", branch = "dyn" }
+# R-B6/R-R2: the `sciter-rs` fork (rustdesk-org/rust-sciter) is REMOVED — the legacy Sciter UI it
+# backed is deleted (mod ui, src/ui/*.tis). Flutter is the sole front-end (§19); the fork's
+# dependency delta stays net-negative (§16). No build links Sciter anymore.
 sys-locale = "0.3"
 enigo = { path = "libs/enigo", features = [ "with_serde" ] }
 clipboard = { path = "libs/clipboard" }

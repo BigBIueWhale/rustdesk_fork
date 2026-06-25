@@ -57,29 +57,19 @@ the spec — gate coverage itself is part of the work.
 - **R-S17/§19** — added the closing-gate's mandated positive check that `--get-fingerprint` exists.
 
 ### REMAINING in-repo gaps (audit findings — NOT yet closed; the "complete" claim was premature)
-- **R-B6 (MUST, decision needed)** — the Sciter UI is NOT dropped: `sciter-rs` is an unconditional
-  Cargo dep (`Cargo.toml:115`), and `src/ui.rs` + `src/ui/*.tis` + `res/inline-sciter.py` remain and
-  *compile* in the `verify.sh`/`smoke` config (`--features linux-pkg-config`, no `flutter`). The
-  shipped artifacts (`--flutter`) exclude it. This is a genuine spec-internal tension: R-B6 + §13 +
-  §16 + the §5 Excise definition say *delete the fork + .tis tree*, while §19's parenthetical accepts
-  the cfg-gated state ("verified: ... `#[cfg(not(...flutter...))]` and every shipped target builds
-  `--flutter`"). Resolve deliberately: either actually drop Sciter (and repoint the verify/smoke
-  build off the sciter config) or record the §19-based cfg-gated reading as the binding interpretation.
-  **R-R2 says "MUST delete the Sciter fork" — so the deletion-philosophy (§5 Excise) reading wins over
-  §19's lenient parenthetical; the drop is the correct completion path.** Blast radius mapped (do as a
-  FOCUSED effort, re-validate verify+smoke after EACH step — it touches the verification foundation):
-  (1) delete `src/ui.rs`, `src/ui/*.tis`, `res/inline-sciter.py`; remove `pub mod ui;` (lib.rs:36).
-  (2) verify/smoke build `--features linux-pkg-config` (no flutter/cli) TODAY compiles `mod ui` and
-  `main.rs:29` calls `ui::start(args)` — prefer the HEADLESS option: make the
-  `cfg(not(any(android,ios,cli,flutter))) fn main()` run `core_main()` WITHOUT `ui::start` (this build
-  is never shipped — shipped = flutter — it is only the docker compile-check + the smoke `--server`
-  runtime, which needs no GUI). Keeps verify/smoke feature flags UNCHANGED (still type-checks the core).
-  (3) fix the scattered non-ui sciter/ui refs: `src/platform/delegate.rs` + `src/client/file_trait.rs`
-  (`use sciter`/`sciter::`), `src/keyboard.rs` + `src/client/file_trait.rs` (`ui::`) — gate out/remove.
-  (4) remove `sciter-rs` from Cargo.toml + REGENERATE Cargo.lock in the networked devcheck (the build
-  is `--locked`, so the lock MUST match). (5) add a verify.sh gate: `sciter-rs` absent from Cargo.toml,
-  no `src/ui/*.tis`, no `mod ui`, no `res/inline-sciter.py`. (6) re-run verify + smoke green. Until done,
-  the cfg-gated state holds (shipped artifacts never link Sciter).
+- **R-B6 / R-R2 (Sciter UI) — ✅ DONE this session.** The Sciter UI is now DELETED, not cfg-gated
+  (R-R2's "MUST delete the Sciter fork" + §5 Excise outweigh §19's lenient cfg-gated parenthetical).
+  Removed: `src/ui.rs`, the entire `src/ui/*.tis` tree, `res/inline-sciter.py`, the macOS Sciter app
+  delegate `src/platform/delegate.rs` (+ its `pub mod delegate`), `pub mod ui` (lib.rs), the `sciter-rs`
+  Cargo dep (+ Cargo.lock regenerated, minimal 12-line drop, no other dep bumped), and the scattered
+  sciter/ui bridges (`keyboard.rs` `CUR_SESSION` ×3, `file_trait.rs read_dir -> sciter::Value`,
+  `ui_session_interface.rs get_chatbox` inline branch, the `build.py` sciter build path). The
+  non-flutter/non-cli desktop build is now HEADLESS (`main.rs` runs `core_main()` without `ui::start`;
+  it remains the docker compile/verify proxy + the `--server` runtime, feature flags UNCHANGED, still
+  type-checks the full core). Validated: `cargo check --features linux-pkg-config` green, full
+  `verify.sh` green (new consolidated R-B6 deletion gate + the ~9 per-control sciter `.tis` gates
+  retired into it), apple-conform-check PASS (macOS source still conforms after the delegate deletion).
+  Flutter is the sole front-end; the dependency delta stays net-negative (§16).
 - **§19 GUI literal-conformance (MUST/partial, low security impact)** — `R-G3` dead `ConnectionType`
   `_secure`/`_direct` fields + `insecure`/`_relay` sentinels are still *wired* (`shared_state.dart`,
   set from `model.dart`, read in `remote_tab_page.dart`/`dialog.dart`) though the badge is collapsed

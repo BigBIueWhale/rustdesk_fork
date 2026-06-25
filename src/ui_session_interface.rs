@@ -665,12 +665,11 @@ impl<T: InvokeUiSession> Session<T> {
         input_os_password(pass, activate, self.clone());
     }
 
+    // R-B6: the Sciter `inline` chatbox (crate::ui::inline) is deleted with `mod ui`; the only
+    // non-flutter build is now headless, so this returns empty. The Flutter front-end carries chat.
     #[cfg(not(feature = "flutter"))]
     pub fn get_chatbox(&self) -> String {
-        #[cfg(feature = "inline")]
-        return crate::ui::inline::get_chatbox();
-        #[cfg(not(feature = "inline"))]
-        return "".to_owned();
+        "".to_owned()
     }
 
     pub fn swap_modifier_key(&self, msg: &mut KeyEvent) {

@@ -440,13 +440,12 @@ def main():
 
     if os.path.exists(exe_path):
         os.unlink(exe_path)
-    if os.path.isfile('/usr/bin/pacman'):
-        system2('git checkout src/ui/common.tis')
+    # R-B6/R-R2: the Sciter pre-build steps are gone with the Sciter UI — the Arch `git checkout
+    # src/ui/common.tis` and the non-flutter `res/inline-sciter.py` inliner referenced deleted files.
+    # Every shipped target builds --flutter; there is no Sciter build path to prepare.
     version = get_version()
     features = ','.join(get_features(args))
     flutter = args.flutter
-    if not flutter:
-        system2('python3 res/inline-sciter.py')
     print(args.skip_cargo)
     if args.skip_cargo:
         skip_cargo = True
@@ -498,8 +497,7 @@ def main():
             if osx:
                 system2(
                     'strip target/release/bundle/osx/RustDesk.app/Contents/MacOS/rustdesk')
-                system2(
-                    'cp libsciter.dylib target/release/bundle/osx/RustDesk.app/Contents/MacOS/')
+                # R-B6: no libsciter.dylib to bundle (Sciter UI removed; macOS GUI is Flutter).
                 # https://github.com/sindresorhus/create-dmg
                 system2('/bin/rm -rf *.dmg')
                 pa = os.environ.get('P')
@@ -560,7 +558,7 @@ def main():
                 system2('strip tmpdeb/usr/bin/rustdesk')
                 system2('mkdir -p tmpdeb/usr/share/rustdesk')
                 system2('mv tmpdeb/usr/bin/rustdesk tmpdeb/usr/share/rustdesk/')
-                system2('cp libsciter-gtk.so tmpdeb/usr/share/rustdesk/')
+                # R-B6: no libsciter-gtk.so to bundle (Sciter UI removed; Linux GUI is Flutter).
                 md5_file_folder("tmpdeb/")
                 system2('dpkg-deb -b tmpdeb rustdesk.deb; /bin/rm -rf tmpdeb/')
                 os.rename('rustdesk.deb', 'rustdesk-%s.deb' % version)

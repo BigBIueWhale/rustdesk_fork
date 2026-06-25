@@ -33,23 +33,10 @@ pub trait FileManager: Interface {
         fs::update_next_job_id(id);
     }
 
-    #[cfg(not(any(
-        target_os = "android",
-        target_os = "ios",
-        feature = "cli",
-        feature = "flutter"
-    )))]
-    fn read_dir(&self, path: String, include_hidden: bool) -> sciter::Value {
-        match fs::read_dir(&fs::get_path(&path), include_hidden) {
-            Err(_) => sciter::Value::null(),
-            Ok(fd) => {
-                use crate::ui::remote::make_fd;
-                let mut m = make_fd(0, &fd.entries.to_vec(), false);
-                m.set_item("path", path);
-                m
-            }
-        }
-    }
+    // R-B6/R-R2: the Sciter-only `read_dir(...) -> sciter::Value` FileManager method is DELETED with
+    // the Sciter UI — its sole callers were the deleted src/ui/file_transfer.tis, and it linked the
+    // `sciter-rs` fork (via `sciter::Value` + `crate::ui::remote::make_fd`). The Flutter file manager
+    // uses its own directory-listing path (flutter_ffi), not this trait method.
 
     fn cancel_job(&self, id: i32) {
         self.send(Data::CancelJob(id));

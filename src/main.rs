@@ -14,6 +14,13 @@ fn main() {
     common::global_clean();
 }
 
+// R-B6/R-R2: the non-flutter, non-cli desktop build is now HEADLESS. The legacy Sciter GUI
+// (`ui::start`) is deleted; Flutter is the sole shipped front-end (§19). This build target exists
+// only as the docker compile/verify proxy and the `--server` runtime — `core_main()` fully handles
+// the controlled-side argv (`--server`/`--service`/`--password`/`--get-fingerprint`, …) and returns
+// `Some(args)` only when a GUI would have been launched, which this build cannot do. So when the GUI
+// is requested there is nothing to start; the headless build simply finishes. (No shipped artifact
+// takes this path: every shipped target builds `--flutter`.)
 #[cfg(not(any(
     target_os = "android",
     target_os = "ios",
@@ -25,8 +32,11 @@ fn main() {
     unsafe {
         winapi::um::shellscalingapi::SetProcessDpiAwareness(2);
     }
-    if let Some(args) = crate::core_main::core_main().as_mut() {
-        ui::start(args);
+    if crate::core_main::core_main().is_some() {
+        eprintln!(
+            "This is the headless build (Sciter GUI removed, R-B6). The graphical viewer is the \
+             Flutter build; run the controlled side with --server / --service."
+        );
     }
     common::global_clean();
 }

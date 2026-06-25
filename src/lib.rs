@@ -27,13 +27,10 @@ pub use self::direct_service::*;
 pub mod common;
 #[cfg(not(any(target_os = "ios")))]
 pub mod ipc;
-#[cfg(not(any(
-    target_os = "android",
-    target_os = "ios",
-    feature = "cli",
-    feature = "flutter"
-)))]
-pub mod ui;
+// R-B6/R-R2: the legacy Sciter UI (`mod ui`, src/ui.rs + src/ui/*.tis) is DELETED, not merely
+// cfg-gated out of the shipped (--flutter) artifacts. Flutter is the sole front-end (§19). The
+// non-flutter, non-cli build is now headless (a core compile/verify target + the `--server` runtime),
+// so it no longer carries a second UI stack, the `sciter-rs` fork dependency, or the .tis tree.
 mod version;
 pub use version::*;
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]

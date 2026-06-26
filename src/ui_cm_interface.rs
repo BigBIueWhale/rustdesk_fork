@@ -592,9 +592,9 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                     }
                                 }
                                 Data::FS(mut fs) => {
-                                    if let ipc::FS::WriteBlock { id, file_num, data: _, compressed } = fs {
+                                    if let ipc::FS::WriteBlock { id, file_num, conn_id, data: _, compressed } = fs {
                                         if let Ok(bytes) = self.stream.next_raw().await {
-                                            fs = ipc::FS::WriteBlock{id, file_num, data:bytes.into(), compressed};
+                                            fs = ipc::FS::WriteBlock{id, file_num, conn_id, data:bytes.into(), compressed};
                                             handle_fs(fs, &mut write_jobs, &mut self.read_jobs, &self.tx, Some(&tx_log), self.conn_id).await;
                                         }
                                     } else {
@@ -955,6 +955,27 @@ pub async fn start_listen<T: InvokeUiCM>(
 }
 
 #[cfg(not(any(target_os = "ios")))]
+fn get_write_job_for_connection(
+    jobs: &mut [fs::TransferJob],
+    id: i32,
+    conn_id: i32,
+) -> Option<&mut fs::TransferJob> {
+    jobs.iter_mut()
+        .find(|job| job.id() == id && job.conn_id == conn_id)
+}
+
+#[cfg(not(any(target_os = "ios")))]
+fn remove_write_job_for_connection(
+    jobs: &mut Vec<fs::TransferJob>,
+    id: i32,
+    conn_id: i32,
+) -> Option<fs::TransferJob> {
+    jobs.iter()
+        .position(|job| job.id() == id && job.conn_id == conn_id)
+        .map(|index| jobs.remove(index))
+}
+
+#[cfg(not(any(target_os = "ios")))]
 async fn handle_fs(
     fs: ipc::FS,
     write_jobs: &mut Vec<fs::TransferJob>,
@@ -1039,15 +1060,24 @@ async fn handle_fs(
                 }
             }
         }
-        ipc::FS::WriteDone { id, file_num } => {
-            if let Some(job) = fs::remove_job(id, write_jobs) {
+        ipc::FS::WriteDone {
+            id,
+            file_num,
+            conn_id,
+        } => {
+            if let Some(job) = remove_write_job_for_connection(write_jobs, id, conn_id) {
                 job.modify_time();
                 send_raw(fs::new_done(id, file_num), tx);
                 tx_log.map(|tx| tx.send(serialize_transfer_job(&job, true, false, "")));
             }
         }
-        ipc::FS::WriteError { id, file_num, err } => {
-            if let Some(job) = fs::remove_job(id, write_jobs) {
+        ipc::FS::WriteError {
+            id,
+            file_num,
+            conn_id,
+            err,
+        } => {
+            if let Some(job) = remove_write_job_for_connection(write_jobs, id, conn_id) {
                 tx_log.map(|tx| tx.send(serialize_transfer_job(&job, false, false, &err)));
                 send_raw(fs::new_error(job.id(), err, file_num), tx);
             }
@@ -1055,10 +1085,11 @@ async fn handle_fs(
         ipc::FS::WriteBlock {
             id,
             file_num,
+            conn_id,
             data,
             compressed,
         } => {
-            if let Some(job) = fs::get_job(id, write_jobs) {
+            if let Some(job) = get_write_job_for_connection(write_jobs, id, conn_id) {
                 if let Err(err) = job
                     .write(FileTransferBlock {
                         id,
@@ -1076,12 +1107,13 @@ async fn handle_fs(
         ipc::FS::CheckDigest {
             id,
             file_num,
+            conn_id,
             file_size,
             last_modified,
             is_upload,
             is_resume,
         } => {
-            if let Some(job) = fs::get_job(id, write_jobs) {
+            if let Some(job) = get_write_job_for_connection(write_jobs, id, conn_id) {
                 let mut req = FileTransferSendConfirmRequest {
                     id,
                     file_num,

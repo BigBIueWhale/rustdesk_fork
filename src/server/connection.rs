@@ -258,6 +258,10 @@ pub struct Connection {
     // Used to filter stale responses (FileBlockFromCM, FileReadDone, etc.) for
     // cancelled or unknown jobs.
     cm_read_job_ids: HashSet<i32>,
+    // Tracks write job IDs this connection created in the CM/FS worker.
+    // FileResponse carries only a peer-chosen job id, so gate it here before
+    // forwarding to the shared worker and pair it with conn_id in IPC.
+    write_job_ids: HashSet<i32>,
     terminal_service_id: String,
     terminal_persistent: bool,
     // The user token must be set when terminal is enabled.
@@ -416,6 +420,7 @@ impl Connection {
             tx_from_authed,
             printer_data: Vec::new(),
             cm_read_job_ids: HashSet::new(),
+            write_job_ids: HashSet::new(),
             terminal_service_id: "".to_owned(),
             terminal_persistent: false,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2255,6 +2260,7 @@ impl Connection {
                                 let od = can_enable_overwrite_detection(get_version_number(
                                     &self.lr.version,
                                 ));
+                                self.write_job_ids.insert(r.id);
                                 self.send_fs(ipc::FS::NewWrite {
                                     path: r.path.clone(),
                                     id: r.id,
@@ -2306,6 +2312,7 @@ impl Connection {
                             Some(file_action::Union::Cancel(c)) => {
                                 self.send_fs(ipc::FS::CancelWrite { id: c.id });
                                 let _ = self.cm_read_job_ids.remove(&c.id);
+                                let _ = self.write_job_ids.remove(&c.id);
                                 self.send_fs(ipc::FS::CancelRead {
                                     id: c.id,
                                     conn_id: self.inner.id(),
@@ -2357,31 +2364,51 @@ impl Connection {
                 }
                 Some(message::Union::FileResponse(fr)) => match fr.union {
                     Some(file_response::Union::Block(block)) => {
+                        if !self.accepts_file_response_write_job(block.id, "Block") {
+                            return true;
+                        }
                         self.send_fs(ipc::FS::WriteBlock {
                             id: block.id,
                             file_num: block.file_num,
+                            conn_id: self.inner.id(),
                             data: block.data,
                             compressed: block.compressed,
                         });
                     }
                     Some(file_response::Union::Done(d)) => {
+                        if !self.accepts_file_response_write_job(d.id, "Done") {
+                            return true;
+                        }
+                        let _ = self.write_job_ids.remove(&d.id);
                         self.send_fs(ipc::FS::WriteDone {
                             id: d.id,
                             file_num: d.file_num,
+                            conn_id: self.inner.id(),
                         });
                     }
-                    Some(file_response::Union::Digest(d)) => self.send_fs(ipc::FS::CheckDigest {
-                        id: d.id,
-                        file_num: d.file_num,
-                        file_size: d.file_size,
-                        last_modified: d.last_modified,
-                        is_upload: true,
-                        is_resume: d.is_resume,
-                    }),
+                    Some(file_response::Union::Digest(d)) => {
+                        if !self.accepts_file_response_write_job(d.id, "Digest") {
+                            return true;
+                        }
+                        self.send_fs(ipc::FS::CheckDigest {
+                            id: d.id,
+                            file_num: d.file_num,
+                            conn_id: self.inner.id(),
+                            file_size: d.file_size,
+                            last_modified: d.last_modified,
+                            is_upload: true,
+                            is_resume: d.is_resume,
+                        });
+                    }
                     Some(file_response::Union::Error(e)) => {
+                        if !self.accepts_file_response_write_job(e.id, "Error") {
+                            return true;
+                        }
+                        let _ = self.write_job_ids.remove(&e.id);
                         self.send_fs(ipc::FS::WriteError {
                             id: e.id,
                             file_num: e.file_num,
+                            conn_id: self.inner.id(),
                             err: e.error,
                         });
                     }
@@ -3407,6 +3434,19 @@ impl Connection {
         }
     }
 
+    fn accepts_file_response_write_job(&self, id: i32, kind: &str) -> bool {
+        if self.file_transfer.is_some() && self.write_job_ids.contains(&id) {
+            return true;
+        }
+        log::debug!(
+            "Dropping FileResponse::{} for non-file or unknown write job id={}, conn_id={}",
+            kind,
+            id,
+            self.inner.id()
+        );
+        false
+    }
+
     async fn handle_file_block_from_cm(
         &mut self,
         id: i32,
@@ -4100,9 +4140,10 @@ async fn start_ipc(
                     Some(data) => {
                         if let Data::FS(ipc::FS::WriteBlock{id,
                             file_num,
+                            conn_id,
                             data,
                             compressed}) = data {
-                                stream.send(&Data::FS(ipc::FS::WriteBlock{id, file_num, data: Bytes::new(), compressed})).await?;
+                                stream.send(&Data::FS(ipc::FS::WriteBlock{id, file_num, conn_id, data: Bytes::new(), compressed})).await?;
                                 stream.send_raw(data).await?;
                         } else {
                             stream.send(&data).await?;

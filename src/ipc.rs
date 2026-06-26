@@ -151,16 +151,19 @@ pub enum FS {
     WriteBlock {
         id: i32,
         file_num: i32,
+        conn_id: i32,
         data: Bytes,
         compressed: bool,
     },
     WriteDone {
         id: i32,
         file_num: i32,
+        conn_id: i32,
     },
     WriteError {
         id: i32,
         file_num: i32,
+        conn_id: i32,
         err: String,
     },
     WriteOffset {
@@ -171,6 +174,7 @@ pub enum FS {
     CheckDigest {
         id: i32,
         file_num: i32,
+        conn_id: i32,
         file_size: u64,
         last_modified: u64,
         is_upload: bool,

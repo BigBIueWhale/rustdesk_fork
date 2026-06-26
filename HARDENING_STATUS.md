@@ -9,8 +9,8 @@ history remains the traceability record for those intermediate notes.
 
 ## Current Verdict
 
-**Status: responder-side port-forward latent-connect follow-up closed in source
-and gates.**
+**Status: responder-side port-forward latent-connect follow-up closed; file
+write-response forwarding is now same-session/job gated in source and gates.**
 
 On 2026-06-26, final reviewer `Maxwell` (`gpt-5.5`, `xhigh`) reviewed the
 then-current dirty worktree, read the full `requirements.html`, checked the previous
@@ -68,6 +68,15 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   code has no `.set_raw(` caller, no tunnel socket opener, and no responder-side
   latent connect path left. The remaining `hbb_common::Stream::set_raw`
   implementation is only a defensive backstop.
+- **FileResponse write forwarding is same-session/job gated.**
+  `Connection` now tracks write job ids that this connection created through
+  `FileAction::Receive`. Incoming `FileResponse::{Block,Digest,Done,Error}` is
+  dropped unless the connection is a file-transfer session and the write job id
+  is outstanding for that connection. The write-side FS IPC messages carry
+  `conn_id`, and the CM/FS worker matches write jobs by `(id, conn_id)` before
+  writing, digest-checking, completing, or erroring a job. This closes the
+  defense-in-depth cross-session/id-collision concern without changing the
+  intended full-filesystem file-transfer model.
 - **Windows validation builds the tracked worktree when requested.**
   `WINDOWS_BUILD_SOURCE=worktree scripts/build-windows-vm.sh` snapshots tracked
   dirty edits and tracked deletions into the BUILD CD. The release default stays
@@ -222,11 +231,6 @@ git diff --check              # GREEN after this ledger update
   Prefer deleting or target-cfg-fencing transport-capable helper functions so
   "no UDP/KCP/rendezvous" is enforced by absence, with grep/call-graph gates
   preventing future reintroduction.
-
-- **Mirror file-session gates on `FileResponse`.** `FileAction` is
-  session-gated, and CM drops unknown write IDs, but `FileResponse` forwarding
-  should also re-check the file-transfer/printer session state before forwarding
-  to CM. This is defense-in-depth, not a known keyed-path bypass.
 
 - **Strengthen file-transfer parent traversal.** Final-component writes use
   no-follow opens; intermediate path validation remains path-based. A full

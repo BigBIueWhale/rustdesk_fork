@@ -1674,6 +1674,33 @@ if [ -n "$r_s8ft_missing" ]; then
 else
   echo "  ok  R-S8/R-A5 file-transfer receive-write is no-follow (O_NOFOLLOW closes the §4.3 symlink-TOCTOU; behavior-tested at (3c))"
 fi
+# R-S8/R-S11 defense-in-depth: incoming FileResponse carries peer-chosen write data for a CM/FS write
+# job. FileAction is session-gated, but the shared FS worker historically looked up write_jobs only by
+# peer-chosen id, so a cross-session id collision could target the wrong write job. Gate FileResponse
+# before forwarding and carry conn_id through the write-side FS IPC messages; the worker must match
+# (id, conn_id), not id alone.
+r_fileresp_missing=
+grep -q 'write_job_ids: HashSet<i32>' src/server/connection.rs                                  || r_fileresp_missing="$r_fileresp_missing connection-write-id-set"
+grep -q 'self.write_job_ids.insert(r.id);' src/server/connection.rs                              || r_fileresp_missing="$r_fileresp_missing receive-insert"
+grep -q 'self.accepts_file_response_write_job(block.id, "Block")' src/server/connection.rs       || r_fileresp_missing="$r_fileresp_missing block-gate"
+grep -q 'self.accepts_file_response_write_job(d.id, "Done")' src/server/connection.rs            || r_fileresp_missing="$r_fileresp_missing done-gate"
+grep -q 'self.accepts_file_response_write_job(d.id, "Digest")' src/server/connection.rs          || r_fileresp_missing="$r_fileresp_missing digest-gate"
+grep -q 'self.accepts_file_response_write_job(e.id, "Error")' src/server/connection.rs           || r_fileresp_missing="$r_fileresp_missing error-gate"
+grep -q 'conn_id: self.inner.id()' src/server/connection.rs                                      || r_fileresp_missing="$r_fileresp_missing file-response-conn-id"
+grep -q 'fn get_write_job_for_connection' src/ui_cm_interface.rs                                 || r_fileresp_missing="$r_fileresp_missing worker-id-conn-helper"
+grep -q 'job.id() == id && job.conn_id == conn_id' src/ui_cm_interface.rs                        || r_fileresp_missing="$r_fileresp_missing worker-id-conn-match"
+grep -q 'remove_write_job_for_connection(write_jobs, id, conn_id)' src/ui_cm_interface.rs         || r_fileresp_missing="$r_fileresp_missing worker-id-conn-remove"
+for variant in 'WriteBlock' 'WriteDone' 'WriteError' 'CheckDigest'; do
+  awk "/$variant \\{/,/\\}/" src/ipc.rs | grep -q 'conn_id: i32' || r_fileresp_missing="$r_fileresp_missing ipc-${variant}-conn_id"
+done
+if grep -nE 'FS::Write(Done|Error) \{ id, file_num \}' src/ui_cm_interface.rs src/server/connection.rs | grep -q .; then
+  r_fileresp_missing="$r_fileresp_missing done-error-id-only-pattern"
+fi
+if [ -n "$r_fileresp_missing" ]; then
+  echo "  FAIL R-S8/R-S11: FileResponse write forwarding is not same-session/job gated:$r_fileresp_missing"; rc=1
+else
+  echo "  ok  R-S8/R-S11 FileResponse forwarding is gated by same-connection write-job provenance and FS worker matches write jobs by (id, conn_id)"
+fi
 # R-S14 (screen capture bound to a PAKE session — a reused grant must not capture outside one): the
 # controlled-side capture is per-connection — started only in the authorized (CPace-keyed) Connection
 # setup (try_add_primay_video_service, after the R-A2 single self.authorized point) and torn down in

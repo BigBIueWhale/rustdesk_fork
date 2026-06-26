@@ -1,16 +1,21 @@
 //! R-A4 socket-surface parser + policy (hbb_common::socket_surface).
 //!
-//! The live runtime check reads /proc/self/net/{tcp,tcp6,udp,udp6}; that read is
-//! Linux-only and needs the server running (two-host R-A8/A9 territory). What is
-//! unit-testable here — and where a silent bug would be fail-OPEN — is the table
-//! PARSER and the surface POLICY. These fixtures match the real kernel format
-//! (whitespace columns, HEXIP:HEXPORT local_address, hex `st` state) so the
-//! parser is pinned, and every policy branch (the lone v4:port listener, a stray
-//! listener, a v6 face, the wrong port, any UDP) is asserted.
+//! The live runtime checks are platform-specific: Linux reads the confined
+//! `/proc/self/net/{tcp,tcp6,udp,udp6}` namespace tables, Android filters those
+//! tables to `/proc/self/fd` socket inodes, and Windows reads IP Helper owner-PID
+//! tables. What is unit-testable here — and where a silent bug would be
+//! fail-OPEN — is the proc-table PARSER and the shared surface POLICY. These
+//! fixtures match the real kernel format (whitespace columns, HEXIP:HEXPORT
+//! local_address, hex `st` state) so the parser is pinned, and every policy branch
+//! (the lone v4:port listener, a stray listener, a v6 face, the wrong port, any
+//! UDP) is asserted.
 
 use hbb_common::socket_surface::{
-    check_controlled_surface, count_udp_sockets, parse_tcp_listen_ports, SocketSurface,
+    check_controlled_surface, count_udp_sockets, count_udp_sockets_for_inodes,
+    parse_proc_fd_socket_inode, parse_tcp_listen_ports, parse_tcp_listen_ports_for_inodes,
+    SocketSurface,
 };
+use std::collections::HashSet;
 
 // 0x527E == 21118 (the pinned direct port, R-F4); 0x0277 == 631 (a loopback
 // CUPS listener); the third row is ESTABLISHED (st 01), not a listener.
@@ -73,6 +78,33 @@ fn udp_counter_counts_every_socket() {
     // Both a :53 (DNS) and a :5353 (mDNS) row count — listening or not, any UDP
     // socket trips R-A4 on the --server box.
     assert_eq!(count_udp_sockets(UDP_TABLE_TWO), 2);
+}
+
+#[test]
+fn process_inode_filter_counts_only_this_process_sockets() {
+    // Android cannot rely on a namespace-wide table: the process must map
+    // /proc/self/fd socket:[inode] links back to /proc/self/net rows. The first
+    // TCP row and first UDP row belong to this process; the CUPS/DNS-looking
+    // rows are other-process noise and must not count.
+    let inodes = HashSet::from([12345_u64, 45678_u64]);
+
+    assert_eq!(
+        parse_tcp_listen_ports_for_inodes(TCP_TABLE, &inodes),
+        vec![21118]
+    );
+    assert_eq!(count_udp_sockets_for_inodes(UDP_TABLE_TWO, &inodes), 1);
+
+    let empty = HashSet::new();
+    assert!(parse_tcp_listen_ports_for_inodes(TCP_TABLE, &empty).is_empty());
+    assert_eq!(count_udp_sockets_for_inodes(UDP_TABLE_TWO, &empty), 0);
+}
+
+#[test]
+fn proc_fd_socket_inode_parser_is_strict() {
+    assert_eq!(parse_proc_fd_socket_inode("socket:[12345]"), Some(12345));
+    assert_eq!(parse_proc_fd_socket_inode("anon_inode:[eventpoll]"), None);
+    assert_eq!(parse_proc_fd_socket_inode("socket:12345"), None);
+    assert_eq!(parse_proc_fd_socket_inode("socket:[not-a-number]"), None);
 }
 
 #[test]

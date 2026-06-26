@@ -142,8 +142,11 @@ fn assert_startup_invariants() {
 /// listener on the pinned v4 port and ZERO UDP sockets of any kind (ephemeral
 /// egress UDP included — a STUN probe or a dependency phoning home would slip
 /// past a listener-only check). A violation is fail-closed (refuse to serve); a
-/// platform without `/proc/self/net` (non-Linux) is recorded as unavailable and
-/// the surface then rests on the §18 compile-out + the R-B4 build smoke-test.
+/// Linux checks the confined network namespace through `/proc/self/net`; Windows
+/// and Android check sockets owned by this process through platform-native
+/// owner tables / process socket inodes. Targets without a platform assertion
+/// are recorded as unavailable and rest on the §18 compile-out + build smoke
+/// tests.
 /// This is a bind/listener-surface check only — it does NOT catch TCP egress
 /// (an outbound connect has no listener row), which rests on R-D6 + firewall.
 fn assert_socket_surface(port: u16) {

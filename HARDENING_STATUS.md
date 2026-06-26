@@ -9,9 +9,9 @@ history remains the traceability record for those intermediate notes.
 
 ## Current Verdict
 
-**Status: file-transfer parent-walk follow-up closed; responder-side
-port-forward latent-connect and file write-response forwarding follow-ups remain
-closed in source and gates.**
+**Status: file-transfer parent-walk and Windows/Android socket-surface
+follow-ups closed in source and gates; responder-side port-forward
+latent-connect and file write-response forwarding follow-ups remain closed.**
 
 On 2026-06-26, final reviewer `Maxwell` (`gpt-5.5`, `xhigh`) reviewed the
 then-current dirty worktree, read the full `requirements.html`, checked the previous
@@ -87,6 +87,16 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   intermediate-directory symlink race that remained after the earlier
   final-component `O_NOFOLLOW` fix. Non-Unix keeps the platform no-follow
   fallback.
+- **Windows and Android socket-surface assertions are process-owned.**
+  `socket_surface.rs` keeps the Linux confined-namespace `/proc/self/net`
+  assertion, adds Android filtering from `/proc/self/fd` `socket:[inode]` links
+  into `/proc/self/net/*` rows, and adds Windows IP Helper owner-PID TCP/UDP
+  table reads. All three checked targets feed the same R-A4 policy: exactly one
+  IPv4 TCP listener on the pinned direct port and zero UDP sockets. The
+  implementation is source-gated by `scripts/verify.sh` and the Android proc
+  parser/filtering path is covered by `surface_it`; native runtime execution is
+  still part of the platform artifact validation path, not implied by this
+  source gate alone.
 - **Windows validation builds the tracked worktree when requested.**
   `WINDOWS_BUILD_SOURCE=worktree scripts/build-windows-vm.sh` snapshots tracked
   dirty edits and tracked deletions into the BUILD CD. The release default stays
@@ -143,8 +153,8 @@ Build evidence:
 
 ## Validation Matrix
 
-The following full source gate passed after the current responder-side
-port-forward follow-up:
+The following full source gate passed after the current Windows/Android
+socket-surface follow-up:
 
 ```text
 bash scripts/verify.sh        # GREEN: VERIFY: all gates green
@@ -169,7 +179,8 @@ Coverage highlights:
 - `scripts/verify.sh` passed KATs, handshake tests, policy-funnel checks,
   main-crate compile checks, forbidden-token/excision checks, Windows
   offline-helper and golden-hash structural gates, R-S5 raw-mode refusal gates,
-  build reproducibility gates, and TCP/socket correctness gates.
+  build reproducibility gates, TCP/socket correctness gates, and Windows/Android
+  R-A4 socket-surface source-structure gates.
 - `scripts/dart-verify.sh` passed `flutter analyze lib/`, address-validator
   tests, and Section 19 Dart-layer absence checks.
 - `scripts/flutter-verify.sh` passed
@@ -228,15 +239,6 @@ git diff --check              # GREEN after this ledger update
   `false` from `handle_msg_from_peer`. `scripts/verify.sh` requires both markers
   and fails on the old silent parse-ignore pattern.
 
-### Defense-In-Depth Items
-
-- **Windows and Android socket-surface assertions.** Linux has a live
-  process-table assertion for exactly one IPv4 TCP listener on `127.0.0.1` in
-  smoke tests / `21118` in service mode and zero UDP sockets. Windows and Android
-  currently rely more on code-path proof. Add platform-native checks in their
-  validation paths so every shipped target proves one direct TCP listener, zero
-  UDP, and no relay/rendezvous/KCP listener.
-
 ### Larger Assurance / Hardening Items
 
 - **Native viewer decoder sandbox.** The biggest remaining code hardening target
@@ -265,10 +267,12 @@ git diff --check              # GREEN after this ledger update
 ## Known Residuals
 
 The current known residuals are the open follow-ups above. The remaining
-in-repository/build-harness work is Windows and Android platform-native
-socket-surface assertion coverage plus the larger native viewer decoder sandbox
-design/implementation. The artifact hashes in this ledger predate the latest
-source follow-ups and must be rebuilt before a new release/tag claim.
+in-repository hardening work is the larger native viewer decoder sandbox
+design/implementation. Windows and Android platform-native socket-surface logic
+is now present and source-gated, but native artifact/runtime execution remains
+part of the platform rebuild evidence. The artifact hashes in this ledger
+predate the latest source follow-ups and must be rebuilt before a new
+release/tag claim.
 
 The remaining external or pre-exposure evidence items are:
 

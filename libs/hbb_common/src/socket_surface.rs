@@ -6,21 +6,25 @@
 //! no UDP socket at all, so an ephemeral OS-assigned-port egress UDP socket (a
 //! STUN probe — R-S11 — or a dependency phoning home) cannot slip past a
 //! listener-only check (§4.1). This reads the kernel's per-netns socket tables
-//! at `/proc/self/net/{tcp,tcp6,udp,udp6}`. On the hardened appliance the box is
+//! at `/proc/self/net/{tcp,tcp6,udp,udp6}`. On the hardened Linux appliance the box is
 //! the sole network service in its namespace, so the netns surface *is* the
 //! process surface (§14 / R-D3 confinement); if other network services share the
 //! namespace they must be accounted for, or the box must run in its own netns.
+//! Windows and Android do not get that netns guarantee, so their runtime checks
+//! filter to sockets owned by this process: Windows uses IP Helper owner-PID
+//! tables, while Android maps `/proc/self/fd` `socket:[inode]` links back to
+//! `/proc/self/net/*` rows.
 //!
 //! It is a **bind/listener-surface check only**: an outbound TCP `connect` has no
 //! listener row, so TCP-egress silence rests on the compile-time removal (R-D6)
 //! plus the operator firewall, **not** on this assertion — R-A4 explicitly
 //! forbids over-crediting it with catching egress.
 //!
-//! macOS/iOS have no `/proc`; a Darwin port would use `proc_pidfdinfo` /
-//! `sysctl net.inet.*.pcblist`, or record the runtime check as *unavailable*
-//! (the surface then rests on the §18 compile-out + the R-B4 build smoke-test).
-//! iOS binds no inbound socket, so the check is moot there. On any non-Linux
-//! target this module reports [`SurfaceCheck::Unavailable`] rather than asserting.
+//! macOS/iOS still report [`SurfaceCheck::Unavailable`]: iOS binds no inbound
+//! socket, and macOS artifact parity remains a separate Apple-toolchain path.
+
+#[cfg(target_os = "android")]
+use std::collections::HashSet;
 
 /// TCP socket state from the kernel's `net/tcp_states.h`. `TCP_LISTEN == 0x0A`;
 /// it is the only state that denotes a *listener* (a bound, passive socket).
@@ -60,6 +64,23 @@ pub enum SurfaceCheck {
 /// (the TCP state, hex). Only rows whose state == `LISTEN` contribute a port. The
 /// header row and any malformed/short row are skipped (neither is a listener).
 pub fn parse_tcp_listen_ports(contents: &str) -> Vec<u16> {
+    parse_tcp_listen_ports_filtered(contents, None)
+}
+
+/// Android process-owned TCP parser: same `/proc/self/net/{tcp,tcp6}` format as
+/// Linux, but rows are filtered to inodes referenced by this process's
+/// `/proc/self/fd/socket:[inode]` links.
+pub fn parse_tcp_listen_ports_for_inodes(
+    contents: &str,
+    socket_inodes: &std::collections::HashSet<u64>,
+) -> Vec<u16> {
+    parse_tcp_listen_ports_filtered(contents, Some(socket_inodes))
+}
+
+fn parse_tcp_listen_ports_filtered(
+    contents: &str,
+    socket_inodes: Option<&std::collections::HashSet<u64>>,
+) -> Vec<u16> {
     let mut ports = Vec::new();
     for line in contents.lines() {
         let cols: Vec<&str> = line.split_whitespace().collect();
@@ -75,6 +96,14 @@ pub fn parse_tcp_listen_ports(contents: &str) -> Vec<u16> {
         if st != TCP_LISTEN {
             continue;
         }
+        if let Some(socket_inodes) = socket_inodes {
+            let Some(inode) = parse_proc_net_inode(&cols) else {
+                continue;
+            };
+            if !socket_inodes.contains(&inode) {
+                continue;
+            }
+        }
         if let Some(port) = parse_local_port(cols[1]) {
             ports.push(port);
         }
@@ -86,13 +115,39 @@ pub fn parse_tcp_listen_ports(contents: &str) -> Vec<u16> {
 /// row is a UDP socket, listening or not. The header line and blank lines are
 /// skipped. R-A4 requires this total to be zero on the --server process.
 pub fn count_udp_sockets(contents: &str) -> usize {
+    count_udp_sockets_filtered(contents, None)
+}
+
+/// Android process-owned UDP parser. Counts only UDP rows whose inode belongs to
+/// this process.
+pub fn count_udp_sockets_for_inodes(
+    contents: &str,
+    socket_inodes: &std::collections::HashSet<u64>,
+) -> usize {
+    count_udp_sockets_filtered(contents, Some(socket_inodes))
+}
+
+fn count_udp_sockets_filtered(
+    contents: &str,
+    socket_inodes: Option<&std::collections::HashSet<u64>>,
+) -> usize {
     contents
         .lines()
         .filter(|line| {
             let cols: Vec<&str> = line.split_whitespace().collect();
             // a data row's column 1 parses as HEXIP:HEXPORT; the header's
             // "local_address" does not, so the header is excluded.
-            cols.len() >= 4 && parse_local_port(cols[1]).is_some()
+            if cols.len() < 4 || parse_local_port(cols[1]).is_none() {
+                return false;
+            }
+            if let Some(socket_inodes) = socket_inodes {
+                let Some(inode) = parse_proc_net_inode(&cols) else {
+                    return false;
+                };
+                socket_inodes.contains(&inode)
+            } else {
+                true
+            }
         })
         .count()
 }
@@ -103,6 +158,20 @@ pub fn count_udp_sockets(contents: &str) -> usize {
 fn parse_local_port(local: &str) -> Option<u16> {
     let (_ip, port_hex) = local.rsplit_once(':')?;
     u16::from_str_radix(port_hex, 16).ok()
+}
+
+fn parse_proc_net_inode(cols: &[&str]) -> Option<u64> {
+    // /proc/net/{tcp,udp} rows place `inode` after `uid timeout`, at column 9
+    // in the kernel format emitted on Linux and Android.
+    cols.get(9)?.parse().ok()
+}
+
+pub fn parse_proc_fd_socket_inode(target: &str) -> Option<u64> {
+    target
+        .strip_prefix("socket:[")?
+        .strip_suffix(']')?
+        .parse()
+        .ok()
 }
 
 /// The R-A4 surface policy for the --server process: **exactly
@@ -161,10 +230,198 @@ pub fn read_proc_self_net() -> std::io::Result<SocketSurface> {
     })
 }
 
-/// R-A4 post-listen socket-surface assertion. On Linux, read the live socket
-/// tables and check them against the audited surface; a read failure is
-/// fail-closed (we cannot confirm the surface, so we refuse). On non-Linux
-/// targets there is no `/proc/self/net`, so the runtime check is *unavailable*.
+#[cfg(target_os = "android")]
+fn read_proc_self_socket_inodes() -> std::io::Result<HashSet<u64>> {
+    let mut inodes = HashSet::new();
+    for entry in std::fs::read_dir("/proc/self/fd")? {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(_) => continue,
+        };
+        let target = match std::fs::read_link(entry.path()) {
+            Ok(target) => target,
+            Err(_) => continue,
+        };
+        if let Some(inode) = parse_proc_fd_socket_inode(&target.to_string_lossy()) {
+            inodes.insert(inode);
+        }
+    }
+    Ok(inodes)
+}
+
+#[cfg(target_os = "android")]
+pub fn read_android_proc_self_net() -> std::io::Result<SocketSurface> {
+    let socket_inodes = read_proc_self_socket_inodes()?;
+    let tcp4 = std::fs::read_to_string("/proc/self/net/tcp")?;
+    let tcp6 = std::fs::read_to_string("/proc/self/net/tcp6").unwrap_or_default();
+    let udp = std::fs::read_to_string("/proc/self/net/udp")?;
+    let udp6 = std::fs::read_to_string("/proc/self/net/udp6").unwrap_or_default();
+    Ok(SocketSurface {
+        tcp4_listen_ports: parse_tcp_listen_ports_for_inodes(&tcp4, &socket_inodes),
+        tcp6_listen_ports: parse_tcp_listen_ports_for_inodes(&tcp6, &socket_inodes),
+        udp_sockets: count_udp_sockets_for_inodes(&udp, &socket_inodes)
+            + count_udp_sockets_for_inodes(&udp6, &socket_inodes),
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn windows_port_from_network_order(port: u32) -> u16 {
+    u16::from_be(port as u16)
+}
+
+#[cfg(target_os = "windows")]
+fn windows_table_buffer<F>(mut call: F) -> std::io::Result<Vec<usize>>
+where
+    F: FnMut(winapi::shared::ntdef::PVOID, *mut winapi::shared::minwindef::DWORD) -> u32,
+{
+    use std::mem::size_of;
+    use std::ptr::null_mut;
+    use winapi::shared::{
+        minwindef::DWORD,
+        winerror::{ERROR_INSUFFICIENT_BUFFER, NO_ERROR},
+    };
+
+    let mut size: DWORD = 0;
+    let first = call(null_mut(), &mut size);
+    if first != ERROR_INSUFFICIENT_BUFFER && first != NO_ERROR {
+        return Err(std::io::Error::from_raw_os_error(first as i32));
+    }
+    if size == 0 {
+        return Ok(Vec::new());
+    }
+    let words = (size as usize + size_of::<usize>() - 1) / size_of::<usize>();
+    let mut buffer = vec![0usize; words];
+    let rc = call(buffer.as_mut_ptr() as _, &mut size);
+    if rc == NO_ERROR {
+        Ok(buffer)
+    } else {
+        Err(std::io::Error::from_raw_os_error(rc as i32))
+    }
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn windows_tcp4_listen_ports_for_pid(pid: u32) -> std::io::Result<Vec<u16>> {
+    use std::slice;
+    use winapi::{
+        shared::{
+            iprtrmib::TCP_TABLE_OWNER_PID_ALL,
+            ntdef::ULONG,
+            tcpmib::{MIB_TCP_STATE_LISTEN, MIB_TCPTABLE_OWNER_PID},
+            ws2def::AF_INET,
+        },
+        um::iphlpapi::GetExtendedTcpTable,
+    };
+
+    let buffer = windows_table_buffer(|table, size| unsafe {
+        GetExtendedTcpTable(table, size, 0, AF_INET as ULONG, TCP_TABLE_OWNER_PID_ALL, 0)
+    })?;
+    if buffer.is_empty() {
+        return Ok(Vec::new());
+    }
+    let table = buffer.as_ptr() as *const MIB_TCPTABLE_OWNER_PID;
+    let rows = slice::from_raw_parts((*table).table.as_ptr(), (*table).dwNumEntries as usize);
+    Ok(rows
+        .iter()
+        .filter(|row| row.dwOwningPid == pid && row.dwState == MIB_TCP_STATE_LISTEN as u32)
+        .map(|row| windows_port_from_network_order(row.dwLocalPort))
+        .collect())
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn windows_tcp6_listen_ports_for_pid(pid: u32) -> std::io::Result<Vec<u16>> {
+    use std::slice;
+    use winapi::{
+        shared::{
+            iprtrmib::TCP_TABLE_OWNER_PID_ALL,
+            ntdef::ULONG,
+            tcpmib::{MIB_TCP_STATE_LISTEN, MIB_TCP6TABLE_OWNER_PID},
+            ws2def::AF_INET6,
+        },
+        um::iphlpapi::GetExtendedTcpTable,
+    };
+
+    let buffer = windows_table_buffer(|table, size| unsafe {
+        GetExtendedTcpTable(
+            table,
+            size,
+            0,
+            AF_INET6 as ULONG,
+            TCP_TABLE_OWNER_PID_ALL,
+            0,
+        )
+    })?;
+    if buffer.is_empty() {
+        return Ok(Vec::new());
+    }
+    let table = buffer.as_ptr() as *const MIB_TCP6TABLE_OWNER_PID;
+    let rows = slice::from_raw_parts((*table).table.as_ptr(), (*table).dwNumEntries as usize);
+    Ok(rows
+        .iter()
+        .filter(|row| row.dwOwningPid == pid && row.dwState == MIB_TCP_STATE_LISTEN as u32)
+        .map(|row| windows_port_from_network_order(row.dwLocalPort))
+        .collect())
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn windows_udp4_socket_count_for_pid(pid: u32) -> std::io::Result<usize> {
+    use std::slice;
+    use winapi::{
+        shared::{
+            iprtrmib::UDP_TABLE_OWNER_PID, ntdef::ULONG, udpmib::MIB_UDPTABLE_OWNER_PID,
+            ws2def::AF_INET,
+        },
+        um::iphlpapi::GetExtendedUdpTable,
+    };
+
+    let buffer = windows_table_buffer(|table, size| unsafe {
+        GetExtendedUdpTable(table, size, 0, AF_INET as ULONG, UDP_TABLE_OWNER_PID, 0)
+    })?;
+    if buffer.is_empty() {
+        return Ok(0);
+    }
+    let table = buffer.as_ptr() as *const MIB_UDPTABLE_OWNER_PID;
+    let rows = slice::from_raw_parts((*table).table.as_ptr(), (*table).dwNumEntries as usize);
+    Ok(rows.iter().filter(|row| row.dwOwningPid == pid).count())
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn windows_udp6_socket_count_for_pid(pid: u32) -> std::io::Result<usize> {
+    use std::slice;
+    use winapi::{
+        shared::{
+            iprtrmib::UDP_TABLE_OWNER_PID, ntdef::ULONG, udpmib::MIB_UDP6TABLE_OWNER_PID,
+            ws2def::AF_INET6,
+        },
+        um::iphlpapi::GetExtendedUdpTable,
+    };
+
+    let buffer = windows_table_buffer(|table, size| unsafe {
+        GetExtendedUdpTable(table, size, 0, AF_INET6 as ULONG, UDP_TABLE_OWNER_PID, 0)
+    })?;
+    if buffer.is_empty() {
+        return Ok(0);
+    }
+    let table = buffer.as_ptr() as *const MIB_UDP6TABLE_OWNER_PID;
+    let rows = slice::from_raw_parts((*table).table.as_ptr(), (*table).dwNumEntries as usize);
+    Ok(rows.iter().filter(|row| row.dwOwningPid == pid).count())
+}
+
+#[cfg(target_os = "windows")]
+pub fn read_windows_process_tables() -> std::io::Result<SocketSurface> {
+    let pid = std::process::id();
+    unsafe {
+        Ok(SocketSurface {
+            tcp4_listen_ports: windows_tcp4_listen_ports_for_pid(pid)?,
+            tcp6_listen_ports: windows_tcp6_listen_ports_for_pid(pid)?,
+            udp_sockets: windows_udp4_socket_count_for_pid(pid)?
+                + windows_udp6_socket_count_for_pid(pid)?,
+        })
+    }
+}
+
+/// R-A4 post-listen socket-surface assertion. On Linux, read the live namespace
+/// socket tables and check them against the audited surface; a read failure is
+/// fail-closed (we cannot confirm the surface, so we refuse).
 #[cfg(target_os = "linux")]
 pub fn check_surface(expected_tcp_port: u16) -> SurfaceCheck {
     let surface = match read_proc_self_net() {
@@ -183,9 +440,41 @@ pub fn check_surface(expected_tcp_port: u16) -> SurfaceCheck {
     }
 }
 
-/// Non-Linux: no `/proc/self/net`. Per R-A4's macOS/iOS clause the runtime check
-/// is unavailable here and the surface rests on the §18 compile-out + R-B4.
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "android")]
+pub fn check_surface(expected_tcp_port: u16) -> SurfaceCheck {
+    let surface = match read_android_proc_self_net() {
+        Ok(s) => s,
+        Err(e) => {
+            return SurfaceCheck::Violation(format!(
+                "cannot read Android /proc self socket tables to confirm this process's surface: {e}"
+            ))
+        }
+    };
+    match check_controlled_surface(&surface, expected_tcp_port) {
+        Ok(()) => SurfaceCheck::Ok,
+        Err(why) => SurfaceCheck::Violation(why),
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn check_surface(expected_tcp_port: u16) -> SurfaceCheck {
+    let surface = match read_windows_process_tables() {
+        Ok(s) => s,
+        Err(e) => {
+            return SurfaceCheck::Violation(format!(
+                "cannot read Windows IP Helper owner tables to confirm this process's surface: {e}"
+            ))
+        }
+    };
+    match check_controlled_surface(&surface, expected_tcp_port) {
+        Ok(()) => SurfaceCheck::Ok,
+        Err(why) => SurfaceCheck::Violation(why),
+    }
+}
+
+/// macOS/iOS and other non-Linux, non-Android, non-Windows targets still have no
+/// shipped runtime socket assertion in this repository.
+#[cfg(not(any(target_os = "linux", target_os = "android", target_os = "windows")))]
 pub fn check_surface(_expected_tcp_port: u16) -> SurfaceCheck {
-    SurfaceCheck::Unavailable("no /proc/self/net on this platform".to_string())
+    SurfaceCheck::Unavailable("no platform socket-surface assertion on this target".to_string())
 }

@@ -1330,6 +1330,40 @@ if grep -A14 'pub async fn listen_any_v4' libs/hbb_common/src/tcp.rs | grep -q '
 else
   echo "  FAIL R-T11: listen_any_v4 must bind via new_listener_socket (no SO_REUSEPORT)"; rc=1
 fi
+# R-A4 (§9 / §14): every shipped platform that exposes a controlled inbound
+# listener needs a live socket-surface assertion for exactly one v4 TCP listener
+# and zero UDP sockets. Linux uses the confined namespace table; Windows and
+# Android must NOT inherit that proof by comment. Windows filters IP Helper
+# owner-PID TCP/UDP tables to this process; Android maps /proc/self/fd
+# socket:[inode] links back to /proc/self/net rows. This is intentionally a
+# source-structure gate here; platform artifact/runtime jobs provide the native
+# execution evidence.
+r_a4_platform=
+r_a4_surface=libs/hbb_common/src/socket_surface.rs
+for marker in \
+  'parse_tcp_listen_ports_for_inodes' \
+  'count_udp_sockets_for_inodes' \
+  'parse_proc_fd_socket_inode' \
+  'read_proc_self_socket_inodes' \
+  'read_android_proc_self_net' \
+  'read_windows_process_tables' \
+  'GetExtendedTcpTable' \
+  'GetExtendedUdpTable' \
+  'TCP_TABLE_OWNER_PID_ALL' \
+  'UDP_TABLE_OWNER_PID'
+do
+  grep -q "$marker" "$r_a4_surface" || r_a4_platform="$r_a4_platform socket_surface:$marker"
+done
+for feature in '"iphlpapi"' '"iprtrmib"' '"tcpmib"' '"udpmib"' '"winerror"' '"ws2def"'; do
+  grep -q "$feature" libs/hbb_common/Cargo.toml || r_a4_platform="$r_a4_platform hbb_common-winapi:$feature"
+done
+grep -q 'process_inode_filter_counts_only_this_process_sockets' libs/surface_it/tests/surface.rs || r_a4_platform="$r_a4_platform surface_it:inode-filter-test"
+grep -q 'proc_fd_socket_inode_parser_is_strict' libs/surface_it/tests/surface.rs || r_a4_platform="$r_a4_platform surface_it:fd-inode-parser-test"
+if [ -n "$r_a4_platform" ]; then
+  echo "  FAIL R-A4: Windows/Android process-owned socket-surface assertion gap:$r_a4_platform"; rc=1
+else
+  echo "  ok  R-A4 Windows/Android process-owned socket-surface assertion source gates present"
+fi
 # R-P5 / R-SV4(b): the SignedId <-> PublicKey device-identity key bootstrap is removed. The
 # viewer's `secure_connection` (the only SignedId user) + the whole initiator-side
 # rendezvous/relay/NAT-punch cluster it lived in (_start_inner/connect/request_relay/

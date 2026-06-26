@@ -1468,6 +1468,26 @@ ra6_clean 'STUNS_V4|STUNS_V6|stunclient|stun_ipv4_test|stun_ipv6_test|test_nat_i
 # R-S11 reachability concern) are EXCISED, meeting the spec's "a no-op stub is DIFFERENT from being
 # cfg-absent" bar so the sound-symbol-grep holds (the leaves are R-SV4(b) above).
 ra6_clean 'test_nat_type|CheckTestNatType' 'R-SV4(d) NAT/STUN entry symbols (test_nat_type/CheckTestNatType)' || rc=1
+# R-SV4/R-D5/R-SV10: the hbb_common UDP helper module is physically absent now that the
+# rendezvous/relay/STUN/KCP/LAN call graph has been excised for shipped artifacts. This gate is
+# intentionally narrow: socket_surface.rs may still inspect /proc UDP rows for the runtime
+# zero-UDP assertion, but transport-capable UDP constructors/wrappers must not return.
+r_udp_helpers=
+[ -f libs/hbb_common/src/udp.rs ] && r_udp_helpers="$r_udp_helpers udp.rs-present"
+grep -qE '^[[:space:]]*(pub[[:space:]]+)?mod[[:space:]]+udp[[:space:]]*;' libs/hbb_common/src/lib.rs && r_udp_helpers="$r_udp_helpers mod-udp-in-lib"
+if grep -RInE 'new_direct_udp_for|new_udp_for|rebind_udp_for|FramedSocket|Socks5UdpFramed|UdpFramed|UdpSocket::bind|into_udp_socket' src libs --include='*.rs' 2>/dev/null \
+  | grep -v '//' | grep -v 'libs/pake' | grep -v 'libs/cpace_it' | grep -v 'bridge_generated' >/tmp/rd_verify_udp_helpers.$$; then
+  r_udp_helpers="$r_udp_helpers helper-symbols"
+fi
+if [ -n "$r_udp_helpers" ]; then
+  echo "  FAIL R-SV4/R-D5/R-SV10: inert hbb_common UDP helper surface must be physically absent:$r_udp_helpers"; rc=1
+  if [ -s /tmp/rd_verify_udp_helpers.$$ ]; then
+    sed 's/^/      /' /tmp/rd_verify_udp_helpers.$$
+  fi
+else
+  echo "  ok  R-SV4/R-D5/R-SV10 inert hbb_common UDP helper module/constructors absent"
+fi
+rm -f /tmp/rd_verify_udp_helpers.$$
 # R-SV4: the WebRTC transport (a second STUN/ICE source — DEFAULT_ICE_SERVERS) is fully EXCISED, not
 # merely compiled-out. "removed not disabled" (§8): the `mod webrtc` module file is deleted, the
 # optional `webrtc` dependency + the `webrtc` cargo feature are gone, no `mod webrtc` survives in

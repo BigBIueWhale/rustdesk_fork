@@ -226,12 +226,6 @@ git diff --check              # GREEN after this ledger update
   validation paths so every shipped target proves one direct TCP listener, zero
   UDP, and no relay/rendezvous/KCP listener.
 
-- **Delete or cfg-fence inert UDP/KCP/rendezvous helpers.** Remaining UDP helper
-  code in `hbb_common` appears inert by call graph, not by physical absence.
-  Prefer deleting or target-cfg-fencing transport-capable helper functions so
-  "no UDP/KCP/rendezvous" is enforced by absence, with grep/call-graph gates
-  preventing future reintroduction.
-
 - **Strengthen file-transfer parent traversal.** Final-component writes use
   no-follow opens; intermediate path validation remains path-based. A full
   handle/openat-style parent walk would better match the no-TOCTOU philosophy

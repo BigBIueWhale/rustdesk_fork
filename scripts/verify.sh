@@ -23,6 +23,11 @@
 # need an advisory-db + a tool fetch/compile — slower, and run in CI / before a
 # release rather than on every inner-loop edit.
 #
+# COMPANION GATE: scripts/native-codec-watch.sh is the offline source gate for
+# vcpkg-built native codec/advisory coverage. Cargo/Dart advisory tools do not
+# see those C/C++ libraries, so this gate keeps the manual watch ledger in sync
+# with the exact vcpkg manifest and pins; it is not the decoder sandbox.
+#
 # COMPANION GATE: scripts/apple-conform-check.sh runs the R-R2 apple (macOS/iOS)
 # SOURCE-conformance gate — the retain-and-check invariant + the R-A6 greps on the
 # Apple cfg + a cross-compile `cargo check --target *-apple-*` (the macOS-pinned Rust
@@ -1629,6 +1634,18 @@ if [ -f vcpkg.json ] && grep -qE '"(ffmpeg|mfx-dispatch|ffnvcodec|amd-amf)"' vcp
 else
   echo "  ok  §18/R-R2b vcpkg.json native set is CPU-only software codec (no ffmpeg/mfx-dispatch)"
 fi
+# R-R3 / Appendix D native-codec watch: cargo-audit/RustSec and Dart OSV scan do
+# not cover vcpkg C/C++ libraries. Keep this as an offline source/ledger sync
+# gate, not as a live network advisory query and not as a decoder-sandbox claim.
+native_watch_log=$(mktemp)
+if bash scripts/native-codec-watch.sh >"$native_watch_log" 2>&1; then
+  echo "  ok  R-R3 native codec advisory watch is wired for the exact vcpkg native set (separate from Cargo/Dart audits; not the decoder sandbox)"
+else
+  echo "  FAIL R-R3 native codec advisory watch regressed:"
+  sed 's/^/      /' "$native_watch_log"
+  rc=1
+fi
+rm -f "$native_watch_log"
 # R-R2a (§12 / sovereignty): the .deb + systemd is the SOLE Linux package model. The AppImage
 # recipe (whose `update-information` self-updater collides with R-X1 "the fork ships its own
 # releases") and the Flatpak manifest (a portal-sandbox, no-systemd posture colliding with

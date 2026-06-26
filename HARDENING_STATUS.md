@@ -9,9 +9,10 @@ history remains the traceability record for those intermediate notes.
 
 ## Current Verdict
 
-**Status: file-transfer parent-walk and Windows/Android socket-surface
-follow-ups closed in source and gates; responder-side port-forward
-latent-connect and file write-response forwarding follow-ups remain closed.**
+**Status: file-transfer parent-walk, Windows/Android socket-surface, and
+native-codec advisory-watch follow-ups closed in source and gates; responder-side
+port-forward latent-connect and file write-response forwarding follow-ups remain
+closed. The native decoder sandbox itself remains open.**
 
 On 2026-06-26, final reviewer `Maxwell` (`gpt-5.5`, `xhigh`) reviewed the
 then-current dirty worktree, read the full `requirements.html`, checked the previous
@@ -97,6 +98,14 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   parser/filtering path is covered by `surface_it`; native runtime execution is
   still part of the platform artifact validation path, not implied by this
   source gate alone.
+- **Native codec advisory watch is separate and source-gated.**
+  `docs/NATIVE-CODEC-WATCH.md` enumerates the exact vcpkg native C/C++ package
+  set (`aom`, `libvpx`, `libyuv`, `opus`, `libjpeg-turbo`, `oboe`,
+  `cpu-features`) and ties the overlay pins to `scripts/pins.env`.
+  `scripts/native-codec-watch.sh` and `scripts/verify.sh` now fail if
+  `vcpkg.json`, the overlay versions, or the manual watch ledger drift. This is
+  a Cargo/Dart-advisory coverage closure only; it is not a "no current CVEs"
+  assertion and does not close the Appendix C #2b decoder-sandbox residual.
 - **Windows validation builds the tracked worktree when requested.**
   `WINDOWS_BUILD_SOURCE=worktree scripts/build-windows-vm.sh` snapshots tracked
   dirty edits and tracked deletions into the BUILD CD. The release default stays
@@ -153,8 +162,8 @@ Build evidence:
 
 ## Validation Matrix
 
-The following full source gate passed after the current Windows/Android
-socket-surface follow-up:
+The following full source gate passed after the current native-codec
+advisory-watch follow-up:
 
 ```text
 bash scripts/verify.sh        # GREEN: VERIFY: all gates green
@@ -179,8 +188,9 @@ Coverage highlights:
 - `scripts/verify.sh` passed KATs, handshake tests, policy-funnel checks,
   main-crate compile checks, forbidden-token/excision checks, Windows
   offline-helper and golden-hash structural gates, R-S5 raw-mode refusal gates,
-  build reproducibility gates, TCP/socket correctness gates, and Windows/Android
-  R-A4 socket-surface source-structure gates.
+  build reproducibility gates, TCP/socket correctness gates, Windows/Android
+  R-A4 socket-surface source-structure gates, and the R-R3 native-codec
+  advisory-watch source gate.
 - `scripts/dart-verify.sh` passed `flutter analyze lib/`, address-validator
   tests, and Section 19 Dart-layer absence checks.
 - `scripts/flutter-verify.sh` passed
@@ -245,8 +255,10 @@ git diff --check              # GREEN after this ledger update
   beyond route security is the documented viewer residual: a deliberately
   connected, password-correct hostile peer can feed media/content bytes into
   in-process native decoders. Design an out-of-process, length-bounded,
-  killable decode boundary for video/audio/clipboard/file-compression surfaces,
-  and maintain a native codec CVE watch separate from Cargo/Dart advisories.
+  killable decode boundary for video/audio/clipboard/file-compression surfaces.
+  The separate native codec CVE/advisory watch is now wired and source-gated,
+  but it is only a tracking/coverage mechanism for vcpkg C/C++ libraries, not a
+  substitute for the sandbox.
 
 - **R-V3 independent CPace/transport audit.** Keep the audit disclosure until an
   outside expert reviews the CPace construction, transcript binding, KDF,
@@ -268,11 +280,12 @@ git diff --check              # GREEN after this ledger update
 
 The current known residuals are the open follow-ups above. The remaining
 in-repository hardening work is the larger native viewer decoder sandbox
-design/implementation. Windows and Android platform-native socket-surface logic
-is now present and source-gated, but native artifact/runtime execution remains
-part of the platform rebuild evidence. The artifact hashes in this ledger
-predate the latest source follow-ups and must be rebuilt before a new
-release/tag claim.
+design/implementation; the native-codec advisory watch is now present and
+source-gated, but deliberately does not claim sandboxing or current CVE freedom.
+Windows and Android platform-native socket-surface logic is now present and
+source-gated, but native artifact/runtime execution remains part of the platform
+rebuild evidence. The artifact hashes in this ledger predate the latest source
+follow-ups and must be rebuilt before a new release/tag claim.
 
 The remaining external or pre-exposure evidence items are:
 

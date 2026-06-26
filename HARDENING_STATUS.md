@@ -10,14 +10,17 @@ history remains the traceability record for those intermediate notes.
 ## Current Verdict
 
 **Status: file-transfer parent-walk, Windows/Android socket-surface,
-native-codec advisory-watch, and native media/clipboard handoff-bound
-follow-ups closed in source and gates; responder-side port-forward
-latent-connect and file write-response forwarding follow-ups remain closed. The
-native decoder sandbox itself remains open.**
+native-codec advisory-watch, native media/clipboard handoff-bound follow-ups,
+and Apple SDK-free source-conformance are closed in source and gates;
+responder-side port-forward latent-connect and file write-response forwarding
+follow-ups remain closed. The native decoder sandbox itself remains open.**
 
 On 2026-06-26, final reviewer `Maxwell` (`gpt-5.5`, `xhigh`) reviewed the
 then-current dirty worktree, read the full `requirements.html`, checked the previous
 blocker classes, and returned **PASS** with no blocking findings.
+That review predates the current Apple source-conformance fix and artifact
+refresh, so it is retained as historical evidence, not a current final-completion
+claim.
 
 After commit `f90f197`, three additional read-only route/security audits were
 run against the exposed TCP paths. The server/responder audit passed, and the
@@ -59,6 +62,14 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 
 ## Recent Closures
 
+- **Apple SDK-free source-conformance reaches the intended SDK boundary.**
+  `scripts/apple-conform-check.sh` caught a real Rust 1.81 Apple-target
+  coherence break in the Unix file-transfer receive path: `openat(..., mode)` was
+  passing `mode_t` directly through a C variadic call. `libs/hbb_common/src/fs.rs`
+  now applies the C default-promotion cast (`mode as c_uint`) before the varargs
+  call. The Apple gate now passes through the Rust-only graph and stops only at
+  the expected SDK framework boundary (`coreaudio-sys`/`AudioUnit.h`) on this
+  Linux host.
 - **Windows artifact production is offline through helper containers.**
   `scripts/online-fetch.sh` builds the pinned
   `rustdesk-fork-harness-win-helper` image during the one networked phase.
@@ -148,51 +159,45 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 ## Artifact State
 
 The artifacts below were produced from disposable build environments after the
-Windows-helper, golden-hash, first R-S5 raw-mode refusal, Flutter/Dart lockfile,
-and `uzers` advisory fixes. They are now **previous-build evidence only**: the
-current source contains the later responder-side port-forward latent-connect
-deletion and file-transfer parent-walk hardening described above, so these exact
-hashes are stale for any new release or tag until the artifacts are rebuilt from
-the current commit.
+current file-transfer parent-walk, responder-side tunnel refusal, socket-surface,
+native handoff-bound, and Apple source-conformance follow-ups. They are current
+evidence for this patched worktree; a later source change requires rebuilding
+them again before making a release/tag artifact claim.
 
 ```text
-7a42dfac65ed5cfd8a060f8dbe15a9f377b460f3f6376392fe23cd8246a4afbf  dist/rustdesk-x86_64.deb
-1a4f54573845e0706a6cc6bc70fa92debdd0684cebc1786a73082e89fd2d79d3  dist/rustdesk-arm64.apk
-2532d08957fc8dfec7e068f188fd2ee55c2217923deb999465ae0a5ef56743f1  dist/rustdesk-setup.exe
-1da411a876b962251f486d87d78ff6813680851192dcfa737893a13eb7e5a868  dist/rustdesk.msi
+0f3a5dae9f07fbfbc0571c31ec29e67119e58a5b483d81465a0592d3d4b91e5d  dist/rustdesk-x86_64.deb
+c8d75e1fb6307778548c656090b9513d725296eac958423dac4733874e11cadf  dist/rustdesk-arm64.apk
+9e799bb8e90d31ed76e2ccfd6d4afa4c9584da0160054ce606f27ba7a8250dd8  dist/rustdesk-setup.exe
+bcd0628d87d27ded873f124c68eb6845b1b6ef1d80a5baa286e2552f392ee47e  dist/rustdesk.msi
 ```
 
 Build evidence:
 
-- Debian `scripts/build-debian.sh` passed its offline double-build A==B gate.
+- Debian `scripts/build-debian.sh` passed its offline double-build A==B gate
+  after the Apple varargs source fix.
 - Android `scripts/build-android.sh` produced the signed arm64 APK and
-  `apksigner` verified one signer.
+  `apksigner` verified one signer after the same source fix.
 - Windows `WINDOWS_BUILD_SOURCE=worktree scripts/build-windows-vm.sh` passed the
-  transient KVM VM double-build A==B gate from the pinned golden. The VM ran with
-  `--network=none`; the only graphics listener was VNC on `127.0.0.1`, and all
-  host-side helper containers in the artifact path also ran with `--network=none`.
+  transient KVM VM double-build A==B gate from the pinned golden, using the
+  tracked dirty worktree snapshot so the source fix was present on the BUILD CD.
+  The VM ran with `--network=none`; the only graphics listener was VNC on
+  `127.0.0.1`, and all host-side helper containers in the artifact path also ran
+  with `--network=none`.
 
 ## Validation Matrix
 
-The following full source gate passed after the current native-codec
-advisory-watch follow-up:
+The following gates passed after the current source fix and full artifact
+rebuilds:
 
 ```text
-bash scripts/verify.sh        # GREEN: VERIFY: all gates green
-```
-
-The following gates passed after the previous full artifact builds and must be
-re-run after the next artifact rebuild before making a final artifact claim:
-
-```text
-bash scripts/verify.sh
-bash scripts/dart-verify.sh
-bash scripts/flutter-verify.sh
-bash scripts/audit.sh
-bash scripts/dart-audit.sh
-bash scripts/apple-conform-check.sh
-bash scripts/smoke-server.sh
-git diff --check
+bash scripts/verify.sh                 # GREEN: VERIFY: all gates green
+bash scripts/dart-verify.sh            # GREEN: flutter analyze lib/ + Dart gates
+bash scripts/flutter-verify.sh         # GREEN: cargo check --features flutter,linux-pkg-config
+bash scripts/audit.sh                  # GREEN: no unignored Rust advisories
+bash scripts/dart-audit.sh             # GREEN: no unignored Pub advisories
+bash scripts/apple-conform-check.sh    # GREEN: SDK-free Apple source conformance
+bash scripts/smoke-server.sh           # GREEN: loopback runtime smoke
+git diff --check                       # GREEN
 ```
 
 Coverage highlights:
@@ -298,9 +303,8 @@ design/implementation; the native-codec advisory watch and the in-process
 handoff bounds are now present and source-gated, but deliberately do not claim
 sandboxing or current CVE freedom.
 Windows and Android platform-native socket-surface logic is now present and
-source-gated, but native artifact/runtime execution remains part of the platform
-rebuild evidence. The artifact hashes in this ledger predate the latest source
-follow-ups and must be rebuilt before a new release/tag claim.
+source-gated, with refreshed platform artifacts recorded above. Any later source
+change must rebuild those artifacts before a new release/tag claim.
 
 The remaining external or pre-exposure evidence items are:
 

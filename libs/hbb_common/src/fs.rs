@@ -695,7 +695,14 @@ fn open_regular_child_no_follow(
     use std::os::unix::io::FromRawFd;
 
     let _ = fstatat_regular_no_follow(parent_fd, name)?;
-    let fd = unsafe { crate::libc::openat(parent_fd, name.as_ptr(), flags, mode) };
+    let fd = unsafe {
+        crate::libc::openat(
+            parent_fd,
+            name.as_ptr(),
+            flags,
+            mode as crate::libc::c_uint,
+        )
+    };
     if fd < 0 {
         return Err(std::io::Error::last_os_error());
     }

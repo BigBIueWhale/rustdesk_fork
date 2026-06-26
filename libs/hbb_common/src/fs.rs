@@ -522,12 +522,8 @@ fn validate_no_symlink_components(base: &PathBuf, name: &str) -> ResultType<()> 
         match component {
             std::path::Component::Normal(seg) => {
                 current.push(seg);
-                // Best-effort guard: path-based checks are inherently TOCTOU-prone
-                // if local filesystem state changes between validation and write.
                 match std::fs::symlink_metadata(&current) {
                     Ok(meta) => {
-                        // This is inherent to filesystem-based checks and acknowledged as a limitation.
-                        // For true protection, you'd need openat(2) / O_NOFOLLOW at write time.
                         if meta.file_type().is_symlink() {
                             bail!("symlink path component is not allowed");
                         }
@@ -559,40 +555,323 @@ fn join_validated_path(base: &PathBuf, name: &str) -> ResultType<PathBuf> {
     Ok(TransferJob::join(base, name))
 }
 
-/// R-S8 / R-A5: open a file-transfer RECEIVE-write target with NO-FOLLOW semantics, closing the
-/// acknowledged symlink TOCTOU (§4.3). The path components are validated earlier
-/// (`validate_no_symlink_components`), but that is a path-based check with a race window: a local
-/// user can swap the FINAL component for a symlink AFTER the check and BEFORE the open, redirecting
-/// the write through it. On the root §17 box that is the difference between a local user making root
-/// truncate+write an arbitrary file (e.g. `/etc/passwd`) and a clean refusal.
+fn recv_sidecar_path(path: &Path, suffix: &str) -> PathBuf {
+    PathBuf::from(format!("{}{}", get_string(path), suffix))
+}
+
+#[cfg(unix)]
+fn io_invalid_input(message: impl Into<String>) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidInput, message.into())
+}
+
+#[cfg(unix)]
+fn cstring_from_os_str(
+    value: &std::ffi::OsStr,
+    context: &str,
+) -> std::io::Result<std::ffi::CString> {
+    use std::os::unix::ffi::OsStrExt;
+    std::ffi::CString::new(value.as_bytes()).map_err(|err| {
+        io_invalid_input(format!(
+            "invalid {context} path component contains NUL: {err}"
+        ))
+    })
+}
+
+#[cfg(unix)]
+fn cstring_file_name(path: &Path) -> std::io::Result<std::ffi::CString> {
+    let name = path
+        .file_name()
+        .ok_or_else(|| io_invalid_input(format!("path has no file name: {}", path.display())))?;
+    cstring_from_os_str(name, "file-transfer")
+}
+
+#[cfg(unix)]
+fn open_parent_dir_no_follow(
+    parent: &Path,
+    create_missing: bool,
+) -> std::io::Result<std::fs::File> {
+    use std::os::unix::io::{AsRawFd, FromRawFd};
+
+    let mut dir = if parent.is_absolute() {
+        std::fs::File::open(Path::new("/"))?
+    } else {
+        std::fs::File::open(Path::new("."))?
+    };
+
+    for component in parent.components() {
+        match component {
+            std::path::Component::RootDir | std::path::Component::CurDir => {}
+            std::path::Component::Normal(name) => {
+                let name_c = cstring_from_os_str(name, "file-transfer parent")?;
+                if create_missing {
+                    let rc = unsafe {
+                        crate::libc::mkdirat(
+                            dir.as_raw_fd(),
+                            name_c.as_ptr(),
+                            0o777 as crate::libc::mode_t,
+                        )
+                    };
+                    if rc != 0 {
+                        let err = std::io::Error::last_os_error();
+                        if err.raw_os_error() != Some(crate::libc::EEXIST) {
+                            return Err(err);
+                        }
+                    }
+                }
+
+                let fd = unsafe {
+                    crate::libc::openat(
+                        dir.as_raw_fd(),
+                        name_c.as_ptr(),
+                        crate::libc::O_RDONLY
+                            | crate::libc::O_DIRECTORY
+                            | crate::libc::O_CLOEXEC
+                            | crate::libc::O_NOFOLLOW,
+                    )
+                };
+                if fd < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                dir = unsafe { std::fs::File::from_raw_fd(fd) };
+            }
+            std::path::Component::ParentDir => {
+                return Err(io_invalid_input(format!(
+                    "parent traversal is not allowed in receive path: {}",
+                    parent.display()
+                )));
+            }
+            std::path::Component::Prefix(_) => {
+                return Err(io_invalid_input(format!(
+                    "unsupported path prefix in receive path: {}",
+                    parent.display()
+                )));
+            }
+        }
+    }
+
+    Ok(dir)
+}
+
+#[cfg(unix)]
+fn stat_is_regular(stat: &crate::libc::stat) -> bool {
+    (stat.st_mode & (crate::libc::S_IFMT as crate::libc::mode_t))
+        == (crate::libc::S_IFREG as crate::libc::mode_t)
+}
+
+#[cfg(unix)]
+fn fstatat_regular_no_follow(
+    parent_fd: i32,
+    name: &std::ffi::CStr,
+) -> std::io::Result<Option<crate::libc::stat>> {
+    let mut stat: crate::libc::stat = unsafe { std::mem::zeroed() };
+    let rc = unsafe {
+        crate::libc::fstatat(
+            parent_fd,
+            name.as_ptr(),
+            &mut stat,
+            crate::libc::AT_SYMLINK_NOFOLLOW,
+        )
+    };
+    if rc != 0 {
+        let err = std::io::Error::last_os_error();
+        if err.kind() == std::io::ErrorKind::NotFound {
+            return Ok(None);
+        }
+        return Err(err);
+    }
+    if !stat_is_regular(&stat) {
+        return Err(io_invalid_input("receive target is not a regular file"));
+    }
+    Ok(Some(stat))
+}
+
+#[cfg(unix)]
+fn open_regular_child_no_follow(
+    parent_fd: i32,
+    name: &std::ffi::CStr,
+    flags: i32,
+    mode: crate::libc::mode_t,
+) -> std::io::Result<std::fs::File> {
+    use std::os::unix::io::FromRawFd;
+
+    let _ = fstatat_regular_no_follow(parent_fd, name)?;
+    let fd = unsafe { crate::libc::openat(parent_fd, name.as_ptr(), flags, mode) };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let file = unsafe { std::fs::File::from_raw_fd(fd) };
+    let mut stat: crate::libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { crate::libc::fstat(fd, &mut stat) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    if !stat_is_regular(&stat) {
+        return Err(io_invalid_input(
+            "opened receive target is not a regular file",
+        ));
+    }
+    Ok(file)
+}
+
+#[cfg(unix)]
+fn open_existing_regular_no_follow(path: &Path) -> std::io::Result<std::fs::File> {
+    use std::os::unix::io::AsRawFd;
+
+    let parent = open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
+    let name = cstring_file_name(path)?;
+    let flags = crate::libc::O_RDONLY
+        | crate::libc::O_CLOEXEC
+        | crate::libc::O_NOFOLLOW
+        | crate::libc::O_NONBLOCK
+        | crate::libc::O_NOCTTY;
+    open_regular_child_no_follow(parent.as_raw_fd(), &name, flags, 0)
+}
+
+/// R-S8 / R-A5: open a file-transfer RECEIVE-write target with NO-FOLLOW semantics across the
+/// whole parent path, not just the final component. The Unix path creates/opens every parent
+/// directory via `mkdirat`/`openat(O_DIRECTORY|O_NOFOLLOW)` and then opens the target with
+/// `openat(O_NOFOLLOW)`, rejecting symlinks, FIFOs, devices, and other non-regular targets. This
+/// closes the intermediate-directory race documented in HARDENING_STATUS: a local user cannot swap a
+/// parent directory for a symlink between validation and root's write.
 ///
-/// Unix: `O_NOFOLLOW` makes the open fail with `ELOOP` if the final component is a symlink — the
-/// open never follows it. Windows: `FILE_FLAG_OPEN_REPARSE_POINT` opens the reparse point itself
-/// instead of following it (a no-op on a regular file, so it is safe; Windows is not built in this
-/// harness — R-X9 — so this half is unverified-here but the standard non-follow flag). This closes
-/// the final-component race — the direct, exploitable attack. A full `openat()` parent-walk that
-/// also no-follows every intermediate directory is deeper hardening left as a follow-on (the parent
-/// components are best-effort path-validated above); the final-component open is the primary vector.
-fn open_recv_write_no_follow_std(path: &str, truncate: bool) -> std::io::Result<std::fs::File> {
-    let mut opts = std::fs::OpenOptions::new();
-    opts.write(true).create(true).truncate(truncate);
+/// Windows keeps the standard reparse-point no-follow flag; the Windows artifact path is validated
+/// by its own build VM, while the Unix handle-walk is behavior-tested in this repository.
+fn open_recv_write_no_follow_std(path: &Path, truncate: bool) -> std::io::Result<std::fs::File> {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::OpenOptionsExt;
-        opts.custom_flags(crate::libc::O_NOFOLLOW);
+        use std::os::unix::io::AsRawFd;
+
+        let parent =
+            open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), true)?;
+        let name = cstring_file_name(path)?;
+        let mut flags = crate::libc::O_WRONLY
+            | crate::libc::O_CREAT
+            | crate::libc::O_CLOEXEC
+            | crate::libc::O_NOFOLLOW
+            | crate::libc::O_NONBLOCK
+            | crate::libc::O_NOCTTY;
+        if truncate {
+            flags |= crate::libc::O_TRUNC;
+        }
+        open_regular_child_no_follow(parent.as_raw_fd(), &name, flags, 0o666)
     }
-    #[cfg(windows)]
+
+    #[cfg(not(unix))]
     {
-        use std::os::windows::fs::OpenOptionsExt;
-        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
-        opts.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(truncate);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+            opts.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+        }
+        opts.open(path)
     }
-    opts.open(path)
 }
 
 /// Async wrapper over [`open_recv_write_no_follow_std`] for the tokio receive-write path (R-S8).
-async fn open_recv_write_no_follow(path: &str, truncate: bool) -> ResultType<File> {
-    Ok(File::from_std(open_recv_write_no_follow_std(path, truncate)?))
+async fn open_recv_write_no_follow(path: &Path, truncate: bool) -> ResultType<File> {
+    Ok(File::from_std(open_recv_write_no_follow_std(
+        path, truncate,
+    )?))
+}
+
+#[cfg(unix)]
+fn unlink_recv_child_no_follow(parent_fd: i32, name: &std::ffi::CStr) -> std::io::Result<()> {
+    let rc = unsafe { crate::libc::unlinkat(parent_fd, name.as_ptr(), 0) };
+    if rc == 0 {
+        return Ok(());
+    }
+    let err = std::io::Error::last_os_error();
+    if err.kind() == std::io::ErrorKind::NotFound {
+        Ok(())
+    } else {
+        Err(err)
+    }
+}
+
+fn remove_recv_write_artifacts_no_follow(path: &Path) {
+    let digest_path = recv_sidecar_path(path, ".digest");
+    let download_path = recv_sidecar_path(path, ".download");
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::AsRawFd;
+        let Ok(parent) =
+            open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)
+        else {
+            return;
+        };
+        if let Ok(download_name) = cstring_file_name(&download_path) {
+            let _ = unlink_recv_child_no_follow(parent.as_raw_fd(), &download_name);
+        }
+        if let Ok(digest_name) = cstring_file_name(&digest_path) {
+            let _ = unlink_recv_child_no_follow(parent.as_raw_fd(), &digest_name);
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::remove_file(download_path).ok();
+        std::fs::remove_file(digest_path).ok();
+    }
+}
+
+fn finish_recv_write_no_follow(path: &Path, modified_time: u64) -> std::io::Result<()> {
+    let mtime = filetime::FileTime::from_unix_time(modified_time as _, 0);
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::AsRawFd;
+
+        let parent =
+            open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
+        let final_name = cstring_file_name(path)?;
+        let download_name = cstring_file_name(&recv_sidecar_path(path, ".download"))?;
+        let digest_name = cstring_file_name(&recv_sidecar_path(path, ".digest"))?;
+        let _ = unlink_recv_child_no_follow(parent.as_raw_fd(), &digest_name);
+        if unsafe {
+            crate::libc::renameat(
+                parent.as_raw_fd(),
+                download_name.as_ptr(),
+                parent.as_raw_fd(),
+                final_name.as_ptr(),
+            )
+        } != 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+        let final_file = open_existing_regular_no_follow(path)?;
+        filetime::set_file_handle_times(&final_file, None, Some(mtime))?;
+        return Ok(());
+    }
+
+    #[cfg(not(unix))]
+    {
+        let download_path = recv_sidecar_path(path, ".download");
+        let digest_path = recv_sidecar_path(path, ".digest");
+        std::fs::remove_file(digest_path).ok();
+        std::fs::rename(download_path, path)?;
+        filetime::set_file_mtime(path, mtime)?;
+        Ok(())
+    }
+}
+
+fn read_recv_sidecar_to_string_no_follow(path: &Path, max_bytes: u64) -> std::io::Result<String> {
+    #[cfg(unix)]
+    {
+        use std::io::Read;
+        let file = open_existing_regular_no_follow(path)?;
+        let mut reader = file.take(max_bytes.saturating_add(1));
+        let mut content = String::new();
+        reader.read_to_string(&mut content)?;
+        if content.len() as u64 > max_bytes {
+            return Err(io_invalid_input("receive sidecar is too large"));
+        }
+        return Ok(content);
+    }
+
+    #[cfg(not(unix))]
+    {
+        std::fs::read_to_string(path)
+    }
 }
 
 impl TransferJob {
@@ -747,15 +1026,16 @@ impl TransferJob {
                 let Some(path) = self.resolve_entry_path(p, &entry.name) else {
                     return;
                 };
-                let download_path = format!("{}.download", get_string(&path));
-                let digest_path = format!("{}.digest", get_string(&path));
-                std::fs::remove_file(digest_path).ok();
-                std::fs::rename(download_path, &path).ok();
-                filetime::set_file_mtime(
-                    &path,
-                    filetime::FileTime::from_unix_time(entry.modified_time as _, 0),
-                )
-                .ok();
+                if let Err(err) = finish_recv_write_no_follow(&path, entry.modified_time) {
+                    if err.kind() == std::io::ErrorKind::NotFound {
+                        return;
+                    }
+                    log::warn!(
+                        "Failed to finish receive-write target {}: {}",
+                        path.display(),
+                        err
+                    );
+                }
             }
         }
     }
@@ -771,10 +1051,7 @@ impl TransferJob {
                 let Some(path) = self.resolve_entry_path(p, &entry.name) else {
                     return;
                 };
-                let download_path = format!("{}.download", get_string(&path));
-                let digest_path = format!("{}.digest", get_string(&path));
-                std::fs::remove_file(download_path).ok();
-                std::fs::remove_file(digest_path).ok();
+                remove_recv_write_artifacts_no_follow(&path);
             }
         }
     }
@@ -803,9 +1080,13 @@ impl TransferJob {
                     bail!("Wrong file number");
                 }
                 if file_num != self.file_num as usize || self.data_stream.is_none() {
-                    self.modify_time();
+                    let had_file_stream =
+                        matches!(self.data_stream, Some(DataStream::FileStream(_)));
                     if let Some(DataStream::FileStream(file)) = self.data_stream.as_mut() {
                         file.sync_all().await?;
+                    }
+                    if had_file_stream {
+                        self.modify_time();
                     }
                     self.file_num = block.file_num;
                     let entry = &self.files[file_num];
@@ -813,31 +1094,22 @@ impl TransferJob {
                         (p.to_string_lossy().to_string(), None)
                     } else {
                         let path = join_validated_path(p, &entry.name)?;
-                        // R-S8/R-A5: path components were validated above, but that is a path-based
-                        // check with a TOCTOU window — the actual open below is NO-FOLLOW
-                        // (open_recv_write_no_follow / O_NOFOLLOW), so a final-component symlink swapped
-                        // in after validation fails the open rather than redirecting root's write.
-                        if let Some(pp) = path.parent() {
-                            std::fs::create_dir_all(pp).ok();
-                        }
                         let file_path = get_string(&path);
                         (
                             format!("{}.download", &file_path),
                             Some(format!("{}.digest", &file_path)),
                         )
                     };
-                    if let Some(dp) = digest_path.as_ref() {
-                        if Path::new(dp).exists() {
-                            std::fs::remove_file(dp)?;
-                        }
-                    }
-                    // R-S8/R-A5: no-follow open — a symlink swapped in at `path` fails (ELOOP),
-                    // never redirects the write (the §4.3 symlink TOCTOU, closed for the final component).
-                    self.data_stream =
-                        Some(DataStream::FileStream(open_recv_write_no_follow(&path, true).await?));
+                    // R-S8/R-A5: no-follow parent walk + no-follow regular-file open. On Unix this
+                    // creates/opens every parent via mkdirat/openat(O_NOFOLLOW) before opening the
+                    // `.download` target, so neither intermediate symlink swaps nor final symlinks can
+                    // redirect the write.
+                    self.data_stream = Some(DataStream::FileStream(
+                        open_recv_write_no_follow(Path::new(&path), true).await?,
+                    ));
                     if let Some(dp) = digest_path.as_ref() {
                         // R-S8: the digest sidecar is a write too — no-follow it for the same reason.
-                        if let Ok(mut f) = open_recv_write_no_follow_std(dp, true) {
+                        if let Ok(mut f) = open_recv_write_no_follow_std(Path::new(dp), true) {
                             use std::io::Write;
                             let _ = f.write_all(json!(self.digest).to_string().as_bytes());
                         }
@@ -1156,9 +1428,10 @@ impl TransferJob {
 
             let mut f = if Path::new(&download_path).exists() && Path::new(&digest_path).exists() {
                 // If both download and digest files exist, seek (writer) to the offset
-                // R-S8/R-A5: no-follow reopen of the resume target (truncate=false keeps the partial
-                // download); a symlink swapped in here fails rather than redirecting the write.
-                match open_recv_write_no_follow(&download_path, false).await {
+                // R-S8/R-A5: no-follow parent walk + reopen of the resume target (truncate=false
+                // keeps the partial download); a symlink swapped in here fails rather than
+                // redirecting the write.
+                match open_recv_write_no_follow(Path::new(&download_path), false).await {
                     Ok(f) => f,
                     Err(e) => {
                         log::warn!("Failed to open file {}: {}", download_path, e);
@@ -1494,7 +1767,7 @@ pub fn is_write_need_confirmation(
     if is_resume && Path::new(&digest_file).exists() && Path::new(&download_file).exists() {
         // If the digest file exists, it means the file was transferred before.
         // We can use the digest file to check whether the file is the same.
-        if let Ok(content) = std::fs::read_to_string(digest_file) {
+        if let Ok(content) = read_recv_sidecar_to_string_no_follow(Path::new(&digest_file), 4096) {
             if let Ok(local_digest) = serde_json::from_str::<FileDigest>(&content) {
                 let is_identical = local_digest.modified == digest.last_modified
                     && local_digest.size == digest.file_size;
@@ -1618,8 +1891,11 @@ mod tests {
         let target = dl.join("incoming.download");
         std::os::unix::fs::symlink(&secret, &target).expect("create symlink");
         // the no-follow open MUST fail (ELOOP) — never follow into `secret`
-        let res = open_recv_write_no_follow_std(target.to_str().unwrap(), true);
-        assert!(res.is_err(), "O_NOFOLLOW must refuse a symlink final component");
+        let res = open_recv_write_no_follow_std(&target, true);
+        assert!(
+            res.is_err(),
+            "O_NOFOLLOW must refuse a symlink final component"
+        );
         // and the secret is untouched (the open failed before any truncate-through-the-symlink)
         assert_eq!(
             std::fs::read(&secret).expect("read secret"),
@@ -1639,14 +1915,85 @@ mod tests {
         let target_s = target.to_str().expect("utf8 path");
         // a fresh target opens
         assert!(
-            open_recv_write_no_follow_std(target_s, true).is_ok(),
+            open_recv_write_no_follow_std(&target, true).is_ok(),
             "no-follow open must allow a fresh regular target"
         );
         assert!(target.exists());
         // an existing regular target re-opens (truncate) — a re-download is not blocked
         assert!(
-            open_recv_write_no_follow_std(target_s, true).is_ok(),
+            open_recv_write_no_follow_std(Path::new(target_s), true).is_ok(),
             "no-follow open must allow an existing regular target"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn recv_write_no_follow_refuses_symlink_parent_component() {
+        let tmp = TestTempDir::new("rustdesk_nofollow_parent");
+        let downloads = tmp.join("downloads");
+        let outside = tmp.join("outside");
+        std::fs::create_dir_all(&downloads).expect("create downloads");
+        std::fs::create_dir_all(&outside).expect("create outside");
+
+        let link = downloads.join("link");
+        std::os::unix::fs::symlink(&outside, &link).expect("create symlink parent");
+        let target = link.join("incoming.download");
+
+        let res = open_recv_write_no_follow_std(&target, true);
+        assert!(
+            res.is_err(),
+            "openat parent walk must refuse symlink intermediate components"
+        );
+        assert!(
+            !outside.join("incoming.download").exists(),
+            "symlink parent must not redirect the receive write outside the destination tree"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn recv_finish_renameat_replaces_symlink_final_without_touching_target() {
+        let tmp = TestTempDir::new("rustdesk_finish_renameat");
+        let downloads = tmp.join("downloads");
+        std::fs::create_dir_all(&downloads).expect("create downloads");
+        let secret = tmp.join("secret.txt");
+        std::fs::write(&secret, b"DO-NOT-OVERWRITE").expect("write secret");
+
+        let final_path = downloads.join("incoming.txt");
+        let download_path = recv_sidecar_path(&final_path, ".download");
+        std::fs::write(&download_path, b"payload").expect("write download");
+        std::os::unix::fs::symlink(&secret, &final_path).expect("create symlink final");
+
+        finish_recv_write_no_follow(&final_path, 1).expect("finish receive write");
+
+        assert_eq!(
+            std::fs::read(&secret).expect("read secret"),
+            b"DO-NOT-OVERWRITE",
+            "renameat finalization must replace the symlink itself, not truncate its target"
+        );
+        assert_eq!(
+            std::fs::read(&final_path).expect("read final"),
+            b"payload",
+            "final path should contain the received payload"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn recv_digest_read_no_follow_refuses_symlink_sidecar() {
+        let tmp = TestTempDir::new("rustdesk_digest_nofollow");
+        let downloads = tmp.join("downloads");
+        std::fs::create_dir_all(&downloads).expect("create downloads");
+        let secret = tmp.join("secret.json");
+        std::fs::write(&secret, b"{\"size\":1,\"modified\":1}").expect("write secret");
+
+        let digest = downloads.join("incoming.txt.digest");
+        std::os::unix::fs::symlink(&secret, &digest).expect("create digest symlink");
+
+        let res = read_recv_sidecar_to_string_no_follow(&digest, 4096);
+        assert!(
+            res.is_err(),
+            "resume digest reads must not follow a symlink sidecar"
         );
     }
 

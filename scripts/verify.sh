@@ -42,6 +42,7 @@ RUN=(docker run --rm
   -v rd-git-cache:/usr/local/cargo/git
   -v rd-verify-target:/build
   -e CARGO_TARGET_DIR=/build
+  -e RUSTUP_TOOLCHAIN=1.75.0
   -w /work "$IMG")
 
 echo "== building the compile-check image =="
@@ -1678,21 +1679,27 @@ else
   echo "  ok  R-S11a(a) fresh _service active-uid auth + R-S11a(b)/R-S8 parent-dir hardening (O_NOFOLLOW+0o0711+scrub) present & wired"
 fi
 # R-S8 / R-A5 (file-transfer write-path no-follow — DISTINCT from the IPC parent-dir O_NOFOLLOW above):
-# the receive-WRITE opens in hbb_common/src/fs.rs MUST be no-follow (open_recv_write_no_follow /
-# O_NOFOLLOW), closing the §4.3 symlink TOCTOU on the file-receive path — a local user swapping the
-# target for a symlink AFTER the path-validation must not redirect root's write onto an arbitrary file.
-# Upstream/inherited used a path-based File::create/OpenOptions (TOCTOU-prone, acknowledged in-code).
-# Assert the helper + O_NOFOLLOW are present AND the raw symlink-following create is gone from the
-# write path; the refuse-symlink / allow-regular behavior is proven by the (3c) tests.
+# the receive-WRITE opens in hbb_common/src/fs.rs MUST no-follow the parent path and the target
+# (mkdirat/openat parent walk + openat(O_NOFOLLOW)), and finalization must use renameat under the
+# same no-follow parent boundary. This closes both the original final-component symlink TOCTOU and
+# the later defense-in-depth intermediate-directory race tracked in HARDENING_STATUS.md.
 r_s8ft_missing=
-grep -q 'fn open_recv_write_no_follow' libs/hbb_common/src/fs.rs           || r_s8ft_missing="$r_s8ft_missing helper"
-grep -q 'O_NOFOLLOW' libs/hbb_common/src/fs.rs                             || r_s8ft_missing="$r_s8ft_missing O_NOFOLLOW"
-grep -q 'open_recv_write_no_follow(&path, true)' libs/hbb_common/src/fs.rs || r_s8ft_missing="$r_s8ft_missing data-write-wired"
+grep -q 'fn open_parent_dir_no_follow' libs/hbb_common/src/fs.rs                         || r_s8ft_missing="$r_s8ft_missing parent-openat-walk"
+grep -q 'mkdirat' libs/hbb_common/src/fs.rs                                               || r_s8ft_missing="$r_s8ft_missing mkdirat"
+grep -q 'openat' libs/hbb_common/src/fs.rs                                                || r_s8ft_missing="$r_s8ft_missing openat"
+grep -q 'O_DIRECTORY' libs/hbb_common/src/fs.rs                                           || r_s8ft_missing="$r_s8ft_missing O_DIRECTORY"
+grep -q 'O_NOFOLLOW' libs/hbb_common/src/fs.rs                                           || r_s8ft_missing="$r_s8ft_missing O_NOFOLLOW"
+grep -q 'fn open_recv_write_no_follow' libs/hbb_common/src/fs.rs                         || r_s8ft_missing="$r_s8ft_missing helper"
+grep -q 'open_recv_write_no_follow(Path::new(&path), true)' libs/hbb_common/src/fs.rs    || r_s8ft_missing="$r_s8ft_missing data-write-wired"
+grep -q 'fn finish_recv_write_no_follow' libs/hbb_common/src/fs.rs                       || r_s8ft_missing="$r_s8ft_missing finish-helper"
+grep -q 'renameat' libs/hbb_common/src/fs.rs                                             || r_s8ft_missing="$r_s8ft_missing renameat"
+grep -q 'set_file_handle_times' libs/hbb_common/src/fs.rs                                || r_s8ft_missing="$r_s8ft_missing handle-mtime"
+grep -q 'read_recv_sidecar_to_string_no_follow' libs/hbb_common/src/fs.rs                || r_s8ft_missing="$r_s8ft_missing sidecar-read-nofollow"
 if grep -qE 'File::create\(&path\)' libs/hbb_common/src/fs.rs; then r_s8ft_missing="$r_s8ft_missing raw-File::create-remains"; fi
 if [ -n "$r_s8ft_missing" ]; then
-  echo "  FAIL R-S8/R-A5: file-transfer receive-write is not no-follow:$r_s8ft_missing"; rc=1
+  echo "  FAIL R-S8/R-A5: file-transfer receive-write parent/target no-follow is incomplete:$r_s8ft_missing"; rc=1
 else
-  echo "  ok  R-S8/R-A5 file-transfer receive-write is no-follow (O_NOFOLLOW closes the §4.3 symlink-TOCTOU; behavior-tested at (3c))"
+  echo "  ok  R-S8/R-A5 file-transfer receive-write uses no-follow parent openat walk + no-follow target open + renameat finalize (behavior-tested at (3c))"
 fi
 # R-S8/R-S11 defense-in-depth: incoming FileResponse carries peer-chosen write data for a CM/FS write
 # job. FileAction is session-gated, but the shared FS worker historically looked up write_jobs only by

@@ -9,8 +9,9 @@ history remains the traceability record for those intermediate notes.
 
 ## Current Verdict
 
-**Status: responder-side port-forward latent-connect follow-up closed; file
-write-response forwarding is now same-session/job gated in source and gates.**
+**Status: file-transfer parent-walk follow-up closed; responder-side
+port-forward latent-connect and file write-response forwarding follow-ups remain
+closed in source and gates.**
 
 On 2026-06-26, final reviewer `Maxwell` (`gpt-5.5`, `xhigh`) reviewed the
 then-current dirty worktree, read the full `requirements.html`, checked the previous
@@ -77,6 +78,15 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   writing, digest-checking, completing, or erroring a job. This closes the
   defense-in-depth cross-session/id-collision concern without changing the
   intended full-filesystem file-transfer model.
+- **File-transfer receive writes no-follow the parent walk and finalization.**
+  On Unix, receive-side `*.download` and `*.digest` writes now create/open every
+  parent directory through `mkdirat`/`openat(O_DIRECTORY|O_NOFOLLOW)`, open the
+  target as a regular file through `openat(O_NOFOLLOW)`, read resume digest
+  sidecars through a bounded no-follow regular-file open, and finalize the
+  transfer with `renameat` plus handle-based mtime setting. This closes the
+  intermediate-directory symlink race that remained after the earlier
+  final-component `O_NOFOLLOW` fix. Non-Unix keeps the platform no-follow
+  fallback.
 - **Windows validation builds the tracked worktree when requested.**
   `WINDOWS_BUILD_SOURCE=worktree scripts/build-windows-vm.sh` snapshots tracked
   dirty edits and tracked deletions into the BUILD CD. The release default stays
@@ -110,8 +120,9 @@ The artifacts below were produced from disposable build environments after the
 Windows-helper, golden-hash, first R-S5 raw-mode refusal, Flutter/Dart lockfile,
 and `uzers` advisory fixes. They are now **previous-build evidence only**: the
 current source contains the later responder-side port-forward latent-connect
-deletion described above, so these exact hashes are stale for any new release or
-tag until the artifacts are rebuilt from the current commit.
+deletion and file-transfer parent-walk hardening described above, so these exact
+hashes are stale for any new release or tag until the artifacts are rebuilt from
+the current commit.
 
 ```text
 7a42dfac65ed5cfd8a060f8dbe15a9f377b460f3f6376392fe23cd8246a4afbf  dist/rustdesk-x86_64.deb
@@ -226,11 +237,6 @@ git diff --check              # GREEN after this ledger update
   validation paths so every shipped target proves one direct TCP listener, zero
   UDP, and no relay/rendezvous/KCP listener.
 
-- **Strengthen file-transfer parent traversal.** Final-component writes use
-  no-follow opens; intermediate path validation remains path-based. A full
-  handle/openat-style parent walk would better match the no-TOCTOU philosophy
-  and should be tracked as local filesystem hardening.
-
 ### Larger Assurance / Hardening Items
 
 - **Native viewer decoder sandbox.** The biggest remaining code hardening target
@@ -258,14 +264,13 @@ git diff --check              # GREEN after this ledger update
 
 ## Known Residuals
 
-No known in-repository implementation or build-harness gap remains from the
-post-`f90f197` TCP route audits after the relay-suffix closure and the
-responder-side port-forward latent-connect deletion above. The artifact hashes
-in this ledger predate the latter source follow-up and must be rebuilt before a
-new release/tag claim.
+The current known residuals are the open follow-ups above. The remaining
+in-repository/build-harness work is Windows and Android platform-native
+socket-surface assertion coverage plus the larger native viewer decoder sandbox
+design/implementation. The artifact hashes in this ledger predate the latest
+source follow-ups and must be rebuilt before a new release/tag claim.
 
-The remaining items are explicitly external or pre-exposure evidence, not source
-tree TODOs:
+The remaining external or pre-exposure evidence items are:
 
 - **R-V3 independent expert audit.** The in-tree CPace construction is not yet
   independently audited. That disclosure is intentional and must remain until an

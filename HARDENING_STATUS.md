@@ -9,10 +9,11 @@ history remains the traceability record for those intermediate notes.
 
 ## Current Verdict
 
-**Status: post-validation relay-route follow-up closed in source and gates.**
+**Status: responder-side port-forward latent-connect follow-up closed in source
+and gates.**
 
 On 2026-06-26, final reviewer `Maxwell` (`gpt-5.5`, `xhigh`) reviewed the
-current dirty worktree, read the full `requirements.html`, checked the previous
+then-current dirty worktree, read the full `requirements.html`, checked the previous
 blocker classes, and returned **PASS** with no blocking findings.
 
 After commit `f90f197`, three additional read-only route/security audits were
@@ -24,12 +25,15 @@ be normalized into a direct address, and persist stale relay state. That finding
 did not revive relay/KCP or bypass CPace, but it violated the direct-IP-only
 fail-closed philosophy.
 
-That relay-route gap is now closed in the current worktree. Relay route syntax
-is rejected instead of normalized in the Dart URI/direct-address paths, the Rust
-core no longer strips relay suffixes, `--relay` is rejected on the CLI path, and
-authored Flutter window/session plumbing no longer carries a live `forceRelay`
-decision. New verification gates in `scripts/verify.sh` and
-`scripts/dart-verify.sh` fail on regression of these routes.
+That relay-route gap was closed by commit `465be6a` and remains gated. A later
+read-only TCP/security sweep also identified a defense-in-depth issue in the
+responder-side port-forward path: even though tunnel use was pinned/refused, dead
+code still held a latent tunnel socket opener. The current worktree deletes that
+responder-side `TcpStream::connect` path, removes the per-connection
+`port_forward_socket`/`port_forward_address` state, and makes
+`LoginRequest::PortForward` fail closed immediately with the direct-IP hardened
+build refusal. `scripts/verify.sh` now fails if the responder tunnel opener or
+viewer tunnel socket opener regrows.
 
 The requirements snapshot reviewed in this pass was:
 
@@ -56,10 +60,14 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   A stale or markerless golden now fails loud rather than being silently reused
   or mutated.
 - **R-S5/R-A3 port-forward and RDP raw tunnels refuse before raw mode.**
-  `src/port_forward.rs` is a fail-closed tunnel-refusal shim, and
-  `Connection::try_port_forward_loop` returns an error if a forwarding socket is
-  present. App code has no `.set_raw(` caller left. The remaining
-  `hbb_common::Stream::set_raw` implementation is only a defensive backstop.
+  `src/port_forward.rs` is a fail-closed tunnel-refusal shim. On the responder,
+  `LoginRequest::PortForward` now fails closed before authorization, and the
+  latent tunnel opener/state (`connect_port_forward_if_needed`,
+  `normalize_port_forward_target`, `port_forward_socket`,
+  `port_forward_address`, responder-side `TcpStream::connect`) is deleted. App
+  code has no `.set_raw(` caller, no tunnel socket opener, and no responder-side
+  latent connect path left. The remaining `hbb_common::Stream::set_raw`
+  implementation is only a defensive backstop.
 - **Windows validation builds the tracked worktree when requested.**
   `WINDOWS_BUILD_SOURCE=worktree scripts/build-windows-vm.sh` snapshots tracked
   dirty edits and tracked deletions into the BUILD CD. The release default stays
@@ -87,11 +95,14 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   both post-key dispatch roots so the old silent `if let Ok(parse)` pattern
   cannot return.
 
-## Final Artifacts
+## Artifact State
 
-All artifacts below were produced from disposable build environments after the
-latest Windows-helper, golden-hash, R-S5, Flutter/Dart lockfile, and `uzers`
-advisory fixes.
+The artifacts below were produced from disposable build environments after the
+Windows-helper, golden-hash, first R-S5 raw-mode refusal, Flutter/Dart lockfile,
+and `uzers` advisory fixes. They are now **previous-build evidence only**: the
+current source contains the later responder-side port-forward latent-connect
+deletion described above, so these exact hashes are stale for any new release or
+tag until the artifacts are rebuilt from the current commit.
 
 ```text
 7a42dfac65ed5cfd8a060f8dbe15a9f377b460f3f6376392fe23cd8246a4afbf  dist/rustdesk-x86_64.deb
@@ -110,9 +121,17 @@ Build evidence:
   `--network=none`; the only graphics listener was VNC on `127.0.0.1`, and all
   host-side helper containers in the artifact path also ran with `--network=none`.
 
-## Final Gate Matrix
+## Validation Matrix
 
-The following gates passed after the final artifact builds:
+The following full source gate passed after the current responder-side
+port-forward follow-up:
+
+```text
+bash scripts/verify.sh        # GREEN: VERIFY: all gates green
+```
+
+The following gates passed after the previous full artifact builds and must be
+re-run after the next artifact rebuild before making a final artifact claim:
 
 ```text
 bash scripts/verify.sh
@@ -204,12 +223,6 @@ git diff --check              # GREEN after this ledger update
   "no UDP/KCP/rendezvous" is enforced by absence, with grep/call-graph gates
   preventing future reintroduction.
 
-- **Delete or hard-refuse latent port-forward connect code.** The current pins
-  and refusal path prevent RDP/tunnel use, but responder-side port-forward
-  connection code still exists behind dead policy. Replace it with an
-  unconditional explicit refusal or delete it, then gate that no app path opens
-  tunnel sockets or calls raw stream mode.
-
 - **Mirror file-session gates on `FileResponse`.** `FileAction` is
   session-gated, and CM drops unknown write IDs, but `FileResponse` forwarding
   should also re-check the file-transfer/printer session state before forwarding
@@ -248,7 +261,10 @@ git diff --check              # GREEN after this ledger update
 ## Known Residuals
 
 No known in-repository implementation or build-harness gap remains from the
-post-`f90f197` TCP route audits after the relay-suffix closure above.
+post-`f90f197` TCP route audits after the relay-suffix closure and the
+responder-side port-forward latent-connect deletion above. The artifact hashes
+in this ledger predate the latter source follow-up and must be rebuilt before a
+new release/tag claim.
 
 The remaining items are explicitly external or pre-exposure evidence, not source
 tree TODOs:

@@ -33,11 +33,9 @@ use hbb_common::{
     password_security::{self as password, ApproveMode},
     sleep, timeout,
     tokio::{
-        net::TcpStream,
         sync::mpsc,
         time::{self, Duration, Instant},
     },
-    tokio_util::codec::{BytesCodec, Framed},
 };
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use scrap::android::{call_main_service_key_event, call_main_service_pointer_input};
@@ -60,6 +58,8 @@ use windows::Win32::Foundation::{CloseHandle, HANDLE};
 #[cfg(windows)]
 use crate::virtual_display_manager;
 pub type Sender = mpsc::UnboundedSender<(Instant, Arc<Message>)>;
+const TUNNEL_DISABLED_MESSAGE: &str =
+    "Port forwarding/RDP tunnel is unavailable in this direct-IP hardened build";
 
 lazy_static::lazy_static! {
     // R-T15(b)/R-S10: the inherited LOGIN_FAILURES limiter is excised (see update/check_failure) —
@@ -188,8 +188,6 @@ pub struct Connection {
     file_transfer: Option<(String, bool)>,
     view_camera: bool,
     terminal: bool,
-    port_forward_socket: Option<Framed<TcpStream, BytesCodec>>,
-    port_forward_address: String,
     tx_to_cm: mpsc::UnboundedSender<ipc::Data>,
     authorized: bool,
     keyboard: bool,
@@ -355,8 +353,6 @@ impl Connection {
             file_transfer: None,
             view_camera: false,
             terminal: false,
-            port_forward_socket: None,
-            port_forward_address: "".to_owned(),
             tx_to_cm,
             authorized: false,
             keyboard: Self::permission(keys::OPTION_ENABLE_KEYBOARD, &control_permissions),
@@ -518,9 +514,6 @@ impl Connection {
                             if !conn.send_logon_response_and_keep_alive().await {
                                 break;
                             }
-                            if conn.port_forward_socket.is_some() {
-                                break;
-                            }
                         }
                         ipc::Data::Close => {
                             conn.chat_unanswered = false; // seen
@@ -672,13 +665,6 @@ impl Connection {
                                 if !conn.on_message(msg_in).await {
                                     break;
                                 }
-                                if conn.port_forward_socket.is_some() && conn.authorized {
-                                    log::info!("Port forward, last_test_delay is none: {}", conn.last_test_delay.is_none());
-                                    // Avoid TestDelay reply injection into rdp data stream
-                                    if conn.last_test_delay.is_none() {
-                                        break;
-                                    }
-                                }
                             }
                         }
                     } else {
@@ -809,8 +795,8 @@ impl Connection {
                         conn.on_close("Timeout", true).await;
                         break;
                     }
-                    // The control end will jump out of the loop after receiving LoginResponse and will not reply to the TestDelay
-                    if conn.last_test_delay.is_none() && !(conn.port_forward_socket.is_some() && conn.authorized) {
+                    // The control end will jump out of the loop after receiving LoginResponse and will not reply to the TestDelay.
+                    if conn.last_test_delay.is_none() {
                         conn.last_test_delay = Some(Instant::now());
                         let mut msg_out = Message::new();
                         msg_out.set_test_delay(TestDelay{
@@ -850,12 +836,9 @@ impl Connection {
         // cursor-record-stop, and the synchronous CM `Data::Close` notification have MOVED into
         // `Connection`'s `Drop` so they run on cancellation too, not only on this normal-exit tail
         // (a dropped session previously left the console blanked + the Server map/CM diverged).
-        // The port-forward drain and the async `on_close` (CloseReason + lock_screen) remain here
-        // on the normal path. (R-X7: the
+        // The async `on_close` (CloseReason + lock_screen) remains here on the normal path. (R-X7:
+        // the
         // temporary-password rotation that ran here on authorized-exit is removed with the OTP.)
-        if let Err(err) = conn.try_port_forward_loop(&mut rx_from_cm).await {
-            conn.on_close(&err.to_string(), false).await;
-        }
         conn.on_close("End", true).await;
         log::info!("#{} connection loop exited", id);
     }
@@ -939,17 +922,6 @@ impl Connection {
         log::debug!("Input thread exited");
     }
 
-    async fn try_port_forward_loop(
-        &mut self,
-        rx_from_cm: &mut mpsc::UnboundedReceiver<Data>,
-    ) -> ResultType<()> {
-        let _ = rx_from_cm;
-        if self.port_forward_socket.take().is_some() {
-            bail!("Port forwarding/RDP tunnel is unavailable in this direct-IP hardened build");
-        }
-        Ok(())
-    }
-
     async fn send_permission(&mut self, permission: Permission, enabled: bool) {
         let mut misc = Misc::new();
         misc.set_permission_info(PermissionInfo {
@@ -1025,64 +997,9 @@ impl Connection {
         true
     }
 
-    fn normalize_port_forward_target(pf: &mut PortForward) -> (String, bool) {
-        let mut is_rdp = false;
-        if pf.host == "RDP" && pf.port == 0 {
-            pf.host = "localhost".to_owned();
-            pf.port = 3389;
-            is_rdp = true;
-        }
-        if pf.host.is_empty() {
-            pf.host = "localhost".to_owned();
-        }
-        (format!("{}:{}", pf.host, pf.port), is_rdp)
-    }
-
-    async fn connect_port_forward_if_needed(&mut self) -> bool {
-        if self.port_forward_socket.is_some() {
-            return true;
-        }
-        let Some(login_request::Union::PortForward(pf)) = self.lr.union.as_ref() else {
-            return true;
-        };
-        let mut pf = pf.clone();
-        let (mut addr, is_rdp) = Self::normalize_port_forward_target(&mut pf);
-        self.port_forward_address = addr.clone();
-        match timeout(3000, TcpStream::connect(&addr)).await {
-            Ok(Ok(sock)) => {
-                self.port_forward_socket = Some(Framed::new(sock, BytesCodec::new()));
-                true
-            }
-            Ok(Err(e)) => {
-                log::warn!("Port forward connect failed for {}: {}", addr, e);
-                if is_rdp {
-                    addr = "RDP".to_owned();
-                }
-                self.send_login_error(format!(
-                    "Failed to access remote {}. Please make sure it is reachable/open.",
-                    addr
-                ))
-                .await;
-                false
-            }
-            Err(e) => {
-                log::warn!("Port forward connect timed out for {}: {}", addr, e);
-                if is_rdp {
-                    addr = "RDP".to_owned();
-                }
-                self.send_login_error(format!(
-                    "Failed to access remote {}. Please make sure it is reachable/open.",
-                    addr
-                ))
-                .await;
-                false
-            }
-        }
-    }
-
     // Returns whether this connection should be kept alive.
-    // `true` does not necessarily mean authorization succeeded (a pending terminal /
-    // port-forward login can keep the stream alive while still unauthorized).
+    // `true` does not necessarily mean authorization succeeded (a pending terminal
+    // login can keep the stream alive while still unauthorized).
     async fn send_logon_response_and_keep_alive(&mut self) -> bool {
         if self.authorized {
             return true;
@@ -1098,14 +1015,9 @@ impl Connection {
         if let Some(keep_alive) = self.prepare_terminal_session_user_for_authorization().await {
             return keep_alive;
         }
-        if !self.connect_port_forward_if_needed().await {
-            return false;
-        }
         self.authorized = true;
         let auth_conn_type = if self.file_transfer.is_some() {
             AuthConnType::FileTransfer
-        } else if self.port_forward_socket.is_some() {
-            AuthConnType::PortForward
         } else if self.view_camera {
             AuthConnType::ViewCamera
         } else if self.terminal {
@@ -1209,13 +1121,6 @@ impl Connection {
             pi.platform_additions = serde_json::to_string(&platform_additions).unwrap_or("".into());
         }
 
-        if self.port_forward_socket.is_some() {
-            let mut msg_out = Message::new();
-            res.set_peer_info(pi);
-            msg_out.set_login_response(res);
-            self.send(msg_out).await;
-            return true;
-        }
         #[cfg(target_os = "linux")]
         if self.is_remote() {
             let mut msg = "".to_string();
@@ -1391,7 +1296,6 @@ impl Connection {
     #[inline]
     fn is_remote(&self) -> bool {
         self.file_transfer.is_none()
-            && self.port_forward_socket.is_none()
             && !self.view_camera
             && !self.terminal
     }
@@ -1516,7 +1420,7 @@ impl Connection {
             is_file_transfer: self.file_transfer.is_some(),
             is_view_camera: self.view_camera,
             is_terminal: self.terminal,
-            port_forward: self.port_forward_address.clone(),
+            port_forward: String::new(),
             peer_id,
             name,
             avatar: self.lr.avatar.clone(),
@@ -1769,14 +1673,10 @@ impl Connection {
                     }
                     self.terminal_service_id = terminal.service_id;
                 }
-                Some(login_request::Union::PortForward(mut pf)) => {
-                    if !Self::permission(keys::OPTION_ENABLE_TUNNEL, &self.control_permissions) {
-                        self.send_login_error("No permission of IP tunneling").await;
-                        sleep(1.).await;
-                        return false;
-                    }
-                    let (addr, _is_rdp) = Self::normalize_port_forward_target(&mut pf);
-                    self.port_forward_address = addr;
+                Some(login_request::Union::PortForward(_)) => {
+                    self.send_login_error(TUNNEL_DISABLED_MESSAGE).await;
+                    sleep(1.).await;
+                    return false;
                 }
                 _ => {
                     if !self.check_privacy_mode_on().await {
@@ -1901,9 +1801,6 @@ impl Connection {
                 }
             }
         } else if self.authorized {
-            if self.port_forward_socket.is_some() {
-                return true;
-            }
             match msg.union {
                 #[allow(unused_mut)]
                 Some(message::Union::MouseEvent(mut me)) => {
@@ -3448,7 +3345,6 @@ impl Connection {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         let data = ipc::Data::Close;
         self.tx_to_cm.send(data).ok();
-        self.port_forward_socket.take();
     }
 
     // The `reason` should be consistent with `check_if_retry` if not empty

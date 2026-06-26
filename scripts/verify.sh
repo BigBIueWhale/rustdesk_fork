@@ -1763,10 +1763,18 @@ if grep -rIn '\.set_raw(' src --include='*.rs' 2>/dev/null | grep -vE ':[0-9]+:[
 fi
 grep -qF 'Port forwarding/RDP tunnel is unavailable in this direct-IP hardened build' src/port_forward.rs      || r_s5_missing="$r_s5_missing viewer-refusal-missing"
 grep -qF 'Port forwarding/RDP tunnel is unavailable in this direct-IP hardened build' src/server/connection.rs || r_s5_missing="$r_s5_missing controlled-refusal-missing"
+grep -qF 'Some(login_request::Union::PortForward(_))' src/server/connection.rs || r_s5_missing="$r_s5_missing controlled-portforward-arm-missing"
+grep -qF 'self.send_login_error(TUNNEL_DISABLED_MESSAGE).await' src/server/connection.rs || r_s5_missing="$r_s5_missing controlled-portforward-arm-not-refusing"
+if grep -nE 'port_forward_socket|port_forward_address|connect_port_forward_if_needed|normalize_port_forward_target|TcpStream::connect' src/server/connection.rs | grep -vE ':[0-9]+:[[:space:]]*//' | grep -q .; then
+  r_s5_missing="$r_s5_missing controlled-tunnel-connect-code-present"
+fi
+if grep -nE 'Tcp(Stream|Listener)|connect_tcp|Framed::new|set_raw' src/port_forward.rs | grep -vE ':[0-9]+:[[:space:]]*//' | grep -q .; then
+  r_s5_missing="$r_s5_missing viewer-tunnel-socket-code-present"
+fi
 if [ -n "$r_s5_missing" ]; then
-  echo "  FAIL R-S5/R-A3: the plaintext-tunnel seal regressed (port-forward/RDP must refuse before any raw downgrade; app code must have no set_raw caller; hbb_common set_raw remains defensive-only):$r_s5_missing"; rc=1
+  echo "  FAIL R-S5/R-A3: the plaintext-tunnel seal regressed (port-forward/RDP must refuse before any raw downgrade; app code must have no set_raw caller, no tunnel socket opener, and no responder-side latent TcpStream::connect; hbb_common set_raw remains defensive-only):$r_s5_missing"; rc=1
 else
-  echo "  ok  R-S5/R-A3 port-forward/RDP tunnel refuses before raw mode; app code has no set_raw caller; hbb_common set_raw remains an assert-only defensive backstop"
+  echo "  ok  R-S5/R-A3 port-forward/RDP tunnel refuses before raw mode; app code has no set_raw caller or tunnel socket opener; hbb_common set_raw remains an assert-only defensive backstop"
 fi
 # R-X7 (Rust OTP excision): the rotating one-time (temporary) password is EXCISED from the Rust tree
 # — the permanent password is the sole credential and sole CPace PRS (R-S9/R-P1). R-A6 lists

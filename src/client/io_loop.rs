@@ -1097,6 +1097,24 @@ impl<T: InvokeUiSession> Remote<T> {
         }
     }
 
+    fn native_video_frame_within_limit(vf: &VideoFrame) -> bool {
+        use video_frame::Union::*;
+        let result = match &vf.union {
+            Some(Vp8s(f)) => scrap::codec::validate_native_video_frames("vp8", f),
+            Some(Vp9s(f)) => scrap::codec::validate_native_video_frames("vp9", f),
+            Some(Av1s(f)) => scrap::codec::validate_native_video_frames("av1", f),
+            Some(H264s(f)) => scrap::codec::validate_native_video_frames("h264", f),
+            Some(H265s(f)) => scrap::codec::validate_native_video_frames("h265", f),
+            _ => Ok(()),
+        };
+        if let Err(err) = result {
+            log::warn!("dropping oversized video frame before decode queue: {err}");
+            false
+        } else {
+            true
+        }
+    }
+
     // Currently, this function only considers decoding speed and queue length, not network delay.
     // The controlled end can consider auto fps as the maximum decoding fps.
     #[inline]
@@ -1260,6 +1278,9 @@ impl<T: InvokeUiSession> Remote<T> {
         {
             match msg_in.union {
                 Some(message::Union::VideoFrame(vf)) => {
+                    if !Self::native_video_frame_within_limit(&vf) {
+                        return true;
+                    }
                     if !self.first_frame {
                         self.first_frame = true;
                         self.handler.close_success();
@@ -1705,7 +1726,15 @@ impl<T: InvokeUiSession> Remote<T> {
                 }
                 Some(message::Union::Misc(misc)) => match misc.union {
                     Some(misc::Union::AudioFormat(f)) => {
-                        self.audio_sender.send(MediaData::AudioFormat(f)).ok();
+                        if client::native_opus_format_within_limit(f.sample_rate, f.channels) {
+                            self.audio_sender.send(MediaData::AudioFormat(f)).ok();
+                        } else {
+                            log::warn!(
+                                "dropping unsupported Opus format before audio queue: sample_rate={}, channels={}",
+                                f.sample_rate,
+                                f.channels
+                            );
+                        }
                     }
                     Some(misc::Union::ChatMessage(c)) => {
                         self.handler.new_message(c.text);
@@ -1884,9 +1913,17 @@ impl<T: InvokeUiSession> Remote<T> {
                 }
                 Some(message::Union::AudioFrame(frame)) => {
                     if !self.handler.lc.read().unwrap().disable_audio.v {
-                        self.audio_sender
-                            .send(MediaData::AudioFrame(Box::new(frame)))
-                            .ok();
+                        if client::native_opus_packet_within_limit(frame.data.len()) {
+                            self.audio_sender
+                                .send(MediaData::AudioFrame(Box::new(frame)))
+                                .ok();
+                        } else {
+                            log::warn!(
+                                "dropping oversized Opus packet before audio queue: {} > {}",
+                                frame.data.len(),
+                                client::MAX_NATIVE_OPUS_PACKET_BYTES
+                            );
+                        }
                     }
                 }
                 Some(message::Union::FileAction(action)) => match action.union {

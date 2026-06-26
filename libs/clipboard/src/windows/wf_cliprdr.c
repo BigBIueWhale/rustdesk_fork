@@ -1406,25 +1406,38 @@ static UINT32 get_remote_format_id(wfClipboard *clipboard, UINT32 local_format)
 	return local_format;
 }
 
-static void map_ensure_capacity(wfClipboard *clipboard)
+static BOOL map_ensure_capacity(wfClipboard *clipboard, size_t needed)
 {
 	if (!clipboard)
-		return;
+		return FALSE;
 
-	if (clipboard->map_size >= clipboard->map_capacity)
+	if (needed > clipboard->map_capacity)
 	{
+		size_t old_size;
 		size_t new_size;
 		formatMapping *new_map;
-		new_size = clipboard->map_capacity * 2;
+		old_size = clipboard->map_capacity;
+		new_size = clipboard->map_capacity ? clipboard->map_capacity : 32;
+		while (new_size < needed)
+		{
+			if (new_size > ((size_t)-1) / 2)
+				return FALSE;
+			new_size *= 2;
+		}
+		if (new_size > ((size_t)-1) / sizeof(formatMapping))
+			return FALSE;
 		new_map =
 			(formatMapping *)realloc(clipboard->format_mappings, sizeof(formatMapping) * new_size);
 
 		if (!new_map)
-			return;
+			return FALSE;
 
 		clipboard->format_mappings = new_map;
+		ZeroMemory(&clipboard->format_mappings[old_size], sizeof(formatMapping) * (new_size - old_size));
 		clipboard->map_capacity = new_size;
 	}
+
+	return TRUE;
 }
 
 static BOOL clear_format_map(wfClipboard *clipboard)
@@ -2448,8 +2461,11 @@ static UINT wf_cliprdr_server_format_list(CliprdrClientContext *context,
 
 	for (i = 0; i < formatList->numFormats; i++)
 	{
+		if (!map_ensure_capacity(clipboard, clipboard->map_size + 1))
+			return ERROR_OUTOFMEMORY;
+
 		format = &(formatList->formats[i]);
-		mapping = &(clipboard->format_mappings[i]);
+		mapping = &(clipboard->format_mappings[clipboard->map_size]);
 		mapping->remote_format_id = format->formatId;
 
 		if (format->formatName)
@@ -2472,7 +2488,6 @@ static UINT wf_cliprdr_server_format_list(CliprdrClientContext *context,
 		}
 
 		clipboard->map_size++;
-		map_ensure_capacity(clipboard);
 	}
 
 	if (file_transferring(clipboard))

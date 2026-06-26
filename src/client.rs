@@ -678,6 +678,21 @@ impl ClientClipboardHandler {
     }
 }
 
+/// Maximum compressed Opus packet bytes handed to libopus for one AudioFrame.
+/// Opus packets are small; this is deliberately generous while still making the
+/// native decoder handoff length-bounded.
+pub(crate) const MAX_NATIVE_OPUS_PACKET_BYTES: usize = 4096;
+
+#[inline]
+pub(crate) fn native_opus_packet_within_limit(len: usize) -> bool {
+    len <= MAX_NATIVE_OPUS_PACKET_BYTES
+}
+
+#[inline]
+pub(crate) fn native_opus_format_within_limit(sample_rate: u32, channels: u32) -> bool {
+    matches!(sample_rate, 8000 | 12000 | 16000 | 24000 | 48000) && matches!(channels, 1 | 2)
+}
+
 /// Audio handler for the [`Client`].
 #[derive(Default)]
 pub struct AudioHandler {
@@ -901,6 +916,14 @@ impl AudioHandler {
 
     /// Handle audio format and create an audio decoder.
     pub fn handle_format(&mut self, f: AudioFormat) {
+        if !native_opus_format_within_limit(f.sample_rate, f.channels) {
+            log::warn!(
+                "dropping unsupported Opus format before native decode setup: sample_rate={}, channels={}",
+                f.sample_rate,
+                f.channels
+            );
+            return;
+        }
         match AudioDecoder::new(f.sample_rate, if f.channels > 1 { Stereo } else { Mono }) {
             Ok(d) => {
                 let buffer = vec![0.; f.sample_rate as usize * f.channels as usize];
@@ -917,6 +940,14 @@ impl AudioHandler {
     /// Handle audio frame and play it.
     #[inline]
     pub fn handle_frame(&mut self, frame: AudioFrame) {
+        if !native_opus_packet_within_limit(frame.data.len()) {
+            log::warn!(
+                "dropping oversized Opus packet before native decode: {} > {}",
+                frame.data.len(),
+                MAX_NATIVE_OPUS_PACKET_BYTES
+            );
+            return;
+        }
         #[cfg(not(target_os = "linux"))]
         if self.audio_stream.is_none() || !self.ready.lock().unwrap().clone() {
             return;
@@ -3286,5 +3317,22 @@ mod tests {
         h.remember = false;
         h.handle_peer_info(&PeerInfo::new());
         assert!(PeerConfig::load(id).password_prs.is_empty());
+    }
+
+    #[test]
+    fn native_opus_packet_limit_is_bounded() {
+        assert!(native_opus_packet_within_limit(MAX_NATIVE_OPUS_PACKET_BYTES));
+        assert!(!native_opus_packet_within_limit(
+            MAX_NATIVE_OPUS_PACKET_BYTES + 1
+        ));
+    }
+
+    #[test]
+    fn native_opus_format_limit_is_bounded() {
+        assert!(native_opus_format_within_limit(48000, 2));
+        assert!(native_opus_format_within_limit(8000, 1));
+        assert!(!native_opus_format_within_limit(96000, 2));
+        assert!(!native_opus_format_within_limit(48000, 0));
+        assert!(!native_opus_format_within_limit(48000, 3));
     }
 }

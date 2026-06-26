@@ -1,5 +1,31 @@
 use clipboard::ClipboardFile;
-use hbb_common::message_proto::*;
+use hbb_common::{log, message_proto::*};
+
+pub(crate) const MAX_NATIVE_CLIPRDR_FORMATS: usize = 32;
+pub(crate) const MAX_NATIVE_CLIPRDR_FORMAT_NAME_BYTES: usize = 256;
+pub(crate) const MAX_NATIVE_CLIPRDR_FORMAT_DATA_BYTES: usize = 16 * 1024 * 1024;
+pub(crate) const MAX_NATIVE_CLIPRDR_FILE_CONTENTS_BYTES: usize = 8 * 1024 * 1024;
+
+pub(crate) fn cliprdr_format_list_within_native_limit(formats: &[CliprdrFormat]) -> bool {
+    formats.len() <= MAX_NATIVE_CLIPRDR_FORMATS
+        && formats
+            .iter()
+            .all(|f| f.format.len() <= MAX_NATIVE_CLIPRDR_FORMAT_NAME_BYTES)
+}
+
+#[inline]
+fn cliprdr_payload_within_native_limit(label: &str, len: usize, max: usize) -> bool {
+    if len > max {
+        log::warn!("dropping oversized CLIPRDR {label} before native handoff: {len} > {max}");
+        return false;
+    }
+    true
+}
+
+#[inline]
+pub(crate) fn cliprdr_file_request_within_native_limit(cb_requested: i32) -> bool {
+    cb_requested >= 0 && (cb_requested as usize) <= MAX_NATIVE_CLIPRDR_FILE_CONTENTS_BYTES
+}
 
 pub fn clip_2_msg(clip: ClipboardFile) -> Message {
     match clip {
@@ -184,6 +210,10 @@ pub fn msg_2_clip(msg: Cliprdr) -> Option<ClipboardFile> {
     match msg.union {
         Some(cliprdr::Union::Ready(_)) => Some(ClipboardFile::MonitorReady),
         Some(cliprdr::Union::FormatList(data)) => {
+            if !cliprdr_format_list_within_native_limit(&data.formats) {
+                log::warn!("dropping oversized CLIPRDR format list before native handoff");
+                return None;
+            }
             let mut format_list: Vec<(i32, String)> = Vec::new();
             for v in data.formats.iter() {
                 format_list.push((v.id, v.format.clone()));
@@ -198,9 +228,25 @@ pub fn msg_2_clip(msg: Cliprdr) -> Option<ClipboardFile> {
         }),
         Some(cliprdr::Union::FormatDataResponse(data)) => Some(ClipboardFile::FormatDataResponse {
             msg_flags: data.msg_flags,
-            format_data: data.format_data.into(),
+            format_data: if cliprdr_payload_within_native_limit(
+                "format data",
+                data.format_data.len(),
+                MAX_NATIVE_CLIPRDR_FORMAT_DATA_BYTES,
+            ) {
+                data.format_data.into()
+            } else {
+                return None;
+            },
         }),
         Some(cliprdr::Union::FileContentsRequest(data)) => {
+            if !cliprdr_file_request_within_native_limit(data.cb_requested) {
+                log::warn!(
+                    "dropping oversized CLIPRDR file-content request before local file read: {} > {}",
+                    data.cb_requested,
+                    MAX_NATIVE_CLIPRDR_FILE_CONTENTS_BYTES
+                );
+                return None;
+            }
             Some(ClipboardFile::FileContentsRequest {
                 stream_id: data.stream_id,
                 list_index: data.list_index,
@@ -213,6 +259,13 @@ pub fn msg_2_clip(msg: Cliprdr) -> Option<ClipboardFile> {
             })
         }
         Some(cliprdr::Union::FileContentsResponse(data)) => {
+            if !cliprdr_payload_within_native_limit(
+                "file contents",
+                data.requested_data.len(),
+                MAX_NATIVE_CLIPRDR_FILE_CONTENTS_BYTES,
+            ) {
+                return None;
+            }
             Some(ClipboardFile::FileContentsResponse {
                 msg_flags: data.msg_flags,
                 stream_id: data.stream_id,
@@ -221,6 +274,64 @@ pub fn msg_2_clip(msg: Cliprdr) -> Option<ClipboardFile> {
         }
         Some(cliprdr::Union::TryEmpty(_)) => Some(ClipboardFile::TryEmpty),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        cliprdr_file_request_within_native_limit, cliprdr_format_list_within_native_limit,
+        MAX_NATIVE_CLIPRDR_FILE_CONTENTS_BYTES, MAX_NATIVE_CLIPRDR_FORMAT_NAME_BYTES,
+        MAX_NATIVE_CLIPRDR_FORMATS,
+    };
+    use hbb_common::message_proto::CliprdrFormat;
+
+    #[test]
+    fn cliprdr_format_list_limit_is_bounded() {
+        let formats = (0..MAX_NATIVE_CLIPRDR_FORMATS)
+            .map(|id| CliprdrFormat {
+                id: id as i32,
+                format: "fmt".to_string(),
+                ..Default::default()
+            })
+            .collect::<Vec<_>>();
+        assert!(cliprdr_format_list_within_native_limit(&formats));
+
+        let mut too_many = formats;
+        too_many.push(CliprdrFormat {
+            id: 999,
+            format: "fmt".to_string(),
+            ..Default::default()
+        });
+        assert!(!cliprdr_format_list_within_native_limit(&too_many));
+    }
+
+    #[test]
+    fn cliprdr_format_name_limit_is_bounded() {
+        let ok = [CliprdrFormat {
+            id: 1,
+            format: "x".repeat(MAX_NATIVE_CLIPRDR_FORMAT_NAME_BYTES),
+            ..Default::default()
+        }];
+        assert!(cliprdr_format_list_within_native_limit(&ok));
+
+        let too_long = [CliprdrFormat {
+            id: 1,
+            format: "x".repeat(MAX_NATIVE_CLIPRDR_FORMAT_NAME_BYTES + 1),
+            ..Default::default()
+        }];
+        assert!(!cliprdr_format_list_within_native_limit(&too_long));
+    }
+
+    #[test]
+    fn cliprdr_file_content_request_limit_is_bounded() {
+        assert!(cliprdr_file_request_within_native_limit(
+            MAX_NATIVE_CLIPRDR_FILE_CONTENTS_BYTES as i32
+        ));
+        assert!(!cliprdr_file_request_within_native_limit(-1));
+        assert!(!cliprdr_file_request_within_native_limit(
+            MAX_NATIVE_CLIPRDR_FILE_CONTENTS_BYTES as i32 + 1
+        ));
     }
 }
 

@@ -18,6 +18,66 @@ const RUSTDESK_CLIPBOARD_OWNER_FORMAT: &'static str = "dyn.com.rustdesk.owner";
 
 // Add special format for Excel XML Spreadsheet
 const CLIPBOARD_FORMAT_EXCEL_XML_SPREADSHEET: &'static str = "XML Spreadsheet";
+/// Maximum bytes handed to native/platform clipboard handlers for one peer
+/// clipboard item after optional zstd decompression. This mirrors the R-S7
+/// decompression ceiling and makes the native clipboard handoff length-bounded;
+/// it is not a process sandbox.
+pub(crate) const MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES: usize = 64 * 1024 * 1024;
+
+fn rgba_clipboard_len(width: i32, height: i32) -> Option<usize> {
+    let width = usize::try_from(width).ok()?;
+    let height = usize::try_from(height).ok()?;
+    if width == 0 || height == 0 {
+        return None;
+    }
+    width.checked_mul(height)?.checked_mul(4)
+}
+
+pub(crate) fn native_clipboard_payload_within_limit(
+    format: hbb_common::message_proto::ClipboardFormat,
+    width: i32,
+    height: i32,
+    len: usize,
+) -> bool {
+    if len > MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES {
+        return false;
+    }
+    if format == hbb_common::message_proto::ClipboardFormat::ImageRgba {
+        return rgba_clipboard_len(width, height).is_some_and(|expected| expected == len);
+    }
+    true
+}
+
+fn clipboard_content_for_native(
+    clipboard: &hbb_common::message_proto::Clipboard,
+) -> Option<Vec<u8>> {
+    let format = clipboard.format.enum_value().ok()?;
+    let data = if clipboard.compress {
+        hbb_common::compress::decompress(&clipboard.content)
+    } else {
+        clipboard.content.to_vec()
+    };
+    if !native_clipboard_payload_within_limit(format, clipboard.width, clipboard.height, data.len())
+    {
+        log::warn!(
+            "dropping oversized or invalid clipboard payload before native handoff: format={format:?}, width={}, height={}, bytes={}",
+            clipboard.width,
+            clipboard.height,
+            data.len()
+        );
+        return None;
+    }
+    Some(data)
+}
+
+fn sanitize_clipboard_for_native_proto(
+    mut clipboard: hbb_common::message_proto::Clipboard,
+) -> Option<hbb_common::message_proto::Clipboard> {
+    let data = clipboard_content_for_native(&clipboard)?;
+    clipboard.content = data.into();
+    clipboard.compress = false;
+    Some(clipboard)
+}
 
 #[cfg(not(target_os = "android"))]
 lazy_static::lazy_static! {
@@ -145,6 +205,56 @@ pub fn update_clipboard_files(files: Vec<String>, side: ClipboardSide) {
         std::thread::spawn(move || {
             do_update_clipboard_(vec![ClipboardData::FileUrl(files)], side);
         });
+    }
+}
+
+#[cfg(test)]
+mod native_clipboard_limit_tests {
+    use super::{
+        native_clipboard_payload_within_limit, MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES,
+    };
+    use hbb_common::message_proto::ClipboardFormat;
+
+    #[test]
+    fn accepts_bounded_text_payload() {
+        assert!(native_clipboard_payload_within_limit(
+            ClipboardFormat::Text,
+            0,
+            0,
+            MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES
+        ));
+    }
+
+    #[test]
+    fn rejects_payload_over_native_clipboard_cap() {
+        assert!(!native_clipboard_payload_within_limit(
+            ClipboardFormat::Text,
+            0,
+            0,
+            MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES + 1
+        ));
+    }
+
+    #[test]
+    fn rejects_rgba_with_invalid_dimensions_or_length() {
+        assert!(native_clipboard_payload_within_limit(
+            ClipboardFormat::ImageRgba,
+            2,
+            3,
+            2 * 3 * 4
+        ));
+        assert!(!native_clipboard_payload_within_limit(
+            ClipboardFormat::ImageRgba,
+            2,
+            3,
+            2 * 3 * 4 - 1
+        ));
+        assert!(!native_clipboard_payload_within_limit(
+            ClipboardFormat::ImageRgba,
+            0,
+            3,
+            0
+        ));
     }
 }
 
@@ -572,7 +682,7 @@ mod proto {
     #[cfg(not(target_os = "android"))]
     use arboard::ClipboardData;
     use hbb_common::{
-        compress::{compress as compress_func, decompress},
+        compress::compress as compress_func,
         message_proto::{Clipboard, ClipboardFormat, Message, MultiClipboards},
     };
 
@@ -679,11 +789,7 @@ mod proto {
 
     #[cfg(not(target_os = "android"))]
     fn from_clipboard(clipboard: Clipboard) -> Option<ClipboardData> {
-        let data = if clipboard.compress {
-            decompress(&clipboard.content)
-        } else {
-            clipboard.content.into()
-        };
+        let data = super::clipboard_content_for_native(&clipboard)?;
         match clipboard.format.enum_value() {
             Ok(ClipboardFormat::Text) => String::from_utf8(data).ok().map(ClipboardData::Text),
             Ok(ClipboardFormat::Rtf) => String::from_utf8(data).ok().map(ClipboardData::Rtf),
@@ -737,12 +843,12 @@ mod proto {
 }
 
 #[cfg(target_os = "android")]
-pub fn handle_msg_clipboard(mut cb: Clipboard) {
+pub fn handle_msg_clipboard(cb: Clipboard) {
     use hbb_common::protobuf::Message;
 
-    if cb.compress {
-        cb.content = bytes::Bytes::from(hbb_common::compress::decompress(&cb.content));
-    }
+    let Some(cb) = sanitize_clipboard_for_native_proto(cb) else {
+        return;
+    };
     let multi_clips = MultiClipboards {
         clipboards: vec![cb],
         ..Default::default()
@@ -756,10 +862,13 @@ pub fn handle_msg_clipboard(mut cb: Clipboard) {
 pub fn handle_msg_multi_clipboards(mut mcb: MultiClipboards) {
     use hbb_common::protobuf::Message;
 
-    for cb in mcb.clipboards.iter_mut() {
-        if cb.compress {
-            cb.content = bytes::Bytes::from(hbb_common::compress::decompress(&cb.content));
-        }
+    mcb.clipboards = mcb
+        .clipboards
+        .into_iter()
+        .filter_map(sanitize_clipboard_for_native_proto)
+        .collect();
+    if mcb.clipboards.is_empty() {
+        return;
     }
     if let Ok(bytes) = mcb.write_to_bytes() {
         let _ = scrap::android::ffi::call_clipboard_manager_update_clipboard(&bytes);

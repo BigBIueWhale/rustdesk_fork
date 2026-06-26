@@ -47,6 +47,55 @@ lazy_static::lazy_static! {
 
 pub const ENCODE_NEED_SWITCH: &'static str = "ENCODE_NEED_SWITCH";
 
+/// Maximum encoded bytes passed to an in-process native video decoder for one
+/// post-key VideoFrame union. The outer session frame cap is 32 MiB; this
+/// tighter decoder handoff cap is the length-bounded half of the Appendix C #2b
+/// sandbox work and must stay below that outer cap.
+pub const MAX_NATIVE_VIDEO_BATCH_BYTES: usize = 24 * 1024 * 1024;
+/// Maximum encoded bytes for one compressed sub-frame handed to libvpx/aom.
+pub const MAX_NATIVE_VIDEO_FRAME_BYTES: usize = 24 * 1024 * 1024;
+/// Encoders normally emit one compressed frame per screen sample. Keep a high
+/// but finite batch count so a hostile peer cannot drive unbounded decoder calls
+/// within one protobuf message.
+pub const MAX_NATIVE_VIDEO_SUBFRAMES: usize = 64;
+
+fn validate_native_video_frame_lengths<I>(codec: &str, lengths: I) -> ResultType<usize>
+where
+    I: IntoIterator<Item = usize>,
+{
+    let mut count = 0usize;
+    let mut total = 0usize;
+    for len in lengths {
+        count = count
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("native {codec} decode frame count overflow"))?;
+        if count > MAX_NATIVE_VIDEO_SUBFRAMES {
+            bail!(
+                "native {codec} decode batch has too many subframes: {count} > {MAX_NATIVE_VIDEO_SUBFRAMES}"
+            );
+        }
+        if len > MAX_NATIVE_VIDEO_FRAME_BYTES {
+            bail!(
+                "native {codec} decode subframe too large: {len} > {MAX_NATIVE_VIDEO_FRAME_BYTES}"
+            );
+        }
+        total = total
+            .checked_add(len)
+            .ok_or_else(|| anyhow!("native {codec} decode byte count overflow"))?;
+        if total > MAX_NATIVE_VIDEO_BATCH_BYTES {
+            bail!(
+                "native {codec} decode batch too large: {total} > {MAX_NATIVE_VIDEO_BATCH_BYTES}"
+            );
+        }
+    }
+    Ok(total)
+}
+
+pub fn validate_native_video_frames(codec: &str, frames: &EncodedVideoFrames) -> ResultType<()> {
+    validate_native_video_frame_lengths(codec, frames.frames.iter().map(|f| f.data.len()))?;
+    Ok(())
+}
+
 #[derive(Debug, Clone)]
 pub enum EncoderCfg {
     VPX(VpxEncoderConfig),
@@ -715,6 +764,7 @@ impl Decoder {
         rgb: &mut ImageRgb,
         chroma: &mut Option<Chroma>,
     ) -> ResultType<bool> {
+        validate_native_video_frames("vpx", vpxs)?;
         let mut last_frame = vpxcodec::Image::new();
         for vpx in vpxs.frames.iter() {
             for frame in decoder.decode(&vpx.data)? {
@@ -730,7 +780,7 @@ impl Decoder {
             Ok(false)
         } else {
             *chroma = Some(last_frame.chroma());
-            last_frame.to(rgb);
+            last_frame.to(rgb)?;
             Ok(true)
         }
     }
@@ -742,6 +792,7 @@ impl Decoder {
         rgb: &mut ImageRgb,
         chroma: &mut Option<Chroma>,
     ) -> ResultType<bool> {
+        validate_native_video_frames("av1", av1s)?;
         let mut last_frame = aom::Image::new();
         for av1 in av1s.frames.iter() {
             for frame in decoder.decode(&av1.data)? {
@@ -757,7 +808,7 @@ impl Decoder {
             Ok(false)
         } else {
             *chroma = Some(last_frame.chroma());
-            last_frame.to(rgb);
+            last_frame.to(rgb)?;
             Ok(true)
         }
     }
@@ -1154,4 +1205,40 @@ pub fn test_av1() {
             );
         });
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        validate_native_video_frame_lengths, MAX_NATIVE_VIDEO_BATCH_BYTES,
+        MAX_NATIVE_VIDEO_FRAME_BYTES, MAX_NATIVE_VIDEO_SUBFRAMES,
+    };
+
+    #[test]
+    fn native_video_lengths_accept_normal_batch() {
+        assert!(validate_native_video_frame_lengths("test", [1024usize, 2048]).is_ok());
+    }
+
+    #[test]
+    fn native_video_lengths_reject_oversize_subframe() {
+        assert!(
+            validate_native_video_frame_lengths("test", [MAX_NATIVE_VIDEO_FRAME_BYTES + 1])
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn native_video_lengths_reject_oversize_batch() {
+        assert!(validate_native_video_frame_lengths(
+            "test",
+            [MAX_NATIVE_VIDEO_BATCH_BYTES / 2, MAX_NATIVE_VIDEO_BATCH_BYTES / 2 + 1],
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn native_video_lengths_reject_too_many_subframes() {
+        let lengths = std::iter::repeat(1usize).take(MAX_NATIVE_VIDEO_SUBFRAMES + 1);
+        assert!(validate_native_video_frame_lengths("test", lengths).is_err());
+    }
 }

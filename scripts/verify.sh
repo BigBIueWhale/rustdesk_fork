@@ -1646,6 +1646,50 @@ else
   rc=1
 fi
 rm -f "$native_watch_log"
+# Appendix C #2b / R-T0: the decoder sandbox is still the larger SHOULD item, but
+# every in-process native handoff must be explicitly bounded so a password-correct
+# hostile peer cannot use compressed/video/audio/clipboard payloads as an
+# unbounded allocation or native-call amplifier before that sandbox exists.
+r_native_bounds=
+grep -qF 'MAX_NATIVE_VIDEO_BATCH_BYTES' libs/scrap/src/common/codec.rs ||
+  r_native_bounds="$r_native_bounds video-encoded-batch-cap"
+grep -qF 'MAX_NATIVE_VIDEO_SUBFRAMES' libs/scrap/src/common/codec.rs ||
+  r_native_bounds="$r_native_bounds video-subframe-count-cap"
+grep -qF 'validate_native_video_frames("vp8"' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds video-prequeue-vp8-cap"
+grep -qF 'validate_native_video_frames("h265"' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds video-prequeue-h265-cap"
+grep -qF 'MAX_NATIVE_VIDEO_DECODED_BYTES' libs/scrap/src/common/mod.rs ||
+  r_native_bounds="$r_native_bounds video-decoded-cap"
+grep -qF 'checked_mul(bytes_per_row)' libs/scrap/src/common/mod.rs ||
+  r_native_bounds="$r_native_bounds video-decoded-checked-mul"
+grep -qF 'native_opus_format_within_limit' src/client.rs ||
+  r_native_bounds="$r_native_bounds opus-format-helper"
+grep -qF 'client::native_opus_format_within_limit' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds opus-format-prequeue"
+grep -qF 'client::native_opus_packet_within_limit(frame.data.len())' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds opus-packet-prequeue"
+grep -qF 'MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES' src/clipboard.rs ||
+  r_native_bounds="$r_native_bounds clipboard-payload-cap"
+grep -qF 'sanitize_clipboard_for_native_proto' src/clipboard.rs ||
+  r_native_bounds="$r_native_bounds clipboard-native-sanitize"
+grep -qF 'pub(crate) const MAX_NATIVE_CLIPRDR_FORMATS: usize = 32;' src/clipboard_file.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-format-cap"
+grep -qF 'MAX_NATIVE_CLIPRDR_FORMAT_DATA_BYTES' src/clipboard_file.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-format-data-cap"
+grep -qF 'MAX_NATIVE_CLIPRDR_FILE_CONTENTS_BYTES' src/clipboard_file.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-file-content-cap"
+grep -qF 'map_ensure_capacity(wfClipboard *clipboard, size_t needed)' libs/clipboard/src/windows/wf_cliprdr.c ||
+  r_native_bounds="$r_native_bounds cliprdr-c-prewrite-grow-helper"
+grep -qF 'ZeroMemory(&clipboard->format_mappings[old_size]' libs/clipboard/src/windows/wf_cliprdr.c ||
+  r_native_bounds="$r_native_bounds cliprdr-c-new-slots-zeroed"
+grep -qF 'mapping = &(clipboard->format_mappings[clipboard->map_size])' libs/clipboard/src/windows/wf_cliprdr.c ||
+  r_native_bounds="$r_native_bounds cliprdr-c-append-by-map_size"
+if [ -n "$r_native_bounds" ]; then
+  echo "  FAIL Appendix C #2b/R-T0: native media/clipboard handoff bounds regressed:$r_native_bounds"; rc=1
+else
+  echo "  ok  Appendix C #2b/R-T0 native media/clipboard handoff bounds present (sandbox still tracked separately)"
+fi
 # R-R2a (§12 / sovereignty): the .deb + systemd is the SOLE Linux package model. The AppImage
 # recipe (whose `update-information` self-updater collides with R-X1 "the fork ships its own
 # releases") and the Flatpak manifest (a portal-sandbox, no-systemd posture colliding with

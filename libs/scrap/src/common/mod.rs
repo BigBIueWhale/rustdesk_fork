@@ -1,5 +1,6 @@
 pub use self::vpxcodec::*;
 use hbb_common::{
+    anyhow::anyhow,
     bail, log,
     message_proto::{video_frame, Chroma, VideoFrame},
     ResultType,
@@ -44,6 +45,10 @@ pub mod vram;
 pub use self::convert::*;
 pub const STRIDE_ALIGN: usize = 64; // commonly used in libvpx vpx_img_alloc caller
 pub const HW_STRIDE_ALIGN: usize = 0; // recommended by av_frame_get_buffer
+/// Maximum decoded RGB image bytes accepted from a peer-controlled native video
+/// decoder output. Encoded frame length is capped separately; this bounds the
+/// compressed-to-RGB expansion before resizing the output buffer.
+pub const MAX_NATIVE_VIDEO_DECODED_BYTES: usize = 160 * 1024 * 1024;
 
 pub mod aom;
 #[cfg(not(any(target_os = "ios")))]
@@ -426,21 +431,40 @@ pub trait GoogleImage {
     fn stride(&self) -> Vec<i32>;
     fn planes(&self) -> Vec<*mut u8>;
     fn chroma(&self) -> Chroma;
-    fn get_bytes_per_row(w: usize, fmt: ImageFormat, align: usize) -> usize {
+    fn get_bytes_per_row_checked(w: usize, fmt: ImageFormat, align: usize) -> Option<usize> {
         let bytes_per_pixel = match fmt {
             ImageFormat::Raw => 3,
             ImageFormat::ARGB | ImageFormat::ABGR => 4,
         };
+        let row = w.checked_mul(bytes_per_pixel)?;
+        if align <= 1 {
+            return Some(row);
+        }
+        if !align.is_power_of_two() {
+            return None;
+        }
         // https://github.com/lemenkov/libyuv/blob/6900494d90ae095d44405cd4cc3f346971fa69c9/source/convert_argb.cc#L128
         // https://github.com/lemenkov/libyuv/blob/6900494d90ae095d44405cd4cc3f346971fa69c9/source/convert_argb.cc#L129
-        (w * bytes_per_pixel + align - 1) & !(align - 1)
+        Some((row.checked_add(align - 1)?) & !(align - 1))
+    }
+    fn get_bytes_per_row(w: usize, fmt: ImageFormat, align: usize) -> usize {
+        Self::get_bytes_per_row_checked(w, fmt, align).unwrap_or(usize::MAX)
     }
     // rgb [in/out] fmt and stride must be set in ImageRgb
-    fn to(&self, rgb: &mut ImageRgb) {
+    fn to(&self, rgb: &mut ImageRgb) -> ResultType<()> {
         rgb.w = self.width();
         rgb.h = self.height();
-        let bytes_per_row = Self::get_bytes_per_row(rgb.w, rgb.fmt, rgb.align());
-        rgb.raw.resize(rgb.h * bytes_per_row, 0);
+        let bytes_per_row = Self::get_bytes_per_row_checked(rgb.w, rgb.fmt, rgb.align())
+            .ok_or_else(|| anyhow!("native video decoded row size overflow or invalid alignment"))?;
+        let decoded_len = rgb.h.checked_mul(bytes_per_row).ok_or_else(|| {
+            anyhow!("native video decoded buffer size overflow")
+        })?;
+        if decoded_len > MAX_NATIVE_VIDEO_DECODED_BYTES {
+            bail!(
+                "native video decoded buffer too large: {decoded_len} > {MAX_NATIVE_VIDEO_DECODED_BYTES}"
+            );
+        }
+        rgb.raw.resize(decoded_len, 0);
         let stride = self.stride();
         let planes = self.planes();
         unsafe {
@@ -519,6 +543,7 @@ pub trait GoogleImage {
                 _ => log::error!("unsupported pixfmt: {:?}", self.chroma()),
             }
         }
+        Ok(())
     }
     fn data(&self) -> (&[u8], &[u8], &[u8]) {
         unsafe {

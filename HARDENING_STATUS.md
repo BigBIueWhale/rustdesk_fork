@@ -9,10 +9,11 @@ history remains the traceability record for those intermediate notes.
 
 ## Current Verdict
 
-**Status: file-transfer parent-walk, Windows/Android socket-surface, and
-native-codec advisory-watch follow-ups closed in source and gates; responder-side
-port-forward latent-connect and file write-response forwarding follow-ups remain
-closed. The native decoder sandbox itself remains open.**
+**Status: file-transfer parent-walk, Windows/Android socket-surface,
+native-codec advisory-watch, and native media/clipboard handoff-bound
+follow-ups closed in source and gates; responder-side port-forward
+latent-connect and file write-response forwarding follow-ups remain closed. The
+native decoder sandbox itself remains open.**
 
 On 2026-06-26, final reviewer `Maxwell` (`gpt-5.5`, `xhigh`) reviewed the
 then-current dirty worktree, read the full `requirements.html`, checked the previous
@@ -36,6 +37,17 @@ responder-side `TcpStream::connect` path, removes the per-connection
 `LoginRequest::PortForward` fail closed immediately with the direct-IP hardened
 build refusal. `scripts/verify.sh` now fails if the responder tunnel opener or
 viewer tunnel socket opener regrows.
+
+The latest DoS-focused TCP/path review separated two classes. The unauthenticated
+connection-flood class remains covered by the R-T1/R-T12 semaphore, cgroup, fd,
+accept-backoff, and rate-limited log gates. The password-correct hostile-peer
+native-content class is now bounded in-process: encoded video batches are capped
+before decode queueing and again before libvpx/aom decode, decoded RGB output has
+checked arithmetic plus a hard byte ceiling, Opus packet and format fields are
+validated before audio queueing and decoder setup, text/image clipboard payloads
+are capped before native handoff, CLIPRDR format/data/file-content payloads are
+capped, and the Windows CLIPRDR mapping table grows before append with zeroed new
+slots. This is a DoS/resource-bound closure, not the Appendix C #2b sandbox.
 
 The requirements snapshot reviewed in this pass was:
 
@@ -253,12 +265,14 @@ git diff --check              # GREEN after this ledger update
 
 - **Native viewer decoder sandbox.** The biggest remaining code hardening target
   beyond route security is the documented viewer residual: a deliberately
-  connected, password-correct hostile peer can feed media/content bytes into
-  in-process native decoders. Design an out-of-process, length-bounded,
-  killable decode boundary for video/audio/clipboard/file-compression surfaces.
-  The separate native codec CVE/advisory watch is now wired and source-gated,
-  but it is only a tracking/coverage mechanism for vcpkg C/C++ libraries, not a
-  substitute for the sandbox.
+  connected, password-correct hostile peer can still feed media/content bytes
+  into in-process native decoders. The current source now length-bounds and
+  allocation-bounds those handoffs before native calls/queues, but that is not a
+  process boundary. Design an out-of-process, killable decode boundary for
+  video/audio/clipboard/file-compression surfaces. The separate native codec
+  CVE/advisory watch is now wired and source-gated, but it is only a
+  tracking/coverage mechanism for vcpkg C/C++ libraries, not a substitute for the
+  sandbox.
 
 - **R-V3 independent CPace/transport audit.** Keep the audit disclosure until an
   outside expert reviews the CPace construction, transcript binding, KDF,
@@ -280,8 +294,9 @@ git diff --check              # GREEN after this ledger update
 
 The current known residuals are the open follow-ups above. The remaining
 in-repository hardening work is the larger native viewer decoder sandbox
-design/implementation; the native-codec advisory watch is now present and
-source-gated, but deliberately does not claim sandboxing or current CVE freedom.
+design/implementation; the native-codec advisory watch and the in-process
+handoff bounds are now present and source-gated, but deliberately do not claim
+sandboxing or current CVE freedom.
 Windows and Android platform-native socket-surface logic is now present and
 source-gated, but native artifact/runtime execution remains part of the platform
 rebuild evidence. The artifact hashes in this ledger predate the latest source

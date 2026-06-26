@@ -142,16 +142,12 @@ class RustdeskImpl {
 
   Future<void> sessionLogin(
       {required UuidValue sessionId,
-      required String osUsername,
-      required String osPassword,
       required String password,
       required bool remember,
       dynamic hint}) {
     return Future(() => js.context.callMethod('setByName', [
           'login',
           jsonEncode({
-            'os_username': osUsername,
-            'os_password': osPassword,
             'password': password,
             'remember': remember
           })
@@ -661,17 +657,6 @@ class RustdeskImpl {
     throw UnimplementedError("sessionResumeJob");
   }
 
-  Future<void> sessionElevateWithLogon(
-      {required UuidValue sessionId,
-      required String username,
-      required String password,
-      dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
-          'elevate_with_logon',
-          jsonEncode({'username': username, 'password': password})
-        ]));
-  }
-
   Future<void> sessionChangeResolution(
       {required UuidValue sessionId,
       required int display,
@@ -832,34 +817,8 @@ class RustdeskImpl {
         'true');
   }
 
-  Future<String> mainGetApiServer({dynamic hint}) {
-    return Future(() => js.context.callMethod('getByName', ['api_server']));
-  }
-
-  Future<void> mainPostRequest(
-      {required String url,
-      required String body,
-      required String header,
-      dynamic hint}) {
-    throw UnimplementedError("mainPostRequest");
-  }
-
   Future<bool> mainGetProxyStatus({dynamic hint}) {
     return Future(() => false);
-  }
-
-  Future<void> mainHttpRequest({
-    required String url,
-    required String method,
-    String? body,
-    required String header,
-    dynamic hint,
-  }) {
-    throw UnimplementedError("mainHttpRequest");
-  }
-
-  Future<String?> mainGetHttpStatus({required String url, dynamic hint}) {
-    throw UnimplementedError("mainGetHttpStatus");
   }
 
   String mainGetLocalOption({required String key, dynamic hint}) {
@@ -1455,27 +1414,6 @@ class RustdeskImpl {
 
   String installInstallPath({dynamic hint}) {
     throw UnimplementedError("installInstallPath");
-  }
-
-  Future<void> mainAccountAuth(
-      {required String op, required bool rememberMe, dynamic hint}) {
-    // Safari only allows auth popups while handling the original user gesture.
-    // Use Future.sync so the JS call runs synchronously (pre-opening the OIDC
-    // window) while any interop error still surfaces as a Future error.
-    return Future.sync(() => js.context.callMethod('setByName', [
-          'account_auth',
-          jsonEncode({'op': op, 'remember': rememberMe})
-        ]));
-  }
-
-  Future<void> mainAccountAuthCancel({dynamic hint}) {
-    return Future(
-        () => js.context.callMethod('setByName', ['account_auth_cancel']));
-  }
-
-  Future<String> mainAccountAuthResult({dynamic hint}) {
-    return Future(
-        () => js.context.callMethod('getByName', ['account_auth_result']));
   }
 
   Future<void> mainOnMainWindowClose({dynamic hint}) {

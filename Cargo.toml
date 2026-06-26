@@ -64,7 +64,6 @@ hbb_common = { path = "libs/hbb_common" }
 serde_derive = "1.0"
 serde = "1.0"
 serde_json = "1.0"
-serde_repr = "0.1"
 cfg-if = "1.0"
 lazy_static = "1.4"
 sha2 = "0.10"
@@ -103,7 +102,6 @@ shutdown_hooks = "0.1"
 # R-SV4(b)/R-D5: kcp-sys (the KCP reliable-UDP transport for the relay/rendezvous connect-path) is ALSO
 # dropped -- zero kcp usage remains after the direct-IP / TCP-only connect-path excision; a reliable-UDP
 # transport dep is exactly what the no-UDP thesis sheds (a third-party git dep + its UDP machinery gone).
-reqwest = { version = "0.12", features = ["blocking", "socks", "json", "native-tls", "rustls-tls", "rustls-tls-native-roots", "gzip"], default-features=false }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 # https://github.com/rustdesk/rustdesk/discussions/10197, not use cpal on linux

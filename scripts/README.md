@@ -43,7 +43,7 @@ structural, not aspirational.
 
 | File | Role | Status |
 |---|---|---|
-| `pins.env` | Single version manifest (machine-readable §3.2). | **Done** — versions verified in-tree; SHA-256 artifact digests pending R-B12 (see below). |
+| `pins.env` | Single version manifest (machine-readable §3.2). | **Done** — versions and consumed artifact digests are pinned with R-B12 provenance; any future sentinel fails closed. |
 | `lib.sh` | Shared helpers: source `pins.env`, fail-loud asserts (`die`/`require_cmd`/`assert_version`), SHA-256 verify (rejects the R-B12 sentinel), offline guards, repo-state asserts. | **Done** |
 | `online-fetch.sh` | The one networked script → git-ignored `./online`, every artifact SHA-256-checked (R-B10): `cargo vendor --locked`, the toolchains/SDKs/vcpkg/FRB, digest-pinned base images. Idempotent; aborts on the R-B12 sentinel. | **Done** |
 | `host-provision.sh` | Additive, idempotent host runtimes (docker; qemu-kvm/libvirt/swtpm/OVMF for the Win VM). Installs only what's absent; records to `.harness-state/provisioned` (outside `./online`, per R-B11's parenthetical). | **Done** |
@@ -57,13 +57,14 @@ The build-script *bodies* encode upstream's exact 1.4.7 build commands (taken
 verbatim from `build.py` / `flutter-build.yml`, R-B7) and are authored in a
 dedicated step — faithful reproduction, no independent version choices.
 
-## Honest gap: SHA-256 provenance (R-B12)
+## Pin Provenance (R-B12)
 
-`pins.env` pins every **version** and git SHA-1 commit, but its **SHA-256 artifact
-digests** are the sentinel `__PENDING_R_B12__`, not real values. R-B12 requires
-each first pin be established by an *audited, dual-sourced bootstrap* — the
-publisher's own published hash/signature cross-checked against a second path, with
-per-pin provenance recorded — so a compromised mirror/CDN at first fetch cannot
-poison the anchor. That bootstrap fetches the real artifacts over the network and
-cannot be done offline; a fabricated digest would be worse than an honest gap.
-`online-fetch.sh` MUST treat the sentinel as a hard fail-closed error.
+`pins.env` pins every **version**, git SHA-1 commit, and consumed `./online`
+artifact digest. Each SHA-256/SHA512 entry records its provenance inline: either a
+publisher manifest/signature cross-check plus an independent byte computation, or
+an explicitly documented captured-layout/captured-distfile procedure where the
+upstream input is evergreen or byte-unstable.
+
+The `__PENDING_R_B12__` sentinel remains defined only as a fail-closed guard for
+future/operator-only entries. `online-fetch.sh` refuses to fetch any artifact whose
+digest is still the sentinel, before it touches the network.

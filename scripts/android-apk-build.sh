@@ -60,6 +60,7 @@ fi
 
 # Offline pub: the project + the flutter SDK tool package (flutter build re-resolves both
 # in-process ONLINE otherwise -> pub advisories _TypeError on the read-only cache).
+pub_lock_before="$(sha256sum flutter/pubspec.lock | awk '{print $1}')"
 ( cd flutter && dart pub get --offline )
 ( cd "$TC"/flutter/packages/flutter_tools && dart pub get --offline )
 # Plugin injection: bare `dart pub get` above does NOT write .flutter-plugins-dependencies (the gradle plugin
@@ -69,6 +70,12 @@ fi
 # (nonexistent) android dir and fails. Run the REAL flutter (NOT the --no-pub shim) so android's plugin list is
 # regenerated correctly + offline. Mirrors the windows build's generated_plugins.cmake fix (3a577a6).
 ( cd flutter && "$REAL_FLUTTER" pub get --offline )
+pub_lock_after="$(sha256sum flutter/pubspec.lock | awk '{print $1}')"
+[ "$pub_lock_before" = "$pub_lock_after" ] || {
+    echo "[FATAL] flutter/pubspec.lock changed during offline pub resolution" >&2
+    git --no-pager diff -- flutter/pubspec.lock || true
+    exit 1
+}
 # FRB bridge (--llvm-compiler-opts so ffigen resolves <stdbool.h> -> correct bool bindings).
 flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
     --dart-output ./flutter/lib/generated_bridge.dart \

@@ -28,7 +28,6 @@ use hbb_common::protobuf::EnumOrUnknown;
 use hbb_common::{
     config::{self, keys, Config},
     fs::{self, can_enable_overwrite_detection, JobType},
-    futures::{SinkExt, StreamExt},
     get_time, get_version_number,
     message_proto::{option_message::BoolOption, permission_info::Permission},
     password_security::{self as password, ApproveMode},
@@ -185,7 +184,6 @@ pub struct Connection {
     stream: super::Stream,
     server: super::ServerPtrWeak,
     read_jobs: Vec<fs::TransferJob>,
-    timer: crate::RustDeskInterval,
     file_timer: crate::RustDeskInterval,
     file_transfer: Option<(String, bool)>,
     view_camera: bool,
@@ -308,10 +306,7 @@ impl Subscriber for ConnInner {
 
 const TEST_DELAY_TIMEOUT: Duration = Duration::from_secs(1);
 const SEC30: Duration = Duration::from_secs(30);
-const H1: Duration = Duration::from_secs(3600);
 const MILLI1: Duration = Duration::from_millis(1);
-const SEND_TIMEOUT_VIDEO: u64 = 12_000;
-const SEND_TIMEOUT_OTHER: u64 = SEND_TIMEOUT_VIDEO * 10;
 
 impl Connection {
     pub async fn start(
@@ -336,7 +331,6 @@ impl Connection {
         let (tx_video, mut rx_video) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();
         let (tx_input, _rx_input) = std_mpsc::channel();
         let (tx_from_authed, mut rx_from_authed) = mpsc::unbounded_channel::<ipc::Data>();
-        let mut hbbs_rx = crate::hbbs_http::sync::signal_receiver();
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let (tx_cm_stream_ready, _rx_cm_stream_ready) = mpsc::channel(1);
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -357,7 +351,6 @@ impl Connection {
             stream,
             server,
             read_jobs: Vec::new(),
-            timer: crate::rustdesk_interval(time::interval(SEC30)),
             file_timer: crate::rustdesk_interval(time::interval(SEC30)),
             file_transfer: None,
             view_camera: false,
@@ -703,13 +696,6 @@ impl Connection {
                         conn.file_timer = crate::rustdesk_interval(time::interval_at(Instant::now() + SEC30, SEC30));
                     }
                 }
-                Ok(conns) = hbbs_rx.recv() => {
-                    if conns.contains(&id) {
-                        conn.send_close_reason_no_retry("Closed manually by web console").await;
-                        conn.on_close("web console", true).await;
-                        break;
-                    }
-                }
                 Some((instant, value)) = rx_video.recv() => {
                     if !conn.video_ack_required {
                         if let Some(message::Union::VideoFrame(vf)) = &value.union {
@@ -853,10 +839,11 @@ impl Connection {
         }
 
         // R-T4 (§20): privacy-off (screen-unblank), the video-fetch notify, `remove_connection`,
-        // and cursor-record-stop have MOVED into `Connection`'s `Drop` so they run on cancellation
-        // too, not only on this normal-exit tail (a dropped session previously left the console
-        // blanked + the Server map diverged). The port-forward drain and the async `on_close`
-        // (CloseReason + lock_screen) remain here on the normal path. (R-X7: the
+        // cursor-record-stop, and the synchronous CM `Data::Close` notification have MOVED into
+        // `Connection`'s `Drop` so they run on cancellation too, not only on this normal-exit tail
+        // (a dropped session previously left the console blanked + the Server map/CM diverged).
+        // The port-forward drain and the async `on_close` (CloseReason + lock_screen) remain here
+        // on the normal path. (R-X7: the
         // temporary-password rotation that ran here on authorized-exit is removed with the OTP.)
         if let Err(err) = conn.try_port_forward_loop(&mut rx_from_cm).await {
             conn.on_close(&err.to_string(), false).await;
@@ -948,54 +935,9 @@ impl Connection {
         &mut self,
         rx_from_cm: &mut mpsc::UnboundedReceiver<Data>,
     ) -> ResultType<()> {
-        let mut last_recv_time = Instant::now();
-        if let Some(mut forward) = self.port_forward_socket.take() {
-            log::info!("Running port forwarding loop");
-            self.stream.set_raw();
-            let mut hbbs_rx = crate::hbbs_http::sync::signal_receiver();
-            loop {
-                tokio::select! {
-                    Some(data) = rx_from_cm.recv() => {
-                        match data {
-                            ipc::Data::Close => {
-                                bail!("Close requested from connection manager");
-                            }
-                            ipc::Data::CmErr(e) => {
-                                log::error!("Connection manager error: {e}");
-                                bail!("{e}");
-                            }
-                            _ => {}
-                        }
-                    }
-                    res = forward.next() => {
-                        if let Some(res) = res {
-                            last_recv_time = Instant::now();
-                            self.stream.send_bytes(res?.into()).await?;
-                        } else {
-                            bail!("Forward reset by the peer");
-                        }
-                    },
-                    res = self.stream.next() => {
-                        if let Some(res) = res {
-                            last_recv_time = Instant::now();
-                            timeout(SEND_TIMEOUT_OTHER, forward.send(res?)).await??;
-                        } else {
-                            bail!("Stream reset by the peer");
-                        }
-                    },
-                    _ = self.timer.tick() => {
-                        if last_recv_time.elapsed() >= H1 {
-                            bail!("Timeout");
-                        }
-                    }
-                    Ok(conns) = hbbs_rx.recv() => {
-                        if conns.contains(&self.inner.id) {
-                            // todo: check reconnect
-                            bail!("Closed manually by the web console");
-                        }
-                    }
-                }
-            }
+        let _ = rx_from_cm;
+        if self.port_forward_socket.take().is_some() {
+            bail!("Port forwarding/RDP tunnel is unavailable in this direct-IP hardened build");
         }
         Ok(())
     }
@@ -1734,7 +1676,6 @@ impl Connection {
                     #[cfg(windows)]
                     if !crate::platform::is_prelogin()
                         && !err.to_string().contains(crate::platform::EXPLORER_EXE)
-                        && !crate::hbbs_http::sync::is_pro()
                     {
                         allow_err!(tx_from_cm_clone.send(Data::CmErr(err.to_string())));
                     }
@@ -1910,57 +1851,29 @@ impl Connection {
                         .await;
                 }
                 return true;
-            } else if lr.password.is_empty() {
-                if err_msg.is_empty() {
-                    // R-X8: OS-login terminal-prep block removed (SessionUser is prepped post-auth).
-                    self.try_start_cm(lr.my_id, lr.my_name, false);
-                } else {
-                    self.send_login_error(
-                        crate::client::LOGIN_MSG_DESKTOP_SESSION_NOT_READY_PASSWORD_EMPTY,
-                    )
-                    .await;
-                }
             } else {
-                // R-X8/R-T15b: the connection-level check_failure/update_failure limiter is
-                // gone (its last consumer was the OS-login scope); CPace GUESS_FAILURES (R-P14c)
-                // is the live online-guess limiter.
-                // R-S6 / R-S2: the redundant password proof collapses into the
-                // PAKE. When the stream is CPace-keyed the peer is already mutually
-                // password-authenticated (R-P14; R-A1 asserts keying before this
-                // runs), so the login-time salted-hash re-check — the deleted Hash
-                // oracle — is skipped, and authorization IS the keyed edge. The
-                // unkeyed fallback below is defensive only: R-A1 (now unconditional,
-                // R-R2b) refuses unkeyed streams before Connection::start, so on the
-                // responder this branch is unreachable; no PRS material is ever
-                // re-validated over the wire.
-                // R-S2: the post-keying salted-hash password oracle (validate_password /
-                // verify_h1) is removed. The stream is always CPace-keyed here — R-A1 (now
-                // unconditional, R-R2b) refuses unkeyed streams before Connection::start — so
-                // this branch is unreachable; retaining `!is_secured()` makes it fail CLOSED: an
-                // unkeyed stream is rejected outright, never password-validated. Authorization
-                // IS the CPace KEYED edge (R-S6 collapsed the redundant login-time proof).
+                // R-S18 / R-S2 / R-S6: LoginRequest is now session metadata only. CPace
+                // at the choke point is the sole authenticator, so no legacy salted-hash
+                // password field is parsed or re-validated here.
+                debug_assert!(
+                    self.stream.is_secured(),
+                    "R-A1: login reached on an unkeyed stream"
+                );
                 if !self.stream.is_secured() {
-                    if err_msg.is_empty() {
-                        self.send_login_error(crate::client::LOGIN_MSG_PASSWORD_WRONG)
-                            .await;
-                        self.try_start_cm(lr.my_id, lr.my_name, false);
-                    } else {
-                        self.send_login_error(
-                            crate::client::LOGIN_MSG_DESKTOP_SESSION_NOT_READY_PASSWORD_WRONG,
-                        )
+                    self.send_login_error(crate::client::LOGIN_MSG_PASSWORD_WRONG)
                         .await;
+                    return true;
+                }
+
+                if err_msg.is_empty() {
+                    #[cfg(target_os = "linux")]
+                    self.linux_headless_handle.wait_desktop_cm_ready().await;
+                    if !self.send_logon_response_and_keep_alive().await {
+                        return false;
                     }
+                    self.try_start_cm(lr.my_id, lr.my_name, self.authorized);
                 } else {
-                    if err_msg.is_empty() {
-                        #[cfg(target_os = "linux")]
-                        self.linux_headless_handle.wait_desktop_cm_ready().await;
-                        if !self.send_logon_response_and_keep_alive().await {
-                            return false;
-                        }
-                        self.try_start_cm(lr.my_id, lr.my_name, self.authorized);
-                    } else {
-                        self.send_login_error(err_msg).await;
-                    }
+                    self.send_login_error(err_msg).await;
                 }
             }
         } else if let Some(message::Union::TestDelay(t)) = msg.union {
@@ -4521,6 +4434,13 @@ impl Drop for Connection {
         // action is synchronous and Drop-safe: the server lock is taken with `if let Ok` (never
         // `.unwrap()` — a poisoned-lock panic in Drop would abort), and each effect is best-effort.
         let id = self.inner.id();
+        if !self.closed {
+            // R-T4: cancellation can drop the run-loop future at any `.await`, skipping
+            // `on_close()`. The CM notification is synchronous on this unbounded sender, so send
+            // it from Drop too; the normal path sets `closed=true` in `on_close()` and does not
+            // double-send.
+            let _ = self.tx_to_cm.send(ipc::Data::Close);
+        }
         if let Some(video_privacy_conn_id) = privacy_mode::get_privacy_mode_conn_id() {
             if video_privacy_conn_id == id {
                 let _ = Self::turn_off_privacy_to_msg(id, String::new());

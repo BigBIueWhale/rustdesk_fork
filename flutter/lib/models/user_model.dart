@@ -1,18 +1,9 @@
-import 'dart:async';
-import 'dart:convert';
-
-import 'package:bot_toast/bot_toast.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_hbb/common/hbbs/hbbs.dart';
 import 'package:flutter_hbb/models/ab_model.dart';
 import 'package:get/get.dart';
 
 import '../common.dart';
-import '../utils/http_service.dart' as http;
 import 'model.dart';
 import 'platform_model.dart';
-
-bool refreshingUser = false;
 
 class UserModel {
   final RxString userName = ''.obs;
@@ -48,76 +39,11 @@ class UserModel {
   }
 
   void refreshCurrentUser() async {
-    if (bind.isDisableAccount()) return;
+    // R-SV6/R-G4: the account/API-server family is compiled out for this fork.
+    // Never refresh a remote account profile, even if a stale token survived in local config.
     networkError.value = '';
-    final token = bind.mainGetLocalOption(key: 'access_token');
-    if (token == '') {
-      await updateOtherModels();
-      return;
-    }
-    _updateLocalUserInfo();
-    final url = await bind.mainGetApiServer();
-    final body = {
-      'id': await bind.mainGetMyId(),
-      'uuid': await bind.mainGetUuid()
-    };
-    if (refreshingUser) return;
-    try {
-      refreshingUser = true;
-      final http.Response response;
-      try {
-        response = await http.post(Uri.parse('$url/api/currentUser'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token'
-            },
-            body: json.encode(body));
-      } catch (e) {
-        networkError.value = e.toString();
-        rethrow;
-      }
-      refreshingUser = false;
-      final status = response.statusCode;
-      if (status == 401 || status == 400) {
-        reset(resetOther: status == 401);
-        return;
-      }
-      final data = json.decode(decode_http_response(response));
-      final error = data['error'];
-      if (error != null) {
-        throw error;
-      }
-
-      final user = UserPayload.fromJson(data);
-      _parseAndUpdateUser(user);
-    } catch (e) {
-      debugPrint('Failed to refreshCurrentUser: $e');
-    } finally {
-      refreshingUser = false;
-      await updateOtherModels();
-    }
-  }
-
-  static Map<String, dynamic>? getLocalUserInfo() {
-    final userInfo = bind.mainGetLocalOption(key: 'user_info');
-    if (userInfo == '') {
-      return null;
-    }
-    try {
-      return json.decode(userInfo);
-    } catch (e) {
-      debugPrint('Failed to get local user info "$userInfo": $e');
-    }
-    return null;
-  }
-
-  _updateLocalUserInfo() {
-    final userInfo = getLocalUserInfo();
-    if (userInfo != null) {
-      userName.value = (userInfo['name'] ?? '').toString();
-      displayName.value = (userInfo['display_name'] ?? '').toString();
-      avatar.value = (userInfo['avatar'] ?? '').toString();
-    }
+    await reset(resetOther: false);
+    await updateOtherModels();
   }
 
   Future<void> reset({bool resetOther = false}) async {
@@ -132,18 +58,6 @@ class UserModel {
     avatar.value = '';
   }
 
-  _parseAndUpdateUser(UserPayload user) {
-    userName.value = user.name;
-    displayName.value = user.displayName;
-    avatar.value = user.avatar;
-    isAdmin.value = user.isAdmin;
-    bind.mainSetLocalOption(key: 'user_info', value: jsonEncode(user));
-    if (isWeb) {
-      // ugly here, tmp solution
-      bind.mainSetLocalOption(key: 'verifier', value: user.verifier ?? '');
-    }
-  }
-
   // update ab and group status
   static Future<void> updateOtherModels() async {
     await Future.wait([
@@ -153,69 +67,6 @@ class UserModel {
   }
 
   Future<void> logOut({String? apiServer}) async {
-    final tag = gFFI.dialogManager.showLoading(translate('Waiting'));
-    try {
-      final url = apiServer ?? await bind.mainGetApiServer();
-      final authHeaders = getHttpHeaders();
-      authHeaders['Content-Type'] = "application/json";
-      await http
-          .post(Uri.parse('$url/api/logout'),
-              body: jsonEncode({
-                'id': await bind.mainGetMyId(),
-                'uuid': await bind.mainGetUuid(),
-              }),
-              headers: authHeaders)
-          .timeout(Duration(seconds: 2));
-    } catch (e) {
-      debugPrint("request /api/logout failed: err=$e");
-    } finally {
-      await reset(resetOther: true);
-      gFFI.dialogManager.dismissByTag(tag);
-    }
-  }
-
-  /// throw [RequestException]
-  Future<LoginResponse> login(LoginRequest loginRequest) async {
-    final url = await bind.mainGetApiServer();
-    final resp = await http.post(Uri.parse('$url/api/login'),
-        body: jsonEncode(loginRequest.toJson()));
-
-    final Map<String, dynamic> body;
-    try {
-      body = jsonDecode(decode_http_response(resp));
-    } catch (e) {
-      debugPrint("login: jsonDecode resp body failed: ${e.toString()}");
-      if (resp.statusCode != 200) {
-        BotToast.showText(
-            contentColor: Colors.red, text: 'HTTP ${resp.statusCode}');
-      }
-      rethrow;
-    }
-    if (resp.statusCode != 200) {
-      throw RequestException(resp.statusCode, body['error'] ?? '');
-    }
-    if (body['error'] != null) {
-      throw RequestException(0, body['error']);
-    }
-
-    return getLoginResponseFromAuthBody(body);
-  }
-
-  LoginResponse getLoginResponseFromAuthBody(Map<String, dynamic> body) {
-    final LoginResponse loginResponse;
-    try {
-      loginResponse = LoginResponse.fromJson(body);
-    } catch (e) {
-      debugPrint("login: jsonDecode LoginResponse failed: ${e.toString()}");
-      rethrow;
-    }
-
-    final isLogInDone = loginResponse.type == HttpType.kAuthResTypeToken &&
-        loginResponse.access_token != null;
-    if (isLogInDone && loginResponse.user != null) {
-      _parseAndUpdateUser(loginResponse.user!);
-    }
-
-    return loginResponse;
+    await reset(resetOther: true);
   }
 }

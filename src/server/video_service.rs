@@ -267,7 +267,6 @@ fn create_capturer(
     privacy_mode_id: i32,
     display: Display,
     _current: usize,
-    _portable_service_running: bool,
 ) -> ResultType<Box<dyn TraitCapturer>> {
     #[cfg(not(windows))]
     let c: Option<Box<dyn TraitCapturer>> = None;
@@ -290,10 +289,8 @@ fn create_capturer(
     match c {
         Some(c1) => return Ok(c1),
         None => {
-            // R-X9: the portable-service capturer route is excised (the SYSTEM portable
-            // helper is dead on the installed-service fork); always create the direct
-            // dxgi|gdi/scrap capturer — this is exactly what the old non-portable `else`
-            // branch did on both platforms.
+            // R-X9: the helper capturer route is excised; always create the direct
+            // dxgi|gdi/scrap capturer.
             log::debug!("Create capturer from scrap");
             return Ok(Box::new(
                 Capturer::new(display).with_context(|| "Failed to create capturer")?,
@@ -320,7 +317,7 @@ pub fn test_create_capturer(
                     )
                 } else {
                     let display = displays.remove(display_idx);
-                    match create_capturer(privacy_mode_id, display, display_idx, false) {
+                    match create_capturer(privacy_mode_id, display, display_idx) {
                         Ok(_) => return "".to_owned(),
                         Err(e) => e,
                     }
@@ -380,10 +377,7 @@ impl DerefMut for CapturerInfo {
     }
 }
 
-fn get_capturer_monitor(
-    current: usize,
-    portable_service_running: bool,
-) -> ResultType<CapturerInfo> {
+fn get_capturer_monitor(current: usize) -> ResultType<CapturerInfo> {
     #[cfg(target_os = "linux")]
     {
         if !is_x11() {
@@ -456,12 +450,7 @@ fn get_capturer_monitor(
             log::info!("In privacy mode, the peer side cannot watch the screen");
         }
     }
-    let capturer = create_capturer(
-        capturer_privacy_mode_id,
-        display,
-        current,
-        portable_service_running,
-    )?;
+    let capturer = create_capturer(capturer_privacy_mode_id, display, current)?;
     Ok(CapturerInfo {
         origin,
         width,
@@ -514,13 +503,9 @@ fn get_capturer_camera(current: usize) -> ResultType<CapturerInfo> {
         capturer,
     });
 }
-fn get_capturer(
-    source: VideoSource,
-    current: usize,
-    portable_service_running: bool,
-) -> ResultType<CapturerInfo> {
+fn get_capturer(source: VideoSource, current: usize) -> ResultType<CapturerInfo> {
     match source {
-        VideoSource::Monitor => get_capturer_monitor(current, portable_service_running),
+        VideoSource::Monitor => get_capturer_monitor(current),
         VideoSource::Camera => get_capturer_camera(current),
     }
 }
@@ -551,13 +536,9 @@ fn run(vs: VideoService) -> ResultType<()> {
         }
     };
 
-    // R-X9: the portable SYSTEM service is excised, so it never runs — this is a
-    // constant `false` on every platform now (was a windows-only live query).
-    let last_portable_service_running = false;
-
     let display_idx = vs.idx;
     let sp = vs.sp;
-    let mut c = get_capturer(vs.source, display_idx, last_portable_service_running)?;
+    let mut c = get_capturer(vs.source, display_idx)?;
     #[cfg(windows)]
     if !scrap::codec::enable_directx_capture() && !c.is_gdi() {
         log::info!("disable dxgi with option, fall back to gdi");
@@ -578,7 +559,6 @@ fn run(vs: VideoService) -> ResultType<()> {
         quality,
         client_record,
         record_incoming,
-        last_portable_service_running,
         vs.source,
         display_idx,
     ) {
@@ -598,7 +578,6 @@ fn run(vs: VideoService) -> ResultType<()> {
                 quality,
                 client_record,
                 record_incoming,
-                last_portable_service_running,
                 vs.source,
                 display_idx,
             )?
@@ -922,7 +901,6 @@ fn setup_encoder(
     quality: f32,
     client_record: bool,
     record_incoming: bool,
-    last_portable_service_running: bool,
     source: VideoSource,
     display_idx: usize,
 ) -> ResultType<(
@@ -937,7 +915,6 @@ fn setup_encoder(
         name.to_string(),
         quality,
         client_record || record_incoming,
-        last_portable_service_running,
         source,
     );
     Encoder::set_fallback(&encoder_cfg);
@@ -953,12 +930,11 @@ fn get_encoder_config(
     _name: String,
     quality: f32,
     record: bool,
-    _portable_service: bool,
     _source: VideoSource,
 ) -> EncoderCfg {
     #[cfg(all(windows, feature = "vram"))]
-    if _portable_service || c.is_gdi() || _source == VideoSource::Camera {
-        log::info!("gdi:{}, portable:{}", c.is_gdi(), _portable_service);
+    if c.is_gdi() || _source == VideoSource::Camera {
+        log::info!("gdi:{}", c.is_gdi());
         VRamEncoder::set_not_use(_name, true);
     }
     #[cfg(feature = "vram")]
@@ -1035,7 +1011,7 @@ fn get_recorder(
     #[cfg(not(windows))]
     let root = false;
     let recorder = if record_incoming {
-        // R-SV6 / R-SV1: the session-record UPLOAD egress (hbbs_http::record_upload — a reqwest POST
+        // R-SV6 / R-SV1: the session-record UPLOAD egress (a reqwest POST
         // to {api-server}/api/record) is compiled out, not merely neutralized. Recording stays LOCAL
         // and is never uploaded: the upload channel is always None, so the box dials nobody (R-D6).
         let tx = None;

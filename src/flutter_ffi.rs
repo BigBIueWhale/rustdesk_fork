@@ -227,15 +227,9 @@ pub fn session_get_option(session_id: SessionID, arg: String) -> Option<String> 
     }
 }
 
-pub fn session_login(
-    session_id: SessionID,
-    os_username: String,
-    os_password: String,
-    password: String,
-    remember: bool,
-) {
+pub fn session_login(session_id: SessionID, password: String, remember: bool) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.login(os_username, os_password, password, remember);
+        session.login(password, remember);
     }
 }
 
@@ -937,10 +931,6 @@ pub fn main_get_async_status() -> String {
     get_async_job_status()
 }
 
-pub fn main_get_http_status(url: String) -> Option<String> {
-    get_async_http_status(url)
-}
-
 pub fn main_get_option(key: String) -> String {
     get_option(key)
 }
@@ -1107,10 +1097,6 @@ pub fn main_is_using_public_server() -> bool {
     crate::using_public_server()
 }
 
-pub fn main_get_api_server() -> String {
-    get_api_server()
-}
-
 pub fn main_deploy_device(token: String, id: String) -> String {
     #[cfg(target_os = "android")]
     {
@@ -1129,10 +1115,6 @@ pub fn main_deploy_device(token: String, id: String) -> String {
 
 pub fn main_resolve_avatar_url(avatar: String) -> SyncReturn<String> {
     SyncReturn(resolve_avatar_url(avatar))
-}
-
-pub fn main_http_request(url: String, method: String, body: Option<String>, header: String) {
-    http_request(url, method, body, header)
 }
 
 pub fn main_get_local_option(key: String) -> SyncReturn<String> {
@@ -2241,20 +2223,6 @@ pub fn install_install_options() -> SyncReturn<String> {
     SyncReturn(install_options())
 }
 
-pub fn main_account_auth(op: String, remember_me: bool) {
-    let id = get_id();
-    let uuid = get_uuid();
-    account_auth(op, id, uuid, remember_me);
-}
-
-pub fn main_account_auth_cancel() {
-    account_auth_cancel()
-}
-
-pub fn main_account_auth_result() -> String {
-    account_auth_result()
-}
-
 pub fn main_on_main_window_close() {
     // may called more than one times
     // R-X9 (slices 2-4): the portable-service shared-memory teardown
@@ -2498,7 +2466,7 @@ pub fn main_get_common(key: String) -> String {
         return ui_interface::is_local_permanent_password_set().to_string();
     } else {
         // R-SV1: the `download-data-` progress-poll key is gone with the dead
-        // hbbs_http::downloader (orphaned by the R-X1 updater excision; nothing ever
+        // the downloader module (orphaned by the R-X1 updater excision; nothing ever
         // started a download). `download-file-` below only computes a release-asset
         // filename string — no network — and stays for the win/mac packaging path.
         if key.starts_with("download-file-") {
@@ -2578,7 +2546,7 @@ pub fn main_set_common(_key: String, _value: String) {
     // updater::get_download_file_from_url + platform::update_to /
     // macos::extract_update_dmg). The fork ships its own releases (§12),
     // SHA-256-verified (R-B2). The generic `remove-downloader`/`cancel-downloader`
-    // keys are gone too: the hbbs_http::downloader they drove is excised — once the
+    // keys are gone too: the downloader path they drove is excised — once the
     // updater was removed nothing ever started a download, so it was pure dead egress.
 
     #[cfg(target_os = "linux")]
@@ -2661,6 +2629,15 @@ pub mod server_side {
             }
         }
         std::thread::spawn(move || start_server(true));
+    }
+
+    #[no_mangle]
+    pub unsafe extern "system" fn Java_ffi_FFI_rebuildDirectServerListener(
+        _env: JNIEnv,
+        _class: JClass,
+    ) {
+        log::debug!("R-T13 rebuildDirectServerListener from jvm");
+        crate::direct_service::request_direct_listener_rebuild("android-network-change");
     }
 
     #[no_mangle]

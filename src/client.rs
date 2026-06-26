@@ -278,16 +278,9 @@ impl Client {
                 // R-T15c: CPace has authenticated the password (the keying choke-point above), so the
                 // legacy server `Hash` challenge that used to REACTIVELY trigger the viewer's login
                 // (handle_hash) is gone. Send the login PROACTIVELY now that the stream is keyed +
-                // host-proof-verified, with an EMPTY password (no salted-hash second credential). The
+                // host-proof-verified, with no password field (no salted-hash second credential). The
                 // `probe_client login` smoke mode proves the server authorizes this keyed empty-pw login.
-                send_login(
-                    interface.get_lch(),
-                    String::new(),
-                    String::new(),
-                    Vec::new(),
-                    &mut x.0 .0,
-                )
-                .await;
+                send_login(interface.get_lch(), &mut x.0 .0).await;
                 Ok((x.0, x.1))
             }
         }
@@ -2120,15 +2113,10 @@ impl LoginConfigHandler {
     }
 
     /// Create a [`Message`] for login.
-    fn create_login_msg(
-        &self,
-        // R-S18: os_username/os_password are no longer SENT (the os_login leak below is
-        // removed); the params stay so the callers compile, unused here. The persisted
-        // os-username/os-password options + their UI are the §19/R-G4 follow-on.
-        _os_username: String,
-        _os_password: String,
-        password: Vec<u8>,
-    ) -> Message {
+    fn create_login_msg(&self) -> Message {
+        // R-S18 / R-T15c: CPace at keying is the SOLE authenticator. LoginRequest is only
+        // post-key session metadata; it carries no salted-hash password, peer OS credential,
+        // or stable HWID field.
         #[cfg(any(target_os = "android", target_os = "ios"))]
         let my_id = Config::get_id_or(crate::DEVICE_ID.lock().unwrap().clone());
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2193,7 +2181,6 @@ impl LoginConfigHandler {
         let my_platform = "Android".into();
         let mut lr = LoginRequest {
             username: pure_id,
-            password: password.into(),
             my_id,
             my_name: display_name,
             my_platform,
@@ -2206,10 +2193,10 @@ impl LoginConfigHandler {
             // answering at a pinned address — R-S17) harvested the operator's stored OS
             // creds + fingerprint with no interaction — a client-side leak the
             // responder-only audit could not see. The responder already ignored os_login
-            // (0685c28, R-X14); the OSLogin field (12) + hwid (14) are now DELETED from
-            // LoginRequest (message.proto) entirely, so neither can be encoded on the wire —
-            // R-S18's symmetric removal is complete. (The os-username/os-password options +
-            // the Request-Elevation/OS-login UI that feed them are the §19/R-G4 follow-on.)
+            // (0685c28, R-X14); the authored UI/FFI senders and persisted OS-credential options
+            // are gone; and the OSLogin field (12) + hwid (14) are now DELETED from LoginRequest
+            // (message.proto) entirely, so neither can be encoded on the wire. R-S18's symmetric
+            // removal is complete.
             avatar,
             ..Default::default()
         };
@@ -2891,21 +2878,9 @@ pub fn handle_login_error(
 /// # Arguments
 ///
 /// * `lc` - Login config.
-/// * `os_username` - OS username.
-/// * `os_password` - OS password.
-/// * `password` - Password.
 /// * `peer` - [`Stream`] for communicating with peer.
-async fn send_login(
-    lc: Arc<RwLock<LoginConfigHandler>>,
-    os_username: String,
-    os_password: String,
-    password: Vec<u8>,
-    peer: &mut Stream,
-) {
-    let msg_out = lc
-        .read()
-        .unwrap()
-        .create_login_msg(os_username, os_password, password);
+async fn send_login(lc: Arc<RwLock<LoginConfigHandler>>, peer: &mut Stream) {
+    let msg_out = lc.read().unwrap().create_login_msg();
     allow_err!(peer.send(&msg_out).await);
 }
 
@@ -2914,15 +2889,11 @@ async fn send_login(
 /// # Arguments
 ///
 /// * `lc` - Login config.
-/// * `os_username` - OS username.
-/// * `os_password` - OS password.
 /// * `password` - Password.
 /// * `remember` - Whether to remember password.
 /// * `peer` - [`Stream`] for communicating with peer.
 pub async fn handle_login_from_ui(
     lc: Arc<RwLock<LoginConfigHandler>>,
-    os_username: String,
-    os_password: String,
     password: String,
     remember: bool,
     peer: &mut Stream,
@@ -2930,7 +2901,7 @@ pub async fn handle_login_from_ui(
     // R-T15c: CPace (at keying) is the SOLE authenticator -- no salted-hash is computed or sent. A
     // non-empty UI password is captured as the R-S16 PRS (the balanced PAKE keys from the password
     // itself; the next reconnect's key_initiator consumes it) and `remember` recorded; the login itself
-    // carries an EMPTY wire-password, since the keyed session is already authenticated -- mirroring the
+    // carries no wire password, since the keyed session is already authenticated -- mirroring the
     // proactive login in Client::start. self.password stays empty, so the peer-info save path persists
     // ONLY the PRS (the legacy salted-hash `password` field is dead under the collapse).
     if !password.is_empty() {
@@ -2939,7 +2910,7 @@ pub async fn handle_login_from_ui(
         w.password_prs = password.into_bytes();
         w.remember = remember;
     }
-    send_login(lc.clone(), os_username, os_password, Vec::new(), peer).await;
+    send_login(lc.clone(), peer).await;
 }
 
 
@@ -2957,8 +2928,6 @@ pub trait Interface: Send + Clone + 'static + Sized {
     }
     async fn handle_login_from_ui(
         &self,
-        os_username: String,
-        os_password: String,
         password: String,
         remember: bool,
         peer: &mut Stream,
@@ -3053,7 +3022,7 @@ pub trait Interface: Send + Clone + 'static + Sized {
 #[derive(Clone)]
 pub enum Data {
     Close,
-    Login((String, String, String, bool)),
+    Login((String, bool)),
     Message(Message),
     SendFiles((i32, JobType, String, String, i32, bool, bool)),
     RemoveDirAll((i32, String, bool, bool)),
@@ -3334,4 +3303,3 @@ mod tests {
         assert!(PeerConfig::load(id).password_prs.is_empty());
     }
 }
-

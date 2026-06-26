@@ -4,20 +4,14 @@
 #
 # flutter-verify.sh cargo-checks the feature="flutter" RUST; this gates the DART side, so
 # the §19 GUI sweep (removing dead widgets/strings) and the R-S17 known-hosts dialogs are
-# verifiable. It runs `flutter pub get` + the full FRB codegen (the Dart bridge too) +
+# verifiable. It runs `dart pub get --offline` + the full FRB codegen (the Dart bridge too) +
 # `flutter analyze lib/`, requiring ZERO ERRORS — the ~238 info/warnings are the upstream
 # baseline (style lints), and test/ has pre-existing errors out of scope here. No socket is
 # bound by pub-get/codegen/analyze, so this is safe on the DMZ host (never publishes a port).
 #
-# R-B12 FINDING (documented, not silently swallowed): under the PINNED flutter 3.24.5,
-# `flutter pub get` RESOLVES A DIFFERENT pubspec.lock than the committed one — it downgrades
-# ~10 packages to the 3.24.5 SDK constraints and adds the flutter_test/leak_tracker dev-deps.
-# So the committed flutter/pubspec.lock is NOT consistent with the pinned flutter, i.e. the
-# Dart side does NOT build from the committed lock as-is (the R-R1 "build from the committed
-# lockfile" invariant is broken on the Dart side). Reconciling it (regenerate the lock under
-# flutter 3.24.5, or align the flutter pin to the lock) is an open R-B12/R-R3 item. Until
-# then this harness RESTORES the committed pubspec.lock after analyzing, so it never mutates
-# the pin behind your back.
+# R-R1/R-B12: the committed flutter/pubspec.lock is the authoritative Dart
+# dependency pin. This verifier resolves the project from the staged pub cache
+# and fails if pub would rewrite the lockfile; it never "restores" drift.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -43,15 +37,20 @@ echo "== flutter pub get + full FRB codegen + flutter analyze lib/ (zero-errors 
 "${RUN[@]}" bash -c '
   set -e
   cd /work/flutter
-  cp pubspec.lock /tmp/pubspec.lock.pin
-  trap "cp /tmp/pubspec.lock.pin /work/flutter/pubspec.lock" EXIT  # preserve the committed pin
-  flutter pub get >/dev/null
+  lock_before="$(sha256sum pubspec.lock | awk "{print \$1}")"
+  dart pub get --offline >/dev/null
+  lock_after="$(sha256sum pubspec.lock | awk "{print \$1}")"
+  if [ "$lock_before" != "$lock_after" ]; then
+    echo "DART-VERIFY: FAILED — dart pub get --offline rewrote flutter/pubspec.lock"
+    git --no-pager diff -- pubspec.lock || true
+    exit 1
+  fi
   cd /work
   # R-B12 (root cause CORRECTED): the build_runner call inside FRB codegen fails on a COLD
   # asset-graph cache — it dies in ~62ms before building — NOT, as previously assumed, the
   # pinned-flutter / committed-pubspec.lock mismatch. `flutter pub run build_runner build` itself
-  # runs fine and PRIMES the cache, after which FRB succeeds; the lock-vs-pin drift is a separate
-  # R-R1 concern that does NOT break codegen. A blind hard-exit here under `set -e` meant a
+  # runs fine and PRIMES the cache, after which FRB succeeds; the pubspec.lock hash gate above
+  # covers the R-R1 dependency-pin invariant. A blind hard-exit here under `set -e` meant a
   # cold-cache run (e.g. a fresh checkout, where generated_bridge.dart does not yet exist) aborted
   # the whole gate BEFORE `flutter analyze`, so a real source error slipped past entirely (the
   # peer_card build-breaker). So: try codegen; on failure PRIME build_runner + RETRY (recovers a
@@ -79,7 +78,7 @@ echo "== flutter pub get + full FRB codegen + flutter analyze lib/ (zero-errors 
   # Pure-dart (id_formatter + flutter SDK only, no bridge) - runs headless, binds no socket. A test
   # failure aborts the gate under set -e, so a regression that re-admitted bare IDs turns it red.
   echo "  == R-SV10 flutter test: address_validator (bare-ID rejection) =="
-  flutter test test/address_validator_test.dart
+  flutter test --no-pub test/address_validator_test.dart
 '
 echo "== §19 / R-A6 Dart-layer grep (dead GUI tokens absent) =="
 # Extends the R-A6/R-SV10 grep set into the Dart + asset layers (§19's CI hook). Each
@@ -123,9 +122,11 @@ dg_clean 'Download new version|Check for software update on startup' 'R-G4 updat
 # R-G4 / §19: the OIDC SSO provider-login is removed — the "Login with Google/GitHub/…" widgets
 # (_IconOP / ButtonOP / WidgetOP / LoginWidgetOP / ConfigOP + kOpSvgList), the loginDialog
 # third-auth section, queryOidcLoginOptions, and the auth-*.svg provider icons. A direct-IP fork
-# has no account server to enumerate providers (mainGetApiServer is pinned empty), so the section
-# was always dead (empty loginOptions ⇒ Offstage). None may reappear.
+# has no account server and the account/API FFI is deleted. None may reappear.
 dg_clean 'LoginWidgetOP|kOpSvgList|kAuthReqTypeOidc|queryOidcLoginOptions' 'R-G4 OIDC SSO provider-login widgets'
+# R-G4 / R-SV6 / §18: the Flutter account/address-book API HTTP client family is deleted, not
+# pointed at an empty host. This catches both the old account login methods and generic HTTP bridges.
+dg_clean 'utils/http_service|package:http/http\.dart|http\.(get|post|put|delete|Client)|mainGetApiServer|mainAccountAuth|mainPostRequest|mainHttpRequest|mainGetHttpStatus|class LoginRequest|class LoginResponse|class RequestException|enum HttpType|/api/login|/api/logout|/api/currentUser|/api/ab|/api/users|/api/peers|device-group/accessible|getHttpHeaders|decode_http_response' 'R-G4/R-SV6 Flutter account/address-book HTTP client family'
 # R-G4 / §19: the "Network"/server-config UI is deleted — config UI for the rendezvous / relay /
 # api-server infrastructure the fork structurally removed. Desktop: the _Network/_NetworkState
 # classes ("ID/Relay Server" editor + SOCKS proxy + WebSocket switch) + the SettingsTabKey.network
@@ -190,6 +191,9 @@ dg_clean 'kWaylandKeyboardIssueUrl|showWaylandKeyboardInputWarningDialog|shouldS
 # are deleted — the responder strips os_login (R-X14/0685c28) and create_login_msg no longer
 # sends it (R-S18), so the UI that collected the operator's OS creds is structurally gone.
 dg_clean 'enterUserLoginDialog|enterUserLoginAndPasswordDialog|osUsernameController|osPasswordController' 'R-S18/R-X8 viewer os-login dialog (OS-credential push UI)'
+# The web bridge is authored Dart, not generated FRB glue. It must not carry second-credential
+# login fields or peer-triggered elevation-with-logon senders either.
+dg_clean '\bosUsername\b|\bosPassword\b|\bos_username\b|\bos_password\b|sessionElevateWithLogon|elevate_with_logon' 'R-S18/R-X9 authored Dart/web OS-credential bridge senders'
 # R-G6 / R-SV4: the relay-fallback peer-card actions ("Always connect via relay", its
 # force-always-relay option) and the Wake-on-LAN action are dead on a direct-only fork (no
 # relay; WoL is the R-SV4(c) accepted loss). The relay-hint dialog the Rust core fed is gone

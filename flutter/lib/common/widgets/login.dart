@@ -3,11 +3,10 @@ import 'package:flutter/material.dart';
 import '../../common.dart';
 
 // R-G4 / R-SV6 (§19): the ACCOUNT SIGN-IN + OIDC flow is REMOVED. A sovereign, direct-IP fork has
-// NO account server (R-SV6) — the Rust `account_auth` is a refuse-stub that dials nobody
-// (src/hbbs_http/account.rs) — so the inherited login dialog (the username/password +
-// email/2FA-code entry that POSTed credentials to <api-server>/api/login + /api/oidc/auth) is a
-// dead, misleading egress surface and is excised here:
-//   - loginDialog()           (the account credential dialog → userModel.login() → /api/login)
+// NO account server (R-SV6), and the Rust account/auth module plus generic HTTP FFI are deleted, so
+// the inherited login dialog (the username/password + email/2FA-code entry) is a dead, misleading
+// egress surface and is excised here:
+//   - loginDialog()           (the account credential dialog)
 //   - verificationCodeDialog() (the email-code / account-2FA second step)
 //   - logOutConfirmDialog()    (already caller-less after the logout button was removed)
 //   - LoginWidgetUserPass      (the credential form widget)

@@ -74,9 +74,9 @@ echo "== (3b-i) IPC service-socket peer-uid authorization policy (R-S11a/§17) =
 # (3b-ii) api-server RESOLUTION sovereignty (R-SV6(d)/R-D6): get_api_server("","") and
 # get_custom_rendezvous_server("") must resolve to "" — no hardwired global host. The upstream
 # "https://admin.rustdesk.com" fallback is excised and PROD_RENDEZVOUS_SERVER stays empty (zero
-# write sites), so the account/address-book HttpService egress (post_request / main_http_request
-# -> create_http_client_async) dials NOBODY by default. This guards the resolution layer; the
-# config-pin layer (api-server/custom-rendezvous-server pinned empty) is covered by config_it.
+# write sites). The account/address-book HTTP client and generic request FFI are deleted separately
+# below; this guards the resolution layer against re-introducing either hardwired host. The config-pin
+# layer (api-server/custom-rendezvous-server pinned empty) is covered by config_it.
 echo "== (3b-ii) api-server resolution dials-nobody behavior test (R-SV6(d)) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config common::tests::api_server_resolution_defaults_to_sovereign_empty --color never
 
@@ -581,6 +581,36 @@ if [ -n "$r_d7a" ]; then
 else
   echo "  ok  R-D7a keep-screen-on pinned during-controlled + onStartCommand START_NOT_STICKY + dead useVP9/MediaCodec encoder excised (raw ImageReader single)"
 fi
+# R-T13 (§20, SHOULD): Android controlled-side networking lifecycle. The foreground service must
+# observe network loss/availability and drive the existing direct-listener rebuild path (`listener =
+# None`, not a full server restart), and the R-T10 TCP keepalive must be paired with a foreground
+# partial wakelock so probes continue during radio sleep/Doze.
+r_t13=
+grep -qF 'ConnectivityManager.NetworkCallback' "$ms" || r_t13="$r_t13 no-NetworkCallback"
+grep -qF 'override fun onAvailable(network: Network)' "$ms" || r_t13="$r_t13 no-onAvailable"
+grep -qF 'override fun onLost(network: Network)' "$ms" || r_t13="$r_t13 no-onLost"
+grep -qF 'NetworkRequest.Builder().build()' "$ms" || r_t13="$r_t13 callback-not-all-networks"
+grep -qF 'NET_CAPABILITY_INTERNET' "$ms" && r_t13="$r_t13 internet-only-network-callback"
+grep -qF '@Synchronized' "$ms" || r_t13="$r_t13 callback-registration-unsynchronized"
+grep -qF 'connectivityManager.registerNetworkCallback(request, networkCallback)' "$ms" || r_t13="$r_t13 no-register"
+grep -qF 'connectivityManager.unregisterNetworkCallback(networkCallback)' "$ms" || r_t13="$r_t13 no-unregister"
+grep -qF 'FFI.rebuildDirectServerListener()' "$ms" || r_t13="$r_t13 no-kotlin-rebuild-call"
+grep -qF 'PowerManager.PARTIAL_WAKE_LOCK' "$ms" || r_t13="$r_t13 no-partial-wakelock"
+grep -qF 'rustdesk:network-keepalive' "$ms" || r_t13="$r_t13 no-wakelock-tag"
+grep -qF 'setReferenceCounted(false)' "$ms" || r_t13="$r_t13 wakelock-refcounted"
+grep -qF 'networkKeepaliveWakeLock.acquire()' "$ms" || r_t13="$r_t13 no-wakelock-acquire"
+grep -qF 'networkKeepaliveWakeLock.release()' "$ms" || r_t13="$r_t13 no-wakelock-release"
+grep -qF 'external fun rebuildDirectServerListener()' flutter/android/app/src/main/kotlin/ffi.kt || r_t13="$r_t13 no-kotlin-ffi"
+grep -qF 'Java_ffi_FFI_rebuildDirectServerListener' src/flutter_ffi.rs || r_t13="$r_t13 no-jni-export"
+grep -qF 'request_direct_listener_rebuild("android-network-change")' src/flutter_ffi.rs || r_t13="$r_t13 no-jni-rebuild-hook"
+grep -qF 'static LISTENER_REBUILD_EPOCH' src/direct_service.rs || r_t13="$r_t13 no-rebuild-epoch"
+grep -qF 'R-T13: rebuilding direct listener after Android network change' src/direct_service.rs || r_t13="$r_t13 no-rebuild-log"
+grep -qF 'listener = None;' src/direct_service.rs || r_t13="$r_t13 no-listener-none-rebuild"
+if [ -n "$r_t13" ]; then
+  echo "  FAIL R-T13: Android network-change listener rebuild / partial-wakelock keepalive missing:$r_t13"; rc=1
+else
+  echo "  ok  R-T13 Android network lifecycle: ConnectivityManager callback -> JNI rebuild hook -> listener=None rebind, with foreground partial wakelock for TCP keepalive"
+fi
 # R-X4 (custom_server): the custom-rendezvous-server-from-exe-name feature is excised. The installer
 # could embed a rendezvous/api server in the exe NAME (rustdesk-host=... ; rustdesk-licensed-<b64>.exe),
 # parsed by custom_server.rs and injected as custom-rendezvous-server / api-server at 4 sites
@@ -732,14 +762,19 @@ fi
 # -- RendezvousMessage (the ~22-variant oneof: RegisterPeer/PunchHole*/RegisterPk*/RequestRelay/
 # RelayResponse/TestNat*/FetchLocalAddr/LocalAddr/ConfigUpdate/SoftwareUpdate/PeerDiscovery/Online*/
 # KeyExchange/HealthCheck/HttpProxy*) + the NatType enum. The fork had ZERO senders + its sole reader
-# (common.rs get_next_nonkeyexchange_msg) was dead. KEPT: ConnType + ControlPermissions + HeaderEntry
-# (the three types still used on the direct path). The binary can no longer encode/parse a rendezvous
+# (common.rs get_next_nonkeyexchange_msg) was dead. KEPT: ConnType + ControlPermissions
+# (the two types still used on the direct path). The binary can no longer encode/parse a rendezvous
 # message (R-SV1 structural absence). The proto comment naming the removed types starts with `//`, so
 # the anchored `^message`/`^enum` greps below do not match it.
 if grep -qE '^message RendezvousMessage|^message PunchHole|^message RegisterPk|^message RequestRelay|^message RelayResponse|^enum NatType' libs/hbb_common/protos/rendezvous.proto; then
   echo "  FAIL R-D4 Stage 4/R-SV4: the rendezvous wire protocol (RendezvousMessage / PunchHole / NatType / ...) is back in rendezvous.proto"; rc=1
 else
-  echo "  ok  R-D4 Stage 4/R-SV4 rendezvous wire protocol absent from rendezvous.proto (only ConnType/ControlPermissions/HeaderEntry remain)"
+  echo "  ok  R-D4 Stage 4/R-SV4 rendezvous wire protocol absent from rendezvous.proto (only ConnType/ControlPermissions remain)"
+fi
+if grep -qE '^message HeaderEntry\b' libs/hbb_common/protos/rendezvous.proto; then
+  echo "  FAIL R-D4/R-SV6: HeaderEntry must stay absent from rendezvous.proto (generic HTTP headers are excised)"; rc=1
+else
+  echo "  ok  R-D4/R-SV6 HeaderEntry removed from rendezvous.proto (no generic HTTP header payload remains)"
 fi
 ra6_clean '\bRendezvousMessage\b|rendezvous_message::|get_next_nonkeyexchange_msg' 'R-D4 Stage 4/R-SV4 RendezvousMessage type + oneof submodule + its dead parser' || rc=1
 # R-SV4/R-SV10 / §18 (sovereignty): the Change-ID flow's rendezvous-dialing register_pk sender is
@@ -816,18 +851,23 @@ ra6_clean 'record_upload|api/record\b' 'R-SV6(b) session-record upload egress' |
 # the BUILDER's removal so no version_check_request / VersionCheck{Request,Response} / hardwired
 # api.rustdesk.com endpoint survives in the binary (Dart-side excision comments are `//`-filtered).
 ra6_clean 'version_check_request|VersionCheckRequest|VersionCheckResponse|VER_TYPE_RUSTDESK|api\.rustdesk\.com' 'R-SV3 version-check phone-home (api.rustdesk.com builder)' || rc=1
-# R-SV6(b)/R-SV3/R-X3 / §18: the HBBS heartbeat/sysinfo POST loop (start_hbbs_sync_async)
-# is excised — it POSTed get_sysinfo() to <api-server>/api/{heartbeat,sysinfo} and adopted
-# server `strategy` config via handle_config_options (R-X3's heartbeat re-home twin). The
-# endpoints + the worker + the re-home handler are gone; only the local broadcast channel
-# (signal_receiver/is_pro) survives in mod hbbs_http::sync.
-ra6_clean 'api/heartbeat|api/sysinfo|heartbeat_url|handle_config_options|start_hbbs_sync_async' 'R-SV6(b) HBBS heartbeat/sysinfo egress' || rc=1
+# R-SV6(b)/R-SV3/R-X3/R-SV4(e) / §18: the HBBS heartbeat/sysinfo POST loop and its
+# namespace are excised — it POSTed get_sysinfo() to <api-server>/api/{heartbeat,sysinfo}
+# and adopted server `strategy` config via handle_config_options (R-X3's heartbeat re-home
+# twin). The worker, re-home handler, and the old local stub namespace are all absent.
+if [ -e src/hbbs_http.rs ] || [ -d src/hbbs_http ]; then
+  echo "  FAIL R-SV6(b): src/hbbs_http* is back (heartbeat/sysinfo/account namespace must be absent)"; rc=1
+else
+  echo "  ok  R-SV6(b) hbbs_http namespace files absent"
+fi
+ra6_clean 'api/heartbeat|api/sysinfo|heartbeat_url|handle_config_options|start_hbbs_sync_async|start_hbbs_sync|hbbs_http::sync|mod hbbs_http|signal_receiver\(|is_pro\(' 'R-SV6(b) HBBS heartbeat/sysinfo egress + sync namespace' || rc=1
 # R-S18 / Appendix C #22: the viewer's auto-sent OS-credential leak is removed — upstream
 # built `os_login: Some(OSLogin {os-username, os-password})` + the hwid device fingerprint
 # into the LoginRequest on EVERY connect (client.rs create_login_msg), so a substituted
 # peer (R-S17) harvested the operator's stored OS creds with no interaction. The responder
 # already ignores os_login (0685c28); deleting the sender completes the symmetric removal.
 ra6_clean 'Some\(OSLogin|\.set_logon\(|ElevateWithLogon|elevate_with_logon' 'R-S18 viewer os_login + elevation-with-logon senders' || rc=1
+ra6_clean '\bget_hwid\b' 'R-S18 stable hardware-fingerprint helper' || rc=1
 # R-S18 / Appendix C: the OSLogin message + the `os_login` field (12) are now DELETED from
 # message.proto entirely (field 12 retired, not reused) and every responder read is gone. The
 # responder used to clear+ignore a parsed os_login (R-X14); now the peer cannot encode an OS
@@ -839,6 +879,25 @@ if grep -qE '^\s*message OSLogin|^\s*OSLogin +os_login' libs/hbb_common/protos/m
   echo "  FAIL R-S18: the OSLogin message or os_login field declaration is back in message.proto"; rc=1
 else
   echo "  ok  R-S18 OSLogin message + os_login field absent from message.proto (field 12 retired)"
+fi
+# R-S18 / R-S2 / R-S6: the legacy LoginRequest.password salted-hash credential is deleted too.
+# The PAKE is the sole authenticator; LoginRequest carries only session metadata. The deleted
+# credential/HWID tags stay reserved together so protobuf regeneration cannot silently reuse them.
+r_s18_password=
+grep -qE '^\s*bytes +password *= *2\b' libs/hbb_common/protos/message.proto && r_s18_password="$r_s18_password proto-field2-live"
+grep -qE '^\s*reserved +2, *12, *14;' libs/hbb_common/protos/message.proto || r_s18_password="$r_s18_password proto-deleted-tags-2-12-14-not-reserved"
+grep -RInE '\blr\.password\b' src/server --include='*.rs' 2>/dev/null | grep -v '//' >/dev/null && r_s18_password="$r_s18_password responder-lr-password-read"
+client_login_request_init=$(awk '/let mut lr = LoginRequest \{/{flag=1} flag{print} flag && /\.\.Default::default\(\)/{flag=0}' src/client.rs)
+if [ -z "$client_login_request_init" ]; then
+  r_s18_password="$r_s18_password client-loginrequest-init-missing"
+elif printf '%s\n' "$client_login_request_init" | grep -qE '^[[:space:]]*password[[:space:]]*:'; then
+  r_s18_password="$r_s18_password client-sends-password-field"
+fi
+ra6_clean '\bos_username\b|\bos_password\b' 'R-S18 Rust session-login OS-credential fields/parameters' || rc=1
+if [ -n "$r_s18_password" ]; then
+  echo "  FAIL R-S18: legacy LoginRequest.password credential deletion gap:$r_s18_password"; rc=1
+else
+  echo "  ok  R-S18 LoginRequest password/os_login/hwid tags retired (fields 2/12/14 reserved; no sender/responder read)"
 fi
 # R-S18 / Appendix C #22 (cont.): the persisted os-username/os-password OPTION READS the spec names
 # for deletion are gone from the Rust viewer — get_option("os-username"/"os-password") + should_auto_login()
@@ -1180,23 +1239,23 @@ if [ -z "$r_s10b" ]; then
 else
   echo "  FAIL R-S10(b): limiter bound weakened:$r_s10b"; rc=1
 fi
-# R-T4 (§20, part): the per-connection SYNC cleanup (privacy-off/screen-unblank, the video-fetch
-# notify, remove_connection, cursor-record-stop) MUST run on cancellation, so it lives in
-# Connection's Drop (which Rust runs when the run-loop future is dropped at its await), not only in
-# the post-loop tail it previously sat in (where a cancelled session left the console BLANKED — a
-# local-security regression — and the Server map diverged). Gate: the cleanup is in Drop + the tail
-# documents the move. (The CM-child kill_on_drop sub-part of R-T4 is DEFERRED-WITH-REASON, not a
-# pending TODO: the spec assumes the CM child is per-connection, but it is uid-SHARED — before
-# spawning, connection.rs:~4497 does connect_for_uid(uid,"_cm") and REUSES an existing CM, skipping
-# the spawn. A connection-owned kill_on_drop would therefore kill a CM still serving OTHER live
-# connections from the same uid (a cross-connection regression). The correct model for a shared
-# process is the current central CHILD_PROCESS reap + the CM self-exiting when its last IPC client
-# disconnects, so this sub-part MUST NOT be implemented as literally written.)
+# R-T4 (§20): per-connection cleanup and external notification MUST run on cancellation, so the
+# synchronous cleanup lives in Connection::Drop (which Rust runs when the run-loop future is dropped
+# at its await), not only in the normal post-loop tail. The CM lifecycle is shared on Linux headless
+# (connection.rs first reuses an existing uid-scoped `_cm` socket), so a literal per-connection
+# kill_on_drop would kill a CM still serving another connection. The equivalent invariant is now
+# explicit and gated: Drop sends Data::Close to the CM IPC client synchronously; `--cm-no-ui` opts
+# into idle-exit; and the CM process exits once its last IPC client is removed. The global
+# CHILD_PROCESS list is only the zombie reaper for spawned children, not the lifecycle control.
 r_t4_missing=
 grep -q 'the per-connection cleanup that was previously straight-line' src/server/connection.rs || r_t4_missing="$r_t4_missing drop-cleanup"
 grep -q 'have MOVED into' src/server/connection.rs || r_t4_missing="$r_t4_missing tail-note"
+grep -qF 'self.tx_to_cm.send(ipc::Data::Close)' src/server/connection.rs || r_t4_missing="$r_t4_missing drop-cm-close"
+grep -q 'static EXIT_ON_IDLE: AtomicBool' src/ui_cm_interface.rs || r_t4_missing="$r_t4_missing cm-idle-flag"
+grep -q 'set_exit_on_idle(true)' src/flutter.rs || r_t4_missing="$r_t4_missing cm-no-ui-idle-wire"
+grep -q 'no-ui connection manager idle after last IPC client; exiting' src/ui_cm_interface.rs || r_t4_missing="$r_t4_missing cm-idle-exit"
 if [ -z "$r_t4_missing" ]; then
-  echo "  ok  R-T4 (part) sync teardown cleanup folded into Connection::Drop (runs on cancellation)"
+  echo "  ok  R-T4 cancellation-safe teardown + CM notification/lifecycle (Drop close + no-ui idle-exit)"
 else
   echo "  FAIL R-T4: teardown cleanup not folded into Drop:$r_t4_missing"; rc=1
 fi
@@ -1334,12 +1393,22 @@ else
   echo "  ok  R-SV1/§8 device-fingerprint module removed (hbb_common/fingerprint.rs absent)"
 fi
 ra6_clean 'FingerprintingInfo|get_fingerprinting_info|fn expand_key|fn gf_mul|mod fingerprint' 'R-SV1/§8 device-fingerprint (hardware-id + hand-rolled-AES) machinery' || rc=1
-# R-SV6(b) / R-G4 / §18 (dial nobody): the OIDC ACCOUNT-LOGIN egress is excised. account.rs's
-# auth_task POSTed { deviceInfo: get_login_device_info() } to <api-server>/api/oidc/auth (a
-# device-fingerprint leak), polled /api/oidc/auth-query for an access token, and warmed
-# /api/login-options. OidcSession::account_auth is now a refuse-stub with NO network call (R-SV1
-# structural absence, not the empty-api-server pin). Only `//` doc comments name the endpoints.
-ra6_clean 'api/oidc|fn auth_task' 'R-SV6(b)/R-G4 OIDC account-login egress' || rc=1
+# R-SV6 / R-G4 / §18 (dial nobody): the whole Rust account/API HTTP family is excised.
+# The old OIDC/account module POSTed device info to /api/oidc/auth, polled /api/oidc/auth-query,
+# warmed /api/login-options, and the generic UI FFI could target arbitrary URLs. A direct-IP fork has
+# no account server and no caller-supplied HTTP request bridge, so this is absent, not refuse-stubbed.
+if [ -f src/hbbs_http/account.rs ]; then
+  echo "  FAIL R-SV6/R-G4: src/hbbs_http/account.rs is back (account login/OIDC module must be absent)"; rc=1
+else
+  echo "  ok  R-SV6/R-G4 account module file absent"
+fi
+ra6_clean 'api/oidc|api/login-options|fn auth_task|pub mod account|account_auth|main_account_auth|main_get_api_server' 'R-SV6/R-G4 Rust account/OIDC FFI family' || rc=1
+ra6_clean 'post_request_sync|http_request_sync|create_http_client_async|get_url_for_tls|mod http_client|HbbHttpResponse|ASYNC_HTTP_STATUS|get_async_http_status|pub fn http_request|pub fn post_request|main_http_request|main_get_http_status' 'R-SV6/R-G4 generic Rust HTTP request bridge' || rc=1
+if grep -qE '^[[:space:]]*reqwest[[:space:]]*=|^name = "reqwest"$' Cargo.toml Cargo.lock; then
+  echo "  FAIL R-SV6/R-G4: reqwest must not be in Cargo.toml/Cargo.lock after generic HTTP egress excision"; rc=1
+else
+  echo "  ok  R-SV6/R-G4 reqwest dependency graph absent"
+fi
 # R-SV4(b) / R-D5 / §18: the common.rs NAT-type/IPv6 STUN probes are removed — test_nat_ipv4 /
 # test_ipv6 -> stun_ipv4_test/stun_ipv6_test resolved + queried hardcoded public STUN servers
 # (stun.l.google.com etc.). A direct-IP fork does no NAT traversal; the probes were dead
@@ -1635,22 +1704,24 @@ fi
 # R-S5 / R-A3 (seal the set_raw plaintext-tunnel escape — Appendix C #4, a Tier-1 finding): upstream's
 # port-forward/RDP tunnel calls FramedStream::set_raw AFTER login to DROP the secretbox, so the
 # tunnelled bytes cross an otherwise-keyed session in plaintext ("the plaintext path is deleted, not
-# defaulted off", §1; acceptance criterion 3). The fork seals it in two layers: (1) enable-tunnel=N is
-# pinned in PINNED_SETTINGS (gated above under R-S16), so the only set_raw caller — the port-forward
-# loop (connection.rs try_port_forward_loop) — is policy-unreachable; and (2) FramedStream::set_raw is
-# made FAIL-CLOSED — it matches the keying state, sets raw ONLY on the unkeyed codec and PANICS
-# rather than downgrade a keyed stream (R-A3, "absent or assert-only" per R-A6). Layer 2 is the
-# structural backstop: were a future edit to re-reach set_raw on a keyed stream, it aborts instead of
-# leaking plaintext. Gate that the R-A3 downgrade-refusal assert stays present — its removal would
-# silently restore the plaintext tunnel, so the absence IS the regression (a presence gate).
+# defaulted off", §1; acceptance criterion 3). The hardened fork must not preserve a raw tunnel and
+# merely hope policy keeps it unreachable; both viewer-side and controlled-side tunnel entry points
+# must explicitly refuse before any downgrade, and app code must have ZERO set_raw callers. The
+# hbb_common set_raw panic remains only as a defensive assert for future misuse, not as the primary
+# closure evidence.
 r_s5_missing=
 grep -q 'fn set_raw' libs/hbb_common/src/tcp.rs                                || r_s5_missing="$r_s5_missing set_raw-fn"
 grep -qF 'Unkeyed(framed) => framed.codec_mut().set_raw()' libs/hbb_common/src/tcp.rs || r_s5_missing="$r_s5_missing unkeyed-only-raw"
 grep -qF 'R-A3: set_raw on a keyed session stream' libs/hbb_common/src/tcp.rs   || r_s5_missing="$r_s5_missing a3-assert"
+if grep -rIn '\.set_raw(' src --include='*.rs' 2>/dev/null | grep -vE ':[0-9]+:[[:space:]]*//' | grep -q .; then
+  r_s5_missing="$r_s5_missing app-set_raw-caller-present"
+fi
+grep -qF 'Port forwarding/RDP tunnel is unavailable in this direct-IP hardened build' src/port_forward.rs      || r_s5_missing="$r_s5_missing viewer-refusal-missing"
+grep -qF 'Port forwarding/RDP tunnel is unavailable in this direct-IP hardened build' src/server/connection.rs || r_s5_missing="$r_s5_missing controlled-refusal-missing"
 if [ -n "$r_s5_missing" ]; then
-  echo "  FAIL R-S5/R-A3: the set_raw plaintext-tunnel seal regressed (FramedStream::set_raw must fail-closed — raw only on the unkeyed codec, panic on a keyed stream — refusing to downgrade):$r_s5_missing"; rc=1
+  echo "  FAIL R-S5/R-A3: the plaintext-tunnel seal regressed (port-forward/RDP must refuse before any raw downgrade; app code must have no set_raw caller; hbb_common set_raw remains defensive-only):$r_s5_missing"; rc=1
 else
-  echo "  ok  R-S5/R-A3 set_raw seal intact (fail-closed: raw only on the unkeyed codec, panics on a keyed stream; enable-tunnel=N pins the only caller unreachable)"
+  echo "  ok  R-S5/R-A3 port-forward/RDP tunnel refuses before raw mode; app code has no set_raw caller; hbb_common set_raw remains an assert-only defensive backstop"
 fi
 # R-X7 (Rust OTP excision): the rotating one-time (temporary) password is EXCISED from the Rust tree
 # — the permanent password is the sole credential and sole CPace PRS (R-S9/R-P1). R-A6 lists
@@ -1743,8 +1814,67 @@ grep -rq '0\.0\.0\.0' scripts/build-debian.sh scripts/build-android.sh scripts/b
 # SHA-256, NOT cross-rebuild byte-identity" — apksigner re-padding makes byte-identity impractical).
 { grep -q 'DOUBLE_BUILD' scripts/build-debian.sh    && grep -q 'double-build SHA mismatch' scripts/build-debian.sh; }        || rb_struct="$rb_struct debian:no-double-build-assert"
 { grep -q 'DOUBLE_BUILD' scripts/build-windows-vm.sh && grep -q 'double-build .* SHA mismatch' scripts/build-windows-vm.sh; } || rb_struct="$rb_struct windows:no-double-build-assert"
+{ grep -q 'WINDOWS_BUILD_SOURCE' scripts/build-windows-vm.sh && grep -q 'git ls-files -z' scripts/build-windows-vm.sh; }       || rb_struct="$rb_struct windows:no-worktree-source-mode"
+grep -qF 'Dockerfile.win-helper' scripts/online-fetch.sh          || rb_struct="$rb_struct windows:helper-image-not-built-online"
+git ls-files --error-unmatch scripts/Dockerfile.win-helper >/dev/null 2>&1 || rb_struct="$rb_struct windows:helper-dockerfile-not-tracked"
+[ -s scripts/Dockerfile.win-helper ]                              || rb_struct="$rb_struct windows:helper-dockerfile-missing"
+grep -qF 'WIN_HELPER_IMAGE' scripts/build-windows-vm.sh           || rb_struct="$rb_struct windows:no-helper-image-build"
+grep -qF 'WIN_HELPER_IMAGE' scripts/provision-windows-vm.sh       || rb_struct="$rb_struct windows:no-helper-image-provision"
+grep -qF 'WIN_HELPER_IMAGE' scripts/verify-windows-golden.sh      || rb_struct="$rb_struct windows:no-helper-image-verify"
+grep -qF -- '--network=none' scripts/build-windows-vm.sh          || rb_struct="$rb_struct windows:helper-not-offline-build"
+grep -qF -- '--network=none' scripts/provision-windows-vm.sh      || rb_struct="$rb_struct windows:helper-not-offline-provision"
+grep -qF -- '--network=none' scripts/verify-windows-golden.sh     || rb_struct="$rb_struct windows:helper-not-offline-verify"
+if grep -qF 'apt-get' scripts/build-windows-vm.sh scripts/provision-windows-vm.sh scripts/verify-windows-golden.sh; then
+  rb_struct="$rb_struct windows:networked-helper-apt-get-present"
+fi
+if grep -qE 'debian:stable-slim|ubuntu:24\.04' scripts/build-windows-vm.sh scripts/provision-windows-vm.sh scripts/verify-windows-golden.sh; then
+  rb_struct="$rb_struct windows:ad-hoc-helper-base-present"
+fi
+grep -q '^SHA256_WIN11_GOLDEN_QCOW2=' scripts/pins.env                                                  || rb_struct="$rb_struct windows:golden-hash-unpinned"
+grep -qF 'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"' scripts/build-windows-vm.sh            || rb_struct="$rb_struct windows:build-no-golden-hash"
+grep -qF 'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"' scripts/provision-windows-vm.sh        || rb_struct="$rb_struct windows:provision-no-golden-hash"
+grep -qF 'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"' scripts/verify-windows-golden.sh       || rb_struct="$rb_struct windows:verify-no-golden-hash"
 if [ -n "$rb_struct" ]; then echo "  FAIL R-B5b/B8/B9/B10 build-reproducibility structure regressed:$rb_struct"; rc=1; else
-  echo "  ok  R-B5b/B8/B9/B10 builds: digest-pinned base + --network=none offline compile + SHA self-verify + R-B2 double-build A==B assertion (debian & windows; android exempt §12.1); no 0.0.0.0 (R-D3)"; fi
+  echo "  ok  R-B5b/B8/B9/B10 builds: digest-pinned base + --network=none offline compile + SHA self-verify + R-B2 double-build A==B assertion (debian & windows; android exempt §12.1); Windows helper image is built only during online-fetch then used offline; golden qcow2 hash is enforced; Windows can validate tracked worktree snapshots; no 0.0.0.0 (R-D3)"; fi
+
+echo "== (6c-b) Flutter/Dart lockfile is authoritative (R-R1/R-B12) =="
+dart_lock_bad=
+if grep -qE 'NOT consistent|DOES NOT build from the committed lock|open R-B12|RESTORES the committed pubspec.lock|flutter pub get RESOLVES A DIFFERENT' scripts/dart-verify.sh scripts/online-fetch.sh scripts/build-debian.sh scripts/android-apk-build.sh scripts/build-windows.ps1 scripts/run-build.ps1; then
+  dart_lock_bad="$dart_lock_bad stale-lockfile-drift-language"
+fi
+grep -q 'dart pub get --offline' scripts/dart-verify.sh          || dart_lock_bad="$dart_lock_bad dart-verify:no-offline-pub-resolve"
+grep -q 'pubspec.lock changed during offline pub resolution' scripts/build-debian.sh      || dart_lock_bad="$dart_lock_bad debian:no-pub-lock-drift-assert"
+grep -q 'pubspec.lock changed during offline pub resolution' scripts/android-apk-build.sh || dart_lock_bad="$dart_lock_bad android:no-pub-lock-drift-assert"
+grep -q 'pubspec.lock changed during offline pub resolution' scripts/build-windows.ps1    || dart_lock_bad="$dart_lock_bad windows:no-pub-lock-drift-assert"
+grep -q 'pubspec.lock drifted during pub cache staging' scripts/online-fetch.sh           || dart_lock_bad="$dart_lock_bad online-fetch:no-pub-lock-drift-assert"
+if [ -n "$dart_lock_bad" ]; then echo "  FAIL R-R1/R-B12 Dart lockfile authority regressed:$dart_lock_bad"; rc=1; else
+  echo "  ok  R-R1/R-B12 Dart lockfile authority: pub cache staging, verifier, and all offline build paths fail if pubspec.lock drifts"; fi
+
+# (6c-a) Android build pins must be a single manifest, not a grab bag of inherited literals.
+# The settings.gradle/plugin pins and the app-level stdlib/runtime pin must match scripts/pins.env;
+# otherwise the R-B5a/R-B9 "exact toolchain" claim is false even if the APK happens to compile.
+echo "== (6c-a) Android Gradle/Kotlin pins match scripts/pins.env (R-B5a/R-B9) =="
+android_pin_bad=
+pin_val() { grep -E "^$1=" scripts/pins.env | sed -E 's/^[^"]*"([^"]*)".*/\1/'; }
+agp_pin="$(pin_val ANDROID_AGP_VERSION)"
+kotlin_pin="$(pin_val ANDROID_KOTLIN_VERSION)"
+kotlin_stdlib_pin="$(pin_val ANDROID_KOTLIN_STDLIB_VERSION)"
+gradle_pin="$(pin_val ANDROID_GRADLE_WRAPPER)"
+compile_sdk_pin="$(pin_val ANDROID_COMPILE_SDK)"
+target_sdk_pin="$(pin_val ANDROID_TARGET_SDK)"
+min_sdk_pin="$(pin_val ANDROID_MIN_SDK)"
+grep -qF "id \"com.android.application\" version \"${agp_pin}\"" flutter/android/settings.gradle || android_pin_bad="$android_pin_bad agp"
+grep -qF "id \"org.jetbrains.kotlin.android\" version \"${kotlin_pin}\"" flutter/android/settings.gradle || android_pin_bad="$android_pin_bad kotlin-plugin"
+grep -qF "gradle-${gradle_pin}-all.zip" flutter/android/gradle/wrapper/gradle-wrapper.properties || android_pin_bad="$android_pin_bad gradle-wrapper"
+grep -qE "compileSdkVersion[[:space:]]+${compile_sdk_pin}\\b" flutter/android/app/build.gradle || android_pin_bad="$android_pin_bad compile-sdk"
+grep -qE "targetSdkVersion[[:space:]]+${target_sdk_pin}\\b" flutter/android/app/build.gradle || android_pin_bad="$android_pin_bad target-sdk"
+grep -qE "minSdkVersion[[:space:]]+${min_sdk_pin}\\b" flutter/android/app/build.gradle || android_pin_bad="$android_pin_bad min-sdk"
+grep -qF "strictly(\"${kotlin_stdlib_pin}\")" flutter/android/app/build.gradle || android_pin_bad="$android_pin_bad kotlin-stdlib"
+if [ -n "$android_pin_bad" ]; then
+  echo "  FAIL R-B5a/R-B9: Android build pins drift from scripts/pins.env:$android_pin_bad"; rc=1
+else
+  echo "  ok  Android AGP/Kotlin plugin/Gradle/SDK pins and app kotlin-stdlib runtime pin match scripts/pins.env"
+fi
 
 # (6c-i) R-B10 the offline-build network CANARY (MUST — "proven, not trusted"): the spec mandates a
 # canary build.rs that attempts an outbound connect and FAILS the compile if the network is reachable,

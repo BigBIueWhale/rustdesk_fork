@@ -15,12 +15,10 @@
 # Run order (R-B10): host-provision.sh -> online-fetch.sh (once, or on a pins.env
 # change) -> build-* (offline) -> cleanup.sh
 #
-# NOTE: every SHA-256 in pins.env is currently the R-B12 fail-closed sentinel, so
-# fetch_verify aborts before trusting any download. That is intentional: R-B12
-# requires each first pin be established by an audited, dual-sourced bootstrap
-# (publisher hash/signature cross-checked) and recorded in pins.env FIRST. This
-# script is the structure that then enforces it. It is NOT run as part of "fork
-# creation".
+# R-B12 requires each first pin be established by an audited, dual-sourced
+# bootstrap (publisher hash/signature cross-checked) and recorded in pins.env
+# BEFORE this script is allowed to fetch it. fetch_verify enforces that by
+# rejecting the SHA_PENDING sentinel before touching the network.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
@@ -156,6 +154,20 @@ build_android_builder_image() {
         -t "$tag" -f "$LIB_DIR/Dockerfile.android-builder" "$LIB_DIR"
 }
 
+# ── The pinned Windows VM helper image: genisoimage + libguestfs + MSI tooling ──
+# The Windows artifact path uses host-side helper containers for UDF media creation,
+# libguestfs inspection/extraction, and MSI canonicalization. Those helpers are build
+# inputs, so their apt installs belong HERE (the one networked phase), not inside
+# build-windows-vm.sh/provision-windows-vm.sh/verify-windows-golden.sh.
+build_windows_helper_image() {
+    require_cmd docker
+    case "$SHA256_BASEIMAGE_UBUNTU_2404" in *"${SHA_PENDING}"*) die "base-image digest is the R-B12 sentinel — record it in pins.env first" ;; esac
+    local tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-helper"
+    log "docker build: $tag (FROM the pinned ubuntu:24.04 + Windows VM helper deps, Dockerfile.win-helper)"
+    docker build --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_2404}" \
+        -t "$tag" -f "$LIB_DIR/Dockerfile.win-helper" "$LIB_DIR"
+}
+
 # ── The FRB codegen tool (R-B7): built FOR ubuntu:18.04, staged to ./online/frb-tool ──
 # build_one needs flutter_rust_bridge_codegen to (re)generate the bridge; it cannot
 # `cargo install` it offline (its deps are not in the main vendor set), so build it HERE
@@ -180,8 +192,8 @@ build_frb_codegen() {
 }
 
 # ── The flutter pub cache (R-B7): hosted + git deps, staged to ./online/pub-cache ──
-# build_one resolves the flutter project --offline from this cache (the committed pubspec.lock
-# pins it, so it is reproducible). Populated HERE (networked) by a real flutter pub get.
+# build_one resolves the flutter project --offline from this cache. The committed
+# pubspec.lock is the pin; this networked staging step fails if pub would rewrite it.
 stage_pub_cache() {
     require_cmd docker
     local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
@@ -198,7 +210,15 @@ stage_pub_cache() {
         # /flutterproj is RO; pub get writes .dart_tool, so copy to a writable dir. The committed
         # pubspec.lock pins the versions; the cache fills PUB_CACHE (hosted + the git-dep clones).
         cp -a /flutterproj /tmp/proj
-        cd /tmp/proj && flutter pub get
+        cd /tmp/proj
+        lock_before="$(sha256sum pubspec.lock | awk "{print \$1}")"
+        flutter pub get
+        lock_after="$(sha256sum pubspec.lock | awk "{print \$1}")"
+        [ "$lock_before" = "$lock_after" ] || {
+            echo "flutter/pubspec.lock drifted during pub cache staging; regenerate/commit the lock under the pinned Flutter SDK" >&2
+            diff -u /flutterproj/pubspec.lock pubspec.lock || true
+            exit 1
+        }
     '
 }
 
@@ -536,6 +556,7 @@ main() {
     fetch_vcpkg_and_images
     build_deb_builder_image
     build_android_builder_image
+    build_windows_helper_image
     build_frb_codegen
     stage_pub_cache
     stage_vcpkg_distfiles

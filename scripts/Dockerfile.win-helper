@@ -1,0 +1,12 @@
+# scripts/Dockerfile.win-helper — pinned helper tooling for the §12.2 Windows VM harness.
+#
+# build-windows-vm.sh, provision-windows-vm.sh, and verify-windows-golden.sh must not apt-install
+# host helper tools while producing or verifying artifacts. online-fetch.sh builds this image during
+# the single networked phase; every later use runs with --network=none against the local image.
+ARG BASE_DIGEST
+FROM ubuntu:24.04@${BASE_DIGEST}
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      bash ca-certificates genisoimage libguestfs-tools linux-image-generic \
+      python3 python3-olefile \
+    && rm -rf /var/lib/apt/lists/*

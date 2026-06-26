@@ -13,22 +13,24 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
+load_pins
 
 STATE_DIR="$REPO_ROOT/.harness-state"
 GOLDEN="$STATE_DIR/win11-golden.qcow2"
+WIN_HELPER_IMAGE="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-helper"
 
 require_cmd docker
 [ -f "$GOLDEN" ] || die "golden not found: $GOLDEN (run provision-windows-vm.sh first)"
 [ -e /dev/kvm ] || die "/dev/kvm absent — the libguestfs-in-docker appliance needs it"
+verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"
+docker image inspect "$WIN_HELPER_IMAGE" >/dev/null 2>&1 || die "Windows helper image missing: $WIN_HELPER_IMAGE — run scripts/online-fetch.sh"
 
-log "inspecting the golden read-only via libguestfs (throwaway debian container; ~2-3 min to apt-in the tools)"
+log "inspecting the golden read-only via libguestfs (offline Windows helper image)"
 # virt-ls/virt-cat each auto-inspect the Windows root, so paths are C:-relative with '/'. Two appliance
 # boots (root listing + the definitive done-marker), no fail-cascade. The done marker is conclusive:
 # win-guest-setup.ps1 writes C:\guest-setup-done.txt ONLY at its very end (after the vcpkg natives),
 # immediately before Stop-Computer — so its presence proves the whole toolchain install completed.
-out="$(docker run --rm --device /dev/kvm -v "$STATE_DIR:/state:ro" debian:stable-slim bash -c '
-  apt-get update -qq >/dev/null 2>&1
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libguestfs-tools linux-image-generic >/dev/null 2>&1
+out="$(docker run --rm --network=none --device /dev/kvm -v "$STATE_DIR:/state:ro" "$WIN_HELPER_IMAGE" bash -c '
   export LIBGUESTFS_BACKEND=direct
   echo "=== C:\\ root listing (expect flutter, vcpkg, guest-setup-done.txt, online, src) ==="
   virt-ls -a /state/win11-golden.qcow2 / 2>&1 | sort || echo "(virt-ls of C:\\ failed — OS not inspectable)"

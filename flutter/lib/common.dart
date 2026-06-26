@@ -45,7 +45,6 @@ import 'package:flutter_hbb/native/win32.dart'
     if (dart.library.html) 'package:flutter_hbb/web/win32.dart';
 import 'package:flutter_hbb/native/common.dart'
     if (dart.library.html) 'package:flutter_hbb/web/common.dart';
-import 'package:flutter_hbb/utils/http_service.dart' as http;
 
 final globalKey = GlobalKey<NavigatorState>();
 final navigationBarKey = GlobalKey();
@@ -2657,12 +2656,6 @@ connect(BuildContext context, String id,
   }
 }
 
-Map<String, String> getHttpHeaders() {
-  return {
-    'Authorization': 'Bearer ${bind.mainGetLocalOption(key: 'access_token')}'
-  };
-}
-
 // Simple wrapper of built-in types for reference use.
 class SimpleWrapper<T> {
   T value;
@@ -3913,17 +3906,6 @@ String getConnectionText(bool secure, bool direct, String streamType) {
     return connectionText;
   } else {
     return '$connectionText ($streamType)';
-  }
-}
-
-String decode_http_response(http.Response resp) {
-  try {
-    // https://github.com/rustdesk/rustdesk-server-pro/discussions/758
-    return utf8.decode(resp.bodyBytes, allowMalformed: true);
-  } catch (e) {
-    debugPrint('Failed to decode response as UTF-8: $e');
-    // Fallback to bodyString which handles encoding automatically
-    return resp.body;
   }
 }
 

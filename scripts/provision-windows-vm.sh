@@ -25,13 +25,16 @@ load_pins
 STATE_DIR="$REPO_ROOT/.harness-state"
 GOLDEN="$STATE_DIR/win11-golden.qcow2"
 DOMAIN="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-golden"
+WIN_HELPER_IMAGE="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-helper"
 AUTOUNATTEND_ISO="$STATE_DIR/autounattend.iso"   # the PROVISION CD: autounattend.xml + the setup .ps1
 TOOLCHAINS_ISO="$STATE_DIR/toolchains.iso"        # the TOOLCHAINS CD: the staged ./online windows artifacts
 SRC_ISO="$STATE_DIR/src.iso"                      # the SRC CD: the committed repo (res/vcpkg etc.) for warming
 
 preflight() {
-    require_cmd virt-install virsh qemu-img xorriso
+    require_cmd virt-install virsh qemu-img xorriso docker
     [ -d /usr/share/OVMF ] || die "OVMF (UEFI firmware) not found — run host-provision.sh first (R-B11)"
+    [ -e /dev/kvm ] || die "/dev/kvm absent — Windows helper libguestfs inspection needs it"
+    docker image inspect "$WIN_HELPER_IMAGE" >/dev/null 2>&1 || die "Windows helper image missing: $WIN_HELPER_IMAGE — run scripts/online-fetch.sh"
     require_online_complete
     [ -f "$SCRIPT_DIR/autounattend.xml" ]    || die "scripts/autounattend.xml missing (the unattended-install answer file)"
     [ -f "$SCRIPT_DIR/win-guest-setup.ps1" ] || die "scripts/win-guest-setup.ps1 missing (the guest toolchain installer)"
@@ -88,9 +91,7 @@ build_media() {
 # qcow2 is write-locked while it runs). A libguestfs error (e.g. a reboot relocked the image
 # mid-read) returns non-zero -> treated as "not done yet", so this never yields a false positive.
 golden_has_done_marker() {
-    docker run --rm --device /dev/kvm -v "$STATE_DIR:/state:ro" debian:stable-slim bash -c '
-        apt-get update -qq >/dev/null 2>&1
-        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libguestfs-tools linux-image-generic >/dev/null 2>&1
+    docker run --rm --network=none --device /dev/kvm -v "$STATE_DIR:/state:ro" "$WIN_HELPER_IMAGE" bash -c '
         export LIBGUESTFS_BACKEND=direct
         virt-cat -a /state/win11-golden.qcow2 /guest-setup-done.txt >/dev/null 2>&1
     ' >/dev/null 2>&1
@@ -100,13 +101,14 @@ build_golden() {
     mkdir -p "$STATE_DIR"
     # Reuse an existing golden ONLY if it actually finished (has the done-marker). A qcow2 left behind by
     # a FAILED provision has no marker — silently reusing it (the old behaviour) falsely reports success on
-    # a stale image, so rebuild it instead. (Delete the marker'd golden by hand to force a fresh rebuild.)
+    # a stale image. A present qcow2 is now immutable/pinned input: mismatch or no marker fails loud so the
+    # operator can delete/re-provision deliberately instead of the script mutating a present-but-wrong file.
     if [ -f "$GOLDEN" ]; then
+        verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"
         if golden_has_done_marker; then
             log "golden already exists + has the done-marker: $GOLDEN (delete to force a rebuild)"; return 0
         fi
-        log "golden exists but LACKS the done-marker (stale/failed provision) — deleting + rebuilding: $GOLDEN"
-        rm -f "$GOLDEN"
+        die "golden exists but lacks guest-setup-done.txt (stale/failed provision): $GOLDEN — delete it deliberately before rebuilding"
     fi
     build_media
     # NB no --tpm: this host's session libvirt offers only TPM 'passthrough' (a physical TPM),
@@ -177,6 +179,7 @@ build_golden() {
             if [ "$offstreak" -ge 2 ] && [ "$checked" -eq 0 ]; then
                 checked=1
                 if golden_has_done_marker; then
+                    verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"
                     log "golden Win11 template built: $GOLDEN (guest-setup-done.txt present) — clone an overlay, never boot this"
                     break
                 fi

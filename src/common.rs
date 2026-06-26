@@ -11,9 +11,7 @@ use serde_json::{json, Map, Value};
 use hbb_common::whoami;
 use hbb_common::{
     anyhow::anyhow,
-    async_recursion::async_recursion,
     bail, base64,
-    bytes::Bytes,
     config::{self, keys, Config, LocalConfig},
     futures_util::future::poll_fn,
     get_version_number, log,
@@ -22,7 +20,6 @@ use hbb_common::{
     rendezvous_proto::*,
     socket_client,
     sodiumoxide::crypto::sign,
-    tls::{get_cached_tls_accept_invalid_cert, get_cached_tls_type, upsert_tls_cache, TlsType},
     tokio::{
         self,
         time::{Duration, Instant, Interval},
@@ -30,10 +27,7 @@ use hbb_common::{
     ResultType,
 };
 
-use crate::{
-    hbbs_http::{create_http_client_async, get_url_for_tls},
-    ui_interface::{get_option, set_option},
-};
+use crate::ui_interface::{get_option, set_option};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum GrabState {
@@ -878,292 +872,6 @@ pub fn get_audit_server(api: String, custom: String, typ: String) -> String {
     format!("{}/api/audit/{}", url, typ)
 }
 
-fn parse_json_header_entries(header: &str) -> ResultType<Vec<HeaderEntry>> {
-    let v: Value = serde_json::from_str(header)?;
-    if let Value::Object(obj) = v {
-        Ok(obj
-            .iter()
-            .map(|(key, value)| HeaderEntry {
-                name: key.clone(),
-                value: value.as_str().unwrap_or_default().into(),
-                ..Default::default()
-            })
-            .collect())
-    } else {
-        Err(anyhow!("HTTP header information parsing failed!"))
-    }
-}
-
-/// Returns (status_code, body_text). Separating status so the wrapper can decide on fallback.
-async fn post_request_http(url: &str, body: &str, header: &str) -> ResultType<(u16, String)> {
-    let proxy_conf = Config::get_socks();
-    let tls_url = get_url_for_tls(url, &proxy_conf);
-    let tls_type = get_cached_tls_type(tls_url);
-    let danger_accept_invalid_cert = get_cached_tls_accept_invalid_cert(tls_url);
-    let response = post_request_(
-        url,
-        tls_url,
-        body.to_owned(),
-        header,
-        tls_type,
-        danger_accept_invalid_cert,
-        danger_accept_invalid_cert,
-    )
-    .await?;
-    let status = response.status().as_u16();
-    let text = response.text().await?;
-    Ok((status, text))
-}
-
-/// POST request with raw TCP proxy support.
-/// - If `USE_RAW_TCP_FOR_API` is "Y" and WS is off, goes directly through TCP proxy.
-/// - Otherwise tries HTTP first; on connection failure or 5xx status,
-///   falls back to TCP proxy if WS is off.
-/// - 4xx responses are returned as-is (server is reachable, business logic error).
-/// - If fallback also fails, returns the original HTTP result (text or error).
-pub async fn post_request(url: String, body: String, header: &str) -> ResultType<String> {
-    // Direct-IP fork: the rendezvous TCP-proxy fallback was excised (§8); HTTP is always direct.
-    post_request_http(&url, &body, header)
-        .await
-        .map(|(_status, text)| text)
-}
-
-#[async_recursion]
-async fn post_request_(
-    url: &str,
-    tls_url: &str,
-    body: String,
-    header: &str,
-    tls_type: Option<TlsType>,
-    danger_accept_invalid_cert: Option<bool>,
-    original_danger_accept_invalid_cert: Option<bool>,
-) -> ResultType<reqwest::Response> {
-    let mut req = create_http_client_async(
-        tls_type.unwrap_or(TlsType::Rustls),
-        danger_accept_invalid_cert.unwrap_or(false),
-    )
-    .post(url);
-    if !header.is_empty() {
-        let tmp: Vec<&str> = header.split(": ").collect();
-        if tmp.len() == 2 {
-            req = req.header(tmp[0], tmp[1]);
-        }
-    }
-    req = req.header("Content-Type", "application/json");
-    let to = std::time::Duration::from_secs(12);
-    if tls_type.is_some() && danger_accept_invalid_cert.is_some() {
-        // This branch is used to reduce a `clone()` when both `tls_type` and
-        // `danger_accept_invalid_cert` are cached.
-        match req.body(body.clone()).timeout(to).send().await {
-            Ok(resp) => {
-                upsert_tls_cache(tls_url, tls_type.unwrap_or(TlsType::Rustls));
-                Ok(resp)
-            }
-            Err(e) => Err(anyhow!("{:?}", e)),
-        }
-    } else {
-        match req.body(body.clone()).timeout(to).send().await {
-            Ok(resp) => {
-                upsert_tls_cache(tls_url, tls_type.unwrap_or(TlsType::Rustls));
-                Ok(resp)
-            }
-            Err(e) => {
-                if (tls_type.is_none() || danger_accept_invalid_cert.is_none()) && e.is_request() {
-                    if danger_accept_invalid_cert.is_none() {
-                        log::warn!(
-                            "HTTP request failed: {:?}, try again, danger accept invalid cert",
-                            e
-                        );
-                        post_request_(
-                            url,
-                            tls_url,
-                            body,
-                            header,
-                            tls_type,
-                            Some(true),
-                            original_danger_accept_invalid_cert,
-                        )
-                        .await
-                    } else {
-                        log::warn!("HTTP request failed: {:?}, try again with native-tls", e);
-                        post_request_(
-                            url,
-                            tls_url,
-                            body,
-                            header,
-                            Some(TlsType::NativeTls),
-                            original_danger_accept_invalid_cert,
-                            original_danger_accept_invalid_cert,
-                        )
-                        .await
-                    }
-                } else {
-                    Err(anyhow!("{:?}", e))
-                }
-            }
-        }
-    }
-}
-
-#[tokio::main(flavor = "current_thread")]
-pub async fn post_request_sync(url: String, body: String, header: &str) -> ResultType<String> {
-    post_request(url, body, header).await
-}
-
-#[async_recursion]
-async fn get_http_response_async(
-    url: &str,
-    tls_url: &str,
-    method: &str,
-    body: Option<String>,
-    header: &str,
-    tls_type: Option<TlsType>,
-    danger_accept_invalid_cert: Option<bool>,
-    original_danger_accept_invalid_cert: Option<bool>,
-) -> ResultType<reqwest::Response> {
-    let http_client = create_http_client_async(
-        tls_type.unwrap_or(TlsType::Rustls),
-        danger_accept_invalid_cert.unwrap_or(false),
-    );
-    let normalized_method = method.to_ascii_lowercase();
-    let mut http_client = match normalized_method.as_str() {
-        "get" => http_client.get(url),
-        "post" => http_client.post(url),
-        "put" => http_client.put(url),
-        "delete" => http_client.delete(url),
-        _ => return Err(anyhow!("The HTTP request method is not supported!")),
-    };
-    for entry in parse_json_header_entries(header)? {
-        http_client = http_client.header(entry.name, entry.value);
-    }
-
-    if tls_type.is_some() && danger_accept_invalid_cert.is_some() {
-        if let Some(b) = body {
-            http_client = http_client.body(b);
-        }
-        match http_client
-            .timeout(std::time::Duration::from_secs(12))
-            .send()
-            .await
-        {
-            Ok(resp) => {
-                upsert_tls_cache(tls_url, tls_type.unwrap_or(TlsType::Rustls));
-                Ok(resp)
-            }
-            Err(e) => Err(anyhow!("{:?}", e)),
-        }
-    } else {
-        if let Some(b) = body.clone() {
-            http_client = http_client.body(b);
-        }
-
-        match http_client
-            .timeout(std::time::Duration::from_secs(12))
-            .send()
-            .await
-        {
-            Ok(resp) => {
-                upsert_tls_cache(tls_url, tls_type.unwrap_or(TlsType::Rustls));
-                Ok(resp)
-            }
-            Err(e) => {
-                if (tls_type.is_none() || danger_accept_invalid_cert.is_none()) && e.is_request() {
-                    if danger_accept_invalid_cert.is_none() {
-                        log::warn!(
-                            "HTTP request failed: {:?}, try again, danger accept invalid cert",
-                            e
-                        );
-                        get_http_response_async(
-                            url,
-                            tls_url,
-                            method,
-                            body,
-                            header,
-                            tls_type,
-                            Some(true),
-                            original_danger_accept_invalid_cert,
-                        )
-                        .await
-                    } else {
-                        log::warn!("HTTP request failed: {:?}, try again with native-tls", e);
-                        get_http_response_async(
-                            url,
-                            tls_url,
-                            method,
-                            body,
-                            header,
-                            Some(TlsType::NativeTls),
-                            original_danger_accept_invalid_cert,
-                            original_danger_accept_invalid_cert,
-                        )
-                        .await
-                    }
-                } else {
-                    Err(anyhow!("{:?}", e))
-                }
-            }
-        }
-    }
-}
-
-/// Returns (status_code, json_string) so the caller can inspect the status
-/// without re-parsing the serialized JSON.
-async fn http_request_http(
-    url: &str,
-    method: &str,
-    body: Option<String>,
-    header: &str,
-) -> ResultType<(u16, String)> {
-    let proxy_conf = Config::get_socks();
-    let tls_url = get_url_for_tls(url, &proxy_conf);
-    let tls_type = get_cached_tls_type(tls_url);
-    let danger_accept_invalid_cert = get_cached_tls_accept_invalid_cert(tls_url);
-    let response = get_http_response_async(
-        url,
-        tls_url,
-        method,
-        body,
-        header,
-        tls_type,
-        danger_accept_invalid_cert,
-        danger_accept_invalid_cert,
-    )
-    .await?;
-    // Serialize response headers
-    let mut response_headers = Map::new();
-    for (key, value) in response.headers() {
-        response_headers.insert(key.to_string(), json!(value.to_str().unwrap_or("")));
-    }
-
-    let status_code = response.status().as_u16();
-    let response_body = response.text().await?;
-
-    // Construct the JSON object
-    let mut result = Map::new();
-    result.insert("status_code".to_string(), json!(status_code));
-    result.insert("headers".to_string(), Value::Object(response_headers));
-    result.insert("body".to_string(), json!(response_body));
-
-    // Convert map to JSON string
-    let json_str = serde_json::to_string(&result)
-        .map_err(|e| anyhow!("Failed to serialize response: {}", e))?;
-    Ok((status_code, json_str))
-}
-
-/// HTTP request with raw TCP proxy support.
-#[tokio::main(flavor = "current_thread")]
-pub async fn http_request_sync(
-    url: String,
-    method: String,
-    body: Option<String>,
-    header: String,
-) -> ResultType<String> {
-    // Direct-IP fork: the rendezvous TCP-proxy fallback was excised (§8); HTTP is always direct.
-    http_request_http(&url, &method, body, &header)
-        .await
-        .map(|(_status, text)| text)
-}
-
 #[inline]
 pub fn make_privacy_mode_msg_with_details(
     state: back_notification::PrivacyModeState,
@@ -1652,15 +1360,6 @@ pub fn is_empty_uni_link(arg: &str) -> bool {
     arg[prefix.len()..].chars().all(|c| c == '/')
 }
 
-pub fn get_hwid() -> Bytes {
-    use hbb_common::sha2::{Digest, Sha256};
-
-    let uuid = hbb_common::get_uuid();
-    let mut hasher = Sha256::new();
-    hasher.update(&uuid);
-    Bytes::from(hasher.finalize().to_vec())
-}
-
 #[inline]
 pub fn get_builtin_option(key: &str) -> String {
     config::BUILTIN_SETTINGS
@@ -1763,9 +1462,9 @@ mod tests {
     // excises both (the admin.rustdesk.com default is gone, and PROD_RENDEZVOUS_SERVER is init-empty
     // and never written — verified: zero write sites). With empty api-server / custom-rendezvous-server
     // inputs (those options are themselves pinned empty at the config layer — config_it/lockdown.rs),
-    // the resolver must yield "" so the account/address-book HttpService path (post_request /
-    // main_http_request -> create_http_client_async) dials NOBODY. This test guards the *resolution*
-    // layer (distinct from the config-pin layer) against re-introducing either hardwired host.
+    // the resolver must yield "" so a future account/address-book API path has no host to dial. This
+    // test guards the *resolution* layer (distinct from the config-pin layer) against re-introducing
+    // either hardwired host.
     #[test]
     fn api_server_resolution_defaults_to_sovereign_empty() {
         assert_eq!(
@@ -1972,38 +1671,6 @@ mod tests {
         assert!(!is_public("localhost"));
         assert!(!is_public("https://rustdesk.computer.com"));
         assert!(!is_public("rustdesk.comhello.com"));
-    }
-
-    #[test]
-    fn test_parse_json_header_entries_preserves_single_content_type() {
-        let headers = parse_json_header_entries(
-            r#"{"Content-Type":"text/plain","Authorization":"Bearer token"}"#,
-        )
-        .unwrap();
-
-        assert_eq!(
-            headers
-                .iter()
-                .filter(|entry| entry.name.eq_ignore_ascii_case("Content-Type"))
-                .count(),
-            1
-        );
-        assert_eq!(
-            headers
-                .iter()
-                .find(|entry| entry.name.eq_ignore_ascii_case("Content-Type"))
-                .map(|entry| entry.value.as_str()),
-            Some("text/plain")
-        );
-    }
-
-    #[test]
-    fn test_parse_json_header_entries_does_not_add_default_content_type() {
-        let headers = parse_json_header_entries(r#"{"Authorization":"Bearer token"}"#).unwrap();
-
-        assert!(!headers
-            .iter()
-            .any(|entry| entry.name.eq_ignore_ascii_case("Content-Type")));
     }
 
     #[test]

@@ -103,12 +103,16 @@ function Build {
     $env:CI = 'true'
     $env:FLUTTER_SUPPRESS_ANALYTICS = 'true'
     git config --global --add safe.directory '*'
+    $pubLock = Join-Path $SRC 'flutter\pubspec.lock'
+    $pubLockBefore = (Get-FileHash -Algorithm SHA256 $pubLock).Hash
     Push-Location (Join-Path $SRC 'flutter')
     & dart pub get --offline
     if ($LASTEXITCODE -ne 0) { Pop-Location; Die "dart pub get --offline (project) failed ($LASTEXITCODE) -- pub-cache may lack a windows-only package" }
     & flutter pub get --offline
     if ($LASTEXITCODE -ne 0) { Pop-Location; Die "flutter pub get --offline (plugin injection) failed ($LASTEXITCODE) -- generated_plugins.cmake will be absent; the flutter wrapper may have reached pub.dev for advisories" }
     Pop-Location
+    $pubLockAfter = (Get-FileHash -Algorithm SHA256 $pubLock).Hash
+    if ($pubLockBefore -ne $pubLockAfter) { Die "flutter\pubspec.lock changed during offline pub resolution; regenerate/commit it under the pinned Flutter SDK" }
 
     # --- the flutter offline shim: build.py runs `flutter build windows --release`, whose IN-PROCESS
     # pub get drives ONLINE; shadow `flutter` earlier on PATH with a shim that appends --no-pub to

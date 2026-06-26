@@ -95,20 +95,11 @@ impl Interface for Session {
 
     async fn handle_login_from_ui(
         &self,
-        os_username: String,
-        os_password: String,
         password: String,
         remember: bool,
         peer: &mut Stream,
     ) {
-        handle_login_from_ui(
-            self.lc.clone(),
-            os_username,
-            os_password,
-            password,
-            remember,
-            peer,
-        )
+        handle_login_from_ui(self.lc.clone(), password, remember, peer)
         .await;
     }
 

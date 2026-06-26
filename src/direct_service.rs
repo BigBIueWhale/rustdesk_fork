@@ -3,6 +3,7 @@ use hbb_common::{
     config::{self, Config},
     log, sleep, tokio,
 };
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::server::{check_zombie, new as new_server, ServerPtr};
 
@@ -30,6 +31,20 @@ fn get_direct_port() -> i32 {
     // the port and desync the §10.4 CPace `CI` KAT be16(21118)=527e). One mode, one
     // constant; a different port is a build-time change to config::DIRECT_PORT.
     config::DIRECT_PORT
+}
+
+static LISTENER_REBUILD_EPOCH: AtomicU64 = AtomicU64::new(0);
+
+/// R-T13 (§20): Android network switches can invalidate the direct listener while the foreground
+/// service stays alive. Kotlin observes the platform network lifecycle and calls this narrow hook;
+/// the accept loop below reacts by dropping the existing listener (`listener = None`) and rebinding
+/// the same pinned v4 port. This avoids restarting the whole server or reintroducing a runtime port
+/// mode while still driving the existing direct-listener rebuild path.
+pub fn request_direct_listener_rebuild(reason: &str) {
+    let epoch = LISTENER_REBUILD_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
+    log::info!(
+        "R-T13: direct listener rebuild requested by Android network lifecycle ({reason}); epoch={epoch}"
+    );
 }
 
 /// R-A4 startup self-check: refuse to listen unless the controlled-side runtime
@@ -153,7 +168,7 @@ fn assert_socket_surface(port: u16) {
 /// the tree (R-D4 Stage 2, above), not merely bypassed.
 ///
 /// The fork ships NO rendezvous mediator: no registration loop / `register_pk` /
-/// heartbeat, no STUN/NAT probe, no LAN discovery, no `hbbs_http::sync` sysinfo POST
+/// heartbeat, no STUN/NAT probe, no LAN discovery, no remote sysinfo POST
 /// (R-SV6(b)), no `test_rendezvous_server` probe. The box is reachable ONLY by a
 /// deliberate, PAKE-gated direct connection on the one v4 TCP port (R-F4 21118 / R-D5
 /// v4-only), so this entry just stands up the genuinely-shared startup and the listener:
@@ -239,6 +254,7 @@ pub async fn start_direct_only() {
 async fn direct_server(server: ServerPtr) {
     let mut listener = None;
     let mut port = 0;
+    let mut seen_rebuild_epoch = LISTENER_REBUILD_EPOCH.load(Ordering::SeqCst);
     // R-T12: the consecutive accept()-error streak, driving the escalating bounded back-off in the
     // error arm below; reset on any successful accept or the benign 1s poll-timeout.
     let mut accept_err_streak: u32 = 0;
@@ -250,6 +266,17 @@ async fn direct_server(server: ServerPtr) {
         if crate::server::is_shutting_down() {
             log::info!("R-T9: shutdown — direct_server stops accepting");
             return;
+        }
+        let rebuild_epoch = LISTENER_REBUILD_EPOCH.load(Ordering::SeqCst);
+        if rebuild_epoch != seen_rebuild_epoch {
+            seen_rebuild_epoch = rebuild_epoch;
+            if listener.is_some() {
+                // R-T13: network-change rebuild — drop the existing listener so the next iteration
+                // re-enters the already-audited bind path (`listener = None` -> listen_any_v4).
+                log::info!("R-T13: rebuilding direct listener after Android network change");
+                listener = None;
+                continue;
+            }
         }
         // R-D4 / R-F4 / R-X9: the direct listener is UNCONDITIONAL — it is the box's only
         // inbound path (§17), so it has no enable-toggle at all. Upstream's `direct-server`

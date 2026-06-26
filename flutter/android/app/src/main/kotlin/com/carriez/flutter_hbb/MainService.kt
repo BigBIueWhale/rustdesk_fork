@@ -26,6 +26,9 @@ import android.hardware.display.VirtualDisplay
 import android.media.*
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkRequest
 import android.os.*
 import android.util.DisplayMetrics
 import android.util.Log
@@ -186,6 +189,25 @@ class MainService : Service() {
 
     private val powerManager: PowerManager by lazy { applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager }
     private val wakeLock: PowerManager.WakeLock by lazy { powerManager.newWakeLock(PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "rustdesk:wakelock")}
+    private val networkKeepaliveWakeLock: PowerManager.WakeLock by lazy {
+        powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "rustdesk:network-keepalive").apply {
+            setReferenceCounted(false)
+        }
+    }
+    private val connectivityManager: ConnectivityManager by lazy {
+        applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    }
+    @Volatile
+    private var networkCallbackRegistered = false
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            requestDirectListenerRebuild("available:$network")
+        }
+
+        override fun onLost(network: Network) {
+            requestDirectListenerRebuild("lost:$network")
+        }
+    }
 
     companion object {
         private var _isReady = false // media permission ready status
@@ -218,6 +240,55 @@ class MainService : Service() {
     private lateinit var notificationChannel: String
     private lateinit var notificationBuilder: NotificationCompat.Builder
 
+    private fun requestDirectListenerRebuild(reason: String) {
+        Log.i(logTag, "R-T13: Android network change ($reason); rebuilding direct listener")
+        FFI.rebuildDirectServerListener()
+    }
+
+    @Synchronized
+    private fun registerNetworkCallback() {
+        if (networkCallbackRegistered) {
+            return
+        }
+        try {
+            val request = NetworkRequest.Builder().build()
+            connectivityManager.registerNetworkCallback(request, networkCallback)
+            networkCallbackRegistered = true
+            Log.i(logTag, "R-T13: registered ConnectivityManager.NetworkCallback")
+        } catch (e: Exception) {
+            Log.w(logTag, "R-T13: failed to register network callback", e)
+        }
+    }
+
+    @Synchronized
+    private fun unregisterNetworkCallback() {
+        if (!networkCallbackRegistered) {
+            return
+        }
+        try {
+            connectivityManager.unregisterNetworkCallback(networkCallback)
+        } catch (e: Exception) {
+            Log.w(logTag, "R-T13: failed to unregister network callback", e)
+        } finally {
+            networkCallbackRegistered = false
+        }
+    }
+
+    @SuppressLint("WakelockTimeout")
+    private fun acquireNetworkKeepaliveWakeLock() {
+        if (!networkKeepaliveWakeLock.isHeld) {
+            networkKeepaliveWakeLock.acquire()
+            Log.i(logTag, "R-T13: acquired partial wakelock for TCP keepalive")
+        }
+    }
+
+    private fun releaseNetworkKeepaliveWakeLock() {
+        if (networkKeepaliveWakeLock.isHeld) {
+            networkKeepaliveWakeLock.release()
+            Log.i(logTag, "R-T13: released partial wakelock for TCP keepalive")
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         Log.d(logTag,"MainService onCreate, sdk int:${Build.VERSION.SDK_INT} reuseVirtualDisplay:$reuseVirtualDisplay")
@@ -236,10 +307,14 @@ class MainService : Service() {
         FFI.startServer(configPath, "")
 
         createForegroundNotification()
+        acquireNetworkKeepaliveWakeLock()
+        registerNetworkCallback()
     }
 
     override fun onDestroy() {
         checkMediaPermission()
+        unregisterNetworkCallback()
+        releaseNetworkKeepaliveWakeLock()
         super.onDestroy()
     }
 
@@ -317,6 +392,7 @@ class MainService : Service() {
         super.onStartCommand(intent, flags, startId)
         if (intent?.action == ACT_INIT_MEDIA_PROJECTION_AND_SERVICE) {
             createForegroundNotification()
+            acquireNetworkKeepaliveWakeLock()
 
             if (intent.getBooleanExtra(EXT_INIT_FROM_BOOT, false)) {
                 FFI.startService()
@@ -463,6 +539,8 @@ class MainService : Service() {
 
         mediaProjection = null
         checkMediaPermission()
+        unregisterNetworkCallback()
+        releaseNetworkKeepaliveWakeLock()
         stopForeground(true)
         stopSelf()
     }

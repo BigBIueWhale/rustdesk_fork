@@ -21,12 +21,16 @@ OVERLAY="$STATE_DIR/win-build-overlay.qcow2"
 BUILD_ISO="$STATE_DIR/win-build-src.iso"
 OUTPUT_IMG="$STATE_DIR/win-build-output.img"
 OFFLINE_ISO="$STATE_DIR/win-build-offline.iso"   # UDF CD: offline cargo-vendor + its source map + the flutter pub-cache
-GL="docker run --rm --device /dev/kvm"   # the root-free libguestfs-in-docker driver
+WIN_HELPER_IMAGE="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-helper"
+GL="docker run --rm --network=none --device /dev/kvm"   # the root-free, offline libguestfs-in-docker driver
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$REPO_ROOT" show -s --format=%ct "$RUSTDESK_COMMIT" 2>/dev/null || echo 1700000000)}"
+WINDOWS_BUILD_SOURCE="${WINDOWS_BUILD_SOURCE:-head}" # head = committed release source; worktree = tracked dirty tree for local validation
 
 preflight() {
     require_cmd qemu-img virt-install virsh xorriso mkfs.vfat docker git
     [ -f "$GOLDEN" ] || die "golden image missing ($GOLDEN) — run scripts/provision-windows-vm.sh first"
+    verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"
+    docker image inspect "$WIN_HELPER_IMAGE" >/dev/null 2>&1 || die "Windows helper image missing: $WIN_HELPER_IMAGE — run scripts/online-fetch.sh"
     # The per-build is --network=none: the offline crate + dart-pkg sets MUST be staged (online-fetch.sh).
     [ -d "$ONLINE_DIR/cargo-vendor" ]             || die "online/cargo-vendor missing — run scripts/online-fetch.sh"
     [ -f "$ONLINE_DIR/cargo-vendor-config.toml" ] || die "online/cargo-vendor-config.toml missing — run scripts/online-fetch.sh"
@@ -36,11 +40,29 @@ preflight() {
 }
 
 build_media() {
-    # The BUILD CD = the COMMITTED repo (git archive HEAD: no ./online ./target ./.git) + run-build.ps1
-    # at root (the golden's logon task runs it) + the SOURCE_DATE_EPOCH stamp (R-B2).
-    log "building the BUILD CD (committed repo + run-build.ps1 + SOURCE_DATE_EPOCH)"
+    # The BUILD CD = a tracked source snapshot (no ./online ./target ./.git) + run-build.ps1 at root
+    # (the golden's logon task runs it) + the SOURCE_DATE_EPOCH stamp (R-B2). Release builds default
+    # to committed HEAD; local completion validation can set WINDOWS_BUILD_SOURCE=worktree so dirty
+    # tracked edits/deletions are what the VM compiles instead of a stale git archive.
     local snap="$STATE_DIR/build-snap"; rm -rf "$snap"; mkdir -p "$snap"
-    git -C "$REPO_ROOT" archive --format=tar HEAD | tar -x -C "$snap"
+    case "$WINDOWS_BUILD_SOURCE" in
+        head)
+            log "building the BUILD CD (committed HEAD + run-build.ps1 + SOURCE_DATE_EPOCH)"
+            git -C "$REPO_ROOT" archive --format=tar HEAD | tar -x -C "$snap"
+            ;;
+        worktree)
+            log "building the BUILD CD (tracked worktree + run-build.ps1 + SOURCE_DATE_EPOCH)"
+            (
+                cd "$REPO_ROOT"
+                git ls-files -z | while IFS= read -r -d '' f; do
+                    { [ -e "$f" ] || [ -L "$f" ]; } && printf '%s\0' "$f"
+                done | tar --null -T - -cf -
+            ) | tar -x -C "$snap"
+            ;;
+        *)
+            die "WINDOWS_BUILD_SOURCE must be 'head' or 'worktree' (got '$WINDOWS_BUILD_SOURCE')"
+            ;;
+    esac
     cp "$SCRIPT_DIR/run-build.ps1" "$snap/run-build.ps1"
     printf '%s' "$SOURCE_DATE_EPOCH" > "$snap/.source_date_epoch"
     # The pre-generated FRB bridges (R-B7) — git archive excludes them (gitignored) and the guest
@@ -68,9 +90,7 @@ build_media() {
     # byte-layout need NOT be R-B2-deterministic: the .exe is derived from the file CONTENTS (cargo-vendor +
     # pub-cache, which ARE the pinned inputs), not from this medium's byte order.
     local off_name; off_name="$(basename "$OFFLINE_ISO")"
-    docker run --rm -v "$ONLINE_DIR:/online:ro" -v "$STATE_DIR:/out" -e OFF_NAME="$off_name" debian:stable-slim bash -euc '
-        apt-get update -qq >/dev/null 2>&1
-        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq genisoimage >/dev/null 2>&1
+    docker run --rm --network=none -v "$ONLINE_DIR:/online:ro" -v "$STATE_DIR:/out" -e OFF_NAME="$off_name" "$WIN_HELPER_IMAGE" bash -euc '
         # The WiX NuGet set (for the .msi) ships on this same OFFLINE CD; /online is ro, so extract the
         # staged tar to a writable /tmp dir and graft it (build-windows.ps1 copies it off the CD to a
         # writable global-packages dir + sets NUGET_PACKAGES for the offline msbuild restore).
@@ -91,8 +111,7 @@ build_media() {
     rm -f "$OUTPUT_IMG"
     qemu-img create -f raw "$OUTPUT_IMG" 3G >/dev/null
     local out_name; out_name="$(basename "$OUTPUT_IMG")"
-    $GL -v "$STATE_DIR:/state" -e OUT_NAME="$out_name" ubuntu:24.04 bash -c '
-      apt-get update -qq >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libguestfs-tools linux-image-generic >/dev/null 2>&1
+    $GL -v "$STATE_DIR:/state" -e OUT_NAME="$out_name" "$WIN_HELPER_IMAGE" bash -c '
       export LIBGUESTFS_BACKEND=direct
       guestfish -a "/state/$OUT_NAME" run : part-disk /dev/sda mbr : part-set-mbr-id /dev/sda 1 0x0c : mkfs vfat /dev/sda1 label:OUTPUT' \
       || die "OUTPUT disk partition+format failed"
@@ -110,8 +129,7 @@ prep_overlay() {
     # not carried over), so seed the removable-media fallback \EFI\BOOT\BOOTX64.EFI from the Windows
     # bootloader; OVMF then boots the disk. libguestfs, root-free.
     log "seeding the UEFI fallback bootloader for the fresh-nvram boot"
-    $GL -v "$STATE_DIR:/state" ubuntu:24.04 bash -c '
-      apt-get update -qq >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libguestfs-tools linux-image-generic >/dev/null 2>&1
+    $GL -v "$STATE_DIR:/state" "$WIN_HELPER_IMAGE" bash -c '
       export LIBGUESTFS_BACKEND=direct
       guestfish --rw -a /state/win-build-overlay.qcow2 run : \
         mount /dev/sda1 / : mkdir-p /EFI/BOOT : \
@@ -145,8 +163,7 @@ run_build() {
 extract() {
     mkdir -p "$OUT_DIR"
     log "extracting artifacts from the OUTPUT disk (libguestfs, root-free)"
-    $GL -v "$STATE_DIR:/state:ro" -v "$OUT_DIR:/out" ubuntu:24.04 bash -c '
-      apt-get update -qq >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libguestfs-tools linux-image-generic >/dev/null 2>&1
+    $GL -v "$STATE_DIR:/state:ro" -v "$OUT_DIR:/out" "$WIN_HELPER_IMAGE" bash -c '
       export LIBGUESTFS_BACKEND=direct
       guestfish --ro -a /state/win-build-output.img run : mount /dev/sda1 / : glob copy-out "/*" /out
       chown -R '"$(id -u):$(id -g)"' /out' 2>&1 | grep -iE 'error|fail' || true
@@ -187,9 +204,7 @@ extract() {
     # for the .exe), so run it in the pinned debian image. The package code is a deterministic uuid5 of the
     # Cargo.toml version (same per version -> byte-reproducible). Then record the canonicalized SHA.
     local msi_ver; msi_ver="$(grep -m1 '^version' "$REPO_ROOT/Cargo.toml" | sed 's/.*=[[:space:]]*"\(.*\)".*/\1/')"
-    docker run --rm -e MSI_VER="$msi_ver" -v "$OUT_DIR:/out" -v "$SCRIPT_DIR:/s:ro" debian:stable-slim bash -euc '
-        apt-get update -qq >/dev/null 2>&1
-        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 python3-olefile >/dev/null 2>&1
+    docker run --rm --network=none -e MSI_VER="$msi_ver" -v "$OUT_DIR:/out" -v "$SCRIPT_DIR:/s:ro" "$WIN_HELPER_IMAGE" bash -euc '
         python3 /s/canonicalize-msi.py /out/rustdesk.msi "$MSI_VER"
     ' || die ".msi OLE2 canonicalization (R-B2) failed"
     sha256sum "$OUT_DIR/rustdesk.msi" | tee "$OUT_DIR/rustdesk.msi.sha256"

@@ -126,6 +126,7 @@ CFG
             git config --global --add safe.directory "*"
             export PUB_CACHE=/online/pub-cache
             [ -d "$PUB_CACHE" ] || { echo "[FATAL] /online/pub-cache missing -- run online-fetch.sh (stage_pub_cache)"; exit 1; }
+            pub_lock_before="$(sha256sum flutter/pubspec.lock | awk "{print \$1}")"
             # Resolve the project: dart pub get --offline reads straight from PUB_CACHE and
             # skips advisories (validated against the staged cache). It is the ONLINE flutter
             # wrapper pub get that refreshes pub security advisories and _TypeErrors against the
@@ -156,6 +157,12 @@ CFG
             # but it is git-ignored build-input metadata referenced by nothing in build/linux/.../bundle/,
             # so it never reaches the .deb payload -- R-B2 unaffected, enforced by the DOUBLE_BUILD A==B gate.)
             ( cd flutter && "$REAL_FLUTTER" pub get --offline )
+            pub_lock_after="$(sha256sum flutter/pubspec.lock | awk "{print \$1}")"
+            [ "$pub_lock_before" = "$pub_lock_after" ] || {
+                echo "[FATAL] flutter/pubspec.lock changed during offline pub resolution" >&2
+                git --no-pager diff -- flutter/pubspec.lock || true
+                exit 1
+            }
             # FRB codegen first (R-B7: the uncommitted generated_bridge.dart /
             # bridge_generated.rs every build job needs), then upstream build.py
             # with the §3.2 x64-linux features.

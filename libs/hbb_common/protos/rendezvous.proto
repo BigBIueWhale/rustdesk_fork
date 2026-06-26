@@ -12,13 +12,11 @@ package hbb;
 // reader (common.rs `get_next_nonkeyexchange_msg`) was itself dead (zero callers). Gone, not merely
 // unused — the binary can no longer encode or parse a rendezvous message.
 //
-// What remains are the three types still used on the DIRECT path (kept verbatim — same field
+// What remains are the two types still used on the DIRECT path (kept verbatim — same field
 // numbers/enum values, so the generated code for them is unchanged):
 //   - ConnType:           the connection type carried in LoginRequest / used throughout the client.
 //   - ControlPermissions: the per-connection permission bitset (the Permission enum) the responder
 //                         grants and the viewer reads.
-//   - HeaderEntry:        an HTTP header name/value pair (common.rs::parse_json_header_entries, for
-//                         the operator-configured headers on the sovereign caller-supplied HTTP client).
 //
 // The file keeps its name and the `rendezvous_proto` module alias (lib.rs `pub use protos::rendezvous
 // as rendezvous_proto`) to avoid churning the many `rendezvous_proto::*` glob imports; it is now just
@@ -50,9 +48,4 @@ message ControlPermissions {
     privacy_mode = 12;
   }
   uint64 permissions = 1;
-}
-
-message HeaderEntry {
-  string name = 1;
-  string value = 2;
 }

@@ -22,8 +22,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-#[cfg(feature = "flutter")]
-use crate::hbbs_http::account;
 #[cfg(not(any(target_os = "ios")))]
 use crate::ipc;
 
@@ -63,7 +61,6 @@ lazy_static::lazy_static! {
         video_conn_count: 0,
     }));
     static ref ASYNC_JOB_STATUS : Arc<Mutex<String>> = Default::default();
-    static ref ASYNC_HTTP_STATUS : Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref IS_REMOTE_MODIFY_ENABLED_BY_CONTROL_PERMISSIONS : Arc<Mutex<Option<bool>>> = Arc::new(Mutex::new(None));
 }
 
@@ -769,46 +766,6 @@ pub fn change_id(id: String) {
 }
 
 #[inline]
-pub fn http_request(url: String, method: String, body: Option<String>, header: String) {
-    // Respond to concurrent requests for resources
-    let current_request = ASYNC_HTTP_STATUS.clone();
-    current_request
-        .lock()
-        .unwrap()
-        .insert(url.clone(), " ".to_owned());
-    std::thread::spawn(move || {
-        let res = match crate::http_request_sync(url.clone(), method, body, header) {
-            Err(err) => {
-                log::error!("{}", err);
-                err.to_string()
-            }
-            Ok(text) => text,
-        };
-        current_request.lock().unwrap().insert(url, res);
-    });
-}
-
-#[inline]
-pub fn get_async_http_status(url: String) -> Option<String> {
-    match ASYNC_HTTP_STATUS.lock().unwrap().get(&url) {
-        None => None,
-        Some(_str) => Some(_str.to_string()),
-    }
-}
-
-#[inline]
-#[cfg(not(feature = "flutter"))]
-pub fn post_request(url: String, body: String, header: String) {
-    *ASYNC_JOB_STATUS.lock().unwrap() = " ".to_owned();
-    std::thread::spawn(move || {
-        *ASYNC_JOB_STATUS.lock().unwrap() = match crate::post_request_sync(url, body, &header) {
-            Err(err) => err.to_string(),
-            Ok(text) => text,
-        };
-    });
-}
-
-#[inline]
 pub fn get_async_job_status() -> String {
     ASYNC_JOB_STATUS.lock().unwrap().clone()
 }
@@ -965,7 +922,7 @@ pub fn deploy_device(_token: String, _new_id: Option<String>) -> DeployResult {
     // registration a sovereign, direct-IP fork has no server for (the residual R-X4's
     // --assign/--set-id/--deploy excision missed; its CLI driver is removed from
     // core_main.rs). This stub keeps the FFI signature (main_deploy_device, flutter)
-    // compiling while the post_request_sync egress — and the Android mediator
+    // compiling while the account/API HTTP egress — and the Android mediator
     // NEEDS_DEPLOY/restart it drove — is structurally absent: refused, not silenced by
     // the empty-api-server pin (R-SV1 compile-out). The §19/R-G4 sweep removes the
     // deploy UI that calls it.
@@ -1106,21 +1063,6 @@ fn check_connect_status(reconnect: bool) -> mpsc::UnboundedSender<ipc::Data> {
     let (tx, rx) = mpsc::unbounded_channel::<ipc::Data>();
     std::thread::spawn(move || check_connect_status_(reconnect, rx));
     tx
-}
-
-#[cfg(feature = "flutter")]
-pub fn account_auth(op: String, id: String, uuid: String, remember_me: bool) {
-    account::OidcSession::account_auth(get_api_server(), op, id, uuid, remember_me);
-}
-
-#[cfg(feature = "flutter")]
-pub fn account_auth_cancel() {
-    account::OidcSession::auth_cancel();
-}
-
-#[cfg(feature = "flutter")]
-pub fn account_auth_result() -> String {
-    serde_json::to_string(&account::OidcSession::get_result()).unwrap_or_default()
 }
 
 #[cfg(feature = "flutter")]

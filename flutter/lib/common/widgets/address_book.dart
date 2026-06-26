@@ -13,7 +13,6 @@ import 'package:flutter_hbb/desktop/widgets/popup_menu.dart';
 import 'package:flutter_hbb/models/ab_model.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
-import 'package:url_launcher/url_launcher_string.dart';
 import '../../desktop/widgets/material_mod_popup_menu.dart' as mod_menu;
 import 'package:get/get.dart';
 import 'package:flex_color_picker/flex_color_picker.dart';
@@ -430,15 +429,6 @@ class _AddressBookState extends State<AddressBook> {
         sortMenuItem(), // It's already sorted after pulling down
       if (canWrite) syncMenuItem(),
       filterMenuItem(),
-      if (!gFFI.abModel.legacyMode.value && canWrite)
-        MenuEntryDivider<String>(),
-      if (!gFFI.abModel.legacyMode.value && canWrite)
-        getEntry(translate("ab_web_console_tip"), () async {
-          final url = await bind.mainGetApiServer();
-          if (await canLaunchUrlString(url)) {
-            launchUrlString(url);
-          }
-        }),
     ];
 
     mod_menu.showMenu(

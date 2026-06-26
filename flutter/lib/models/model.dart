@@ -27,7 +27,6 @@ import 'package:flutter_hbb/models/desktop_render_texture.dart';
 import 'package:flutter_hbb/models/terminal_model.dart';
 import 'package:flutter_hbb/common/shared_state.dart';
 import 'package:flutter_hbb/utils/multi_window_manager.dart';
-import 'package:flutter_hbb/utils/http_service.dart' as http;
 import 'package:tuple/tuple.dart';
 import 'package:image/image.dart' as img2;
 import 'package:flutter_svg/flutter_svg.dart';
@@ -3671,14 +3670,8 @@ class FFI {
 
   /// Login with [password], choose if the client should [remember] it.
   void login(SessionID sessionId, String password, bool remember) {
-    // R-S18: the viewer never pushes OS credentials to the host — os_username/os_password are
-    // forced empty (the host-triggered os-login dialogs are removed, the responder strips
-    // os_login, and create_login_msg no longer sends it). Dropping the os params from the Rust
-    // session_login FFI signature is a flutter-verify follow-on.
     bind.sessionLogin(
         sessionId: sessionId,
-        osUsername: '',
-        osPassword: '',
         password: password,
         remember: remember);
   }

@@ -40,7 +40,7 @@ use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
     sync::{
-        atomic::{AtomicI64, Ordering},
+        atomic::{AtomicBool, AtomicI64, Ordering},
         RwLock,
     },
 };
@@ -174,6 +174,13 @@ lazy_static::lazy_static! {
 }
 
 static CLICK_TIME: AtomicI64 = AtomicI64::new(0);
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+static EXIT_ON_IDLE: AtomicBool = AtomicBool::new(false);
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub fn set_exit_on_idle(exit_on_idle: bool) {
+    EXIT_ON_IDLE.store(exit_on_idle, Ordering::SeqCst);
+}
 
 #[derive(Clone)]
 pub struct ConnectionManager<T: InvokeUiCM> {
@@ -310,6 +317,12 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         }
 
         self.ui_handler.remove_connection(id, close);
+
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        if EXIT_ON_IDLE.load(Ordering::SeqCst) && CLIENTS.read().unwrap().is_empty() {
+            log::info!("R-T4: no-ui connection manager idle after last IPC client; exiting");
+            quit_cm();
+        }
     }
 
     #[cfg(not(target_os = "ios"))]

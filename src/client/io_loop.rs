@@ -528,9 +528,9 @@ impl<T: InvokeUiSession> Remote<T> {
                 self.send_close_reason(peer, "").await;
                 return false;
             }
-            Data::Login((os_username, os_password, password, remember)) => {
+            Data::Login((password, remember)) => {
                 self.handler
-                    .handle_login_from_ui(os_username, os_password, password, remember, peer)
+                    .handle_login_from_ui(password, remember, peer)
                     .await;
             }
             #[cfg(all(target_os = "windows", not(feature = "flutter")))]

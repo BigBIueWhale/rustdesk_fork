@@ -26,9 +26,9 @@ try {
     Remove-Item -Recurse -Force C:\src -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force C:\src | Out-Null
     Copy-Item -Recurse "$($cd)*" C:\src
-    # The BUILD CD is a read-only ISO; Copy-Item carries the read-only attribute onto every copied file, so the
-    # build cannot rewrite tracked files -- `dart pub get` Dies "Cannot open file pubspec.lock (Access is
-    # denied)" (after resolving fine), and cargo would hit Cargo.lock the same way. Clear read-only recursively.
+    # The BUILD CD is a read-only ISO; Copy-Item carries the read-only attribute onto every copied file and
+    # directory, so generated build metadata such as .dart_tool/package_config.json cannot be written in C:\src.
+    # Clear read-only recursively; build-windows.ps1 separately asserts pubspec.lock stays byte-identical.
     Get-ChildItem C:\src -Recurse -File -Force | Where-Object { $_.IsReadOnly } | ForEach-Object { $_.IsReadOnly = $false }
     Mark "copied-repo-to-C:\src (read-only cleared)"
     # R-B2 determinism: build-windows-vm.sh stamps the BUILD CD with SOURCE_DATE_EPOCH; build-windows.ps1

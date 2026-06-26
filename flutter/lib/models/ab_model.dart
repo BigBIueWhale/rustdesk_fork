@@ -11,7 +11,6 @@ import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:get/get.dart';
 import 'package:bot_toast/bot_toast.dart';
 
-import '../utils/http_service.dart' as http;
 import '../common.dart';
 
 final syncAbOption = 'sync-ab-with-recent-sessions';
@@ -228,132 +227,20 @@ class AbModel {
   }
 
   Future<bool> _getAbSettings({required bool quiet}) async {
-    int? statusCode;
-    try {
-      final api = "${await bind.mainGetApiServer()}/api/ab/settings";
-      var headers = getHttpHeaders();
-      headers['Content-Type'] = "application/json";
-      _setEmptyBody(headers);
-      final resp = await http.post(Uri.parse(api), headers: headers);
-      statusCode = resp.statusCode;
-      if (statusCode == 404) {
-        debugPrint("HTTP 404, api server doesn't support shared address book");
-        return false;
-      }
-      Map<String, dynamic> json =
-          _jsonDecodeRespMap(decode_http_response(resp), resp.statusCode);
-      if (json.containsKey('error')) {
-        throw json['error'];
-      }
-      if (statusCode != 200) {
-        throw 'HTTP $statusCode';
-      }
-      _maxPeerOneAb = json['max_peer_one_ab'] ?? 0;
-      return true;
-    } catch (err) {
-      debugPrint('get ab settings err: ${err.toString()}');
-      _setListPullError(err, quiet: quiet, statusCode: statusCode);
-    }
-    return false;
+    _maxPeerOneAb = 0;
+    return true;
   }
 
-  /// Loads `/api/ab/personal`.
-  /// Returns `true` to continue init, `false` to stop after a real error.
+  /// R-SV6/R-G4: account-synced address books are compiled out. Returning true
+  /// keeps the model in local legacy mode without contacting an API server.
   Future<bool> _getPersonalAbGuid({required bool quiet}) async {
-    int? statusCode;
-    try {
-      final api = "${await bind.mainGetApiServer()}/api/ab/personal";
-      var headers = getHttpHeaders();
-      headers['Content-Type'] = "application/json";
-      _setEmptyBody(headers);
-      final resp = await http.post(Uri.parse(api), headers: headers);
-      statusCode = resp.statusCode;
-      if (statusCode == 404) {
-        debugPrint("HTTP 404, current api server is legacy mode");
-        // Old server: keep `_personalAbGuid` null and continue in legacy mode.
-        return true;
-      }
-      Map<String, dynamic> json =
-          _jsonDecodeRespMap(decode_http_response(resp), resp.statusCode);
-      if (json.containsKey('error')) {
-        throw json['error'];
-      }
-      if (statusCode != 200) {
-        throw 'HTTP $statusCode';
-      }
-      _personalAbGuid = json['guid'];
-      // New server: guid is available, continue in non-legacy mode.
-      return true;
-    } catch (err) {
-      debugPrint('get personal ab err: ${err.toString()}');
-      _setListPullError(err, quiet: quiet, statusCode: statusCode);
-    }
-    // Real error: stop the current pull.
-    return false;
+    _personalAbGuid = null;
+    return true;
   }
 
   Future<bool> _getSharedAbProfiles(List<AbProfile> profiles,
       {required bool quiet}) async {
-    final api = "${await bind.mainGetApiServer()}/api/ab/shared/profiles";
-    int? statusCode;
-    try {
-      var uri0 = Uri.parse(api);
-      final pageSize = 100;
-      var total = 0;
-      int current = 0;
-      do {
-        current += 1;
-        var uri = Uri(
-            scheme: uri0.scheme,
-            host: uri0.host,
-            path: uri0.path,
-            port: uri0.port,
-            queryParameters: {
-              'current': current.toString(),
-              'pageSize': pageSize.toString(),
-            });
-        var headers = getHttpHeaders();
-        headers['Content-Type'] = "application/json";
-        _setEmptyBody(headers);
-        final resp = await http.post(uri, headers: headers);
-        statusCode = resp.statusCode;
-        if (statusCode == 404) {
-          debugPrint(
-              "HTTP 404, api server doesn't support shared address book");
-          return false;
-        }
-        Map<String, dynamic> json =
-            _jsonDecodeRespMap(decode_http_response(resp), resp.statusCode);
-        if (json.containsKey('error')) {
-          throw json['error'];
-        }
-        if (statusCode != 200) {
-          throw 'HTTP $statusCode';
-        }
-        if (json.containsKey('total')) {
-          if (total == 0) total = json['total'];
-          if (json.containsKey('data')) {
-            final data = json['data'];
-            if (data is List) {
-              for (final profile in data) {
-                final u = AbProfile.fromJson(profile);
-                int index = profiles.indexWhere((e) => e.name == u.name);
-                if (index < 0) {
-                  profiles.add(u);
-                } else {
-                  profiles[index] = u;
-                }
-              }
-            }
-          }
-        }
-      } while (current * pageSize < total);
-      return true;
-    } catch (err) {
-      debugPrint('_getSharedAbProfiles err: ${err.toString()}');
-      _setListPullError(err, quiet: quiet, statusCode: statusCode);
-    }
-    return false;
+    return true;
   }
 
 // #endregion
@@ -1006,93 +893,20 @@ class LegacyAb extends BaseAb {
 
   @override
   Future<bool> pullAbImpl({quiet = false}) async {
-    bool ret = false;
-    final api = "${await bind.mainGetApiServer()}/api/ab";
-    int? statusCode;
-    try {
-      var authHeaders = getHttpHeaders();
-      authHeaders['Content-Type'] = "application/json";
-      authHeaders['Accept-Encoding'] = "gzip";
-      final resp = await http.get(Uri.parse(api), headers: authHeaders);
-      statusCode = resp.statusCode;
-      if (resp.body.toLowerCase() == "null") {
-        // normal reply, empty ab return null
-        tags.clear();
-        tagColors.clear();
-        peers.clear();
-      } else if (resp.body.isNotEmpty) {
-        Map<String, dynamic> json =
-            _jsonDecodeRespMap(decode_http_response(resp), resp.statusCode);
-        if (json.containsKey('error')) {
-          throw json['error'];
-        } else if (json.containsKey('data')) {
-          try {
-            licensedDevices = json['licensed_devices'];
-            // ignore: empty_catches
-          } catch (e) {}
-          final data = jsonDecode(json['data']);
-          if (data != null) {
-            _deserialize(data);
-          }
-          ret = true;
-        }
-      }
-    } catch (err) {
-      if (!quiet) {
-        pullError.value =
-            '${translate('pull_ab_failed_tip')}: ${translate(err.toString())}';
-      }
-    } finally {
-      if (pullError.isNotEmpty) {
-        if (statusCode == 401) {
-          gFFI.userModel.reset(resetOther: true);
-        }
-      }
-    }
-    return ret;
+    return true;
   }
 
   Future<bool> pushAb(
       {bool toastIfFail = true, bool toastIfSucc = true}) async {
     debugPrint("pushAb: toastIfFail:$toastIfFail, toastIfSucc:$toastIfSucc");
-    if (!gFFI.userModel.isLogin) return false;
     pushError.value = '';
-    bool ret = false;
-    try {
-      //https: //stackoverflow.com/questions/68249333/flutter-getx-updating-item-in-children-list-is-not-reactive
-      peers.refresh();
-      final api = "${await bind.mainGetApiServer()}/api/ab";
-      var authHeaders = getHttpHeaders();
-      authHeaders['Content-Type'] = "application/json";
-      final body = jsonEncode({"data": jsonEncode(_serialize())});
-      http.Response resp =
-          await http.post(Uri.parse(api), headers: authHeaders, body: body);
-      if (resp.statusCode == 200 &&
-          (resp.body.isEmpty || resp.body.toLowerCase() == 'null')) {
-        ret = true;
-      } else {
-        Map<String, dynamic> json =
-            _jsonDecodeRespMap(decode_http_response(resp), resp.statusCode);
-        if (json.containsKey('error')) {
-          throw json['error'];
-        } else if (resp.statusCode == 200) {
-          ret = true;
-        } else {
-          throw 'HTTP ${resp.statusCode}';
-        }
-      }
-    } catch (e) {
-      pushError.value =
-          '${translate('push_ab_failed_tip')}: ${translate(e.toString())}';
-    }
-
-    if (!ret && toastIfFail) {
-      BotToast.showText(contentColor: Colors.red, text: pushError.value);
-    }
-    if (ret && toastIfSucc) {
+    // R-SV6/R-G4: no account-backed address-book server exists in this fork.
+    // Keep the disabled legacy tab scaffold local-only.
+    peers.refresh();
+    if (toastIfSucc) {
       showToast(translate('Successful'));
     }
-    return ret;
+    return true;
   }
 
 // #region Peer
@@ -1114,9 +928,8 @@ class LegacyAb extends BaseAb {
         break;
       }
     }
-    if (!await pushAb()) {
-      return "Failed to push to server";
-    } else if (full) {
+    await pushAb(toastIfSucc: false, toastIfFail: false);
+    if (full) {
       return translate("exceed_max_devices");
     } else {
       return null;
@@ -1410,364 +1223,120 @@ class Ab extends BaseAb {
 
   @override
   Future<bool> pullAbImpl({quiet = false}) async {
-    bool ret = true;
-    List<Peer> tmpPeers = [];
-    if (!await _fetchPeers(tmpPeers, quiet: quiet)) {
-      ret = false;
-    }
-    peers.value = tmpPeers;
-    List<AbTag> tmpTags = [];
-    if (!await _fetchTags(tmpTags, quiet: quiet)) {
-      ret = false;
-    }
-    tags.value = tmpTags.map((e) => e.name).toList();
-    Map<String, int> tmpTagColors = {};
-    for (var t in tmpTags) {
-      tmpTagColors[t.name] = t.color;
-    }
-    tagColors.value = tmpTagColors;
-    return ret;
-  }
-
-  Future<bool> _fetchPeers(List<Peer> tmpPeers, {quiet = false}) async {
-    final api = "${await bind.mainGetApiServer()}/api/ab/peers";
-    int? statusCode;
-    try {
-      var uri0 = Uri.parse(api);
-      final pageSize = 100;
-      var total = 0;
-      int current = 0;
-      do {
-        current += 1;
-        var uri = Uri(
-            scheme: uri0.scheme,
-            host: uri0.host,
-            path: uri0.path,
-            port: uri0.port,
-            queryParameters: {
-              'current': current.toString(),
-              'pageSize': pageSize.toString(),
-              'ab': profile.guid,
-            });
-        var headers = getHttpHeaders();
-        headers['Content-Type'] = "application/json";
-        _setEmptyBody(headers);
-        final resp = await http.post(uri, headers: headers);
-        statusCode = resp.statusCode;
-        Map<String, dynamic> json =
-            _jsonDecodeRespMap(decode_http_response(resp), resp.statusCode);
-        if (json.containsKey('error')) {
-          throw json['error'];
-        }
-        if (resp.statusCode != 200) {
-          throw 'HTTP ${resp.statusCode}';
-        }
-        if (json.containsKey('total')) {
-          if (total == 0) total = json['total'];
-          if (json.containsKey('data')) {
-            final data = json['data'];
-            if (data is List) {
-              for (final profile in data) {
-                final u = Peer.fromJson(profile);
-                int index = tmpPeers.indexWhere((e) => e.id == u.id);
-                if (index < 0) {
-                  tmpPeers.add(u);
-                } else {
-                  tmpPeers[index] = u;
-                }
-              }
-            }
-          }
-        }
-      } while (current * pageSize < total);
-      return true;
-    } catch (err) {
-      if (!quiet) {
-        pullError.value =
-            '${translate('pull_ab_failed_tip')}: ${translate(err.toString())}';
-      }
-    } finally {
-      if (pullError.isNotEmpty) {
-        if (statusCode == 401) {
-          gFFI.userModel.reset(resetOther: true);
-        }
-      }
-    }
-    return false;
-  }
-
-  Future<bool> _fetchTags(List<AbTag> tmpTags, {quiet = false}) async {
-    final api = "${await bind.mainGetApiServer()}/api/ab/tags/${profile.guid}";
-    int? statusCode;
-    try {
-      var uri0 = Uri.parse(api);
-      var uri = Uri(
-        scheme: uri0.scheme,
-        host: uri0.host,
-        path: uri0.path,
-        port: uri0.port,
-      );
-      var headers = getHttpHeaders();
-      headers['Content-Type'] = "application/json";
-      _setEmptyBody(headers);
-      final resp = await http.post(uri, headers: headers);
-      statusCode = resp.statusCode;
-      List<dynamic> json =
-          _jsonDecodeRespList(decode_http_response(resp), resp.statusCode);
-      if (resp.statusCode != 200) {
-        throw 'HTTP ${resp.statusCode}';
-      }
-
-      for (final d in json) {
-        final t = AbTag.fromJson(d);
-        int index = tmpTags.indexWhere((e) => e.name == t.name);
-        if (index < 0) {
-          tmpTags.add(t);
-        } else {
-          tmpTags[index] = t;
-        }
-      }
-      return true;
-    } catch (err) {
-      if (!quiet) {
-        pullError.value =
-            '${translate('pull_ab_failed_tip')}: ${translate(err.toString())}';
-      }
-    } finally {
-      if (pullError.isNotEmpty) {
-        if (statusCode == 401) {
-          gFFI.userModel.reset(resetOther: true);
-        }
-      }
-    }
-    return false;
+    return true;
   }
 
 // #region Peers
   @override
   Future<String?> addPeers(List<Map<String, dynamic>> ps) async {
-    try {
-      final api =
-          "${await bind.mainGetApiServer()}/api/ab/peer/add/${profile.guid}";
-      var headers = getHttpHeaders();
-      headers['Content-Type'] = "application/json";
-      for (var p in ps) {
-        if (peers.firstWhereOrNull((e) => e.id == p['id']) != null) {
-          continue;
-        }
-        if (isFull()) {
-          return translate("exceed_max_devices");
-        }
-        if (personal) {
-          removePassword(p);
-        } else {
-          removeHash(p);
-        }
-        String body = jsonEncode(p);
-        final resp =
-            await http.post(Uri.parse(api), headers: headers, body: body);
-        final errMsg = _jsonDecodeActionResp(resp);
-        if (errMsg.isNotEmpty) {
-          return errMsg;
-        }
+    for (var p in ps) {
+      if (peers.firstWhereOrNull((e) => e.id == p['id']) != null) {
+        continue;
       }
-    } catch (err) {
-      return err.toString();
+      if (isFull()) {
+        return translate("exceed_max_devices");
+      }
+      if (personal) {
+        removePassword(p);
+      } else {
+        removeHash(p);
+      }
+      peers.add(Peer.fromJson(p));
     }
     return null;
   }
 
   @override
   Future<bool> changeTagForPeers(List<String> ids, List<dynamic> tags) async {
-    try {
-      final api =
-          "${await bind.mainGetApiServer()}/api/ab/peer/update/${profile.guid}";
-      var headers = getHttpHeaders();
-      headers['Content-Type'] = "application/json";
-      var ret = true;
-      for (var id in ids) {
-        final body = jsonEncode({"id": id, "tags": tags});
-        final resp =
-            await http.put(Uri.parse(api), headers: headers, body: body);
-        final errMsg = _jsonDecodeActionResp(resp);
-        if (errMsg.isNotEmpty) {
-          BotToast.showText(contentColor: Colors.red, text: errMsg);
-          ret = false;
-          break;
-        }
+    for (var peer in peers) {
+      if (ids.contains(peer.id)) {
+        peer.tags = tags;
       }
-      return ret;
-    } catch (err) {
-      debugPrint('changeTagForPeers err: ${err.toString()}');
-      return false;
     }
+    return true;
   }
 
   @override
   Future<bool> changeAlias({required String id, required String alias}) async {
-    try {
-      final api =
-          "${await bind.mainGetApiServer()}/api/ab/peer/update/${profile.guid}";
-      var headers = getHttpHeaders();
-      headers['Content-Type'] = "application/json";
-      final body = jsonEncode({"id": id, "alias": alias});
-      final resp = await http.put(Uri.parse(api), headers: headers, body: body);
-      final errMsg = _jsonDecodeActionResp(resp);
-      if (errMsg.isNotEmpty) {
-        BotToast.showText(contentColor: Colors.red, text: errMsg);
-        return false;
-      }
-      return true;
-    } catch (err) {
-      debugPrint('changeAlias err: ${err.toString()}');
+    final it = peers.where((element) => element.id == id);
+    if (it.isEmpty) {
       return false;
     }
+    it.first.alias = alias;
+    return true;
   }
 
   @override
   Future<bool> changeNote({required String id, required String note}) async {
-    try {
-      final api =
-          "${await bind.mainGetApiServer()}/api/ab/peer/update/${profile.guid}";
-      var headers = getHttpHeaders();
-      headers['Content-Type'] = "application/json";
-      final body = jsonEncode({"id": id, "note": note});
-      final resp = await http.put(Uri.parse(api), headers: headers, body: body);
-      final errMsg = _jsonDecodeActionResp(resp);
-      if (errMsg.isNotEmpty) {
-        BotToast.showText(contentColor: Colors.red, text: errMsg);
-        return false;
-      }
-      return true;
-    } catch (err) {
-      debugPrint('changeNote err: ${err.toString()}');
+    final it = peers.where((element) => element.id == id);
+    if (it.isEmpty) {
       return false;
     }
-  }
-
-  Future<bool> _setPassword(Object bodyContent) async {
-    try {
-      final api =
-          "${await bind.mainGetApiServer()}/api/ab/peer/update/${profile.guid}";
-      var headers = getHttpHeaders();
-      headers['Content-Type'] = "application/json";
-      final body = jsonEncode(bodyContent);
-      final resp = await http.put(Uri.parse(api), headers: headers, body: body);
-      final errMsg = _jsonDecodeActionResp(resp);
-      if (errMsg.isNotEmpty) {
-        BotToast.showText(contentColor: Colors.red, text: errMsg);
-        return false;
-      }
-      return true;
-    } catch (err) {
-      debugPrint('changeSharedPassword err: ${err.toString()}');
-      return false;
-    }
+    it.first.note = note;
+    return true;
   }
 
   @override
   Future<bool> changePersonalHashPassword(String id, String hash) async {
     if (!personal) return false;
-    if (!peers.any((e) => e.id == id)) return true;
-    return await _setPassword({"id": id, "hash": hash});
+    final it = peers.where((element) => element.id == id);
+    if (it.isNotEmpty) {
+      it.first.hash = hash;
+    }
+    return true;
   }
 
   @override
   Future<bool> changeSharedPassword(String id, String password) async {
     if (personal) return false;
-    return await _setPassword({"id": id, "password": password});
+    final it = peers.where((element) => element.id == id);
+    if (it.isNotEmpty) {
+      it.first.password = password;
+    }
+    return true;
   }
 
   @override
   Future<void> syncFromRecent(List<Peer> recents) async {
-    bool uiUpdate = false;
-    bool saveCache = false;
-    final api =
-        "${await bind.mainGetApiServer()}/api/ab/peer/update/${profile.guid}";
-    var headers = getHttpHeaders();
-    headers['Content-Type'] = "application/json";
-
-    Future<bool> trySyncOnePeer(Peer p, Peer r) async {
-      var map = Map<String, String>.fromEntries([]);
+    var uiUpdate = false;
+    for (var p in peers) {
+      final r = recents.firstWhereOrNull((e) => e.id == p.id);
+      if (r == null) {
+        continue;
+      }
       if (p.sameServer != true &&
           r.username.isNotEmpty &&
           p.username != r.username) {
         p.username = r.username;
-        map['username'] = r.username;
+        uiUpdate = true;
       }
       if (p.sameServer != true &&
           r.hostname.isNotEmpty &&
           p.hostname != r.hostname) {
         p.hostname = r.hostname;
-        map['hostname'] = r.hostname;
+        uiUpdate = true;
       }
       if (p.sameServer != true &&
           r.platform.isNotEmpty &&
           p.platform != r.platform) {
         p.platform = r.platform;
-        map['platform'] = r.platform;
+        uiUpdate = true;
       }
       if (personal && r.hash.isNotEmpty && p.hash != r.hash) {
         p.hash = r.hash;
-        map['hash'] = r.hash;
-        saveCache = true;
+        uiUpdate = true;
       }
-      if (map.isEmpty) {
-        // no need to sync
-        return false;
-      }
-      map['id'] = p.id;
-      final body = jsonEncode(map);
-      final resp = await http.put(Uri.parse(api), headers: headers, body: body);
-      final errMsg = _jsonDecodeActionResp(resp);
-      if (errMsg.isNotEmpty) {
-        debugPrint('syncOnePeer errMsg: $errMsg');
-        return false;
-      }
-      uiUpdate = true;
-      return true;
     }
-
-    try {
-      // Not add new peers because IDs that are not on the server can't be synced, then sync will happen every startup.
-      for (var p in peers) {
-        Peer? r = recents.firstWhereOrNull((e) => e.id == p.id);
-        if (r != null) {
-          await trySyncOnePeer(p, r);
-        }
-      }
-      // Pull cannot be used for sync to avoid cyclic sync.
-      if (uiUpdate && gFFI.abModel.currentName.value == profile.name) {
-        peers.refresh();
-      }
-      if (saveCache) {
-        gFFI.abModel._saveCache();
-      }
-    } catch (err) {
-      debugPrint('syncFromRecent err: ${err.toString()}');
+    if (uiUpdate && gFFI.abModel.currentName.value == profile.name) {
+      peers.refresh();
+      gFFI.abModel._saveCache();
     }
   }
 
   @override
   Future<bool> deletePeers(List<String> ids) async {
-    try {
-      final api =
-          "${await bind.mainGetApiServer()}/api/ab/peer/${profile.guid}";
-      var headers = getHttpHeaders();
-      headers['Content-Type'] = "application/json";
-      final body = jsonEncode(ids);
-      final resp =
-          await http.delete(Uri.parse(api), headers: headers, body: body);
-      final errMsg = _jsonDecodeActionResp(resp);
-      if (errMsg.isNotEmpty) {
-        BotToast.showText(contentColor: Colors.red, text: errMsg);
-        return false;
-      }
-      return true;
-    } catch (err) {
-      debugPrint('deletePeers err: ${err.toString()}');
-      return false;
-    }
+    peers.removeWhere((e) => ids.contains(e.id));
+    return true;
   }
 // #endregion
 
@@ -1775,30 +1344,14 @@ class Ab extends BaseAb {
   @override
   Future<bool> addTags(
       List<String> tagList, Map<String, int> tagColorMap) async {
-    try {
-      final api =
-          "${await bind.mainGetApiServer()}/api/ab/tag/add/${profile.guid}";
-      var headers = getHttpHeaders();
-      headers['Content-Type'] = "application/json";
-      for (var t in tagList) {
-        final body = jsonEncode({
-          "name": t,
-          "color": tagColorMap[t] ??
-              str2color2(t, existing: tagColors.values.toList()).value,
-        });
-        final resp =
-            await http.post(Uri.parse(api), headers: headers, body: body);
-        final errMsg = _jsonDecodeActionResp(resp);
-        if (errMsg.isNotEmpty) {
-          BotToast.showText(contentColor: Colors.red, text: errMsg);
-          return false;
-        }
+    for (var t in tagList) {
+      if (!tagContainBy(t)) {
+        tags.add(t);
       }
-      return true;
-    } catch (err) {
-      debugPrint('addTags err: ${err.toString()}');
-      return false;
+      tagColors[t] =
+          tagColorMap[t] ?? str2color2(t, existing: tagColors.values.toList()).value;
     }
+    return true;
   }
 
   @override
@@ -1808,71 +1361,35 @@ class Ab extends BaseAb {
           contentColor: Colors.red, text: 'Tag $newTag already exists');
       return false;
     }
-    try {
-      final api =
-          "${await bind.mainGetApiServer()}/api/ab/tag/rename/${profile.guid}";
-      var headers = getHttpHeaders();
-      headers['Content-Type'] = "application/json";
-      final body = jsonEncode({
-        "old": oldTag,
-        "new": newTag,
-      });
-      final resp = await http.put(Uri.parse(api), headers: headers, body: body);
-      final errMsg = _jsonDecodeActionResp(resp);
-      if (errMsg.isNotEmpty) {
-        BotToast.showText(contentColor: Colors.red, text: errMsg);
-        return false;
-      }
-      return true;
-    } catch (err) {
-      debugPrint('renameTag err: ${err.toString()}');
-      return false;
+    tags.value = tags.map((e) => e == oldTag ? newTag : e).toList();
+    for (var peer in peers) {
+      peer.tags = peer.tags.map((e) => e == oldTag ? newTag : e).toList();
     }
+    final oldColor = tagColors[oldTag];
+    if (oldColor != null) {
+      tagColors.remove(oldTag);
+      tagColors[newTag] = oldColor;
+    }
+    return true;
   }
 
   @override
   Future<bool> setTagColor(String tag, Color color) async {
-    try {
-      final api =
-          "${await bind.mainGetApiServer()}/api/ab/tag/update/${profile.guid}";
-      var headers = getHttpHeaders();
-      headers['Content-Type'] = "application/json";
-      final body = jsonEncode({
-        "name": tag,
-        "color": color.value,
-      });
-      final resp = await http.put(Uri.parse(api), headers: headers, body: body);
-      final errMsg = _jsonDecodeActionResp(resp);
-      if (errMsg.isNotEmpty) {
-        BotToast.showText(contentColor: Colors.red, text: errMsg);
-        return false;
-      }
-      return true;
-    } catch (err) {
-      debugPrint('setTagColor err: ${err.toString()}');
-      return false;
+    if (tags.contains(tag)) {
+      tagColors[tag] = color.value;
     }
+    return true;
   }
 
   @override
   Future<bool> deleteTag(String tag) async {
-    try {
-      final api = "${await bind.mainGetApiServer()}/api/ab/tag/${profile.guid}";
-      var headers = getHttpHeaders();
-      headers['Content-Type'] = "application/json";
-      final body = jsonEncode([tag]);
-      final resp =
-          await http.delete(Uri.parse(api), headers: headers, body: body);
-      final errMsg = _jsonDecodeActionResp(resp);
-      if (errMsg.isNotEmpty) {
-        BotToast.showText(contentColor: Colors.red, text: errMsg);
-        return false;
-      }
-      return true;
-    } catch (err) {
-      debugPrint('deleteTag err: ${err.toString()}');
-      return false;
+    gFFI.abModel.selectedTags.remove(tag);
+    tags.removeWhere((element) => element == tag);
+    tagColors.remove(tag);
+    for (var peer in peers) {
+      peer.tags.remove(tag);
     }
+    return true;
   }
 
 // #endregion
@@ -1971,61 +1488,4 @@ class DummyAb extends BaseAb {
 
   @override
   Future<void> syncFromRecent(List<Peer> recents) async {}
-}
-
-Map<String, dynamic> _jsonDecodeRespMap(String body, int statusCode) {
-  try {
-    Map<String, dynamic> json = jsonDecode(body);
-    return json;
-  } catch (e) {
-    final err = body.isNotEmpty && body.length < 128 ? body : e.toString();
-    if (statusCode != 200) {
-      throw 'HTTP $statusCode, $err';
-    }
-    throw err;
-  }
-}
-
-List<dynamic> _jsonDecodeRespList(String body, int statusCode) {
-  try {
-    List<dynamic> json = jsonDecode(body);
-    return json;
-  } catch (e) {
-    final err = body.isNotEmpty && body.length < 128 ? body : e.toString();
-    if (statusCode != 200) {
-      throw 'HTTP $statusCode, $err';
-    }
-    throw err;
-  }
-}
-
-String _jsonDecodeActionResp(http.Response resp) {
-  var errMsg = '';
-  if (resp.statusCode == 200 && resp.body.isEmpty) {
-    // ok
-  } else {
-    try {
-      errMsg = jsonDecode(resp.body)['error'].toString();
-    } catch (_) {}
-    if (errMsg.isEmpty) {
-      if (resp.statusCode != 200) {
-        errMsg = 'HTTP ${resp.statusCode}';
-      }
-      if (resp.body.isNotEmpty) {
-        if (errMsg.isNotEmpty) {
-          errMsg += ', ';
-        }
-        errMsg += resp.body;
-      }
-      if (errMsg.isEmpty) {
-        errMsg = "unknown error";
-      }
-    }
-  }
-  return errMsg;
-}
-
-// https://github.com/seanmonstar/reqwest/issues/838
-void _setEmptyBody(Map<String, String> headers) {
-  headers['Content-Length'] = '0';
 }

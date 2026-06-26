@@ -137,7 +137,7 @@ echo "$out5"
 echo "$out5" | grep -q 'Your ip is blocked by the peer' \
   || { echo "  FAIL R-T15(d): a fully-keyed connection was NOT denied by the empty default-deny whitelist"; rc=1; }
 
-echo "== (6) FULL SESSION (R-S6/R-S2): a keyed client + an empty-password LoginRequest is AUTHORIZED (whitelist=0.0.0.0/0) =="
+echo "== (6) FULL SESSION (R-S6/R-S2/R-S18): a keyed client + a credential-free LoginRequest is AUTHORIZED (whitelist=0.0.0.0/0) =="
 out6=$("${RUN[@]}" bash -c '
   export HOME=/tmp/rd6 RUSTDESK_BIND_LOOPBACK=1; mkdir -p "$HOME"
   ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" "0.0.0.0/0" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
@@ -148,10 +148,10 @@ out6=$("${RUN[@]}" bash -c '
 ' || true)
 echo "$out6"
 # An authorized session emits PermissionInfo (session-setup) — proving the keyed edge IS the
-# authorization (R-S6: the password proof is collapsed into the PAKE; the empty-password
-# LoginRequest still authorizes because CPace already authenticated, and the whitelist admits).
+# authorization (R-S6/R-S18: the password proof is collapsed into the PAKE; LoginRequest carries
+# no second credential and still authorizes because CPace already authenticated, and the whitelist admits).
 echo "$out6" | grep -q 'PermissionInfo\|PeerInfo' \
-  || { echo "  FAIL R-S6: a keyed empty-password LoginRequest did NOT authorize / start a session"; rc=1; }
+  || { echo "  FAIL R-S6/R-S18: a keyed credential-free LoginRequest did NOT authorize / start a session"; rc=1; }
 # R-S17: the probe (a faithful viewer) verified the responder's HostIdentity host-proof as the
 # FIRST post-key frame — the SSH-known_hosts-style defence against a substituted/MITM host.
 echo "$out6" | grep -q 'R-S17 host-proof VERIFIED' \

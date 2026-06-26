@@ -759,7 +759,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           isTcpTunneling: call.arguments['isTcpTunneling'],
           isRDP: call.arguments['isRDP'],
           password: call.arguments['password'],
-          forceRelay: call.arguments['forceRelay'],
           connToken: call.arguments['connToken'],
         );
       } else if (call.method == kWindowBumpMouse) {

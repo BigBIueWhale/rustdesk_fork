@@ -199,6 +199,30 @@ dg_clean '\bosUsername\b|\bosPassword\b|\bos_username\b|\bos_password\b|sessionE
 # relay; WoL is the R-SV4(c) accepted loss). The relay-hint dialog the Rust core fed is gone
 # too (the core now emits a plain error, R-G6). All removed at the widget, not greyed (R-G1).
 dg_clean '_forceAlwaysRelayAction|_isForceAlwaysRelay|kOptionForceAlwaysRelay|_wolAction|showRelayHintDialog' 'R-G6 relay-fallback + WoL peer-card actions'
+# R-G6 / R-X6 / R-SV4: stale relay-route syntax (`/r`, `/r@server`) is rejected, never stripped.
+# The old authored-Dart path called mainHandleRelayId and carried forceRelay through page/window
+# constructors; only generated/web bridge compatibility definitions may still name it, and the
+# model's generated-bridge calls must pin the old parameter to false.
+if grep -RInE 'mainHandleRelayId' flutter/lib --include='*.dart' 2>/dev/null \
+    | grep -v 'generated_bridge.dart' | grep -v 'web/bridge.dart' >/dev/null; then
+  echo "  FAIL R-G6/R-X6: authored Dart still calls mainHandleRelayId (relay suffix strip path)"; exit 1
+fi
+relay_hits=$(grep -RInE 'forceRelay' flutter/lib --include='*.dart' 2>/dev/null \
+  | grep -v 'generated_bridge.dart' | grep -v 'web/bridge.dart' \
+  | grep -v 'forceRelay: false' | grep -v 'bool _forceRelay' || true)
+if [ -n "$relay_hits" ]; then
+  echo "  FAIL R-G6/R-SV4: authored Dart still carries live forceRelay plumbing:"; echo "$relay_hits" | sed 's/^/      /'
+  exit 1
+fi
+if grep -RInE '"forceRelay"|'\''forceRelay'\''' flutter/lib --include='*.dart' 2>/dev/null \
+    | grep -v 'generated_bridge.dart' | grep -v 'web/bridge.dart' >/dev/null; then
+  echo "  FAIL R-G6/R-SV4: authored Dart still serializes/deserializes a forceRelay window field"; exit 1
+fi
+grep -qF "uri.path == '/r' || uri.path.startsWith('/r@')" flutter/lib/common.dart \
+  || { echo "  FAIL R-G6/R-X6: urlLinkToCmdArgs no longer rejects /r and /r@ relay deep links"; exit 1; }
+grep -qF "hasRelayRouteSyntax" flutter/lib/common/formatter/id_formatter.dart \
+  || { echo "  FAIL R-G6/R-SV4: direct-address validator lost relay-route rejection"; exit 1; }
+echo "  ok  R-G6/R-X6 relay suffix/forceRelay routes rejected or pinned false"
 # R-G2 / R-G8 / §19: the connection-status row's rendezvous strings — connecting_status ("Connecting
 # to the RustDesk network…") and not_ready_status — are repurposed away: the controlled side just
 # shows "Listening on :21118", so neither is rendered on desktop (OnlineStatusWidget) or mobile

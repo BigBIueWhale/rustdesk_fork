@@ -53,7 +53,6 @@ class _TerminalTabPageState extends State<TerminalTabPage> {
       terminalId: terminalId,
       password: params['password'],
       isSharedPassword: params['isSharedPassword'],
-      forceRelay: params['forceRelay'],
       connToken: params['connToken'],
     ));
   }
@@ -63,7 +62,6 @@ class _TerminalTabPageState extends State<TerminalTabPage> {
     required int terminalId,
     String? password,
     bool? isSharedPassword,
-    bool? forceRelay,
     String? connToken,
   }) {
     final tabKey = '${peerId}_$terminalId';
@@ -84,7 +82,6 @@ class _TerminalTabPageState extends State<TerminalTabPage> {
         password: password,
         isSharedPassword: isSharedPassword,
         tabController: tabController,
-        forceRelay: forceRelay,
         connToken: connToken,
       ),
     );
@@ -316,7 +313,6 @@ class _TerminalTabPageState extends State<TerminalTabPage> {
           terminalId: terminalId,
           password: args['password'],
           isSharedPassword: args['isSharedPassword'],
-          forceRelay: args['forceRelay'],
           connToken: args['connToken'],
         ));
       } else if (call.method == kWindowEventRestoreTerminalSessions) {
@@ -513,7 +509,6 @@ class _TerminalTabPageState extends State<TerminalTabPage> {
         terminalId: newTerminalId,
         password: page.password,
         isSharedPassword: page.isSharedPassword,
-        forceRelay: page.forceRelay,
         connToken: page.connToken,
       ));
     }

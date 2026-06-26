@@ -50,7 +50,6 @@ class _FileManagerTabPageState extends State<FileManagerTabPage> {
           password: params['password'],
           isSharedPassword: params['isSharedPassword'],
           tabController: tabController,
-          forceRelay: params['forceRelay'],
           connToken: params['connToken'],
         )));
   }
@@ -81,7 +80,6 @@ class _FileManagerTabPageState extends State<FileManagerTabPage> {
               password: args['password'],
               isSharedPassword: args['isSharedPassword'],
               tabController: tabController,
-              forceRelay: args['forceRelay'],
               connToken: args['connToken'],
             )));
       } else if (call.method == "onDestroy") {

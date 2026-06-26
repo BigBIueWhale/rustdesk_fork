@@ -621,6 +621,7 @@ fn core_main_invoke_new_connection(mut args: std::env::Args) -> Option<Vec<Strin
     let mut authority = None;
     let mut id = None;
     let mut param_array = vec![];
+    let mut relay_requested = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--connect" | "--play" | "--file-transfer" | "--view-camera" | "--port-forward"
@@ -634,10 +635,14 @@ fn core_main_invoke_new_connection(mut args: std::env::Args) -> Option<Vec<Strin
                 }
             }
             "--relay" => {
-                param_array.push(format!("relay=true"));
+                relay_requested = true;
             }
             _ => {}
         }
+    }
+    if relay_requested {
+        log::warn!("rejecting --relay on direct-only fork");
+        return None;
     }
     let mut uni_links = Default::default();
     if let Some(authority) = authority {

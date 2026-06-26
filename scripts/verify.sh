@@ -71,6 +71,12 @@ echo "== (3b) IPC parent-dir hardening behavior tests (R-S11a/R-S11a(b), root-ex
 echo "== (3b-i) IPC service-socket peer-uid authorization policy (R-S11a/§17) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::ipc_auth::tests --color never
 
+# (3b-i-r) R-G6/R-SV4 relay-route compatibility helper: it must be an identity
+# transform, never a suffix stripper. This pins the Rust-side defense in depth
+# for stale generated bridge or native callers.
+echo "== (3b-i-r) relay-route suffix identity test (R-G6/R-SV4) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ui_interface::relay_route_tests --color never
+
 # (3b-ii) api-server RESOLUTION sovereignty (R-SV6(d)/R-D6): get_api_server("","") and
 # get_custom_rendezvous_server("") must resolve to "" — no hardwired global host. The upstream
 # "https://admin.rustdesk.com" fallback is excised and PROD_RENDEZVOUS_SERVER stays empty (zero
@@ -287,6 +293,28 @@ elif ! grep -qF 'connect-only and MUST NOT carry an embedded' flutter/lib/common
 else
   echo "  ok  R-X6 Dart deep-link parser strips embedded key/password/relay"
 fi
+# R-G6 / R-SV4 / R-X6: relay route syntax must FAIL CLOSED. The inherited flow accepted
+# rustdesk://<id>/r, stripped `/r` in Rust, set forceRelay, and could persist
+# force-always-relay. The direct-only fork may keep generated ABI compatibility, but no
+# source path may strip a relay suffix, serialize relay=true, or save/read force-always-relay.
+if grep -qF 'param_array.push(format!("relay=true"))' src/core_main.rs; then
+  echo "  FAIL R-G6/R-X6: core_main still forwards --relay as relay=true"; rc=1
+elif ! grep -qF 'rejecting --relay on direct-only fork' src/core_main.rs; then
+  echo "  FAIL R-G6/R-X6: core_main no longer explicitly rejects --relay"; rc=1
+else
+  echo "  ok  R-G6/R-X6 CLI --relay rejected instead of forwarded"
+fi
+if grep -qE 'handle_relay_id\(' src/client.rs; then
+  echo "  FAIL R-G6/R-SV4: client.rs still strips relay suffixes through handle_relay_id"; rc=1
+fi
+if grep -RInE 'force-always-relay' src libs --include='*.rs' 2>/dev/null \
+    | grep -v '//' | grep -v 'bridge_generated' >/dev/null; then
+  echo "  FAIL R-G6/R-SV4: force-always-relay is still a live Rust config/read/write token"; rc=1
+else
+  echo "  ok  R-G6/R-SV4 force-always-relay live Rust token absent"
+fi
+grep -A3 -F 'pub fn handle_relay_id(id: &str) -> &str {' src/ui_interface.rs | grep -qF '    id' \
+  || { echo "  FAIL R-G6/R-SV4: handle_relay_id is no longer an identity compatibility shim"; rc=1; }
 # (2) The Rust core LoginConfigHandler::initialize (src/client.rs) MUST NOT adopt an embedded ?key= into
 # other_server, nor re-adopt a persisted/option-injected other-server-key.
 if grep -qE 'args_map\.remove\("key"\)' src/client.rs; then

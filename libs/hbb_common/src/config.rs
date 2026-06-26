@@ -2813,10 +2813,7 @@ pub fn is_disable_installation() -> bool {
 pub fn option2bool(option: &str, value: &str) -> bool {
     if option.starts_with("enable-") {
         value != "N"
-    } else if option.starts_with("allow-")
-        || option == "stop-service"
-        || option == "force-always-relay"
-    {
+    } else if option.starts_with("allow-") || option == "stop-service" {
         value == "Y"
     } else {
         value != "N"

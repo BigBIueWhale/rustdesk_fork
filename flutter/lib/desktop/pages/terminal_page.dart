@@ -17,13 +17,11 @@ class TerminalPage extends StatefulWidget {
     required this.isSharedPassword,
     required this.terminalId,
     required this.tabKey,
-    this.forceRelay,
     this.connToken,
   }) : super(key: key);
   final String id;
   final String? password;
   final DesktopTabController tabController;
-  final bool? forceRelay;
   final bool? isSharedPassword;
   final String? connToken;
   final int terminalId;
@@ -65,7 +63,6 @@ class _TerminalPageState extends State<TerminalPage>
       peerId: widget.id,
       password: widget.password,
       isSharedPassword: widget.isSharedPassword,
-      forceRelay: widget.forceRelay,
       connToken: widget.connToken,
     );
 

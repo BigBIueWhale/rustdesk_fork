@@ -1018,13 +1018,9 @@ pub fn recent_sessions_updated() -> bool {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios", feature = "flutter")))]
-pub fn new_remote(id: String, remote_type: String, force_relay: bool) {
+pub fn new_remote(id: String, remote_type: String, _force_relay: bool) {
     let mut lock = CHILDREN.lock().unwrap();
-    let mut args = vec![format!("--{}", remote_type), id.clone()];
-    if force_relay {
-        args.push("".to_string()); // password
-        args.push("--relay".to_string());
-    }
+    let args = vec![format!("--{}", remote_type), id.clone()];
     let key = (id.clone(), remote_type.clone());
     if let Some(c) = lock.1.get_mut(&key) {
         if let Ok(Some(_)) = c.try_wait() {
@@ -1297,12 +1293,24 @@ pub async fn change_id_shared_(id: String, old_id: String) -> &'static str {
 // R-SV4/R-SV10: `check_id` — the rendezvous-dialing `register_pk` sender the Change-ID flow used —
 // is EXCISED (see change_id_shared_). The fork dials no rendezvous and registers no device pk.
 
-// if it's relay id, return id processed, otherwise return original id
+// R-G6/R-SV4: relay-route suffixes (`/r`, `/r@server`) are forbidden on this
+// direct-only fork. Keep this compatibility function as an identity transform
+// so stale generated bridge callers cannot silently strip a rejected route.
 pub fn handle_relay_id(id: &str) -> &str {
-    if id.ends_with(r"\r") || id.ends_with(r"/r") {
-        &id[0..id.len() - 2]
-    } else {
-        id
+    id
+}
+
+#[cfg(test)]
+mod relay_route_tests {
+    use super::handle_relay_id;
+
+    #[test]
+    fn relay_suffix_is_never_stripped() {
+        assert_eq!(handle_relay_id("123456789/r"), "123456789/r");
+        assert_eq!(
+            handle_relay_id("192.168.1.10/r@relay.example.com"),
+            "192.168.1.10/r@relay.example.com"
+        );
     }
 }
 

@@ -93,7 +93,6 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
           password: params['password'],
           toolbarState: ToolbarState(),
           tabController: tabController,
-          forceRelay: params['forceRelay'],
           isSharedPassword: params['isSharedPassword'],
         ),
       ));
@@ -449,7 +448,6 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
           password: args['password'],
           toolbarState: ToolbarState(),
           tabController: tabController,
-          forceRelay: args['forceRelay'],
           isSharedPassword: args['isSharedPassword'],
         ),
       ));

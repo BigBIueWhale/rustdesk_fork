@@ -9,12 +9,27 @@ history remains the traceability record for those intermediate notes.
 
 ## Current Verdict
 
-**Status: complete for the in-repository implementation and reproducible local
-build harness.**
+**Status: post-validation relay-route follow-up closed in source and gates.**
 
 On 2026-06-26, final reviewer `Maxwell` (`gpt-5.5`, `xhigh`) reviewed the
 current dirty worktree, read the full `requirements.html`, checked the previous
 blocker classes, and returned **PASS** with no blocking findings.
+
+After commit `f90f197`, three additional read-only route/security audits were
+run against the exposed TCP paths. The server/responder audit passed, and the
+whole-route bypass audit did not find a CPace/AEAD/authorization bypass. The
+client/initiator audit found one in-repository conformance gap: stale relay
+suffix syntax (`/r`, `/r@...`) could still pass through a desktop URI/CLI route,
+be normalized into a direct address, and persist stale relay state. That finding
+did not revive relay/KCP or bypass CPace, but it violated the direct-IP-only
+fail-closed philosophy.
+
+That relay-route gap is now closed in the current worktree. Relay route syntax
+is rejected instead of normalized in the Dart URI/direct-address paths, the Rust
+core no longer strips relay suffixes, `--relay` is rejected on the CLI path, and
+authored Flutter window/session plumbing no longer carries a live `forceRelay`
+decision. New verification gates in `scripts/verify.sh` and
+`scripts/dart-verify.sh` fail on regression of these routes.
 
 The requirements snapshot reviewed in this pass was:
 
@@ -57,6 +72,15 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   of restore-after-resolution behavior. Rust `users` advisories are resolved by
   dependency-renaming to `uzers` 0.12.x; the stale advisory ignores were removed
   from `deny.toml`.
+- **Relay route syntax and force-relay state fail closed.** Authored Dart now
+  detects and rejects `/r`, `\r`, and `/r@...` route syntax in connect/deep-link
+  paths instead of stripping it into a direct address. The Rust core treats
+  relay suffixes as ordinary invalid direct-address input, rejects `--relay`
+  instead of forwarding it into a connection parameter, and ignores the old
+  `forceRelay` ABI positions by pinning them false where generated bindings
+  still require a shape. Live `force-always-relay` behavior is gone; remaining
+  mentions are limited to verification/tests or inert generated/API-compatibility
+  shapes.
 
 ## Final Artifacts
 
@@ -120,10 +144,106 @@ Coverage highlights:
   R-S17 host-proof verification, forged-frame AEAD rejection, owner-safe online
   guess limiting, and absence of a plaintext canary on the captured wire.
 
+## Open Audit Follow-Ups
+
+These items were added after the post-commit read-only TCP route audits. They
+are current tracking items, not historical work-log notes.
+
+### Closed in Current Follow-Up
+
+- **Client relay-suffix routes fail closed.** Desktop URI/CLI and deep-link
+  initiation now reject stale relay syntax such as `rustdesk://host:21118/r`,
+  `host:21118/r`, and `/r@...` instead of stripping the suffix and continuing.
+  `urlLinkToCmdArgs`, `handleUriLink`, direct-address formatting/validation, and
+  the Rust `LoginConfigHandler::initialize` path now preserve the direct-only
+  invariant by refusing relay-route syntax.
+
+- **Relay state plumbing is removed or pinned inert.** Authored Flutter session
+  and multi-window creation paths no longer serialize or propagate `forceRelay`.
+  Rust rejects `--relay`, stops consulting `force-always-relay` for live route
+  decisions, and keeps only ABI-compatible ignored parameters where generated
+  bridge shapes still require them.
+
+- **Relay regression gates are live.** `scripts/verify.sh` rejects any re-growth
+  of CLI relay forwarding, live `force-always-relay` Rust behavior, client-side
+  relay suffix stripping, or a non-identity `handle_relay_id`.
+  `scripts/dart-verify.sh` rejects authored Dart callers of
+  `mainHandleRelayId`, live `forceRelay` plumbing, serialized `"forceRelay"`
+  fields, and missing `/r` rejection coverage. The latest Docker/Dart
+  validation evidence is:
+
+```text
+bash scripts/verify.sh        # GREEN: VERIFY: all gates green
+bash scripts/dart-verify.sh   # GREEN: flutter analyze lib/ + address-validator tests + R-G6/R-X6 gates
+git diff --check              # GREEN after this ledger update
+```
+
+### Defense-In-Depth Items
+
+- **Windows and Android socket-surface assertions.** Linux has a live
+  process-table assertion for exactly one IPv4 TCP listener on `127.0.0.1` in
+  smoke tests / `21118` in service mode and zero UDP sockets. Windows and Android
+  currently rely more on code-path proof. Add platform-native checks in their
+  validation paths so every shipped target proves one direct TCP listener, zero
+  UDP, and no relay/rendezvous/KCP listener.
+
+- **Delete or cfg-fence inert UDP/KCP/rendezvous helpers.** Remaining UDP helper
+  code in `hbb_common` appears inert by call graph, not by physical absence.
+  Prefer deleting or target-cfg-fencing transport-capable helper functions so
+  "no UDP/KCP/rendezvous" is enforced by absence, with grep/call-graph gates
+  preventing future reintroduction.
+
+- **Delete or hard-refuse latent port-forward connect code.** The current pins
+  and refusal path prevent RDP/tunnel use, but responder-side port-forward
+  connection code still exists behind dead policy. Replace it with an
+  unconditional explicit refusal or delete it, then gate that no app path opens
+  tunnel sockets or calls raw stream mode.
+
+- **Mirror file-session gates on `FileResponse`.** `FileAction` is
+  session-gated, and CM drops unknown write IDs, but `FileResponse` forwarding
+  should also re-check the file-transfer/printer session state before forwarding
+  to CM. This is defense-in-depth, not a known keyed-path bypass.
+
+- **Close on malformed post-key `Message` parse.** Post-key protobuf parse
+  failures currently do not represent pre-auth parser exposure, but a complete
+  keyed frame that fails protobuf parsing should be treated as a protocol
+  violation and close/poison the session instead of allowing weird authenticated
+  state to continue.
+
+- **Strengthen file-transfer parent traversal.** Final-component writes use
+  no-follow opens; intermediate path validation remains path-based. A full
+  handle/openat-style parent walk would better match the no-TOCTOU philosophy
+  and should be tracked as local filesystem hardening.
+
+### Larger Assurance / Hardening Items
+
+- **Native viewer decoder sandbox.** The biggest remaining code hardening target
+  beyond route security is the documented viewer residual: a deliberately
+  connected, password-correct hostile peer can feed media/content bytes into
+  in-process native decoders. Design an out-of-process, length-bounded,
+  killable decode boundary for video/audio/clipboard/file-compression surfaces,
+  and maintain a native codec CVE watch separate from Cargo/Dart advisories.
+
+- **R-V3 independent CPace/transport audit.** Keep the audit disclosure until an
+  outside expert reviews the CPace construction, transcript binding, KDF,
+  confirmation MACs, constant-time behavior, zeroization, AEAD nonce/key
+  separation, and HostIdentity session binding. The existing docs and tests are
+  audit inputs, not a substitute.
+
+- **Apple artifact builds.** Source conformance is checked here, but actual
+  macOS/iOS artifact builds still need the pinned Apple toolchain path. The
+  ledger should not claim Apple artifact parity until those builds run.
+
+- **Real two-host demonstrations.** The Docker loopback harness validates local
+  executable properties. Separate operational evidence should demonstrate
+  wrong-password failure, no plaintext canary, host-key mismatch failure before
+  application decode, relay-syntax rejection, and RDP/tunnel refusal on a real
+  two-host topology.
+
 ## Known Residuals
 
-No known in-repository implementation or build-harness gaps remain under the
-reviewed requirements snapshot.
+No known in-repository implementation or build-harness gap remains from the
+post-`f90f197` TCP route audits after the relay-suffix closure above.
 
 The remaining items are explicitly external or pre-exposure evidence, not source
 tree TODOs:

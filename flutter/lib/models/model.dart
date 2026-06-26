@@ -998,10 +998,10 @@ class FfiModel with ChangeNotifier {
   }
 
   void reconnect(OverlayDialogManager dialogManager, SessionID sessionId,
-      bool forceRelay) {
+      bool _forceRelay) {
     // Disable relative mouse mode before reconnecting to ensure cursor is released.
     parent.target?.inputModel.setRelativeMouseMode(false);
-    bind.sessionReconnect(sessionId: sessionId, forceRelay: forceRelay);
+    bind.sessionReconnect(sessionId: sessionId, forceRelay: false);
     clearPermissions();
     dialogManager.dismissAll();
     dialogManager.showLoading(translate('Connecting...'),
@@ -3465,7 +3465,6 @@ class FFI {
     String? password,
     bool? isSharedPassword,
     String? connToken,
-    bool? forceRelay,
     int? tabWindowId,
     int? display,
     List<int>? displays,
@@ -3509,7 +3508,9 @@ class FFI {
         isPortForward: isPortForward,
         isRdp: isRdp,
         isTerminal: isTerminal,
-        forceRelay: forceRelay ?? false,
+        // Generated FRB ABI still has the inherited parameter. Direct-only
+        // callers never set it, and Rust discards it defense-in-depth.
+        forceRelay: false,
         password: password ?? '',
         isSharedPassword: isSharedPassword ?? false,
         connToken: connToken,

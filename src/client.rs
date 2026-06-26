@@ -1293,7 +1293,7 @@ impl LoginConfigHandler {
         id: String,
         conn_type: ConnType,
         switch_uuid: Option<String>,
-        mut force_relay: bool,
+        _force_relay: bool,
         adapter_luid: Option<i64>,
         shared_password: Option<String>,
         conn_token: Option<String>,
@@ -1312,19 +1312,12 @@ impl LoginConfigHandler {
             // bind.sendUrlScheme even when the Dart-parser strip is bypassed.)
             let key = String::new();
 
-            // here we can check <id>/r@server
-            let real_id = crate::ui_interface::handle_relay_id(raw_id).to_string();
-            if real_id != raw_id {
-                force_relay = true;
-            }
+            // R-G6/R-SV4: relay suffixes are rejected by the UI and by the
+            // direct-address choke point. The core must never strip `/r` or
+            // persist a relay preference as a side effect.
+            let real_id = raw_id.to_string();
             self.other_server = Some((real_id.clone(), server.to_owned(), key));
             id = format!("{real_id}@{server}");
-        } else {
-            let real_id = crate::ui_interface::handle_relay_id(&id);
-            if real_id != id {
-                force_relay = true;
-                id = real_id.to_owned();
-            }
         }
 
         self.id = id;
@@ -1352,10 +1345,7 @@ impl LoginConfigHandler {
         self.session_id = sid;
         self.supported_encoding = Default::default();
         self.restarting_remote_device = false;
-        self.force_relay =
-            config::option2bool("force-always-relay", &self.get_option("force-always-relay"))
-                || force_relay
-                || Config::is_proxy();
+        self.force_relay = false;
         // R-X6: the persisted `other-server-key` re-adoption is removed — other_server's key is held
         // empty (never sourced from the deep-link `?key=`; see initialize above), so a stale or
         // option-injected `other-server-key` can never be re-adopted as a trust anchor.
@@ -2046,11 +2036,6 @@ impl LoginConfigHandler {
                     .options
                     .insert("other-server-key".to_owned(), c.clone());
             }
-        }
-        if self.force_relay {
-            config
-                .options
-                .insert("force-always-relay".to_owned(), "Y".to_owned());
         }
         #[cfg(feature = "flutter")]
         {

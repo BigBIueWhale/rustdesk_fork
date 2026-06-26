@@ -2245,7 +2245,6 @@ bool handleUriLink({List<String>? cmdArgs, Uri? uri, String? uriString}) {
   UriLinkType? type;
   String? id;
   String? password;
-  bool? forceRelay;
   for (int i = 0; i < args.length; i++) {
     switch (args[i]) {
       case '--connect':
@@ -2284,39 +2283,43 @@ bool handleUriLink({List<String>? cmdArgs, Uri? uri, String? uriString}) {
         i++;
         break;
       case '--relay':
-        forceRelay = true;
-        break;
+        // R-G6/R-SV4: there is no relay transport in this fork. A stale CLI or
+        // deep-link relay flag is a rejected route, not a request to strip/ignore.
+        return false;
       default:
         break;
     }
   }
   if (type != null && id != null) {
+    if (hasRelayRouteSyntax(id!)) {
+      return false;
+    }
     final cid = id;
     late final VoidCallback doConnect;
     switch (type) {
       case UriLinkType.remoteDesktop:
-        doConnect = () => rustDeskWinManager.newRemoteDesktop(cid,
-            password: password, forceRelay: forceRelay);
+        doConnect =
+            () => rustDeskWinManager.newRemoteDesktop(cid, password: password);
         break;
       case UriLinkType.fileTransfer:
-        doConnect = () => rustDeskWinManager.newFileTransfer(cid,
-            password: password, forceRelay: forceRelay);
+        doConnect =
+            () => rustDeskWinManager.newFileTransfer(cid, password: password);
         break;
       case UriLinkType.viewCamera:
-        doConnect = () => rustDeskWinManager.newViewCamera(cid,
-            password: password, forceRelay: forceRelay);
+        doConnect =
+            () => rustDeskWinManager.newViewCamera(cid, password: password);
         break;
       case UriLinkType.portForward:
-        doConnect = () => rustDeskWinManager.newPortForward(cid, false,
-            password: password, forceRelay: forceRelay);
+        doConnect = () =>
+            rustDeskWinManager.newPortForward(cid, false, password: password);
         break;
       case UriLinkType.rdp:
-        doConnect = () => rustDeskWinManager.newPortForward(cid, true,
-            password: password, forceRelay: forceRelay);
+        doConnect = () =>
+            rustDeskWinManager.newPortForward(cid, true, password: password);
         break;
       case UriLinkType.terminal:
-        doConnect = () => rustDeskWinManager.newTerminal(cid,
-            password: password, forceRelay: forceRelay);
+        doConnect =
+            () => rustDeskWinManager.newTerminal(cid, password: password);
         break;
     }
     // R-X6: a deep-link-initiated connection (fromUri) requires explicit user confirmation. The
@@ -2372,6 +2375,10 @@ List<String>? urlLinkToCmdArgs(Uri uri) {
     // For compatibility
     command = '--connect';
     id = uri.path.substring("/new/".length);
+    if (hasRelayRouteSyntax(id)) {
+      debugPrint("Rejecting relay-route deep link syntax (R-G6/R-SV4).");
+      return null;
+    }
   } else if (["config", "password"].contains(uri.authority)) {
     // R-X6: the server/key (trust-anchor) and permanent-password deep-link WRITE
     // authorities are removed entirely. A web page, QR code, or co-installed app
@@ -2385,27 +2392,29 @@ List<String>? urlLinkToCmdArgs(Uri uri) {
     command = '--${uri.authority}';
     if (uri.path.length > 1) {
       id = uri.path.substring(1);
+      if (hasRelayRouteSyntax(id)) {
+        debugPrint("Rejecting relay-route deep link syntax (R-G6/R-SV4).");
+        return null;
+      }
     }
   } else if (uri.authority.length > 2 &&
-      (uri.path.length <= 1 ||
-          (uri.path == '/r' || uri.path.startsWith('/r@')))) {
+      uri.path.length <= 1 &&
+      !hasRelayRouteSyntax(uri.authority)) {
     // rustdesk://<connect-id>
-    // rustdesk://<connect-id>/r
-    // rustdesk://<connect-id>/r@<server>
     command = '--connect';
     id = uri.authority;
-    if (uri.path.length > 1) {
-      id = id + uri.path;
-    }
+  } else if (uri.path == '/r' || uri.path.startsWith('/r@')) {
+    debugPrint("Rejecting relay-route deep link syntax (R-G6/R-SV4).");
+    return null;
   }
 
   // R-X6: the rustdesk:// deep link is connect-only and MUST NOT carry an embedded trust anchor or
   // credential. The `?key=` fold (which folded an embedded key into the id and reached the Rust
-  // other_server adoption) is removed, and the `?password=`/`?relay=` query params are not read. The Rust
-  // enforces the same strip as defense-in-depth (client.rs LoginConfigHandler::initialize), since the
-  // raw URI can also reach it via bind.sendUrlScheme. The connection carries no pre-filled secret — the
-  // user authenticates via the normal password prompt. (The explicit deep-link-connect confirmation gate
-  // is layered on top of this strip; see R-X6 / handleUriLink.)
+  // other_server adoption) is removed, and the `?password=`/`?relay=` query params are not read.
+  // Relay suffixes are rejected rather than stripped; the Rust core keeps the same direct-only
+  // invariant as defense-in-depth, since the raw URI can also reach it via bind.sendUrlScheme. The
+  // connection carries no pre-filled secret — the user authenticates via the normal password prompt.
+  // (The explicit deep-link-connect confirmation gate is layered on top; see R-X6 / handleUriLink.)
 
   if (isMobile && id != null) {
     final cid = id;
@@ -2441,7 +2450,6 @@ connectMainDesktop(String id,
     required bool isTerminal,
     required bool isTcpTunneling,
     required bool isRDP,
-    bool? forceRelay,
     String? password,
     String? connToken,
     bool? isSharedPassword}) async {
@@ -2449,31 +2457,25 @@ connectMainDesktop(String id,
     await rustDeskWinManager.newFileTransfer(id,
         password: password,
         isSharedPassword: isSharedPassword,
-        connToken: connToken,
-        forceRelay: forceRelay);
+        connToken: connToken);
   } else if (isViewCamera) {
     await rustDeskWinManager.newViewCamera(id,
         password: password,
         isSharedPassword: isSharedPassword,
-        connToken: connToken,
-        forceRelay: forceRelay);
+        connToken: connToken);
   } else if (isTcpTunneling || isRDP) {
     await rustDeskWinManager.newPortForward(id, isRDP,
         password: password,
         isSharedPassword: isSharedPassword,
-        connToken: connToken,
-        forceRelay: forceRelay);
+        connToken: connToken);
   } else if (isTerminal) {
     await rustDeskWinManager.newTerminal(id,
         password: password,
         isSharedPassword: isSharedPassword,
-        connToken: connToken,
-        forceRelay: forceRelay);
+        connToken: connToken);
   } else {
     await rustDeskWinManager.newRemoteDesktop(id,
-        password: password,
-        isSharedPassword: isSharedPassword,
-        forceRelay: forceRelay);
+        password: password, isSharedPassword: isSharedPassword);
   }
 }
 
@@ -2488,7 +2490,6 @@ connect(BuildContext context, String id,
     bool isTerminal = false,
     bool isTcpTunneling = false,
     bool isRDP = false,
-    bool forceRelay = false,
     String? password,
     String? connToken,
     bool? isSharedPassword}) async {
@@ -2509,16 +2510,13 @@ connect(BuildContext context, String id,
   // R-G2/R-SV10: the fork is direct-IP-only — the connect target MUST be a direct address
   // (<ipv4>[:port] / <ipv6> / [<ipv6>]:port / <domain>:port), never a bare numeric RustDesk ID (the
   // relay/rendezvous addressing the fork deleted). Reject anything else HERE, at the single choke
-  // every connect path funnels through (the connect box, peer cards, home, toolbar), BEFORE the
+  // every connect path funnels through (the connect box, peer cards, home, toolbar), with no
   // relay-id strip — so a "<addr>/r" form is rejected too and no rendezvous lookup is ever attempted.
   // The Rust core (client.rs:353) independently bails; this is the UI half R-G2/R-SV10 mandate.
   if (!isDirectAddress(id)) {
     showToast(translate('Direct address required (IP or host:port)'));
     return;
   }
-  final oldId = id;
-  id = await bind.mainHandleRelayId(id: id);
-  forceRelay = id != oldId || forceRelay;
   assert(!(isFileTransfer && isTcpTunneling && isRDP),
       "more than one connect type");
 
@@ -2533,7 +2531,6 @@ connect(BuildContext context, String id,
         isRDP: isRDP,
         password: password,
         isSharedPassword: isSharedPassword,
-        forceRelay: forceRelay,
       );
     } else {
       await rustDeskWinManager.call(WindowType.Main, kWindowConnect, {
@@ -2545,7 +2542,6 @@ connect(BuildContext context, String id,
         'isRDP': isRDP,
         'password': password,
         'isSharedPassword': isSharedPassword,
-        'forceRelay': forceRelay,
         'connToken': connToken,
       });
     }
@@ -2576,8 +2572,7 @@ connect(BuildContext context, String id,
             builder: (BuildContext context) => FileManagerPage(
                 id: id,
                 password: password,
-                isSharedPassword: isSharedPassword,
-                forceRelay: forceRelay),
+                isSharedPassword: isSharedPassword),
           ),
         );
       }
@@ -2603,8 +2598,7 @@ connect(BuildContext context, String id,
             builder: (BuildContext context) => ViewCameraPage(
                 id: id,
                 password: password,
-                isSharedPassword: isSharedPassword,
-                forceRelay: forceRelay),
+                isSharedPassword: isSharedPassword),
           ),
         );
       }
@@ -2616,7 +2610,6 @@ connect(BuildContext context, String id,
             id: id,
             password: password,
             isSharedPassword: isSharedPassword,
-            forceRelay: forceRelay,
           ),
         ),
       );
@@ -2641,8 +2634,7 @@ connect(BuildContext context, String id,
             builder: (BuildContext context) => RemotePage(
                 id: id,
                 password: password,
-                isSharedPassword: isSharedPassword,
-                forceRelay: forceRelay),
+                isSharedPassword: isSharedPassword),
           ),
         );
       }

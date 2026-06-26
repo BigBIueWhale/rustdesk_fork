@@ -12,7 +12,15 @@ void main() {
       expect(isDirectAddress('123456789'), isFalse);
       expect(isDirectAddress('123 456 789'), isFalse); // the space-grouped display form
       expect(isDirectAddress('123456789/r'), isFalse); // a relay-suffixed ID
+      expect(isDirectAddress('123456789/r@relay.example.com'), isFalse);
       expect(isDirectAddress('1234567890'), isFalse);
+    });
+    test('rejects inherited relay-route syntax on otherwise direct targets', () {
+      expect(hasRelayRouteSyntax('192.168.1.10/r'), isTrue);
+      expect(hasRelayRouteSyntax('192.168.1.10/r@relay.example.com'), isTrue);
+      expect(isDirectAddress('192.168.1.10/r'), isFalse);
+      expect(isDirectAddress('192.168.1.10/r@relay.example.com'), isFalse);
+      expect(isDirectAddress('host.example.com:21118/r'), isFalse);
     });
     test('accepts an IPv4, with or without a port', () {
       expect(isDirectAddress('192.168.1.10'), isTrue);

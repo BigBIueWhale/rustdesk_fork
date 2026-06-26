@@ -11,11 +11,6 @@ class IDTextEditingController extends TextEditingController {
 
 String formatID(String id) {
   String id2 = id.replaceAll(' ', '');
-  String suffix = '';
-  if (id2.endsWith(r'\r') || id2.endsWith(r'/r')) {
-    suffix = id2.substring(id2.length - 2, id2.length);
-    id2 = id2.substring(0, id2.length - 2);
-  }
   if (int.tryParse(id2) == null) return id;
   String newID = '';
   if (id2.length <= 3) {
@@ -28,11 +23,18 @@ String formatID(String id) {
       newID += " ${id2.substring(i, i + 3)}";
     }
   }
-  return newID + suffix;
+  return newID;
 }
 
 String trimID(String id) {
   return id.replaceAll(' ', '');
+}
+
+/// R-SV4/R-X6/R-G6: the inherited relay route suffix (`/r` or `/r@server`) is not
+/// a direct address modifier in this fork. It must be rejected, never stripped.
+bool hasRelayRouteSyntax(String s) {
+  final t = trimID(s);
+  return t.endsWith(r'\r') || t.endsWith('/r') || t.contains('/r@');
 }
 
 // R-G2/R-SV10: the fork is direct-IP-only. These mirror hbb_common's accept-set VERBATIM
@@ -54,5 +56,6 @@ final _domainPortRe = RegExp(
 bool isDirectAddress(String s) {
   final t = s.trim();
   if (t.isEmpty) return false;
+  if (hasRelayRouteSyntax(t)) return false;
   return _ipv4Re.hasMatch(t) || _ipv6Re.hasMatch(t) || _domainPortRe.hasMatch(t);
 }

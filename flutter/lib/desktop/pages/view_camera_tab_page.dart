@@ -94,7 +94,6 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
           toolbarState: ToolbarState(),
           tabController: tabController,
           connToken: params['connToken'],
-          forceRelay: params['forceRelay'],
           isSharedPassword: params['isSharedPassword'],
         ),
       ));
@@ -414,7 +413,6 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
           toolbarState: ToolbarState(),
           tabController: tabController,
           connToken: args['connToken'],
-          forceRelay: args['forceRelay'],
           isSharedPassword: args['isSharedPassword'],
         ),
       ));

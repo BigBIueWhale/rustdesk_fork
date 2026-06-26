@@ -15,7 +15,6 @@ class TerminalConnectionManager {
     required String peerId,
     required String? password,
     required bool? isSharedPassword,
-    required bool? forceRelay,
     required String? connToken,
   }) {
     final existingFfi = _connections[peerId];
@@ -33,7 +32,6 @@ class TerminalConnectionManager {
       peerId,
       password: password,
       isSharedPassword: isSharedPassword,
-      forceRelay: forceRelay,
       connToken: connToken,
       isTerminal: true,
     );

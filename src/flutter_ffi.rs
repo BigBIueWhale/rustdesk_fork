@@ -289,9 +289,9 @@ pub fn session_get_is_recording(session_id: SessionID) -> SyncReturn<bool> {
     }
 }
 
-pub fn session_reconnect(session_id: SessionID, force_relay: bool) {
+pub fn session_reconnect(session_id: SessionID, _force_relay: bool) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.reconnect(force_relay);
+        session.reconnect(false);
     }
     session_on_waiting_for_image_dialog_show(session_id);
 }
@@ -1498,7 +1498,7 @@ pub fn main_get_user_default_option(key: String) -> SyncReturn<String> {
 }
 
 pub fn main_handle_relay_id(id: String) -> String {
-    handle_relay_id(&id).to_owned()
+    id
 }
 
 pub fn main_is_option_fixed(key: String) -> SyncReturn<bool> {

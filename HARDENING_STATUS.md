@@ -81,6 +81,11 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   still require a shape. Live `force-always-relay` behavior is gone; remaining
   mentions are limited to verification/tests or inert generated/API-compatibility
   shapes.
+- **Malformed post-key `Message` frames fail closed.** A keyed frame that
+  decrypts but does not parse as a protobuf `Message` now closes the responder
+  session or viewer session instead of being ignored. `scripts/verify.sh` gates
+  both post-key dispatch roots so the old silent `if let Ok(parse)` pattern
+  cannot return.
 
 ## Final Artifacts
 
@@ -178,6 +183,12 @@ bash scripts/dart-verify.sh   # GREEN: flutter analyze lib/ + address-validator 
 git diff --check              # GREEN after this ledger update
 ```
 
+- **Malformed post-key `Message` parse closes the session.** Both keyed dispatch
+  roots now treat protobuf parse failure as a protocol violation: the responder
+  calls `on_close` and breaks, while the viewer reports an error and returns
+  `false` from `handle_msg_from_peer`. `scripts/verify.sh` requires both markers
+  and fails on the old silent parse-ignore pattern.
+
 ### Defense-In-Depth Items
 
 - **Windows and Android socket-surface assertions.** Linux has a live
@@ -203,12 +214,6 @@ git diff --check              # GREEN after this ledger update
   session-gated, and CM drops unknown write IDs, but `FileResponse` forwarding
   should also re-check the file-transfer/printer session state before forwarding
   to CM. This is defense-in-depth, not a known keyed-path bypass.
-
-- **Close on malformed post-key `Message` parse.** Post-key protobuf parse
-  failures currently do not represent pre-auth parser exposure, but a complete
-  keyed frame that fails protobuf parsing should be treated as a protocol
-  violation and close/poison the session instead of allowing weird authenticated
-  state to continue.
 
 - **Strengthen file-transfer parent traversal.** Final-component writes use
   no-follow opens; intermediate path validation remains path-based. A full

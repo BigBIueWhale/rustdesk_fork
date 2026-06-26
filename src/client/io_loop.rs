@@ -1248,7 +1248,16 @@ impl<T: InvokeUiSession> Remote<T> {
     }
 
     async fn handle_msg_from_peer(&mut self, data: &[u8], peer: &mut Stream) -> bool {
-        if let Ok(msg_in) = Message::parse_from_bytes(&data) {
+        let msg_in = match Message::parse_from_bytes(data) {
+            Ok(msg) => msg,
+            Err(err) => {
+                log::warn!("Malformed post-key Message frame from peer: {err}");
+                self.handler
+                    .on_error("Malformed encrypted message from peer");
+                return false;
+            }
+        };
+        {
             match msg_in.union {
                 Some(message::Union::VideoFrame(vf)) => {
                     if !self.first_frame {

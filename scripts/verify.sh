@@ -1107,6 +1107,23 @@ if [ -n "$r_t5_missing" ]; then
 else
   echo "  ok  R-T5 decrypt folded into SecretboxCodec (read_seq advances in decode) + regression test"
 fi
+# R-T7/R-A1 follow-on: after AEAD succeeds, a malformed protobuf `Message` frame is still an
+# authenticated protocol violation. It MUST close/poison the session, not be silently ignored and
+# leave the keyed connection in a weird state. Gate both post-key dispatch roots: responder
+# (connection.rs) and initiator/viewer (client/io_loop.rs). The old pattern was:
+#   if let Ok(msg_in) = Message::parse_from_bytes(...) { dispatch(msg_in) }
+# with no `else`; that made parse failures no-ops.
+r_t7_parse_missing=
+grep -q 'Malformed post-key Message frame' src/server/connection.rs || r_t7_parse_missing="$r_t7_parse_missing server-close-marker"
+grep -q 'Malformed post-key Message frame from peer' src/client/io_loop.rs || r_t7_parse_missing="$r_t7_parse_missing client-close-marker"
+if grep -qE 'if let Ok\(msg_in\) = Message::parse_from_bytes\(&?(bytes|data)\)' src/server/connection.rs src/client/io_loop.rs; then
+  r_t7_parse_missing="$r_t7_parse_missing silent-if-let-parse-regressed"
+fi
+if [ -n "$r_t7_parse_missing" ]; then
+  echo "  FAIL R-T7/R-A1: malformed post-key Message parse does not fail closed:$r_t7_parse_missing"; rc=1
+else
+  echo "  ok  R-T7/R-A1 malformed post-key Message parse fails closed (server + viewer)"
+fi
 # R-T8 / R-T16 (§20): the single-writer + framing/processing-order contract is CODIFIED at the
 # FramedStream type (and at the Connection.stream owner) so a refactor cannot silently regress to
 # a second writer (wire-interleave / cipher desync) or to parsing a raw TCP segment. The invariant

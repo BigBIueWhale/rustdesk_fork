@@ -659,16 +659,24 @@ impl Connection {
                             },
                             Ok(bytes) => {
                                 last_recv_time = Instant::now();
-                                if let Ok(msg_in) = Message::parse_from_bytes(&bytes) {
-                                    if !conn.on_message(msg_in).await {
+                                let msg_in = match Message::parse_from_bytes(&bytes) {
+                                    Ok(msg) => msg,
+                                    Err(err) => {
+                                        let reason =
+                                            format!("Malformed post-key Message frame: {err}");
+                                        log::warn!("{reason}");
+                                        conn.on_close(&reason, true).await;
                                         break;
                                     }
-                                    if conn.port_forward_socket.is_some() && conn.authorized {
-                                        log::info!("Port forward, last_test_delay is none: {}", conn.last_test_delay.is_none());
-                                        // Avoid TestDelay reply injection into rdp data stream
-                                        if conn.last_test_delay.is_none() {
-                                            break;
-                                        }
+                                };
+                                if !conn.on_message(msg_in).await {
+                                    break;
+                                }
+                                if conn.port_forward_socket.is_some() && conn.authorized {
+                                    log::info!("Port forward, last_test_delay is none: {}", conn.last_test_delay.is_none());
+                                    // Avoid TestDelay reply injection into rdp data stream
+                                    if conn.last_test_delay.is_none() {
+                                        break;
                                     }
                                 }
                             }

@@ -819,10 +819,13 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 ## Artifact State
 
 After the fixed-shape listener/direct-TCP staging collapse, the artifact
-staleness correction, and the Windows remote-printer worker handoff, the Debian,
-Android, and Windows artifacts below were rebuilt from the current application
-source. These hashes supersede the
-`ec1b6f6`/`2d72f99` stale-artifact notes.
+staleness correction, the Windows remote-printer worker handoff, and the Android
+clipboard Kotlin bridge, the artifacts below are current for the source shipped
+by each target. Debian and Windows were last rebuilt at the remote-printer worker
+handoff; the later Android-only Kotlin source change does not enter those
+targets. Android was rebuilt after the Kotlin bridge change. These hashes
+supersede the `ec1b6f6`/`2d72f99` stale-artifact notes and the earlier
+`6e99f581...` Android APK.
 The Debian path ran in the disposable `rustdesk-fork-harness-deb-builder` build
 container with the compile stage offline (`--network=none`) and
 `SOURCE_DATE_EPOCH=1700000000`, then performed its double-build determinism
@@ -839,7 +842,7 @@ transient KVM path from the pinned golden qcow2, booted each per-build VM with
 
 ```text
 e5853fcca58b47860762acae9f0989c30ee0c266b4a79b473dfabf0ed786c1e8  dist/rustdesk-x86_64.deb
-6e99f5816e022b0b73d5e36001ae546ae4b70335074f18020ea2f18df982db5a  dist/rustdesk-arm64.apk
+08c39e7bd86579f07147aa40d9ce19dfa3951a89857c3722d60dfc5d8185d221  dist/rustdesk-arm64.apk
 dae6649f5db6e54b269b209982a3e0d9bd6efe7e30f7d359ef59064af6dbcb4b  dist/rustdesk-setup.exe
 1e7b245fa8a34955de3680927ee0df87718332a3a142bedbce0fa48e25f17db0  dist/rustdesk.msi
 ```
@@ -851,7 +854,8 @@ Build evidence:
 - Android
   `ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYSTORE_PASS_FILE=.harness-state/android-keystore/pass bash scripts/build-android.sh`
   passed the offline Docker build and apksigner verification, producing
-  `6e99f5816e022b0b73d5e36001ae546ae4b70335074f18020ea2f18df982db5a`.
+  `08c39e7bd86579f07147aa40d9ce19dfa3951a89857c3722d60dfc5d8185d221`
+  after the Android clipboard Kotlin bridge change.
 - Windows `WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh`
   passed from the current worktree snapshot in the transient KVM VM path. The
   guest `build-log.txt` contains pre-canonical hashes; the final release hashes
@@ -1490,8 +1494,9 @@ PDU parsing, per-connection file-content request/byte accounting, and a
 same-artifact worker boundary for the local file-list cache/PDU generation and
 FileContents size/range reads. Windows and Android platform-native
 socket-surface logic is present and source-gated. The Debian, Android, and
-Windows artifact hashes recorded above are refreshed for the current application
-source. The remaining local build-host residual is the old harness-created
+Windows artifact hashes recorded above are refreshed for the current per-target
+application source; Android was refreshed after the Kotlin clipboard bridge
+change. The remaining local build-host residual is the old harness-created
 system libvirt default network: the host has shown `virbr0`,
 `192.168.122.1:53/tcp+udp`, `0.0.0.0%virbr0:67/udp`, and
 `net.ipv4.ip_forward=1`. `.harness-state/provisioned` records that the harness

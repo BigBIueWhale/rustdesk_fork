@@ -138,6 +138,11 @@ fn enter_worker_process_platform() -> std::io::Result<()> {
     apply_macos_worker_no_network_sandbox()
 }
 
+#[cfg(target_os = "windows")]
+fn enter_worker_process_platform() -> std::io::Result<()> {
+    apply_windows_worker_process_mitigations()
+}
+
 #[cfg(all(
     unix,
     not(any(
@@ -154,6 +159,7 @@ fn enter_worker_process_platform() -> std::io::Result<()> {
 #[cfg(not(any(
     target_os = "linux",
     target_os = "macos",
+    target_os = "windows",
     all(
         unix,
         not(any(
@@ -221,6 +227,59 @@ fn apply_windows_worker_job_limits(child: &mut Child) -> std::io::Result<WorkerP
         Err(err)
     } else {
         Ok(WorkerProcessGuard::from_windows_job(job))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn apply_windows_worker_process_mitigations() -> std::io::Result<()> {
+    use std::mem;
+    use winapi::um::winnt::{
+        ProcessDynamicCodePolicy, ProcessExtensionPointDisablePolicy, ProcessImageLoadPolicy,
+        ProcessStrictHandleCheckPolicy, PROCESS_MITIGATION_DYNAMIC_CODE_POLICY,
+        PROCESS_MITIGATION_EXTENSION_POINT_DISABLE_POLICY, PROCESS_MITIGATION_IMAGE_LOAD_POLICY,
+        PROCESS_MITIGATION_STRICT_HANDLE_CHECK_POLICY,
+    };
+
+    let mut dynamic_code: PROCESS_MITIGATION_DYNAMIC_CODE_POLICY = unsafe { mem::zeroed() };
+    dynamic_code.set_ProhibitDynamicCode(1);
+    dynamic_code.set_AllowThreadOptOut(0);
+    dynamic_code.set_AllowRemoteDowngrade(0);
+    set_windows_process_mitigation(ProcessDynamicCodePolicy, &mut dynamic_code)?;
+
+    let mut extension_points: PROCESS_MITIGATION_EXTENSION_POINT_DISABLE_POLICY =
+        unsafe { mem::zeroed() };
+    extension_points.set_DisableExtensionPoints(1);
+    set_windows_process_mitigation(ProcessExtensionPointDisablePolicy, &mut extension_points)?;
+
+    let mut strict_handles: PROCESS_MITIGATION_STRICT_HANDLE_CHECK_POLICY =
+        unsafe { mem::zeroed() };
+    strict_handles.set_RaiseExceptionOnInvalidHandleReference(1);
+    strict_handles.set_HandleExceptionsPermanentlyEnabled(1);
+    set_windows_process_mitigation(ProcessStrictHandleCheckPolicy, &mut strict_handles)?;
+
+    let mut image_load: PROCESS_MITIGATION_IMAGE_LOAD_POLICY = unsafe { mem::zeroed() };
+    image_load.set_NoRemoteImages(1);
+    image_load.set_NoLowMandatoryLabelImages(1);
+    image_load.set_PreferSystem32Images(1);
+    set_windows_process_mitigation(ProcessImageLoadPolicy, &mut image_load)
+}
+
+#[cfg(target_os = "windows")]
+fn set_windows_process_mitigation<T>(
+    policy: winapi::um::winnt::PROCESS_MITIGATION_POLICY,
+    mitigation: &mut T,
+) -> std::io::Result<()> {
+    let ok = unsafe {
+        winapi::um::processthreadsapi::SetProcessMitigationPolicy(
+            policy,
+            mitigation as *mut _ as *mut _,
+            std::mem::size_of::<T>(),
+        )
+    };
+    if ok == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
     }
 }
 

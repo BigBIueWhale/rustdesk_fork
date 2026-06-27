@@ -2305,9 +2305,11 @@ fi
 # Appendix C #2b worker-confinement companion: Windows cannot apply Job Object
 # limits through Command::pre_exec, so every same-artifact worker spawn path must
 # fail closed if the post-spawn Job Object assignment cannot be installed before
-# hostile-peer bytes are written to the child. Non-Linux desktop Unix cannot use
-# seccomp-BPF here, but it must not stay a total no-op: worker children get the
-# shared RLIMIT ceilings before exec and inherited-fd cleanup at worker entry.
+# hostile-peer bytes are written to the child. Windows worker entry also installs
+# process mitigation policies before parsing hostile-peer input. Non-Linux
+# desktop Unix cannot use seccomp-BPF here, but it must not stay a total no-op:
+# worker children get the shared RLIMIT ceilings before exec and inherited-fd
+# cleanup at worker entry.
 r_native_worker_platform=
 grep -qF 'pub struct WorkerProcessGuard' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform spawned-child-guard-type"
@@ -2337,6 +2339,36 @@ grep -qF 'Ok(WorkerProcessGuard::from_windows_job(job))' libs/hbb_common/src/nat
   r_native_worker_platform="$r_native_worker_platform windows-job-handle-guard"
 grep -qF 'CloseHandle(self.job);' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-job-guard-drop"
+grep -qF 'apply_windows_worker_process_mitigations()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-process-mitigation-entry"
+grep -qF 'SetProcessMitigationPolicy' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-set-process-mitigation"
+grep -qF 'ProcessDynamicCodePolicy' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-dynamic-code-policy"
+grep -qF 'PROCESS_MITIGATION_DYNAMIC_CODE_POLICY' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-dynamic-code-policy-struct"
+grep -qF 'set_ProhibitDynamicCode(1)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-prohibit-dynamic-code"
+grep -qF 'ProcessExtensionPointDisablePolicy' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-extension-policy"
+grep -qF 'PROCESS_MITIGATION_EXTENSION_POINT_DISABLE_POLICY' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-extension-policy-struct"
+grep -qF 'set_DisableExtensionPoints(1)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-disable-extension-points"
+grep -qF 'ProcessStrictHandleCheckPolicy' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-strict-handle-policy"
+grep -qF 'PROCESS_MITIGATION_STRICT_HANDLE_CHECK_POLICY' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-strict-handle-policy-struct"
+grep -qF 'set_RaiseExceptionOnInvalidHandleReference(1)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-invalid-handle-exception"
+grep -qF 'ProcessImageLoadPolicy' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-image-load-policy"
+grep -qF 'PROCESS_MITIGATION_IMAGE_LOAD_POLICY' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-image-load-policy-struct"
+grep -qF 'set_NoRemoteImages(1)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-no-remote-images"
+grep -qF 'set_NoLowMandatoryLabelImages(1)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-no-low-label-images"
 grep -qF 'apply_macos_worker_no_network_sandbox()' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-seatbelt-entry-call"
 grep -qF 'kSBXProfileNoNetwork' libs/hbb_common/src/native_worker_sandbox.rs ||
@@ -2387,6 +2419,8 @@ grep -qF '"handleapi"' libs/hbb_common/Cargo.toml ||
   r_native_worker_platform="$r_native_worker_platform winapi-handleapi-feature"
 grep -qF '"jobapi2"' libs/hbb_common/Cargo.toml ||
   r_native_worker_platform="$r_native_worker_platform winapi-jobapi2-feature"
+grep -qF '"processthreadsapi"' libs/hbb_common/Cargo.toml ||
+  r_native_worker_platform="$r_native_worker_platform winapi-processthreadsapi-feature"
 grep -qF '"winbase"' libs/hbb_common/Cargo.toml ||
   r_native_worker_platform="$r_native_worker_platform winapi-winbase-feature"
 grep -qF '"winnt"' libs/hbb_common/Cargo.toml ||
@@ -2442,7 +2476,7 @@ grep -qF 'failed to constrain file-content worker' libs/clipboard/src/platform/u
 if [ -n "$r_native_worker_platform" ]; then
   echo "  FAIL Appendix C #2b: native worker platform confinement hooks regressed:$r_native_worker_platform"; rc=1
 else
-  echo "  ok  Appendix C #2b native worker parents fail closed on post-spawn confinement failure; Windows workers keep Job Object process-count/memory/kill-on-close guards; macOS worker entry applies Seatbelt NoNetwork; desktop Unix workers excluding Android/iOS get RLIMIT/fd cleanup"
+  echo "  ok  Appendix C #2b native worker parents fail closed on post-spawn confinement failure; Windows workers keep Job Object process-count/memory/kill-on-close guards plus process mitigations; macOS worker entry applies Seatbelt NoNetwork; desktop Unix workers excluding Android/iOS get RLIMIT/fd cleanup"
 fi
 # R-R2a (§12 / sovereignty): the .deb + systemd is the SOLE Linux package model. The AppImage
 # recipe (whose `update-information` self-updater collides with R-X1 "the fork ships its own

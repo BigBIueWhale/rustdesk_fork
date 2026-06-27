@@ -174,6 +174,12 @@ echo "== (3c-ii-a) viewer peer media display/thread + queue bounds (Appendix C #
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::media_data_queue_is_bounded --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::io_loop::tests --color never
 
+# (3c-ii-b) Peer UI text admission (R-T0): a password-correct hostile peer can
+# send chat/messages/notification details repeatedly after keying. Bound text
+# before UI/CM handoff and rate-gate the repeated UI event classes.
+echo "== (3c-ii-b) peer UI text length/rate admission (R-T0) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config peer_text::tests --color never
+
 # (3c-iii) Unix file-copy descriptor worker protocol (Appendix C #2b): hostile
 # FILEDESCRIPTOR PDUs are parsed through a same-artifact worker before FUSE/macOS
 # paste task state consumes them.
@@ -1756,6 +1762,36 @@ fi
 if grep -qE '\.send\(MediaData::(VideoFrame|VideoQueue|AudioFrame|AudioFormat|Reset|RecordScreen)' src/client.rs src/client/io_loop.rs src/server/connection.rs; then
   r_native_bounds="$r_native_bounds media-blocking-send"
 fi
+grep -qF 'pub const MAX_PEER_CHAT_TEXT_BYTES: usize = 4 * 1024;' src/peer_text.rs ||
+  r_native_bounds="$r_native_bounds peer-ui-chat-cap"
+grep -qF 'pub const PEER_TEXT_RATE_WINDOW_SECS: u64 = 10;' src/peer_text.rs ||
+  r_native_bounds="$r_native_bounds peer-ui-rate-window"
+grep -qF 'pub struct PeerTextGate' src/peer_text.rs ||
+  r_native_bounds="$r_native_bounds peer-ui-gate"
+grep -qF 'fn bound_peer_text_with_controls' src/peer_text.rs ||
+  r_native_bounds="$r_native_bounds peer-ui-control-strip"
+grep -qF 'peer_text::tests' scripts/verify.sh ||
+  r_native_bounds="$r_native_bounds peer-ui-tests"
+grep -qF 'self.peer_text_gate.admit_chat(c.text)' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-chat-admission"
+grep -qF 'self.peer_text_gate.admit_message_box(msgbox)' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-msgbox-admission"
+grep -qF 'bound_peer_login_error(err)' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-login-error-bound"
+grep -qF 'bound_peer_close_reason(c)' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-close-reason-bound"
+grep -qF 'bound_peer_notification_details(notification.details)' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-notification-detail-bound"
+grep -qF 'peer_notification_msgbox' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-notification-rate-gate"
+grep -qF 'self.peer_text_gate.admit_chat(c.text)' src/server/connection.rs ||
+  r_native_bounds="$r_native_bounds controlled-chat-admission"
+if grep -qF 'self.handler.new_message(c.text)' src/client/io_loop.rs; then
+  r_native_bounds="$r_native_bounds viewer-chat-direct"
+fi
+if grep -qF 'ipc::Data::ChatMessage { text: c.text }' src/server/connection.rs; then
+  r_native_bounds="$r_native_bounds controlled-chat-direct"
+fi
 grep -qF 'native_opus_format_within_limit' src/client.rs ||
   r_native_bounds="$r_native_bounds opus-format-helper"
 grep -qF 'client::native_opus_format_within_limit' src/client/io_loop.rs ||
@@ -2005,9 +2041,9 @@ if grep -qF 'OPTION_PRINTER_ALLOW_AUTO_PRINT' src/client/io_loop.rs ||
   r_native_bounds="$r_native_bounds windows-printer-auto-policy-read"
 fi
 if [ -n "$r_native_bounds" ]; then
-  echo "  FAIL Appendix C #2b/R-T0: native media/clipboard handoff bounds regressed:$r_native_bounds"; rc=1
+  echo "  FAIL Appendix C #2b/R-T0: hostile-peer native/UI handoff bounds regressed:$r_native_bounds"; rc=1
 else
-  echo "  ok  Appendix C #2b/R-T0 native media/clipboard/printer handoff bounds and fail-closed guards present (remaining process-model residuals tracked separately)"
+  echo "  ok  Appendix C #2b/R-T0 native media/clipboard/printer handoff bounds plus peer UI text length/rate guards present (remaining process-model residuals tracked separately)"
 fi
 # R-S11a/R-S8 companion: Linux clipboard-file FUSE mount setup uses /tmp by
 # design, so every path component must be explicit, no-follow, current-euid

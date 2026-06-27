@@ -262,6 +262,7 @@ pub struct Connection {
     // FileResponse carries only a peer-chosen job id, so gate it here before
     // forwarding to the shared worker and pair it with conn_id in IPC.
     write_job_ids: HashSet<i32>,
+    peer_text_gate: crate::peer_text::PeerTextGate,
     terminal_service_id: String,
     terminal_persistent: bool,
     // The user token must be set when terminal is enabled.
@@ -421,6 +422,7 @@ impl Connection {
             printer_data: Vec::new(),
             cm_read_job_ids: HashSet::new(),
             write_job_ids: HashSet::new(),
+            peer_text_gate: Default::default(),
             terminal_service_id: "".to_owned(),
             terminal_persistent: false,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2467,8 +2469,10 @@ impl Connection {
                         self.toggle_privacy_mode(t).await;
                     }
                     Some(misc::Union::ChatMessage(c)) => {
-                        self.send_to_cm(ipc::Data::ChatMessage { text: c.text });
-                        self.chat_unanswered = true;
+                        if let Some(text) = self.peer_text_gate.admit_chat(c.text) {
+                            self.send_to_cm(ipc::Data::ChatMessage { text });
+                            self.chat_unanswered = true;
+                        }
                         self.update_auto_disconnect_timer();
                     }
                     Some(misc::Union::Option(o)) => {

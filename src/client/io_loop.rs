@@ -79,6 +79,7 @@ pub struct Remote<T: InvokeUiSession> {
     chroma: Arc<RwLock<Option<Chroma>>>,
     last_record_state: bool,
     sent_close_reason: bool,
+    peer_text_gate: crate::peer_text::PeerTextGate,
 }
 
 #[derive(Default)]
@@ -155,6 +156,7 @@ impl<T: InvokeUiSession> Remote<T> {
             chroma: Default::default(),
             last_record_state: false,
             sent_close_reason: false,
+            peer_text_gate: Default::default(),
         }
     }
 
@@ -1360,6 +1362,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 // viewer logs in PROACTIVELY in Client::start, so there is no reactive Hash arm.
                 Some(message::Union::LoginResponse(lr)) => match lr.union {
                     Some(login_response::Union::Error(err)) => {
+                        let err = crate::peer_text::bound_peer_login_error(err);
                         if err == client::REQUIRE_2FA {
                             self.handler.lc.write().unwrap().enable_trusted_devices =
                                 lr.enable_trusted_devices;
@@ -1764,7 +1767,9 @@ impl<T: InvokeUiSession> Remote<T> {
                         }
                     }
                     Some(misc::Union::ChatMessage(c)) => {
-                        self.handler.new_message(c.text);
+                        if let Some(text) = self.peer_text_gate.admit_chat(c.text) {
+                            self.handler.new_message(text);
+                        }
                     }
                     Some(misc::Union::PermissionInfo(p)) => {
                         log::info!("Change permission {:?} -> {}", p.permission, p.enabled);
@@ -1851,6 +1856,7 @@ impl<T: InvokeUiSession> Remote<T> {
                     }
                     Some(misc::Union::CloseReason(c)) => {
                         self.sent_close_reason = true; // The controlled end will close, no need to send close reason
+                        let c = crate::peer_text::bound_peer_close_reason(c);
                         self.handler.msgbox("error", "Connection Error", &c, "");
                         return false;
                     }
@@ -1864,7 +1870,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         #[cfg(feature = "flutter")]
                         {
                             if uac && keyboard {
-                                self.handler.msgbox(
+                                self.peer_notification_msgbox(
                                     "on-uac",
                                     "Prompt",
                                     "Please wait for confirmation of UAC...",
@@ -1883,7 +1889,7 @@ impl<T: InvokeUiSession> Remote<T> {
                             let text = "Please wait for confirmation of UAC...";
                             let link = "";
                             if uac && keyboard {
-                                self.handler.msgbox(msgtype, title, text, link);
+                                self.peer_notification_msgbox(msgtype, title, text, link);
                             } else {
                                 self.handler.cancel_msgbox(&format!(
                                     "{}-{}-{}-{}",
@@ -1897,7 +1903,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         #[cfg(feature = "flutter")]
                         {
                             if elevated && keyboard {
-                                self.handler.msgbox(
+                                self.peer_notification_msgbox(
                                     "on-foreground-elevated",
                                     "Prompt",
                                     "elevated_foreground_window_tip",
@@ -1916,7 +1922,7 @@ impl<T: InvokeUiSession> Remote<T> {
                             let text = "elevated_foreground_window_tip";
                             let link = "";
                             if elevated && keyboard {
-                                self.handler.msgbox(msgtype, title, text, link);
+                                self.peer_notification_msgbox(msgtype, title, text, link);
                             } else {
                                 self.handler.cancel_msgbox(&format!(
                                     "{}-{}-{}-{}",
@@ -1978,6 +1984,9 @@ impl<T: InvokeUiSession> Remote<T> {
                     _ => {}
                 },
                 Some(message::Union::MessageBox(msgbox)) => {
+                    let Some(msgbox) = self.peer_text_gate.admit_message_box(msgbox) else {
+                        return true;
+                    };
                     let mut link = msgbox.link;
                     if let Some(v) = config::HELPER_URL.get(&link as &str) {
                         link = v.to_string();
@@ -2082,7 +2091,15 @@ impl<T: InvokeUiSession> Remote<T> {
         }
     }
 
-    async fn handle_back_notification(&mut self, notification: BackNotification) -> bool {
+    fn peer_notification_msgbox(&mut self, msgtype: &str, title: &str, text: &str, link: &str) {
+        if self.peer_text_gate.admit_notification() {
+            self.handler.msgbox(msgtype, title, text, link);
+        }
+    }
+
+    async fn handle_back_notification(&mut self, mut notification: BackNotification) -> bool {
+        notification.details =
+            crate::peer_text::bound_peer_notification_details(notification.details);
         match notification.union {
             Some(back_notification::Union::BlockInputState(state)) => {
                 self.handle_back_msg_block_input(
@@ -2123,7 +2140,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 self.update_block_input_state(true);
             }
             back_notification::BlockInputState::BlkOnFailed => {
-                self.handler.msgbox(
+                self.peer_notification_msgbox(
                     "custom-error",
                     "Block user input",
                     if details.is_empty() {
@@ -2139,7 +2156,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 self.update_block_input_state(false);
             }
             back_notification::BlockInputState::BlkOffFailed => {
-                self.handler.msgbox(
+                self.peer_notification_msgbox(
                     "custom-error",
                     "Unblock user input",
                     if details.is_empty() {
@@ -2193,7 +2210,7 @@ impl<T: InvokeUiSession> Remote<T> {
     ) -> bool {
         match state {
             back_notification::PrivacyModeState::PrvOnByOther => {
-                self.handler.msgbox(
+                self.peer_notification_msgbox(
                     "error",
                     "Connecting...",
                     "Someone turns on privacy mode, exit",
@@ -2202,27 +2219,33 @@ impl<T: InvokeUiSession> Remote<T> {
                 return false;
             }
             back_notification::PrivacyModeState::PrvNotSupported => {
-                self.handler
-                    .msgbox("custom-error", "Privacy mode", "Unsupported", "");
+                self.peer_notification_msgbox("custom-error", "Privacy mode", "Unsupported", "");
                 self.update_privacy_mode(impl_key, false);
             }
             back_notification::PrivacyModeState::PrvOnSucceeded => {
-                self.handler
-                    .msgbox("custom-nocancel", "Privacy mode", "Enter privacy mode", "");
+                self.peer_notification_msgbox(
+                    "custom-nocancel",
+                    "Privacy mode",
+                    "Enter privacy mode",
+                    "",
+                );
                 self.update_privacy_mode(impl_key, true);
             }
             back_notification::PrivacyModeState::PrvOnFailedDenied => {
-                self.handler
-                    .msgbox("custom-error", "Privacy mode", "Peer denied", "");
+                self.peer_notification_msgbox("custom-error", "Privacy mode", "Peer denied", "");
                 self.update_privacy_mode(impl_key, false);
             }
             back_notification::PrivacyModeState::PrvOnFailedPlugin => {
-                self.handler
-                    .msgbox("custom-error", "Privacy mode", "Please install plugins", "");
+                self.peer_notification_msgbox(
+                    "custom-error",
+                    "Privacy mode",
+                    "Please install plugins",
+                    "",
+                );
                 self.update_privacy_mode(impl_key, false);
             }
             back_notification::PrivacyModeState::PrvOnFailed => {
-                self.handler.msgbox(
+                self.peer_notification_msgbox(
                     "custom-error",
                     "Privacy mode",
                     if details.is_empty() {
@@ -2235,17 +2258,20 @@ impl<T: InvokeUiSession> Remote<T> {
                 self.update_privacy_mode(impl_key, false);
             }
             back_notification::PrivacyModeState::PrvOffSucceeded => {
-                self.handler
-                    .msgbox("custom-nocancel", "Privacy mode", "Exit privacy mode", "");
+                self.peer_notification_msgbox(
+                    "custom-nocancel",
+                    "Privacy mode",
+                    "Exit privacy mode",
+                    "",
+                );
                 self.update_privacy_mode(impl_key, false);
             }
             back_notification::PrivacyModeState::PrvOffByPeer => {
-                self.handler
-                    .msgbox("custom-error", "Privacy mode", "Peer exit", "");
+                self.peer_notification_msgbox("custom-error", "Privacy mode", "Peer exit", "");
                 self.update_privacy_mode(impl_key, false);
             }
             back_notification::PrivacyModeState::PrvOffFailed => {
-                self.handler.msgbox(
+                self.peer_notification_msgbox(
                     "custom-error",
                     "Privacy mode",
                     if details.is_empty() {
@@ -2257,8 +2283,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 );
             }
             back_notification::PrivacyModeState::PrvOffUnknown => {
-                self.handler
-                    .msgbox("custom-error", "Privacy mode", "Turned off", "");
+                self.peer_notification_msgbox("custom-error", "Privacy mode", "Turned off", "");
                 // log::error!("Privacy mode is turned off with unknown reason");
                 self.update_privacy_mode(impl_key, false);
             }

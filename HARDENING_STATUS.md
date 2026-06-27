@@ -21,6 +21,8 @@ bounded viewer peer-video display/thread admission and bounded media decode
 queues,
 bounded peer-triggered file-transfer metadata enumeration and read/write job
 admission,
+bounded peer-driven UI chat/message/notification text length and rate
+admission,
 child-confinement, Windows Job Object child lifetime/limit guards and process mitigations, non-mobile desktop-Unix worker RLIMIT/fd-cleanup
 confinement, macOS worker NoNetwork Seatbelt confinement, Linux
 x86_64/aarch64 post-exec syscall-filter/fd-cleanup follow-ups, and unsupported
@@ -43,15 +45,15 @@ claim.
 
 On 2026-06-27, read-only audit agent `Pauli` reviewed the current codebase and
 found new current blockers outside the already-closed clipboard/FUSE/media queue
-paths. The file-transfer findings are now closed in source and gates:
+paths. Those findings are now closed in source and gates:
 peer-triggered filesystem metadata enumeration is budgeted before
 traversal/materialization; file-transfer read-job creation has duplicate and
 active-job admission caps; and incoming write-job creation has duplicate,
 active-job, and file-list admission caps on both the connection and CM sides.
-The remaining active follow-up from that audit is peer-driven UI
-notification/chat/message strings needing explicit length and rate gates. A
-terminal-session cap is a conditional follow-up only if the pinned
-`enable-terminal=N` policy is ever intentionally rebuilt away.
+Peer-driven UI notification/chat/message strings now have explicit length and
+rate gates before viewer UI or controlled-side CM forwarding. A terminal-session
+cap is a conditional follow-up only if the pinned `enable-terminal=N` policy is
+ever intentionally rebuilt away.
 
 After commit `f90f197`, three additional read-only route/security audits were
 run against the exposed TCP paths. The server/responder audit passed, and the
@@ -240,6 +242,20 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 `requirements.html` is intentionally not edited by implementation work.
 
 ## Recent Closures
+
+- **Peer-driven UI chat, message-box, close-reason, login-error, and notification text is length-capped and rate-gated.**
+  `src/peer_text.rs` adds a per-session `PeerTextGate` with fixed-window
+  admission limits and byte caps for peer chat, peer message boxes, notification
+  details, close reasons, and login errors. The bounder strips control
+  characters except newline/tab in displayed body text and clamps labels/links
+  separately before UI routing. `src/client/io_loop.rs` now applies the guard
+  before `new_message`, peer-sent `MessageBox`, `LoginResponse.error`,
+  `Misc.close_reason`, and `BackNotification.details`, and rate-gates repeated
+  peer-triggered notification dialogs without suppressing the underlying state
+  update. `src/server/connection.rs` applies the same per-connection chat
+  admission before forwarding peer chat into CM/server UI state. `scripts/verify.sh`
+  runs the `peer_text::tests` unit tests and source-gates the key call sites plus
+  the absence of the old direct chat forwarding forms.
 
 - **Peer-triggered file-transfer metadata scans and transfer-job admission are bounded before local work.**
   `libs/hbb_common/src/fs.rs` now defines a safe default file-transfer count
@@ -922,6 +938,16 @@ rustfmt --edition 2021 libs/hbb_common/src/fs.rs src/ui_cm_interface.rs src/serv
 bash -n scripts/verify.sh             # GREEN
 git diff --check                       # GREEN
 bash scripts/verify.sh                 # GREEN: VERIFY: all gates green, incl. R-S8/R-T0 file-transfer metadata scan and read/write job-admission budget gates
+```
+
+After the peer-driven UI text length/rate admission change, these focused and
+full gates have been re-run successfully:
+
+```text
+rustfmt --edition 2021 src/peer_text.rs src/client/io_loop.rs src/server/connection.rs src/lib.rs  # GREEN
+bash -n scripts/verify.sh             # GREEN
+git diff --check                       # GREEN
+bash scripts/verify.sh                 # GREEN: VERIFY: all gates green, incl. peer_text::tests and hostile-peer UI text length/rate source gates
 ```
 
 After the Windows native-worker process-mitigation entry hook and gate update,

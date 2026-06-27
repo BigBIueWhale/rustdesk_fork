@@ -20,6 +20,7 @@ mod native_file_contents_worker;
 #[cfg(all(feature = "unix-file-copy-paste", target_family = "unix"))]
 mod native_file_descriptor_worker;
 mod native_video_worker;
+mod peer_text;
 // R-X5 / R-SV1 / R-D7a: LAN discovery is fully removed (the `mod lan` no-op stubs — discover()
 // and send_wol() — are gone, along with the sciter Discovered-tab UI, ui_interface get_lan_peers/
 // remove_discovered, and config::LanPeers). The discovery LISTENER/querier was already excised

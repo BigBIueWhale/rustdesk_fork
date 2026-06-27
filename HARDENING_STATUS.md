@@ -574,36 +574,36 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 
 ## Artifact State
 
-The artifacts below were produced from disposable build environments after the
-file-transfer parent-walk, responder-side tunnel refusal, socket-surface, native
-handoff-bound, and Apple source-conformance follow-ups. They predate the current
-desktop native-video/native-Opus/native-zstd/native-clipboard worker source
-slices and are therefore stale for any release/tag artifact claim. Rebuild
-Debian, Android, and Windows artifacts from the current source before treating
-artifact evidence as current again.
+The Debian artifact has been rebuilt from the current committed source
+(`3a4b3dd`, `Sandbox native parser handoffs`). `scripts/build-debian.sh` ran in
+the disposable `rustdesk-fork-harness-deb-builder` build container with the
+compile stage offline (`--network=none`) and `SOURCE_DATE_EPOCH=1700000000`, then
+performed its double-build determinism check. Both builds produced the same
+SHA-256:
 
 ```text
-0f3a5dae9f07fbfbc0571c31ec29e67119e58a5b483d81465a0592d3d4b91e5d  dist/rustdesk-x86_64.deb
-c8d75e1fb6307778548c656090b9513d725296eac958423dac4733874e11cadf  dist/rustdesk-arm64.apk
-9e799bb8e90d31ed76e2ccfd6d4afa4c9584da0160054ce606f27ba7a8250dd8  dist/rustdesk-setup.exe
-bcd0628d87d27ded873f124c68eb6845b1b6ef1d80a5baa286e2552f392ee47e  dist/rustdesk.msi
+9098489eda86624c1e573676ac2e2facb0da8bd5169ee6937c361f4938cd42d3  dist/rustdesk-x86_64.deb
+```
+
+The Android and Windows artifacts currently present in `dist/` have not yet been
+rebuilt after commit `3a4b3dd`, so they remain historical evidence only and must
+not be used for a release/tag claim until their target build scripts pass again
+from the current source:
+
+```text
+2c1feb0e1b138229112c40e4565857a91eb70e327ead218c3f2b9a9fd6507ece  dist/rustdesk-arm64.apk        # pending rebuild from 3a4b3dd
+59da89fef3d463c1e4aaf35d0c161de518f5df183bf90179eb5a360579e5431a  dist/rustdesk-setup.exe        # pending rebuild from 3a4b3dd
+ba3b7ddb1c2b427b647c964fd7eb26c1374231bc903b8d2fc487f48803aca240  dist/rustdesk.msi              # pending rebuild from 3a4b3dd
 ```
 
 Build evidence:
 
-- Debian `scripts/build-debian.sh` passed its offline double-build A==B gate
-  after the Apple varargs source fix.
-- Android `scripts/build-android.sh` produced the signed arm64 APK and
-  `apksigner` verified one signer after the same source fix.
-- Windows `WINDOWS_BUILD_SOURCE=worktree scripts/build-windows-vm.sh` passed the
-  transient KVM VM double-build A==B gate from the pinned golden, using the
-  tracked dirty worktree snapshot so the source fix was present on the BUILD CD.
-  The VM ran with `--network=none`; the only graphics listener was VNC on
-  `127.0.0.1`, and all host-side helper containers in the artifact path also ran
-  with `--network=none`.
-
-These hashes are retained as historical evidence for that source state, not as
-evidence for the current native-worker/zstd/clipboard/CLIPRDR/cursor worktree.
+- Debian `scripts/build-debian.sh` passed its offline Docker double-build A==B
+  gate after the current native parser worker handoff commit.
+- Android `scripts/build-android.sh` still needs to be rerun from the current
+  source.
+- Windows `WINDOWS_BUILD_SOURCE=worktree scripts/build-windows-vm.sh` still
+  needs to be rerun from the current source in the transient KVM VM path.
 
 ## Validation Matrix
 
@@ -805,10 +805,12 @@ git diff --check                                              # GREEN
 bash scripts/verify.sh                                        # GREEN: VERIFY: all gates green, incl. Windows CLIPRDR worker proxy/source gates, bounded parent ClipboardFile queues, fixed/clamped timeout markers, event-sender cleanup, worker-side pending cleanup, no public native CLIPRDR constructor/helper, no direct VEC_MSG_CHANNEL use in windows.rs, native-worker gates, R-T1/R-T12, R-A6 done-set, and main-crate compile
 ```
 
-The remaining artifact rebuilds are pending for the current source. The Windows
-VM build/check path has not been re-run after these latest CLIPRDR callback and
-worker-boundary edits, and the platform artifacts have not been rebuilt after the
-cursor/Android/mobile-zstd/Unix file-copy guard edits. A direct Docker-only
+The Android and Windows artifact rebuilds remain pending for the current source.
+The Debian artifact has since been refreshed from commit `3a4b3dd` as recorded
+above. The Windows VM build/check path has not been re-run after these latest
+CLIPRDR callback and worker-boundary edits, and the Android/Windows artifacts
+have not been rebuilt after the cursor/Android/mobile-zstd/Unix file-copy guard
+edits. A direct Docker-only
 `cargo check -p hbb_common --lib --target x86_64-pc-windows-msvc` and a
 `x86_64-pc-windows-gnu` retry stopped in `libsodium-sys`/`ring`/`zstd-sys`
 native build-script setup before reaching this crate's Rust code; the
@@ -957,10 +959,12 @@ clipboard now has descriptor-count caps, a same-artifact worker boundary for pee
 PDU parsing, per-connection file-content request/byte accounting, and a
 same-artifact worker boundary for the local file-list cache/PDU generation and
 FileContents size/range reads. Windows and Android platform-native
-socket-surface logic is present and source-gated. The
-refreshed platform artifacts recorded above predate the current
+socket-surface logic is present and source-gated. The Debian artifact recorded
+above is refreshed from commit `3a4b3dd`; the Android and Windows artifacts
+recorded above predate the current
 native-worker/zstd/clipboard/CLIPRDR-bridge/cursor/Android/Unix-file-copy source
-changes, so any release/tag claim must rebuild those artifacts first.
+changes, so any release/tag claim must rebuild those Android/Windows artifacts
+first.
 
 The remaining external or pre-exposure evidence items are:
 

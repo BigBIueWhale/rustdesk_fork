@@ -1316,7 +1316,11 @@ git diff --check              # GREEN after this ledger update
   crosses a JNI/protobuf parser boundary. `Java_ffi_FFI_onClipboardUpdate` now
   rejects null direct-buffer pointers, missing side-prefix buffers, and any
   update over the 64 MiB native clipboard budget before slicing or parsing, and
-  the source gate keeps the cap and checked slice in place.
+  the source gate keeps the cap and checked slice in place. The Kotlin clipboard
+  bridge now applies the same payload/update budget before serializing into the
+  direct JNI buffer, rejects malformed/oversized platform SET protobufs before
+  parsing, rejects malformed UTF-8 SET payloads before touching the platform
+  clipboard, and caps Android clipboard SETs at 16 items.
 
 - **Android raw media JNI no longer retains Java buffer pointers.** The
   ImageReader and AudioRecord callbacks hand Rust direct `ByteBuffer` storage

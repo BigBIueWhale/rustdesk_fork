@@ -1,6 +1,8 @@
 package com.carriez.flutter_hbb
 
 import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.util.Timer
 import java.util.TimerTask
 
@@ -15,6 +17,12 @@ import hbb.MessageOuterClass.Clipboard
 import hbb.MessageOuterClass.MultiClipboards
 
 import ffi.FFI
+
+private const val MAX_ANDROID_CLIPBOARD_PAYLOAD_BYTES = 64 * 1024 * 1024
+private const val MAX_ANDROID_CLIPBOARD_PAYLOAD_CHARS = MAX_ANDROID_CLIPBOARD_PAYLOAD_BYTES / 4
+private const val MAX_ANDROID_CLIPBOARD_PROTO_BYTES = 64 * 1024 * 1024
+private const val MAX_ANDROID_CLIPBOARD_UPDATE_BYTES = 1 + MAX_ANDROID_CLIPBOARD_PROTO_BYTES
+private const val MAX_ANDROID_CLIPBOARD_ITEMS = 16
 
 class RdClipboardManager(private val clipboardManager: ClipboardManager) {
     private val logTag = "RdClipboardManager"
@@ -71,19 +79,30 @@ class RdClipboardManager(private val clipboardManager: ClipboardManager) {
             var count = 0
             val clips = MultiClipboards.newBuilder()
             if (text != null) {
-                val content = com.google.protobuf.ByteString.copyFromUtf8(text.toString())
+                val content = boundedUtf8Content(text, "text")
+                if (content != null) {
                     clips.addClipboards(Clipboard.newBuilder().setFormat(ClipboardFormat.Text).setContent(content).build())
                     count++
                 }
+            }
             if (html != null) {
-                val content = com.google.protobuf.ByteString.copyFromUtf8(html)
-                clips.addClipboards(Clipboard.newBuilder().setFormat(ClipboardFormat.Html).setContent(content).build())
-                count++
+                val content = boundedUtf8Content(html, "html")
+                if (content != null) {
+                    clips.addClipboards(Clipboard.newBuilder().setFormat(ClipboardFormat.Html).setContent(content).build())
+                    count++
+                }
             }
             if (count > 0) {
-                val clipsBytes = clips.build().toByteArray()
+                val clipsMsg = clips.build()
+                val clipsSize = clipsMsg.serializedSize
+                val updateSize = clipsSize + 1
+                if (updateSize > MAX_ANDROID_CLIPBOARD_UPDATE_BYTES) {
+                    Log.w(logTag, "dropping oversized Android clipboard update before JNI: $updateSize > $MAX_ANDROID_CLIPBOARD_UPDATE_BYTES")
+                    return
+                }
+                val clipsBytes = clipsMsg.toByteArray()
                 val isClientFlag = if (isClient) 1 else 0
-                val clipsBuf = ByteBuffer.allocateDirect(clipsBytes.size + 1).apply {
+                val clipsBuf = ByteBuffer.allocateDirect(updateSize).apply {
                     put(isClientFlag.toByte())
                     put(clipsBytes)
                 }
@@ -97,6 +116,36 @@ class RdClipboardManager(private val clipboardManager: ClipboardManager) {
 
     private fun isSupportedMimeType(mimeType: String): Boolean {
         return supportedMimeTypes.contains(mimeType)
+    }
+
+    private fun boundedUtf8Content(value: CharSequence, label: String): com.google.protobuf.ByteString? {
+        if (value.length > MAX_ANDROID_CLIPBOARD_PAYLOAD_CHARS) {
+            Log.w(logTag, "dropping oversized Android clipboard $label before JNI: chars=${value.length} > $MAX_ANDROID_CLIPBOARD_PAYLOAD_CHARS")
+            return null
+        }
+        val bytes = value.toString().toByteArray(Charsets.UTF_8)
+        if (bytes.size > MAX_ANDROID_CLIPBOARD_PAYLOAD_BYTES) {
+            Log.w(logTag, "dropping oversized Android clipboard $label before JNI: bytes=${bytes.size} > $MAX_ANDROID_CLIPBOARD_PAYLOAD_BYTES")
+            return null
+        }
+        return com.google.protobuf.ByteString.copyFrom(bytes)
+    }
+
+    private fun boundedClipboardString(clip: Clipboard, label: String): String? {
+        if (clip.content.size() > MAX_ANDROID_CLIPBOARD_PAYLOAD_BYTES) {
+            Log.w(logTag, "dropping oversized Android clipboard SET $label before platform clipboard: ${clip.content.size()} > $MAX_ANDROID_CLIPBOARD_PAYLOAD_BYTES")
+            return null
+        }
+        return try {
+            Charsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(clip.content.asReadOnlyByteBuffer())
+                .toString()
+        } catch (e: CharacterCodingException) {
+            Log.w(logTag, "dropping malformed Android clipboard SET $label before platform clipboard", e)
+            null
+        }
     }
 
     private fun isClipboardDataEqual(left: ClipData, right: ClipData): Boolean {
@@ -150,19 +199,38 @@ class RdClipboardManager(private val clipboardManager: ClipboardManager) {
 
     @Keep
     fun rustUpdateClipboard(clips: ByteArray) {
-        val clips = MultiClipboards.parseFrom(clips)
+        if (clips.size > MAX_ANDROID_CLIPBOARD_PROTO_BYTES) {
+            Log.w(logTag, "dropping oversized Android clipboard SET before parse: ${clips.size} > $MAX_ANDROID_CLIPBOARD_PROTO_BYTES")
+            return
+        }
+        val clips = try {
+            MultiClipboards.parseFrom(clips)
+        } catch (e: Exception) {
+            Log.w(logTag, "dropping malformed Android clipboard SET before parse", e)
+            return
+        }
+        if (clips.clipboardsCount > MAX_ANDROID_CLIPBOARD_ITEMS) {
+            Log.w(logTag, "dropping Android clipboard SET with too many items: ${clips.clipboardsCount} > $MAX_ANDROID_CLIPBOARD_ITEMS")
+            return
+        }
         var mimeTypes = mutableListOf<String>()
         var text: String? = null
         var html: String? = null
         for (clip in clips.getClipboardsList()) {
             when (clip.format) {
-                    ClipboardFormat.Text -> {
+                ClipboardFormat.Text -> {
+                    val value = boundedClipboardString(clip, "text")
+                    if (value != null) {
                         mimeTypes.add(ClipDescription.MIMETYPE_TEXT_PLAIN)
-                    text = String(clip.content.toByteArray(), Charsets.UTF_8)
+                        text = value
+                    }
                 }
                 ClipboardFormat.Html -> {
-                    mimeTypes.add(ClipDescription.MIMETYPE_TEXT_HTML)
-                    html = String(clip.content.toByteArray(), Charsets.UTF_8)
+                    val value = boundedClipboardString(clip, "html")
+                    if (value != null) {
+                        mimeTypes.add(ClipDescription.MIMETYPE_TEXT_HTML)
+                        html = value
+                    }
                 }
                 ClipboardFormat.ImageRgba -> {
                 }

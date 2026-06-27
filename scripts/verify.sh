@@ -2594,6 +2594,23 @@ grep -qF 'dropping oversized Android clipboard update before protobuf parse' lib
   r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-ffi-oversize-drop"
 grep -qF 'data.get(ANDROID_CLIPBOARD_SIDE_PREFIX_BYTES..)' libs/scrap/src/android/ffi.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-ffi-checked-slice"
+kcm=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/RdClipboardManager.kt
+grep -qF 'MAX_ANDROID_CLIPBOARD_PAYLOAD_BYTES' "$kcm" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-clipboard-payload-cap"
+grep -qF 'boundedUtf8Content' "$kcm" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-clipboard-outbound-bound"
+grep -qF 'dropping oversized Android clipboard update before JNI' "$kcm" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-clipboard-jni-cap"
+grep -qF 'clipsMsg.serializedSize' "$kcm" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-clipboard-size-before-serialize"
+grep -qF 'dropping oversized Android clipboard SET before parse' "$kcm" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-clipboard-set-cap"
+grep -qF 'dropping malformed Android clipboard SET before parse' "$kcm" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-clipboard-set-malformed-drop"
+grep -qF 'CodingErrorAction.REPORT' "$kcm" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-clipboard-set-utf8-report"
+grep -qF 'clips.clipboardsCount > MAX_ANDROID_CLIPBOARD_ITEMS' "$kcm" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-clipboard-item-cap"
 grep -qF 'native_clipboard_data_from_multi_clipboards' src/clipboard.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker native-convert-helper"
 grep -qF 'MAX_NATIVE_CLIPBOARD_TOTAL_BYTES' src/clipboard.rs ||

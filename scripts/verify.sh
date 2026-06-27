@@ -2201,6 +2201,35 @@ grep -qF 'native clipboard worker busy; refusing to queue peer clipboard SET' sr
   r_native_clipboard_worker="$r_native_clipboard_worker busy-worker-fail-closed"
 grep -qF 'worker.try_lock()' src/native_clipboard_worker.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker nonblocking-worker-admission"
+grep -qF 'const CLIPBOARD_UPDATE_QUEUE_CAPACITY: usize = 1;' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker bounded-dispatcher-capacity"
+grep -qF 'static CLIPBOARD_UPDATE_TX: OnceLock<Result<SyncSender<ClipboardUpdateRequest>, String>>' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker dispatcher-once-sender"
+grep -qF 'mpsc::sync_channel::<ClipboardUpdateRequest>(CLIPBOARD_UPDATE_QUEUE_CAPACITY)' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker bounded-dispatcher-channel"
+grep -qF '.name("rd-native-clipboard-dispatch".to_owned())' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker named-dispatcher-thread"
+grep -qF 'sender.try_send(request)' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker nonblocking-dispatcher-admission"
+grep -qF 'native clipboard dispatcher busy; refusing to queue peer clipboard SET' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker dispatcher-busy-fail-closed"
+grep -qF 'ClipboardUpdateRequest::SetFiles { files, side }' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker file-clipboard-dispatcher-route"
+grep -qF 'native clipboard dispatcher busy; refusing to queue peer file-clipboard SET' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker file-clipboard-dispatcher-busy-fail-closed"
+grep -qF 'ClipboardUpdateRequest::TryEmptyFiles' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker file-clipboard-empty-dispatcher-route"
+grep -qF 'native clipboard dispatcher busy; refusing to queue peer file-clipboard empty' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker file-clipboard-empty-dispatcher-busy-fail-closed"
+if awk '/pub fn update_clipboard\(/,/^}/' src/clipboard.rs | grep -qF 'std::thread::spawn'; then
+  r_native_clipboard_worker="$r_native_clipboard_worker per-peer-normal-clipboard-thread-spawn"
+fi
+if awk '/pub fn update_clipboard_files\(/,/^}/' src/clipboard.rs | grep -qF 'std::thread::spawn'; then
+  r_native_clipboard_worker="$r_native_clipboard_worker per-peer-file-clipboard-thread-spawn"
+fi
+if awk '/pub fn try_empty_clipboard_files\(/,/^}/' src/clipboard.rs | grep -qF 'std::thread::spawn'; then
+  r_native_clipboard_worker="$r_native_clipboard_worker per-peer-file-clipboard-empty-thread-spawn"
+fi
 if grep -qF 'let mut guard = worker.lock()' src/native_clipboard_worker.rs; then
   r_native_clipboard_worker="$r_native_clipboard_worker blocking-worker-lock"
 fi

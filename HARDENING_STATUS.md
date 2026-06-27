@@ -13,7 +13,8 @@ history remains the traceability record for those intermediate notes.
 native-codec advisory-watch, native media/clipboard handoff-bound and
 CLIPRDR callback fail-closed follow-ups, the first desktop
 native-video/native-Opus/native-zstd/native-clipboard worker slices, the
-mobile media/clipboard/zstd fail-closed behavior, bounded worker-I/O thread, Linux
+mobile media/clipboard/zstd fail-closed behavior, bounded worker-I/O thread and
+bounded desktop clipboard/file-clipboard dispatcher, Linux
 child-confinement, Windows Job Object child lifetime/limit guards and process mitigations, non-mobile desktop-Unix worker RLIMIT/fd-cleanup
 confinement, macOS worker NoNetwork Seatbelt confinement, Linux
 x86_64/aarch64 post-exec syscall-filter/fd-cleanup follow-ups, and unsupported
@@ -136,7 +137,13 @@ the worker module; `scripts/verify.sh` source-gates that raw call as absent
 outside `src/native_video_worker.rs`. The worker parents now use one
 persistent, named I/O thread per child plus a one-slot command channel and
 per-request reply timeout, instead of spawning a new OS thread for each decode,
-decompress, or clipboard SET round trip. Shared singleton worker admission for
+decompress, or clipboard SET round trip. The desktop peer clipboard and
+file-clipboard parent entry points now also use one persistent, named dispatcher
+thread with a one-slot `sync_channel` and non-blocking `try_send()` admission
+before any sanitization, zstd decompression, native clipboard SET, FUSE
+file-clipboard SET, or file-clipboard empty round trip begins; if the dispatcher
+is busy or unavailable, the newest peer clipboard/file-clipboard request is
+shed instead of spawning another parent OS thread. Shared singleton worker admission for
 desktop peer zstd decompression, normal clipboard SET, Unix file-descriptor PDU
 parsing, and Unix file-content/file-list requests now uses non-blocking
 `try_lock()` and fails closed if the worker is already processing another
@@ -215,6 +222,22 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 `requirements.html` is intentionally not edited by implementation work.
 
 ## Recent Closures
+
+- **Desktop peer clipboard and file-clipboard parent paths no longer spawn one OS thread per peer message.**
+  `src/clipboard.rs` now admits normal clipboard SET, Linux file-clipboard SET,
+  and Unix/macOS file-clipboard empty requests through a single named dispatcher
+  thread backed by a one-slot `sync_channel`; callers use non-blocking
+  `try_send()` and shed newest excess with a fail-closed warning if a previous
+  clipboard operation is still being sanitized, decompressed, passed through the
+  native clipboard worker, or applied to the platform file clipboard. This
+  closes the pre-worker thread-amplification gap in the Appendix C #2b clipboard
+  slice. The `native_clipboard_worker` process boundary still performs the
+  protobuf-to-`arboard` conversion and platform SET for normal clipboard data;
+  this change bounds admission before that worker, and before the file-clipboard
+  parent operations, are reached. `scripts/verify.sh` now gates the dispatcher
+  capacity, named thread, non-blocking admission, busy fail-closed markers, the
+  file-clipboard routes, and absence of the old per-message `std::thread::spawn`
+  paths in those peer-entry functions.
 
 - **Windows remote-printer XPS handoff now fails closed until a native worker exists.**
   `src/client/io_loop.rs` rejects incoming Windows `FileType::Printer` requests

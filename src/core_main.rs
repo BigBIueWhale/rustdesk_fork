@@ -602,6 +602,24 @@ pub fn core_main() -> Option<Vec<String>> {
         } else if {
             #[cfg(target_os = "windows")]
             {
+                args[0] == crate::native_printer_worker::worker_arg()
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                false
+            }
+        } {
+            // Appendix C #2b: hidden same-artifact worker role for Windows
+            // remote-printer XPS handoff. It never listens, never joins session
+            // state, and owns the raw printer bridge for peer-supplied bytes.
+            #[cfg(target_os = "windows")]
+            if let Err(e) = crate::native_printer_worker::run_worker() {
+                log::error!("native printer worker failed: {}", e);
+            }
+            return None;
+        } else if {
+            #[cfg(target_os = "windows")]
+            {
                 args[0] == clipboard::platform::windows::cliprdr_worker_arg()
             }
             #[cfg(not(target_os = "windows"))]

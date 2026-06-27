@@ -29,7 +29,7 @@ x86_64/aarch64 post-exec syscall-filter/fd-cleanup follow-ups, and unsupported
 Linux worker-architecture fail-closed behavior for those slices,
 Unix/macOS file-copy descriptor-parser/FileContents worker isolation, Windows
 CLIPRDR same-artifact worker isolation, macOS paste FILEDESCRIPTOR parent-path
-containment, Windows remote-printer XPS fail-closed behavior, desktop video
+containment, Windows remote-printer XPS same-artifact worker handoff, desktop video
 capability-advertising wrapper closure, and Apple SDK-free source-conformance
 are closed in source and gates; responder-side port-forward latent-connect and
 file write-response forwarding follow-ups remain closed. The full
@@ -241,9 +241,14 @@ state additionally re-normalizes worker-parsed FILEDESCRIPTOR names before
 parent-process filesystem operations and rejects absolute, parent/current,
 drive-style, empty, NUL, backslash, colon, and overlong path components before
 mkdir, temporary download, collision rename, or final rename. Windows
-remote-printer jobs now fail closed before XPS/native printer handoff until a
-same-artifact native printer worker exists; session code no longer calls the
-in-process `send_raw_data_to_printer` bridge. This is not yet the
+remote-printer jobs now prompt locally, transfer peer-supplied XPS bytes as a
+printer file job, and hand completed data to the hidden same-artifact
+`--native-printer-worker` child. Main session code no longer calls the raw
+`send_raw_data_to_printer` platform bridge; only the worker owns that call after
+framed request validation. Parent admission is single-worker/no-queue with a
+busy fail-closed result, 128 MiB data cap, 1024 byte printer-name cap, NUL-name
+rejection, 120 second timeout/kill/restart semantics, and native-worker sandbox
+/ Windows Job Object confinement. This is not yet the
 full sandbox: mobile media/clipboard/zstd platform-worker support if those
 features are to be enabled on mobile, Android's process model, iOS's
 no-child-process model, a broader
@@ -370,18 +375,25 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   file-clipboard routes, and absence of the old per-message `std::thread::spawn`
   paths in those peer-entry functions.
 
-- **Windows remote-printer XPS handoff now fails closed until a native worker exists.**
-  `src/client/io_loop.rs` rejects incoming Windows `FileType::Printer` requests
-  before prompt/auto-print policy or XPS handoff, and refuses any completed
-  Windows printer job instead of calling
-  `crate::platform::send_raw_data_to_printer`. `src/ui_session_interface.rs`
-  now makes `printer_response` fail closed under `cfg(windows)`, so a UI reply
-  cannot create a Windows printer receive job. The platform bridge remains
-  defined in `src/platform/windows.rs`, but no session path calls it.
-  `scripts/verify.sh` gates the fail-closed markers, absence of non-platform
-  `send_raw_data_to_printer` callers, absence of the old peer
-  `printer_response` call, and absence of old auto-print policy reads in the
-  Windows peer path.
+- **Windows remote-printer XPS handoff now crosses a bounded same-artifact worker.**
+  `src/client/io_loop.rs` prompts for local confirmation with
+  `printer_request`, no longer reads the old auto-print policy from the peer
+  route, and hands completed Windows printer jobs to
+  `native_printer_worker::send_raw_data_to_printer` through `spawn_blocking`.
+  `src/ui_session_interface.rs` creates the confirmed `JobType::Printer`
+  receive job instead of failing closed at the UI response. The hidden
+  `--native-printer-worker` entry in `src/core_main.rs` owns the only
+  non-platform raw call to `platform::windows::send_raw_data_to_printer`; the
+  session process never calls that bridge directly. The worker protocol is
+  magic/version/op framed, validates nonempty data, caps XPS data at 128 MiB and
+  printer names at 1024 bytes, rejects NUL printer names, bounds child error
+  strings, admits only one in-flight print job with no queue, kills/restarts the
+  child on timeout or I/O failure, and applies the native-worker sandbox plus
+  Windows Job Object confinement. `scripts/verify.sh` gates the module, hidden
+  worker entry, sandbox hooks, caps, busy/oversize/NUL fail-closed markers,
+  worker-owned raw call, session `spawn_blocking` handoff, confirmation prompt,
+  response transfer job, absence of old auto-print policy reads, and absence of
+  stale fail-closed stubs.
 - **macOS paste FILEDESCRIPTOR names are normalized and contained before parent
   filesystem use.**
   The Unix FILEDESCRIPTOR worker still owns hostile PDU parsing, and
@@ -806,9 +818,10 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 
 ## Artifact State
 
-After the fixed-shape listener/direct-TCP staging collapse and the artifact
-staleness correction, the Debian, Android, and Windows artifacts below were
-rebuilt from the current application source. These hashes supersede the
+After the fixed-shape listener/direct-TCP staging collapse, the artifact
+staleness correction, and the Windows remote-printer worker handoff, the Debian,
+Android, and Windows artifacts below were rebuilt from the current application
+source. These hashes supersede the
 `ec1b6f6`/`2d72f99` stale-artifact notes.
 The Debian path ran in the disposable `rustdesk-fork-harness-deb-builder` build
 container with the compile stage offline (`--network=none`) and
@@ -817,31 +830,35 @@ check. The Android path ran in the disposable
 `rustdesk-fork-harness-android-builder` container with the compile stage offline
 (`--network=none`), signed with the stable local RSA-4096 keystore from
 `.harness-state/android-keystore/`, and `apksigner verify` reported one signer
-with v1/v2/v3 true. The Windows path ran `scripts/build-windows-vm.sh` from
-committed application source through the transient KVM path from the pinned
-golden qcow2, booted each per-build VM with `--network none`, used
-loopback-only VNC, extracted/canonicalized the `.exe` and `.msi`, and passed the
-default Windows double-build A==B assertion.
+with v1/v2/v3 true. The Windows path ran
+`WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh` from the
+current tracked plus untracked non-ignored worktree snapshot through the
+transient KVM path from the pinned golden qcow2, booted each per-build VM with
+`--network none`, used loopback-only VNC, extracted/canonicalized the `.exe` and
+`.msi`, and passed the default Windows double-build A==B assertion.
 
 ```text
-ee4a0831eeda5e58b86536bdb7ab52e0c6392aabc7e6801e4b6fe07d58452da0  dist/rustdesk-x86_64.deb
-8c7f8515d3a102bb4fe0812e6f6aabefb204d64d5f145db8a894a181e3d25f0e  dist/rustdesk-arm64.apk
-e68f49ffd4b8fded8517e1b12128bf7d16b63ab38b0e677e2ef550560e1c5628  dist/rustdesk-setup.exe
-bcf8f7b4bf30d3aa3f96bc314dfefc3c901699a2a552cfee78aea1e33dcf5e88  dist/rustdesk.msi
+e5853fcca58b47860762acae9f0989c30ee0c266b4a79b473dfabf0ed786c1e8  dist/rustdesk-x86_64.deb
+6e99f5816e022b0b73d5e36001ae546ae4b70335074f18020ea2f18df982db5a  dist/rustdesk-arm64.apk
+dae6649f5db6e54b269b209982a3e0d9bd6efe7e30f7d359ef59064af6dbcb4b  dist/rustdesk-setup.exe
+1e7b245fa8a34955de3680927ee0df87718332a3a142bedbce0fa48e25f17db0  dist/rustdesk.msi
 ```
 
 Build evidence:
 
 - Debian `bash scripts/build-debian.sh` passed its offline Docker double-build
-  A==B gate, producing `ee4a0831eeda5e58b86536bdb7ab52e0c6392aabc7e6801e4b6fe07d58452da0`.
+  A==B gate, producing `e5853fcca58b47860762acae9f0989c30ee0c266b4a79b473dfabf0ed786c1e8`.
 - Android
   `ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYSTORE_PASS_FILE=.harness-state/android-keystore/pass bash scripts/build-android.sh`
   passed the offline Docker build and apksigner verification, producing
-  `8c7f8515d3a102bb4fe0812e6f6aabefb204d64d5f145db8a894a181e3d25f0e`.
-- Windows `bash scripts/build-windows-vm.sh` passed from committed application
-  source in the transient KVM VM path. The guest `build-log.txt` contains
-  pre-canonical hashes; the final release hashes are the host-canonicalized
-  `dist/*.sha256` values above, and the second VM rebuild matched A==B.
+  `6e99f5816e022b0b73d5e36001ae546ae4b70335074f18020ea2f18df982db5a`.
+- Windows `WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh`
+  passed from the current worktree snapshot in the transient KVM VM path. The
+  guest `build-log.txt` contains pre-canonical hashes; the final release hashes
+  are the host-canonicalized `dist/*.sha256` values above, and the second VM
+  rebuild matched A==B with
+  `exe=dae6649f5db6e54b269b209982a3e0d9bd6efe7e30f7d359ef59064af6dbcb4b` and
+  `msi=1e7b245fa8a34955de3680927ee0df87718332a3a142bedbce0fa48e25f17db0`.
 
 ## Validation Matrix
 
@@ -1157,15 +1174,15 @@ ANDROID_KEYSTORE=... ANDROID_KEYSTORE_PASS_FILE=... bash scripts/build-android.s
 WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh # GREEN: transient KVM VM, --network none, loopback-only VNC, double-build A==B, exe=6b61d0466a2d631ea03515b794ef531dad94ede3b4d0e2380e831768985ca821, msi=291a5349a77a157f9b699586ac5a3f15d5e1d1c3e8157b6246e6a6b110d75dab
 ```
 
-After the macOS paste FILEDESCRIPTOR parent-path containment and Windows
-remote-printer fail-closed changes, the focused source gates, Apple
-source-conformance gate, and refreshed artifacts were re-run:
+After the macOS paste FILEDESCRIPTOR parent-path containment and the earlier
+Windows remote-printer fail-closed staging changes, the focused source gates,
+Apple source-conformance gate, and refreshed artifacts were re-run:
 
 ```text
 docker run --rm ... rustfmt --edition 2021 libs/clipboard/src/platform/unix/filetype.rs libs/clipboard/src/platform/unix/macos/paste_task.rs libs/clipboard/src/platform/unix/macos/pasteboard_context.rs src/client/io_loop.rs src/ui_session_interface.rs  # GREEN
 bash -n scripts/verify.sh                                  # GREEN
 git diff --check                                           # GREEN
-bash scripts/verify.sh                                     # GREEN: VERIFY: all gates green, incl. relative-name sanitizer test, macOS paste containment source gates, and Windows remote-printer fail-closed source gates
+bash scripts/verify.sh                                     # GREEN: VERIFY: all gates green, incl. relative-name sanitizer test, macOS paste containment source gates, and the earlier Windows remote-printer fail-closed staging source gates
 bash scripts/apple-conform-check.sh                        # GREEN: SDK-free Apple source-conformance boundary
 bash scripts/verify-windows-golden.sh                      # GREEN: pinned golden qcow2 toolchain/provisioning marker verified read-only
 WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh # GREEN: transient KVM VM, --network none, loopback-only VNC, double-build A==B, exe=5478d3deb225f960f962dcfc36affe904ab7762bc756e0a058307c5897fc943d, msi=82fc6fc5ac76f1e0911bc92d2984506755920fb551dc791b7edd5457bec51958
@@ -1184,13 +1201,17 @@ bash scripts/verify.sh                                        # GREEN: VERIFY: a
 bash scripts/smoke-server.sh                                  # GREEN: LD_PRELOAD smoke bind shim, one 127.0.0.1:21118 TCP listener, zero UDP, R-A1/R-S1 keying, R-T1 capacity-shed, owner-safe limiter, forged-frame rejection, no plaintext canary
 ```
 
-After the current-source artifact refresh, the platform build scripts were
-re-run:
+After the Windows remote-printer worker handoff and current-source artifact
+refresh, the focused source gates, full verifier, and platform build scripts
+were re-run:
 
 ```text
-bash scripts/build-debian.sh                                  # GREEN: offline Docker double-build A==B, ee4a0831eeda5e58b86536bdb7ab52e0c6392aabc7e6801e4b6fe07d58452da0
-ANDROID_KEYSTORE=... ANDROID_KEYSTORE_PASS_FILE=... bash scripts/build-android.sh # GREEN: offline Docker build, apksigner verified one signer with v1/v2/v3 true, 8c7f8515d3a102bb4fe0812e6f6aabefb204d64d5f145db8a894a181e3d25f0e
-bash scripts/build-windows-vm.sh                              # GREEN: transient KVM VMs, --network none, loopback-only VNC, double-build A==B, exe=e68f49ffd4b8fded8517e1b12128bf7d16b63ab38b0e677e2ef550560e1c5628, msi=bcf8f7b4bf30d3aa3f96bc314dfefc3c901699a2a552cfee78aea1e33dcf5e88
+bash -n scripts/verify.sh                                     # GREEN
+git diff --check                                              # GREEN
+bash scripts/verify.sh                                        # GREEN: VERIFY: all gates green, incl. Windows printer worker gates and main-crate compile
+WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh # GREEN: transient KVM VMs, --network none, loopback-only VNC, double-build A==B, exe=dae6649f5db6e54b269b209982a3e0d9bd6efe7e30f7d359ef59064af6dbcb4b, msi=1e7b245fa8a34955de3680927ee0df87718332a3a142bedbce0fa48e25f17db0
+bash scripts/build-debian.sh                                  # GREEN: offline Docker double-build A==B, e5853fcca58b47860762acae9f0989c30ee0c266b4a79b473dfabf0ed786c1e8
+ANDROID_KEYSTORE=... ANDROID_KEYSTORE_PASS_FILE=... bash scripts/build-android.sh # GREEN: offline Docker build, apksigner verified one signer with v1/v2/v3 true, 6e99f5816e022b0b73d5e36001ae546ae4b70335074f18020ea2f18df982db5a
 ```
 
 The Windows VM build path is current for the application source represented by
@@ -1333,14 +1354,16 @@ worker entry instead of parsing hostile content with only partial confinement.
 Those closures deliberately do not claim full sandboxing or current CVE freedom.
 macOS worker children now apply the Seatbelt NoNetwork profile at worker entry,
 but that is not a full custom macOS allowlist or a BSD pledge/capsicum
-equivalent. Windows same-artifact worker children, including the CLIPRDR worker,
-now get hidden-window Job Object active-process, kill-on-job-close, and
+equivalent. Windows same-artifact worker children, including the CLIPRDR and
+remote-printer workers, now get hidden-window Job Object active-process,
+kill-on-job-close, and
 process-memory limits with a retained guard, plus entry-time process mitigations
 for dynamic code, extension points, strict handle checks, and remote/low-integrity
 image loads, but that is not a Windows AppContainer, restricted-token, or syscall
 allowlist sandbox. Windows CLIPRDR now has app-level and Rust<->C bridge length
 caps plus null/bounded-read fail-closed guards, pending request/response
-accounting, and a same-artifact worker boundary. Mobile media decode now fails
+accounting, and a same-artifact worker boundary; Windows remote-printer XPS
+handoff now has a bounded same-artifact worker boundary. Mobile media decode now fails
 closed/no-advertises, mobile peer clipboard SET now fails closed, and mobile peer
 zstd now fails closed rather than using in-process native parsers; enabling those
 mobile peer features still requires a platform worker/service boundary.

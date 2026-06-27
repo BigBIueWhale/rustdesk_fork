@@ -19,6 +19,8 @@ mod native_clipboard_worker;
 mod native_file_contents_worker;
 #[cfg(all(feature = "unix-file-copy-paste", target_family = "unix"))]
 mod native_file_descriptor_worker;
+#[cfg(target_os = "windows")]
+mod native_printer_worker;
 mod native_video_worker;
 mod peer_text;
 // R-X5 / R-SV1 / R-D7a: LAN discovery is fully removed (the `mod lan` no-op stubs — discover()

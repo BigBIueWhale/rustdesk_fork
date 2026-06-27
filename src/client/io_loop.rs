@@ -1935,15 +1935,35 @@ impl<T: InvokeUiSession> Remote<T> {
                                             printer_data.as_ref().map(|d| d.len()).unwrap_or(0);
                                         #[cfg(target_os = "windows")]
                                         {
-                                            self.handler
+                                            let printer_name = self
+                                                .handler
                                                 .printer_names
                                                 .write()
                                                 .unwrap()
                                                 .remove(&d.id);
-                                            log::warn!(
-                                                "refusing in-process Windows remote printer job; native printer worker is not implemented; data len: {}",
-                                                data_len
-                                            );
+                                            if let Some(data) = printer_data {
+                                                log::info!(
+                                                    "Receive print job done, data len: {}",
+                                                    data_len
+                                                );
+                                                let _ = hbb_common::tokio::task::spawn_blocking(
+                                                    move || {
+                                                        if let Err(err) = crate::native_printer_worker::send_raw_data_to_printer(
+                                                            printer_name,
+                                                            data,
+                                                        ) {
+                                                            log::error!(
+                                                                "native printer worker refused remote print job: {}",
+                                                                err
+                                                            );
+                                                        }
+                                                    },
+                                                );
+                                            } else {
+                                                log::warn!(
+                                                    "dropping Windows remote printer job with no buffered XPS data"
+                                                );
+                                            }
                                         }
                                         #[cfg(not(target_os = "windows"))]
                                         {
@@ -2194,9 +2214,8 @@ impl<T: InvokeUiSession> Remote<T> {
                     Some(file_action::Union::Send(_s)) => match _s.file_type.enum_value() {
                         #[cfg(target_os = "windows")]
                         Ok(file_transfer_send_request::FileType::Printer) => {
-                            log::warn!(
-                                "refusing incoming Windows remote printer job before XPS handoff; native printer worker is not implemented"
-                            );
+                            let id = fs::get_next_job_id();
+                            self.handler.printer_request(id, _s.path);
                         }
                         _ => {}
                     },

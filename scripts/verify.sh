@@ -2100,14 +2100,40 @@ grep -qF 'fileContentsRequest->dwFlags != FILECONTENTS_SIZE' libs/clipboard/src/
 if grep -qF 'p += len + 1, clipboard->nFiles++' libs/clipboard/src/windows/wf_cliprdr.c; then
   r_native_bounds="$r_native_bounds cliprdr-c-ansi-double-increment"
 fi
-grep -qF 'refusing incoming Windows remote printer job before XPS handoff' src/client/io_loop.rs ||
-  r_native_bounds="$r_native_bounds windows-printer-incoming-fail-closed"
-grep -qF 'refusing in-process Windows remote printer job; native printer worker is not implemented' src/client/io_loop.rs ||
-  r_native_bounds="$r_native_bounds windows-printer-completion-fail-closed"
-grep -qF 'refusing Windows remote printer response; native printer worker is not implemented' src/ui_session_interface.rs ||
-  r_native_bounds="$r_native_bounds windows-printer-ui-response-fail-closed"
-if grep -RInF 'send_raw_data_to_printer' src --include='*.rs' \
+grep -qF 'mod native_printer_worker;' src/lib.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-module"
+grep -qF 'crate::native_printer_worker::worker_arg()' src/core_main.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-core-worker-arg"
+grep -qF 'crate::native_printer_worker::run_worker()' src/core_main.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-core-worker-entry"
+grep -qF 'hbb_common::native_worker_sandbox::enter_worker_process()' src/native_printer_worker.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-entry-sandbox"
+grep -qF 'hbb_common::native_worker_sandbox::apply_to_spawned_child(&mut child)' src/native_printer_worker.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-post-spawn-guard"
+grep -qF 'const MAX_PRINTER_DATA_BYTES: usize = 128 * 1024 * 1024;' src/native_printer_worker.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-data-cap"
+grep -qF 'native printer worker busy; refusing to queue remote print job' src/native_printer_worker.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-busy-fail-closed"
+grep -qF 'native printer worker request too large' src/native_printer_worker.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-size-fail-closed"
+grep -qF 'native printer worker refuses NUL in printer name' src/native_printer_worker.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-name-nul-fail-closed"
+grep -qF 'crate::platform::windows::send_raw_data_to_printer(request.printer_name, request.data)' src/native_printer_worker.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-owns-raw-call"
+grep -qF 'crate::native_printer_worker::send_raw_data_to_printer(' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-session-worker-call"
+grep -qF 'hbb_common::tokio::task::spawn_blocking' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-session-spawn-blocking"
+grep -qF 'self.handler.printer_request(id, _s.path);' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-confirmation-request"
+grep -qF 'self.send(Data::SendFiles((' src/ui_session_interface.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-response-transfer-job"
+if grep -RInF 'platform::send_raw_data_to_printer' src --include='*.rs' \
     | grep -vF 'src/platform/windows.rs:' >/dev/null; then
+  r_native_bounds="$r_native_bounds windows-printer-session-raw-call"
+fi
+if grep -RInF 'platform::windows::send_raw_data_to_printer' src --include='*.rs' \
+    | grep -vF 'src/native_printer_worker.rs:' >/dev/null; then
   r_native_bounds="$r_native_bounds windows-printer-session-raw-call"
 fi
 if grep -qF 'handler.printer_response(id, _s.path' src/client/io_loop.rs; then
@@ -2117,10 +2143,14 @@ if grep -qF 'OPTION_PRINTER_ALLOW_AUTO_PRINT' src/client/io_loop.rs ||
    grep -qF 'OPTION_PRINTER_INCOMING_JOB_ACTION' src/client/io_loop.rs; then
   r_native_bounds="$r_native_bounds windows-printer-auto-policy-read"
 fi
+if grep -qF 'refusing in-process Windows remote printer job; native printer worker is not implemented' src/client/io_loop.rs ||
+   grep -qF 'refusing Windows remote printer response; native printer worker is not implemented' src/ui_session_interface.rs; then
+  r_native_bounds="$r_native_bounds windows-printer-stale-fail-closed-stub"
+fi
 if [ -n "$r_native_bounds" ]; then
   echo "  FAIL Appendix C #2b/R-T0: hostile-peer native/UI handoff bounds regressed:$r_native_bounds"; rc=1
 else
-  echo "  ok  Appendix C #2b/R-T0 native media/clipboard/printer handoff bounds plus peer UI text length/rate guards present (remaining process-model residuals tracked separately)"
+  echo "  ok  Appendix C #2b/R-T0 native media/clipboard/printer handoff bounds plus Windows printer worker and peer UI text length/rate guards present (remaining process-model residuals tracked separately)"
 fi
 # R-S11a/R-S8 companion: Linux clipboard-file FUSE mount setup uses /tmp by
 # design, so every path component must be explicit, no-follow, current-euid

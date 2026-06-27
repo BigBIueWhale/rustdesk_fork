@@ -184,6 +184,12 @@ echo "== (3c-iii-a) unix file-copy descriptor relative-name sanitizer (Appendix 
 echo "== (3c-iii-b) Linux FUSE clipboard mount-point component validation (R-S11a/R-S8) =="
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib fuse_mount_component --color never
 
+# (3c-iii-c) Linux FUSE FileContentsResponse delivery is peer-driven after
+# PAKE. Each response is byte-capped before protobuf conversion, but the local
+# handoff queue must also be bounded so many capped blobs cannot accumulate.
+echo "== (3c-iii-c) Linux FUSE file-content response queue bound (R-T0/R-S7) =="
+"${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib fuse_response_queue --color never
+
 # (3c-iv) Unix file-copy local file-content worker protocol (Appendix C #2b):
 # local file-list state and FileContents reads live behind a same-artifact
 # worker, so hostile-peer CLIPRDR file-content requests never drive local
@@ -1999,6 +2005,32 @@ if [ -n "$r_fuse_mount" ]; then
   echo "  FAIL R-S11a/R-S8: Linux FUSE clipboard mount-point no-follow/no-adoption hardening regressed:$r_fuse_mount"; rc=1
 else
   echo "  ok  R-S11a/R-S8 Linux FUSE clipboard mount-point setup is fail-closed, no-follow, current-euid-owned, and non-world-writable"
+fi
+r_fuse_response_queue=
+grep -qF 'pub(crate) const FUSE_RESPONSE_QUEUE_CAPACITY: usize = 8;' libs/clipboard/src/platform/unix/fuse/cs.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue capacity"
+grep -qF 'std::sync::mpsc::sync_channel(FUSE_RESPONSE_QUEUE_CAPACITY)' libs/clipboard/src/platform/unix/fuse/cs.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue sync-channel"
+grep -qF 'SyncSender<ClipboardFile>' libs/clipboard/src/platform/unix/fuse/cs.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue cs-sync-sender"
+grep -qF 'tx: SyncSender<ClipboardFile>' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue context-sync-sender"
+grep -qF '.try_send(clip)' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue nonblocking-admission"
+grep -qF 'FUSE file-content response queue is full; dropping peer response' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue full-shed-log"
+grep -qF 'fuse_response_queue_is_bounded' libs/clipboard/src/platform/unix/fuse/cs.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue bounded-queue-test"
+if grep -qF 'std::sync::mpsc::channel()' libs/clipboard/src/platform/unix/fuse/cs.rs; then
+  r_fuse_response_queue="$r_fuse_response_queue unbounded-channel"
+fi
+if grep -qF '.send(clip)' libs/clipboard/src/platform/unix/fuse/mod.rs; then
+  r_fuse_response_queue="$r_fuse_response_queue blocking-send"
+fi
+if [ -n "$r_fuse_response_queue" ]; then
+  echo "  FAIL R-T0/R-S7: Linux FUSE file-content response queue bound regressed:$r_fuse_response_queue"; rc=1
+else
+  echo "  ok  R-T0/R-S7 Linux FUSE file-content responses use a bounded queue with nonblocking peer admission"
 fi
 # Appendix C #2b first sandbox slice: desktop video decode must cross a hidden
 # same-artifact worker process before libvpx/aom/libyuv sees hostile-peer bytes.

@@ -10,7 +10,10 @@ use std::{
     ffi::{CString, OsStr},
     os::unix::{ffi::OsStrExt, io::RawFd},
     path::{Path, PathBuf},
-    sync::{mpsc::Sender, Arc},
+    sync::{
+        mpsc::{SyncSender, TrySendError},
+        Arc,
+    },
     time::Duration,
 };
 
@@ -131,10 +134,16 @@ pub fn handle_file_content_response(
     ctx.as_ref()
         .ok_or(CliprdrError::CliprdrInit)?
         .tx
-        .send(clip)
-        .map_err(|e| {
-            log::error!("failed to send file contents response to fuse: {:?}", e);
-            CliprdrError::ClipboardInternalError
+        .try_send(clip)
+        .map_err(|e| match e {
+            TrySendError::Full(_) => {
+                log::warn!("FUSE file-content response queue is full; dropping peer response");
+                CliprdrError::ClipboardOccupied
+            }
+            TrySendError::Disconnected(_) => {
+                log::error!("failed to send file contents response to fuse: channel closed");
+                CliprdrError::ClipboardInternalError
+            }
         })?;
     Ok(())
 }
@@ -152,7 +161,7 @@ pub fn empty_local_files(is_client: bool, conn_id: i32) -> bool {
 
 struct FuseContext {
     server: Arc<Mutex<FuseServer>>,
-    tx: Sender<ClipboardFile>,
+    tx: SyncSender<ClipboardFile>,
     mount_point: PathBuf,
     // stores fuse background session handle
     session: Mutex<Option<fuser::BackgroundSession>>,

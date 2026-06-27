@@ -24,7 +24,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
-        mpsc::{Receiver, Sender},
+        mpsc::{Receiver, SyncSender},
         Arc,
     },
     time::{Duration, SystemTime},
@@ -44,6 +44,7 @@ use crate::{
 
 /// fuse server ready retry max times
 const READ_RETRY: i32 = 3;
+pub(crate) const FUSE_RESPONSE_QUEUE_CAPACITY: usize = 8;
 
 impl From<FileType> for fuser::FileType {
     fn from(value: FileType) -> Self {
@@ -179,8 +180,8 @@ pub(crate) struct FuseServer {
 
 impl FuseServer {
     /// create a new fuse server
-    pub fn new(timeout: Duration) -> (Self, Sender<ClipboardFile>) {
-        let (tx, rx) = std::sync::mpsc::channel();
+    pub fn new(timeout: Duration) -> (Self, SyncSender<ClipboardFile>) {
+        let (tx, rx) = std::sync::mpsc::sync_channel(FUSE_RESPONSE_QUEUE_CAPACITY);
         (
             Self {
                 generation: AtomicU64::new(0),
@@ -1006,5 +1007,24 @@ mod fuse_test {
         build_tree("🗂");
         build_tree("/🗂");
         build_tree("🗂/test");
+    }
+
+    #[test]
+    fn fuse_response_queue_is_bounded() {
+        let (_server, tx) = FuseServer::new(Duration::from_secs(1));
+        let response = ClipboardFile::FileContentsResponse {
+            msg_flags: 1,
+            stream_id: 7,
+            requested_data: vec![1, 2, 3],
+        };
+
+        for _ in 0..FUSE_RESPONSE_QUEUE_CAPACITY {
+            tx.try_send(response.clone()).unwrap();
+        }
+
+        assert!(matches!(
+            tx.try_send(response),
+            Err(std::sync::mpsc::TrySendError::Full(_))
+        ));
     }
 }

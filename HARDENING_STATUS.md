@@ -16,6 +16,7 @@ native-video/native-Opus/native-zstd/native-clipboard worker slices, the
 mobile media/clipboard/zstd fail-closed behavior, bounded worker-I/O thread and
 bounded desktop clipboard/file-clipboard dispatcher, Linux
 FUSE clipboard mount-point no-follow/no-adoption setup,
+bounded Linux FUSE file-content response queue,
 child-confinement, Windows Job Object child lifetime/limit guards and process mitigations, non-mobile desktop-Unix worker RLIMIT/fd-cleanup
 confinement, macOS worker NoNetwork Seatbelt confinement, Linux
 x86_64/aarch64 post-exec syscall-filter/fd-cleanup follow-ups, and unsupported
@@ -560,6 +561,13 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   chmods the mount point to `0777`. `scripts/verify.sh` gates the no-follow,
   ownership, mode, and no-silent-adoption markers and runs the component
   validation tests in Docker.
+  Linux FUSE peer `FileContentsResponse` delivery now uses an 8-slot
+  `sync_channel` plus nonblocking `try_send`; when the queue is full, the newest
+  peer response is dropped and the active FUSE read times out/retries instead of
+  retaining an unbounded number of already byte-capped blobs. `scripts/verify.sh`
+  gates the capacity, `sync_channel`, `SyncSender`, nonblocking admission,
+  fail-closed shed log, absence of the old unbounded channel/blocking send, and
+  the focused bounded-queue test.
   `libs/clipboard/src/platform/unix/serv_files.rs` now also keeps a 10-second
   per-connection sliding window for file-content requests and requested bytes
   before local file I/O, rejects negative lengths before signed-to-unsigned
@@ -831,6 +839,16 @@ rustfmt --edition 2021 libs/clipboard/src/platform/unix/fuse/mod.rs  # GREEN
 bash -n scripts/verify.sh             # GREEN
 git diff --check                       # GREEN
 bash scripts/verify.sh                 # GREEN: VERIFY: all gates green, incl. FUSE mount-point component validation and no-follow/no-adoption source gates
+```
+
+After the Linux FUSE file-content response queue bound, these focused and full
+gates have been re-run successfully:
+
+```text
+rustfmt --edition 2021 libs/clipboard/src/platform/unix/fuse/mod.rs libs/clipboard/src/platform/unix/fuse/cs.rs  # GREEN
+bash -n scripts/verify.sh             # GREEN
+git diff --check                       # GREEN
+bash scripts/verify.sh                 # GREEN: VERIFY: all gates green, incl. FUSE bounded response queue test and source gates
 ```
 
 After the Windows native-worker process-mitigation entry hook and gate update,

@@ -2833,6 +2833,14 @@ grep -qF 'PROCESS_MITIGATION_STRICT_HANDLE_CHECK_POLICY' libs/hbb_common/src/nat
   r_native_worker_platform="$r_native_worker_platform windows-strict-handle-policy-struct"
 grep -qF 'set_RaiseExceptionOnInvalidHandleReference(1)' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-invalid-handle-exception"
+grep -qF 'WINDOWS_PROCESS_CHILD_PROCESS_POLICY' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-child-process-policy-constant"
+grep -qF 'PROCESS_MITIGATION_CHILD_PROCESS_POLICY' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-child-process-policy-struct"
+grep -qF 'set_NoChildProcessCreation(1)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-no-child-process-creation"
+grep -qF 'set_AllowSecureProcessCreation(0)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-no-secure-child-process-exception"
 grep -qF 'ProcessImageLoadPolicy' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-image-load-policy"
 grep -qF 'PROCESS_MITIGATION_IMAGE_LOAD_POLICY' libs/hbb_common/src/native_worker_sandbox.rs ||
@@ -2948,7 +2956,7 @@ grep -qF 'failed to constrain file-content worker' libs/clipboard/src/platform/u
 if [ -n "$r_native_worker_platform" ]; then
   echo "  FAIL Appendix C #2b: native worker platform confinement hooks regressed:$r_native_worker_platform"; rc=1
 else
-  echo "  ok  Appendix C #2b native worker parents fail closed on post-spawn confinement failure; Windows workers keep Job Object process-count/memory/kill-on-close guards plus process mitigations; macOS worker entry applies Seatbelt NoNetwork; desktop Unix workers excluding Android/iOS get RLIMIT/fd cleanup"
+  echo "  ok  Appendix C #2b native worker parents fail closed on post-spawn confinement failure; Windows workers keep Job Object process-count/memory/kill-on-close guards plus dynamic-code/extension-point/strict-handle/no-child-process/image-load mitigations; macOS worker entry applies Seatbelt NoNetwork; desktop Unix workers excluding Android/iOS get RLIMIT/fd cleanup"
 fi
 # R-R2a (§12 / sovereignty): the .deb + systemd is the SOLE Linux package model. The AppImage
 # recipe (whose `update-information` self-updater collides with R-X1 "the fork ships its own

@@ -176,6 +176,8 @@ fn enter_worker_process_platform() -> std::io::Result<()> {
 
 #[cfg(target_os = "windows")]
 const WINDOWS_WORKER_PROCESS_MEMORY_LIMIT: usize = 1536 * 1024 * 1024;
+#[cfg(target_os = "windows")]
+const WINDOWS_PROCESS_CHILD_PROCESS_POLICY: winapi::um::winnt::PROCESS_MITIGATION_POLICY = 13;
 
 #[cfg(target_os = "windows")]
 fn apply_windows_worker_job_limits(child: &mut Child) -> std::io::Result<WorkerProcessGuard> {
@@ -235,9 +237,9 @@ fn apply_windows_worker_process_mitigations() -> std::io::Result<()> {
     use std::mem;
     use winapi::um::winnt::{
         ProcessDynamicCodePolicy, ProcessExtensionPointDisablePolicy, ProcessImageLoadPolicy,
-        ProcessStrictHandleCheckPolicy, PROCESS_MITIGATION_DYNAMIC_CODE_POLICY,
-        PROCESS_MITIGATION_EXTENSION_POINT_DISABLE_POLICY, PROCESS_MITIGATION_IMAGE_LOAD_POLICY,
-        PROCESS_MITIGATION_STRICT_HANDLE_CHECK_POLICY,
+        ProcessStrictHandleCheckPolicy, PROCESS_MITIGATION_CHILD_PROCESS_POLICY,
+        PROCESS_MITIGATION_DYNAMIC_CODE_POLICY, PROCESS_MITIGATION_EXTENSION_POINT_DISABLE_POLICY,
+        PROCESS_MITIGATION_IMAGE_LOAD_POLICY, PROCESS_MITIGATION_STRICT_HANDLE_CHECK_POLICY,
     };
 
     let mut dynamic_code: PROCESS_MITIGATION_DYNAMIC_CODE_POLICY = unsafe { mem::zeroed() };
@@ -256,6 +258,11 @@ fn apply_windows_worker_process_mitigations() -> std::io::Result<()> {
     strict_handles.set_RaiseExceptionOnInvalidHandleReference(1);
     strict_handles.set_HandleExceptionsPermanentlyEnabled(1);
     set_windows_process_mitigation(ProcessStrictHandleCheckPolicy, &mut strict_handles)?;
+
+    let mut child_process: PROCESS_MITIGATION_CHILD_PROCESS_POLICY = unsafe { mem::zeroed() };
+    child_process.set_NoChildProcessCreation(1);
+    child_process.set_AllowSecureProcessCreation(0);
+    set_windows_process_mitigation(WINDOWS_PROCESS_CHILD_PROCESS_POLICY, &mut child_process)?;
 
     let mut image_load: PROCESS_MITIGATION_IMAGE_LOAD_POLICY = unsafe { mem::zeroed() };
     image_load.set_NoRemoteImages(1);

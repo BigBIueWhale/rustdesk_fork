@@ -23,7 +23,7 @@ bounded peer-triggered file-transfer metadata enumeration and read/write job
 admission,
 bounded peer-driven UI chat/message/notification text length and rate
 admission,
-child-confinement, Windows Job Object child lifetime/limit guards and process mitigations, non-mobile desktop-Unix worker RLIMIT/fd-cleanup
+child-confinement, Windows Job Object child lifetime/limit guards and process mitigations including no child-process creation, non-mobile desktop-Unix worker RLIMIT/fd-cleanup
 confinement, macOS worker NoNetwork Seatbelt confinement, Linux
 x86_64/aarch64 post-exec syscall-filter/fd-cleanup follow-ups, and unsupported
 Linux worker-architecture fail-closed behavior for those slices,
@@ -470,8 +470,9 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   assigns the child to a Job Object with active-process, per-process memory, and
   kill-on-job-close limits. The worker-entry hook then installs Windows process
   mitigations before hostile-peer parsing: dynamic-code prohibition, extension
-  point disablement, strict invalid-handle checking, and remote/low-integrity
-  image-load refusal. This is a Windows resource/lifetime/exploit-mitigation
+  point disablement, strict invalid-handle checking, no child-process creation,
+  and remote/low-integrity image-load refusal. This is a Windows
+  resource/lifetime/exploit-mitigation
   companion for the existing worker slices, not a Windows AppContainer,
   restricted-token, or syscall-allowlist sandbox. The CLIPRDR-specific
   process-boundary closure is tracked in its own worker bullet below.
@@ -1423,7 +1424,8 @@ bash -n scripts/verify.sh     # GREEN
   kill-on-job-close, and per-process memory limits before hostile-peer bytes are
   sent, with the Job Object guard retained for the child lifetime; worker entry
   also applies process mitigations for dynamic code, extension points, strict
-  handle checks, and remote/low-integrity image loads. Mobile media decode, peer
+  handle checks, child-process creation refusal, and remote/low-integrity image
+  loads. Mobile media decode, peer
   clipboard SET, and peer zstd now fail closed until platform workers/services
   exist instead of parsing hostile-peer bytes in-process. That is the right
   interim safety posture, but it is not final Android client conformance:
@@ -1476,8 +1478,9 @@ equivalent. Windows same-artifact worker children, including the CLIPRDR and
 remote-printer workers, now get hidden-window Job Object active-process,
 kill-on-job-close, and
 process-memory limits with a retained guard, plus entry-time process mitigations
-for dynamic code, extension points, strict handle checks, and remote/low-integrity
-image loads, but that is not a Windows AppContainer, restricted-token, or syscall
+for dynamic code, extension points, strict handle checks, child-process creation
+refusal, and remote/low-integrity image loads, but that is not a Windows
+AppContainer, restricted-token, or syscall
 allowlist sandbox. Windows CLIPRDR now has app-level and Rust<->C bridge length
 caps plus null/bounded-read fail-closed guards, pending request/response
 accounting, and a same-artifact worker boundary; Windows remote-printer XPS

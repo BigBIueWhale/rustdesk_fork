@@ -1413,44 +1413,26 @@ impl<T: InvokeUiSession> Remote<T> {
                     if !self.handler.lc.read().unwrap().disable_clipboard.v {
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]
                         update_clipboard(vec![cb], ClipboardSide::Client);
-                        #[cfg(target_os = "ios")]
+                        #[cfg(any(target_os = "android", target_os = "ios"))]
                         {
-                            let content = if cb.compress {
-                                hbb_common::compress::peer_decompress(&cb.content)
-                            } else {
-                                cb.content.into()
-                            };
-                            if let Ok(content) = String::from_utf8(content) {
-                                self.handler.clipboard(content);
-                            }
+                            let _ = cb;
+                            log::warn!(
+                                "refusing in-process mobile peer clipboard SET until a platform worker/service boundary exists"
+                            );
                         }
-                        #[cfg(target_os = "android")]
-                        crate::clipboard::handle_msg_clipboard(cb);
                     }
                 }
                 Some(message::Union::MultiClipboards(_mcb)) => {
                     if !self.handler.lc.read().unwrap().disable_clipboard.v {
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]
                         update_clipboard(_mcb.clipboards, ClipboardSide::Client);
-                        #[cfg(target_os = "ios")]
+                        #[cfg(any(target_os = "android", target_os = "ios"))]
                         {
-                            if let Some(cb) = _mcb
-                                .clipboards
-                                .iter()
-                                .find(|c| c.format.enum_value() == Ok(ClipboardFormat::Text))
-                            {
-                                let content = if cb.compress {
-                                    hbb_common::compress::peer_decompress(&cb.content)
-                                } else {
-                                    cb.content.to_vec()
-                                };
-                                if let Ok(content) = String::from_utf8(content) {
-                                    self.handler.clipboard(content);
-                                }
-                            }
+                            let _ = _mcb;
+                            log::warn!(
+                                "refusing in-process mobile peer multi-clipboard SET until a platform worker/service boundary exists"
+                            );
                         }
-                        #[cfg(target_os = "android")]
-                        crate::clipboard::handle_msg_multi_clipboards(_mcb);
                     }
                 }
                 #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]

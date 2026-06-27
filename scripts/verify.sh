@@ -2177,6 +2177,20 @@ grep -qF 'crate::native_clipboard_worker::update_clipboard' src/clipboard.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker parent-worker-call"
 grep -qF 'native clipboard worker failed; refusing in-process desktop clipboard update' src/clipboard.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker no-desktop-inprocess-fallback"
+grep -qF 'refusing in-process mobile peer clipboard SET until a platform worker/service boundary exists' src/server/connection.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker server-mobile-clipboard-fail-closed"
+grep -qF 'refusing in-process mobile peer multi-clipboard SET until a platform worker/service boundary exists' src/server/connection.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker server-mobile-multiclipboard-fail-closed"
+grep -qF 'refusing in-process mobile peer clipboard SET until a platform worker/service boundary exists' src/client/io_loop.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker viewer-mobile-clipboard-fail-closed"
+grep -qF 'refusing in-process mobile peer multi-clipboard SET until a platform worker/service boundary exists' src/client/io_loop.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker viewer-mobile-multiclipboard-fail-closed"
+if grep -qF 'crate::clipboard::handle_msg_clipboard(cb)' src/server/connection.rs src/client/io_loop.rs; then
+  r_native_clipboard_worker="$r_native_clipboard_worker mobile-peer-clipboard-platform-call"
+fi
+if grep -qF 'crate::clipboard::handle_msg_multi_clipboards(_mcb)' src/server/connection.rs src/client/io_loop.rs; then
+  r_native_clipboard_worker="$r_native_clipboard_worker mobile-peer-multiclipboard-platform-call"
+fi
 grep -qF 'native_clipboard_data_from_multi_clipboards' src/clipboard.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker native-convert-helper"
 grep -qF 'MAX_NATIVE_CLIPBOARD_TOTAL_BYTES' src/clipboard.rs ||
@@ -2193,7 +2207,7 @@ fi
 if [ -n "$r_native_clipboard_worker" ]; then
   echo "  FAIL Appendix C #2b: desktop normal clipboard worker boundary regressed:$r_native_clipboard_worker"; rc=1
 else
-  echo "  ok  Appendix C #2b desktop normal clipboard SET uses timeout-bounded same-artifact worker plus Linux x86_64/aarch64 post-exec syscall filter (Windows CLIPRDR has separate worker gates; mobile/non-Linux tracked; other Linux arch workers fail closed)"
+  echo "  ok  Appendix C #2b desktop normal clipboard SET uses timeout-bounded same-artifact worker plus Linux x86_64/aarch64 post-exec syscall filter; mobile peer clipboard SET fails closed until a platform worker/service exists (Windows CLIPRDR has separate worker gates; other Linux arch workers fail closed)"
 fi
 # Appendix C #2b fifth sandbox slice: Unix/macOS file-copy descriptor PDUs from
 # the peer must be parsed in a hidden same-artifact worker before FUSE or macOS

@@ -13,7 +13,7 @@ history remains the traceability record for those intermediate notes.
 native-codec advisory-watch, native media/clipboard handoff-bound and
 CLIPRDR callback fail-closed follow-ups, the first desktop
 native-video/native-Opus/native-zstd/native-clipboard worker slices, the
-mobile media/zstd fail-closed behavior, bounded worker-I/O thread, Linux
+mobile media/clipboard/zstd fail-closed behavior, bounded worker-I/O thread, Linux
 child-confinement, Windows Job Object child lifetime/limit guards and process mitigations, non-mobile desktop-Unix worker RLIMIT/fd-cleanup
 confinement, macOS worker NoNetwork Seatbelt confinement, Linux
 x86_64/aarch64 post-exec syscall-filter/fd-cleanup follow-ups, and unsupported
@@ -60,8 +60,10 @@ checked arithmetic plus a hard byte ceiling, Opus packet and format fields are
 validated before audio queueing and decoder setup, text/image clipboard payloads
 are capped before native handoff, remote cursor RGBA payloads must match checked
 positive dimensions before the Flutter image-decode handoff, CLIPRDR
-format/data/file-content payloads are capped, Android clipboard handoff now uses
-the same aggregate item/count caps as desktop before JNI/platform forwarding,
+format/data/file-content payloads are capped, mobile peer clipboard SET now
+fails closed instead of entering Android/iOS platform clipboard handling
+in-process, Android clipboard handoff helpers still keep the same aggregate
+item/count caps as desktop before any JNI/platform forwarding,
 Unix file-copy descriptor PDUs reject excessive descriptor counts before
 allocation, Unix file-content reads are admitted through a per-connection
 sliding request/byte budget before local file I/O, the Windows CLIPRDR Rust<->C
@@ -112,8 +114,10 @@ desktop fallback. On Android/iOS, video decode advertising now returns no
 supported decoders, mobile video decoder construction returns an unavailable
 backend, mobile Opus decoder construction fails closed, and peer zstd
 decompression fails closed instead of invoking native zstd in-process until a
-platform worker/service boundary exists. Local persisted config decompression
-stays in-process by design. The clipboard parent now sanitizes peer
+platform worker/service boundary exists. Mobile peer clipboard SET and
+MultiClipboards messages likewise fail closed instead of entering the Android/iOS
+platform clipboard path in-process. Local persisted config decompression stays
+in-process by design. The clipboard parent now sanitizes peer
 `MultiClipboards` before the
 handoff, rejects more than 16 items, caps aggregate clipboard content at 64 MiB,
 serializes the sanitized protobuf to the child, and refuses a silent in-process
@@ -185,9 +189,9 @@ global event sender before joining the output thread on stdin EOF, the
 writing into the child's process-local message channels, disconnect cleanup
 crosses the worker boundary through a bounded clear-pending command, and the raw
 in-process native CLIPRDR initializer is no longer public. This is not yet the
-full sandbox: mobile peer clipboard handling, mobile media/zstd platform-worker
-support if those features are to be enabled on mobile, Android's process model,
-iOS's no-child-process model, a broader
+full sandbox: mobile media/clipboard/zstd platform-worker support if those
+features are to be enabled on mobile, Android's process model, iOS's
+no-child-process model, a broader
 macOS/desktop-Unix syscall or Seatbelt allowlist beyond NoNetwork, equivalent
 seccomp support before enabling parser workers on Linux architectures outside
 x86_64/aarch64, and equivalent timeout/kill/restart semantics for any remaining
@@ -458,15 +462,17 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   the Rust and Dart cursor cap markers so this downstream image-decode guard
   cannot silently regress while the larger mobile/process-boundary residuals
   remain tracked separately.
-- **Android clipboard aggregate caps now match desktop before platform handoff.**
-  The Android single-clipboard and multi-clipboard inbound paths now both call
+- **Mobile peer clipboard SET now fails closed without a platform worker/service.**
+  The Android single-clipboard and multi-clipboard helpers still call
   `sanitize_multi_clipboards_for_native_proto` before serializing
-  `MultiClipboards` to the Android clipboard manager JNI/FFI boundary. This
-  keeps the same 16-item and 64 MiB aggregate cap on Android that desktop already
-  applies before its worker/native handoff. `scripts/verify.sh` gates both the
-  single-item and multi-item Android sanitizer call sites. This is still not the
-  Android process-model sandbox; it closes the missing aggregate-accounting gap
-  inside the current in-process Android residual.
+  `MultiClipboards` toward the Android clipboard manager JNI/FFI boundary; that
+  keeps the same 16-item and 64 MiB aggregate cap as defense in depth if a future
+  platform service owns the handoff. The live peer message paths in
+  `src/server/connection.rs` and `src/client/io_loop.rs` now drop Android/iOS
+  peer `Clipboard` and `MultiClipboards` SET messages with a fail-closed warning
+  instead of invoking those helpers in-process. `scripts/verify.sh` gates both
+  mobile drop markers and fails if the peer paths call
+  `handle_msg_clipboard`/`handle_msg_multi_clipboards` again.
 - **Unix/macOS file-copy descriptor PDUs have a cheap descriptor-count ceiling
   and now parse out-of-process.**
   `libs/clipboard/src/platform/unix/filetype.rs` now rejects more than 4096 file
@@ -775,6 +781,19 @@ bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl
 git diff --check                          # GREEN after this ledger update
 ```
 
+After the mobile peer clipboard fail-closed change, these focused and full gates
+have been re-run successfully:
+
+```text
+docker run ... rustfmt --edition 2021 --check src/server/connection.rs src/client/io_loop.rs  # GREEN in a disposable rust:1.75-slim container
+docker run ... bash -n scripts/verify.sh  # GREEN in a disposable rust:1.75-slim container
+bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl. mobile peer clipboard SET fail-closed source gates
+bash scripts/apple-conform-check.sh       # GREEN: Apple source gate passes for the default macOS target; SDK-free check reaches the documented Apple-SDK framework boundary with no Rust error
+git diff --check                          # GREEN before this ledger update
+scripts/build-android.sh                  # NOT RUN: pinned android-builder image missing and ANDROID_KEYSTORE/ANDROID_KEYSTORE_PASS_FILE not exported; existing online cache and prior APK remain, but this change did not produce a refreshed APK
+APPLE_TARGET=aarch64-apple-ios bash scripts/apple-conform-check.sh  # STOPPED at the SDK-free cc-rs/xcrun tool boundary in ring/zstd-sys, not in this code path; no iOS artifact/typecheck claim made
+```
+
 After the desktop-Unix Android/iOS cfg correction, macOS worker Seatbelt
 NoNetwork entry hook, and unsupported-Linux-architecture fail-closed worker
 entry fallback, these focused and full gates have been re-run successfully:
@@ -946,12 +965,12 @@ git diff --check              # GREEN after this ledger update
   kill-on-job-close, and per-process memory limits before hostile-peer bytes are
   sent, with the Job Object guard retained for the child lifetime; worker entry
   also applies process mitigations for dynamic code, extension points, strict
-  handle checks, and remote/low-integrity image loads. Mobile media decode and
-  peer zstd now fail closed until platform workers/services exist instead of
-  parsing hostile-peer bytes in-process. That is not yet a complete
-  low-privilege sandbox. Remaining work includes mobile peer clipboard process
-  isolation, mobile media/zstd platform-worker support if those peer features are
-  to be enabled on mobile, Android's separate-process service shape, an iOS
+  handle checks, and remote/low-integrity image loads. Mobile media decode, peer
+  clipboard SET, and peer zstd now fail closed until platform workers/services
+  exist instead of parsing hostile-peer bytes in-process. That is not yet a
+  complete low-privilege sandbox. Remaining work includes mobile
+  media/clipboard/zstd platform-worker support if those peer features are to be
+  enabled on mobile, Android's separate-process service shape, an iOS
   product-scope decision for the
   no-child-process model, Windows low-privilege/AppContainer or syscall-allowlist
   hardening beyond Job Object/process-mitigation guards, a broader
@@ -999,12 +1018,11 @@ for dynamic code, extension points, strict handle checks, and remote/low-integri
 image loads, but that is not a Windows AppContainer, restricted-token, or syscall
 allowlist sandbox. Windows CLIPRDR now has app-level and Rust<->C bridge length
 caps plus null/bounded-read fail-closed guards, pending request/response
-accounting, and a same-artifact worker boundary. Android clipboard
-handoff now has aggregate item/byte caps, but Android clipboard still lacks a
-separate process model. Mobile media decode now fails closed/no-advertises, and
-mobile peer zstd now fails closed rather than using in-process native zstd;
-enabling mobile media decode or compressed peer zstd features still requires a
-platform worker/service boundary. Unix/macOS file-copy
+accounting, and a same-artifact worker boundary. Mobile media decode now fails
+closed/no-advertises, mobile peer clipboard SET now fails closed, and mobile peer
+zstd now fails closed rather than using in-process native parsers; enabling those
+mobile peer features still requires a platform worker/service boundary.
+Unix/macOS file-copy
 clipboard now has descriptor-count caps, a same-artifact worker boundary for peer FILEDESCRIPTOR
 PDU parsing, per-connection file-content request/byte accounting, and a
 same-artifact worker boundary for the local file-list cache/PDU generation and

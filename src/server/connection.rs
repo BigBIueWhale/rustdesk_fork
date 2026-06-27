@@ -2006,28 +2006,13 @@ impl Connection {
                     if self.clipboard {
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]
                         update_clipboard(vec![cb], ClipboardSide::Host);
-                        // ios as the controlled side is actually not supported for now.
-                        // The following code is only used to preserve the logic of handling text clipboard on mobile.
-                        #[cfg(target_os = "ios")]
+                        #[cfg(any(target_os = "android", target_os = "ios"))]
                         {
-                            let content = if cb.compress {
-                                hbb_common::compress::peer_decompress(&cb.content)
-                            } else {
-                                cb.content.into()
-                            };
-                            if let Ok(content) = String::from_utf8(content) {
-                                let data =
-                                    HashMap::from([("name", "clipboard"), ("content", &content)]);
-                                if let Ok(data) = serde_json::to_string(&data) {
-                                    let _ = crate::flutter::push_global_event(
-                                        crate::flutter::APP_TYPE_MAIN,
-                                        data,
-                                    );
-                                }
-                            }
+                            let _ = cb;
+                            log::warn!(
+                                "refusing in-process mobile peer clipboard SET until a platform worker/service boundary exists"
+                            );
                         }
-                        #[cfg(target_os = "android")]
-                        crate::clipboard::handle_msg_clipboard(cb);
                     }
                 }
                 Some(message::Union::MultiClipboards(_mcb)) => {
@@ -2035,8 +2020,13 @@ impl Connection {
                     if self.clipboard {
                         update_clipboard(_mcb.clipboards, ClipboardSide::Host);
                     }
-                    #[cfg(target_os = "android")]
-                    crate::clipboard::handle_msg_multi_clipboards(_mcb);
+                    #[cfg(any(target_os = "android", target_os = "ios"))]
+                    {
+                        let _ = _mcb;
+                        log::warn!(
+                            "refusing in-process mobile peer multi-clipboard SET until a platform worker/service boundary exists"
+                        );
+                    }
                 }
                 #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
                 Some(message::Union::Cliprdr(clip)) => {

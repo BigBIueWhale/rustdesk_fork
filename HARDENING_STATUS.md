@@ -580,22 +580,20 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 
 ## Artifact State
 
-The Debian artifact below was rebuilt from commit `3a4b3dd` (`Sandbox native
-parser handoffs`). `scripts/build-debian.sh` ran in the disposable
+The Debian artifact below was rebuilt from commit `898947b` (`Gate desktop
+video codec capability wrapper`). `scripts/build-debian.sh` ran in the disposable
 `rustdesk-fork-harness-deb-builder` build container with the compile stage
 offline (`--network=none`) and `SOURCE_DATE_EPOCH=1700000000`, then performed
 its double-build determinism check. Both builds produced the same SHA-256:
 
 ```text
-9098489eda86624c1e573676ac2e2facb0da8bd5169ee6937c361f4938cd42d3  dist/rustdesk-x86_64.deb
+bc29f067458c0f3020cdec5c76e487d36d81e63a2b6aaf8ceac320038dcb0406  dist/rustdesk-x86_64.deb
 ```
 
-The current source has since changed with the desktop video capability-wrapper
-closure, so this Debian artifact is also historical evidence only until
-`scripts/build-debian.sh` passes again from the current source. The Android and
-Windows artifacts currently present in `dist/` have not yet been rebuilt after
-commit `3a4b3dd`; all recorded artifacts must therefore be treated as historical
-until their target build scripts pass again from the current source:
+The Android and Windows artifacts currently present in `dist/` have not yet been
+rebuilt after commit `3a4b3dd`, so they remain historical evidence only and must
+not be used for a release/tag claim until their target build scripts pass again
+from the current source:
 
 ```text
 2c1feb0e1b138229112c40e4565857a91eb70e327ead218c3f2b9a9fd6507ece  dist/rustdesk-arm64.apk        # pending rebuild from 3a4b3dd
@@ -606,8 +604,7 @@ ba3b7ddb1c2b427b647c964fd7eb26c1374231bc903b8d2fc487f48803aca240  dist/rustdesk.
 Build evidence:
 
 - Debian `scripts/build-debian.sh` passed its offline Docker double-build A==B
-  gate after the native parser worker handoff commit, and needs to be rerun
-  after the desktop video capability-wrapper change.
+  gate after the desktop video capability-wrapper change.
 - Android `scripts/build-android.sh` still needs to be rerun from the current
   source.
 - Windows `WINDOWS_BUILD_SOURCE=worktree scripts/build-windows-vm.sh` still
@@ -817,15 +814,16 @@ After the desktop video capability-advertising wrapper closure, the focused
 source gate and full Docker-backed verifier were re-run:
 
 ```text
-git diff --check        # GREEN
-bash scripts/verify.sh  # GREEN: VERIFY: all gates green, incl. the raw supported_decodings bypass source gate
+git diff --check          # GREEN
+bash scripts/verify.sh    # GREEN: VERIFY: all gates green, incl. the raw supported_decodings bypass source gate
+bash scripts/build-debian.sh # GREEN: offline Docker double-build A==B, bc29f067458c0f3020cdec5c76e487d36d81e63a2b6aaf8ceac320038dcb0406
 ```
 
-All artifact rebuilds remain pending for the current source. The Debian artifact
-recorded above was refreshed from commit `3a4b3dd`, but predates the desktop
-video capability-wrapper change. The Windows VM build/check path has not been
-re-run after these latest CLIPRDR callback and worker-boundary edits, and the
-Android/Windows artifacts have not been rebuilt after the
+The Android and Windows artifact rebuilds remain pending for the current source.
+The Debian artifact has since been refreshed from commit `898947b` as recorded
+above. The Windows VM build/check path has not been re-run after these latest
+CLIPRDR callback and worker-boundary edits, and the Android/Windows artifacts
+have not been rebuilt after the
 cursor/Android/mobile-zstd/Unix file-copy guard edits. A direct Docker-only
 `cargo check -p hbb_common --lib --target x86_64-pc-windows-msvc` and a
 `x86_64-pc-windows-gnu` retry stopped in `libsodium-sys`/`ring`/`zstd-sys`
@@ -975,11 +973,12 @@ clipboard now has descriptor-count caps, a same-artifact worker boundary for pee
 PDU parsing, per-connection file-content request/byte accounting, and a
 same-artifact worker boundary for the local file-list cache/PDU generation and
 FileContents size/range reads. Windows and Android platform-native
-socket-surface logic is present and source-gated. All artifacts recorded above
-predate the current desktop video capability-wrapper change, and the Android and
-Windows artifacts also predate the current
+socket-surface logic is present and source-gated. The Debian artifact recorded
+above is refreshed from commit `898947b`; the Android and Windows artifacts
+recorded above predate the current
 native-worker/zstd/clipboard/CLIPRDR-bridge/cursor/Android/Unix-file-copy source
-changes, so any release/tag claim must rebuild those artifacts first.
+changes, so any release/tag claim must rebuild those Android/Windows artifacts
+first.
 
 The remaining external or pre-exposure evidence items are:
 

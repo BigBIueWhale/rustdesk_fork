@@ -1346,9 +1346,12 @@ PDU parsing, per-connection file-content request/byte accounting, and a
 same-artifact worker boundary for the local file-list cache/PDU generation and
 FileContents size/range reads. Windows and Android platform-native
 socket-surface logic is present and source-gated. The Debian, Android, and
-Windows artifacts recorded above are refreshed for the current application
-source. The remaining local build-host residual is the old harness-created
-system libvirt default network: the host has shown `virbr0`,
+Windows artifact hashes recorded above remain the latest platform artifact
+evidence, but they predate the fixed-shape listener/direct-TCP staging collapse
+introduced at `2d72f99` and must be rebuilt before the ledger can claim
+current-source Debian, Android, or Windows artifacts. The
+remaining local build-host residual is the old harness-created system libvirt
+default network: the host has shown `virbr0`,
 `192.168.122.1:53/tcp+udp`, `0.0.0.0%virbr0:67/udp`, and
 `net.ipv4.ip_forward=1`. `.harness-state/provisioned` records that the harness
 installed `libvirt-daemon-system`, so cleanup is allowed to reverse it, but this

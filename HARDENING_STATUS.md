@@ -1307,8 +1307,16 @@ git diff --check              # GREEN after this ledger update
   Android platform clipboard bridge, but the Android-only helper functions in
   `src/clipboard.rs` still contained a latent direct
   `call_clipboard_manager_update_clipboard` path. Those helpers now log and
-  return until a platform worker/service boundary exists, and `scripts/verify.sh`
-  fails if the direct platform call regrows in `src/clipboard.rs`.
+  return until a platform worker/service boundary exists. `scripts/verify.sh`
+  also fails if a Rust app/common caller regrows a direct platform-call path.
+
+- **Android local clipboard JNI updates are length-bounded before protobuf parse.**
+  The active Android clipboard path polls the local platform clipboard and sends
+  it outward, rather than applying a peer-controlled clipboard SET, but it still
+  crosses a JNI/protobuf parser boundary. `Java_ffi_FFI_onClipboardUpdate` now
+  rejects missing side-prefix buffers and any update over the 64 MiB native
+  clipboard budget before slicing or parsing, and the source gate keeps the cap
+  and checked slice in place.
 
 - **Desktop native-video worker responses are parent-validated before UI
   handoff.** The native video worker is a lower-trust parser boundary, so the

@@ -2574,9 +2574,17 @@ grep -qF 'refusing in-process mobile peer clipboard SET helper until a platform 
   r_native_clipboard_worker="$r_native_clipboard_worker android-helper-clipboard-fail-closed"
 grep -qF 'refusing in-process mobile peer multi-clipboard SET helper until a platform worker/service boundary exists' src/clipboard.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker android-helper-multiclipboard-fail-closed"
-if grep -qF 'call_clipboard_manager_update_clipboard' src/clipboard.rs; then
+if grep -R -qF 'call_clipboard_manager_update_clipboard' src libs/hbb_common; then
   r_native_clipboard_worker="$r_native_clipboard_worker android-helper-direct-platform-call"
 fi
+grep -qF 'MAX_ANDROID_CLIPBOARD_UPDATE_BYTES' libs/scrap/src/android/ffi.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-ffi-cap"
+grep -qF 'dropping malformed Android clipboard update before protobuf parse' libs/scrap/src/android/ffi.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-ffi-empty-drop"
+grep -qF 'dropping oversized Android clipboard update before protobuf parse' libs/scrap/src/android/ffi.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-ffi-oversize-drop"
+grep -qF 'data.get(ANDROID_CLIPBOARD_SIDE_PREFIX_BYTES..)' libs/scrap/src/android/ffi.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-ffi-checked-slice"
 grep -qF 'native_clipboard_data_from_multi_clipboards' src/clipboard.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker native-convert-helper"
 grep -qF 'MAX_NATIVE_CLIPBOARD_TOTAL_BYTES' src/clipboard.rs ||

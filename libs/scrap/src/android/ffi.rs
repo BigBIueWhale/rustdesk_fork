@@ -34,6 +34,10 @@ lazy_static! {
 
 const MAX_VIDEO_FRAME_TIMEOUT: Duration = Duration::from_millis(100);
 const MAX_AUDIO_FRAME_TIMEOUT: Duration = Duration::from_millis(1000);
+const ANDROID_CLIPBOARD_SIDE_PREFIX_BYTES: usize = 1;
+const MAX_ANDROID_CLIPBOARD_PROTO_BYTES: usize = 64 * 1024 * 1024;
+const MAX_ANDROID_CLIPBOARD_UPDATE_BYTES: usize =
+    ANDROID_CLIPBOARD_SIDE_PREFIX_BYTES + MAX_ANDROID_CLIPBOARD_PROTO_BYTES;
 
 struct FrameRaw {
     name: &'static str,
@@ -156,8 +160,23 @@ pub extern "system" fn Java_ffi_FFI_onClipboardUpdate(
 ) {
     if let Ok(data) = env.get_direct_buffer_address(&buffer) {
         if let Ok(len) = env.get_direct_buffer_capacity(&buffer) {
+            if len <= ANDROID_CLIPBOARD_SIDE_PREFIX_BYTES {
+                log::warn!("dropping malformed Android clipboard update before protobuf parse");
+                return;
+            }
+            if len > MAX_ANDROID_CLIPBOARD_UPDATE_BYTES {
+                log::warn!(
+                    "dropping oversized Android clipboard update before protobuf parse: {} > {}",
+                    len,
+                    MAX_ANDROID_CLIPBOARD_UPDATE_BYTES
+                );
+                return;
+            }
             let data = unsafe { std::slice::from_raw_parts(data, len) };
-            if let Ok(clips) = MultiClipboards::parse_from_bytes(&data[1..]) {
+            let Some(payload) = data.get(ANDROID_CLIPBOARD_SIDE_PREFIX_BYTES..) else {
+                return;
+            };
+            if let Ok(clips) = MultiClipboards::parse_from_bytes(payload) {
                 let is_client = data[0] == 1;
                 if is_client {
                     *CLIPBOARDS_CLIENT.lock().unwrap() = Some(clips);

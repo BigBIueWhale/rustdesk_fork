@@ -792,38 +792,44 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 
 ## Artifact State
 
-The Debian, Android, and Windows artifacts below were rebuilt from the current
-source state after the macOS paste FILEDESCRIPTOR parent-path containment and
-Windows remote-printer fail-closed changes. `scripts/build-debian.sh` ran in
-the disposable `rustdesk-fork-harness-deb-builder` build container with the
-compile stage offline (`--network=none`) and `SOURCE_DATE_EPOCH=1700000000`,
-then performed its double-build determinism check. `scripts/build-android.sh`
-ran in the disposable `rustdesk-fork-harness-android-builder` container with
-the compile stage offline (`--network=none`), signed with the stable local
-Android key, and `apksigner verify` reported one signer with v1/v2/v3
-verification true. `WINDOWS_BUILD_SOURCE=worktree
-scripts/build-windows-vm.sh` ran through the transient Windows KVM path from
-the pinned golden qcow2, booted the per-build VM with `--network none`, used
-loopback-only VNC, extracted/canonicalized the `.exe` and `.msi`, and passed
-the default Windows double-build A==B assertion.
+After commit `ec1b6f6` (`Bound peer info UI handoffs`), the Debian and Windows
+artifacts below were rebuilt from that current application source. This ledger
+update itself is documentation-only and does not alter that application source.
+The Debian path ran in the disposable `rustdesk-fork-harness-deb-builder` build
+container with the compile stage offline (`--network=none`) and
+`SOURCE_DATE_EPOCH=1700000000`, then performed its double-build determinism
+check. The Windows path ran `scripts/build-windows-vm.sh` from committed
+application source `ec1b6f6` through the transient KVM path from the pinned
+golden qcow2, booted each per-build VM with `--network none`, used
+loopback-only VNC, extracted/canonicalized the `.exe` and `.msi`, and passed the
+default Windows double-build A==B assertion.
+
+The Android APK hash below is retained as the most recent signed APK artifact,
+but it is **not current for `ec1b6f6`**. The local Android builder image and
+offline cache are present, but `ANDROID_KEYSTORE` and
+`ANDROID_KEYSTORE_PASS_FILE` are not exported in this shell; the current-source
+Android rebuild stopped at preflight before compilation with:
+`set ANDROID_KEYSTORE to the stable RSA-4096 keystore (R-B2); Android refuses to install an unsigned APK`.
+No current-source APK should be claimed until that stable key is available and
+`scripts/build-android.sh` is re-run.
 
 ```text
-25c7f0223c39d69f12ac7ae448863b293610697953eb1ec5f3ce3504c6d9797c  dist/rustdesk-x86_64.deb
-88039c3b25b264787ee1efefae8d6d7ba61caa2e4f3501ef440c7a2e92f91a0e  dist/rustdesk-arm64.apk
-5478d3deb225f960f962dcfc36affe904ab7762bc756e0a058307c5897fc943d  dist/rustdesk-setup.exe
-82fc6fc5ac76f1e0911bc92d2984506755920fb551dc791b7edd5457bec51958  dist/rustdesk.msi
+2fe423c6be2168bc43db4f2f7e9c23342b60af6f4c651b724cebfdd311ec228f  dist/rustdesk-x86_64.deb
+88039c3b25b264787ee1efefae8d6d7ba61caa2e4f3501ef440c7a2e92f91a0e  dist/rustdesk-arm64.apk  # stale: not rebuilt for ec1b6f6
+f372a645aebead0ab837966a71068540752755c9d8c7ef672f9a9f4920b2b561  dist/rustdesk-setup.exe
+5ec75d916f1ed4d68ff233b6537f09a996c5384908138f42c38ed5e2e0e91c37  dist/rustdesk.msi
 ```
 
 Build evidence:
 
-- Debian `scripts/build-debian.sh` passed its offline Docker double-build A==B
-  gate from the current source state.
-- Android `scripts/build-android.sh` passed from the current source, and
-  `apksigner verify` reported one signer with v1/v2/v3 verification true.
-- Windows `WINDOWS_BUILD_SOURCE=worktree scripts/build-windows-vm.sh` passed
-  from the current application source in the transient KVM VM path. The guest
-  `build-log.txt` contains pre-canonical hashes; the final release hashes are
-  the host-canonicalized `dist/*.sha256` values above.
+- Debian `bash scripts/build-debian.sh` passed its offline Docker double-build
+  A==B gate from application source `ec1b6f6`.
+- Windows `bash scripts/build-windows-vm.sh` passed from committed application
+  source `ec1b6f6` in the transient KVM VM path. The guest `build-log.txt`
+  contains pre-canonical hashes; the final release hashes are the
+  host-canonicalized `dist/*.sha256` values above.
+- Android `bash scripts/build-android.sh` did not build current `HEAD`: preflight
+  failed because `ANDROID_KEYSTORE` was unset.
 
 ## Validation Matrix
 

@@ -51,9 +51,11 @@ traversal/materialization; file-transfer read-job creation has duplicate and
 active-job admission caps; and incoming write-job creation has duplicate,
 active-job, and file-list admission caps on both the connection and CM sides.
 Peer-driven UI notification/chat/message strings now have explicit length and
-rate gates before viewer UI or controlled-side CM forwarding. A terminal-session
-cap is a conditional follow-up only if the pinned `enable-terminal=N` policy is
-ever intentionally rebuilt away.
+rate gates before viewer UI or controlled-side CM forwarding. Peer terminal
+responses now fail closed before service-id persistence, decompression, base64
+encoding, or Flutter event routing unless the local session is terminal and the
+`enable-terminal` policy pin is enabled; with the current pinned
+`enable-terminal=N` policy, the route is closed.
 
 After commit `f90f197`, three additional read-only route/security audits were
 run against the exposed TCP paths. The server/responder audit passed, and the
@@ -256,6 +258,16 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   screenshot responses before caching. `scripts/verify.sh` source-gates the cap,
   admission helper, pending-request set, provenance check, call site, and the
   absence of the old direct `set_screenshot(response.data)` form.
+
+- **Peer `TerminalResponse` frames fail closed under the current terminal-off policy.**
+  `src/client/io_loop.rs` now checks both the local session type and the pinned
+  `enable-terminal` setting before handling a peer terminal response. Under the
+  current required `enable-terminal=N` policy, peer `TerminalResponse` frames are
+  dropped before the service-id PeerConfig write, terminal-output
+  `peer_decompress`, base64 expansion, and Flutter `terminal_response` event
+  routing. `scripts/verify.sh` source-gates the helper, the pinned option lookup,
+  and the pre-handler drop marker so the dead-feature route cannot silently become
+  an allocation/decompression path again.
 
 - **Peer-driven UI chat, message-box, close-reason, login-error, and notification text is length-capped and rate-gated.**
   `src/peer_text.rs` adds a per-session `PeerTextGate` with fixed-window
@@ -972,6 +984,16 @@ rustfmt --edition 2021 src/peer_text.rs src/client/io_loop.rs  # GREEN
 bash -n scripts/verify.sh                                     # GREEN
 git diff --check                                               # GREEN
 bash scripts/verify.sh                                         # GREEN: VERIFY: all gates green, incl. screenshot response pre-cache admission + provenance source gates
+```
+
+After the peer `TerminalResponse` policy guard, these focused and full gates
+have been re-run successfully:
+
+```text
+rustfmt --edition 2021 src/client/io_loop.rs                  # GREEN
+bash -n scripts/verify.sh                                     # GREEN
+git diff --check                                               # GREEN
+bash scripts/verify.sh                                         # GREEN: VERIFY: all gates green, incl. terminal response pre-handler policy source gate
 ```
 
 After the Windows native-worker process-mitigation entry hook and gate update,

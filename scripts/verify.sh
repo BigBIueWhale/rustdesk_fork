@@ -1803,6 +1803,14 @@ grep -qF 'if !self.pending_screenshot_sids.remove(&sid)' src/client/io_loop.rs |
 if grep -qF 'set_screenshot(response.data)' src/client/io_loop.rs; then
   r_native_bounds="$r_native_bounds screenshot-response-direct-cache"
 fi
+grep -qF 'fn terminal_response_allowed(&self) -> bool' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds terminal-response-policy-helper"
+grep -qF 'Config::get_option(config::keys::OPTION_ENABLE_TERMINAL)' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds terminal-response-enable-pin"
+grep -qF 'if !self.terminal_response_allowed()' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds terminal-response-prehandler-gate"
+grep -qF 'dropping TerminalResponse while terminal is disabled' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds terminal-response-drop-marker"
 if grep -qF 'self.handler.new_message(c.text)' src/client/io_loop.rs; then
   r_native_bounds="$r_native_bounds viewer-chat-direct"
 fi

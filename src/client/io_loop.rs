@@ -22,7 +22,7 @@ use crossbeam_queue::ArrayQueue;
 use hbb_common::tokio::sync::mpsc::error::TryRecvError;
 use hbb_common::{
     allow_err,
-    config::{self, LocalConfig, PeerConfig, TransferSerde},
+    config::{self, Config, LocalConfig, PeerConfig, TransferSerde},
     fs::{
         self, can_enable_overwrite_detection, get_job, get_string, new_send_confirm,
         DigestCheckResult, RemoveJobMeta,
@@ -1321,6 +1321,14 @@ impl<T: InvokeUiSession> Remote<T> {
         return false;
     }
 
+    fn terminal_response_allowed(&self) -> bool {
+        self.handler.is_terminal()
+            && config::option2bool(
+                config::keys::OPTION_ENABLE_TERMINAL,
+                &Config::get_option(config::keys::OPTION_ENABLE_TERMINAL),
+            )
+    }
+
     async fn handle_msg_from_peer(&mut self, data: &[u8], peer: &mut Stream) -> bool {
         let msg_in = match Message::parse_from_bytes(data) {
             Ok(msg) => msg,
@@ -2076,6 +2084,12 @@ impl<T: InvokeUiSession> Remote<T> {
                     }
                 }
                 Some(message::Union::TerminalResponse(response)) => {
+                    if !self.terminal_response_allowed() {
+                        log::warn!(
+                            "dropping TerminalResponse while terminal is disabled or not the active session type"
+                        );
+                        return true;
+                    }
                     use hbb_common::message_proto::terminal_response::Union;
                     if let Some(Union::Opened(opened)) = &response.union {
                         if opened.success && !opened.service_id.is_empty() {

@@ -22,7 +22,10 @@ use hbb_common::{
     protobuf::Message as _,
     tokio::{
         self,
-        sync::mpsc::{self, UnboundedSender},
+        sync::{
+            mpsc::{self, UnboundedSender},
+            OwnedSemaphorePermit, Semaphore,
+        },
         task::spawn_blocking,
     },
     ResultType,
@@ -34,21 +37,23 @@ use serde_derive::Serialize;
 use std::iter::FromIterator;
 #[cfg(not(any(target_os = "ios")))]
 use std::path::PathBuf;
-#[cfg(target_os = "windows")]
-use std::sync::Arc;
 use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
     sync::{
         atomic::{AtomicBool, AtomicI64, Ordering},
-        RwLock,
+        Arc, OnceLock, RwLock,
     },
 };
 
 /// Default maximum number of files allowed per transfer request.
 /// Unit: number of files (not bytes).
 #[cfg(not(any(target_os = "ios")))]
-const DEFAULT_MAX_VALIDATED_FILES: usize = 10_000;
+const DEFAULT_MAX_VALIDATED_FILES: usize = fs::DEFAULT_FILE_TRANSFER_MAX_FILES;
+#[cfg(not(any(target_os = "ios")))]
+const MAX_CONCURRENT_FILE_METADATA_SCANS: usize = 4;
+#[cfg(not(any(target_os = "ios")))]
+static FILE_METADATA_SCAN_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 
 /// Maximum number of files allowed in a single file transfer request.
 ///
@@ -69,29 +74,42 @@ static MAX_VALIDATED_FILES: std::sync::OnceLock<usize> = std::sync::OnceLock::ne
 /// Initializes the value from configuration (`OPTION_FILE_TRANSFER_MAX_FILES`)
 /// on first call. Semantics:
 /// - If the option is set to `0`, `DEFAULT_MAX_VALIDATED_FILES` (10,000) is used as a safe upper bound.
-/// - If the option is unset, negative, or non-integer,
-///   `usize::MAX` is used to represent "no limit" for backward compatibility with older versions
-///   that did not enforce any file‑count restriction.
-///   (Note: negative values are not valid for `usize` and will cause parsing to fail.)
+/// - If the option is unset, negative, or non-integer, the same safe default is
+///   used. This fork never treats an unparsable peer-facing resource limit as
+///   "no limit."
 ///
 /// Unit: number of files.
 #[cfg(not(any(target_os = "ios")))]
 #[inline]
 pub fn get_max_validated_files() -> usize {
-    // If `OPTION_FILE_TRANSFER_MAX_FILES` unset, negative, or non-integer, use
-    // `usize::MAX` to represent "no limit", maintaining backward compatibility
-    // with versions that had no file transfer restrictions.
-    const NO_LIMIT_FILE_COUNT: usize = usize::MAX;
     *MAX_VALIDATED_FILES.get_or_init(|| {
         let c = crate::get_builtin_option(OPTION_FILE_TRANSFER_MAX_FILES)
             .trim()
             .parse::<usize>()
-            .unwrap_or(NO_LIMIT_FILE_COUNT);
+            .unwrap_or(DEFAULT_MAX_VALIDATED_FILES);
         if c == 0 {
             DEFAULT_MAX_VALIDATED_FILES
         } else {
             c
         }
+    })
+}
+
+#[cfg(not(any(target_os = "ios")))]
+pub fn file_transfer_enumeration_budget() -> fs::FileEnumerationBudget {
+    fs::FileEnumerationBudget::for_max_entries(get_max_validated_files())
+}
+
+#[cfg(not(any(target_os = "ios")))]
+pub fn try_acquire_file_metadata_scan() -> Result<OwnedSemaphorePermit, String> {
+    let semaphore = FILE_METADATA_SCAN_SEMAPHORE
+        .get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_FILE_METADATA_SCANS)))
+        .clone();
+    semaphore.try_acquire_owned().map_err(|_| {
+        format!(
+            "file metadata scan rejected: {} concurrent scans already active",
+            MAX_CONCURRENT_FILE_METADATA_SCANS
+        )
     })
 }
 
@@ -975,6 +993,23 @@ fn remove_write_job_for_connection(
 }
 
 #[cfg(not(any(target_os = "ios")))]
+fn active_jobs_for_connection(jobs: &[fs::TransferJob], conn_id: i32) -> usize {
+    jobs.iter().filter(|job| job.conn_id == conn_id).count()
+}
+
+#[cfg(not(any(target_os = "ios")))]
+fn has_job_for_connection(jobs: &[fs::TransferJob], id: i32, conn_id: i32) -> bool {
+    jobs.iter()
+        .any(|job| job.id() == id && job.conn_id == conn_id)
+}
+
+#[cfg(not(any(target_os = "ios")))]
+fn reject_write_job(tx: &UnboundedSender<Data>, id: i32, file_num: i32, conn_id: i32, err: String) {
+    send_raw(fs::new_error(id, err.clone(), file_num), tx);
+    allow_err!(tx.send(Data::WriteJobRejected { id, conn_id, err }));
+}
+
+#[cfg(not(any(target_os = "ios")))]
 async fn handle_fs(
     fs: ipc::FS,
     write_jobs: &mut Vec<fs::TransferJob>,
@@ -1013,14 +1048,43 @@ async fn handle_fs(
             path,
             id,
             file_num,
-            mut files,
+            files,
             overwrite_detection,
             total_size,
             conn_id,
         } => {
+            if has_job_for_connection(write_jobs, id, conn_id) {
+                reject_write_job(
+                    tx,
+                    id,
+                    file_num,
+                    conn_id,
+                    format!("duplicate write job id {}", id),
+                );
+                return;
+            }
+            if active_jobs_for_connection(write_jobs, conn_id)
+                >= fs::MAX_ACTIVE_FILE_TRANSFER_WRITE_JOBS_PER_CONN
+            {
+                reject_write_job(
+                    tx,
+                    id,
+                    file_num,
+                    conn_id,
+                    format!(
+                        "too many active write jobs for connection (limit {})",
+                        fs::MAX_ACTIVE_FILE_TRANSFER_WRITE_JOBS_PER_CONN
+                    ),
+                );
+                return;
+            }
+            if let Err(msg) = check_file_count_limit(files.len()) {
+                reject_write_job(tx, id, file_num, conn_id, msg);
+                return;
+            }
             // Convert files to FileEntry
             let file_entries: Vec<FileEntry> = files
-                .drain(..)
+                .into_iter()
                 .map(|f| FileEntry {
                     name: f.0,
                     modified_time: f.1,
@@ -1040,9 +1104,9 @@ async fn handle_fs(
                 false,
                 overwrite_detection,
             );
-            if let Err(e) = job.set_files(file_entries) {
+            if let Err(e) = job.set_files_with_limit(file_entries, get_max_validated_files()) {
                 log::warn!("Reject unsafe transfer file list for {}: {}", path, e);
-                send_raw(fs::new_error(id, e, file_num), tx);
+                reject_write_job(tx, id, file_num, conn_id, e.to_string());
                 return;
             }
             job.total_size = total_size;
@@ -1263,10 +1327,55 @@ async fn start_read_job(
     read_jobs: &mut Vec<fs::TransferJob>,
     tx: &UnboundedSender<Data>,
 ) {
+    if has_job_for_connection(read_jobs, id, conn_id) {
+        if let Err(e) = tx.send(Data::ReadJobInitResult {
+            id,
+            file_num,
+            include_hidden,
+            conn_id,
+            result: Err(format!("duplicate read job id {}", id)),
+        }) {
+            log::error!("error sending ReadJobInitResult via IPC: {}", e);
+        }
+        return;
+    }
+    if active_jobs_for_connection(read_jobs, conn_id)
+        >= fs::MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN
+    {
+        if let Err(e) = tx.send(Data::ReadJobInitResult {
+            id,
+            file_num,
+            include_hidden,
+            conn_id,
+            result: Err(format!(
+                "too many active read jobs for connection (limit {})",
+                fs::MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN
+            )),
+        }) {
+            log::error!("error sending ReadJobInitResult via IPC: {}", e);
+        }
+        return;
+    }
+    let _metadata_scan_permit = match try_acquire_file_metadata_scan() {
+        Ok(permit) => permit,
+        Err(msg) => {
+            if let Err(e) = tx.send(Data::ReadJobInitResult {
+                id,
+                file_num,
+                include_hidden,
+                conn_id,
+                result: Err(msg),
+            }) {
+                log::error!("error sending ReadJobInitResult via IPC: {}", e);
+            }
+            return;
+        }
+    };
+    let budget = file_transfer_enumeration_budget();
     let path_clone = path.clone();
     let result = spawn_blocking(move || -> ResultType<fs::TransferJob> {
         let data_source = fs::DataSource::FilePath(PathBuf::from(&path));
-        fs::TransferJob::new_read(
+        fs::TransferJob::new_read_with_budget(
             id,
             fs::JobType::Generic,
             "".to_string(),
@@ -1275,6 +1384,7 @@ async fn start_read_job(
             include_hidden,
             true,
             overwrite_detection,
+            budget,
         )
     })
     .await;
@@ -1500,8 +1610,25 @@ async fn read_all_files(
     conn_id: i32,
     tx: &UnboundedSender<Data>,
 ) {
+    let _metadata_scan_permit = match try_acquire_file_metadata_scan() {
+        Ok(permit) => permit,
+        Err(msg) => {
+            if let Err(e) = tx.send(Data::AllFilesResult {
+                id,
+                conn_id,
+                path,
+                result: Err(msg),
+            }) {
+                log::error!("error sending AllFilesResult via IPC: {}", e);
+            }
+            return;
+        }
+    };
+    let budget = file_transfer_enumeration_budget();
     let path_clone = path.clone();
-    let result = spawn_blocking(move || fs::get_recursive_files(&path, include_hidden)).await;
+    let result =
+        spawn_blocking(move || fs::get_recursive_files_with_budget(&path, include_hidden, budget))
+            .await;
 
     let result = match result {
         Ok(Ok(files)) => {
@@ -1539,8 +1666,18 @@ async fn read_empty_dirs(dir: &str, include_hidden: bool, tx: &UnboundedSender<D
     let path = dir.to_owned();
     let path_clone = dir.to_owned();
 
-    if let Ok(Ok(fds)) =
-        spawn_blocking(move || fs::get_empty_dirs_recursive(&path, include_hidden)).await
+    let _metadata_scan_permit = match try_acquire_file_metadata_scan() {
+        Ok(permit) => permit,
+        Err(msg) => {
+            log::warn!("dropping ReadEmptyDirs metadata scan: {}", msg);
+            return;
+        }
+    };
+    let budget = file_transfer_enumeration_budget();
+    if let Ok(Ok(fds)) = spawn_blocking(move || {
+        fs::get_empty_dirs_recursive_with_budget(&path, include_hidden, budget)
+    })
+    .await
     {
         let mut msg_out = Message::new();
         let mut file_response = FileResponse::new();
@@ -1563,7 +1700,17 @@ async fn read_dir(dir: &str, include_hidden: bool, tx: &UnboundedSender<Data>) {
             fs::get_path(dir)
         }
     };
-    if let Ok(Ok(fd)) = spawn_blocking(move || fs::read_dir(&path, include_hidden)).await {
+    let _metadata_scan_permit = match try_acquire_file_metadata_scan() {
+        Ok(permit) => permit,
+        Err(msg) => {
+            log::warn!("dropping ReadDir metadata scan: {}", msg);
+            return;
+        }
+    };
+    let budget = file_transfer_enumeration_budget();
+    if let Ok(Ok(fd)) =
+        spawn_blocking(move || fs::read_dir_with_budget(&path, include_hidden, budget)).await
+    {
         let mut msg_out = Message::new();
         let mut file_response = FileResponse::new();
         file_response.set_dir(fd);

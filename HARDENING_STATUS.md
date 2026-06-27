@@ -19,6 +19,8 @@ FUSE clipboard mount-point no-follow/no-adoption setup,
 bounded Linux FUSE file-content response queue,
 bounded viewer peer-video display/thread admission and bounded media decode
 queues,
+bounded peer-triggered file-transfer metadata enumeration and read/write job
+admission,
 child-confinement, Windows Job Object child lifetime/limit guards and process mitigations, non-mobile desktop-Unix worker RLIMIT/fd-cleanup
 confinement, macOS worker NoNetwork Seatbelt confinement, Linux
 x86_64/aarch64 post-exec syscall-filter/fd-cleanup follow-ups, and unsupported
@@ -41,12 +43,14 @@ claim.
 
 On 2026-06-27, read-only audit agent `Pauli` reviewed the current codebase and
 found new current blockers outside the already-closed clipboard/FUSE/media queue
-paths. The active follow-ups are: peer-triggered filesystem metadata enumeration
-must be budgeted before traversal/materialization; file-transfer read-job
-creation needs duplicate and active-job admission caps; incoming write-job
-creation needs duplicate, active-job, and file-list admission caps; and
-peer-driven UI notification/chat/message strings need explicit length and rate
-gates. A terminal-session cap is a conditional follow-up only if the pinned
+paths. The file-transfer findings are now closed in source and gates:
+peer-triggered filesystem metadata enumeration is budgeted before
+traversal/materialization; file-transfer read-job creation has duplicate and
+active-job admission caps; and incoming write-job creation has duplicate,
+active-job, and file-list admission caps on both the connection and CM sides.
+The remaining active follow-up from that audit is peer-driven UI
+notification/chat/message strings needing explicit length and rate gates. A
+terminal-session cap is a conditional follow-up only if the pinned
 `enable-terminal=N` policy is ever intentionally rebuilt away.
 
 After commit `f90f197`, three additional read-only route/security audits were
@@ -236,6 +240,26 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 `requirements.html` is intentionally not edited by implementation work.
 
 ## Recent Closures
+
+- **Peer-triggered file-transfer metadata scans and transfer-job admission are bounded before local work.**
+  `libs/hbb_common/src/fs.rs` now defines a safe default file-transfer count
+  limit, a `FileEnumerationBudget`, and budgeted directory, recursive-file, and
+  empty-directory enumeration entry points that account entries, directories,
+  depth, and approximate serialized metadata bytes before returning vectors to
+  callers. Peer-facing `TransferJob::new_read_with_budget` and
+  `set_files_with_limit` now share `validate_transfer_file_list`, preserving the
+  full-filesystem R-S8 model while rejecting oversized or unsafe peer file lists
+  before worker state grows. `src/ui_cm_interface.rs` no longer treats an
+  unset/invalid `file-transfer-max-files` value as "no limit"; it falls back to
+  10,000 files, admits at most four concurrent metadata scans through a
+  nonblocking semaphore, and applies the same budget to `ReadDir`,
+  `ReadEmptyDirs`, `ReadAllFiles`, and CM read-job creation. The connection side
+  now reserves read/write jobs only after duplicate and active-per-connection cap
+  checks, validates incoming write file lists before forwarding to CM, and
+  releases a reserved write id if CM rejects the job. `scripts/verify.sh`
+  source-gates these budgeted paths, duplicate/active job caps, unsafe
+  no-limit-doc absence, CM/connection validation, and absence of unbudgeted
+  peer-triggered metadata traversal in the relevant routes.
 
 - **Viewer peer media admission is bounded before decoder-thread and queue work.**
   `src/client/io_loop.rs` now caps peer-advertised display metadata at 16
@@ -888,6 +912,16 @@ rustfmt --edition 2021 src/client.rs src/client/io_loop.rs src/server/connection
 bash -n scripts/verify.sh             # GREEN
 git diff --check                       # GREEN
 bash scripts/verify.sh                 # GREEN: VERIFY: all gates green, incl. viewer media display/thread and bounded media queue tests/source gates
+```
+
+After the peer-triggered file-transfer metadata enumeration and read/write
+job-admission caps, these focused and full gates have been re-run successfully:
+
+```text
+rustfmt --edition 2021 libs/hbb_common/src/fs.rs src/ui_cm_interface.rs src/server/connection.rs src/ipc.rs libs/hbb_common/src/config.rs  # GREEN
+bash -n scripts/verify.sh             # GREEN
+git diff --check                       # GREEN
+bash scripts/verify.sh                 # GREEN: VERIFY: all gates green, incl. R-S8/R-T0 file-transfer metadata scan and read/write job-admission budget gates
 ```
 
 After the Windows native-worker process-mitigation entry hook and gate update,

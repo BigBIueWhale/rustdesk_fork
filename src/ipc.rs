@@ -416,6 +416,12 @@ pub enum Data {
         /// Serialized protobuf bytes of FileDirectory, or error string
         result: Result<Vec<u8>, String>,
     },
+    /// CM rejected a peer-proposed write job before storing it.
+    WriteJobRejected {
+        id: i32,
+        conn_id: i32,
+        err: String,
+    },
     CheckHwcodec,
     #[cfg(feature = "flutter")]
     VideoConnCount(Option<usize>),

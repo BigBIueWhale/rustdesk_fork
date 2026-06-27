@@ -24,6 +24,102 @@ use crate::{
 
 static NEXT_JOB_ID: AtomicI32 = AtomicI32::new(1);
 
+pub const DEFAULT_FILE_TRANSFER_MAX_FILES: usize = 10_000;
+pub const MAX_FILE_ENUM_DIRS: usize = DEFAULT_FILE_TRANSFER_MAX_FILES;
+pub const MAX_FILE_ENUM_DEPTH: usize = 64;
+pub const MAX_FILE_ENUM_SERIALIZED_BYTES: usize = 16 * 1024 * 1024;
+pub const MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN: usize = 32;
+pub const MAX_ACTIVE_FILE_TRANSFER_WRITE_JOBS_PER_CONN: usize = 32;
+const FILE_ENUMERATION_BUDGET_EXCEEDED: &str = "file enumeration budget exceeded";
+
+#[derive(Clone, Copy, Debug)]
+pub struct FileEnumerationBudget {
+    pub max_entries: usize,
+    pub max_dirs: usize,
+    pub max_depth: usize,
+    pub max_serialized_bytes: usize,
+}
+
+impl FileEnumerationBudget {
+    pub fn for_max_entries(max_entries: usize) -> Self {
+        let max_entries = max_entries.max(1);
+        Self {
+            max_entries,
+            max_dirs: MAX_FILE_ENUM_DIRS.min(max_entries).max(1),
+            max_depth: MAX_FILE_ENUM_DEPTH,
+            max_serialized_bytes: MAX_FILE_ENUM_SERIALIZED_BYTES,
+        }
+    }
+
+    fn unbounded_for_local_use() -> Self {
+        Self {
+            max_entries: usize::MAX,
+            max_dirs: usize::MAX,
+            max_depth: usize::MAX,
+            max_serialized_bytes: usize::MAX,
+        }
+    }
+}
+
+#[derive(Default)]
+struct FileEnumerationUsage {
+    entries: usize,
+    dirs: usize,
+    approx_serialized_bytes: usize,
+}
+
+impl FileEnumerationUsage {
+    fn enter_dir(&mut self, depth: usize, budget: FileEnumerationBudget) -> ResultType<()> {
+        if depth > budget.max_depth {
+            bail!(
+                "{}: depth {} exceeds limit {}",
+                FILE_ENUMERATION_BUDGET_EXCEEDED,
+                depth,
+                budget.max_depth
+            );
+        }
+        if self.dirs >= budget.max_dirs {
+            bail!(
+                "{}: directories exceed limit {}",
+                FILE_ENUMERATION_BUDGET_EXCEEDED,
+                budget.max_dirs
+            );
+        }
+        self.dirs += 1;
+        Ok(())
+    }
+
+    fn push_entry(&mut self, name: &str, budget: FileEnumerationBudget) -> ResultType<()> {
+        if self.entries >= budget.max_entries {
+            bail!(
+                "{}: entries exceed limit {}",
+                FILE_ENUMERATION_BUDGET_EXCEEDED,
+                budget.max_entries
+            );
+        }
+        let entry_bytes = 128usize.saturating_add(name.len());
+        let next_bytes = self
+            .approx_serialized_bytes
+            .checked_add(entry_bytes)
+            .ok_or_else(|| anyhow!("file enumeration budget byte counter overflow"))?;
+        if next_bytes > budget.max_serialized_bytes {
+            bail!(
+                "{}: approx serialized bytes {} exceed limit {}",
+                FILE_ENUMERATION_BUDGET_EXCEEDED,
+                next_bytes,
+                budget.max_serialized_bytes
+            );
+        }
+        self.entries += 1;
+        self.approx_serialized_bytes = next_bytes;
+        Ok(())
+    }
+}
+
+fn is_file_enumeration_budget_error(err: &anyhow::Error) -> bool {
+    err.to_string().contains(FILE_ENUMERATION_BUDGET_EXCEEDED)
+}
+
 pub fn get_next_job_id() -> i32 {
     NEXT_JOB_ID.fetch_add(1, Ordering::SeqCst)
 }
@@ -33,6 +129,30 @@ pub fn update_next_job_id(id: i32) {
 }
 
 pub fn read_dir(path: &Path, include_hidden: bool) -> ResultType<FileDirectory> {
+    read_dir_with_budget(
+        path,
+        include_hidden,
+        FileEnumerationBudget::unbounded_for_local_use(),
+    )
+}
+
+pub fn read_dir_with_budget(
+    path: &Path,
+    include_hidden: bool,
+    budget: FileEnumerationBudget,
+) -> ResultType<FileDirectory> {
+    let mut usage = FileEnumerationUsage::default();
+    read_dir_with_usage(path, include_hidden, budget, &mut usage, 0)
+}
+
+fn read_dir_with_usage(
+    path: &Path,
+    include_hidden: bool,
+    budget: FileEnumerationBudget,
+    usage: &mut FileEnumerationUsage,
+    depth: usize,
+) -> ResultType<FileDirectory> {
+    usage.enter_dir(depth, budget)?;
     let mut dir = FileDirectory {
         path: get_string(path),
         ..Default::default()
@@ -46,6 +166,7 @@ pub fn read_dir(path: &Path, include_hidden: bool) -> ResultType<FileDirectory> 
                     "{}:",
                     std::char::from_u32('A' as u32 + i as u32).unwrap_or('A')
                 );
+                usage.push_entry(&name, budget)?;
                 dir.entries.push(FileEntry {
                     name,
                     entry_type: FileType::DirDrive.into(),
@@ -105,8 +226,10 @@ pub fn read_dir(path: &Path, include_hidden: bool) -> ResultType<FileDirectory> 
                     .unwrap_or(0)
             })
             .unwrap_or(0);
+        let name = get_file_name(&p);
+        usage.push_entry(&name, budget)?;
         dir.entries.push(FileEntry {
-            name: get_file_name(&p),
+            name,
             entry_type,
             is_hidden,
             size,
@@ -145,11 +268,29 @@ fn read_dir_recursive(
     prefix: &Path,
     include_hidden: bool,
 ) -> ResultType<Vec<FileEntry>> {
+    read_dir_recursive_with_budget(
+        path,
+        prefix,
+        include_hidden,
+        FileEnumerationBudget::unbounded_for_local_use(),
+        &mut FileEnumerationUsage::default(),
+        0,
+    )
+}
+
+fn read_dir_recursive_with_budget(
+    path: &Path,
+    prefix: &Path,
+    include_hidden: bool,
+    budget: FileEnumerationBudget,
+    usage: &mut FileEnumerationUsage,
+    depth: usize,
+) -> ResultType<Vec<FileEntry>> {
     let mut files = Vec::new();
     if path.is_dir() {
         // to-do: symbol link handling, cp the link rather than the content
         // to-do: file mode, for unix
-        let fd = read_dir(path, include_hidden)?;
+        let fd = read_dir_with_usage(path, include_hidden, budget, usage, depth)?;
         for entry in fd.entries.iter() {
             match entry.entry_type.enum_value() {
                 Ok(FileType::File) => {
@@ -158,13 +299,26 @@ fn read_dir_recursive(
                     files.push(entry);
                 }
                 Ok(FileType::Dir) => {
-                    if let Ok(mut tmp) = read_dir_recursive(
+                    let child_depth = depth
+                        .checked_add(1)
+                        .ok_or_else(|| anyhow!("file enumeration depth counter overflow"))?;
+                    match read_dir_recursive_with_budget(
                         &path.join(&entry.name),
                         &prefix.join(&entry.name),
                         include_hidden,
+                        budget,
+                        usage,
+                        child_depth,
                     ) {
-                        for entry in tmp.drain(0..) {
-                            files.push(entry);
+                        Ok(mut tmp) => {
+                            for entry in tmp.drain(0..) {
+                                files.push(entry);
+                            }
+                        }
+                        Err(err) => {
+                            if is_file_enumeration_budget_error(&err) {
+                                return Err(err);
+                            }
                         }
                     }
                 }
@@ -173,6 +327,7 @@ fn read_dir_recursive(
         }
         Ok(files)
     } else if path.is_file() {
+        usage.push_entry(&get_file_name(path), budget)?;
         let (size, modified_time) = if let Ok(meta) = std::fs::metadata(path) {
             (
                 meta.len(),
@@ -203,29 +358,76 @@ pub fn get_recursive_files(path: &str, include_hidden: bool) -> ResultType<Vec<F
     read_dir_recursive(&get_path(path), &get_path(""), include_hidden)
 }
 
+pub fn get_recursive_files_with_budget(
+    path: &str,
+    include_hidden: bool,
+    budget: FileEnumerationBudget,
+) -> ResultType<Vec<FileEntry>> {
+    let mut usage = FileEnumerationUsage::default();
+    read_dir_recursive_with_budget(
+        &get_path(path),
+        &get_path(""),
+        include_hidden,
+        budget,
+        &mut usage,
+        0,
+    )
+}
+
 fn read_empty_dirs_recursive(
     path: &Path,
     prefix: &Path,
     include_hidden: bool,
 ) -> ResultType<Vec<FileDirectory>> {
+    read_empty_dirs_recursive_with_budget(
+        path,
+        prefix,
+        include_hidden,
+        FileEnumerationBudget::unbounded_for_local_use(),
+        &mut FileEnumerationUsage::default(),
+        0,
+    )
+}
+
+fn read_empty_dirs_recursive_with_budget(
+    path: &Path,
+    prefix: &Path,
+    include_hidden: bool,
+    budget: FileEnumerationBudget,
+    usage: &mut FileEnumerationUsage,
+    depth: usize,
+) -> ResultType<Vec<FileDirectory>> {
     let mut dirs = Vec::new();
     if path.is_dir() {
         // to-do: symbol link handling, cp the link rather than the content
         // to-do: file mode, for unix
-        let fd = read_dir(path, include_hidden)?;
+        let fd = read_dir_with_usage(path, include_hidden, budget, usage, depth)?;
         if fd.entries.is_empty() {
             dirs.push(fd);
         } else {
             for entry in fd.entries.iter() {
                 match entry.entry_type.enum_value() {
                     Ok(FileType::Dir) => {
-                        if let Ok(mut tmp) = read_empty_dirs_recursive(
+                        let child_depth = depth
+                            .checked_add(1)
+                            .ok_or_else(|| anyhow!("file enumeration depth counter overflow"))?;
+                        match read_empty_dirs_recursive_with_budget(
                             &path.join(&entry.name),
                             &prefix.join(&entry.name),
                             include_hidden,
+                            budget,
+                            usage,
+                            child_depth,
                         ) {
-                            for entry in tmp.drain(0..) {
-                                dirs.push(entry);
+                            Ok(mut tmp) => {
+                                for entry in tmp.drain(0..) {
+                                    dirs.push(entry);
+                                }
+                            }
+                            Err(err) => {
+                                if is_file_enumeration_budget_error(&err) {
+                                    return Err(err);
+                                }
                             }
                         }
                     }
@@ -246,6 +448,22 @@ pub fn get_empty_dirs_recursive(
     include_hidden: bool,
 ) -> ResultType<Vec<FileDirectory>> {
     read_empty_dirs_recursive(&get_path(path), &get_path(""), include_hidden)
+}
+
+pub fn get_empty_dirs_recursive_with_budget(
+    path: &str,
+    include_hidden: bool,
+    budget: FileEnumerationBudget,
+) -> ResultType<Vec<FileDirectory>> {
+    let mut usage = FileEnumerationUsage::default();
+    read_empty_dirs_recursive_with_budget(
+        &get_path(path),
+        &get_path(""),
+        include_hidden,
+        budget,
+        &mut usage,
+        0,
+    )
 }
 
 #[inline]
@@ -502,6 +720,27 @@ fn validate_transfer_file_names(files: &[FileEntry]) -> ResultType<()> {
     Ok(())
 }
 
+pub fn validate_transfer_file_list(
+    base: Option<&PathBuf>,
+    files: &[FileEntry],
+    max_files: usize,
+) -> ResultType<()> {
+    if files.len() > max_files {
+        bail!(
+            "file transfer rejected: too many files ({} files exceeds limit of {})",
+            files.len(),
+            max_files
+        );
+    }
+    validate_transfer_file_names(files)?;
+    if let Some(base) = base {
+        for file in files {
+            validate_no_symlink_components(base, &file.name)?;
+        }
+    }
+    Ok(())
+}
+
 #[inline]
 fn validate_fs_path_argument(path: &str, arg_name: &str) -> ResultType<()> {
     if path.is_empty() {
@@ -696,12 +935,7 @@ fn open_regular_child_no_follow(
 
     let _ = fstatat_regular_no_follow(parent_fd, name)?;
     let fd = unsafe {
-        crate::libc::openat(
-            parent_fd,
-            name.as_ptr(),
-            flags,
-            mode as crate::libc::c_uint,
-        )
+        crate::libc::openat(parent_fd, name.as_ptr(), flags, mode as crate::libc::c_uint)
     };
     if fd < 0 {
         return Err(std::io::Error::last_os_error());
@@ -924,11 +1158,36 @@ impl TransferJob {
         is_remote: bool,
         enable_overwrite_detection: bool,
     ) -> ResultType<Self> {
+        Self::new_read_with_budget(
+            id,
+            r#type,
+            remote,
+            data_source,
+            file_num,
+            show_hidden,
+            is_remote,
+            enable_overwrite_detection,
+            FileEnumerationBudget::unbounded_for_local_use(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_read_with_budget(
+        id: i32,
+        r#type: JobType,
+        remote: String,
+        data_source: DataSource,
+        file_num: i32,
+        show_hidden: bool,
+        is_remote: bool,
+        enable_overwrite_detection: bool,
+        budget: FileEnumerationBudget,
+    ) -> ResultType<Self> {
         log::info!("new read {}", data_source);
         let (files, total_size) = match &data_source {
             DataSource::FilePath(p) => {
                 let p = p.to_str().ok_or(anyhow!("Invalid path"))?;
-                let files = get_recursive_files(p, show_hidden)?;
+                let files = get_recursive_files_with_budget(p, show_hidden, budget)?;
                 let total_size = files.iter().map(|x| x.size).sum();
                 (files, total_size)
             }
@@ -966,12 +1225,20 @@ impl TransferJob {
 
     #[inline]
     pub fn set_files(&mut self, files: Vec<FileEntry>) -> ResultType<()> {
-        validate_transfer_file_names(&files)?;
-        if let DataSource::FilePath(base) = &self.data_source {
-            for file in &files {
-                validate_no_symlink_components(base, &file.name)?;
-            }
-        }
+        self.set_files_with_limit(files, usize::MAX)
+    }
+
+    #[inline]
+    pub fn set_files_with_limit(
+        &mut self,
+        files: Vec<FileEntry>,
+        max_files: usize,
+    ) -> ResultType<()> {
+        let base = match &self.data_source {
+            DataSource::FilePath(base) => Some(base),
+            DataSource::MemoryCursor(_) => None,
+        };
+        validate_transfer_file_list(base, &files, max_files)?;
         self.total_size = files.iter().map(|x| x.size).sum();
         self.files = files;
         Ok(())
@@ -2039,6 +2306,49 @@ mod tests {
             expected,
             err
         );
+    }
+
+    #[test]
+    fn budgeted_read_dir_rejects_too_many_entries_before_returning_vector() {
+        let tmp = TestTempDir::new("rustdesk_budgeted_read_dir");
+        std::fs::create_dir_all(&tmp.path).expect("create temp dir");
+        std::fs::write(tmp.join("one.txt"), b"1").expect("write one");
+        std::fs::write(tmp.join("two.txt"), b"2").expect("write two");
+        std::fs::write(tmp.join("three.txt"), b"3").expect("write three");
+
+        let err = read_dir_with_budget(
+            &tmp.path,
+            true,
+            FileEnumerationBudget {
+                max_entries: 2,
+                max_dirs: 1,
+                max_depth: 1,
+                max_serialized_bytes: MAX_FILE_ENUM_SERIALIZED_BYTES,
+            },
+        )
+        .expect_err("third entry must trip the budget during directory read");
+        assert_err_contains(err, "entries exceed limit");
+    }
+
+    #[test]
+    fn budgeted_recursive_listing_rejects_excessive_depth() {
+        let tmp = TestTempDir::new("rustdesk_budgeted_recursive_depth");
+        let nested = tmp.join("a").join("b");
+        std::fs::create_dir_all(&nested).expect("create nested dirs");
+        std::fs::write(nested.join("leaf.txt"), b"leaf").expect("write leaf");
+
+        let err = get_recursive_files_with_budget(
+            &tmp.path.to_string_lossy(),
+            true,
+            FileEnumerationBudget {
+                max_entries: 16,
+                max_dirs: 16,
+                max_depth: 1,
+                max_serialized_bytes: MAX_FILE_ENUM_SERIALIZED_BYTES,
+            },
+        )
+        .expect_err("depth-two traversal must trip the recursive budget");
+        assert_err_contains(err, "depth 2 exceeds limit 1");
     }
 
     #[test]

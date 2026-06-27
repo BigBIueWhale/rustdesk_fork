@@ -2930,7 +2930,7 @@ pub mod keys {
     /// Behaviour:
     /// - If set to a positive integer N, at most N files are allowed.
     /// - If set to 0, a safe built-in default is used (see DEFAULT_MAX_VALIDATED_FILES).
-    /// - If unset, negative, or non-integer, no explicit limit is enforced for backward compatibility.
+    /// - If unset, negative, or non-integer, the same safe built-in default is used.
     pub const OPTION_FILE_TRANSFER_MAX_FILES: &str = "file-transfer-max-files";
     pub const OPTION_ALLOW_INSECURE_TLS_FALLBACK: &str = "allow-insecure-tls-fallback";
     pub const OPTION_SHOW_VIRTUAL_MOUSE: &str = "show-virtual-mouse";

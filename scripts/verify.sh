@@ -2807,6 +2807,100 @@ if [ -n "$r_s8ft_missing" ]; then
 else
   echo "  ok  R-S8/R-A5 file-transfer receive-write uses no-follow parent openat walk + no-follow target open + renameat finalize (behavior-tested at (3c))"
 fi
+# R-S8/R-T0 defense-in-depth: peer-triggered filesystem metadata enumeration must be budgeted
+# BEFORE traversal/materialization, and peer-triggered transfer jobs must be admitted before
+# filesystem/CM worker state grows. This closes post-key hostile-peer DoS paths where AllFiles,
+# ReadDir, ReadEmptyDirs, Send, or Receive could force unbounded traversal, spawn_blocking work,
+# file-list vectors, or active transfer-job state before a late count check.
+r_fsbudget_missing=
+grep -q 'pub const DEFAULT_FILE_TRANSFER_MAX_FILES: usize = 10_000;' libs/hbb_common/src/fs.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing default-file-limit"
+grep -q 'pub struct FileEnumerationBudget' libs/hbb_common/src/fs.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing budget-struct"
+grep -q 'pub fn read_dir_with_budget' libs/hbb_common/src/fs.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing read-dir-budget"
+grep -q 'pub fn get_recursive_files_with_budget' libs/hbb_common/src/fs.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing recursive-budget"
+grep -q 'pub fn get_empty_dirs_recursive_with_budget' libs/hbb_common/src/fs.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing empty-dirs-budget"
+grep -q 'FILE_ENUMERATION_BUDGET_EXCEEDED' libs/hbb_common/src/fs.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing entry-budget-error"
+grep -q 'budgeted_read_dir_rejects_too_many_entries_before_returning_vector' libs/hbb_common/src/fs.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing read-dir-budget-test"
+grep -q 'budgeted_recursive_listing_rejects_excessive_depth' libs/hbb_common/src/fs.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing recursive-depth-test"
+grep -q 'pub fn new_read_with_budget' libs/hbb_common/src/fs.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing new-read-budget"
+grep -q 'pub fn validate_transfer_file_list' libs/hbb_common/src/fs.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing file-list-validator"
+grep -q 'pub fn set_files_with_limit' libs/hbb_common/src/fs.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing set-files-limit"
+grep -q 'const DEFAULT_MAX_VALIDATED_FILES: usize = fs::DEFAULT_FILE_TRANSFER_MAX_FILES;' src/ui_cm_interface.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing ui-default-limit"
+grep -q 'unwrap_or(DEFAULT_MAX_VALIDATED_FILES)' src/ui_cm_interface.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing invalid-limit-default"
+grep -q 'MAX_CONCURRENT_FILE_METADATA_SCANS' src/ui_cm_interface.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing metadata-scan-cap"
+grep -q 'try_acquire_file_metadata_scan' src/ui_cm_interface.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing metadata-scan-try-acquire"
+grep -q 'file_transfer_enumeration_budget()' src/ui_cm_interface.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing metadata-budget-helper"
+grep -q 'spawn_blocking(move || fs::get_recursive_files_with_budget' src/ui_cm_interface.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing cm-allfiles-budget"
+grep -q 'fs::get_empty_dirs_recursive_with_budget' src/ui_cm_interface.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing cm-emptydirs-budget"
+grep -q 'fs::read_dir_with_budget' src/ui_cm_interface.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing cm-readdir-budget"
+grep -q 'fs::TransferJob::new_read_with_budget' src/ui_cm_interface.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing cm-readjob-budget"
+grep -q 'fs::TransferJob::new_read_with_budget' src/server/connection.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing conn-readjob-budget"
+grep -q 'fs::get_recursive_files_with_budget' src/server/connection.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing conn-allfiles-budget"
+grep -q 'fn reserve_cm_read_job' src/server/connection.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing reserve-cm-read"
+grep -q 'fn reserve_write_job' src/server/connection.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing reserve-write"
+grep -q 'MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN' libs/hbb_common/src/fs.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing read-job-cap"
+grep -q 'MAX_ACTIVE_FILE_TRANSFER_WRITE_JOBS_PER_CONN' libs/hbb_common/src/fs.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing write-job-cap"
+grep -q 'has_job_for_connection(read_jobs, id, conn_id)' src/ui_cm_interface.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing cm-read-duplicate"
+grep -q 'active_jobs_for_connection(read_jobs, conn_id)' src/ui_cm_interface.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing cm-read-active-count"
+grep -q 'has_job_for_connection(write_jobs, id, conn_id)' src/ui_cm_interface.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing cm-write-duplicate"
+grep -q 'active_jobs_for_connection(write_jobs, conn_id)' src/ui_cm_interface.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing cm-write-active-count"
+grep -q 'WriteJobRejected {' src/ipc.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing write-reject-ipc"
+grep -q 'conn.write_job_ids.remove(&id)' src/server/connection.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing write-reject-release"
+grep -q 'fs::validate_transfer_file_list' src/server/connection.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing conn-write-list-validator"
+grep -q 'job.set_files_with_limit(file_entries, get_max_validated_files())' src/ui_cm_interface.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing cm-write-list-validator"
+if grep -q 'usize::MAX.*no limit' src/ui_cm_interface.rs libs/hbb_common/src/config.rs; then
+  r_fsbudget_missing="$r_fsbudget_missing unsafe-no-limit-doc"
+fi
+if awk '/file_action::Union::AllFiles/,/file_action::Union::Send/' src/server/connection.rs | grep -q 'fs::get_recursive_files(&'; then
+  r_fsbudget_missing="$r_fsbudget_missing conn-allfiles-unbudgeted"
+fi
+if awk '/async fn read_all_files/,/^}/' src/ui_cm_interface.rs | grep -q 'fs::get_recursive_files(&'; then
+  r_fsbudget_missing="$r_fsbudget_missing cm-allfiles-unbudgeted"
+fi
+if awk '/async fn read_empty_dirs/,/^}/' src/ui_cm_interface.rs | grep -q 'fs::get_empty_dirs_recursive(&'; then
+  r_fsbudget_missing="$r_fsbudget_missing cm-emptydirs-unbudgeted"
+fi
+if awk '/async fn read_dir/,/^}/' src/ui_cm_interface.rs | grep -q 'fs::read_dir(&'; then
+  r_fsbudget_missing="$r_fsbudget_missing cm-readdir-unbudgeted"
+fi
+if [ -n "$r_fsbudget_missing" ]; then
+  echo "  FAIL R-S8/R-T0: peer-triggered file-transfer metadata/job admission is not fully bounded:$r_fsbudget_missing"; rc=1
+else
+  echo "  ok  R-S8/R-T0 peer-triggered file-transfer metadata scans and read/write jobs are budgeted before traversal/allocation"
+fi
 # R-S8/R-S11 defense-in-depth: incoming FileResponse carries peer-chosen write data for a CM/FS write
 # job. FileAction is session-gated, but the shared FS worker historically looked up write_jobs only by
 # peer-chosen id, so a cross-session id collision could target the wrong write job. Gate FileResponse
@@ -2814,7 +2908,7 @@ fi
 # (id, conn_id), not id alone.
 r_fileresp_missing=
 grep -q 'write_job_ids: HashSet<i32>' src/server/connection.rs                                  || r_fileresp_missing="$r_fileresp_missing connection-write-id-set"
-grep -q 'self.write_job_ids.insert(r.id);' src/server/connection.rs                              || r_fileresp_missing="$r_fileresp_missing receive-insert"
+grep -q 'self.reserve_write_job(r.id)' src/server/connection.rs                                  || r_fileresp_missing="$r_fileresp_missing receive-reserve"
 grep -q 'self.accepts_file_response_write_job(block.id, "Block")' src/server/connection.rs       || r_fileresp_missing="$r_fileresp_missing block-gate"
 grep -q 'self.accepts_file_response_write_job(d.id, "Done")' src/server/connection.rs            || r_fileresp_missing="$r_fileresp_missing done-gate"
 grep -q 'self.accepts_file_response_write_job(d.id, "Digest")' src/server/connection.rs          || r_fileresp_missing="$r_fileresp_missing digest-gate"

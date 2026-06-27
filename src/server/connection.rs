@@ -645,6 +645,18 @@ impl Connection {
                                 conn.handle_all_files_result(id, path, result).await;
                             }
                         }
+                        ipc::Data::WriteJobRejected { id, conn_id, err } => {
+                            if conn_id == conn.inner.id() {
+                                let removed = conn.write_job_ids.remove(&id);
+                                log::warn!(
+                                    "CM rejected write job id={} for conn_id={} (reserved_removed={}): {}",
+                                    id,
+                                    conn_id,
+                                    removed,
+                                    err
+                                );
+                            }
+                        }
                         _ => {}
                     }
                 },
@@ -2150,7 +2162,22 @@ impl Connection {
                                         conn_id: self.inner.id(),
                                     });
                                 } else {
-                                    match fs::get_recursive_files(&f.path, f.include_hidden) {
+                                    let _metadata_scan_permit =
+                                        match crate::ui_cm_interface::try_acquire_file_metadata_scan(
+                                        ) {
+                                            Ok(permit) => permit,
+                                            Err(msg) => {
+                                                self.send(fs::new_error(f.id, msg, -1)).await;
+                                                return true;
+                                            }
+                                        };
+                                    let budget =
+                                        crate::ui_cm_interface::file_transfer_enumeration_budget();
+                                    match fs::get_recursive_files_with_budget(
+                                        &f.path,
+                                        f.include_hidden,
+                                        budget,
+                                    ) {
                                         Err(err) => {
                                             log::error!(
                                                 "Failed to get recursive files for {}: {}",
@@ -2185,7 +2212,10 @@ impl Connection {
                                         );
                                         if crate::common::need_fs_cm_send_files() {
                                             // Delegate file reading to CM on Windows
-                                            self.cm_read_job_ids.insert(id);
+                                            if let Err(msg) = self.reserve_cm_read_job(id) {
+                                                self.send(fs::new_error(id, msg, -1)).await;
+                                                return true;
+                                            }
                                             self.send_fs(ipc::FS::ReadFile {
                                                 path,
                                                 id,
@@ -2248,15 +2278,32 @@ impl Connection {
                                 let od = can_enable_overwrite_detection(get_version_number(
                                     &self.lr.version,
                                 ));
-                                self.write_job_ids.insert(r.id);
+                                if let Err(msg) =
+                                    crate::ui_cm_interface::check_file_count_limit(r.files.len())
+                                {
+                                    self.send(fs::new_error(r.id, msg, r.file_num)).await;
+                                    return true;
+                                }
+                                let files = r.files.to_vec();
+                                let base = PathBuf::from(&r.path);
+                                if let Err(err) = fs::validate_transfer_file_list(
+                                    Some(&base),
+                                    &files,
+                                    crate::ui_cm_interface::get_max_validated_files(),
+                                ) {
+                                    self.send(fs::new_error(r.id, err, r.file_num)).await;
+                                    return true;
+                                }
+                                if let Err(msg) = self.reserve_write_job(r.id) {
+                                    self.send(fs::new_error(r.id, msg, r.file_num)).await;
+                                    return true;
+                                }
                                 self.send_fs(ipc::FS::NewWrite {
                                     path: r.path.clone(),
                                     id: r.id,
                                     file_num: r.file_num,
-                                    files: r
-                                        .files
-                                        .to_vec()
-                                        .drain(..)
+                                    files: files
+                                        .into_iter()
                                         .map(|f| (f.name, f.modified_time))
                                         .collect(),
                                     overwrite_detection: od,
@@ -3446,6 +3493,51 @@ impl Connection {
         }
     }
 
+    fn active_read_job_count(&self) -> usize {
+        self.cm_read_job_ids.len() + self.read_jobs.iter().filter(|job| !job.is_last_job).count()
+    }
+
+    fn has_read_job_id(&self, id: i32) -> bool {
+        self.cm_read_job_ids.contains(&id) || self.read_jobs.iter().any(|job| job.id() == id)
+    }
+
+    fn ensure_can_start_read_job(&self, id: i32) -> Result<(), String> {
+        if self.has_read_job_id(id) {
+            return Err(format!("duplicate read job id {}", id));
+        }
+        if self.active_read_job_count() >= fs::MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN {
+            return Err(format!(
+                "too many active read jobs for connection (limit {})",
+                fs::MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN
+            ));
+        }
+        Ok(())
+    }
+
+    fn reserve_cm_read_job(&mut self, id: i32) -> Result<(), String> {
+        self.ensure_can_start_read_job(id)?;
+        if !self.cm_read_job_ids.insert(id) {
+            return Err(format!("duplicate read job id {}", id));
+        }
+        Ok(())
+    }
+
+    fn reserve_write_job(&mut self, id: i32) -> Result<(), String> {
+        if self.write_job_ids.contains(&id) {
+            return Err(format!("duplicate write job id {}", id));
+        }
+        if self.write_job_ids.len() >= fs::MAX_ACTIVE_FILE_TRANSFER_WRITE_JOBS_PER_CONN {
+            return Err(format!(
+                "too many active write jobs for connection (limit {})",
+                fs::MAX_ACTIVE_FILE_TRANSFER_WRITE_JOBS_PER_CONN
+            ));
+        }
+        if !self.write_job_ids.insert(id) {
+            return Err(format!("duplicate write job id {}", id));
+        }
+        Ok(())
+    }
+
     fn accepts_file_response_write_job(&self, id: i32, kind: &str) -> bool {
         if self.file_transfer.is_some() && self.write_job_ids.contains(&id) {
             return true;
@@ -3645,7 +3737,23 @@ impl Connection {
         path: String,
         check_file_limit: bool,
     ) {
-        match fs::TransferJob::new_read(
+        if let Err(msg) = self.ensure_can_start_read_job(id) {
+            self.send(fs::new_error(id, msg, -1)).await;
+            return;
+        }
+        let _metadata_scan_permit = if matches!(&data_source, fs::DataSource::FilePath(_)) {
+            match crate::ui_cm_interface::try_acquire_file_metadata_scan() {
+                Ok(permit) => Some(permit),
+                Err(msg) => {
+                    self.send(fs::new_error(id, msg, -1)).await;
+                    return;
+                }
+            }
+        } else {
+            None
+        };
+        let budget = crate::ui_cm_interface::file_transfer_enumeration_budget();
+        match fs::TransferJob::new_read_with_budget(
             id,
             job_type,
             "".to_string(),
@@ -3654,6 +3762,7 @@ impl Connection {
             include_hidden,
             false,
             overwrite_detection,
+            budget,
         ) {
             Err(err) => {
                 self.send(fs::new_error(id, err, 0)).await;

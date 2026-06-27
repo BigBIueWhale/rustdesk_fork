@@ -240,6 +240,7 @@ impl Encoder {
         }
 
         let vp8_useable = decodings.len() > 0 && decodings.iter().all(|(_, s)| s.ability_vp8 > 0);
+        let vp9_useable = decodings.len() > 0 && decodings.iter().all(|(_, s)| s.ability_vp9 > 0);
         let av1_useable = decodings.len() > 0
             && decodings.iter().all(|(_, s)| s.ability_av1 > 0)
             && !disable_av1();
@@ -287,7 +288,7 @@ impl Encoder {
         let preferences: Vec<_> = decodings
             .iter()
             .filter(|(_, s)| {
-                s.prefer == PreferCodec::VP9.into()
+                s.prefer == PreferCodec::VP9.into() && vp9_useable
                     || s.prefer == PreferCodec::VP8.into() && vp8_useable
                     || s.prefer == PreferCodec::AV1.into() && av1_useable
                     || s.prefer == PreferCodec::H264.into() && h264_useable
@@ -317,12 +318,18 @@ impl Encoder {
             .unwrap_or((PreferCodec::Auto.into(), 0));
         let preference = most_frequent.enum_value_or(PreferCodec::Auto);
 
-        // auto: h265 > h264 > av1/vp9/vp8
+        // auto: h265 > h264 > av1/vp9/vp8. If every advertised decoder bit is
+        // zero (for example the interim mobile fail-closed path), fail closed
+        // with Unknown instead of pushing the historical VP9 baseline anyway.
         let av1_test = Config::get_option(hbb_common::config::keys::OPTION_AV1_TEST) != "N";
         let mut auto_codec = if av1_useable && av1_test {
             CodecFormat::AV1
-        } else {
+        } else if vp9_useable {
             CodecFormat::VP9
+        } else if vp8_useable {
+            CodecFormat::VP8
+        } else {
+            CodecFormat::Unknown
         };
         if h264_useable {
             auto_codec = CodecFormat::H264;
@@ -340,9 +347,27 @@ impl Encoder {
         }
 
         *format = match preference {
-            PreferCodec::VP8 => CodecFormat::VP8,
-            PreferCodec::VP9 => CodecFormat::VP9,
-            PreferCodec::AV1 => CodecFormat::AV1,
+            PreferCodec::VP8 => {
+                if vp8_useable {
+                    CodecFormat::VP8
+                } else {
+                    auto_codec
+                }
+            }
+            PreferCodec::VP9 => {
+                if vp9_useable {
+                    CodecFormat::VP9
+                } else {
+                    auto_codec
+                }
+            }
+            PreferCodec::AV1 => {
+                if av1_useable {
+                    CodecFormat::AV1
+                } else {
+                    auto_codec
+                }
+            }
             PreferCodec::H264 => {
                 if h264vram_encoding || h264hw_encoding.is_some() {
                     CodecFormat::H264
@@ -361,7 +386,7 @@ impl Encoder {
         };
         if decodings.len() > 0 {
             log::info!(
-                "usable: vp8={vp8_useable}, av1={av1_useable}, h264={h264_useable}, h265={h265_useable}",
+                "usable: vp8={vp8_useable}, vp9={vp9_useable}, av1={av1_useable}, h264={h264_useable}, h265={h265_useable}",
             );
             log::info!(
                 "connection count: {}, used preference: {:?}, encoder: {:?}",
@@ -1210,9 +1235,21 @@ pub fn test_av1() {
 #[cfg(test)]
 mod tests {
     use super::{
-        validate_native_video_frame_lengths, MAX_NATIVE_VIDEO_BATCH_BYTES,
-        MAX_NATIVE_VIDEO_FRAME_BYTES, MAX_NATIVE_VIDEO_SUBFRAMES,
+        validate_native_video_frame_lengths, Encoder, EncodingUpdate, ENCODE_CODEC_FORMAT,
+        MAX_NATIVE_VIDEO_BATCH_BYTES, MAX_NATIVE_VIDEO_FRAME_BYTES, MAX_NATIVE_VIDEO_SUBFRAMES,
+        PEER_DECODINGS, USABLE_ENCODING,
     };
+    use crate::CodecFormat;
+    use hbb_common::message_proto::SupportedDecoding;
+    use std::sync::Mutex;
+
+    static ENCODER_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn reset_encoder_state() {
+        PEER_DECODINGS.lock().unwrap().clear();
+        *ENCODE_CODEC_FORMAT.lock().unwrap() = CodecFormat::VP9;
+        *USABLE_ENCODING.lock().unwrap() = None;
+    }
 
     #[test]
     fn native_video_lengths_accept_normal_batch() {
@@ -1231,7 +1268,10 @@ mod tests {
     fn native_video_lengths_reject_oversize_batch() {
         assert!(validate_native_video_frame_lengths(
             "test",
-            [MAX_NATIVE_VIDEO_BATCH_BYTES / 2, MAX_NATIVE_VIDEO_BATCH_BYTES / 2 + 1],
+            [
+                MAX_NATIVE_VIDEO_BATCH_BYTES / 2,
+                MAX_NATIVE_VIDEO_BATCH_BYTES / 2 + 1
+            ],
         )
         .is_err());
     }
@@ -1240,5 +1280,27 @@ mod tests {
     fn native_video_lengths_reject_too_many_subframes() {
         let lengths = std::iter::repeat(1usize).take(MAX_NATIVE_VIDEO_SUBFRAMES + 1);
         assert!(validate_native_video_frame_lengths("test", lengths).is_err());
+    }
+
+    #[test]
+    fn encoder_negotiation_rejects_explicit_no_decoder_advertisement() {
+        let _guard = ENCODER_TEST_LOCK.lock().unwrap();
+        reset_encoder_state();
+
+        Encoder::update(EncodingUpdate::Update(42, SupportedDecoding::default()));
+
+        assert_eq!(Encoder::negotiated_codec(), CodecFormat::Unknown);
+        reset_encoder_state();
+    }
+
+    #[test]
+    fn encoder_negotiation_keeps_legacy_vp9_when_peer_sends_no_advertisement() {
+        let _guard = ENCODER_TEST_LOCK.lock().unwrap();
+        reset_encoder_state();
+
+        Encoder::update(EncodingUpdate::NewOnlyVP9(43));
+
+        assert_eq!(Encoder::negotiated_codec(), CodecFormat::VP9);
+        reset_encoder_state();
     }
 }

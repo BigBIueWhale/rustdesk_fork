@@ -173,6 +173,7 @@ echo "== (3c-ii) native worker sandbox helper sanity (Appendix C #2b) =="
 echo "== (3c-ii-a) viewer peer media display/thread + queue bounds (Appendix C #2b/R-T0) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::media_data_queue_is_bounded --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::io_loop::tests --color never
+"${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config common::codec::tests::encoder_negotiation --color never
 
 # (3c-ii-b) Peer UI text admission (R-T0): a password-correct hostile peer can
 # send chat/messages/notification details repeatedly after keying. Bound text
@@ -2238,6 +2239,14 @@ grep -qF 'refusing to advertise mobile video decoding until a platform worker/se
   r_native_video_worker="$r_native_video_worker mobile-no-decode-advertise"
 grep -qF 'return SupportedDecoding::default();' src/native_video_worker.rs ||
   r_native_video_worker="$r_native_video_worker mobile-empty-supported-decoding"
+grep -qF 's.ability_vp9 > 0' libs/scrap/src/common/codec.rs ||
+  r_native_video_worker="$r_native_video_worker vp9-advertisement-not-honored"
+grep -qF 'CodecFormat::Unknown' libs/scrap/src/common/codec.rs ||
+  r_native_video_worker="$r_native_video_worker no-no-codec-state"
+grep -qF 'no mutually supported video codec; refusing to start video encoder' src/server/video_service.rs ||
+  r_native_video_worker="$r_native_video_worker no-codec-video-start-refusal"
+grep -qF 'encoder_negotiation_rejects_explicit_no_decoder_advertisement' libs/scrap/src/common/codec.rs ||
+  r_native_video_worker="$r_native_video_worker no-codec-regression-test"
 if grep -qF 'MobileDecoder' src/native_video_worker.rs; then
   r_native_video_worker="$r_native_video_worker mobile-decoder-alias"
 fi

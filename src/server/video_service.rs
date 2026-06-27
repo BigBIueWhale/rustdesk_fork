@@ -910,6 +910,10 @@ fn setup_encoder(
     bool,
     Arc<Mutex<Option<Recorder>>>,
 )> {
+    let codec_format = Encoder::negotiated_codec();
+    if codec_format == CodecFormat::Unknown {
+        bail!("no mutually supported video codec; refusing to start video encoder");
+    }
     let encoder_cfg = get_encoder_config(
         &c,
         name.to_string(),
@@ -919,6 +923,9 @@ fn setup_encoder(
     );
     Encoder::set_fallback(&encoder_cfg);
     let codec_format = Encoder::negotiated_codec();
+    if codec_format == CodecFormat::Unknown {
+        bail!("no mutually supported video codec after fallback; refusing to start video encoder");
+    }
     let recorder = get_recorder(record_incoming, display_idx, source == VideoSource::Camera);
     let use_i444 = Encoder::use_i444(&encoder_cfg);
     let encoder = Encoder::new(encoder_cfg.clone(), use_i444)?;

@@ -1290,6 +1290,18 @@ git diff --check              # GREEN after this ledger update
   `false` from `handle_msg_from_peer`. `scripts/verify.sh` requires both markers
   and fails on the old silent parse-ignore pattern.
 
+- **Mobile no-decoder advertisement is honored by video negotiation.** The
+  interim mobile video posture returns an empty `SupportedDecoding` rather than
+  parsing hostile-peer video in-process, but the server-side encoder negotiation
+  still treated VP9 as a baseline and could push VP9 frames to that peer anyway.
+  `scrap::codec::Encoder::update` now honors `ability_vp9 == 0`, selects
+  `CodecFormat::Unknown` when no advertised codec is mutually usable, and
+  `video_service` refuses to start a video encoder in that state instead of
+  falling back to VP9. Focused unit tests and `scripts/verify.sh` gate this
+  fail-closed behavior. Android remains functionally incomplete until an
+  isolated mobile media path exists, but the current no-decoder safety signal is
+  now enforced end-to-end.
+
 ### Larger Assurance / Hardening Items
 
 - **Native viewer decoder sandbox beyond the first desktop worker slices.** The
@@ -1310,10 +1322,13 @@ git diff --check              # GREEN after this ledger update
   also applies process mitigations for dynamic code, extension points, strict
   handle checks, and remote/low-integrity image loads. Mobile media decode, peer
   clipboard SET, and peer zstd now fail closed until platform workers/services
-  exist instead of parsing hostile-peer bytes in-process. That is not yet a
-  complete low-privilege sandbox. Remaining work includes mobile
-  media/clipboard/zstd platform-worker support if those peer features are to be
-  enabled on mobile, Android's separate-process service shape, an iOS
+  exist instead of parsing hostile-peer bytes in-process. That is the right
+  interim safety posture, but it is not final Android client conformance:
+  Android is a required shipped target, and Android-as-viewer needs a functional
+  isolated media path rather than an empty decode advertisement. That is not yet
+  a complete low-privilege sandbox. Remaining work includes mobile
+  media/clipboard/zstd platform-worker support where required for Android
+  feature parity, Android's separate-process service shape, an iOS
   product-scope decision for the
   no-child-process model, Windows low-privilege/AppContainer or syscall-allowlist
   hardening beyond Job Object/process-mitigation guards, a broader
@@ -1363,10 +1378,13 @@ image loads, but that is not a Windows AppContainer, restricted-token, or syscal
 allowlist sandbox. Windows CLIPRDR now has app-level and Rust<->C bridge length
 caps plus null/bounded-read fail-closed guards, pending request/response
 accounting, and a same-artifact worker boundary; Windows remote-printer XPS
-handoff now has a bounded same-artifact worker boundary. Mobile media decode now fails
-closed/no-advertises, mobile peer clipboard SET now fails closed, and mobile peer
-zstd now fails closed rather than using in-process native parsers; enabling those
-mobile peer features still requires a platform worker/service boundary.
+handoff now has a bounded same-artifact worker boundary. Mobile media decode
+now fails closed/no-advertises, mobile peer clipboard SET now fails closed,
+and mobile peer zstd now fails closed rather than using in-process native
+parsers; that is secure but functionally incomplete for Android-as-viewer, so
+Android artifact availability must not be treated as end-to-end feature parity
+until platform worker/service support or an equivalent isolated decode path is
+implemented and smoked.
 Unix/macOS file-copy
 clipboard now has descriptor-count caps, a same-artifact worker boundary for peer FILEDESCRIPTOR
 PDU parsing, per-connection file-content request/byte accounting, and a

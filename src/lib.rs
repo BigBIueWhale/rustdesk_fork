@@ -3,8 +3,8 @@ mod keyboard;
 pub mod platform;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use platform::{
-    clip_cursor, get_cursor, get_cursor_data, get_cursor_pos, get_focused_display,
-    set_cursor_pos, start_os_service,
+    clip_cursor, get_cursor, get_cursor_data, get_cursor_pos, get_focused_display, set_cursor_pos,
+    start_os_service,
 };
 #[cfg(not(any(target_os = "ios")))]
 /// cbindgen:ignore
@@ -12,6 +12,14 @@ mod server;
 #[cfg(not(any(target_os = "ios")))]
 pub use self::server::*;
 mod client;
+mod native_audio_worker;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod native_clipboard_worker;
+#[cfg(all(feature = "unix-file-copy-paste", target_family = "unix"))]
+mod native_file_contents_worker;
+#[cfg(all(feature = "unix-file-copy-paste", target_family = "unix"))]
+mod native_file_descriptor_worker;
+mod native_video_worker;
 // R-X5 / R-SV1 / R-D7a: LAN discovery is fully removed (the `mod lan` no-op stubs — discover()
 // and send_wol() — are gone, along with the sciter Discovered-tab UI, ui_interface get_lan_peers/
 // remove_discovered, and config::LanPeers). The discovery LISTENER/querier was already excised

@@ -1,7 +1,10 @@
 use crate::{
-    bail, bytes_codec::BytesCodec, config::Socks5Server,
+    bail,
+    bytes_codec::BytesCodec,
+    config::Socks5Server,
     cpace::{split_session_keys, DirectionalKeys, OpenCipher, SealCipher},
-    proxy::Proxy, ResultType,
+    proxy::Proxy,
+    ResultType,
 };
 use anyhow::Context as AnyhowCtx;
 use bytes::{BufMut, Bytes, BytesMut};
@@ -24,7 +27,7 @@ use std::{
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     net::{lookup_host, TcpListener, TcpSocket, ToSocketAddrs},
-    sync::mpsc,
+    sync::{mpsc, oneshot},
     task::JoinHandle,
 };
 use tokio_socks::IntoTargetAddr;
@@ -229,12 +232,23 @@ struct KeyedStream {
     seal: SealCipher,
     /// Bounded channel of ALREADY-SEALED frames to the sole writer task (R-T8). A full channel is
     /// the back-pressure liveness signal — `send_bytes` drops the connection rather than block.
-    writer_tx: mpsc::Sender<Bytes>,
+    writer_tx: mpsc::Sender<WriterCommand>,
     /// A handle to the codec's recv counter, so `recv_counter` can read `read_seq` after the codec
     /// is moved into `read` (the `SplitStream` exposes no codec accessor).
     read_seq: Arc<AtomicU64>,
     /// The dedicated writer task — aborted on drop so a write blocked on a dead socket cannot leak.
     writer: JoinHandle<()>,
+}
+
+/// Commands consumed by the sole R-T3 writer task.
+///
+/// `Frame` carries an already-sealed frame. `Drain` is the R-T9 close-path
+/// acknowledgement: once the writer observes it, every prior frame in channel
+/// FIFO order has been handed to the sink and flushed, so the caller knows a
+/// queued `CloseReason` was not immediately lost to `FramedStream::Drop`.
+enum WriterCommand {
+    Frame(Bytes),
+    Drain(oneshot::Sender<io::Result<()>>),
 }
 
 impl Deref for DynTcpStream {
@@ -251,7 +265,10 @@ impl DerefMut for DynTcpStream {
     }
 }
 
-pub(crate) fn new_socket(addr: std::net::SocketAddr, reuse: bool) -> Result<TcpSocket, std::io::Error> {
+pub(crate) fn new_socket(
+    addr: std::net::SocketAddr,
+    reuse: bool,
+) -> Result<TcpSocket, std::io::Error> {
     let socket = match addr {
         std::net::SocketAddr::V4(..) => TcpSocket::new_v4()?,
         std::net::SocketAddr::V6(..) => TcpSocket::new_v6()?,
@@ -445,20 +462,61 @@ impl FramedStream {
                 // the peer can't drain, so the connection is dropped here (`try_send` Err →
                 // `send_bytes` poisons) rather than the run-loop blocking inside a `select!` branch.
                 let sealed = Bytes::from(k.seal.seal(&bytes));
-                k.writer_tx.try_send(sealed).map_err(|e| match e {
-                    mpsc::error::TrySendError::Full(_) => {
-                        anyhow::anyhow!(
-                            "R-T3: writer channel full — dropping the back-pressured connection"
-                        )
-                    }
-                    mpsc::error::TrySendError::Closed(_) => {
-                        anyhow::anyhow!("R-T3: writer task gone — connection is dead")
-                    }
-                })?;
+                k.writer_tx
+                    .try_send(WriterCommand::Frame(sealed))
+                    .map_err(|e| match e {
+                        mpsc::error::TrySendError::Full(_) => {
+                            anyhow::anyhow!("R-T3: writer channel full — dropping the back-pressured connection")
+                        }
+                        mpsc::error::TrySendError::Closed(_) => {
+                            anyhow::anyhow!("R-T3: writer task gone — connection is dead")
+                        }
+                    })?;
             }
             StreamState::Keying => unreachable!("send_bytes observed a mid-keying stream"),
         }
         Ok(())
+    }
+
+    /// R-T9 (§20): wait until the dedicated writer task has flushed all frames
+    /// already queued before this call. The graceful-close path uses this
+    /// immediately after sending `CloseReason`; without the acknowledgement,
+    /// dropping `FramedStream` may abort the writer task before it ever writes the
+    /// close frame.
+    ///
+    /// This is deliberately bounded. Normal traffic keeps using non-blocking
+    /// `try_send` for frames; only shutdown/close asks the writer for an explicit
+    /// drain acknowledgement, and a peer that is already back-pressured or dead is
+    /// failed closed instead of stalling the session indefinitely.
+    pub async fn flush_writer(&mut self) -> ResultType<()> {
+        if self.poison {
+            bail!("R-T2/R-T9: refusing to flush a poisoned stream");
+        }
+        let result = match &mut self.state {
+            StreamState::Unkeyed(framed) => framed.flush().await.map_err(anyhow::Error::from),
+            StreamState::Keyed(k) => {
+                let (ack_tx, ack_rx) = oneshot::channel();
+                let writer_tx = k.writer_tx.clone();
+                let enqueue = tokio::time::timeout(
+                    WRITER_DRAIN_TIMEOUT,
+                    writer_tx.send(WriterCommand::Drain(ack_tx)),
+                )
+                .await
+                .map_err(|_| anyhow::anyhow!("R-T9: timed out enqueueing writer drain"))?;
+                enqueue.map_err(|_| anyhow::anyhow!("R-T9: writer task gone before drain"))?;
+
+                tokio::time::timeout(WRITER_DRAIN_TIMEOUT, ack_rx)
+                    .await
+                    .map_err(|_| anyhow::anyhow!("R-T9: timed out waiting for writer drain"))?
+                    .map_err(|_| anyhow::anyhow!("R-T9: writer task dropped drain ack"))?
+                    .map_err(anyhow::Error::from)
+            }
+            StreamState::Keying => unreachable!("flush_writer observed a mid-keying stream"),
+        };
+        if result.is_err() {
+            self.poison = true;
+        }
+        result
     }
 
     #[inline]
@@ -537,7 +595,7 @@ impl FramedStream {
         // pre-seals), then split: the read half stays here, the write half feeds the writer task.
         framed.codec_mut().open_cipher = Some(open);
         let (sink, read) = framed.split();
-        let (writer_tx, writer_rx) = mpsc::channel::<Bytes>(WRITER_CHANNEL_CAP);
+        let (writer_tx, writer_rx) = mpsc::channel::<WriterCommand>(WRITER_CHANNEL_CAP);
         let writer = tokio::spawn(writer_task(sink, writer_rx));
         self.state = StreamState::Keyed(KeyedStream {
             read,
@@ -566,6 +624,7 @@ impl FramedStream {
 /// (replacing R-T2's per-write timeout). Outbound frames are server-generated (their size bounded by
 /// the encoder, not attacker-controlled), so the buffer is not an attacker-driven memory lever.
 const WRITER_CHANNEL_CAP: usize = 512;
+const WRITER_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// R-T3/R-T8 (§20): the dedicated writer task — the SOLE consumer of the split sink. It drains
 /// already-sealed frames in channel-FIFO order (so flush order == seal order == wire order) and
@@ -573,11 +632,23 @@ const WRITER_CHANNEL_CAP: usize = 512;
 /// observes the closed channel on its next enqueue and poisons the stream (R-T2).
 async fn writer_task(
     mut sink: SplitSink<Framed<DynTcpStream, SecretboxCodec>, Bytes>,
-    mut writer_rx: mpsc::Receiver<Bytes>,
+    mut writer_rx: mpsc::Receiver<WriterCommand>,
 ) {
-    while let Some(frame) = writer_rx.recv().await {
-        if sink.send(frame).await.is_err() {
-            break;
+    while let Some(cmd) = writer_rx.recv().await {
+        match cmd {
+            WriterCommand::Frame(frame) => {
+                if sink.send(frame).await.is_err() {
+                    break;
+                }
+            }
+            WriterCommand::Drain(done) => {
+                let res = sink.flush().await;
+                let failed = res.is_err();
+                let _ = done.send(res);
+                if failed {
+                    break;
+                }
+            }
         }
     }
     // The channel closed (the FramedStream dropped) or a write failed — close the sink to flush and

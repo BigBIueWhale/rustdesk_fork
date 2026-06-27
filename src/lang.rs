@@ -16,8 +16,10 @@ mod es;
 mod et;
 mod eu;
 mod fa;
-mod gu;
+mod fi;
 mod fr;
+mod ge;
+mod gu;
 mod he;
 mod hi;
 mod hr;
@@ -29,6 +31,7 @@ mod ko;
 mod kz;
 mod lt;
 mod lv;
+mod ml;
 mod nb;
 mod nl;
 mod pl;
@@ -41,15 +44,12 @@ mod sl;
 mod sq;
 mod sr;
 mod sv;
+mod ta;
 mod th;
 mod tr;
 mod tw;
 mod uk;
 mod vi;
-mod ta;
-mod ge;
-mod fi;
-mod ml;
 
 pub const LANGS: &[(&str, &str)] = &[
     ("en", "English"),
@@ -191,9 +191,7 @@ pub fn translate_locale(name: String, locale: &str) -> String {
             s = s.replace("{}", &value);
         }
         if !crate::is_rustdesk() {
-            if s.contains("RustDesk")
-                && !name.starts_with("upgrade_rustdesk_server_pro")
-            {
+            if s.contains("RustDesk") && !name.starts_with("upgrade_rustdesk_server_pro") {
                 let app_name = crate::get_app_name();
                 if !app_name.contains("RustDesk") {
                     s = s.replace("RustDesk", &app_name);

@@ -282,7 +282,10 @@ mod file_list_test {
 
     use hbb_common::bytes::{BufMut, BytesMut};
 
-    use crate::{platform::unix::filetype::FileDescription, CliprdrError};
+    use crate::{
+        platform::unix::filetype::{FileDescription, MAX_FILE_DESCRIPTORS},
+        CliprdrError,
+    };
 
     use super::LocalFile;
 
@@ -362,7 +365,9 @@ mod file_list_test {
                 format!("{}/b/c.txt", prefix)
             );
         } else {
-            assert_eq!(parsed[0].name.to_str().unwrap(), ".");
+            // The root descriptor name is relative to `relative_root`; when
+            // path == relative_root, the FILEDESCRIPTOR name field is empty.
+            assert_eq!(parsed[0].name.to_str().unwrap(), "");
             assert_eq!(parsed[1].name.to_str().unwrap(), "a.txt");
             assert_eq!(parsed[2].name.to_str().unwrap(), "b");
             assert_eq!(parsed[3].name.to_str().unwrap(), "b/c.txt");
@@ -383,5 +388,13 @@ mod file_list_test {
         as_bin_parse_test("test")?;
         as_bin_parse_test("/test")?;
         Ok(())
+    }
+
+    #[test]
+    fn rejects_too_many_file_descriptors_before_allocation() {
+        let mut pdu = BytesMut::with_capacity(4);
+        pdu.put_u32_le((MAX_FILE_DESCRIPTORS + 1) as u32);
+
+        assert!(FileDescription::parse_file_descriptors(pdu.to_vec(), 0).is_err());
     }
 }

@@ -41,9 +41,9 @@ use uuid::Uuid;
 
 use crate::client::io_loop::Remote;
 use crate::client::{
-    check_if_retry, handle_login_error, handle_login_from_ui, handle_test_delay,
-    input_os_password, send_mouse, send_pointer_device_event, FileManager, Key, LoginConfigHandler,
-    QualityStatus, KEY_MAP,
+    check_if_retry, handle_login_error, handle_login_from_ui, handle_test_delay, input_os_password,
+    send_mouse, send_pointer_device_event, FileManager, Key, LoginConfigHandler, QualityStatus,
+    KEY_MAP,
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::common::GrabState;
@@ -1820,14 +1820,8 @@ impl<T: InvokeUiSession> Interface for Session<T> {
         }
     }
 
-    async fn handle_login_from_ui(
-        &self,
-        password: String,
-        remember: bool,
-        peer: &mut Stream,
-    ) {
-        handle_login_from_ui(self.lc.clone(), password, remember, peer)
-        .await;
+    async fn handle_login_from_ui(&self, password: String, remember: bool, peer: &mut Stream) {
+        handle_login_from_ui(self.lc.clone(), password, remember, peer).await;
     }
 
     async fn handle_test_delay(&self, t: TestDelay, peer: &mut Stream) {

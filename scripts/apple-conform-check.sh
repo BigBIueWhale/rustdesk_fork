@@ -106,6 +106,17 @@ if grep -qE 'CGEventPost' "$REPO/libs/enigo/src/macos/macos_impl.rs"; then
   note "ok  R-X13 macOS input = CGEvent present (sole injector; no uinput/rdp_input on the apple path)"
 else echo "  FAIL R-X13: the macOS CGEvent injector is missing from libs/enigo/src/macos/macos_impl.rs"; rc=1; fi
 
+echo "== (2b-i) Appendix C #2b macOS worker Seatbelt assertion =="
+macos_worker_sandbox="$REPO/libs/hbb_common/src/native_worker_sandbox.rs"
+if grep -qF 'apply_macos_worker_no_network_sandbox()' "$macos_worker_sandbox" \
+   && grep -qF 'kSBXProfileNoNetwork' "$macos_worker_sandbox" \
+   && grep -qF 'sandbox_init(' "$macos_worker_sandbox" \
+   && grep -qF 'sandbox_free_error' "$macos_worker_sandbox"; then
+  note "ok  Appendix C #2b macOS worker entry applies Seatbelt NoNetwork before hostile parser input"
+else
+  echo "  FAIL Appendix C #2b: macOS native worker Seatbelt NoNetwork entry hook is missing"; rc=1
+fi
+
 echo "== (2c) R-X14 PAM + R-X6/R-S14 deep-link entitlement surface =="
 # R-X14: PAM is absent-by-construction on apple (a negative finding to document; the linux PAM
 # path never existed on macOS/iOS).

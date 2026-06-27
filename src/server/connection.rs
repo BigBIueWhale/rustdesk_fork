@@ -1300,9 +1300,7 @@ impl Connection {
 
     #[inline]
     fn is_remote(&self) -> bool {
-        self.file_transfer.is_none()
-            && !self.view_camera
-            && !self.terminal
+        self.file_transfer.is_none() && !self.view_camera && !self.terminal
     }
 
     fn try_sub_monitor_services(&mut self) {
@@ -2013,7 +2011,7 @@ impl Connection {
                         #[cfg(target_os = "ios")]
                         {
                             let content = if cb.compress {
-                                hbb_common::compress::decompress(&cb.content)
+                                hbb_common::compress::peer_decompress(&cb.content)
                             } else {
                                 cb.content.into()
                             };
@@ -3384,7 +3382,21 @@ impl Connection {
         }
         let mut msg_out = Message::new();
         msg_out.set_misc(misc);
-        self.send(msg_out).await;
+        if let Err(err) = self.stream.send(&msg_out).await {
+            log::warn!(
+                "#{} R-T9: failed to queue CloseReason before closing: {}",
+                self.inner.id(),
+                err
+            );
+            return;
+        }
+        if let Err(err) = self.stream.flush_writer().await {
+            log::warn!(
+                "#{} R-T9: failed to flush CloseReason before closing: {}",
+                self.inner.id(),
+                err
+            );
+        }
     }
 
     async fn handle_read_job_init_result(

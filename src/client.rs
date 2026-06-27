@@ -9,7 +9,6 @@ use cpal::{
     Device, Host, StreamConfig,
 };
 use crossbeam_queue::ArrayQueue;
-use magnum_opus::{Channels::*, Decoder as AudioDecoder};
 #[cfg(not(target_os = "linux"))]
 use ringbuf::{ring_buffer::RbBase, Rb};
 use serde::{Deserialize, Serialize};
@@ -29,6 +28,8 @@ use crate::{
     check_port,
     common::input::{MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_TYPE_DOWN, MOUSE_TYPE_UP},
     is_keyboard_mode_supported,
+    native_audio_worker::NativeOpusDecoder as AudioDecoder,
+    native_video_worker::NativeVideoDecoder as Decoder,
     ui_interface::{get_builtin_option, resolve_avatar_url, use_texture_render},
     ui_session_interface::{InvokeUiSession, Session},
 };
@@ -43,11 +44,10 @@ use hbb_common::tokio::sync::mpsc::UnboundedSender;
 #[cfg(not(target_os = "linux"))]
 use hbb_common::anyhow::anyhow;
 use hbb_common::{
-    allow_err,
-    bail,
+    allow_err, bail,
     config::{
-        self, keys, Config, LocalConfig, PeerConfig, PeerInfoSerde, Resolution,
-        CONNECT_TIMEOUT, DIRECT_PORT, READ_TIMEOUT,
+        self, keys, Config, LocalConfig, PeerConfig, PeerInfoSerde, Resolution, CONNECT_TIMEOUT,
+        DIRECT_PORT, READ_TIMEOUT,
     },
     fs::JobType,
     get_version_number, log,
@@ -60,9 +60,7 @@ use hbb_common::{
     sodiumoxide::base64,
     timeout,
     tokio::{
-        sync::{
-            mpsc::{unbounded_channel, UnboundedReceiver},
-        },
+        sync::mpsc::{unbounded_channel, UnboundedReceiver},
         time::Duration,
     },
     ResultType, Stream,
@@ -74,7 +72,6 @@ use hbb_common::{
 use hbb_common::tokio;
 pub use helper::*;
 use scrap::{
-    codec::Decoder,
     record::{Recorder, RecorderContext},
     CodecFormat, ImageFormat, ImageRgb, ImageTexture,
 };
@@ -121,11 +118,9 @@ pub const LOGIN_SCREEN_WAYLAND: &str = "Wayland login screen is not supported";
 #[cfg(target_os = "linux")]
 pub const SCRAP_UBUNTU_HIGHER_REQUIRED: &str = "ubuntu-21-04-required";
 #[cfg(target_os = "linux")]
-pub const SCRAP_OTHER_VERSION_OR_X11_REQUIRED: &str =
-    "wayland-requires-higher-linux-version";
+pub const SCRAP_OTHER_VERSION_OR_X11_REQUIRED: &str = "wayland-requires-higher-linux-version";
 #[cfg(target_os = "linux")]
-pub const SCRAP_XDP_PORTAL_UNAVAILABLE: &str =
-    "xdp-portal-unavailable";
+pub const SCRAP_XDP_PORTAL_UNAVAILABLE: &str = "xdp-portal-unavailable";
 pub const SCRAP_X11_REQUIRED: &str = "x11 expected";
 pub const SCRAP_X11_REF_URL: &str = "https://rustdesk.com/docs/en/manual/linux/#x11-required";
 
@@ -194,15 +189,7 @@ impl Client {
         token: &str,
         conn_type: ConnType,
         interface: impl Interface,
-    ) -> ResultType<(
-        (
-            Stream,
-            bool,
-            Option<Vec<u8>>,
-            &'static str,
-        ),
-        (i32, String),
-    )> {
+    ) -> ResultType<((Stream, bool, Option<Vec<u8>>, &'static str), (i32, String))> {
         debug_assert!(peer == interface.get_id());
         interface.update_direct(None);
         interface.update_received(false);
@@ -254,12 +241,12 @@ impl Client {
                         } else if !connect_pw.is_empty() {
                             (connect_pw, true) // onboarding — stage for persistence
                         } else {
-                            (g.shared_password.clone().unwrap_or_default(), false) // ab: not per-peer
+                            (g.shared_password.clone().unwrap_or_default(), false)
+                            // ab: not per-peer
                         }
                     };
                     let lch_for_key = interface.get_lch();
-                    let pk_b =
-                        Self::key_initiator(peer, &prs, &mut x.0 .0, &lch_for_key).await?;
+                    let pk_b = Self::key_initiator(peer, &prs, &mut x.0 .0, &lch_for_key).await?;
                     if onboarding {
                         // R-S16: the connect-time password just keyed a not-yet-remembered peer —
                         // stage it as the in-memory PRS so the peer-info save path persists it (when
@@ -273,7 +260,9 @@ impl Client {
                 }
                 // R-A1 (initiator analog): never hand an unkeyed stream to the message loop.
                 if !x.0 .0.is_secured() {
-                    bail!("R-A1: refusing to proceed on an unkeyed stream (initiator, fail-closed)");
+                    bail!(
+                        "R-A1: refusing to proceed on an unkeyed stream (initiator, fail-closed)"
+                    );
                 }
                 // R-T15c: CPace has authenticated the password (the keying choke-point above), so the
                 // legacy server `Hash` challenge that used to REACTIVELY trigger the viewer's login
@@ -294,12 +283,7 @@ impl Client {
         conn_type: ConnType,
         interface: impl Interface,
     ) -> ResultType<(
-        (
-            Stream,
-            bool,
-            Option<Vec<u8>>,
-            &'static str,
-        ),
+        (Stream, bool, Option<Vec<u8>>, &'static str),
         (i32, String),
         bool,
     )> {
@@ -310,8 +294,7 @@ impl Client {
         if hbb_common::is_ip_str(peer) {
             return Ok((
                 (
-                    connect_tcp_local(check_port(peer, DIRECT_PORT), None, CONNECT_TIMEOUT)
-                        .await?,
+                    connect_tcp_local(check_port(peer, DIRECT_PORT), None, CONNECT_TIMEOUT).await?,
                     true,
                     None,
                     "TCP",
@@ -345,7 +328,6 @@ impl Client {
         let _ = (key, token, conn_type, interface);
         bail!("Direct-IP only: '{peer}' is not a direct address (use an IP or host:port)");
     }
-
 
     /// R-S13 / R-P14 / R-S17 — the viewer (initiator) keying choke point: the mirror of
     /// the responder's `run_responder` block (server.rs). The fork keys EVERY connection
@@ -387,9 +369,9 @@ impl Client {
         };
         let pk_b = match hbb_common::cpace::verify_host_identity(&transcript, &bytes) {
             Ok(pk) => pk,
-            Err(_) => bail!(
-                "R-S17: the responder's HostIdentity host-proof did not verify (fail-closed)"
-            ),
+            Err(_) => {
+                bail!("R-S17: the responder's HostIdentity host-proof did not verify (fail-closed)")
+            }
         };
         // R-S17 pin compare — the SSH known_hosts check. The pin store normalizes the
         // address (shared with R-SV5), so a spelling variant cannot silently re-seed.
@@ -426,7 +408,6 @@ impl Client {
         }
         Ok(pk_b)
     }
-
 
     #[inline]
     #[cfg(feature = "flutter")]
@@ -681,7 +662,8 @@ impl ClientClipboardHandler {
 /// Maximum compressed Opus packet bytes handed to libopus for one AudioFrame.
 /// Opus packets are small; this is deliberately generous while still making the
 /// native decoder handoff length-bounded.
-pub(crate) const MAX_NATIVE_OPUS_PACKET_BYTES: usize = 4096;
+pub(crate) const MAX_NATIVE_OPUS_PACKET_BYTES: usize =
+    crate::native_audio_worker::MAX_OPUS_PACKET_BYTES;
 
 #[inline]
 pub(crate) fn native_opus_packet_within_limit(len: usize) -> bool {
@@ -924,7 +906,7 @@ impl AudioHandler {
             );
             return;
         }
-        match AudioDecoder::new(f.sample_rate, if f.channels > 1 { Stereo } else { Mono }) {
+        match AudioDecoder::new(f.sample_rate, f.channels) {
             Ok(d) => {
                 let buffer = vec![0.; f.sample_rate as usize * f.channels as usize];
                 self.audio_decoder = Some((d, buffer));
@@ -1333,7 +1315,12 @@ impl LoginConfigHandler {
         if id.contains("@") {
             let mut v = id.split("@");
             let raw_id: &str = v.next().unwrap_or_default();
-            let server = v.next().unwrap_or_default().split('?').next().unwrap_or_default();
+            let server = v
+                .next()
+                .unwrap_or_default()
+                .split('?')
+                .next()
+                .unwrap_or_default();
             // R-X6: NEVER adopt an embedded `?key=` trust anchor from a rustdesk:// deep-link URI.
             // The direct-IP fork keys solely via CPace from the password PRS (the R-S17 host-key pin is
             // the sole trust anchor), so an attacker-supplied `?key=` must not become other_server's key,
@@ -2145,16 +2132,15 @@ impl LoginConfigHandler {
         };
         let mut avatar = get_builtin_option(keys::OPTION_AVATAR);
         if avatar.is_empty() {
-            avatar = serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option(
-                "user_info",
-            ))
-            .ok()
-            .and_then(|x| {
-                x.get("avatar")
-                    .and_then(|x| x.as_str())
-                    .map(|x| x.trim().to_owned())
-            })
-            .unwrap_or_default();
+            avatar =
+                serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option("user_info"))
+                    .ok()
+                    .and_then(|x| {
+                        x.get("avatar")
+                            .and_then(|x| x.as_str())
+                            .map(|x| x.trim().to_owned())
+                    })
+                    .unwrap_or_default();
         }
         avatar = resolve_avatar_url(avatar);
         let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME);
@@ -2242,7 +2228,7 @@ impl LoginConfigHandler {
     }
 
     pub fn update_supported_decodings(&self) -> Message {
-        let decoding = scrap::codec::Decoder::supported_decodings(
+        let decoding = Decoder::supported_decodings(
             Some(&self.id),
             use_texture_render(),
             self.adapter_luid,
@@ -2887,8 +2873,6 @@ pub fn handle_login_error(
     }
 }
 
-
-
 /// Send login message to peer.
 ///
 /// # Arguments
@@ -2929,7 +2913,6 @@ pub async fn handle_login_from_ui(
     send_login(lc.clone(), peer).await;
 }
 
-
 /// Interface for client to send data and commands.
 #[async_trait]
 pub trait Interface: Send + Clone + 'static + Sized {
@@ -2942,12 +2925,7 @@ pub trait Interface: Send + Clone + 'static + Sized {
     fn on_error(&self, err: &str) {
         self.msgbox("error", "Error", err, "");
     }
-    async fn handle_login_from_ui(
-        &self,
-        password: String,
-        remember: bool,
-        peer: &mut Stream,
-    );
+    async fn handle_login_from_ui(&self, password: String, remember: bool, peer: &mut Stream);
     async fn handle_test_delay(&self, t: TestDelay, peer: &mut Stream);
 
     fn get_lch(&self) -> Arc<RwLock<LoginConfigHandler>>;
@@ -3321,7 +3299,9 @@ mod tests {
 
     #[test]
     fn native_opus_packet_limit_is_bounded() {
-        assert!(native_opus_packet_within_limit(MAX_NATIVE_OPUS_PACKET_BYTES));
+        assert!(native_opus_packet_within_limit(
+            MAX_NATIVE_OPUS_PACKET_BYTES
+        ));
         assert!(!native_opus_packet_within_limit(
             MAX_NATIVE_OPUS_PACKET_BYTES + 1
         ));

@@ -263,7 +263,11 @@ fn recreate_foreign_service_ipc_parent_dir(parent_dir: &Path, postfix: &str) -> 
     // fail-closed (do NOT adopt the raced inode).
     let expected_mode = expected_ipc_parent_mode(postfix);
     if unsafe {
-        hbb_common::libc::mkdirat(gp_fd, base_c.as_ptr(), expected_mode as hbb_common::libc::mode_t)
+        hbb_common::libc::mkdirat(
+            gp_fd,
+            base_c.as_ptr(),
+            expected_mode as hbb_common::libc::mode_t,
+        )
     } != 0
     {
         let err = std::io::Error::last_os_error();
@@ -898,7 +902,9 @@ mod tests {
 
         let euid = unsafe { hbb_common::libc::geteuid() };
         if euid != 0 {
-            eprintln!("skip recreate-foreign-service test: not root, cannot create a foreign-owned dir");
+            eprintln!(
+                "skip recreate-foreign-service test: not root, cannot create a foreign-owned dir"
+            );
             return;
         }
 
@@ -920,7 +926,11 @@ mod tests {
         let rc = unsafe { hbb_common::libc::chown(parent_c.as_ptr(), 1000, 1000) };
         assert_eq!(rc, 0, "chown to uid 1000 failed (need root)");
         let before = std::fs::metadata(&parent_dir).unwrap();
-        assert_ne!(before.uid(), euid, "precondition: dir must start foreign-owned");
+        assert_ne!(
+            before.uid(),
+            euid,
+            "precondition: dir must start foreign-owned"
+        );
         let foreign_ino = before.ino();
 
         // Pre-set a POSIX ACL granting the foreign uid 1000 rwx. This models the EXACT R-S11a(b)
@@ -955,12 +965,21 @@ mod tests {
 
         // Must REJECT-AND-RECREATE (return Ok with the dir recreated), not adopt or error.
         let ipc_path = parent_dir.join("ipc_service");
-        super::ensure_secure_ipc_parent_dir(ipc_path.to_string_lossy().as_ref(), "_service").unwrap();
+        super::ensure_secure_ipc_parent_dir(ipc_path.to_string_lossy().as_ref(), "_service")
+            .unwrap();
 
         let after = std::fs::metadata(&parent_dir).unwrap();
         assert!(after.is_dir());
-        assert_eq!(after.uid(), euid, "recreated dir must be root-owned, NOT the adopted foreign owner");
-        assert_eq!(after.permissions().mode() & 0o777, 0o0711, "recreated dir must be 0o711");
+        assert_eq!(
+            after.uid(),
+            euid,
+            "recreated dir must be root-owned, NOT the adopted foreign owner"
+        );
+        assert_eq!(
+            after.permissions().mode() & 0o777,
+            0o0711,
+            "recreated dir must be 0o711"
+        );
 
         // The DECISIVE, threat-accurate check: the attacker's pre-set ACL_USER:1000 entry MUST be gone.
         // reject-and-recreate rmdir's the foreign inode (destroying its ACL) and mkdir's a fresh one, so
@@ -1030,8 +1049,12 @@ mod tests {
         );
 
         let ipc_path = parent_dir.join("ipc_service");
-        let res = super::ensure_secure_ipc_parent_dir(ipc_path.to_string_lossy().as_ref(), "_service");
-        assert!(res.is_err(), "must FAIL-CLOSED on a non-emptyable foreign dir, never adopt");
+        let res =
+            super::ensure_secure_ipc_parent_dir(ipc_path.to_string_lossy().as_ref(), "_service");
+        assert!(
+            res.is_err(),
+            "must FAIL-CLOSED on a non-emptyable foreign dir, never adopt"
+        );
 
         std::fs::remove_dir_all(&base).ok();
     }

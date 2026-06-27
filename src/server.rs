@@ -123,8 +123,16 @@ lazy_static::lazy_static! {
     static ref SEC_KEY_CONFIRM: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     static ref SEC_LOG_STATE: std::sync::Mutex<(Option<std::time::Instant>, Option<std::net::IpAddr>)> =
         std::sync::Mutex::new((None, None));
-    static ref ACCEPT_ERR_LOG: std::sync::Mutex<Option<std::time::Instant>> =
-        std::sync::Mutex::new(None);
+    static ref ACCEPT_ERR_COUNT: std::sync::atomic::AtomicU64 =
+        std::sync::atomic::AtomicU64::new(0);
+    static ref ACCEPT_ERR_LOG_STATE: std::sync::Mutex<(Option<std::time::Instant>, Option<&'static str>)> =
+        std::sync::Mutex::new((None, None));
+    static ref ACCEPT_NODELAY_ERR: std::sync::atomic::AtomicU64 =
+        std::sync::atomic::AtomicU64::new(0);
+    static ref ACCEPT_KEEPALIVE_ERR: std::sync::atomic::AtomicU64 =
+        std::sync::atomic::AtomicU64::new(0);
+    static ref ACCEPT_SETUP_LOG_STATE: std::sync::Mutex<(Option<std::time::Instant>, Option<std::net::IpAddr>)> =
+        std::sync::Mutex::new((None, None));
     /// R-T9 (§20): the process-wide graceful-shutdown signal. Cancelled by the SIGTERM/SIGINT
     /// handler (`direct_service::start_direct_only`); the accept loop observes it and stops
     /// accepting, and every live connection's run-loop wakes on its `cancelled()` select-arm to
@@ -142,6 +150,12 @@ pub enum SecurityEvent {
     RateLimited,
     /// R-P3 / R-P14c: a key-confirmation tag mismatch (an online password guess).
     KeyConfirmFail,
+}
+
+#[derive(Clone, Copy)]
+pub enum AcceptSetupEvent {
+    NodelayFailed,
+    KeepaliveFailed,
 }
 
 /// R-T12 / R-S10: record a security event and emit at most one aggregated summary line per
@@ -187,23 +201,70 @@ pub fn note_security_event(kind: SecurityEvent, ip: std::net::IpAddr) {
     }
 }
 
-/// R-T12: a real `accept()` error (e.g. EMFILE/ENFILE under fd-exhaustion) — observed
-/// rate-limited (R-T0 rule 1) so a sustained accept-error storm cannot itself log-flood.
+/// R-T12: a real `accept()` error (e.g. EMFILE/ENFILE under fd-exhaustion) — observed as an
+/// aggregated periodic summary so a sustained accept-error storm cannot itself log-flood while the
+/// operator still sees how many accept failures were suppressed and what errno class was most recent.
 pub fn note_accept_error(port: u16, err: &std::io::Error) {
-    if let Ok(mut last) = ACCEPT_ERR_LOG.try_lock() {
-        let due = match *last {
+    use std::sync::atomic::Ordering::Relaxed;
+    ACCEPT_ERR_COUNT.fetch_add(1, Relaxed);
+    let class = accept_error_class(err);
+    if let Ok(mut state) = ACCEPT_ERR_LOG_STATE.try_lock() {
+        state.1 = Some(class);
+        let due = match state.0 {
             None => true,
             Some(t) => t.elapsed() >= SECURITY_LOG_INTERVAL,
         };
         if due {
-            *last = Some(std::time::Instant::now());
-            log::warn!(
-                "R-T12: accept() failing on :{} — {} (errno={:?}){}",
-                port,
-                err,
-                err.raw_os_error(),
-                accept_error_class(err)
-            );
+            let count = ACCEPT_ERR_COUNT.swap(0, Relaxed);
+            if count > 0 {
+                state.0 = Some(std::time::Instant::now());
+                log::warn!(
+                    "R-T12 accept-error summary (last {:?}) on :{}: count={} last_error={} errno={:?} last_class={}",
+                    SECURITY_LOG_INTERVAL,
+                    port,
+                    count,
+                    err,
+                    err.raw_os_error(),
+                    state.1.unwrap_or(class)
+                );
+            }
+        }
+    }
+}
+
+/// R-T0/R-T10: accepted-socket setup failures are on the attacker-reachable accept hot path.
+/// Report them, but aggregate them so a platform-level keepalive/nodelay failure cannot become
+/// a log-amplification DoS under a connection flood.
+pub fn note_accept_setup_error(kind: AcceptSetupEvent, ip: std::net::IpAddr, err: &std::io::Error) {
+    use std::sync::atomic::Ordering::Relaxed;
+    match kind {
+        AcceptSetupEvent::NodelayFailed => {
+            ACCEPT_NODELAY_ERR.fetch_add(1, Relaxed);
+        }
+        AcceptSetupEvent::KeepaliveFailed => {
+            ACCEPT_KEEPALIVE_ERR.fetch_add(1, Relaxed);
+        }
+    }
+    if let Ok(mut state) = ACCEPT_SETUP_LOG_STATE.try_lock() {
+        state.1 = Some(ip);
+        let due = match state.0 {
+            None => true,
+            Some(t) => t.elapsed() >= SECURITY_LOG_INTERVAL,
+        };
+        if due {
+            let nodelay_failed = ACCEPT_NODELAY_ERR.swap(0, Relaxed);
+            let keepalive_failed = ACCEPT_KEEPALIVE_ERR.swap(0, Relaxed);
+            if nodelay_failed + keepalive_failed > 0 {
+                state.0 = Some(std::time::Instant::now());
+                log::warn!(
+                    "R-T0/R-T10 accepted-socket setup summary (last {:?}): nodelay_failed={} keepalive_failed={} recent_src={:?} last_error={}",
+                    SECURITY_LOG_INTERVAL,
+                    nodelay_failed,
+                    keepalive_failed,
+                    state.1,
+                    err
+                );
+            }
         }
     }
 }
@@ -349,7 +410,6 @@ pub async fn create_tcp_connection(
     prekey_permit: tokio::sync::OwnedSemaphorePermit,
 ) -> ResultType<()> {
     let mut stream = stream;
-    let id = server.write().unwrap().get_new_id();
     // R-P5 / R-P14 / §8: keying is the single mandatory CPace handshake, run
     // UNCONDITIONALLY. The inherited secure-gated SignedId <-> PublicKey
     // device-identity bootstrap — its box_/sign keypair, the IdPk signature, the
@@ -416,6 +476,9 @@ pub async fn create_tcp_connection(
     // unbounded Connection::start session, so the bound governs only the half-open
     // (attacker-reachable) population. (A fail-closed bail above auto-drops it on return.)
     drop(prekey_permit);
+    // Allocate a session id only after CPace succeeds. Failed pre-key attempts are attacker input
+    // and must not mutate authenticated-session accounting or drive an unbounded id counter.
+    let id = server.write().unwrap().get_new_id();
 
     #[cfg(target_os = "macos")]
     {
@@ -558,8 +621,23 @@ impl Server {
 
     // get a new unique id
     pub fn get_new_id(&mut self) -> i32 {
-        self.id_count += 1;
-        self.id_count
+        // Authenticated-session ids must not rely on unchecked i32 overflow. A long-running
+        // process can wrap the counter eventually; scan for an unused positive id instead of
+        // colliding with a live connection or tripping debug-overflow behavior.
+        for _ in 0..i32::MAX {
+            self.id_count = if self.id_count == i32::MAX {
+                1
+            } else {
+                self.id_count + 1
+            };
+            if !self.connections.contains_key(&self.id_count) {
+                return self.id_count;
+            }
+        }
+        log::error!(
+            "R-T12: all positive connection ids are in use; returning 0 as a fail-visible sentinel"
+        );
+        0
     }
 
     pub fn set_video_service_opt(

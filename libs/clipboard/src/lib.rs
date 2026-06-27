@@ -10,7 +10,7 @@ use hbb_common::{allow_err, log};
 use hbb_common::{
     lazy_static,
     tokio::sync::{
-        mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
+        mpsc::{channel, Receiver, Sender},
         Mutex as TokioMutex,
     },
 };
@@ -41,6 +41,8 @@ const ERR_CODE_SEND_MSG: u32 = 0x00000003;
     all(target_os = "macos", feature = "unix-file-copy-paste")
 ))]
 pub(crate) use platform::create_cliprdr_context;
+
+pub const CLIPRDR_MSG_CHANNEL_CAPACITY: usize = 8;
 
 pub struct ProgressPercent {
     pub percent: f64,
@@ -141,8 +143,8 @@ struct MsgChannel {
     peer_id: String,
     conn_id: i32,
     #[allow(dead_code)]
-    sender: UnboundedSender<ClipboardFile>,
-    receiver: Arc<TokioMutex<UnboundedReceiver<ClipboardFile>>>,
+    sender: Sender<ClipboardFile>,
+    receiver: Arc<TokioMutex<Receiver<ClipboardFile>>>,
 }
 
 lazy_static::lazy_static! {
@@ -183,14 +185,12 @@ fn get_conn_id() -> i32 {
     *lock
 }
 
-pub fn get_rx_cliprdr_client(
-    peer_id: &str,
-) -> (i32, Arc<TokioMutex<UnboundedReceiver<ClipboardFile>>>) {
+pub fn get_rx_cliprdr_client(peer_id: &str) -> (i32, Arc<TokioMutex<Receiver<ClipboardFile>>>) {
     let mut lock = VEC_MSG_CHANNEL.write().unwrap();
     match lock.iter().find(|x| x.peer_id == peer_id) {
         Some(msg_channel) => (msg_channel.conn_id, msg_channel.receiver.clone()),
         None => {
-            let (sender, receiver) = unbounded_channel();
+            let (sender, receiver) = channel(CLIPRDR_MSG_CHANNEL_CAPACITY);
             let receiver = Arc::new(TokioMutex::new(receiver));
             let receiver2 = receiver.clone();
             let conn_id = get_conn_id();
@@ -206,12 +206,12 @@ pub fn get_rx_cliprdr_client(
     }
 }
 
-pub fn get_rx_cliprdr_server(conn_id: i32) -> Arc<TokioMutex<UnboundedReceiver<ClipboardFile>>> {
+pub fn get_rx_cliprdr_server(conn_id: i32) -> Arc<TokioMutex<Receiver<ClipboardFile>>> {
     let mut lock = VEC_MSG_CHANNEL.write().unwrap();
     match lock.iter().find(|x| x.conn_id == conn_id) {
         Some(msg_channel) => msg_channel.receiver.clone(),
         None => {
-            let (sender, receiver) = unbounded_channel();
+            let (sender, receiver) = channel(CLIPRDR_MSG_CHANNEL_CAPACITY);
             let receiver = Arc::new(TokioMutex::new(receiver));
             let receiver2 = receiver.clone();
             let msg_channel = MsgChannel {
@@ -227,10 +227,21 @@ pub fn get_rx_cliprdr_server(conn_id: i32) -> Arc<TokioMutex<UnboundedReceiver<C
 }
 
 pub fn remove_channel_by_conn_id(conn_id: i32) {
-    let mut lock = VEC_MSG_CHANNEL.write().unwrap();
-    if let Some(index) = lock.iter().position(|x| x.conn_id == conn_id) {
-        lock.remove(index);
+    let removed = {
+        let mut lock = VEC_MSG_CHANNEL.write().unwrap();
+        if let Some(index) = lock.iter().position(|x| x.conn_id == conn_id) {
+            lock.remove(index);
+            true
+        } else {
+            false
+        }
+    };
+    #[cfg(target_os = "windows")]
+    if removed {
+        platform::windows::clear_pending_cliprdr_conn(conn_id);
     }
+    #[cfg(not(target_os = "windows"))]
+    let _ = removed;
 }
 
 #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
@@ -258,9 +269,9 @@ fn send_data_to_channel(conn_id: i32, data: ClipboardFile) -> Result<(), Cliprdr
     {
         msg_channel
             .sender
-            .send(data)
+            .try_send(data)
             .map_err(|e| CliprdrError::CommonError {
-                description: e.to_string(),
+                description: format!("bounded CLIPRDR message channel refused event: {e}"),
             })
     } else {
         Err(CliprdrError::InvalidRequest {
@@ -272,10 +283,9 @@ fn send_data_to_channel(conn_id: i32, data: ClipboardFile) -> Result<(), Cliprdr
 #[inline]
 #[cfg(target_os = "windows")]
 pub fn send_data_exclude(conn_id: i32, data: ClipboardFile) {
-    // Need more tests to see if it's necessary to handle the error.
     for msg_channel in VEC_MSG_CHANNEL.read().unwrap().iter() {
         if msg_channel.conn_id != conn_id {
-            allow_err!(msg_channel.sender.send(data.clone()));
+            allow_err!(msg_channel.sender.try_send(data.clone()));
         }
     }
 }
@@ -283,9 +293,8 @@ pub fn send_data_exclude(conn_id: i32, data: ClipboardFile) {
 #[inline]
 #[cfg(feature = "unix-file-copy-paste")]
 fn send_data_to_all(data: ClipboardFile) {
-    // Need more tests to see if it's necessary to handle the error.
     for msg_channel in VEC_MSG_CHANNEL.read().unwrap().iter() {
-        allow_err!(msg_channel.sender.send(data.clone()));
+        allow_err!(msg_channel.sender.try_send(data.clone()));
     }
 }
 

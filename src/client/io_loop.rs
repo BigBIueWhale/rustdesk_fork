@@ -191,7 +191,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 let (_tx_holder, mut rx_clip_client) = mpsc::unbounded_channel::<i32>();
 
                 #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
-                let (_tx_holder, rx) = mpsc::unbounded_channel();
+                let (_tx_holder, rx) = mpsc::channel(clipboard::CLIPRDR_MSG_CHANNEL_CAPACITY);
                 #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
                 let mut rx_clip_client_holder = (Arc::new(TokioMutex::new(rx)), None);
                 #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
@@ -1390,7 +1390,6 @@ impl<T: InvokeUiSession> Remote<T> {
 
                             #[cfg(all(feature = "flutter", feature = "unix-file-copy-paste"))]
                             crate::flutter::update_file_clipboard_required();
-
                         }
 
                         if self.handler.is_file_transfer() {
@@ -1417,7 +1416,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         #[cfg(target_os = "ios")]
                         {
                             let content = if cb.compress {
-                                hbb_common::compress::decompress(&cb.content)
+                                hbb_common::compress::peer_decompress(&cb.content)
                             } else {
                                 cb.content.into()
                             };
@@ -1441,7 +1440,7 @@ impl<T: InvokeUiSession> Remote<T> {
                                 .find(|c| c.format.enum_value() == Ok(ClipboardFormat::Text))
                             {
                                 let content = if cb.compress {
-                                    hbb_common::compress::decompress(&cb.content)
+                                    hbb_common::compress::peer_decompress(&cb.content)
                                 } else {
                                     cb.content.to_vec()
                                 };

@@ -78,6 +78,15 @@ impl Stream {
         }
     }
 
+    /// R-T9: wait until the TCP writer task has flushed all frames queued before
+    /// this call. Used by graceful/session close after sending `CloseReason`.
+    #[inline]
+    pub async fn flush_writer(&mut self) -> ResultType<()> {
+        match self {
+            Self::Tcp(tcp) => tcp.flush_writer().await,
+        }
+    }
+
     /// receive message
     #[inline]
     pub async fn next(&mut self) -> Option<Result<bytes::BytesMut, std::io::Error>> {

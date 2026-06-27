@@ -93,14 +93,8 @@ impl Interface for Session {
         self.lc.write().unwrap().handle_peer_info(&pi);
     }
 
-    async fn handle_login_from_ui(
-        &self,
-        password: String,
-        remember: bool,
-        peer: &mut Stream,
-    ) {
-        handle_login_from_ui(self.lc.clone(), password, remember, peer)
-        .await;
+    async fn handle_login_from_ui(&self, password: String, remember: bool, peer: &mut Stream) {
+        handle_login_from_ui(self.lc.clone(), password, remember, peer).await;
     }
 
     async fn handle_test_delay(&self, t: TestDelay, peer: &mut Stream) {

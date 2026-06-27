@@ -161,6 +161,25 @@ echo "== (3c) file-transfer no-follow write + path-traversal tests (R-S8/R-A5) =
 echo "== (3c-i) IPC _service path-sharing across uids (R-S11a/R-X13) =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_service_ipc_path_is_shared_across_uids --color never
 
+# (3c-ii) Native worker sandbox helper sanity (Appendix C #2b): the Linux child-process
+# confinement constants are tested in hbb_common because the zstd worker lives there and the
+# rustdesk crate's video/Opus/clipboard workers share the same helper.
+echo "== (3c-ii) native worker sandbox helper sanity (Appendix C #2b) =="
+"${RUN[@]}" cargo test -p hbb_common --lib native_worker_sandbox::tests --color never
+
+# (3c-iii) Unix file-copy descriptor worker protocol (Appendix C #2b): hostile
+# FILEDESCRIPTOR PDUs are parsed through a same-artifact worker before FUSE/macOS
+# paste task state consumes them.
+echo "== (3c-iii) unix file-copy descriptor worker protocol (Appendix C #2b) =="
+"${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib file_descriptor_worker_loop --color never
+
+# (3c-iv) Unix file-copy local file-content worker protocol (Appendix C #2b):
+# local file-list state and FileContents reads live behind a same-artifact
+# worker, so hostile-peer CLIPRDR file-content requests never drive local
+# file opens/reads in the main process.
+echo "== (3c-iv) unix file-copy file-content worker protocol (Appendix C #2b) =="
+"${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib file_content_worker_loop --color never
+
 echo "== (4) main crate compile check (hardening is UNCONDITIONAL — one binary, R-R2b) =="
 "${RUN[@]}" cargo check --features linux-pkg-config --color never
 
@@ -986,7 +1005,15 @@ fi
 r_t1_missing=
 grep -q 'PREKEY_HANDSHAKE_SLOTS' src/server.rs                  || r_t1_missing="$r_t1_missing server.rs:semaphore"
 grep -q 'fn note_security_event' src/server.rs                  || r_t1_missing="$r_t1_missing server.rs:agg-log"
+grep -q 'fn note_accept_setup_error' src/server.rs              || r_t1_missing="$r_t1_missing server.rs:accept-setup-agg-log"
 grep -q 'try_acquire_owned' src/direct_service.rs          || r_t1_missing="$r_t1_missing mediator:acquire-before-spawn"
+grep -q 'note_accept_setup_error' src/direct_service.rs    || r_t1_missing="$r_t1_missing accept-setup-errors-not-aggregated"
+if grep -q 'direct access from' src/direct_service.rs; then
+  r_t1_missing="$r_t1_missing per-accept-info-log"
+fi
+if grep -q 'failed to set TCP keepalive on' src/direct_service.rs; then
+  r_t1_missing="$r_t1_missing per-accept-keepalive-warning"
+fi
 # R-T1(a): the memory ceilings MUST be host-RELATIVE percentages, NEVER an absolute byte count — an
 # absolute `4G` is a no-op on a 2 GiB box (the spec names this exact regression). Anchored `^…=NN%$`
 # fails on MemoryMax=4G / =2147483648 / =infinity; presence-only greps did not. TasksMax is a count.
@@ -1015,6 +1042,9 @@ grep -qE 'accept_err_streak'              src/direct_service.rs || r_t12_eb="$r_
 grep -qE '\(50u64 << accept_err_streak\.min\(7\)\)\.min\(5000\)' src/direct_service.rs || r_t12_eb="$r_t12_eb no-escalating-bounded-backoff(50<<streak.min7-cap5000)"
 grep -qE 'fn accept_error_class'          src/server.rs              || r_t12_eb="$r_t12_eb no-errno-mapper"
 grep -qE 'libc::EMFILE|libc::ENFILE'      src/server.rs              || r_t12_eb="$r_t12_eb no-EMFILE-map"
+grep -qE 'ACCEPT_ERR_COUNT'               src/server.rs              || r_t12_eb="$r_t12_eb no-accept-error-counter"
+grep -qE 'ACCEPT_ERR_LOG_STATE'           src/server.rs              || r_t12_eb="$r_t12_eb no-accept-error-agg-state"
+grep -qE 'count=.*last_class='            src/server.rs              || r_t12_eb="$r_t12_eb no-counted-accept-error-summary"
 if [ -n "$r_t12_eb" ]; then
   echo "  FAIL R-T12: accept-error escalating-backoff/errno-map incomplete:$r_t12_eb"; rc=1
 else
@@ -1169,6 +1199,9 @@ grep -q 'fn begin_graceful_shutdown' src/server.rs         || r_t9_missing="$r_t
 grep -q 'fn is_shutting_down' src/server.rs                || r_t9_missing="$r_t9_missing is_shutting_down"
 grep -q 'SHUTDOWN_TOKEN' src/server.rs                     || r_t9_missing="$r_t9_missing SHUTDOWN_TOKEN"
 grep -q 'shutdown.cancelled()' src/server/connection.rs    || r_t9_missing="$r_t9_missing conn-drain-arm"
+grep -q 'flush_writer' libs/hbb_common/src/tcp.rs          || r_t9_missing="$r_t9_missing writer-drain-method"
+grep -q 'WriterCommand::Drain' libs/hbb_common/src/tcp.rs  || r_t9_missing="$r_t9_missing writer-drain-command"
+grep -q 'self.stream.flush_writer().await' src/server/connection.rs || r_t9_missing="$r_t9_missing close-reason-flush"
 grep -q 'SignalKind::terminate' src/direct_service.rs || r_t9_missing="$r_t9_missing sigterm-handler"
 grep -q 'is_shutting_down()' src/direct_service.rs    || r_t9_missing="$r_t9_missing accept-stop"
 grep -qE '^TimeoutStopSec=[1-9][0-9]*$' res/rustdesk.service || r_t9_missing="$r_t9_missing service-TimeoutStopSec(must be a positive drain backstop, =0 is infinite)"
@@ -1245,7 +1278,7 @@ r_t3_missing=
 grep -q 'async fn writer_task('          libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing writer-task-fn"
 grep -q 'tokio::spawn(writer_task(sink,' libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing spawn-sole-writer"
 grep -q 'const WRITER_CHANNEL_CAP'       libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing bounded-channel"
-grep -q 'writer_tx.try_send'             libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing nonblocking-enqueue"
+grep -q 'try_send(WriterCommand::Frame'  libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing nonblocking-enqueue"
 grep -q 'TrySendError::Full'             libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing full-drops-connection"
 grep -q 'k.seal.seal(&bytes)'            libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing producer-side-seal"
 # R-T2's per-write deadline is REPLACED by the channel bound — the keyed session must NOT install a
@@ -1673,22 +1706,739 @@ grep -qF 'MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES' src/clipboard.rs ||
   r_native_bounds="$r_native_bounds clipboard-payload-cap"
 grep -qF 'sanitize_clipboard_for_native_proto' src/clipboard.rs ||
   r_native_bounds="$r_native_bounds clipboard-native-sanitize"
+grep -qF 'MAX_REMOTE_CURSOR_RGBA_BYTES' src/flutter.rs ||
+  r_native_bounds="$r_native_bounds cursor-rgba-cap"
+grep -qF 'remote_cursor_rgba_for_ui' src/flutter.rs ||
+  r_native_bounds="$r_native_bounds cursor-rust-pre-ui-guard"
+grep -qF 'kMaxRemoteCursorRgbaBytes' flutter/lib/models/model.dart ||
+  r_native_bounds="$r_native_bounds cursor-dart-rgba-cap"
+grep -qF 'decoded.length != expectedLen' flutter/lib/models/model.dart ||
+  r_native_bounds="$r_native_bounds cursor-dart-exact-len-guard"
+grep -qF 'pub const MAX_FILE_DESCRIPTORS: usize = 4096;' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_bounds="$r_native_bounds unix-file-descriptor-count-cap"
+grep -qF 'FILE_DESCRIPTOR_SIZE.checked_mul(count)' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_bounds="$r_native_bounds unix-file-descriptor-checked-len"
+grep -qF 'rejects_too_many_file_descriptors_before_allocation' libs/clipboard/src/platform/unix/local_file.rs ||
+  r_native_bounds="$r_native_bounds unix-file-descriptor-count-test"
+grep -qF 'MAX_FILE_CONTENT_REQUESTS_PER_CONN_WINDOW' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_bounds="$r_native_bounds unix-file-content-request-count-window"
+grep -qF 'MAX_FILE_CONTENT_BYTES_PER_CONN_WINDOW' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_bounds="$r_native_bounds unix-file-content-byte-window"
+grep -qF 'admit_file_content_request(conn_id, fcr.accounting_cost())' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_bounds="$r_native_bounds unix-file-content-accounting-before-io"
+grep -qF 'offset.checked_add(length)' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_bounds="$r_native_bounds unix-file-content-checked-range"
+grep -qF 'n_position_high as u32 as u64' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_bounds="$r_native_bounds unix-file-content-offset-word-mask"
+grep -qF 'cb_requested < 0' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_bounds="$r_native_bounds unix-file-content-negative-len-guard"
+grep -qF 'file_content_request_accounting_rejects_request_count_flood' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_bounds="$r_native_bounds unix-file-content-count-test"
+grep -qF 'file_content_request_accounting_rejects_byte_window_flood' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_bounds="$r_native_bounds unix-file-content-byte-test"
+grep -qF 'file_content_request_rejects_negative_length_before_cast' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_bounds="$r_native_bounds unix-file-content-negative-len-test"
 grep -qF 'pub(crate) const MAX_NATIVE_CLIPRDR_FORMATS: usize = 32;' src/clipboard_file.rs ||
   r_native_bounds="$r_native_bounds cliprdr-format-cap"
 grep -qF 'MAX_NATIVE_CLIPRDR_FORMAT_DATA_BYTES' src/clipboard_file.rs ||
   r_native_bounds="$r_native_bounds cliprdr-format-data-cap"
 grep -qF 'MAX_NATIVE_CLIPRDR_FILE_CONTENTS_BYTES' src/clipboard_file.rs ||
   r_native_bounds="$r_native_bounds cliprdr-file-content-cap"
+grep -qF 'const MAX_NATIVE_CLIPRDR_FORMATS: usize = 32;' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-ffi-format-cap"
+grep -qF 'cliprdr_format_list_within_native_limit(&format_list)' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-ffi-format-guard"
+grep -qF 'MAX_NATIVE_CLIPRDR_FORMAT_DATA_BYTES' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-ffi-format-data-cap"
+grep -qF 'MAX_NATIVE_CLIPRDR_FILE_CONTENTS_BYTES' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-ffi-file-content-cap"
+grep -qF 'const MAX_NATIVE_CLIPRDR_LOCAL_FILES: usize = 4096;' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-local-file-count-cap"
+grep -qF 'const MAX_NATIVE_CLIPRDR_FILE_NAME_WCHARS: usize = 32767;' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-local-file-name-cap"
+grep -qF 'bounded_c_string_to_string' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-bounded-c-string-helper"
+grep -qF 'if file_names.is_null()' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-local-file-null-guard"
+grep -qF 'if clip_format_list.is_null()' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-format-list-null-guard"
+grep -qF 'if format_list_response.is_null()' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-format-list-response-null-guard"
+grep -qF 'if format_data_request.is_null()' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-format-data-request-null-guard"
+grep -qF 'if format_data_response.is_null()' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-format-data-response-null-guard"
+grep -qF 'if file_contents_request.is_null()' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-file-content-request-null-guard"
+grep -qF 'if file_contents_response.is_null()' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-file-content-response-null-guard"
+grep -qF 'data_len > 0 && (*format_data_response).requestedFormatData.is_null()' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-format-data-null-payload-guard"
+grep -qF 'data_len > 0 && (*file_contents_response).requestedData.is_null()' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-file-content-null-payload-guard"
+grep -qF 'MAX_PENDING_CLIPRDR_REQUESTS_PER_CONN' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-pending-cap"
+grep -qF 'MAX_PENDING_CLIPRDR_REQUESTS_TOTAL' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-pending-total-cap"
+grep -qF 'fn total_count(&self) -> usize' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-pending-total-counter"
+if [ "$(grep -cF 'pending.total_count() >= MAX_PENDING_CLIPRDR_REQUESTS_TOTAL' libs/clipboard/src/platform/windows.rs)" -lt 2 ]; then
+  r_native_bounds="$r_native_bounds cliprdr-windows-pending-total-admission"
+fi
+grep -qF 'clear_pending_cliprdr_conn(conn_id)' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-pending-clear"
+grep -qF 'platform::windows::clear_pending_cliprdr_conn(conn_id)' libs/clipboard/src/lib.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-disconnect-pending-clear"
+grep -qF 'mark_pending_cliprdr_format_data_request(conn_id)' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-format-request-mark"
+grep -qF 'take_pending_cliprdr_format_data_response(conn_id)' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-format-response-match"
+grep -qF 'mark_pending_cliprdr_file_contents_request(conn_id, stream_id, cb_requested_raw)' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-file-request-mark"
+grep -qF 'take_pending_cliprdr_file_contents_response(' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-file-response-match"
+grep -qF 'dropping unsolicited or overlong Windows CLIPRDR file-content response at FFI bridge' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-file-unsolicited-drop"
+grep -qF 'pub const CLIPRDR_MSG_CHANNEL_CAPACITY: usize = 8;' libs/clipboard/src/lib.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-message-channel-cap"
+grep -qF 'mpsc::{channel, Receiver, Sender}' libs/clipboard/src/lib.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-message-channel-bounded-types"
+grep -qF 'channel(CLIPRDR_MSG_CHANNEL_CAPACITY)' libs/clipboard/src/lib.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-message-channel-bounded-create"
+grep -qF '.try_send(data)' libs/clipboard/src/lib.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-message-channel-try-send"
+grep -qF 'sender.try_send(data.clone())' libs/clipboard/src/lib.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-message-channel-broadcast-try-send"
+if grep -qE 'unbounded_channel|Unbounded(Sender|Receiver)' libs/clipboard/src/lib.rs; then
+  r_native_bounds="$r_native_bounds cliprdr-message-channel-unbounded"
+fi
+grep -qF 'mpsc::channel(clipboard::CLIPRDR_MSG_CHANNEL_CAPACITY)' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-client-dummy-bounded-channel"
+grep -qF 'mpsc::channel(clipboard::CLIPRDR_MSG_CHANNEL_CAPACITY)' src/ui_cm_interface.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-cm-dummy-bounded-channel"
+grep -qF 'const WORKER_ARG: &str = "--native-cliprdr-worker";' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-arg"
+grep -qF 'cliprdr_worker::create_proxy_context(' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-proxy-factory"
+grep -qF 'fn create_in_process_cliprdr_context(' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-child-native-context"
+grep -qF 'cliprdr_worker::emit_send_data(conn_id, data.clone())' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-callback-send-event"
+grep -qF 'cliprdr_worker::emit_send_data_exclude(conn_id, data.clone())' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-callback-broadcast-event"
+grep -qF 'dispatch_send_data_exclude(conn_id as _, ClipboardFile::TryEmpty)' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-broadcast-dispatch"
+grep -qF 'const MAX_WORKER_FRAME_BYTES: usize = 64 * 1024 * 1024;' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-frame-cap"
+grep -qF 'write_command_frame(&mut stdin, command.seq, &command.command)' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-parent-writer"
+grep -qF 'read_output_frame(&mut stdout)' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-parent-reader"
+grep -qF 'worker_event_sender_lock()' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-event-sender"
+grep -qF 'fn clear_event_sender()' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-event-sender-clear"
+grep -qF 'clear_event_sender();' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-shutdown-drops-event-sender"
+grep -qF 'const MAX_CHILD_RESPONSE_WAIT_TIMEOUT_SECS: u32 = 30;' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-fixed-child-timeout-cap"
+grep -qF '.min(MAX_CHILD_RESPONSE_WAIT_TIMEOUT_SECS)' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-timeout-clamp"
+grep -qF 'WORKER_RESPONSE_GRACE_SECS' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-fixed-response-grace"
+grep -qF 'dispatch_send_data_exclude(conn_id, data);' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-zero-conn-broadcast-proxy"
+grep -qF 'const OP_CLEAR_PENDING_CONN: u8 = 6;' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-clear-pending-op"
+grep -qF 'WorkerCommand::ClearPendingConn { conn_id }' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-clear-pending-command"
+grep -qF 'cliprdr_worker::clear_pending_conn(conn_id);' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-parent-pending-cleanup"
+grep -qF 'install_parent_command_sender(command_tx.clone())' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-cleanup-command-sender"
+grep -qF 'super::clear_pending_cliprdr_conn_local(conn_id);' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-child-pending-cleanup"
+if grep -qF 'pub fn create(' libs/clipboard/src/platform/windows.rs; then
+  r_native_bounds="$r_native_bounds cliprdr-windows-public-native-constructor"
+fi
+if grep -qE 'pub(\\(crate\\))? fn (init_cliprdr|empty_cliprdr)|pub fn (empty_clipboard|server_)' libs/clipboard/src/platform/windows.rs; then
+  r_native_bounds="$r_native_bounds cliprdr-windows-public-native-helper"
+fi
+if grep -qF 'VEC_MSG_CHANNEL' libs/clipboard/src/platform/windows.rs; then
+  r_native_bounds="$r_native_bounds cliprdr-windows-worker-direct-channel-broadcast"
+fi
+grep -qF 'args[0] == clipboard::platform::windows::cliprdr_worker_arg()' src/core_main.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-core-worker-arg"
+grep -qF 'clipboard::platform::windows::run_cliprdr_worker()' src/core_main.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-core-worker-entry"
+grep -qF 'dropping oversized Windows CLIPRDR callback format data at FFI bridge' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-ffi-callback-format-data-guard"
+grep -qF 'dropping oversized Windows CLIPRDR callback file contents at FFI bridge' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-ffi-callback-file-content-guard"
 grep -qF 'map_ensure_capacity(wfClipboard *clipboard, size_t needed)' libs/clipboard/src/windows/wf_cliprdr.c ||
   r_native_bounds="$r_native_bounds cliprdr-c-prewrite-grow-helper"
 grep -qF 'ZeroMemory(&clipboard->format_mappings[old_size]' libs/clipboard/src/windows/wf_cliprdr.c ||
   r_native_bounds="$r_native_bounds cliprdr-c-new-slots-zeroed"
 grep -qF 'mapping = &(clipboard->format_mappings[clipboard->map_size])' libs/clipboard/src/windows/wf_cliprdr.c ||
   r_native_bounds="$r_native_bounds cliprdr-c-append-by-map_size"
+grep -qF '#define WF_CLIPRDR_MAX_FORMAT_DATA_BYTES (16u * 1024u * 1024u)' libs/clipboard/src/windows/wf_cliprdr.c ||
+  r_native_bounds="$r_native_bounds cliprdr-c-format-data-cap"
+grep -qF '#define WF_CLIPRDR_MAX_FILE_CONTENTS_BYTES (8u * 1024u * 1024u)' libs/clipboard/src/windows/wf_cliprdr.c ||
+  r_native_bounds="$r_native_bounds cliprdr-c-file-content-cap"
+grep -qF '#define WF_CLIPRDR_MAX_LOCAL_FILES 4096' libs/clipboard/src/windows/wf_cliprdr.c ||
+  r_native_bounds="$r_native_bounds cliprdr-c-local-file-count-cap"
+grep -qF '#define WF_CLIPRDR_MAX_DIRECTORY_DEPTH 32' libs/clipboard/src/windows/wf_cliprdr.c ||
+  r_native_bounds="$r_native_bounds cliprdr-c-directory-depth-cap"
+grep -qF 'ZeroMemory(&clipboard->fileDescriptor[old_size]' libs/clipboard/src/windows/wf_cliprdr.c ||
+  r_native_bounds="$r_native_bounds cliprdr-c-file-array-zeroed"
+grep -qF 'wf_cliprdr_clear_hmem_response(clipboard);' libs/clipboard/src/windows/wf_cliprdr.c ||
+  r_native_bounds="$r_native_bounds cliprdr-c-hmem-clear"
+grep -qF 'wf_cliprdr_clear_file_response(clipboard);' libs/clipboard/src/windows/wf_cliprdr.c ||
+  r_native_bounds="$r_native_bounds cliprdr-c-file-response-clear"
+grep -qF 'LPDATAOBJECT dataObj = NULL;' libs/clipboard/src/windows/wf_cliprdr.c ||
+  r_native_bounds="$r_native_bounds cliprdr-c-dataobject-initialized"
+grep -qF 'if (clipboard && formatDataRequest)' libs/clipboard/src/windows/wf_cliprdr.c ||
+  r_native_bounds="$r_native_bounds cliprdr-c-format-response-exit-guard"
+grep -qF 'if (clipboard && !SetEvent(clipboard->formatDataRespEvent))' libs/clipboard/src/windows/wf_cliprdr.c ||
+  r_native_bounds="$r_native_bounds cliprdr-c-format-event-null-guard"
+grep -qF 'if (clipboard && !SetEvent(clipboard->req_fevent))' libs/clipboard/src/windows/wf_cliprdr.c ||
+  r_native_bounds="$r_native_bounds cliprdr-c-file-event-null-guard"
+grep -qF 'ZeroMemory(&vStgMedium, sizeof(STGMEDIUM));' libs/clipboard/src/windows/wf_cliprdr.c ||
+  r_native_bounds="$r_native_bounds cliprdr-c-stgmedium-init-before-exit"
+grep -qF 'size > WF_CLIPRDR_MAX_FORMAT_DATA_BYTES' libs/clipboard/src/windows/wf_cliprdr.c ||
+  r_native_bounds="$r_native_bounds cliprdr-c-globalsize-cap"
+grep -qF 'fileContentsRequest->dwFlags != FILECONTENTS_SIZE' libs/clipboard/src/windows/wf_cliprdr.c ||
+  r_native_bounds="$r_native_bounds cliprdr-c-filecontents-flag-guard"
+if grep -qF 'p += len + 1, clipboard->nFiles++' libs/clipboard/src/windows/wf_cliprdr.c; then
+  r_native_bounds="$r_native_bounds cliprdr-c-ansi-double-increment"
+fi
 if [ -n "$r_native_bounds" ]; then
   echo "  FAIL Appendix C #2b/R-T0: native media/clipboard handoff bounds regressed:$r_native_bounds"; rc=1
 else
-  echo "  ok  Appendix C #2b/R-T0 native media/clipboard handoff bounds present (sandbox still tracked separately)"
+  echo "  ok  Appendix C #2b/R-T0 native media/clipboard handoff bounds present (remaining process-model residuals tracked separately)"
+fi
+# Appendix C #2b first sandbox slice: desktop video decode must cross a hidden
+# same-artifact worker process before libvpx/aom/libyuv sees hostile-peer bytes.
+# This is deliberately narrower than the full residual: Opus, zstd, CLIPRDR and
+# mobile process models remain tracked separately.
+r_native_video_worker=
+grep -qF 'const WORKER_ARG: &str = "--native-video-worker";' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker worker-arg"
+grep -qF 'pub struct NativeVideoDecoder' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker wrapper-type"
+grep -qF 'WorkerVideoDecoder::spawn(format)' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker desktop-worker-spawn"
+grep -qF 'refusing in-process desktop decode' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker no-desktop-inprocess-fallback"
+grep -qF 'worker accepts only software VP8/VP9/AV1 video frames' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker software-only-worker"
+grep -qF 'worker video decode unexpectedly produced a process-local texture' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker no-process-local-texture"
+grep -qF 'const WORKER_DECODE_TIMEOUT: Duration = Duration::from_secs(10);' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker decode-timeout"
+grep -qF 'native video worker decode timed out after' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker timeout-kills-worker"
+grep -qF 'hbb_common::native_worker_sandbox::apply_to_command(&mut command)' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker linux-worker-sandbox-call"
+grep -qF 'hbb_common::native_worker_sandbox::enter_worker_process()?' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker linux-worker-entry-sandbox"
+grep -qF 'mpsc::sync_channel::<VideoWorkerIoRequest>(1)' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker bounded-io-thread-channel"
+grep -qF '.name("rd-native-video-io".to_owned())' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker persistent-io-thread"
+if grep -qF 'std::thread::spawn' src/native_video_worker.rs; then
+  r_native_video_worker="$r_native_video_worker per-request-thread-spawn"
+fi
+grep -qF 'scrap::codec::Decoder::new(frame_format, None)' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker native-decode-only-in-worker"
+grep -qF 'NativeVideoDecoder as Decoder' src/client.rs ||
+  r_native_video_worker="$r_native_video_worker client-videohandler-wrapper"
+if grep -qF 'codec::Decoder' src/client.rs; then
+  r_native_video_worker="$r_native_video_worker client-direct-scrap-decoder"
+fi
+grep -qF 'crate::native_video_worker::run_worker()' src/core_main.rs ||
+  r_native_video_worker="$r_native_video_worker core-worker-entry"
+grep -qF 'pub mod native_worker_sandbox;' libs/hbb_common/src/lib.rs ||
+  r_native_video_worker="$r_native_video_worker shared-sandbox-module"
+grep -qF 'PR_SET_NO_NEW_PRIVS' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker no-new-privs"
+grep -qF 'PR_SET_PDEATHSIG' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker parent-death-signal"
+grep -qF 'PR_SET_DUMPABLE' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker no-core-dump"
+grep -qF 'RLIMIT_NOFILE' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker fd-limit"
+grep -qF 'RLIMIT_AS' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker as-limit"
+grep -qF 'RLIMIT_MEMLOCK' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker memlock-limit"
+grep -qF 'RLIMIT_FSIZE' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker file-size-limit"
+grep -qF 'close_inherited_worker_fds' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker inherited-fd-close"
+grep -qF 'SECCOMP_MODE_FILTER' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker seccomp-filter"
+grep -qF 'AUDIT_ARCH_X86_64' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker seccomp-x86_64-arch"
+grep -qF 'AUDIT_ARCH_AARCH64' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker seccomp-aarch64-arch"
+grep -qF 'AUDIT_ARCH_NATIVE' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker seccomp-native-arch"
+grep -qF 'any(target_arch = "x86_64", target_arch = "aarch64")' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker seccomp-x86_64-aarch64-cfg"
+grep -qF 'not(any(target_arch = "x86_64", target_arch = "aarch64"))' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker seccomp-fallback-excludes-aarch64"
+grep -qF 'refusing parser worker entry' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker unsupported-linux-arch-fail-closed"
+if grep -A8 'not(any(target_arch = "x86_64", target_arch = "aarch64"))' libs/hbb_common/src/native_worker_sandbox.rs | grep -qF 'Ok(())'; then
+  r_native_video_worker="$r_native_video_worker unsupported-linux-arch-ok-fallback"
+fi
+grep -qF 'const SYS_SOCKET: u32 = 198;' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker seccomp-aarch64-socket-nr"
+grep -qF 'const SYS_EXECVE: u32 = 221;' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker seccomp-aarch64-execve-nr"
+grep -qF 'SYS_SOCKET' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker socket-deny"
+grep -qF 'SYS_EXECVE' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker exec-deny"
+grep -qF 'SYS_CLONE3' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker clone3-deny"
+grep -qF 'linux_worker_seccomp_arch_is_known_64bit' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker seccomp-arch-test"
+grep -qF 'linux_worker_seccomp_blocks_inet_socket_at_runtime' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker runtime-seccomp-probe"
+if [ -n "$r_native_video_worker" ]; then
+  echo "  FAIL Appendix C #2b: desktop native video worker boundary regressed:$r_native_video_worker"; rc=1
+else
+  echo "  ok  Appendix C #2b desktop native video decode uses timeout-bounded same-artifact worker plus Linux x86_64/aarch64 post-exec syscall filter (mobile/non-Linux tracked; other Linux arch workers fail closed)"
+fi
+# Appendix C #2b second sandbox slice: desktop Opus packet decode must cross a
+# hidden same-artifact worker process before libopus sees hostile-peer bytes.
+# This remains narrower than the full residual: zstd, clipboard/CLIPRDR and
+# mobile process models remain tracked separately.
+r_native_opus_worker=
+grep -qF 'const WORKER_ARG: &str = "--native-opus-worker";' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker worker-arg"
+grep -qF 'pub struct NativeOpusDecoder' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker wrapper-type"
+grep -qF 'WorkerOpusDecoder::spawn(sample_rate, channels)' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker desktop-worker-spawn"
+grep -qF 'refusing in-process desktop decode' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker no-desktop-inprocess-fallback"
+grep -qF 'const WORKER_DECODE_TIMEOUT: Duration = Duration::from_secs(3);' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker decode-timeout"
+grep -qF 'native Opus worker decode timed out after' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker timeout-kills-worker"
+grep -qF 'hbb_common::native_worker_sandbox::apply_to_command(&mut command)' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker linux-worker-sandbox-call"
+grep -qF 'hbb_common::native_worker_sandbox::enter_worker_process()?' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker linux-worker-entry-sandbox"
+grep -qF 'mpsc::sync_channel::<OpusWorkerIoRequest>(1)' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker bounded-io-thread-channel"
+grep -qF '.name("rd-native-opus-io".to_owned())' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker persistent-io-thread"
+if grep -qF 'std::thread::spawn' src/native_audio_worker.rs; then
+  r_native_opus_worker="$r_native_opus_worker per-request-thread-spawn"
+fi
+grep -qF 'OpusDecoder::new(' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker native-decode-only-in-worker"
+grep -qF 'NativeOpusDecoder as AudioDecoder' src/client.rs ||
+  r_native_opus_worker="$r_native_opus_worker client-audiohandler-wrapper"
+if grep -qE 'magnum_opus::.*Decoder as AudioDecoder|use magnum_opus::' src/client.rs; then
+  r_native_opus_worker="$r_native_opus_worker client-direct-opus-decoder"
+fi
+grep -qF 'crate::native_audio_worker::run_worker()' src/core_main.rs ||
+  r_native_opus_worker="$r_native_opus_worker core-worker-entry"
+if [ -n "$r_native_opus_worker" ]; then
+  echo "  FAIL Appendix C #2b: desktop native Opus worker boundary regressed:$r_native_opus_worker"; rc=1
+else
+  echo "  ok  Appendix C #2b desktop Opus decode uses timeout-bounded same-artifact worker plus Linux x86_64/aarch64 post-exec syscall filter (mobile/non-Linux tracked; other Linux arch workers fail closed)"
+fi
+# Appendix C #2b third sandbox slice: peer-controlled zstd decompression must
+# cross a same-artifact worker on desktop. Local persisted config decompression
+# stays in-process; this gate covers file blocks, clipboard, cursor and terminal
+# session payloads.
+r_native_zstd_worker=
+grep -qF 'const WORKER_ARG: &str = "--native-zstd-worker";' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker worker-arg"
+grep -qF 'pub fn peer_decompress(data: &[u8]) -> Vec<u8>' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker peer-api"
+grep -qF 'refusing in-process desktop peer decompress' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker no-desktop-inprocess-fallback"
+grep -qF 'refusing in-process mobile peer zstd decompress' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker no-mobile-inprocess-fallback"
+if sed -n '/#\[cfg(any(target_os = "android", target_os = "ios"))\]/,/^}/p' libs/hbb_common/src/compress.rs | grep -qF 'decompress(data)'; then
+  r_native_zstd_worker="$r_native_zstd_worker mobile-inprocess-peer-decompress"
+fi
+grep -qF 'const WORKER_DECOMPRESS_TIMEOUT: Duration = Duration::from_secs(5);' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker timeout"
+grep -qF 'native zstd worker decompress timed out after' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker timeout-kills-worker"
+grep -qF 'crate::native_worker_sandbox::apply_to_command(&mut command)' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker linux-worker-sandbox-call"
+grep -qF 'crate::native_worker_sandbox::enter_worker_process()?' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker linux-worker-entry-sandbox"
+grep -qF 'mpsc::sync_channel::<ZstdWorkerIoRequest>(1)' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker bounded-io-thread-channel"
+grep -qF '.name("rd-native-zstd-io".to_owned())' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker persistent-io-thread"
+grep -qF 'native zstd worker busy; refusing to queue peer decompress' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker busy-worker-fail-closed"
+grep -qF 'worker.try_lock()' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker nonblocking-worker-admission"
+if grep -qF 'let mut guard = worker.lock()' libs/hbb_common/src/compress.rs; then
+  r_native_zstd_worker="$r_native_zstd_worker blocking-worker-lock"
+fi
+if grep -qF 'std::thread::spawn' libs/hbb_common/src/compress.rs; then
+  r_native_zstd_worker="$r_native_zstd_worker per-request-thread-spawn"
+fi
+grep -qF 'hbb_common::compress::run_worker()' src/core_main.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker core-worker-entry"
+grep -qF 'peer_decompress(&block.data)' libs/hbb_common/src/fs.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker file-block-peer-worker"
+grep -qF 'hbb_common::compress::peer_decompress(&clipboard.content)' src/clipboard.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker clipboard-peer-worker"
+grep -qF 'hbb_common::compress::peer_decompress(&cd.colors)' src/flutter.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker cursor-peer-worker"
+grep -qF 'hbb_common::compress::peer_decompress(&data.data)' src/flutter.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker terminal-peer-worker"
+if grep -RIn 'hbb_common::compress::decompress' src --include='*.rs' 2>/dev/null \
+    | grep -v '//' >/tmp/rd_verify_peer_decompress.$$; then
+  r_native_zstd_worker="$r_native_zstd_worker app-direct-peer-decompress"
+fi
+rm -f /tmp/rd_verify_peer_decompress.$$
+if [ -n "$r_native_zstd_worker" ]; then
+  echo "  FAIL Appendix C #2b: desktop peer zstd worker boundary regressed:$r_native_zstd_worker"; rc=1
+else
+  echo "  ok  Appendix C #2b peer zstd decompress uses timeout-bounded same-artifact worker on desktop, fails closed on mobile without an in-process native fallback, and uses Linux x86_64/aarch64 post-exec syscall filter (config/non-Linux tracked; other Linux arch workers fail closed)"
+fi
+# Appendix C #2b fourth sandbox slice: desktop normal clipboard SET must cross a
+# hidden same-artifact worker before protobuf-to-native conversion and platform
+# clipboard handlers see hostile-peer bytes. CLIPRDR and mobile process models
+# remain tracked separately.
+r_native_clipboard_worker=
+grep -qF 'const WORKER_ARG: &str = "--native-clipboard-worker";' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker worker-arg"
+grep -qF 'pub fn update_clipboard(' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker worker-api"
+grep -qF 'const WORKER_SET_TIMEOUT: Duration = Duration::from_secs(3);' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker timeout"
+grep -qF 'native clipboard worker set timed out after' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker timeout-kills-worker"
+grep -qF 'hbb_common::native_worker_sandbox::apply_to_command(&mut command)' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker linux-worker-sandbox-call"
+grep -qF 'hbb_common::native_worker_sandbox::enter_worker_process()?' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker linux-worker-entry-sandbox"
+grep -qF 'mpsc::sync_channel::<ClipboardWorkerIoRequest>(1)' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker bounded-io-thread-channel"
+grep -qF '.name("rd-native-clipboard-io".to_owned())' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker persistent-io-thread"
+grep -qF 'native clipboard worker busy; refusing to queue peer clipboard SET' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker busy-worker-fail-closed"
+grep -qF 'worker.try_lock()' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker nonblocking-worker-admission"
+if grep -qF 'let mut guard = worker.lock()' src/native_clipboard_worker.rs; then
+  r_native_clipboard_worker="$r_native_clipboard_worker blocking-worker-lock"
+fi
+if grep -qF 'std::thread::spawn' src/native_clipboard_worker.rs; then
+  r_native_clipboard_worker="$r_native_clipboard_worker per-request-thread-spawn"
+fi
+grep -qF 'set_clipboard_in_worker' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker worker-native-set"
+grep -qF 'crate::native_clipboard_worker::run_worker()' src/core_main.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker core-worker-entry"
+grep -qF 'crate::native_clipboard_worker::update_clipboard' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker parent-worker-call"
+grep -qF 'native clipboard worker failed; refusing in-process desktop clipboard update' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker no-desktop-inprocess-fallback"
+grep -qF 'native_clipboard_data_from_multi_clipboards' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker native-convert-helper"
+grep -qF 'MAX_NATIVE_CLIPBOARD_TOTAL_BYTES' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker aggregate-cap"
+grep -qF 'MAX_NATIVE_CLIPBOARD_ITEMS' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker item-cap"
+grep -qF 'sanitize_multi_clipboards_for_native_proto(mcb.clipboards)' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-aggregate-sanitize"
+grep -qF 'sanitize_multi_clipboards_for_native_proto(vec![cb])' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-single-aggregate-sanitize"
+if sed -n '/fn update_clipboard_/,/fn set_native_clipboard_data/p' src/clipboard.rs | grep -qF 'proto::from_multi_clipboards'; then
+  r_native_clipboard_worker="$r_native_clipboard_worker parent-direct-native-convert"
+fi
+if [ -n "$r_native_clipboard_worker" ]; then
+  echo "  FAIL Appendix C #2b: desktop normal clipboard worker boundary regressed:$r_native_clipboard_worker"; rc=1
+else
+  echo "  ok  Appendix C #2b desktop normal clipboard SET uses timeout-bounded same-artifact worker plus Linux x86_64/aarch64 post-exec syscall filter (Windows CLIPRDR has separate worker gates; mobile/non-Linux tracked; other Linux arch workers fail closed)"
+fi
+# Appendix C #2b fifth sandbox slice: Unix/macOS file-copy descriptor PDUs from
+# the peer must be parsed in a hidden same-artifact worker before FUSE or macOS
+# paste-task state consumes the file list. The paired FileContents worker gate
+# below covers the local file-list cache and file-read side.
+r_native_filedesc_worker=
+grep -qF 'const WORKER_ARG: &str = "--native-filedesc-worker";' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker worker-arg"
+grep -qF 'pub fn parse_file_descriptors_isolated(' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker isolated-api"
+grep -qF 'FileDescriptorWorker::spawn()' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker worker-spawn"
+grep -qF 'file descriptor worker parse timed out after' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker timeout-kills-worker"
+grep -qF 'hbb_common::native_worker_sandbox::apply_to_command(&mut command)' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker linux-worker-sandbox-call"
+grep -qF 'hbb_common::native_worker_sandbox::enter_worker_process()' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker linux-worker-entry-sandbox"
+grep -qF 'mpsc::sync_channel::<FileDescriptorWorkerIoRequest>(1)' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker bounded-io-thread-channel"
+grep -qF '.name("rd-native-filedesc-io".to_owned())' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker persistent-io-thread"
+grep -qF 'file descriptor worker busy; refusing to queue peer descriptor parse' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker busy-worker-fail-closed"
+grep -qF 'worker.try_lock()' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker nonblocking-worker-admission"
+if grep -qF 'let mut guard = worker.lock()' libs/clipboard/src/platform/unix/filetype.rs; then
+  r_native_filedesc_worker="$r_native_filedesc_worker blocking-worker-lock"
+fi
+grep -qF 'file_descriptor_worker_loop_parses_valid_pdu' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker protocol-success-test"
+grep -qF 'file_descriptor_worker_loop_reports_parse_error' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker protocol-error-test"
+grep -qF 'FileDescription::parse_file_descriptors_isolated(format_data, conn_id)' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker linux-fuse-isolated-call"
+grep -qF 'FileDescription::parse_file_descriptors_isolated(format_data, conn_id)' libs/clipboard/src/platform/unix/macos/pasteboard_context.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker macos-paste-isolated-call"
+grep -qF 'crate::native_file_descriptor_worker::run_worker()' src/core_main.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker core-worker-entry"
+grep -qF 'mod native_file_descriptor_worker;' src/lib.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker module-entry"
+grep -qF 'clipboard::platform::unix::run_file_descriptor_worker()' src/native_file_descriptor_worker.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker wrapper-entry"
+if grep -n 'FileDescription::parse_file_descriptors(format_data, conn_id)' \
+    libs/clipboard/src/platform/unix/fuse/mod.rs \
+    libs/clipboard/src/platform/unix/macos/pasteboard_context.rs >/tmp/rd_verify_filedesc_direct.$$; then
+  r_native_filedesc_worker="$r_native_filedesc_worker production-direct-parse"
+fi
+rm -f /tmp/rd_verify_filedesc_direct.$$
+if [ -n "$r_native_filedesc_worker" ]; then
+  echo "  FAIL Appendix C #2b: Unix/macOS file-copy descriptor worker boundary regressed:$r_native_filedesc_worker"; rc=1
+else
+  echo "  ok  Appendix C #2b Unix/macOS file-copy descriptor PDUs parse through timeout-bounded same-artifact worker"
+fi
+# Appendix C #2b sixth sandbox slice: Unix/macOS file-copy FileContents reads
+# and local file-list state must cross a hidden same-artifact worker. The public
+# serv_files APIs must fail closed/log on worker failure, never silently open or
+# read local files in the main process.
+r_native_filecontent_worker=
+grep -qF 'const WORKER_ARG: &str = "--native-filecontents-worker";' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker worker-arg"
+grep -qF 'pub fn run_file_contents_worker()' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker worker-entry-api"
+grep -qF 'FileContentsWorker::spawn()' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker worker-spawn"
+grep -qF 'file-content worker round-trip timed out after' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker timeout-kills-worker"
+grep -qF 'hbb_common::native_worker_sandbox::apply_to_command(&mut command)' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker linux-worker-sandbox-call"
+grep -qF 'hbb_common::native_worker_sandbox::enter_worker_process()' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker linux-worker-entry-sandbox"
+grep -qF 'mpsc::sync_channel::<FileContentWorkerIoRequest>(1)' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker bounded-io-thread-channel"
+grep -qF '.name("rd-native-filecontent-io".to_owned())' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker persistent-io-thread"
+grep -qF 'file-content worker busy; refusing to queue peer file-content request' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker busy-worker-fail-closed"
+grep -qF 'worker.try_lock()' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker nonblocking-worker-admission"
+if grep -qF 'let mut guard = worker.lock()' libs/clipboard/src/platform/unix/serv_files.rs; then
+  r_native_filecontent_worker="$r_native_filecontent_worker blocking-worker-lock"
+fi
+grep -qF 'worker_request(WorkerRequest::ReadFileContents' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker public-read-worker-call"
+grep -qF 'worker_request(WorkerRequest::SyncFiles' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker public-sync-worker-call"
+grep -qF 'worker_request(WorkerRequest::GetFileListPdu)' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker public-pdu-worker-call"
+grep -qF 'worker_request(WorkerRequest::Clear)' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker public-clear-worker-call"
+grep -qF 'refusing in-process file-content fallback' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker read-no-inprocess-fallback"
+grep -qF 'refusing in-process file sync fallback' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker sync-no-inprocess-fallback"
+grep -qF 'refusing in-process file-list fallback' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker pdu-no-inprocess-fallback"
+grep -qF 'refusing in-process clear fallback' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker clear-no-inprocess-fallback"
+grep -qF 'MAX_FILE_CONTENT_RESPONSE_BYTES' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker response-byte-cap"
+grep -qF 'RESPONSE_STATUS_FILE_CONTENTS' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker binary-response-status"
+grep -qF 'FILE_CONTENT_RESULT_RESPONSE' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker binary-filecontent-result"
+grep -qF 'file_content_worker_loop_syncs_and_returns_pdu' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker protocol-pdu-test"
+grep -qF 'file_content_worker_loop_reads_file_range' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker protocol-read-test"
+grep -qF 'file_content_worker_response_rejects_oversized_result_count' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker response-count-test"
+grep -qF 'crate::native_file_contents_worker::run_worker()' src/core_main.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker core-worker-entry"
+grep -qF 'mod native_file_contents_worker;' src/lib.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker module-entry"
+grep -qF 'clipboard::platform::unix::run_file_contents_worker()' src/native_file_contents_worker.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker wrapper-entry"
+if grep -qF 'CLIP_FILES' libs/clipboard/src/platform/unix/serv_files.rs; then
+  r_native_filecontent_worker="$r_native_filecontent_worker inprocess-global-state"
+fi
+if grep -qF 'std::thread::spawn' libs/clipboard/src/platform/unix/serv_files.rs; then
+  r_native_filecontent_worker="$r_native_filecontent_worker per-request-thread-spawn"
+fi
+if grep -qF 'serde_json::to_vec(response)' libs/clipboard/src/platform/unix/serv_files.rs; then
+  r_native_filecontent_worker="$r_native_filecontent_worker json-encoded-filecontent-response"
+fi
+if [ -n "$r_native_filecontent_worker" ]; then
+  echo "  FAIL Appendix C #2b: Unix/macOS file-copy FileContents worker boundary regressed:$r_native_filecontent_worker"; rc=1
+else
+  echo "  ok  Appendix C #2b Unix/macOS file-copy FileContents reads and local file-list state use timeout-bounded same-artifact worker with no in-process fallback"
+fi
+# Appendix C #2b worker-confinement companion: Windows cannot apply Job Object
+# limits through Command::pre_exec, so every same-artifact worker spawn path must
+# fail closed if the post-spawn Job Object assignment cannot be installed before
+# hostile-peer bytes are written to the child. Non-Linux desktop Unix cannot use
+# seccomp-BPF here, but it must not stay a total no-op: worker children get the
+# shared RLIMIT ceilings before exec and inherited-fd cleanup at worker entry.
+r_native_worker_platform=
+grep -qF 'pub struct WorkerProcessGuard' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform spawned-child-guard-type"
+grep -qF 'dropping this guard immediately releases the worker process confinement handle' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform spawned-child-guard-must-use"
+grep -qF 'pub fn apply_to_spawned_child(child: &mut Child) -> std::io::Result<WorkerProcessGuard>' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform spawned-child-api"
+grep -qF 'apply_windows_worker_job_limits(child)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-job-call"
+grep -qF 'CREATE_NO_WINDOW' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-hidden-worker"
+grep -qF 'CreateJobObjectW' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-create-job"
+grep -qF 'SetInformationJobObject' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-set-job-limits"
+grep -qF 'AssignProcessToJobObject' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-assign-job"
+grep -qF 'JOB_OBJECT_LIMIT_ACTIVE_PROCESS' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-active-process-limit"
+grep -qF 'JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-kill-on-job-close"
+grep -qF 'JOB_OBJECT_LIMIT_PROCESS_MEMORY' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-process-memory-limit"
+grep -qF 'WINDOWS_WORKER_PROCESS_MEMORY_LIMIT' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-memory-limit-constant"
+grep -qF 'Ok(WorkerProcessGuard::from_windows_job(job))' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-job-handle-guard"
+grep -qF 'CloseHandle(self.job);' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-job-guard-drop"
+grep -qF 'apply_macos_worker_no_network_sandbox()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-seatbelt-entry-call"
+grep -qF 'kSBXProfileNoNetwork' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-no-network-profile"
+grep -qF 'sandbox_init(' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-sandbox-init"
+grep -qF 'sandbox_free_error' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-sandbox-error-cleanup"
+grep -qF 'not(any(target_os = "linux", target_os = "android", target_os = "ios"))' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform desktop-unix-excludes-mobile-cfg"
+if grep -qF 'cfg(all(unix, not(target_os = "linux")))' libs/hbb_common/src/native_worker_sandbox.rs; then
+  r_native_worker_platform="$r_native_worker_platform broad-mobile-unix-cfg"
+fi
+grep -qF 'command.pre_exec(apply_unix_worker_resource_sandbox);' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform desktop-unix-pre-exec-resource-hook"
+grep -qF 'fn apply_unix_worker_resource_sandbox() -> std::io::Result<()> {' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform unix-resource-helper"
+grep -qF 'set_limit(crate::libc::RLIMIT_AS, WORKER_ADDRESS_SPACE_LIMIT)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform unix-address-space-limit"
+grep -qF 'set_limit(crate::libc::RLIMIT_DATA, WORKER_DATA_LIMIT)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform unix-data-limit"
+grep -qF 'set_limit(crate::libc::RLIMIT_STACK, WORKER_STACK_LIMIT)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform unix-stack-limit"
+grep -qF 'set_limit(crate::libc::RLIMIT_NOFILE, WORKER_NOFILE_LIMIT)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform unix-nofile-limit"
+grep -qF 'set_limit(crate::libc::RLIMIT_FSIZE, 0)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform unix-fsize-limit"
+grep -qF 'fn close_inherited_worker_fds() -> std::io::Result<()> {' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform unix-fd-cleanup-helper"
+grep -qF 'close_inherited_worker_fds()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform desktop-unix-entry-fd-cleanup"
+grep -qF 'crate::libc::SYS_close_range' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform linux-wide-fd-close-range"
+grep -qF '"/proc/self/fd"' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform linux-fd-dir-fallback"
+grep -qF '"/dev/fd"' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform desktop-unix-fd-dir-cleanup"
+grep -qF 'linux_worker_fd_cleanup_closes_high_inherited_fd' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform no-high-fd-cleanup-runtime-test"
+grep -qF 'RD_NATIVE_WORKER_FD_CLEANUP_PROBE' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform no-high-fd-cleanup-child-probe"
+grep -qF 'FD_CLOEXEC' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform no-inherited-fd-probe"
+if grep -qF '3..WORKER_NOFILE_LIMIT' libs/hbb_common/src/native_worker_sandbox.rs; then
+  r_native_worker_platform="$r_native_worker_platform narrow-fd-cleanup-range"
+fi
+grep -qF '"handleapi"' libs/hbb_common/Cargo.toml ||
+  r_native_worker_platform="$r_native_worker_platform winapi-handleapi-feature"
+grep -qF '"jobapi2"' libs/hbb_common/Cargo.toml ||
+  r_native_worker_platform="$r_native_worker_platform winapi-jobapi2-feature"
+grep -qF '"winbase"' libs/hbb_common/Cargo.toml ||
+  r_native_worker_platform="$r_native_worker_platform winapi-winbase-feature"
+grep -qF '"winnt"' libs/hbb_common/Cargo.toml ||
+  r_native_worker_platform="$r_native_worker_platform winapi-winnt-feature"
+grep -qF 'hbb_common::native_worker_sandbox::apply_to_spawned_child(&mut child)' src/native_video_worker.rs ||
+  r_native_worker_platform="$r_native_worker_platform video-spawned-child-hook"
+grep -qF '_process_guard: hbb_common::native_worker_sandbox::WorkerProcessGuard' src/native_video_worker.rs ||
+  r_native_worker_platform="$r_native_worker_platform video-guard-field"
+grep -qF '_process_guard: process_guard' src/native_video_worker.rs ||
+  r_native_worker_platform="$r_native_worker_platform video-guard-stored"
+grep -qF 'hbb_common::native_worker_sandbox::apply_to_spawned_child(&mut child)' src/native_audio_worker.rs ||
+  r_native_worker_platform="$r_native_worker_platform opus-spawned-child-hook"
+grep -qF '_process_guard: hbb_common::native_worker_sandbox::WorkerProcessGuard' src/native_audio_worker.rs ||
+  r_native_worker_platform="$r_native_worker_platform opus-guard-field"
+grep -qF '_process_guard: process_guard' src/native_audio_worker.rs ||
+  r_native_worker_platform="$r_native_worker_platform opus-guard-stored"
+grep -qF 'hbb_common::native_worker_sandbox::apply_to_spawned_child(&mut child)' src/native_clipboard_worker.rs ||
+  r_native_worker_platform="$r_native_worker_platform clipboard-spawned-child-hook"
+grep -qF '_process_guard: hbb_common::native_worker_sandbox::WorkerProcessGuard' src/native_clipboard_worker.rs ||
+  r_native_worker_platform="$r_native_worker_platform clipboard-guard-field"
+grep -qF '_process_guard: process_guard' src/native_clipboard_worker.rs ||
+  r_native_worker_platform="$r_native_worker_platform clipboard-guard-stored"
+grep -qF 'crate::native_worker_sandbox::apply_to_spawned_child(&mut child)' libs/hbb_common/src/compress.rs ||
+  r_native_worker_platform="$r_native_worker_platform zstd-spawned-child-hook"
+grep -qF '_process_guard: crate::native_worker_sandbox::WorkerProcessGuard' libs/hbb_common/src/compress.rs ||
+  r_native_worker_platform="$r_native_worker_platform zstd-guard-field"
+grep -qF '_process_guard: process_guard' libs/hbb_common/src/compress.rs ||
+  r_native_worker_platform="$r_native_worker_platform zstd-guard-stored"
+grep -qF 'hbb_common::native_worker_sandbox::apply_to_spawned_child(&mut child)' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_worker_platform="$r_native_worker_platform filedesc-spawned-child-hook"
+grep -qF '_process_guard: hbb_common::native_worker_sandbox::WorkerProcessGuard' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_worker_platform="$r_native_worker_platform filedesc-guard-field"
+grep -qF '_process_guard: process_guard' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_worker_platform="$r_native_worker_platform filedesc-guard-stored"
+grep -qF 'hbb_common::native_worker_sandbox::apply_to_spawned_child(&mut child)' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_worker_platform="$r_native_worker_platform filecontent-spawned-child-hook"
+grep -qF '_process_guard: hbb_common::native_worker_sandbox::WorkerProcessGuard' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_worker_platform="$r_native_worker_platform filecontent-guard-field"
+grep -qF '_process_guard: process_guard' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_worker_platform="$r_native_worker_platform filecontent-guard-stored"
+grep -qF 'failed to constrain native video worker' src/native_video_worker.rs ||
+  r_native_worker_platform="$r_native_worker_platform video-fail-closed"
+grep -qF 'failed to constrain native Opus worker' src/native_audio_worker.rs ||
+  r_native_worker_platform="$r_native_worker_platform opus-fail-closed"
+grep -qF 'failed to constrain native clipboard worker' src/native_clipboard_worker.rs ||
+  r_native_worker_platform="$r_native_worker_platform clipboard-fail-closed"
+grep -qF 'failed to constrain native zstd worker' libs/hbb_common/src/compress.rs ||
+  r_native_worker_platform="$r_native_worker_platform zstd-fail-closed"
+grep -qF 'failed to constrain file descriptor worker' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_worker_platform="$r_native_worker_platform filedesc-fail-closed"
+grep -qF 'failed to constrain file-content worker' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_worker_platform="$r_native_worker_platform filecontent-fail-closed"
+if [ -n "$r_native_worker_platform" ]; then
+  echo "  FAIL Appendix C #2b: native worker platform confinement hooks regressed:$r_native_worker_platform"; rc=1
+else
+  echo "  ok  Appendix C #2b native worker parents fail closed on post-spawn confinement failure; Windows workers keep Job Object process-count/memory/kill-on-close guards; macOS worker entry applies Seatbelt NoNetwork; desktop Unix workers excluding Android/iOS get RLIMIT/fd cleanup"
 fi
 # R-R2a (§12 / sovereignty): the .deb + systemd is the SOLE Linux package model. The AppImage
 # recipe (whose `update-information` self-updater collides with R-X1 "the fork ships its own
@@ -2016,7 +2766,7 @@ grep -rq '0\.0\.0\.0' scripts/build-debian.sh scripts/build-android.sh scripts/b
 # SHA-256, NOT cross-rebuild byte-identity" — apksigner re-padding makes byte-identity impractical).
 { grep -q 'DOUBLE_BUILD' scripts/build-debian.sh    && grep -q 'double-build SHA mismatch' scripts/build-debian.sh; }        || rb_struct="$rb_struct debian:no-double-build-assert"
 { grep -q 'DOUBLE_BUILD' scripts/build-windows-vm.sh && grep -q 'double-build .* SHA mismatch' scripts/build-windows-vm.sh; } || rb_struct="$rb_struct windows:no-double-build-assert"
-{ grep -q 'WINDOWS_BUILD_SOURCE' scripts/build-windows-vm.sh && grep -q 'git ls-files -z' scripts/build-windows-vm.sh; }       || rb_struct="$rb_struct windows:no-worktree-source-mode"
+{ grep -q 'WINDOWS_BUILD_SOURCE' scripts/build-windows-vm.sh && grep -qE 'git ls-files .*--cached .*--others .*--exclude-standard .* -z|git ls-files --cached --others --exclude-standard -z' scripts/build-windows-vm.sh; } || rb_struct="$rb_struct windows:no-worktree-source-mode"
 grep -qF 'Dockerfile.win-helper' scripts/online-fetch.sh          || rb_struct="$rb_struct windows:helper-image-not-built-online"
 git ls-files --error-unmatch scripts/Dockerfile.win-helper >/dev/null 2>&1 || rb_struct="$rb_struct windows:helper-dockerfile-not-tracked"
 [ -s scripts/Dockerfile.win-helper ]                              || rb_struct="$rb_struct windows:helper-dockerfile-missing"

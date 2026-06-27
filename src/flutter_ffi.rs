@@ -1928,7 +1928,6 @@ pub fn session_restart_remote_device(session_id: SessionID) {
     }
 }
 
-
 pub fn session_get_conn_session_id(session_id: SessionID) -> SyncReturn<String> {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         SyncReturn(session.lc.read().unwrap().session_id.to_string())
@@ -2007,7 +2006,6 @@ pub fn main_start_service() {
         config::Config::set_option("stop-service".into(), "".into());
     }
 }
-
 
 pub fn main_check_super_user_permission() -> bool {
     check_super_user_permission()

@@ -281,8 +281,8 @@ pub fn msg_2_clip(msg: Cliprdr) -> Option<ClipboardFile> {
 mod tests {
     use super::{
         cliprdr_file_request_within_native_limit, cliprdr_format_list_within_native_limit,
-        MAX_NATIVE_CLIPRDR_FILE_CONTENTS_BYTES, MAX_NATIVE_CLIPRDR_FORMAT_NAME_BYTES,
-        MAX_NATIVE_CLIPRDR_FORMATS,
+        MAX_NATIVE_CLIPRDR_FILE_CONTENTS_BYTES, MAX_NATIVE_CLIPRDR_FORMATS,
+        MAX_NATIVE_CLIPRDR_FORMAT_NAME_BYTES,
     };
     use hbb_common::message_proto::CliprdrFormat;
 

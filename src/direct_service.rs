@@ -89,7 +89,7 @@ fn assert_startup_invariants() {
     // by an empty whitelist for the invariant to hold.
     if crate::server::Connection::whitelist_admits(
         "",
-        "203.0.113.1".parse::<std::net::IpAddr>().unwrap(),
+        std::net::IpAddr::V4(std::net::Ipv4Addr::new(203, 0, 113, 1)),
     ) {
         log::error!(
             "R-A4/R-S9: the source whitelist policy is default-OPEN (an empty whitelist admits) — refusing to listen"
@@ -127,8 +127,14 @@ fn assert_startup_invariants() {
         log::error!("R-A4/R-S16(d)(v): HARD_SETTINGS carries a preset/managed override — refusing to listen");
         ok = false;
     }
-    if !hbb_common::config::BUILTIN_SETTINGS.read().unwrap().is_empty() {
-        log::error!("R-A4/R-S16(d)(iv): BUILTIN_SETTINGS carries a managed override — refusing to listen");
+    if !hbb_common::config::BUILTIN_SETTINGS
+        .read()
+        .unwrap()
+        .is_empty()
+    {
+        log::error!(
+            "R-A4/R-S16(d)(iv): BUILTIN_SETTINGS carries a managed override — refusing to listen"
+        );
         ok = false;
     }
     if !ok {
@@ -326,7 +332,13 @@ async fn direct_server(server: ServerPtr) {
             match hbb_common::timeout(1000, l.accept()).await {
                 Ok(Ok((stream, addr))) => {
                     accept_err_streak = 0; // R-T12: a successful accept resets the error back-off
-                    stream.set_nodelay(true).ok();
+                    if let Err(e) = stream.set_nodelay(true) {
+                        crate::server::note_accept_setup_error(
+                            crate::server::AcceptSetupEvent::NodelayFailed,
+                            addr.ip(),
+                            &e,
+                        );
+                    }
                     // R-T10 (§20): enable TCP keepalive on the accepted peer socket immediately
                     // after set_nodelay — the kernel-level backstop the NAT'd-client reality
                     // demands. UDP is off precisely BECAUSE the client is behind NAT (R-S13(d)), so
@@ -348,7 +360,11 @@ async fn direct_server(server: ServerPtr) {
                         if let Err(e) =
                             socket2::SockRef::from(&stream).set_tcp_keepalive(&keepalive)
                         {
-                            log::warn!("R-T10: failed to set TCP keepalive on {}: {}", addr, e);
+                            crate::server::note_accept_setup_error(
+                                crate::server::AcceptSetupEvent::KeepaliveFailed,
+                                addr.ip(),
+                                &e,
+                            );
                         }
                     }
                     // R-T1(b) / R-T0 rule 2: acquire a pre-key handshake slot BEFORE spawning a
@@ -372,7 +388,6 @@ async fn direct_server(server: ServerPtr) {
                             continue;
                         }
                     };
-                    log::info!("direct access from {}", addr);
                     let local_addr = stream
                         .local_addr()
                         .unwrap_or(Config::get_any_listen_addr(true));

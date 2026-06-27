@@ -43,7 +43,8 @@ build_media() {
     # The BUILD CD = a tracked source snapshot (no ./online ./target ./.git) + run-build.ps1 at root
     # (the golden's logon task runs it) + the SOURCE_DATE_EPOCH stamp (R-B2). Release builds default
     # to committed HEAD; local completion validation can set WINDOWS_BUILD_SOURCE=worktree so dirty
-    # tracked edits/deletions are what the VM compiles instead of a stale git archive.
+    # tracked edits/deletions plus untracked, non-ignored source additions are what the VM compiles
+    # instead of a stale git archive.
     local snap="$STATE_DIR/build-snap"; rm -rf "$snap"; mkdir -p "$snap"
     case "$WINDOWS_BUILD_SOURCE" in
         head)
@@ -51,10 +52,10 @@ build_media() {
             git -C "$REPO_ROOT" archive --format=tar HEAD | tar -x -C "$snap"
             ;;
         worktree)
-            log "building the BUILD CD (tracked worktree + run-build.ps1 + SOURCE_DATE_EPOCH)"
+            log "building the BUILD CD (tracked + untracked non-ignored worktree + run-build.ps1 + SOURCE_DATE_EPOCH)"
             (
                 cd "$REPO_ROOT"
-                git ls-files -z | while IFS= read -r -d '' f; do
+                git ls-files --cached --others --exclude-standard -z | while IFS= read -r -d '' f; do
                     { [ -e "$f" ] || [ -L "$f" ]; } && printf '%s\0' "$f"
                 done | tar --null -T - -cf -
             ) | tar -x -C "$snap"

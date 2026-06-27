@@ -23,6 +23,8 @@ const CLIPBOARD_FORMAT_EXCEL_XML_SPREADSHEET: &'static str = "XML Spreadsheet";
 /// decompression ceiling and makes the native clipboard handoff length-bounded;
 /// it is not a process sandbox.
 pub(crate) const MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES: usize = 64 * 1024 * 1024;
+pub(crate) const MAX_NATIVE_CLIPBOARD_TOTAL_BYTES: usize = 64 * 1024 * 1024;
+pub(crate) const MAX_NATIVE_CLIPBOARD_ITEMS: usize = 16;
 
 fn rgba_clipboard_len(width: i32, height: i32) -> Option<usize> {
     let width = usize::try_from(width).ok()?;
@@ -53,7 +55,7 @@ fn clipboard_content_for_native(
 ) -> Option<Vec<u8>> {
     let format = clipboard.format.enum_value().ok()?;
     let data = if clipboard.compress {
-        hbb_common::compress::decompress(&clipboard.content)
+        hbb_common::compress::peer_decompress(&clipboard.content)
     } else {
         clipboard.content.to_vec()
     };
@@ -77,6 +79,51 @@ fn sanitize_clipboard_for_native_proto(
     clipboard.content = data.into();
     clipboard.compress = false;
     Some(clipboard)
+}
+
+fn sanitize_multi_clipboards_for_native_proto(
+    clipboards: Vec<hbb_common::message_proto::Clipboard>,
+) -> Option<MultiClipboards> {
+    if clipboards.len() > MAX_NATIVE_CLIPBOARD_ITEMS {
+        log::warn!(
+            "dropping clipboard update with too many items before native handoff: {} > {}",
+            clipboards.len(),
+            MAX_NATIVE_CLIPBOARD_ITEMS
+        );
+        return None;
+    }
+
+    let mut total = 0usize;
+    let mut sanitized = Vec::with_capacity(clipboards.len());
+    for clipboard in clipboards {
+        let Some(clipboard) = sanitize_clipboard_for_native_proto(clipboard) else {
+            log::warn!("dropping unsupported clipboard item before native handoff");
+            continue;
+        };
+        total = match total.checked_add(clipboard.content.len()) {
+            Some(total) => total,
+            None => {
+                log::warn!("dropping clipboard update with overflowing aggregate payload size");
+                return None;
+            }
+        };
+        if total > MAX_NATIVE_CLIPBOARD_TOTAL_BYTES {
+            log::warn!(
+                "dropping clipboard update with oversized aggregate payload before native handoff: {} > {}",
+                total,
+                MAX_NATIVE_CLIPBOARD_TOTAL_BYTES
+            );
+            return None;
+        }
+        sanitized.push(clipboard);
+    }
+    if sanitized.is_empty() {
+        return None;
+    }
+    Some(MultiClipboards {
+        clipboards: sanitized,
+        ..Default::default()
+    })
 }
 
 #[cfg(not(target_os = "android"))]
@@ -203,7 +250,9 @@ pub fn check_clipboard_files(
 pub fn update_clipboard_files(files: Vec<String>, side: ClipboardSide) {
     if !files.is_empty() {
         std::thread::spawn(move || {
-            do_update_clipboard_(vec![ClipboardData::FileUrl(files)], side);
+            if let Err(e) = set_native_clipboard_data(vec![ClipboardData::FileUrl(files)], side) {
+                log::debug!("Failed to set file clipboard: {}", e);
+            }
         });
     }
 }
@@ -211,9 +260,11 @@ pub fn update_clipboard_files(files: Vec<String>, side: ClipboardSide) {
 #[cfg(test)]
 mod native_clipboard_limit_tests {
     use super::{
-        native_clipboard_payload_within_limit, MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES,
+        native_clipboard_payload_within_limit, sanitize_multi_clipboards_for_native_proto,
+        MAX_NATIVE_CLIPBOARD_ITEMS, MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES,
+        MAX_NATIVE_CLIPBOARD_TOTAL_BYTES,
     };
-    use hbb_common::message_proto::ClipboardFormat;
+    use hbb_common::message_proto::{Clipboard, ClipboardFormat};
 
     #[test]
     fn accepts_bounded_text_payload() {
@@ -255,6 +306,36 @@ mod native_clipboard_limit_tests {
             3,
             0
         ));
+    }
+
+    #[test]
+    fn rejects_too_many_clipboard_items_before_native_handoff() {
+        let clips = (0..=MAX_NATIVE_CLIPBOARD_ITEMS)
+            .map(|_| Clipboard {
+                content: vec![b'a'].into(),
+                format: ClipboardFormat::Text.into(),
+                ..Default::default()
+            })
+            .collect();
+        assert!(sanitize_multi_clipboards_for_native_proto(clips).is_none());
+    }
+
+    #[test]
+    fn rejects_aggregate_clipboard_payload_over_cap() {
+        let half = MAX_NATIVE_CLIPBOARD_TOTAL_BYTES / 2 + 1;
+        let clips = vec![
+            Clipboard {
+                content: vec![b'a'; half].into(),
+                format: ClipboardFormat::Text.into(),
+                ..Default::default()
+            },
+            Clipboard {
+                content: vec![b'b'; half].into(),
+                format: ClipboardFormat::Text.into(),
+                ..Default::default()
+            },
+        ];
+        assert!(sanitize_multi_clipboards_for_native_proto(clips).is_none());
     }
 }
 
@@ -329,35 +410,42 @@ pub fn check_clipboard_cm() -> ResultType<MultiClipboards> {
 
 #[cfg(not(target_os = "android"))]
 fn update_clipboard_(multi_clipboards: Vec<Clipboard>, side: ClipboardSide) {
-    let to_update_data = proto::from_multi_clipboards(multi_clipboards);
-    if to_update_data.is_empty() {
+    let Some(multi_clipboards) = sanitize_multi_clipboards_for_native_proto(multi_clipboards)
+    else {
         return;
+    };
+    if let Err(e) = crate::native_clipboard_worker::update_clipboard(multi_clipboards, side) {
+        log::warn!(
+            "native clipboard worker failed; refusing in-process desktop clipboard update: {}",
+            e
+        );
     }
-    do_update_clipboard_(to_update_data, side);
 }
 
 #[cfg(not(target_os = "android"))]
-fn do_update_clipboard_(mut to_update_data: Vec<ClipboardData>, side: ClipboardSide) {
+pub(crate) fn set_native_clipboard_data(
+    mut to_update_data: Vec<ClipboardData>,
+    side: ClipboardSide,
+) -> ResultType<()> {
     let mut ctx = CLIPBOARD_CTX.lock().unwrap();
     if ctx.is_none() {
-        match ClipboardContext::new() {
-            Ok(x) => {
-                *ctx = Some(x);
-            }
-            Err(e) => {
-                log::error!("Failed to create clipboard context: {}", e);
-                return;
-            }
-        }
+        *ctx = Some(ClipboardContext::new()?);
     }
     if let Some(ctx) = ctx.as_mut() {
         to_update_data = append_owner_marker(to_update_data, side);
-        if let Err(e) = ctx.set(&to_update_data) {
-            log::debug!("Failed to set clipboard: {}", e);
-        } else {
-            log::debug!("{} updated on {}", CLIPBOARD_NAME, side);
-        }
+        ctx.set(&to_update_data)?;
+        log::debug!("{} updated on {}", CLIPBOARD_NAME, side);
+        Ok(())
+    } else {
+        bail!("Failed to create clipboard context");
     }
+}
+
+#[cfg(not(target_os = "android"))]
+pub(crate) fn native_clipboard_data_from_multi_clipboards(
+    multi_clipboards: Vec<Clipboard>,
+) -> Vec<ClipboardData> {
+    proto::from_multi_clipboards(multi_clipboards)
 }
 
 #[cfg(not(target_os = "android"))]
@@ -749,11 +837,7 @@ mod proto {
     fn special_to_proto(d: Vec<u8>, s: String) -> Clipboard {
         let compressed = compress_func(&d);
         let compress = compressed.len() < d.len();
-        let content = if compress {
-            compressed
-        } else {
-            s.bytes().collect::<Vec<u8>>()
-        };
+        let content = if compress { compressed } else { d };
         Clipboard {
             compress,
             content: content.into(),
@@ -846,12 +930,8 @@ mod proto {
 pub fn handle_msg_clipboard(cb: Clipboard) {
     use hbb_common::protobuf::Message;
 
-    let Some(cb) = sanitize_clipboard_for_native_proto(cb) else {
+    let Some(multi_clips) = sanitize_multi_clipboards_for_native_proto(vec![cb]) else {
         return;
-    };
-    let multi_clips = MultiClipboards {
-        clipboards: vec![cb],
-        ..Default::default()
     };
     if let Ok(bytes) = multi_clips.write_to_bytes() {
         let _ = scrap::android::ffi::call_clipboard_manager_update_clipboard(&bytes);
@@ -859,17 +939,12 @@ pub fn handle_msg_clipboard(cb: Clipboard) {
 }
 
 #[cfg(target_os = "android")]
-pub fn handle_msg_multi_clipboards(mut mcb: MultiClipboards) {
+pub fn handle_msg_multi_clipboards(mcb: MultiClipboards) {
     use hbb_common::protobuf::Message;
 
-    mcb.clipboards = mcb
-        .clipboards
-        .into_iter()
-        .filter_map(sanitize_clipboard_for_native_proto)
-        .collect();
-    if mcb.clipboards.is_empty() {
+    let Some(mcb) = sanitize_multi_clipboards_for_native_proto(mcb.clipboards) else {
         return;
-    }
+    };
     if let Ok(bytes) = mcb.write_to_bytes() {
         let _ = scrap::android::ffi::call_clipboard_manager_update_clipboard(&bytes);
     }

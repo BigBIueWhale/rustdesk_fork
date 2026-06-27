@@ -187,7 +187,10 @@ fn uninit_fuse_context_(is_client: bool) {
 impl Drop for FuseContext {
     fn drop(&mut self) {
         self.session.lock().take().map(|s| s.join());
-        log::info!("unmounting clipboard FUSE from {}", self.mount_point.display());
+        log::info!(
+            "unmounting clipboard FUSE from {}",
+            self.mount_point.display()
+        );
     }
 }
 
@@ -206,7 +209,7 @@ impl FuseContext {
         format_data: Vec<u8>,
         conn_id: i32,
     ) -> Result<Vec<String>, CliprdrError> {
-        let files = FileDescription::parse_file_descriptors(format_data, conn_id)?;
+        let files = FileDescription::parse_file_descriptors_isolated(format_data, conn_id)?;
 
         let paths = {
             let mut fuse_guard = self.server.lock();

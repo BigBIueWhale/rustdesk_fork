@@ -52,6 +52,20 @@ typedef HandleMsgBox = Function(Map<String, dynamic> evt, String id);
 typedef ReconnectHandle = Function(OverlayDialogManager, SessionID, bool);
 final _constSessionId = Uuid().v4obj();
 
+const int kMaxRemoteCursorPixels = 1024 * 1024;
+const int kMaxRemoteCursorRgbaBytes = kMaxRemoteCursorPixels * 4;
+
+int? _remoteCursorRgbaLen(int width, int height) {
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+  final pixels = width * height;
+  if (pixels > kMaxRemoteCursorPixels) {
+    return null;
+  }
+  return pixels * 4;
+}
+
 class CachedPeerData {
   Map<String, dynamic> updatePrivacyMode = {};
   Map<String, dynamic> peerInfo = {};
@@ -3111,13 +3125,44 @@ class CursorModel with ChangeNotifier {
   }
 
   updateCursorData(Map<String, dynamic> evt) async {
-    final id = evt['id'];
-    final hotx = double.parse(evt['hotx']);
-    final hoty = double.parse(evt['hoty']);
-    final width = int.parse(evt['width']);
-    final height = int.parse(evt['height']);
-    List<dynamic> colors = json.decode(evt['colors']);
-    final rgba = Uint8List.fromList(colors.map((s) => s as int).toList());
+    final id = evt['id']?.toString();
+    final hotx = double.tryParse(evt['hotx']?.toString() ?? '');
+    final hoty = double.tryParse(evt['hoty']?.toString() ?? '');
+    final width = int.tryParse(evt['width']?.toString() ?? '');
+    final height = int.tryParse(evt['height']?.toString() ?? '');
+    if (id == null ||
+        hotx == null ||
+        hoty == null ||
+        width == null ||
+        height == null) {
+      return;
+    }
+
+    final expectedLen = _remoteCursorRgbaLen(width, height);
+    final colorsJson = evt['colors'];
+    if (expectedLen == null ||
+        colorsJson is! String ||
+        colorsJson.length > expectedLen * 4 + 2) {
+      return;
+    }
+
+    dynamic decoded;
+    try {
+      decoded = json.decode(colorsJson);
+    } catch (_) {
+      return;
+    }
+    if (decoded is! List || decoded.length != expectedLen) {
+      return;
+    }
+    final rgba = Uint8List(expectedLen);
+    for (var i = 0; i < decoded.length; i++) {
+      final value = decoded[i];
+      if (value is! int || value < 0 || value > 255) {
+        return;
+      }
+      rgba[i] = value;
+    }
     final image = await img.decodeImageFromPixels(
         rgba, width, height, ui.PixelFormat.rgba8888);
     if (image == null) {

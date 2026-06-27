@@ -18,7 +18,7 @@ use tokio::{
 use crate::{anyhow::anyhow, bail, get_version_number, message_proto::*, ResultType, Stream};
 // https://doc.rust-lang.org/std/os/windows/fs/trait.MetadataExt.html
 use crate::{
-    compress::{compress, decompress},
+    compress::{compress, peer_decompress},
     config::Config,
 };
 
@@ -1130,7 +1130,7 @@ impl TransferJob {
             }
         }
         if block.compressed {
-            let tmp = decompress(&block.data);
+            let tmp = peer_decompress(&block.data);
             self.data_stream
                 .as_mut()
                 .ok_or(anyhow!("data stream is None"))?

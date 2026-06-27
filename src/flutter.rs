@@ -42,11 +42,44 @@ pub(crate) const APP_TYPE_CM: &str = "main";
 // pub(crate) const APP_TYPE_DESKTOP_FILE_TRANSFER: &str = "file transfer";
 // pub(crate) const APP_TYPE_DESKTOP_PORT_FORWARD: &str = "port forward";
 
+const MAX_REMOTE_CURSOR_PIXELS: usize = 1024 * 1024;
+const MAX_REMOTE_CURSOR_RGBA_BYTES: usize = MAX_REMOTE_CURSOR_PIXELS * 4;
+
 pub type FlutterSession = Arc<Session<FlutterHandler>>;
 
 lazy_static::lazy_static! {
     pub(crate) static ref CUR_SESSION_ID: RwLock<SessionID> = Default::default(); // For desktop only
     static ref GLOBAL_EVENT_STREAM: RwLock<HashMap<String, StreamSink<String>>> = Default::default(); // rust to dart event channel
+}
+
+fn remote_cursor_rgba_len(width: i32, height: i32) -> Option<usize> {
+    let width = usize::try_from(width).ok()?;
+    let height = usize::try_from(height).ok()?;
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let pixels = width.checked_mul(height)?;
+    if pixels > MAX_REMOTE_CURSOR_PIXELS {
+        return None;
+    }
+    pixels.checked_mul(4)
+}
+
+fn remote_cursor_rgba_for_ui(cd: &CursorData) -> Option<Vec<u8>> {
+    let expected = remote_cursor_rgba_len(cd.width, cd.height)?;
+    let colors = hbb_common::compress::peer_decompress(&cd.colors);
+    if colors.len() != expected || colors.len() > MAX_REMOTE_CURSOR_RGBA_BYTES {
+        log::warn!(
+            "dropping invalid remote cursor payload before Flutter handoff: width={}, height={}, bytes={}, expected={}, max={}",
+            cd.width,
+            cd.height,
+            colors.len(),
+            expected,
+            MAX_REMOTE_CURSOR_RGBA_BYTES
+        );
+        return None;
+    }
+    Some(colors)
 }
 
 #[cfg(target_os = "windows")]
@@ -639,7 +672,9 @@ impl FlutterHandler {
 
 impl InvokeUiSession for FlutterHandler {
     fn set_cursor_data(&self, cd: CursorData) {
-        let colors = hbb_common::compress::decompress(&cd.colors);
+        let Some(colors) = remote_cursor_rgba_for_ui(&cd) else {
+            return;
+        };
         self.push_event(
             "cursor_data",
             &[
@@ -670,7 +705,8 @@ impl InvokeUiSession for FlutterHandler {
     }
 
     /// unused in flutter, use switch_display or set_peer_info
-    fn set_display(&self, _x: i32, _y: i32, _w: i32, _h: i32, _cursor_embedded: bool, _scale: f64) {}
+    fn set_display(&self, _x: i32, _y: i32, _w: i32, _h: i32, _cursor_embedded: bool, _scale: f64) {
+    }
 
     fn update_privacy_mode(&self) {
         self.push_event::<&str>("update_privacy_mode", &[], &[]);
@@ -1036,7 +1072,6 @@ impl InvokeUiSession for FlutterHandler {
         self.push_event("switch_back", &[("peer_id", peer_id)], &[]);
     }
 
-
     fn on_voice_call_started(&self) {
         self.push_event::<&str>("on_voice_call_started", &[], &[]);
     }
@@ -1117,7 +1152,7 @@ impl InvokeUiSession for FlutterHandler {
             Some(Union::Data(data)) => {
                 // Decompress data if needed
                 let output_data = if data.compressed {
-                    hbb_common::compress::decompress(&data.data)
+                    hbb_common::compress::peer_decompress(&data.data)
                 } else {
                     data.data.to_vec()
                 };

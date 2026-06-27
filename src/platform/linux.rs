@@ -431,7 +431,6 @@ pub fn get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
     }
 }
 
-
 /// Suggests the best terminal type based on the environment.
 ///
 /// The function prioritizes terminal types in the following order:

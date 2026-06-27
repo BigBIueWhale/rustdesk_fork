@@ -7,7 +7,8 @@ use hbb_common::{
 use serde_derive::{Deserialize, Serialize};
 use std::{
     io::{self, Read, Write},
-    path::PathBuf,
+    os::unix::ffi::OsStrExt,
+    path::{Component, Path, PathBuf},
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
     sync::{
         mpsc::{self, RecvTimeoutError, SyncSender},
@@ -116,6 +117,61 @@ impl FileDescription {
                 Err(err)
             }
         }
+    }
+
+    pub fn sanitize_relative_names(mut files: Vec<Self>) -> Result<Vec<Self>, CliprdrError> {
+        for file in &mut files {
+            file.name = Self::normalize_relative_name(&file.name)?;
+        }
+        Ok(files)
+    }
+
+    pub fn normalize_relative_name(name: &Path) -> Result<PathBuf, CliprdrError> {
+        let mut normalized = PathBuf::new();
+        let mut parts = 0usize;
+
+        for component in name.components() {
+            match component {
+                Component::Normal(part) => {
+                    let bytes = part.as_bytes();
+                    if bytes.is_empty() {
+                        return Err(unsafe_name_error(name, "empty path component"));
+                    }
+                    if bytes.contains(&0) {
+                        return Err(unsafe_name_error(name, "embedded NUL byte"));
+                    }
+                    if bytes.contains(&b'\\') || bytes.contains(&b':') {
+                        return Err(unsafe_name_error(
+                            name,
+                            "platform separator or drive-prefix character",
+                        ));
+                    }
+                    if bytes.len() > MAX_NAME_LEN {
+                        return Err(unsafe_name_error(name, "path component too long"));
+                    }
+                    normalized.push(part);
+                    parts += 1;
+                }
+                Component::CurDir => {
+                    return Err(unsafe_name_error(name, "current-directory component"));
+                }
+                Component::ParentDir => {
+                    return Err(unsafe_name_error(name, "parent-directory component"));
+                }
+                Component::RootDir => {
+                    return Err(unsafe_name_error(name, "absolute path component"));
+                }
+                _ => {
+                    return Err(unsafe_name_error(name, "unsupported path prefix"));
+                }
+            }
+        }
+
+        if parts == 0 {
+            return Err(unsafe_name_error(name, "empty relative path"));
+        }
+
+        Ok(normalized)
     }
 
     fn parse_file_descriptor(
@@ -626,6 +682,16 @@ fn common_error(description: String) -> CliprdrError {
     CliprdrError::CommonError { description }
 }
 
+fn unsafe_name_error(name: &Path, reason: &str) -> CliprdrError {
+    CliprdrError::InvalidRequest {
+        description: format!(
+            "unsafe peer file descriptor path {:?}: {}",
+            name.to_string_lossy(),
+            reason
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -678,5 +744,33 @@ mod tests {
         worker_loop(&request[..], &mut response).expect("run descriptor worker loop");
 
         assert!(read_worker_response(&mut &response[..]).is_err());
+    }
+
+    #[test]
+    fn relative_name_sanitizer_rejects_escape_paths() {
+        let rejected = [
+            "",
+            ".",
+            "../escape",
+            "safe/../escape",
+            "/absolute",
+            "C:/windows",
+            "safe/C:/windows",
+            "safe\\windows",
+            "bad\0name",
+        ];
+
+        for name in rejected {
+            assert!(
+                FileDescription::normalize_relative_name(Path::new(name)).is_err(),
+                "expected {name:?} to be rejected"
+            );
+        }
+
+        assert_eq!(
+            FileDescription::normalize_relative_name(Path::new("safe/sub/file.txt"))
+                .expect("safe relative path"),
+            PathBuf::from("safe/sub/file.txt")
+        );
     }
 }

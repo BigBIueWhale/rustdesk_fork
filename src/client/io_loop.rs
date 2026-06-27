@@ -1659,30 +1659,26 @@ impl<T: InvokeUiSession> Remote<T> {
                                     if let Some(err) = err {
                                         log::error!("Receive print job failed, error {err}");
                                     } else {
-                                        log::info!(
-                                            "Receive print job done, data len: {:?}",
-                                            printer_data.as_ref().map(|d| d.len()).unwrap_or(0)
-                                        );
+                                        let data_len =
+                                            printer_data.as_ref().map(|d| d.len()).unwrap_or(0);
                                         #[cfg(target_os = "windows")]
-                                        if let Some(data) = printer_data {
-                                            let printer_name = self
-                                                .handler
+                                        {
+                                            self.handler
                                                 .printer_names
                                                 .write()
                                                 .unwrap()
                                                 .remove(&d.id);
-                                            // Spawn a new thread to handle the print job.
-                                            // Or print job will block the ui thread.
-                                            std::thread::spawn(move || {
-                                                if let Err(e) =
-                                                    crate::platform::send_raw_data_to_printer(
-                                                        printer_name,
-                                                        data,
-                                                    )
-                                                {
-                                                    log::error!("Print job error: {}", e);
-                                                }
-                                            });
+                                            log::warn!(
+                                                "refusing in-process Windows remote printer job; native printer worker is not implemented; data len: {}",
+                                                data_len
+                                            );
+                                        }
+                                        #[cfg(not(target_os = "windows"))]
+                                        {
+                                            log::info!(
+                                                "Receive print job done, data len: {:?}",
+                                                data_len
+                                            );
                                         }
                                     }
                                 }
@@ -1911,35 +1907,9 @@ impl<T: InvokeUiSession> Remote<T> {
                     Some(file_action::Union::Send(_s)) => match _s.file_type.enum_value() {
                         #[cfg(target_os = "windows")]
                         Ok(file_transfer_send_request::FileType::Printer) => {
-                            #[cfg(feature = "flutter")]
-                            let action = LocalConfig::get_option(
-                                config::keys::OPTION_PRINTER_INCOMING_JOB_ACTION,
+                            log::warn!(
+                                "refusing incoming Windows remote printer job before XPS handoff; native printer worker is not implemented"
                             );
-                            #[cfg(not(feature = "flutter"))]
-                            let action = "";
-                            if action == "dismiss" {
-                                // Just ignore the incoming print job.
-                            } else {
-                                let id = fs::get_next_job_id();
-                                #[cfg(feature = "flutter")]
-                                let allow_auto_print = LocalConfig::get_bool_option(
-                                    config::keys::OPTION_PRINTER_ALLOW_AUTO_PRINT,
-                                );
-                                #[cfg(not(feature = "flutter"))]
-                                let allow_auto_print = false;
-                                if allow_auto_print {
-                                    let printer_name = if action == "" {
-                                        "".to_string()
-                                    } else {
-                                        LocalConfig::get_option(
-                                            config::keys::OPTION_PRINTER_SELECTED_NAME,
-                                        )
-                                    };
-                                    self.handler.printer_response(id, _s.path, printer_name);
-                                } else {
-                                    self.handler.printer_request(id, _s.path);
-                                }
-                            }
                         }
                         _ => {}
                     },

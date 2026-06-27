@@ -173,6 +173,12 @@ echo "== (3c-ii) native worker sandbox helper sanity (Appendix C #2b) =="
 echo "== (3c-iii) unix file-copy descriptor worker protocol (Appendix C #2b) =="
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib file_descriptor_worker_loop --color never
 
+# (3c-iii-a) macOS paste parent filesystem use must re-normalize and contain
+# hostile-peer FILEDESCRIPTOR names after the worker parse, before mkdir/temp
+# download/final rename state touches the parent process filesystem.
+echo "== (3c-iii-a) unix file-copy descriptor relative-name sanitizer (Appendix C #2b) =="
+"${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib relative_name_sanitizer_rejects_escape_paths --color never
+
 # (3c-iv) Unix file-copy local file-content worker protocol (Appendix C #2b):
 # local file-list state and FileContents reads live behind a same-artifact
 # worker, so hostile-peer CLIPRDR file-content requests never drive local
@@ -1738,6 +1744,21 @@ grep -qF 'file_content_request_accounting_rejects_byte_window_flood' libs/clipbo
   r_native_bounds="$r_native_bounds unix-file-content-byte-test"
 grep -qF 'file_content_request_rejects_negative_length_before_cast' libs/clipboard/src/platform/unix/serv_files.rs ||
   r_native_bounds="$r_native_bounds unix-file-content-negative-len-test"
+grep -qF 'sanitize_relative_names(files)?' libs/clipboard/src/platform/unix/macos/paste_task.rs ||
+  r_native_bounds="$r_native_bounds macos-paste-start-sanitizer"
+grep -qF 'normalize_relative_name(&file_desc.name)?' libs/clipboard/src/platform/unix/macos/paste_task.rs ||
+  r_native_bounds="$r_native_bounds macos-paste-target-renormalize"
+grep -qF 'ensure_contained_path(&self.target_dir' libs/clipboard/src/platform/unix/macos/paste_task.rs ||
+  r_native_bounds="$r_native_bounds macos-paste-containment-check"
+grep -qF 'unsafe peer file descriptor path' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_bounds="$r_native_bounds macos-paste-sanitizer-error"
+grep -qF 'relative_name_sanitizer_rejects_escape_paths' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_bounds="$r_native_bounds macos-paste-sanitizer-test"
+if grep -qF 'target_dir.join(&file_desc.name)' libs/clipboard/src/platform/unix/macos/paste_task.rs ||
+   grep -qF 'target_dir.join(&file.name)' libs/clipboard/src/platform/unix/macos/paste_task.rs ||
+   grep -qF '.target_dir.join(&file_desc.name)' libs/clipboard/src/platform/unix/macos/paste_task.rs; then
+  r_native_bounds="$r_native_bounds macos-paste-raw-peer-name-join"
+fi
 grep -qF 'pub(crate) const MAX_NATIVE_CLIPRDR_FORMATS: usize = 32;' src/clipboard_file.rs ||
   r_native_bounds="$r_native_bounds cliprdr-format-cap"
 grep -qF 'MAX_NATIVE_CLIPRDR_FORMAT_DATA_BYTES' src/clipboard_file.rs ||
@@ -1912,10 +1933,27 @@ grep -qF 'fileContentsRequest->dwFlags != FILECONTENTS_SIZE' libs/clipboard/src/
 if grep -qF 'p += len + 1, clipboard->nFiles++' libs/clipboard/src/windows/wf_cliprdr.c; then
   r_native_bounds="$r_native_bounds cliprdr-c-ansi-double-increment"
 fi
+grep -qF 'refusing incoming Windows remote printer job before XPS handoff' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-incoming-fail-closed"
+grep -qF 'refusing in-process Windows remote printer job; native printer worker is not implemented' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-completion-fail-closed"
+grep -qF 'refusing Windows remote printer response; native printer worker is not implemented' src/ui_session_interface.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-ui-response-fail-closed"
+if grep -RInF 'send_raw_data_to_printer' src --include='*.rs' \
+    | grep -vF 'src/platform/windows.rs:' >/dev/null; then
+  r_native_bounds="$r_native_bounds windows-printer-session-raw-call"
+fi
+if grep -qF 'handler.printer_response(id, _s.path' src/client/io_loop.rs; then
+  r_native_bounds="$r_native_bounds windows-printer-peer-response-call"
+fi
+if grep -qF 'OPTION_PRINTER_ALLOW_AUTO_PRINT' src/client/io_loop.rs ||
+   grep -qF 'OPTION_PRINTER_INCOMING_JOB_ACTION' src/client/io_loop.rs; then
+  r_native_bounds="$r_native_bounds windows-printer-auto-policy-read"
+fi
 if [ -n "$r_native_bounds" ]; then
   echo "  FAIL Appendix C #2b/R-T0: native media/clipboard handoff bounds regressed:$r_native_bounds"; rc=1
 else
-  echo "  ok  Appendix C #2b/R-T0 native media/clipboard handoff bounds present (remaining process-model residuals tracked separately)"
+  echo "  ok  Appendix C #2b/R-T0 native media/clipboard/printer handoff bounds and fail-closed guards present (remaining process-model residuals tracked separately)"
 fi
 # Appendix C #2b first sandbox slice: desktop video decode must cross a hidden
 # same-artifact worker process before libvpx/aom/libyuv sees hostile-peer bytes.

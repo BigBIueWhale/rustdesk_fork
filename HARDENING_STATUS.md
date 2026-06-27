@@ -19,10 +19,12 @@ confinement, macOS worker NoNetwork Seatbelt confinement, Linux
 x86_64/aarch64 post-exec syscall-filter/fd-cleanup follow-ups, and unsupported
 Linux worker-architecture fail-closed behavior for those slices,
 Unix/macOS file-copy descriptor-parser/FileContents worker isolation, Windows
-CLIPRDR same-artifact worker isolation, desktop video capability-advertising
-wrapper closure, and Apple SDK-free source-conformance are closed in source and
-gates; responder-side port-forward latent-connect and file write-response
-forwarding follow-ups remain closed. The full cross-platform native
+CLIPRDR same-artifact worker isolation, macOS paste FILEDESCRIPTOR parent-path
+containment, Windows remote-printer XPS fail-closed behavior, desktop video
+capability-advertising wrapper closure, and Apple SDK-free source-conformance
+are closed in source and gates; responder-side port-forward latent-connect and
+file write-response forwarding follow-ups remain closed. The full
+cross-platform native
 decoder/parser sandbox remains open beyond those worker slices.**
 
 On 2026-06-26, final reviewer `Maxwell` (`gpt-5.5`, `xhigh`) reviewed the
@@ -188,7 +190,14 @@ global event sender before joining the output thread on stdin EOF, the
 `conn_id == 0` callback broadcast uses the bounded proxy event path instead of
 writing into the child's process-local message channels, disconnect cleanup
 crosses the worker boundary through a bounded clear-pending command, and the raw
-in-process native CLIPRDR initializer is no longer public. This is not yet the
+in-process native CLIPRDR initializer is no longer public. macOS paste-task
+state additionally re-normalizes worker-parsed FILEDESCRIPTOR names before
+parent-process filesystem operations and rejects absolute, parent/current,
+drive-style, empty, NUL, backslash, colon, and overlong path components before
+mkdir, temporary download, collision rename, or final rename. Windows
+remote-printer jobs now fail closed before XPS/native printer handoff until a
+same-artifact native printer worker exists; session code no longer calls the
+in-process `send_raw_data_to_printer` bridge. This is not yet the
 full sandbox: mobile media/clipboard/zstd platform-worker support if those
 features are to be enabled on mobile, Android's process model, iOS's
 no-child-process model, a broader
@@ -207,6 +216,29 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 
 ## Recent Closures
 
+- **Windows remote-printer XPS handoff now fails closed until a native worker exists.**
+  `src/client/io_loop.rs` rejects incoming Windows `FileType::Printer` requests
+  before prompt/auto-print policy or XPS handoff, and refuses any completed
+  Windows printer job instead of calling
+  `crate::platform::send_raw_data_to_printer`. `src/ui_session_interface.rs`
+  now makes `printer_response` fail closed under `cfg(windows)`, so a UI reply
+  cannot create a Windows printer receive job. The platform bridge remains
+  defined in `src/platform/windows.rs`, but no session path calls it.
+  `scripts/verify.sh` gates the fail-closed markers, absence of non-platform
+  `send_raw_data_to_printer` callers, absence of the old peer
+  `printer_response` call, and absence of old auto-print policy reads in the
+  Windows peer path.
+- **macOS paste FILEDESCRIPTOR names are normalized and contained before parent
+  filesystem use.**
+  The Unix FILEDESCRIPTOR worker still owns hostile PDU parsing, and
+  `FileDescription::sanitize_relative_names` now rejects absolute paths,
+  parent/current-directory components, drive-style colon components, empty
+  components, embedded NULs, backslashes, and overlong components before
+  `PasteTask` starts. `PasteTask` re-normalizes before directory creation, temp
+  download creation, collision rename, and final rename, and checks generated
+  paths stay under the requested paste target directory. The regression test
+  `relative_name_sanitizer_rejects_escape_paths` plus `scripts/verify.sh`
+  source gates cover the sanitizer markers and absence of raw peer-name joins.
 - **TCP close-drain, accept-error accounting, and pre-key id accounting are
   closed.**
   `libs/hbb_common/src/tcp.rs` now routes the keyed writer task through
@@ -604,33 +636,32 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 
 ## Artifact State
 
-The Debian, Android, and Windows artifacts below were rebuilt after commit
-`898947b` (`Gate desktop video codec capability wrapper`) and before the later
-harness/status-only cleanup notes in this ledger. Those later edits do not
-change the Rust/Flutter application binary inputs. `scripts/build-debian.sh`
-ran in the disposable `rustdesk-fork-harness-deb-builder` build container with
-the compile stage offline (`--network=none`) and
-`SOURCE_DATE_EPOCH=1700000000`, then performed its double-build determinism
-check. `scripts/build-android.sh` ran in the disposable
-`rustdesk-fork-harness-android-builder` container with the compile stage offline
-(`--network=none`), signed with the stable local Android key, and
-`apksigner verify` reported one signer with v1/v2/v3 verification true.
-`WINDOWS_BUILD_SOURCE=worktree scripts/build-windows-vm.sh` ran through the
-transient Windows KVM path from the pinned golden qcow2, booted the per-build
-VM with `--network none`, used loopback-only VNC, extracted/canonicalized the
-`.exe` and `.msi`, and passed the default Windows double-build A==B assertion.
+The Debian, Android, and Windows artifacts below were rebuilt from the current
+source state after the macOS paste FILEDESCRIPTOR parent-path containment and
+Windows remote-printer fail-closed changes. `scripts/build-debian.sh` ran in
+the disposable `rustdesk-fork-harness-deb-builder` build container with the
+compile stage offline (`--network=none`) and `SOURCE_DATE_EPOCH=1700000000`,
+then performed its double-build determinism check. `scripts/build-android.sh`
+ran in the disposable `rustdesk-fork-harness-android-builder` container with
+the compile stage offline (`--network=none`), signed with the stable local
+Android key, and `apksigner verify` reported one signer with v1/v2/v3
+verification true. `WINDOWS_BUILD_SOURCE=worktree
+scripts/build-windows-vm.sh` ran through the transient Windows KVM path from
+the pinned golden qcow2, booted the per-build VM with `--network none`, used
+loopback-only VNC, extracted/canonicalized the `.exe` and `.msi`, and passed
+the default Windows double-build A==B assertion.
 
 ```text
-bc29f067458c0f3020cdec5c76e487d36d81e63a2b6aaf8ceac320038dcb0406  dist/rustdesk-x86_64.deb
-add41e1ec9f096b2c5e9858c5d29de7a72deecbe38fde0a29abc9a73a9d28635  dist/rustdesk-arm64.apk
-6b61d0466a2d631ea03515b794ef531dad94ede3b4d0e2380e831768985ca821  dist/rustdesk-setup.exe
-291a5349a77a157f9b699586ac5a3f15d5e1d1c3e8157b6246e6a6b110d75dab  dist/rustdesk.msi
+25c7f0223c39d69f12ac7ae448863b293610697953eb1ec5f3ce3504c6d9797c  dist/rustdesk-x86_64.deb
+88039c3b25b264787ee1efefae8d6d7ba61caa2e4f3501ef440c7a2e92f91a0e  dist/rustdesk-arm64.apk
+5478d3deb225f960f962dcfc36affe904ab7762bc756e0a058307c5897fc943d  dist/rustdesk-setup.exe
+82fc6fc5ac76f1e0911bc92d2984506755920fb551dc791b7edd5457bec51958  dist/rustdesk.msi
 ```
 
 Build evidence:
 
 - Debian `scripts/build-debian.sh` passed its offline Docker double-build A==B
-  gate after the desktop video capability-wrapper change.
+  gate from the current source state.
 - Android `scripts/build-android.sh` passed from the current source, and
   `apksigner verify` reported one signer with v1/v2/v3 verification true.
 - Windows `WINDOWS_BUILD_SOURCE=worktree scripts/build-windows-vm.sh` passed
@@ -870,6 +901,22 @@ bash scripts/verify.sh    # GREEN: VERIFY: all gates green, incl. the raw suppor
 bash scripts/build-debian.sh # GREEN: offline Docker double-build A==B, bc29f067458c0f3020cdec5c76e487d36d81e63a2b6aaf8ceac320038dcb0406
 ANDROID_KEYSTORE=... ANDROID_KEYSTORE_PASS_FILE=... bash scripts/build-android.sh # GREEN: offline Docker build, apksigner verified one signer, add41e1ec9f096b2c5e9858c5d29de7a72deecbe38fde0a29abc9a73a9d28635
 WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh # GREEN: transient KVM VM, --network none, loopback-only VNC, double-build A==B, exe=6b61d0466a2d631ea03515b794ef531dad94ede3b4d0e2380e831768985ca821, msi=291a5349a77a157f9b699586ac5a3f15d5e1d1c3e8157b6246e6a6b110d75dab
+```
+
+After the macOS paste FILEDESCRIPTOR parent-path containment and Windows
+remote-printer fail-closed changes, the focused source gates, Apple
+source-conformance gate, and refreshed artifacts were re-run:
+
+```text
+docker run --rm ... rustfmt --edition 2021 libs/clipboard/src/platform/unix/filetype.rs libs/clipboard/src/platform/unix/macos/paste_task.rs libs/clipboard/src/platform/unix/macos/pasteboard_context.rs src/client/io_loop.rs src/ui_session_interface.rs  # GREEN
+bash -n scripts/verify.sh                                  # GREEN
+git diff --check                                           # GREEN
+bash scripts/verify.sh                                     # GREEN: VERIFY: all gates green, incl. relative-name sanitizer test, macOS paste containment source gates, and Windows remote-printer fail-closed source gates
+bash scripts/apple-conform-check.sh                        # GREEN: SDK-free Apple source-conformance boundary
+bash scripts/verify-windows-golden.sh                      # GREEN: pinned golden qcow2 toolchain/provisioning marker verified read-only
+WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh # GREEN: transient KVM VM, --network none, loopback-only VNC, double-build A==B, exe=5478d3deb225f960f962dcfc36affe904ab7762bc756e0a058307c5897fc943d, msi=82fc6fc5ac76f1e0911bc92d2984506755920fb551dc791b7edd5457bec51958
+bash scripts/build-debian.sh                               # GREEN: offline Docker double-build A==B, 25c7f0223c39d69f12ac7ae448863b293610697953eb1ec5f3ce3504c6d9797c
+ANDROID_KEYSTORE=... ANDROID_KEYSTORE_PASS_FILE=... bash scripts/build-android.sh # GREEN: offline Docker build, apksigner verified one signer with v1/v2/v3 true, 88039c3b25b264787ee1efefae8d6d7ba61caa2e4f3501ef440c7a2e92f91a0e
 ```
 
 The Windows VM build path is now current for the application source represented

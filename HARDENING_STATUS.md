@@ -1314,9 +1314,9 @@ git diff --check              # GREEN after this ledger update
   The active Android clipboard path polls the local platform clipboard and sends
   it outward, rather than applying a peer-controlled clipboard SET, but it still
   crosses a JNI/protobuf parser boundary. `Java_ffi_FFI_onClipboardUpdate` now
-  rejects missing side-prefix buffers and any update over the 64 MiB native
-  clipboard budget before slicing or parsing, and the source gate keeps the cap
-  and checked slice in place.
+  rejects null direct-buffer pointers, missing side-prefix buffers, and any
+  update over the 64 MiB native clipboard budget before slicing or parsing, and
+  the source gate keeps the cap and checked slice in place.
 
 - **Android raw media JNI no longer retains Java buffer pointers.** The
   ImageReader and AudioRecord callbacks hand Rust direct `ByteBuffer` storage

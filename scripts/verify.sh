@@ -2586,6 +2586,8 @@ if grep -R -qF 'call_clipboard_manager_update_clipboard' src libs/hbb_common; th
 fi
 grep -qF 'MAX_ANDROID_CLIPBOARD_UPDATE_BYTES' libs/scrap/src/android/ffi.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-ffi-cap"
+grep -qF 'dropping null Android clipboard update before protobuf parse' libs/scrap/src/android/ffi.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-ffi-null-drop"
 grep -qF 'dropping malformed Android clipboard update before protobuf parse' libs/scrap/src/android/ffi.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-ffi-empty-drop"
 grep -qF 'dropping oversized Android clipboard update before protobuf parse' libs/scrap/src/android/ffi.rs ||

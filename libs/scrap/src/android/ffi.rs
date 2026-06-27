@@ -179,6 +179,10 @@ pub extern "system" fn Java_ffi_FFI_onClipboardUpdate(
 ) {
     if let Ok(data) = env.get_direct_buffer_address(&buffer) {
         if let Ok(len) = env.get_direct_buffer_capacity(&buffer) {
+            if data.is_null() {
+                log::warn!("dropping null Android clipboard update before protobuf parse");
+                return;
+            }
             if len <= ANDROID_CLIPBOARD_SIDE_PREFIX_BYTES {
                 log::warn!("dropping malformed Android clipboard update before protobuf parse");
                 return;

@@ -1728,10 +1728,28 @@ grep -qF 'checked_mul(bytes_per_row)' libs/scrap/src/common/mod.rs ||
   r_native_bounds="$r_native_bounds video-decoded-checked-mul"
 grep -qF 'const MAX_PEER_VIDEO_DISPLAYS: usize = 16;' src/client/io_loop.rs ||
   r_native_bounds="$r_native_bounds viewer-video-display-cap"
-grep -qF 'fn bound_peer_info_displays(mut pi: PeerInfo) -> PeerInfo' src/client/io_loop.rs ||
-  r_native_bounds="$r_native_bounds viewer-peer-info-display-bounder"
+grep -qF 'fn bound_peer_info(mut pi: PeerInfo) -> PeerInfo' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-peer-info-bounder"
 grep -qF 'pi.displays.truncate(MAX_PEER_VIDEO_DISPLAYS)' src/client/io_loop.rs ||
   r_native_bounds="$r_native_bounds viewer-peer-info-display-truncate"
+grep -qF 'const MAX_PEER_INFO_PLATFORM_ADDITIONS_BYTES: usize = 8 * 1024;' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-peer-info-platform-additions-cap"
+grep -qF 'const MAX_PEER_DISPLAY_DIMENSION: i32 = 32_768;' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-peer-info-display-dimension-cap"
+grep -qF 'fn sanitize_peer_display_info(display: &mut DisplayInfo)' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-peer-info-display-sanitizer"
+grep -qF 'fn sanitize_peer_platform_additions(raw: &str) -> String' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-peer-info-platform-additions-sanitizer"
+grep -qF 'self.peer_info.support_view_camera = false;' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-peer-info-platform-additions-reset"
+grep -qF '.truncate(MAX_PEER_INFO_RESOLUTIONS)' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-peer-info-resolution-cap"
+grep -qF 'is_peer_display_dimension(resolution.width)' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-peer-info-resolution-dimension-bound"
+grep -qF '.truncate(MAX_PEER_WINDOWS_SESSIONS)' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-peer-info-windows-session-cap"
+grep -qF 'peer_info_bounder_limits_peer_strings_and_vectors' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-peer-info-bounder-test"
 grep -qF 'if !self.accept_peer_video_display(display)' src/client/io_loop.rs ||
   r_native_bounds="$r_native_bounds viewer-video-display-admission"
 grep -qF 'dropping peer video frame for out-of-range display' src/client/io_loop.rs ||

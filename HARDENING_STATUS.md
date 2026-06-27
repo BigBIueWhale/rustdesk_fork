@@ -55,7 +55,10 @@ rate gates before viewer UI or controlled-side CM forwarding. Peer terminal
 responses now fail closed before service-id persistence, decompression, base64
 encoding, or Flutter event routing unless the local session is terminal and the
 `enable-terminal` policy pin is enabled; with the current pinned
-`enable-terminal=N` policy, the route is closed.
+`enable-terminal=N` policy, the route is closed. PeerInfo handoffs now bound and
+sanitize peer-supplied identity strings, display geometry, advertised
+resolutions, Windows session names/vectors, and platform-additions JSON before
+local parsing, persistent session state, or Flutter event routing.
 
 After commit `f90f197`, three additional read-only route/security audits were
 run against the exposed TCP paths. The server/responder audit passed, and the
@@ -244,6 +247,23 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 `requirements.html` is intentionally not edited by implementation work.
 
 ## Recent Closures
+
+- **PeerInfo UI handoffs are bounded and allowlisted before local/UI state.**
+  `src/client/io_loop.rs` now routes both login-time and in-session `PeerInfo`
+  frames through one ingress bounder before the viewer stores peer identity data,
+  parses platform additions, updates display state, or emits Flutter events. The
+  bounder clamps PeerInfo identity/version strings, display-list count, display
+  names, display dimensions/origins/scale/original-resolution metadata,
+  advertised resolution count and dimensions, Windows-session count and names,
+  and `platform_additions` byte length. `platform_additions` is parsed as JSON,
+  restricted to the small key set the local UI actually consumes, clamps list
+  lengths and numeric virtual-display values, and drops malformed, oversized, or
+  non-object payloads. The Rust-side feature cache derived from
+  `platform_additions` is reset before parsing so rejected or empty payloads do
+  not preserve stale peer-advertised capabilities. `scripts/verify.sh`
+  source-gates the bounder, display sanitizer, platform-additions sanitizer,
+  platform-additions reset, vector caps, dimension cap, and the hostile PeerInfo
+  regression test.
 
 - **Peer `ScreenshotResponse` payloads are bounded and provenance-checked before global/UI caching.**
   `src/peer_text.rs` now admits screenshot responses through a route-specific
@@ -994,6 +1014,16 @@ rustfmt --edition 2021 src/client/io_loop.rs                  # GREEN
 bash -n scripts/verify.sh                                     # GREEN
 git diff --check                                               # GREEN
 bash scripts/verify.sh                                         # GREEN: VERIFY: all gates green, incl. terminal response pre-handler policy source gate
+```
+
+After the PeerInfo UI-handoff bounder and platform-additions allowlist update,
+these focused and full gates have been re-run successfully:
+
+```text
+rustfmt --edition 2021 src/client/io_loop.rs                  # GREEN
+bash -n scripts/verify.sh                                     # GREEN
+git diff --check                                               # GREEN
+bash scripts/verify.sh                                         # GREEN: VERIFY: all gates green, incl. PeerInfo display/resolution/session/platform-additions source gates
 ```
 
 After the Windows native-worker process-mitigation entry hook and gate update,

@@ -55,6 +55,14 @@ use std::{
 
 const MAX_PEER_VIDEO_DISPLAYS: usize = 16;
 const MAX_PENDING_SCREENSHOT_RESPONSES: usize = 8;
+const MAX_PEER_INFO_PLATFORM_ADDITIONS_BYTES: usize = 8 * 1024;
+const MAX_PEER_INFO_RESOLUTIONS: usize = 256;
+const MAX_PEER_WINDOWS_SESSIONS: usize = 64;
+const MAX_PEER_PLATFORM_ADDITION_LIST_ITEMS: usize = 64;
+const MAX_PEER_PRIVACY_MODE_IMPLS: usize = 8;
+const MAX_PEER_DISPLAY_DIMENSION: i32 = 32_768;
+const MAX_PEER_DISPLAY_ORIGIN_ABS: i32 = 1_000_000;
+const MAX_PEER_DISPLAY_SCALE: f64 = 16.0;
 
 pub struct Remote<T: InvokeUiSession> {
     handler: Session<T>,
@@ -114,7 +122,13 @@ impl ParsedPeerInfo {
     }
 }
 
-fn bound_peer_info_displays(mut pi: PeerInfo) -> PeerInfo {
+fn bound_peer_info(mut pi: PeerInfo) -> PeerInfo {
+    pi.username = config::bound_peer_config_string(&pi.username);
+    pi.hostname = config::bound_peer_config_string(&pi.hostname);
+    pi.platform = config::bound_peer_config_string(&pi.platform);
+    pi.version = config::bound_peer_config_string(&pi.version);
+    pi.platform_additions = sanitize_peer_platform_additions(&pi.platform_additions);
+
     if pi.displays.len() > MAX_PEER_VIDEO_DISPLAYS {
         log::warn!(
             "peer advertised {} displays; truncating to {}",
@@ -123,10 +137,192 @@ fn bound_peer_info_displays(mut pi: PeerInfo) -> PeerInfo {
         );
         pi.displays.truncate(MAX_PEER_VIDEO_DISPLAYS);
     }
+    for display in pi.displays.iter_mut() {
+        sanitize_peer_display_info(display);
+    }
     if pi.current_display < 0 || pi.current_display as usize >= pi.displays.len() {
         pi.current_display = 0;
     }
+    if let Some(resolutions) = pi.resolutions.as_mut() {
+        if resolutions.resolutions.len() > MAX_PEER_INFO_RESOLUTIONS {
+            log::warn!(
+                "peer advertised {} resolutions; truncating to {}",
+                resolutions.resolutions.len(),
+                MAX_PEER_INFO_RESOLUTIONS
+            );
+            resolutions.resolutions.truncate(MAX_PEER_INFO_RESOLUTIONS);
+        }
+        let before = resolutions.resolutions.len();
+        resolutions.resolutions.retain(|resolution| {
+            is_peer_display_dimension(resolution.width)
+                && is_peer_display_dimension(resolution.height)
+        });
+        if resolutions.resolutions.len() != before {
+            log::warn!(
+                "peer advertised {} invalid resolutions; dropping them",
+                before - resolutions.resolutions.len()
+            );
+        }
+    }
+    if let Some(windows_sessions) = pi.windows_sessions.as_mut() {
+        if windows_sessions.sessions.len() > MAX_PEER_WINDOWS_SESSIONS {
+            log::warn!(
+                "peer advertised {} Windows sessions; truncating to {}",
+                windows_sessions.sessions.len(),
+                MAX_PEER_WINDOWS_SESSIONS
+            );
+            windows_sessions
+                .sessions
+                .truncate(MAX_PEER_WINDOWS_SESSIONS);
+        }
+        for session in windows_sessions.sessions.iter_mut() {
+            session.name = config::bound_peer_config_string(&session.name);
+        }
+    }
     pi
+}
+
+fn sanitize_peer_display_info(display: &mut DisplayInfo) {
+    display.name = config::bound_peer_config_string(&display.name);
+    display.x = display
+        .x
+        .clamp(-MAX_PEER_DISPLAY_ORIGIN_ABS, MAX_PEER_DISPLAY_ORIGIN_ABS);
+    display.y = display
+        .y
+        .clamp(-MAX_PEER_DISPLAY_ORIGIN_ABS, MAX_PEER_DISPLAY_ORIGIN_ABS);
+    display.width = sanitize_peer_display_dimension(display.width);
+    display.height = sanitize_peer_display_dimension(display.height);
+    let mut clear_original_resolution = false;
+    if let Some(original_resolution) = display.original_resolution.as_mut() {
+        if original_resolution.width == 0 && original_resolution.height == 0 {
+            // RustDesk uses 0x0 as the virtual-display marker in Flutter.
+        } else if is_peer_display_dimension(original_resolution.width)
+            && is_peer_display_dimension(original_resolution.height)
+        {
+            original_resolution.width = sanitize_peer_display_dimension(original_resolution.width);
+            original_resolution.height =
+                sanitize_peer_display_dimension(original_resolution.height);
+        } else {
+            clear_original_resolution = true;
+        }
+    }
+    if clear_original_resolution {
+        display.original_resolution = Default::default();
+    }
+    if !display.scale.is_finite() || display.scale <= 0.0 || display.scale > MAX_PEER_DISPLAY_SCALE
+    {
+        display.scale = 1.0;
+    }
+}
+
+fn is_peer_display_dimension(value: i32) -> bool {
+    (1..=MAX_PEER_DISPLAY_DIMENSION).contains(&value)
+}
+
+fn sanitize_peer_display_dimension(value: i32) -> i32 {
+    value.clamp(1, MAX_PEER_DISPLAY_DIMENSION)
+}
+
+fn sanitize_peer_platform_additions(raw: &str) -> String {
+    if raw.is_empty() {
+        return String::new();
+    }
+    if raw.len() > MAX_PEER_INFO_PLATFORM_ADDITIONS_BYTES {
+        log::warn!(
+            "dropping oversized peer platform_additions: {} > {} bytes",
+            raw.len(),
+            MAX_PEER_INFO_PLATFORM_ADDITIONS_BYTES
+        );
+        return String::new();
+    }
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
+        log::warn!("dropping malformed peer platform_additions JSON");
+        return String::new();
+    };
+    let Some(input) = value.as_object() else {
+        log::warn!("dropping non-object peer platform_additions JSON");
+        return String::new();
+    };
+
+    let mut output = serde_json::Map::new();
+    for key in [
+        "is_wayland",
+        "headless",
+        "is_installed",
+        "has_file_clipboard",
+        "support_view_camera",
+    ] {
+        if let Some(value) = input.get(key).and_then(|v| v.as_bool()) {
+            output.insert(key.to_owned(), serde_json::json!(value));
+        }
+    }
+    if let Some(value) = input.get("idd_impl").and_then(|v| v.as_str()) {
+        output.insert(
+            "idd_impl".to_owned(),
+            serde_json::json!(config::bound_peer_config_string(value)),
+        );
+    }
+    if let Some(value) = input
+        .get("amyuni_virtual_displays")
+        .and_then(|v| v.as_u64())
+    {
+        let value = value.min(MAX_PEER_PLATFORM_ADDITION_LIST_ITEMS as u64);
+        output.insert(
+            "amyuni_virtual_displays".to_owned(),
+            serde_json::json!(value),
+        );
+    }
+    if let Some(values) = input
+        .get("rustdesk_virtual_displays")
+        .and_then(|v| v.as_array())
+    {
+        let values: Vec<u64> = values
+            .iter()
+            .filter_map(|v| v.as_u64())
+            .filter(|value| *value < MAX_PEER_PLATFORM_ADDITION_LIST_ITEMS as u64)
+            .take(MAX_PEER_PLATFORM_ADDITION_LIST_ITEMS)
+            .collect();
+        if !values.is_empty() {
+            output.insert(
+                "rustdesk_virtual_displays".to_owned(),
+                serde_json::json!(values),
+            );
+        }
+    }
+    if let Some(values) = input
+        .get("supported_privacy_mode_impl")
+        .and_then(|v| v.as_array())
+    {
+        let values: Vec<Vec<String>> = values
+            .iter()
+            .filter_map(|entry| {
+                let entry = entry.as_array()?;
+                let key = entry.get(0)?.as_str()?;
+                let label = entry.get(1)?.as_str()?;
+                Some(vec![
+                    config::bound_peer_config_string(key),
+                    config::bound_peer_config_string(label),
+                ])
+            })
+            .take(MAX_PEER_PRIVACY_MODE_IMPLS)
+            .collect();
+        output.insert(
+            "supported_privacy_mode_impl".to_owned(),
+            serde_json::json!(values),
+        );
+    }
+
+    if output.is_empty() {
+        String::new()
+    } else {
+        match serde_json::to_string(&output) {
+            Ok(value) => value,
+            Err(err) => {
+                log::warn!("dropping unserializable peer platform_additions JSON: {err}");
+                String::new()
+            }
+        }
+    }
 }
 
 impl<T: InvokeUiSession> Remote<T> {
@@ -1400,7 +1596,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         }
                     }
                     Some(login_response::Union::PeerInfo(pi)) => {
-                        let pi = bound_peer_info_displays(pi);
+                        let pi = bound_peer_info(pi);
                         let peer_version = pi.version.clone();
                         let peer_platform = pi.platform.clone();
                         self.set_peer_info(&pi);
@@ -2054,7 +2250,7 @@ impl<T: InvokeUiSession> Remote<T> {
                     }
                 }
                 Some(message::Union::PeerInfo(pi)) => {
-                    let pi = bound_peer_info_displays(pi);
+                    let pi = bound_peer_info(pi);
                     self.set_peer_info(&pi);
                     self.handler.set_displays(&pi.displays);
                     self.handler.set_platform_additions(&pi.platform_additions);
@@ -2122,25 +2318,31 @@ impl<T: InvokeUiSession> Remote<T> {
             self.peer_info.support_terminal = features.terminal;
         }
 
-        if let Ok(platform_additions) =
-            serde_json::from_str::<HashMap<String, serde_json::Value>>(&pi.platform_additions)
-        {
-            self.peer_info.is_installed = platform_additions
-                .get("is_installed")
-                .map(|v| v.as_bool())
-                .flatten()
-                .unwrap_or(false);
-            self.peer_info.idd_impl = platform_additions
-                .get("idd_impl")
-                .map(|v| v.as_str())
-                .flatten()
-                .unwrap_or_default()
-                .to_string();
-            self.peer_info.support_view_camera = platform_additions
-                .get("support_view_camera")
-                .map(|v| v.as_bool())
-                .flatten()
-                .unwrap_or(false);
+        self.peer_info.is_installed = false;
+        self.peer_info.idd_impl.clear();
+        self.peer_info.support_view_camera = false;
+        if !pi.platform_additions.is_empty() {
+            match serde_json::from_str::<HashMap<String, serde_json::Value>>(&pi.platform_additions)
+            {
+                Ok(platform_additions) => {
+                    self.peer_info.is_installed = platform_additions
+                        .get("is_installed")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    self.peer_info.idd_impl = platform_additions
+                        .get("idd_impl")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+                    self.peer_info.support_view_camera = platform_additions
+                        .get("support_view_camera")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                }
+                Err(err) => {
+                    log::warn!("dropping unparsable sanitized peer platform_additions: {err}");
+                }
+            }
         }
     }
 
@@ -2560,9 +2762,135 @@ mod tests {
     fn peer_info_display_list_is_truncated_to_thread_cap() {
         let mut pi = peer_info_with_display_count(MAX_PEER_VIDEO_DISPLAYS + 1);
         pi.current_display = (MAX_PEER_VIDEO_DISPLAYS + 10) as i32;
-        let bounded = bound_peer_info_displays(pi);
+        let bounded = bound_peer_info(pi);
         assert_eq!(bounded.displays.len(), MAX_PEER_VIDEO_DISPLAYS);
         assert_eq!(bounded.current_display, 0);
+    }
+
+    #[test]
+    fn peer_info_bounder_limits_peer_strings_and_vectors() {
+        let mut pi = peer_info_with_display_count(MAX_PEER_VIDEO_DISPLAYS + 1);
+        pi.username = format!("user\u{0000}{}", "x".repeat(400));
+        pi.hostname = "h".repeat(400);
+        pi.platform = "p".repeat(400);
+        pi.version = "v".repeat(400);
+        pi.displays[0].name = format!("display\u{0000}{}", "x".repeat(400));
+        pi.displays[0].x = MAX_PEER_DISPLAY_ORIGIN_ABS + 1;
+        pi.displays[0].y = -MAX_PEER_DISPLAY_ORIGIN_ABS - 1;
+        pi.displays[0].width = 0;
+        pi.displays[0].height = MAX_PEER_DISPLAY_DIMENSION + 1;
+        pi.displays[0].scale = f64::INFINITY;
+        pi.displays[0].original_resolution = Some(Resolution {
+            width: -1,
+            height: 1080,
+            ..Default::default()
+        })
+        .into();
+        pi.resolutions = Some(SupportedResolutions {
+            resolutions: (0..(MAX_PEER_INFO_RESOLUTIONS + 1))
+                .map(|i| Resolution {
+                    width: if i == 0 { 0 } else { 1920 },
+                    height: if i == 1 {
+                        MAX_PEER_DISPLAY_DIMENSION + 1
+                    } else {
+                        1080
+                    },
+                    ..Default::default()
+                })
+                .chain(std::iter::once(Resolution {
+                    width: 1920,
+                    height: 1080,
+                    ..Default::default()
+                }))
+                .collect(),
+            ..Default::default()
+        })
+        .into();
+        pi.windows_sessions = Some(WindowsSessions {
+            sessions: (0..(MAX_PEER_WINDOWS_SESSIONS + 1))
+                .map(|i| WindowsSession {
+                    sid: i as u32,
+                    name: format!("name\u{0007}{}", "x".repeat(400)),
+                    ..Default::default()
+                })
+                .collect(),
+            current_sid: 1,
+            ..Default::default()
+        })
+        .into();
+        pi.platform_additions = serde_json::json!({
+            "is_installed": true,
+            "unknown": "drop",
+            "idd_impl": format!("idd\u{0000}{}", "x".repeat(270)),
+            "amyuni_virtual_displays": 9_999,
+            "rustdesk_virtual_displays": (0..(MAX_PEER_PLATFORM_ADDITION_LIST_ITEMS + 4)).collect::<Vec<_>>(),
+            "supported_privacy_mode_impl": (0..(MAX_PEER_PRIVACY_MODE_IMPLS + 4))
+                .map(|_| vec![format!("impl\u{0000}{}", "x".repeat(270)), "tip".repeat(90)])
+                .collect::<Vec<_>>(),
+        })
+        .to_string();
+
+        let bounded = bound_peer_info(pi);
+
+        assert_eq!(bounded.displays.len(), MAX_PEER_VIDEO_DISPLAYS);
+        assert_eq!(bounded.current_display, 0);
+        assert!(bounded.displays[0].name.len() <= 256);
+        assert!(!bounded.displays[0].name.contains('\u{0000}'));
+        assert_eq!(bounded.displays[0].x, MAX_PEER_DISPLAY_ORIGIN_ABS);
+        assert_eq!(bounded.displays[0].y, -MAX_PEER_DISPLAY_ORIGIN_ABS);
+        assert_eq!(bounded.displays[0].width, 1);
+        assert_eq!(bounded.displays[0].height, MAX_PEER_DISPLAY_DIMENSION);
+        assert_eq!(bounded.displays[0].scale, 1.0);
+        assert!(bounded.displays[0].original_resolution.as_ref().is_none());
+        assert!(bounded.username.len() <= 256);
+        assert!(!bounded.username.contains('\u{0000}'));
+        assert!(bounded.hostname.len() <= 256);
+        assert!(bounded.platform.len() <= 256);
+        assert!(bounded.version.len() <= 256);
+        assert!(bounded.resolutions.resolutions.len() <= MAX_PEER_INFO_RESOLUTIONS);
+        assert!(bounded.resolutions.resolutions.iter().all(|resolution| {
+            is_peer_display_dimension(resolution.width)
+                && is_peer_display_dimension(resolution.height)
+        }));
+        assert_eq!(
+            bounded.windows_sessions.sessions.len(),
+            MAX_PEER_WINDOWS_SESSIONS
+        );
+        assert!(!bounded.windows_sessions.sessions[0]
+            .name
+            .contains('\u{0007}'));
+
+        let additions: serde_json::Value =
+            serde_json::from_str(&bounded.platform_additions).unwrap();
+        assert!(additions.get("unknown").is_none());
+        assert_eq!(additions["is_installed"], serde_json::json!(true));
+        assert_eq!(
+            additions["amyuni_virtual_displays"],
+            serde_json::json!(MAX_PEER_PLATFORM_ADDITION_LIST_ITEMS as u64)
+        );
+        assert_eq!(
+            additions["rustdesk_virtual_displays"]
+                .as_array()
+                .unwrap()
+                .len(),
+            MAX_PEER_PLATFORM_ADDITION_LIST_ITEMS
+        );
+        let privacy_impls = additions["supported_privacy_mode_impl"].as_array().unwrap();
+        assert_eq!(privacy_impls.len(), MAX_PEER_PRIVACY_MODE_IMPLS);
+        assert!(privacy_impls[0][0].as_str().unwrap().len() <= 256);
+        assert!(!privacy_impls[0][0].as_str().unwrap().contains('\u{0000}'));
+    }
+
+    #[test]
+    fn peer_platform_additions_rejects_oversized_or_malformed_json() {
+        assert_eq!(
+            sanitize_peer_platform_additions(
+                &"x".repeat(MAX_PEER_INFO_PLATFORM_ADDITIONS_BYTES + 1)
+            ),
+            ""
+        );
+        assert_eq!(sanitize_peer_platform_additions("{not-json"), "");
+        assert_eq!(sanitize_peer_platform_additions("[1,2,3]"), "");
     }
 }
 

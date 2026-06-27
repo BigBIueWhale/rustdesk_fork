@@ -1786,6 +1786,23 @@ grep -qF 'peer_notification_msgbox' src/client/io_loop.rs ||
   r_native_bounds="$r_native_bounds viewer-notification-rate-gate"
 grep -qF 'self.peer_text_gate.admit_chat(c.text)' src/server/connection.rs ||
   r_native_bounds="$r_native_bounds controlled-chat-admission"
+grep -qF 'pub const MAX_PEER_SCREENSHOT_RESPONSE_BYTES: usize = 32 * 1024 * 1024;' src/peer_text.rs ||
+  r_native_bounds="$r_native_bounds screenshot-response-cap"
+grep -qF 'pub fn admit_peer_screenshot_response' src/peer_text.rs ||
+  r_native_bounds="$r_native_bounds screenshot-response-admission-helper"
+grep -qF 'crate::peer_text::admit_peer_screenshot_response(response)' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds screenshot-response-precache-admission"
+grep -qF 'const MAX_PENDING_SCREENSHOT_RESPONSES: usize = 8;' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds screenshot-pending-cap"
+grep -qF 'pending_screenshot_sids: HashSet<String>' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds screenshot-pending-set"
+grep -qF 'self.pending_screenshot_sids.insert(sid.clone())' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds screenshot-request-tracking"
+grep -qF 'if !self.pending_screenshot_sids.remove(&sid)' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds screenshot-response-provenance"
+if grep -qF 'set_screenshot(response.data)' src/client/io_loop.rs; then
+  r_native_bounds="$r_native_bounds screenshot-response-direct-cache"
+fi
 if grep -qF 'self.handler.new_message(c.text)' src/client/io_loop.rs; then
   r_native_bounds="$r_native_bounds viewer-chat-direct"
 fi

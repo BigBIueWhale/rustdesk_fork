@@ -43,7 +43,7 @@ use hbb_common::{
 use hbb_common::{tokio::sync::Mutex as TokioMutex, ResultType};
 use scrap::CodecFormat;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     ffi::c_void,
     num::NonZeroI64,
     path::PathBuf,
@@ -54,6 +54,7 @@ use std::{
 };
 
 const MAX_PEER_VIDEO_DISPLAYS: usize = 16;
+const MAX_PENDING_SCREENSHOT_RESPONSES: usize = 8;
 
 pub struct Remote<T: InvokeUiSession> {
     handler: Session<T>,
@@ -80,6 +81,7 @@ pub struct Remote<T: InvokeUiSession> {
     last_record_state: bool,
     sent_close_reason: bool,
     peer_text_gate: crate::peer_text::PeerTextGate,
+    pending_screenshot_sids: HashSet<String>,
 }
 
 #[derive(Default)]
@@ -157,6 +159,7 @@ impl<T: InvokeUiSession> Remote<T> {
             last_record_state: false,
             sent_close_reason: false,
             peer_text_gate: Default::default(),
+            pending_screenshot_sids: Default::default(),
         }
     }
 
@@ -980,13 +983,30 @@ impl<T: InvokeUiSession> Remote<T> {
                 }
             },
             Data::TakeScreenshot((display, sid)) => {
+                if self.pending_screenshot_sids.len() >= MAX_PENDING_SCREENSHOT_RESPONSES
+                    && !self.pending_screenshot_sids.contains(&sid)
+                {
+                    log::warn!(
+                        "dropping screenshot request; {} responses already pending",
+                        self.pending_screenshot_sids.len()
+                    );
+                    self.handler.handle_screenshot_resp(
+                        sid,
+                        "Too many pending screenshot requests".to_owned(),
+                    );
+                    return true;
+                }
+                self.pending_screenshot_sids.insert(sid.clone());
                 let mut msg = Message::new();
                 msg.set_screenshot_request(ScreenshotRequest {
                     display,
-                    sid,
+                    sid: sid.clone(),
                     ..Default::default()
                 });
-                allow_err!(peer.send(&msg).await);
+                if let Err(err) = peer.send(&msg).await {
+                    log::warn!("failed to send screenshot request: {err}");
+                    self.pending_screenshot_sids.remove(&sid);
+                }
             }
             _ => {}
         }
@@ -2032,9 +2052,28 @@ impl<T: InvokeUiSession> Remote<T> {
                     self.handler.set_platform_additions(&pi.platform_additions);
                 }
                 Some(message::Union::ScreenshotResponse(response)) => {
-                    crate::client::screenshot::set_screenshot(response.data);
-                    self.handler
-                        .handle_screenshot_resp(response.sid, response.msg);
+                    match crate::peer_text::admit_peer_screenshot_response(response) {
+                        Ok(response) => {
+                            let sid = response.sid;
+                            if !self.pending_screenshot_sids.remove(&sid) {
+                                log::warn!("dropping unrequested or stale screenshot response");
+                                return true;
+                            }
+                            let data = response.data;
+                            let msg = response.msg;
+                            crate::client::screenshot::set_screenshot(data);
+                            self.handler.handle_screenshot_resp(sid, msg);
+                        }
+                        Err((sid, msg)) => {
+                            if self.pending_screenshot_sids.remove(&sid) {
+                                self.handler.handle_screenshot_resp(sid, msg);
+                            } else {
+                                log::warn!(
+                                    "dropping oversized screenshot response for unrequested or stale sid"
+                                );
+                            }
+                        }
+                    }
                 }
                 Some(message::Union::TerminalResponse(response)) => {
                     use hbb_common::message_proto::terminal_response::Union;

@@ -1,6 +1,12 @@
-use hbb_common::{log, message_proto::MessageBox};
+use hbb_common::{
+    log,
+    message_proto::{MessageBox, ScreenshotResponse},
+};
 use std::time::{Duration, Instant};
 
+pub const MAX_PEER_SCREENSHOT_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
+pub const MAX_PEER_SCREENSHOT_SID_BYTES: usize = 128;
+pub const MAX_PEER_SCREENSHOT_MSG_BYTES: usize = 1024;
 pub const MAX_PEER_CHAT_TEXT_BYTES: usize = 4 * 1024;
 pub const MAX_PEER_UI_TEXT_BYTES: usize = 4 * 1024;
 pub const MAX_PEER_UI_LABEL_BYTES: usize = 256;
@@ -12,6 +18,7 @@ pub const PEER_CHAT_EVENTS_PER_WINDOW: u32 = 8;
 pub const PEER_DIALOG_EVENTS_PER_WINDOW: u32 = 4;
 pub const PEER_NOTIFICATION_EVENTS_PER_WINDOW: u32 = 8;
 pub const PEER_TEXT_RATE_WINDOW_SECS: u64 = 10;
+const PEER_SCREENSHOT_TOO_LARGE_MSG: &str = "Screenshot response too large";
 
 #[derive(Debug)]
 struct FixedWindowLimiter {
@@ -123,6 +130,23 @@ pub fn bound_peer_notification_details(details: String) -> String {
     bound_peer_text(details, MAX_PEER_UI_TEXT_BYTES)
 }
 
+pub fn admit_peer_screenshot_response(
+    mut response: ScreenshotResponse,
+) -> Result<ScreenshotResponse, (String, String)> {
+    let data_len = response.data.len();
+    response.sid = bound_peer_label(response.sid, MAX_PEER_SCREENSHOT_SID_BYTES);
+    response.msg = bound_peer_text(response.msg, MAX_PEER_SCREENSHOT_MSG_BYTES);
+    if data_len > MAX_PEER_SCREENSHOT_RESPONSE_BYTES {
+        log::warn!(
+            "dropping oversized peer screenshot response: {} > {} bytes",
+            data_len,
+            MAX_PEER_SCREENSHOT_RESPONSE_BYTES
+        );
+        return Err((response.sid, PEER_SCREENSHOT_TOO_LARGE_MSG.to_owned()));
+    }
+    Ok(response)
+}
+
 fn bound_peer_label(input: String, max_bytes: usize) -> String {
     bound_peer_text_with_controls(input, max_bytes, false)
 }
@@ -196,5 +220,41 @@ mod tests {
         assert_eq!(bounded.title.len(), MAX_PEER_UI_LABEL_BYTES);
         assert_eq!(bounded.text.len(), MAX_PEER_UI_TEXT_BYTES);
         assert_eq!(bounded.link.len(), MAX_PEER_UI_LINK_BYTES);
+    }
+
+    #[test]
+    fn screenshot_response_fields_are_bounded() {
+        let response = ScreenshotResponse {
+            data: vec![1u8; 16].into(),
+            sid: format!("sid\n{}", "x".repeat(MAX_PEER_SCREENSHOT_SID_BYTES + 8)),
+            msg: format!(
+                "ok\u{0000}{}",
+                "m".repeat(MAX_PEER_SCREENSHOT_MSG_BYTES + 8)
+            ),
+            ..Default::default()
+        };
+        let admitted = admit_peer_screenshot_response(response).expect("response admitted");
+        assert_eq!(admitted.data.len(), 16);
+        assert!(admitted.sid.len() <= MAX_PEER_SCREENSHOT_SID_BYTES);
+        assert!(!admitted.sid.contains('\n'));
+        assert!(admitted.msg.len() <= MAX_PEER_SCREENSHOT_MSG_BYTES);
+        assert!(!admitted.msg.contains('\u{0000}'));
+    }
+
+    #[test]
+    fn oversized_screenshot_response_is_rejected_after_bounding_sid() {
+        let response = ScreenshotResponse {
+            data: vec![0u8; MAX_PEER_SCREENSHOT_RESPONSE_BYTES + 1].into(),
+            sid: format!("sid\t{}", "x".repeat(MAX_PEER_SCREENSHOT_SID_BYTES + 8)),
+            msg: "ignored".to_owned(),
+            ..Default::default()
+        };
+        let (sid, msg) = match admit_peer_screenshot_response(response) {
+            Ok(_) => panic!("oversized response admitted"),
+            Err(err) => err,
+        };
+        assert!(sid.len() <= MAX_PEER_SCREENSHOT_SID_BYTES);
+        assert!(!sid.contains('\t'));
+        assert_eq!(msg, PEER_SCREENSHOT_TOO_LARGE_MSG);
     }
 }

@@ -243,6 +243,20 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 
 ## Recent Closures
 
+- **Peer `ScreenshotResponse` payloads are bounded and provenance-checked before global/UI caching.**
+  `src/peer_text.rs` now admits screenshot responses through a route-specific
+  guard before the viewer stores the peer-provided PNG bytes in the process-global
+  screenshot cache. The PNG payload is capped at the keyed-session 32 MiB ceiling,
+  while the peer-provided session id and status message are separately clamped and
+  stripped of control characters before they reach the Flutter event path. The
+  viewer tracks at most eight locally initiated screenshot request ids per
+  connection and accepts a peer response only if it matches a pending id, so a
+  hostile peer cannot forge a `sid` to inject screenshot events into another
+  local session. `src/client/io_loop.rs` drops oversized, unsolicited, or stale
+  screenshot responses before caching. `scripts/verify.sh` source-gates the cap,
+  admission helper, pending-request set, provenance check, call site, and the
+  absence of the old direct `set_screenshot(response.data)` form.
+
 - **Peer-driven UI chat, message-box, close-reason, login-error, and notification text is length-capped and rate-gated.**
   `src/peer_text.rs` adds a per-session `PeerTextGate` with fixed-window
   admission limits and byte caps for peer chat, peer message boxes, notification
@@ -948,6 +962,16 @@ rustfmt --edition 2021 src/peer_text.rs src/client/io_loop.rs src/server/connect
 bash -n scripts/verify.sh             # GREEN
 git diff --check                       # GREEN
 bash scripts/verify.sh                 # GREEN: VERIFY: all gates green, incl. peer_text::tests and hostile-peer UI text length/rate source gates
+```
+
+After the peer `ScreenshotResponse` admission/provenance cap, these focused and
+full gates have been re-run successfully:
+
+```text
+rustfmt --edition 2021 src/peer_text.rs src/client/io_loop.rs  # GREEN
+bash -n scripts/verify.sh                                     # GREEN
+git diff --check                                               # GREEN
+bash scripts/verify.sh                                         # GREEN: VERIFY: all gates green, incl. screenshot response pre-cache admission + provenance source gates
 ```
 
 After the Windows native-worker process-mitigation entry hook and gate update,

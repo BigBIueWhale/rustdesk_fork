@@ -3,11 +3,13 @@
 #
 # Installs ONLY the host-level runtimes the EPHEMERAL build environments need — the
 # container engine (Debian/Android build in Docker) and, for the Windows VM,
-# qemu-kvm + libvirt + swtpm + OVMF — plus the few tools the scripts themselves
-# call. The pinned TOOLCHAINS never land on the host: they live in the ephemeral
-# image / VM (R-B8). Provisioning is additive and idempotent — for each package it
-# checks whether the host already has it and installs ONLY what is absent,
-# recording exactly what it added so cleanup.sh can reverse precisely.
+# direct QEMU/KVM + session-libvirt client/driver pieces + swtpm + OVMF — plus
+# the few tools the scripts themselves call. It MUST NOT install the system
+# libvirt default-network package set that creates virbr0/dnsmasq. The pinned
+# TOOLCHAINS never land on the host: they live in the ephemeral image / VM
+# (R-B8). Provisioning is additive and idempotent — for each package it checks
+# whether the host already has it and installs ONLY what is absent, recording
+# exactly what it added so cleanup.sh can reverse precisely.
 #
 # Run order (R-B10): host-provision.sh (once) -> online-fetch.sh -> build-* -> cleanup.sh
 #
@@ -30,10 +32,44 @@ assert_host() {
     [ "$(uname -s)" = "Linux" ] || die "host-provision.sh runs on the Linux x86_64 build host only (R-B8); got $(uname -s)"
     [ "$(uname -m)" = "x86_64" ] || die "host arch must be x86_64 (R-B8); got $(uname -m)"
     command -v apt-get >/dev/null 2>&1 || die "this provisioner targets a Debian/Ubuntu host (apt-get) — adapt for another distro deliberately, do not guess"
+    require_cmd ip ss
 }
 
 # pkg_installed: true iff the dpkg package is installed.
 pkg_installed() { dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "install ok installed"; }
+
+non_loopback_listeners() {
+    ss -H -ltnup 2>/dev/null \
+        | awk '
+            {
+                local = $5
+                if (local ~ /^127[.]/) next
+                if (local ~ /^\[::1\]:/) next
+                if (local ~ /^::1:/) next
+                print $1, local
+            }
+        ' \
+        | sort -u
+}
+
+assert_no_system_libvirt_network() {
+    if ip link show virbr0 >/dev/null 2>&1; then
+        die "virbr0 exists before/after host provisioning; run scripts/cleanup.sh --build-host-network with privileges, then retry (R-B11/R-B11a)"
+    fi
+    if ss -ltnup 2>/dev/null | grep -Eq '192[.]168[.]122[.]1:53|0[.]0[.]0[.]0%virbr0:67'; then
+        ss -ltnup 2>/dev/null | grep -E '192[.]168[.]122[.]1:53|0[.]0[.]0[.]0%virbr0:67' || true
+        die "libvirt default-network DNS/DHCP listener exists before/after host provisioning (R-B11/R-B11a)"
+    fi
+    if [ "$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || echo 0)" = "1" ]; then
+        die "net.ipv4.ip_forward is already 1; host provisioning refuses a dirty build-host network state (R-B11/R-B11a)"
+    fi
+}
+
+forbid_system_libvirt_package() {
+    if pkg_installed libvirt-daemon-system; then
+        die "libvirt-daemon-system is installed; this package creates system libvirt default networking. Run scripts/cleanup.sh --build-host-network / --reverse-host if the harness installed it, or reconcile the host manually before provisioning (R-B11)"
+    fi
+}
 
 # provision_pkg NAME: install NAME only if absent, and record that WE added it so
 # the reversal touches only what we installed (never a pre-existing package).
@@ -72,6 +108,10 @@ require_container_engine() {
 
 main() {
     assert_host
+    forbid_system_libvirt_package
+    assert_no_system_libvirt_network
+    local listeners_before listeners_after listeners_new
+    listeners_before="$(non_loopback_listeners)"
     log "additive host provisioning (only the absent packages are installed + recorded)"
     sudo apt-get update
 
@@ -83,21 +123,25 @@ main() {
     # Windows x86_64 .exe/.msi build runs in an ephemeral KVM Windows 11 guest on
     # this same host (§12.2). The hypervisor stack, all host-level.
     #
-    # Package names verified against the build host, Ubuntu 24.04 LTS (R-B8). Two
-    # correctness notes that a spec-literal "qemu-kvm + libvirt + swtpm + OVMF"
-    # (R-B11) misses on a real 24.04 box:
+    # Package names verified against the build host, Ubuntu 24.04 LTS (R-B8).
+    # Correctness notes:
     #   1. `qemu-kvm` was REMOVED in Ubuntu 24.04 — `apt-cache policy qemu-kvm`
     #      has no candidate, so the old line aborted the whole script under set -e.
     #      The KVM-capable system emulator is `qemu-system-x86`.
-    #   2. This installer uses --no-install-recommends, so a package that is only a
-    #      Recommends (qemu-utils) or no dependency at all (virtinst, osinfo-db) is
-    #      NOT pulled transitively and MUST be listed explicitly — otherwise
+    #   2. The forbidden system package is libvirt-daemon-system: it depends on
+    #      libvirt-daemon-config-network and starts the default NAT network
+    #      (virbr0 + libvirt dnsmasq). Session libvirt needs the daemon/client/QEMU
+    #      driver pieces below, not that system-network package.
+    #   3. This installer uses --no-install-recommends, so a package that is only
+    #      a Recommends (qemu-utils) or no dependency at all (virtinst, osinfo-db)
+    #      is NOT pulled transitively and MUST be listed explicitly — otherwise
     #      provision-windows-vm.sh's `require_cmd virt-install virsh qemu-img swtpm`
     #      fails preflight even though the apt step "succeeded".
     provision_pkg qemu-system-x86       # the KVM hypervisor (the 24.04 name for ex-`qemu-kvm`)
     provision_pkg qemu-utils            # qemu-img — golden qcow2 + CoW overlays (only a Recommends of virtinst)
-    provision_pkg libvirt-daemon-system # libvirtd (systemd auto-enables + starts it on install)
-    provision_pkg libvirt-clients       # virsh
+    provision_pkg libvirt-daemon        # session libvirt daemon/client backend; no default-network config
+    provision_pkg libvirt-daemon-driver-qemu # QEMU driver for qemu:///session
+    provision_pkg libvirt-clients       # virsh, using qemu:///session in the VM scripts
     provision_pkg virtinst              # virt-install — builds the golden image (not pulled transitively)
     provision_pkg osinfo-db             # the OS database `virt-install --osinfo win11` needs (not a hard dep)
     provision_pkg swtpm                 # vTPM 2.0 the Win11 guest requires
@@ -107,6 +151,11 @@ main() {
     provision_pkg ca-certificates
     provision_pkg curl
     provision_pkg jq
+
+    assert_no_system_libvirt_network
+    listeners_after="$(non_loopback_listeners)"
+    listeners_new="$(comm -13 <(printf '%s\n' "$listeners_before") <(printf '%s\n' "$listeners_after"))"
+    [ -z "$listeners_new" ] || die "host provisioning created new non-loopback listeners, forbidden by R-B11/R-B11a: $(printf '%s' "$listeners_new" | tr '\n' '; ')"
 
     log "host provisioning complete. Reverse with: scripts/cleanup.sh --reverse-host (R-B11)"
     [ -f "$PROVISIONED_FILE" ] && log "recorded installs: $(tr '\n' ' ' < "$PROVISIONED_FILE")" || log "nothing was installed (host already provisioned)"

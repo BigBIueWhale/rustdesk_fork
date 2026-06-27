@@ -11,7 +11,8 @@
 # ("cattle, not pets") — so every Windows build starts from the byte-identical
 # baseline and the recorded SHA-256 (R-B2) is reproducible.
 #
-# Run order (R-B10): host-provision.sh (qemu-kvm/libvirt/swtpm/ovmf) ->
+# Run order (R-B10): host-provision.sh (qemu-system-x86 + session libvirt
+# client/driver pieces + swtpm/ovmf; never system libvirt default networking) ->
 # online-fetch.sh (stages the Win11 ISO + VS Build Tools offline layout) ->
 # provision-windows-vm.sh (once) -> build-windows.ps1 (per build) -> cleanup.sh.
 #

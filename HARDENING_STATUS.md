@@ -580,29 +580,27 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 
 ## Artifact State
 
-The Debian and Android artifacts below were rebuilt after commit `898947b`
-(`Gate desktop video codec capability wrapper`); later ledger-only commits do
-not change artifact inputs. `scripts/build-debian.sh` ran in the disposable
-`rustdesk-fork-harness-deb-builder` build container with the compile stage
-offline (`--network=none`) and `SOURCE_DATE_EPOCH=1700000000`, then performed
-its double-build determinism check. `scripts/build-android.sh` ran in the
-disposable `rustdesk-fork-harness-android-builder` container with the compile
-stage offline (`--network=none`), signed with the stable local Android key, and
+The Debian, Android, and Windows artifacts below were rebuilt after commit
+`898947b` (`Gate desktop video codec capability wrapper`) and before the later
+harness/status-only cleanup notes in this ledger. Those later edits do not
+change the Rust/Flutter application binary inputs. `scripts/build-debian.sh`
+ran in the disposable `rustdesk-fork-harness-deb-builder` build container with
+the compile stage offline (`--network=none`) and
+`SOURCE_DATE_EPOCH=1700000000`, then performed its double-build determinism
+check. `scripts/build-android.sh` ran in the disposable
+`rustdesk-fork-harness-android-builder` container with the compile stage offline
+(`--network=none`), signed with the stable local Android key, and
 `apksigner verify` reported one signer with v1/v2/v3 verification true.
+`WINDOWS_BUILD_SOURCE=worktree scripts/build-windows-vm.sh` ran through the
+transient Windows KVM path from the pinned golden qcow2, booted the per-build
+VM with `--network none`, used loopback-only VNC, extracted/canonicalized the
+`.exe` and `.msi`, and passed the default Windows double-build A==B assertion.
 
 ```text
 bc29f067458c0f3020cdec5c76e487d36d81e63a2b6aaf8ceac320038dcb0406  dist/rustdesk-x86_64.deb
 add41e1ec9f096b2c5e9858c5d29de7a72deecbe38fde0a29abc9a73a9d28635  dist/rustdesk-arm64.apk
-```
-
-The Windows artifacts currently present in `dist/` have not yet been rebuilt
-after commit `3a4b3dd`, so they remain historical evidence only and must not be
-used for a release/tag claim until their target build script passes again from
-the current source:
-
-```text
-59da89fef3d463c1e4aaf35d0c161de518f5df183bf90179eb5a360579e5431a  dist/rustdesk-setup.exe        # pending rebuild from 3a4b3dd
-ba3b7ddb1c2b427b647c964fd7eb26c1374231bc903b8d2fc487f48803aca240  dist/rustdesk.msi              # pending rebuild from 3a4b3dd
+6b61d0466a2d631ea03515b794ef531dad94ede3b4d0e2380e831768985ca821  dist/rustdesk-setup.exe
+291a5349a77a157f9b699586ac5a3f15d5e1d1c3e8157b6246e6a6b110d75dab  dist/rustdesk.msi
 ```
 
 Build evidence:
@@ -611,8 +609,10 @@ Build evidence:
   gate after the desktop video capability-wrapper change.
 - Android `scripts/build-android.sh` passed from the current source, and
   `apksigner verify` reported one signer with v1/v2/v3 verification true.
-- Windows `WINDOWS_BUILD_SOURCE=worktree scripts/build-windows-vm.sh` still
-  needs to be rerun from the current source in the transient KVM VM path.
+- Windows `WINDOWS_BUILD_SOURCE=worktree scripts/build-windows-vm.sh` passed
+  from the current application source in the transient KVM VM path. The guest
+  `build-log.txt` contains pre-canonical hashes; the final release hashes are
+  the host-canonicalized `dist/*.sha256` values above.
 
 ## Validation Matrix
 
@@ -822,20 +822,16 @@ git diff --check          # GREEN
 bash scripts/verify.sh    # GREEN: VERIFY: all gates green, incl. the raw supported_decodings bypass source gate
 bash scripts/build-debian.sh # GREEN: offline Docker double-build A==B, bc29f067458c0f3020cdec5c76e487d36d81e63a2b6aaf8ceac320038dcb0406
 ANDROID_KEYSTORE=... ANDROID_KEYSTORE_PASS_FILE=... bash scripts/build-android.sh # GREEN: offline Docker build, apksigner verified one signer, add41e1ec9f096b2c5e9858c5d29de7a72deecbe38fde0a29abc9a73a9d28635
+WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh # GREEN: transient KVM VM, --network none, loopback-only VNC, double-build A==B, exe=6b61d0466a2d631ea03515b794ef531dad94ede3b4d0e2380e831768985ca821, msi=291a5349a77a157f9b699586ac5a3f15d5e1d1c3e8157b6246e6a6b110d75dab
 ```
 
-The Windows artifact rebuild remains pending for the current source. The Debian
-and Android artifacts have since been refreshed after commit `898947b` as
-recorded above. The Windows VM build/check path has not been re-run after these
-latest CLIPRDR callback and worker-boundary edits, and the Windows artifacts
-have not been rebuilt after the cursor/Android/mobile-zstd/Unix file-copy guard
-edits. A direct Docker-only
-`cargo check -p hbb_common --lib --target x86_64-pc-windows-msvc` and a
-`x86_64-pc-windows-gnu` retry stopped in `libsodium-sys`/`ring`/`zstd-sys`
-native build-script setup before reaching this crate's Rust code; the
-standalone include harness above is therefore cfg(windows) source typecheck
-evidence for `native_worker_sandbox.rs`, not a refreshed artifact or full
-Windows-cfg project compile claim.
+The Windows VM build path is now current for the application source represented
+by the artifact hashes above. The separate build-host cleanliness issue remains
+host-state, not application artifact state: an older harness revision installed
+system libvirt and left the host default network behind. The current per-build
+Windows VM itself used `--network none` and only loopback VNC, but the host still
+needs privileged cleanup of the old `virbr0`/dnsmasq/IP-forwarding state before
+the build host satisfies R-B11/R-B11a end-to-end.
 
 Coverage highlights from the full pre-worker matrix, with the post-native-worker
 `verify.sh`/Dart/smoke/Flutter/audit/Apple/native-codec reruns noted above:
@@ -978,12 +974,17 @@ clipboard now has descriptor-count caps, a same-artifact worker boundary for pee
 PDU parsing, per-connection file-content request/byte accounting, and a
 same-artifact worker boundary for the local file-list cache/PDU generation and
 FileContents size/range reads. Windows and Android platform-native
-socket-surface logic is present and source-gated. The Debian and Android
-artifacts recorded above are refreshed after commit `898947b`; the Windows
-artifacts recorded above predate the current
-native-worker/zstd/clipboard/CLIPRDR-bridge/cursor/Android/Unix-file-copy source
-changes, so any release/tag claim must rebuild those Windows artifacts
-first.
+socket-surface logic is present and source-gated. The Debian, Android, and
+Windows artifacts recorded above are refreshed for the current application
+source. The remaining local build-host residual is the old harness-created
+system libvirt default network: the host has shown `virbr0`,
+`192.168.122.1:53/tcp+udp`, `0.0.0.0%virbr0:67/udp`, and
+`net.ipv4.ip_forward=1`. `.harness-state/provisioned` records that the harness
+installed `libvirt-daemon-system`, so cleanup is allowed to reverse it, but this
+session lacks noninteractive sudo. `scripts/cleanup.sh --build-host-network`
+now performs the manifest-gated teardown and fails closed without privileges;
+`scripts/host-provision.sh` no longer installs `libvirt-daemon-system` and
+pre/post-audits for this class before future provisioning.
 
 The remaining external or pre-exposure evidence items are:
 

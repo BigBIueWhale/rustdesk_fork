@@ -2780,6 +2780,18 @@ grep -qF 'WIN_HELPER_IMAGE' scripts/verify-windows-golden.sh      || rb_struct="
 grep -qF -- '--network=none' scripts/build-windows-vm.sh          || rb_struct="$rb_struct windows:helper-not-offline-build"
 grep -qF -- '--network=none' scripts/provision-windows-vm.sh      || rb_struct="$rb_struct windows:helper-not-offline-provision"
 grep -qF -- '--network=none' scripts/verify-windows-golden.sh     || rb_struct="$rb_struct windows:helper-not-offline-verify"
+if grep -Eq 'provision_pkg[[:space:]]+libvirt-daemon-system' scripts/host-provision.sh; then
+  rb_struct="$rb_struct host-provision:installs-system-libvirt"
+fi
+grep -qF 'assert_no_system_libvirt_network' scripts/host-provision.sh || rb_struct="$rb_struct host-provision:no-libvirt-network-audit"
+grep -qF 'forbid_system_libvirt_package' scripts/host-provision.sh    || rb_struct="$rb_struct host-provision:no-system-libvirt-package-guard"
+grep -qF 'non_loopback_listeners' scripts/host-provision.sh           || rb_struct="$rb_struct host-provision:no-new-listener-audit"
+grep -qF 'require_cmd ip ss' scripts/host-provision.sh                || rb_struct="$rb_struct host-provision:no-ip-ss-preflight"
+grep -qF 'provision_pkg libvirt-daemon-driver-qemu' scripts/host-provision.sh || rb_struct="$rb_struct host-provision:no-session-qemu-driver"
+grep -qF 'provision_pkg libvirt-daemon ' scripts/host-provision.sh           || rb_struct="$rb_struct host-provision:no-session-libvirt-daemon"
+grep -qF 'cleanup_build_host_network' scripts/cleanup.sh              || rb_struct="$rb_struct cleanup:no-build-host-network-cleanup"
+grep -qF 'harness_installed_pkg libvirt-daemon-system' scripts/cleanup.sh || rb_struct="$rb_struct cleanup:no-manifest-gated-system-libvirt-cleanup"
+grep -qF -- '--build-host-network' scripts/cleanup.sh                 || rb_struct="$rb_struct cleanup:no-build-host-network-flag"
 if grep -qF 'apt-get' scripts/build-windows-vm.sh scripts/provision-windows-vm.sh scripts/verify-windows-golden.sh; then
   rb_struct="$rb_struct windows:networked-helper-apt-get-present"
 fi

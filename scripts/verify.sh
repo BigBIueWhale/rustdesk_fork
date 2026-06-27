@@ -179,6 +179,11 @@ echo "== (3c-iii) unix file-copy descriptor worker protocol (Appendix C #2b) =="
 echo "== (3c-iii-a) unix file-copy descriptor relative-name sanitizer (Appendix C #2b) =="
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib relative_name_sanitizer_rejects_escape_paths --color never
 
+# (3c-iii-b) Linux FUSE clipboard mount points live under /tmp, but must not
+# adopt symlinked/foreign-owned temp state or recreate upstream's 0777 chmod.
+echo "== (3c-iii-b) Linux FUSE clipboard mount-point component validation (R-S11a/R-S8) =="
+"${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib fuse_mount_component --color never
+
 # (3c-iv) Unix file-copy local file-content worker protocol (Appendix C #2b):
 # local file-list state and FileContents reads live behind a same-artifact
 # worker, so hostile-peer CLIPRDR file-content requests never drive local
@@ -1954,6 +1959,46 @@ if [ -n "$r_native_bounds" ]; then
   echo "  FAIL Appendix C #2b/R-T0: native media/clipboard handoff bounds regressed:$r_native_bounds"; rc=1
 else
   echo "  ok  Appendix C #2b/R-T0 native media/clipboard/printer handoff bounds and fail-closed guards present (remaining process-model residuals tracked separately)"
+fi
+# R-S11a/R-S8 companion: Linux clipboard-file FUSE mount setup uses /tmp by
+# design, so every path component must be explicit, no-follow, current-euid
+# owned, and non-world-writable. Never silently adopt or chmod a pre-existing
+# /tmp path from a hostile local namespace.
+r_fuse_mount=
+grep -qF 'prepare_fuse_mount_point(&mount_point)?' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_mount="$r_fuse_mount init-not-fail-closed"
+grep -qF 'fn fuse_component_cstring(component: &OsStr, label: &str) -> Result<CString, CliprdrError>' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_mount="$r_fuse_mount component-validator"
+grep -qF 'bytes.is_empty() || bytes == b"." || bytes == b".." || bytes.contains(&b' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_mount="$r_fuse_mount component-dot-slash-guard"
+grep -qF 'CString::new(bytes)' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_mount="$r_fuse_mount component-nul-guard"
+grep -qF 'libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_mount="$r_fuse_mount nofollow-directory-open"
+grep -qF 'libc::mkdirat(parent_fd, name.as_ptr(), 0o755 as libc::mode_t)' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_mount="$r_fuse_mount mkdirat-0755"
+grep -qF 'libc::openat(' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_mount="$r_fuse_mount openat"
+grep -qF 'let current_euid = unsafe { libc::geteuid() };' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_mount="$r_fuse_mount geteuid"
+grep -qF 'if stat.st_uid != current_euid' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_mount="$r_fuse_mount foreign-owner-reject"
+grep -qF 'libc::fchmod(guard.0, 0o755 as libc::mode_t)' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_mount="$r_fuse_mount fchmod-0755"
+grep -qF 'FUSE mount point must stay under /tmp/<app>' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_mount="$r_fuse_mount tmp-app-boundary"
+grep -qF 'fuse_mount_component_rejects_empty_dot_dotdot_slash_and_nul' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_mount="$r_fuse_mount component-reject-test"
+if grep -qF 'fs::create_dir(mount_point).ok()' libs/clipboard/src/platform/unix/fuse/mod.rs; then
+  r_fuse_mount="$r_fuse_mount silent-create-dir"
+fi
+if grep -qF 'Permissions::from_mode(0o777)' libs/clipboard/src/platform/unix/fuse/mod.rs; then
+  r_fuse_mount="$r_fuse_mount world-writable-chmod"
+fi
+if [ -n "$r_fuse_mount" ]; then
+  echo "  FAIL R-S11a/R-S8: Linux FUSE clipboard mount-point no-follow/no-adoption hardening regressed:$r_fuse_mount"; rc=1
+else
+  echo "  ok  R-S11a/R-S8 Linux FUSE clipboard mount-point setup is fail-closed, no-follow, current-euid-owned, and non-world-writable"
 fi
 # Appendix C #2b first sandbox slice: desktop video decode must cross a hidden
 # same-artifact worker process before libvpx/aom/libyuv sees hostile-peer bytes.

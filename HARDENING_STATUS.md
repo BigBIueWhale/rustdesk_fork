@@ -15,6 +15,7 @@ CLIPRDR callback fail-closed follow-ups, the first desktop
 native-video/native-Opus/native-zstd/native-clipboard worker slices, the
 mobile media/clipboard/zstd fail-closed behavior, bounded worker-I/O thread and
 bounded desktop clipboard/file-clipboard dispatcher, Linux
+FUSE clipboard mount-point no-follow/no-adoption setup,
 child-confinement, Windows Job Object child lifetime/limit guards and process mitigations, non-mobile desktop-Unix worker RLIMIT/fd-cleanup
 confinement, macOS worker NoNetwork Seatbelt confinement, Linux
 x86_64/aarch64 post-exec syscall-filter/fd-cleanup follow-ups, and unsupported
@@ -550,6 +551,15 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   API, Linux/macOS production call sites, core worker entry, timeout marker,
   one-slot I/O channel, named I/O thread, sandbox hooks, and absence of the old
   production direct parse call.
+  The Linux FUSE mount-point setup for those file:// clipboard URLs now fails
+  closed before mounting if the expected `/tmp/<app>/<cliprdr-*>` shape is not
+  exact. It opens `/tmp` and each child component with `O_DIRECTORY|O_NOFOLLOW`,
+  creates only through `mkdirat`, rejects foreign-owned directories by effective
+  uid, resets trusted directories to `0755`, validates component names for empty,
+  dot, dot-dot, slash, and NUL, and no longer silently `create_dir(...).ok()` or
+  chmods the mount point to `0777`. `scripts/verify.sh` gates the no-follow,
+  ownership, mode, and no-silent-adoption markers and runs the component
+  validation tests in Docker.
   `libs/clipboard/src/platform/unix/serv_files.rs` now also keeps a 10-second
   per-connection sliding window for file-content requests and requested bytes
   before local file I/O, rejects negative lengths before signed-to-unsigned
@@ -811,6 +821,16 @@ docker run ... cargo test -p clipboard --features unix-file-copy-paste 'platform
 bash scripts/verify.sh                 # GREEN: VERIFY: all gates green, incl. Android clipboard aggregate, Unix descriptor-count, and Unix file-content accounting gates
 rustfmt --edition 2021 src/clipboard.rs libs/clipboard/src/platform/unix/filetype.rs libs/clipboard/src/platform/unix/local_file.rs libs/clipboard/src/platform/unix/serv_files.rs  # GREEN
 git diff --check                       # GREEN
+```
+
+After the Linux FUSE clipboard mount-point no-follow/no-adoption change, these
+focused and full gates have been re-run successfully:
+
+```text
+rustfmt --edition 2021 libs/clipboard/src/platform/unix/fuse/mod.rs  # GREEN
+bash -n scripts/verify.sh             # GREEN
+git diff --check                       # GREEN
+bash scripts/verify.sh                 # GREEN: VERIFY: all gates green, incl. FUSE mount-point component validation and no-follow/no-adoption source gates
 ```
 
 After the Windows native-worker process-mitigation entry hook and gate update,

@@ -2466,9 +2466,13 @@ impl Connection {
                             // Drop the audio sender previously.
                             drop(std::mem::replace(&mut self.audio_sender, None));
                             self.audio_sender = Some(start_audio_thread());
-                            self.audio_sender
-                                .as_ref()
-                                .map(|a| allow_err!(a.send(MediaData::AudioFormat(format))));
+                            if let Some(sender) = &self.audio_sender {
+                                if let Err(err) = sender.try_send(MediaData::AudioFormat(format)) {
+                                    log::warn!(
+                                        "controlled audio decode queue full; dropping peer audio format: {err}"
+                                    );
+                                }
+                            }
                         }
                     }
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2528,7 +2532,13 @@ impl Connection {
                 Some(message::Union::AudioFrame(frame)) => {
                     if !self.disable_audio {
                         if let Some(sender) = &self.audio_sender {
-                            allow_err!(sender.send(MediaData::AudioFrame(Box::new(frame))));
+                            if let Err(err) =
+                                sender.try_send(MediaData::AudioFrame(Box::new(frame)))
+                            {
+                                log::warn!(
+                                    "controlled audio decode queue full; dropping peer audio frame: {err}"
+                                );
+                            }
                         } else {
                             log::warn!(
                                 "Processing audio frame without the voice call audio sender."

@@ -53,6 +53,8 @@ use std::{
     },
 };
 
+const MAX_PEER_VIDEO_DISPLAYS: usize = 16;
+
 pub struct Remote<T: InvokeUiSession> {
     handler: Session<T>,
     audio_sender: MediaSender,
@@ -86,6 +88,7 @@ struct ParsedPeerInfo {
     idd_impl: String,
     support_view_camera: bool,
     support_terminal: bool,
+    display_count: usize,
 }
 
 impl ParsedPeerInfo {
@@ -94,6 +97,33 @@ impl ParsedPeerInfo {
             && self.platform == "Windows"
             && (self.idd_impl == "rustdesk_idd" || self.idd_impl == "amyuni_idd")
     }
+
+    fn allowed_video_displays(&self) -> usize {
+        if self.display_count == 0 {
+            1
+        } else {
+            self.display_count.min(MAX_PEER_VIDEO_DISPLAYS)
+        }
+    }
+
+    fn video_display_allowed(&self, display: usize) -> bool {
+        display < self.allowed_video_displays()
+    }
+}
+
+fn bound_peer_info_displays(mut pi: PeerInfo) -> PeerInfo {
+    if pi.displays.len() > MAX_PEER_VIDEO_DISPLAYS {
+        log::warn!(
+            "peer advertised {} displays; truncating to {}",
+            pi.displays.len(),
+            MAX_PEER_VIDEO_DISPLAYS
+        );
+        pi.displays.truncate(MAX_PEER_VIDEO_DISPLAYS);
+    }
+    if pi.current_display < 0 || pi.current_display as usize >= pi.displays.len() {
+        pi.current_display = 0;
+    }
+    pi
 }
 
 impl<T: InvokeUiSession> Remote<T> {
@@ -934,12 +964,16 @@ impl<T: InvokeUiSession> Remote<T> {
             Data::ResetDecoder(display) => match display {
                 Some(display) => {
                     if let Some(v) = self.video_threads.get_mut(&display) {
-                        v.video_sender.send(MediaData::Reset).ok();
+                        if let Err(err) = v.video_sender.try_send(MediaData::Reset) {
+                            log::warn!("viewer video decode queue full; dropping reset: {err}");
+                        }
                     }
                 }
                 None => {
                     for (_, v) in self.video_threads.iter_mut() {
-                        v.video_sender.send(MediaData::Reset).ok();
+                        if let Err(err) = v.video_sender.try_send(MediaData::Reset) {
+                            log::warn!("viewer video decode queue full; dropping reset: {err}");
+                        }
                     }
                 }
             },
@@ -1291,6 +1325,9 @@ impl<T: InvokeUiSession> Remote<T> {
                     self.video_format = CodecFormat::from(&vf);
 
                     let display = vf.display as usize;
+                    if !self.accept_peer_video_display(display) {
+                        return true;
+                    }
                     if !self.video_threads.contains_key(&display) {
                         self.new_video_thread(display);
                     }
@@ -1298,17 +1335,24 @@ impl<T: InvokeUiSession> Remote<T> {
                         return true;
                     };
                     if Self::contains_key_frame(&vf) {
-                        thread
+                        if let Err(err) = thread
                             .video_sender
-                            .send(MediaData::VideoFrame(Box::new(vf)))
-                            .ok();
+                            .try_send(MediaData::VideoFrame(Box::new(vf)))
+                        {
+                            log::warn!(
+                                "viewer video decode queue full; dropping peer keyframe: {err}"
+                            );
+                        }
                     } else {
                         let video_queue = thread.video_queue.read().unwrap();
                         if video_queue.force_push(vf).is_some() {
                             drop(video_queue);
                             self.handler.refresh_video(display as _);
-                        } else {
-                            thread.video_sender.send(MediaData::VideoQueue).ok();
+                        } else if let Err(err) = thread.video_sender.try_send(MediaData::VideoQueue)
+                        {
+                            log::warn!(
+                                "viewer video decode queue full; dropping peer video queue signal: {err}"
+                            );
                         }
                     }
                 }
@@ -1325,6 +1369,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         }
                     }
                     Some(login_response::Union::PeerInfo(pi)) => {
+                        let pi = bound_peer_info_displays(pi);
                         let peer_version = pi.version.clone();
                         let peer_platform = pi.platform.clone();
                         self.set_peer_info(&pi);
@@ -1704,7 +1749,12 @@ impl<T: InvokeUiSession> Remote<T> {
                 Some(message::Union::Misc(misc)) => match misc.union {
                     Some(misc::Union::AudioFormat(f)) => {
                         if client::native_opus_format_within_limit(f.sample_rate, f.channels) {
-                            self.audio_sender.send(MediaData::AudioFormat(f)).ok();
+                            if let Err(err) = self.audio_sender.try_send(MediaData::AudioFormat(f))
+                            {
+                                log::warn!(
+                                    "viewer audio decode queue full; dropping peer audio format: {err}"
+                                );
+                            }
                         } else {
                             log::warn!(
                                 "dropping unsupported Opus format before audio queue: sample_rate={}, channels={}",
@@ -1776,7 +1826,9 @@ impl<T: InvokeUiSession> Remote<T> {
                     Some(misc::Union::SwitchDisplay(s)) => {
                         self.handler.handle_peer_switch_display(&s);
                         if let Some(thread) = self.video_threads.get_mut(&(s.display as usize)) {
-                            thread.video_sender.send(MediaData::Reset).ok();
+                            if let Err(err) = thread.video_sender.try_send(MediaData::Reset) {
+                                log::warn!("viewer video decode queue full; dropping reset: {err}");
+                            }
                         }
 
                         let mut scale = 1.0;
@@ -1891,9 +1943,14 @@ impl<T: InvokeUiSession> Remote<T> {
                 Some(message::Union::AudioFrame(frame)) => {
                     if !self.handler.lc.read().unwrap().disable_audio.v {
                         if client::native_opus_packet_within_limit(frame.data.len()) {
-                            self.audio_sender
-                                .send(MediaData::AudioFrame(Box::new(frame)))
-                                .ok();
+                            if let Err(err) = self
+                                .audio_sender
+                                .try_send(MediaData::AudioFrame(Box::new(frame)))
+                            {
+                                log::warn!(
+                                    "viewer audio decode queue full; dropping peer audio frame: {err}"
+                                );
+                            }
                         } else {
                             log::warn!(
                                 "dropping oversized Opus packet before audio queue: {} > {}",
@@ -1960,6 +2017,8 @@ impl<T: InvokeUiSession> Remote<T> {
                     }
                 }
                 Some(message::Union::PeerInfo(pi)) => {
+                    let pi = bound_peer_info_displays(pi);
+                    self.set_peer_info(&pi);
                     self.handler.set_displays(&pi.displays);
                     self.handler.set_platform_additions(&pi.platform_additions);
                 }
@@ -1994,6 +2053,7 @@ impl<T: InvokeUiSession> Remote<T> {
 
     fn set_peer_info(&mut self, pi: &PeerInfo) {
         self.peer_info.platform = pi.platform.clone();
+        self.peer_info.display_count = pi.displays.len().min(MAX_PEER_VIDEO_DISPLAYS);
 
         // Check features field for terminal support
         if let Some(features) = pi.features.as_ref() {
@@ -2294,9 +2354,32 @@ impl<T: InvokeUiSession> Remote<T> {
         }
     }
 
+    fn accept_peer_video_display(&self, display: usize) -> bool {
+        if !self.peer_info.video_display_allowed(display) {
+            log::warn!(
+                "dropping peer video frame for out-of-range display {} (allowed displays: {})",
+                display,
+                self.peer_info.allowed_video_displays()
+            );
+            return false;
+        }
+        if !self.video_threads.contains_key(&display)
+            && self.video_threads.len() >= MAX_PEER_VIDEO_DISPLAYS
+        {
+            log::warn!(
+                "dropping peer video frame for display {}; decoder thread cap {} reached",
+                display,
+                MAX_PEER_VIDEO_DISPLAYS
+            );
+            return false;
+        }
+        true
+    }
+
     fn new_video_thread(&mut self, display: usize) {
         let video_queue = Arc::new(RwLock::new(ArrayQueue::new(client::VIDEO_QUEUE_SIZE)));
-        let (video_sender, video_receiver) = std::sync::mpsc::channel::<MediaData>();
+        let (video_sender, video_receiver) =
+            std::sync::mpsc::sync_channel::<MediaData>(client::MEDIA_DATA_QUEUE_CAPACITY);
         let decode_fps = Arc::new(RwLock::new(None));
         let frame_count = Arc::new(RwLock::new(0));
         let discard_queue = Arc::new(RwLock::new(false));
@@ -2354,7 +2437,9 @@ impl<T: InvokeUiSession> Remote<T> {
         log::info!("record screen start: {start}");
         // update local
         for (_, v) in self.video_threads.iter_mut() {
-            v.video_sender.send(MediaData::RecordScreen(start)).ok();
+            if let Err(err) = v.video_sender.try_send(MediaData::RecordScreen(start)) {
+                log::warn!("viewer video decode queue full; dropping record-state update: {err}");
+            }
         }
         self.handler.update_record_status(start);
         // update remote
@@ -2363,6 +2448,43 @@ impl<T: InvokeUiSession> Remote<T> {
         let mut msg = Message::new();
         msg.set_misc(misc);
         self.sender.send(Data::Message(msg)).ok();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn peer_info_with_display_count(count: usize) -> PeerInfo {
+        let mut pi = PeerInfo::new();
+        pi.displays = (0..count).map(|_| DisplayInfo::new()).collect();
+        pi
+    }
+
+    #[test]
+    fn peer_video_display_gate_allows_only_display_zero_before_peer_info() {
+        let info = ParsedPeerInfo::default();
+        assert!(info.video_display_allowed(0));
+        assert!(!info.video_display_allowed(1));
+    }
+
+    #[test]
+    fn peer_video_display_gate_caps_advertised_display_count() {
+        let info = ParsedPeerInfo {
+            display_count: MAX_PEER_VIDEO_DISPLAYS + 100,
+            ..Default::default()
+        };
+        assert!(info.video_display_allowed(MAX_PEER_VIDEO_DISPLAYS - 1));
+        assert!(!info.video_display_allowed(MAX_PEER_VIDEO_DISPLAYS));
+    }
+
+    #[test]
+    fn peer_info_display_list_is_truncated_to_thread_cap() {
+        let mut pi = peer_info_with_display_count(MAX_PEER_VIDEO_DISPLAYS + 1);
+        pi.current_display = (MAX_PEER_VIDEO_DISPLAYS + 10) as i32;
+        let bounded = bound_peer_info_displays(pi);
+        assert_eq!(bounded.displays.len(), MAX_PEER_VIDEO_DISPLAYS);
+        assert_eq!(bounded.current_display, 0);
     }
 }
 

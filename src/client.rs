@@ -94,6 +94,7 @@ pub mod screenshot;
 pub const MILLI1: Duration = Duration::from_millis(1);
 pub const SEC30: Duration = Duration::from_secs(30);
 pub const VIDEO_QUEUE_SIZE: usize = 120;
+pub const MEDIA_DATA_QUEUE_CAPACITY: usize = 8;
 const MAX_DECODE_FAIL_COUNTER: usize = 3;
 
 #[cfg(target_os = "linux")]
@@ -2285,7 +2286,7 @@ pub enum MediaData {
     RecordScreen(bool),
 }
 
-pub type MediaSender = mpsc::Sender<MediaData>;
+pub type MediaSender = mpsc::SyncSender<MediaData>;
 
 /// Start video thread.
 ///
@@ -2447,7 +2448,7 @@ pub fn start_video_thread<F, T>(
 /// Start an audio thread
 /// Return a audio [`MediaSender`]
 pub fn start_audio_thread() -> MediaSender {
-    let (audio_sender, audio_receiver) = mpsc::channel::<MediaData>();
+    let (audio_sender, audio_receiver) = mpsc::sync_channel::<MediaData>(MEDIA_DATA_QUEUE_CAPACITY);
     std::thread::spawn(move || {
         let mut audio_handler = AudioHandler::default();
         loop {
@@ -3314,5 +3315,17 @@ mod tests {
         assert!(!native_opus_format_within_limit(96000, 2));
         assert!(!native_opus_format_within_limit(48000, 0));
         assert!(!native_opus_format_within_limit(48000, 3));
+    }
+
+    #[test]
+    fn media_data_queue_is_bounded() {
+        let (sender, _receiver) = mpsc::sync_channel::<MediaData>(MEDIA_DATA_QUEUE_CAPACITY);
+        for _ in 0..MEDIA_DATA_QUEUE_CAPACITY {
+            sender.try_send(MediaData::VideoQueue).unwrap();
+        }
+        assert!(matches!(
+            sender.try_send(MediaData::VideoQueue),
+            Err(mpsc::TrySendError::Full(_))
+        ));
     }
 }

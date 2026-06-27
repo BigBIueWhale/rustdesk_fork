@@ -17,6 +17,8 @@ mobile media/clipboard/zstd fail-closed behavior, bounded worker-I/O thread and
 bounded desktop clipboard/file-clipboard dispatcher, Linux
 FUSE clipboard mount-point no-follow/no-adoption setup,
 bounded Linux FUSE file-content response queue,
+bounded viewer peer-video display/thread admission and bounded media decode
+queues,
 child-confinement, Windows Job Object child lifetime/limit guards and process mitigations, non-mobile desktop-Unix worker RLIMIT/fd-cleanup
 confinement, macOS worker NoNetwork Seatbelt confinement, Linux
 x86_64/aarch64 post-exec syscall-filter/fd-cleanup follow-ups, and unsupported
@@ -36,6 +38,16 @@ blocker classes, and returned **PASS** with no blocking findings.
 That review predates the current Apple source-conformance fix and artifact
 refresh, so it is retained as historical evidence, not a current final-completion
 claim.
+
+On 2026-06-27, read-only audit agent `Pauli` reviewed the current codebase and
+found new current blockers outside the already-closed clipboard/FUSE/media queue
+paths. The active follow-ups are: peer-triggered filesystem metadata enumeration
+must be budgeted before traversal/materialization; file-transfer read-job
+creation needs duplicate and active-job admission caps; incoming write-job
+creation needs duplicate, active-job, and file-list admission caps; and
+peer-driven UI notification/chat/message strings need explicit length and rate
+gates. A terminal-session cap is a conditional follow-up only if the pinned
+`enable-terminal=N` policy is ever intentionally rebuilt away.
 
 After commit `f90f197`, three additional read-only route/security audits were
 run against the exposed TCP paths. The server/responder audit passed, and the
@@ -224,6 +236,23 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 `requirements.html` is intentionally not edited by implementation work.
 
 ## Recent Closures
+
+- **Viewer peer media admission is bounded before decoder-thread and queue work.**
+  `src/client/io_loop.rs` now caps peer-advertised display metadata at 16
+  displays, clamps invalid `current_display`, stores the bounded display count
+  in the viewer's parsed peer state, and rejects any `VideoFrame.display`
+  outside that bounded range before `new_video_thread` can create a decoder
+  thread. Before `PeerInfo` arrives, compatibility is narrowed to display 0
+  only. The video decoder thread map is additionally capped at the same display
+  ceiling. `src/client.rs` changes `MediaSender` to an 8-slot `SyncSender`, and
+  both viewer video queues and viewer/controlled-side audio decode queues are
+  created with `sync_channel`. Peer-driven keyframes, video-queue signals,
+  audio formats, audio frames, reset signals, and record-state updates now use
+  nonblocking `try_send()` with shed logs instead of unbounded/blocking
+  `send()`. `scripts/verify.sh` runs focused bounded-queue and display-admission
+  tests and source-gates the cap, bounded channel type, nonblocking peer
+  admission, shed logs, and absence of the old unbounded `mpsc::channel` media
+  queues.
 
 - **Desktop peer clipboard and file-clipboard parent paths no longer spawn one OS thread per peer message.**
   `src/clipboard.rs` now admits normal clipboard SET, Linux file-clipboard SET,
@@ -849,6 +878,16 @@ rustfmt --edition 2021 libs/clipboard/src/platform/unix/fuse/mod.rs libs/clipboa
 bash -n scripts/verify.sh             # GREEN
 git diff --check                       # GREEN
 bash scripts/verify.sh                 # GREEN: VERIFY: all gates green, incl. FUSE bounded response queue test and source gates
+```
+
+After the viewer media display/thread admission and bounded media queue change,
+these focused and full gates have been re-run successfully:
+
+```text
+rustfmt --edition 2021 src/client.rs src/client/io_loop.rs src/server/connection.rs  # GREEN
+bash -n scripts/verify.sh             # GREEN
+git diff --check                       # GREEN
+bash scripts/verify.sh                 # GREEN: VERIFY: all gates green, incl. viewer media display/thread and bounded media queue tests/source gates
 ```
 
 After the Windows native-worker process-mitigation entry hook and gate update,

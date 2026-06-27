@@ -167,6 +167,13 @@ echo "== (3c-i) IPC _service path-sharing across uids (R-S11a/R-X13) =="
 echo "== (3c-ii) native worker sandbox helper sanity (Appendix C #2b) =="
 "${RUN[@]}" cargo test -p hbb_common --lib native_worker_sandbox::tests --color never
 
+# (3c-ii-a) Viewer peer media admission bounds (Appendix C #2b/R-T0): a
+# hostile peer controls VideoFrame.display and keyframe/audio cadence, so the
+# viewer must cap display-thread creation and use bounded media queues.
+echo "== (3c-ii-a) viewer peer media display/thread + queue bounds (Appendix C #2b/R-T0) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::media_data_queue_is_bounded --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config client::io_loop::tests --color never
+
 # (3c-iii) Unix file-copy descriptor worker protocol (Appendix C #2b): hostile
 # FILEDESCRIPTOR PDUs are parsed through a same-artifact worker before FUSE/macOS
 # paste task state consumes them.
@@ -1713,6 +1720,42 @@ grep -qF 'MAX_NATIVE_VIDEO_DECODED_BYTES' libs/scrap/src/common/mod.rs ||
   r_native_bounds="$r_native_bounds video-decoded-cap"
 grep -qF 'checked_mul(bytes_per_row)' libs/scrap/src/common/mod.rs ||
   r_native_bounds="$r_native_bounds video-decoded-checked-mul"
+grep -qF 'const MAX_PEER_VIDEO_DISPLAYS: usize = 16;' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-video-display-cap"
+grep -qF 'fn bound_peer_info_displays(mut pi: PeerInfo) -> PeerInfo' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-peer-info-display-bounder"
+grep -qF 'pi.displays.truncate(MAX_PEER_VIDEO_DISPLAYS)' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-peer-info-display-truncate"
+grep -qF 'if !self.accept_peer_video_display(display)' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-video-display-admission"
+grep -qF 'dropping peer video frame for out-of-range display' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-video-display-drop-log"
+grep -qF 'peer_video_display_gate_allows_only_display_zero_before_peer_info' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-video-display-zero-test"
+grep -qF 'peer_info_display_list_is_truncated_to_thread_cap' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-video-display-truncate-test"
+grep -qF 'pub const MEDIA_DATA_QUEUE_CAPACITY: usize = 8;' src/client.rs ||
+  r_native_bounds="$r_native_bounds media-data-queue-cap"
+grep -qF 'pub type MediaSender = mpsc::SyncSender<MediaData>;' src/client.rs ||
+  r_native_bounds="$r_native_bounds media-sync-sender"
+grep -qF 'mpsc::sync_channel::<MediaData>(MEDIA_DATA_QUEUE_CAPACITY)' src/client.rs ||
+  r_native_bounds="$r_native_bounds audio-sync-channel"
+grep -qF 'std::sync::mpsc::sync_channel::<MediaData>(client::MEDIA_DATA_QUEUE_CAPACITY)' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds video-sync-channel"
+grep -qF 'viewer video decode queue full; dropping peer keyframe' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-video-keyframe-shed"
+grep -qF 'viewer audio decode queue full; dropping peer audio frame' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds viewer-audio-frame-shed"
+grep -qF 'controlled audio decode queue full; dropping peer audio frame' src/server/connection.rs ||
+  r_native_bounds="$r_native_bounds controlled-audio-frame-shed"
+grep -qF 'media_data_queue_is_bounded' src/client.rs ||
+  r_native_bounds="$r_native_bounds media-data-queue-test"
+if grep -qF 'mpsc::channel::<MediaData>' src/client.rs src/client/io_loop.rs; then
+  r_native_bounds="$r_native_bounds media-unbounded-channel"
+fi
+if grep -qE '\.send\(MediaData::(VideoFrame|VideoQueue|AudioFrame|AudioFormat|Reset|RecordScreen)' src/client.rs src/client/io_loop.rs src/server/connection.rs; then
+  r_native_bounds="$r_native_bounds media-blocking-send"
+fi
 grep -qF 'native_opus_format_within_limit' src/client.rs ||
   r_native_bounds="$r_native_bounds opus-format-helper"
 grep -qF 'client::native_opus_format_within_limit' src/client/io_loop.rs ||

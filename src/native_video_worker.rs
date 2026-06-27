@@ -24,9 +24,6 @@ const STATUS_ERROR: u8 = 2;
 const MAX_WORKER_FRAME_PROTO_BYTES: usize = 32 * 1024 * 1024;
 const WORKER_DECODE_TIMEOUT: Duration = Duration::from_secs(10);
 
-#[cfg(any(target_os = "android", target_os = "ios"))]
-type MobileDecoder = scrap::codec::Decoder;
-
 pub struct NativeVideoDecoder {
     format: CodecFormat,
     backend: NativeVideoDecoderBackend,
@@ -35,8 +32,6 @@ pub struct NativeVideoDecoder {
 enum NativeVideoDecoderBackend {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Worker(WorkerVideoDecoder),
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    InProcess(MobileDecoder),
     Unavailable,
 }
 
@@ -66,11 +61,11 @@ impl NativeVideoDecoder {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         {
             log::warn!(
-                "native video decode remains in-process on this mobile target; tracked as the platform-specific Appendix C #2b residual"
+                "refusing in-process mobile video decode until a platform worker/service boundary exists"
             );
             Self {
                 format,
-                backend: NativeVideoDecoderBackend::InProcess(MobileDecoder::new(format, _luid)),
+                backend: NativeVideoDecoderBackend::Unavailable,
             }
         }
     }
@@ -83,8 +78,6 @@ impl NativeVideoDecoder {
         match &self.backend {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             NativeVideoDecoderBackend::Worker(worker) => worker.valid,
-            #[cfg(any(target_os = "android", target_os = "ios"))]
-            NativeVideoDecoderBackend::InProcess(decoder) => decoder.valid(),
             NativeVideoDecoderBackend::Unavailable => false,
         }
     }
@@ -95,21 +88,30 @@ impl NativeVideoDecoder {
         luid: Option<i64>,
         mark_unsupported: &Vec<CodecFormat>,
     ) -> SupportedDecoding {
-        let mut decoding = scrap::codec::Decoder::supported_decodings(
-            id_for_prefer,
-            use_texture_render,
-            luid,
-            mark_unsupported,
-        );
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        {
+            let _ = (id_for_prefer, use_texture_render, luid, mark_unsupported);
+            log::warn!(
+                "refusing to advertise mobile video decoding until a platform worker/service boundary exists"
+            );
+            return SupportedDecoding::default();
+        }
+
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
+            let mut decoding = scrap::codec::Decoder::supported_decodings(
+                id_for_prefer,
+                use_texture_render,
+                luid,
+                mark_unsupported,
+            );
             // The desktop worker boundary returns raw RGB over stdio. Process-local
             // hardware/VRAM decoder outputs are not transferable, so do not advertise
             // H.264/H.265 decode from the main process while this slice is active.
             decoding.ability_h264 = 0;
             decoding.ability_h265 = 0;
+            decoding
         }
-        decoding
     }
 
     pub fn handle_video_frame(
@@ -125,13 +127,11 @@ impl NativeVideoDecoder {
             NativeVideoDecoderBackend::Worker(worker) => {
                 worker.decode(frame, rgb, pixelbuffer, chroma)
             }
-            #[cfg(any(target_os = "android", target_os = "ios"))]
-            NativeVideoDecoderBackend::InProcess(decoder) => {
-                decoder.handle_video_frame(frame, rgb, texture, pixelbuffer, chroma)
-            }
             NativeVideoDecoderBackend::Unavailable => {
                 let _ = texture;
-                bail!("native video worker unavailable; in-process desktop decode is refused")
+                bail!(
+                    "native video worker/platform worker unavailable; in-process decode is refused"
+                )
             }
         }
     }

@@ -1,5 +1,3 @@
-#[cfg(any(target_os = "android", target_os = "ios"))]
-use hbb_common::log;
 use hbb_common::{
     anyhow::{anyhow, bail},
     ResultType,
@@ -30,8 +28,7 @@ pub struct NativeOpusDecoder {
 enum NativeOpusDecoderBackend {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Worker(WorkerOpusDecoder),
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    InProcess(OpusDecoder),
+    Unavailable,
 }
 
 impl NativeOpusDecoder {
@@ -55,15 +52,9 @@ impl NativeOpusDecoder {
 
         #[cfg(any(target_os = "android", target_os = "ios"))]
         {
-            log::warn!(
-                "native Opus decode remains in-process on this mobile target; tracked as the platform-specific Appendix C #2b residual"
+            bail!(
+                "refusing in-process mobile Opus decode until a platform worker/service boundary exists"
             );
-            Ok(Self {
-                backend: NativeOpusDecoderBackend::InProcess(OpusDecoder::new(
-                    sample_rate,
-                    channels_to_opus(channels)?,
-                )?),
-            })
         }
     }
 
@@ -85,10 +76,11 @@ impl NativeOpusDecoder {
             NativeOpusDecoderBackend::Worker(worker) => {
                 worker.decode_float(data, output, decode_fec)
             }
-            #[cfg(any(target_os = "android", target_os = "ios"))]
-            NativeOpusDecoderBackend::InProcess(decoder) => decoder
-                .decode_float(data, output, decode_fec)
-                .map_err(|e| anyhow!("mobile in-process Opus decode failed: {e}")),
+            NativeOpusDecoderBackend::Unavailable => {
+                bail!(
+                    "native Opus worker/platform worker unavailable; in-process decode is refused"
+                )
+            }
         }
     }
 }

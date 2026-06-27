@@ -1919,8 +1919,9 @@ else
 fi
 # Appendix C #2b first sandbox slice: desktop video decode must cross a hidden
 # same-artifact worker process before libvpx/aom/libyuv sees hostile-peer bytes.
-# This is deliberately narrower than the full residual: Opus, zstd, CLIPRDR and
-# mobile process models remain tracked separately.
+# Mobile video decode has no equivalent platform worker/service boundary yet, so
+# it must fail closed and advertise no decoder instead of falling back to
+# in-process hostile-peer media parsing.
 r_native_video_worker=
 grep -qF 'const WORKER_ARG: &str = "--native-video-worker";' src/native_video_worker.rs ||
   r_native_video_worker="$r_native_video_worker worker-arg"
@@ -1930,6 +1931,18 @@ grep -qF 'WorkerVideoDecoder::spawn(format)' src/native_video_worker.rs ||
   r_native_video_worker="$r_native_video_worker desktop-worker-spawn"
 grep -qF 'refusing in-process desktop decode' src/native_video_worker.rs ||
   r_native_video_worker="$r_native_video_worker no-desktop-inprocess-fallback"
+grep -qF 'refusing in-process mobile video decode until a platform worker/service boundary exists' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker no-mobile-inprocess-fallback"
+grep -qF 'refusing to advertise mobile video decoding until a platform worker/service boundary exists' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker mobile-no-decode-advertise"
+grep -qF 'return SupportedDecoding::default();' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker mobile-empty-supported-decoding"
+if grep -qF 'MobileDecoder' src/native_video_worker.rs; then
+  r_native_video_worker="$r_native_video_worker mobile-decoder-alias"
+fi
+if grep -qF 'NativeVideoDecoderBackend::InProcess' src/native_video_worker.rs; then
+  r_native_video_worker="$r_native_video_worker mobile-inprocess-video-backend"
+fi
 grep -qF 'worker accepts only software VP8/VP9/AV1 video frames' src/native_video_worker.rs ||
   r_native_video_worker="$r_native_video_worker software-only-worker"
 grep -qF 'worker video decode unexpectedly produced a process-local texture' src/native_video_worker.rs ||
@@ -2014,12 +2027,13 @@ grep -qF 'linux_worker_seccomp_blocks_inet_socket_at_runtime' libs/hbb_common/sr
 if [ -n "$r_native_video_worker" ]; then
   echo "  FAIL Appendix C #2b: desktop native video worker boundary regressed:$r_native_video_worker"; rc=1
 else
-  echo "  ok  Appendix C #2b desktop native video decode uses timeout-bounded same-artifact worker plus Linux x86_64/aarch64 post-exec syscall filter (mobile/non-Linux tracked; other Linux arch workers fail closed)"
+  echo "  ok  Appendix C #2b desktop native video decode uses timeout-bounded same-artifact worker plus Linux x86_64/aarch64 post-exec syscall filter; mobile video decode fails closed until a platform worker/service exists (other Linux arch workers fail closed)"
 fi
 # Appendix C #2b second sandbox slice: desktop Opus packet decode must cross a
 # hidden same-artifact worker process before libopus sees hostile-peer bytes.
-# This remains narrower than the full residual: zstd, clipboard/CLIPRDR and
-# mobile process models remain tracked separately.
+# Mobile Opus decode has no equivalent platform worker/service boundary yet, so
+# it must fail closed instead of falling back to in-process hostile-peer packet
+# parsing.
 r_native_opus_worker=
 grep -qF 'const WORKER_ARG: &str = "--native-opus-worker";' src/native_audio_worker.rs ||
   r_native_opus_worker="$r_native_opus_worker worker-arg"
@@ -2029,6 +2043,14 @@ grep -qF 'WorkerOpusDecoder::spawn(sample_rate, channels)' src/native_audio_work
   r_native_opus_worker="$r_native_opus_worker desktop-worker-spawn"
 grep -qF 'refusing in-process desktop decode' src/native_audio_worker.rs ||
   r_native_opus_worker="$r_native_opus_worker no-desktop-inprocess-fallback"
+grep -qF 'refusing in-process mobile Opus decode until a platform worker/service boundary exists' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker no-mobile-inprocess-fallback"
+if grep -qF 'NativeOpusDecoderBackend::InProcess' src/native_audio_worker.rs; then
+  r_native_opus_worker="$r_native_opus_worker mobile-inprocess-opus-backend"
+fi
+if grep -qF 'mobile in-process Opus decode failed' src/native_audio_worker.rs; then
+  r_native_opus_worker="$r_native_opus_worker mobile-inprocess-opus-decode"
+fi
 grep -qF 'const WORKER_DECODE_TIMEOUT: Duration = Duration::from_secs(3);' src/native_audio_worker.rs ||
   r_native_opus_worker="$r_native_opus_worker decode-timeout"
 grep -qF 'native Opus worker decode timed out after' src/native_audio_worker.rs ||
@@ -2056,7 +2078,7 @@ grep -qF 'crate::native_audio_worker::run_worker()' src/core_main.rs ||
 if [ -n "$r_native_opus_worker" ]; then
   echo "  FAIL Appendix C #2b: desktop native Opus worker boundary regressed:$r_native_opus_worker"; rc=1
 else
-  echo "  ok  Appendix C #2b desktop Opus decode uses timeout-bounded same-artifact worker plus Linux x86_64/aarch64 post-exec syscall filter (mobile/non-Linux tracked; other Linux arch workers fail closed)"
+  echo "  ok  Appendix C #2b desktop Opus decode uses timeout-bounded same-artifact worker plus Linux x86_64/aarch64 post-exec syscall filter; mobile Opus decode fails closed until a platform worker/service exists (other Linux arch workers fail closed)"
 fi
 # Appendix C #2b third sandbox slice: peer-controlled zstd decompression must
 # cross a same-artifact worker on desktop. Local persisted config decompression

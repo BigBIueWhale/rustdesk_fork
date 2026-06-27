@@ -806,47 +806,42 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 
 ## Artifact State
 
-After commit `ec1b6f6` (`Bound peer info UI handoffs`), the Debian and Windows
-artifacts below were rebuilt from that application source. Later source changes,
-including the current fixed-shape listener and direct-TCP staging collapse above,
-have not yet had refreshed platform artifacts, so these hashes are evidence for
-`ec1b6f6` and are stale for later application-source commits until those
-artifacts are rebuilt.
+After the fixed-shape listener/direct-TCP staging collapse and the artifact
+staleness correction, the Debian, Android, and Windows artifacts below were
+rebuilt from the current application source. These hashes supersede the
+`ec1b6f6`/`2d72f99` stale-artifact notes.
 The Debian path ran in the disposable `rustdesk-fork-harness-deb-builder` build
 container with the compile stage offline (`--network=none`) and
 `SOURCE_DATE_EPOCH=1700000000`, then performed its double-build determinism
-check. The Windows path ran `scripts/build-windows-vm.sh` from committed
-application source `ec1b6f6` through the transient KVM path from the pinned
+check. The Android path ran in the disposable
+`rustdesk-fork-harness-android-builder` container with the compile stage offline
+(`--network=none`), signed with the stable local RSA-4096 keystore from
+`.harness-state/android-keystore/`, and `apksigner verify` reported one signer
+with v1/v2/v3 true. The Windows path ran `scripts/build-windows-vm.sh` from
+committed application source through the transient KVM path from the pinned
 golden qcow2, booted each per-build VM with `--network none`, used
 loopback-only VNC, extracted/canonicalized the `.exe` and `.msi`, and passed the
 default Windows double-build A==B assertion.
 
-The Android APK hash below is retained as the most recent signed APK artifact,
-but it is **not current for `ec1b6f6`**. The local Android builder image and
-offline cache are present, but `ANDROID_KEYSTORE` and
-`ANDROID_KEYSTORE_PASS_FILE` are not exported in this shell; the current-source
-Android rebuild stopped at preflight before compilation with:
-`set ANDROID_KEYSTORE to the stable RSA-4096 keystore (R-B2); Android refuses to install an unsigned APK`.
-No current-source APK should be claimed until that stable key is available and
-`scripts/build-android.sh` is re-run.
-
 ```text
-2fe423c6be2168bc43db4f2f7e9c23342b60af6f4c651b724cebfdd311ec228f  dist/rustdesk-x86_64.deb
-88039c3b25b264787ee1efefae8d6d7ba61caa2e4f3501ef440c7a2e92f91a0e  dist/rustdesk-arm64.apk  # stale: not rebuilt for ec1b6f6
-f372a645aebead0ab837966a71068540752755c9d8c7ef672f9a9f4920b2b561  dist/rustdesk-setup.exe
-5ec75d916f1ed4d68ff233b6537f09a996c5384908138f42c38ed5e2e0e91c37  dist/rustdesk.msi
+ee4a0831eeda5e58b86536bdb7ab52e0c6392aabc7e6801e4b6fe07d58452da0  dist/rustdesk-x86_64.deb
+8c7f8515d3a102bb4fe0812e6f6aabefb204d64d5f145db8a894a181e3d25f0e  dist/rustdesk-arm64.apk
+e68f49ffd4b8fded8517e1b12128bf7d16b63ab38b0e677e2ef550560e1c5628  dist/rustdesk-setup.exe
+bcf8f7b4bf30d3aa3f96bc314dfefc3c901699a2a552cfee78aea1e33dcf5e88  dist/rustdesk.msi
 ```
 
 Build evidence:
 
 - Debian `bash scripts/build-debian.sh` passed its offline Docker double-build
-  A==B gate from application source `ec1b6f6`.
+  A==B gate, producing `ee4a0831eeda5e58b86536bdb7ab52e0c6392aabc7e6801e4b6fe07d58452da0`.
+- Android
+  `ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYSTORE_PASS_FILE=.harness-state/android-keystore/pass bash scripts/build-android.sh`
+  passed the offline Docker build and apksigner verification, producing
+  `8c7f8515d3a102bb4fe0812e6f6aabefb204d64d5f145db8a894a181e3d25f0e`.
 - Windows `bash scripts/build-windows-vm.sh` passed from committed application
-  source `ec1b6f6` in the transient KVM VM path. The guest `build-log.txt`
-  contains pre-canonical hashes; the final release hashes are the
-  host-canonicalized `dist/*.sha256` values above.
-- Android `bash scripts/build-android.sh` did not build current `HEAD`: preflight
-  failed because `ANDROID_KEYSTORE` was unset.
+  source in the transient KVM VM path. The guest `build-log.txt` contains
+  pre-canonical hashes; the final release hashes are the host-canonicalized
+  `dist/*.sha256` values above, and the second VM rebuild matched A==B.
 
 ## Validation Matrix
 
@@ -1189,6 +1184,15 @@ bash scripts/verify.sh                                        # GREEN: VERIFY: a
 bash scripts/smoke-server.sh                                  # GREEN: LD_PRELOAD smoke bind shim, one 127.0.0.1:21118 TCP listener, zero UDP, R-A1/R-S1 keying, R-T1 capacity-shed, owner-safe limiter, forged-frame rejection, no plaintext canary
 ```
 
+After the current-source artifact refresh, the platform build scripts were
+re-run:
+
+```text
+bash scripts/build-debian.sh                                  # GREEN: offline Docker double-build A==B, ee4a0831eeda5e58b86536bdb7ab52e0c6392aabc7e6801e4b6fe07d58452da0
+ANDROID_KEYSTORE=... ANDROID_KEYSTORE_PASS_FILE=... bash scripts/build-android.sh # GREEN: offline Docker build, apksigner verified one signer with v1/v2/v3 true, 8c7f8515d3a102bb4fe0812e6f6aabefb204d64d5f145db8a894a181e3d25f0e
+bash scripts/build-windows-vm.sh                              # GREEN: transient KVM VMs, --network none, loopback-only VNC, double-build A==B, exe=e68f49ffd4b8fded8517e1b12128bf7d16b63ab38b0e677e2ef550560e1c5628, msi=bcf8f7b4bf30d3aa3f96bc314dfefc3c901699a2a552cfee78aea1e33dcf5e88
+```
+
 The Windows VM build path is current for the application source represented by
 the artifact hashes above, not for later source changes until the Windows
 artifact job is re-run. The separate build-host cleanliness issue remains
@@ -1346,12 +1350,9 @@ PDU parsing, per-connection file-content request/byte accounting, and a
 same-artifact worker boundary for the local file-list cache/PDU generation and
 FileContents size/range reads. Windows and Android platform-native
 socket-surface logic is present and source-gated. The Debian, Android, and
-Windows artifact hashes recorded above remain the latest platform artifact
-evidence, but they predate the fixed-shape listener/direct-TCP staging collapse
-introduced at `2d72f99` and must be rebuilt before the ledger can claim
-current-source Debian, Android, or Windows artifacts. The
-remaining local build-host residual is the old harness-created system libvirt
-default network: the host has shown `virbr0`,
+Windows artifact hashes recorded above are refreshed for the current application
+source. The remaining local build-host residual is the old harness-created
+system libvirt default network: the host has shown `virbr0`,
 `192.168.122.1:53/tcp+udp`, `0.0.0.0%virbr0:67/udp`, and
 `net.ipv4.ip_forward=1`. `.harness-state/provisioned` records that the harness
 installed `libvirt-daemon-system`, so cleanup is allowed to reverse it, but this

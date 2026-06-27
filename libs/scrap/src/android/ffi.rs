@@ -15,7 +15,6 @@ use lazy_static::lazy_static;
 use serde::Deserialize;
 use std::ops::Not;
 use std::os::raw::c_void;
-use std::sync::atomic::{AtomicPtr, Ordering::SeqCst};
 use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant};
 
@@ -34,6 +33,8 @@ lazy_static! {
 
 const MAX_VIDEO_FRAME_TIMEOUT: Duration = Duration::from_millis(100);
 const MAX_AUDIO_FRAME_TIMEOUT: Duration = Duration::from_millis(1000);
+const MAX_ANDROID_VIDEO_RAW_BYTES: usize = 64 * 1024 * 1024;
+const MAX_ANDROID_AUDIO_RAW_BYTES: usize = 4 * 1024 * 1024;
 const ANDROID_CLIPBOARD_SIDE_PREFIX_BYTES: usize = 1;
 const MAX_ANDROID_CLIPBOARD_PROTO_BYTES: usize = 64 * 1024 * 1024;
 const MAX_ANDROID_CLIPBOARD_UPDATE_BYTES: usize =
@@ -41,8 +42,7 @@ const MAX_ANDROID_CLIPBOARD_UPDATE_BYTES: usize =
 
 struct FrameRaw {
     name: &'static str,
-    ptr: AtomicPtr<u8>,
-    len: usize,
+    data: Vec<u8>,
     last_update: Instant,
     timeout: Duration,
     enable: bool,
@@ -52,8 +52,7 @@ impl FrameRaw {
     fn new(name: &'static str, timeout: Duration) -> Self {
         FrameRaw {
             name,
-            ptr: AtomicPtr::default(),
-            len: 0,
+            data: Vec::new(),
             last_update: Instant::now(),
             timeout,
             enable: false,
@@ -62,16 +61,29 @@ impl FrameRaw {
 
     fn set_enable(&mut self, value: bool) {
         self.enable = value;
-        self.ptr.store(std::ptr::null_mut(), SeqCst);
-        self.len = 0;
+        self.data.clear();
     }
 
-    fn update(&mut self, data: *mut u8, len: usize) {
+    fn update_from_jni_buffer(&mut self, data: *mut u8, len: usize, max_len: usize) {
         if self.enable.not() {
             return;
         }
-        self.len = len;
-        self.ptr.store(data, SeqCst);
+        if data.is_null() || len == 0 {
+            log::warn!("dropping empty Android {} raw buffer", self.name);
+            return;
+        }
+        if len > max_len {
+            log::warn!(
+                "dropping oversized Android {} raw buffer before Rust-owned copy: {} > {}",
+                self.name,
+                len,
+                max_len
+            );
+            return;
+        }
+        let slice = unsafe { std::slice::from_raw_parts(data, len) };
+        self.data.clear();
+        self.data.extend_from_slice(slice);
         self.last_update = Instant::now();
     }
 
@@ -81,30 +93,29 @@ impl FrameRaw {
         if self.enable.not() {
             return None;
         }
-        let ptr = self.ptr.load(SeqCst);
-        if ptr.is_null() || self.len == 0 {
+        if self.data.is_empty() {
             None
         } else {
             if self.last_update.elapsed() > self.timeout {
                 log::trace!("Failed to take {} raw,timeout!", self.name);
+                self.release();
                 return None;
             }
-            let slice = unsafe { std::slice::from_raw_parts(ptr, self.len) };
+            if last.len() == self.data.len()
+                && crate::would_block_if_equal(last, &self.data).is_err()
+            {
+                self.release();
+                return None;
+            }
+            dst.clear();
+            dst.extend_from_slice(&self.data);
             self.release();
-            if last.len() == slice.len() && crate::would_block_if_equal(last, slice).is_err() {
-                return None;
-            }
-            dst.resize(slice.len(), 0);
-            unsafe {
-                std::ptr::copy_nonoverlapping(slice.as_ptr(), dst.as_mut_ptr(), slice.len());
-            }
             Some(())
         }
     }
 
     fn release(&mut self) {
-        self.len = 0;
-        self.ptr.store(std::ptr::null_mut(), SeqCst);
+        self.data.clear();
     }
 }
 
@@ -133,7 +144,11 @@ pub extern "system" fn Java_ffi_FFI_onVideoFrameUpdate(
     let jb = JByteBuffer::from(buffer);
     if let Ok(data) = env.get_direct_buffer_address(&jb) {
         if let Ok(len) = env.get_direct_buffer_capacity(&jb) {
-            VIDEO_RAW.lock().unwrap().update(data, len);
+            VIDEO_RAW.lock().unwrap().update_from_jni_buffer(
+                data,
+                len,
+                MAX_ANDROID_VIDEO_RAW_BYTES,
+            );
         }
     }
 }
@@ -147,7 +162,11 @@ pub extern "system" fn Java_ffi_FFI_onAudioFrameUpdate(
     let jb = JByteBuffer::from(buffer);
     if let Ok(data) = env.get_direct_buffer_address(&jb) {
         if let Ok(len) = env.get_direct_buffer_capacity(&jb) {
-            AUDIO_RAW.lock().unwrap().update(data, len);
+            AUDIO_RAW.lock().unwrap().update_from_jni_buffer(
+                data,
+                len,
+                MAX_ANDROID_AUDIO_RAW_BYTES,
+            );
         }
     }
 }

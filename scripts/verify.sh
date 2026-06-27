@@ -657,13 +657,20 @@ sp=flutter/lib/mobile/pages/settings_page.dart
 grep -qE 'enum KeepScreenOn|KeepScreenOn\.(never|serviceOn)' "$sp" && r_d7a="$r_d7a keep-screen-on-modes-present"
 grep -qF "title: 'Keep screen on'" "$sp" && r_d7a="$r_d7a keep-screen-on-radio-present"
 ms=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
+af=libs/scrap/src/android/ffi.rs
 grep -qE 'return START_NOT_STICKY' "$ms" || r_d7a="$r_d7a onStartCommand-not-START_NOT_STICKY"
 grep -qE 'return START_STICKY|START_REDELIVER_INTENT' "$ms" && r_d7a="$r_d7a sticky-restart-present"
 grep -qE 'val useVP9|startVP9VideoRecorder|createMediaCodec|MIMETYPE_VIDEO_VP9' "$ms" && r_d7a="$r_d7a vp9-encoder-present"
+grep -qF 'data: Vec<u8>' "$af" || r_d7a="$r_d7a android-raw-media-not-owned"
+grep -qF 'update_from_jni_buffer' "$af" || r_d7a="$r_d7a android-raw-media-no-jni-copy"
+grep -qF 'MAX_ANDROID_VIDEO_RAW_BYTES' "$af" || r_d7a="$r_d7a android-video-raw-no-cap"
+grep -qF 'MAX_ANDROID_AUDIO_RAW_BYTES' "$af" || r_d7a="$r_d7a android-audio-raw-no-cap"
+grep -qF 'dropping oversized Android' "$af" || r_d7a="$r_d7a android-raw-media-no-oversize-drop"
+grep -qF 'AtomicPtr' "$af" && r_d7a="$r_d7a android-raw-media-retains-pointer"
 if [ -n "$r_d7a" ]; then
-  echo "  FAIL R-D7a: keep-screen-on / onStartCommand / useVP9-encoder not conformant:$r_d7a"; rc=1
+  echo "  FAIL R-D7a: keep-screen-on / onStartCommand / useVP9-encoder / Android raw-media JNI not conformant:$r_d7a"; rc=1
 else
-  echo "  ok  R-D7a keep-screen-on pinned during-controlled + onStartCommand START_NOT_STICKY + dead useVP9/MediaCodec encoder excised (raw ImageReader single)"
+  echo "  ok  R-D7a keep-screen-on pinned during-controlled + onStartCommand START_NOT_STICKY + dead useVP9/MediaCodec encoder excised (raw ImageReader single) + Android raw media JNI copies into bounded Rust-owned storage"
 fi
 # R-T13 (§20, SHOULD): Android controlled-side networking lifecycle. The foreground service must
 # observe network loss/availability and drive the existing direct-listener rebuild path (`listener =

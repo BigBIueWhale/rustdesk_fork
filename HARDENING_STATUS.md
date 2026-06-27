@@ -1318,6 +1318,15 @@ git diff --check              # GREEN after this ledger update
   clipboard budget before slicing or parsing, and the source gate keeps the cap
   and checked slice in place.
 
+- **Android raw media JNI no longer retains Java buffer pointers.** The
+  ImageReader and AudioRecord callbacks hand Rust direct `ByteBuffer` storage
+  whose lifetime is owned by the Android side; the old `FrameRaw` cached a raw
+  pointer and length for a later Rust thread to copy. `FrameRaw` now rejects
+  empty or oversized raw buffers at JNI entry, copies accepted video/audio bytes
+  into bounded Rust-owned `Vec<u8>` storage immediately, clears stale frames on
+  timeout, and the R-D7a source gate fails if an `AtomicPtr`-style retained
+  pointer path regrows.
+
 - **Desktop native-video worker responses are parent-validated before UI
   handoff.** The native video worker is a lower-trust parser boundary, so the
   parent now rejects worker-returned decoded frames unless width, height, image

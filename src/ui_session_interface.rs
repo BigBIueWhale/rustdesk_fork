@@ -522,7 +522,7 @@ impl<T: InvokeUiSession> Session<T> {
     pub fn alternative_codecs(&self) -> (bool, bool, bool, bool) {
         let luid = self.lc.read().unwrap().adapter_luid;
         let mark_unsupported = self.lc.read().unwrap().mark_unsupported.clone();
-        let decoder = scrap::codec::Decoder::supported_decodings(
+        let decoder = crate::native_video_worker::NativeVideoDecoder::supported_decodings(
             None,
             use_texture_render(),
             luid,

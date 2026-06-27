@@ -1956,6 +1956,10 @@ grep -qF 'NativeVideoDecoder as Decoder' src/client.rs ||
 if grep -qF 'codec::Decoder' src/client.rs; then
   r_native_video_worker="$r_native_video_worker client-direct-scrap-decoder"
 fi
+if grep -RInF 'scrap::codec::Decoder::supported_decodings' src --include='*.rs' \
+    | grep -vF 'src/native_video_worker.rs' >/dev/null; then
+  r_native_video_worker="$r_native_video_worker raw-supported-decoding-bypass"
+fi
 grep -qF 'crate::native_video_worker::run_worker()' src/core_main.rs ||
   r_native_video_worker="$r_native_video_worker core-worker-entry"
 grep -qF 'pub mod native_worker_sandbox;' libs/hbb_common/src/lib.rs ||

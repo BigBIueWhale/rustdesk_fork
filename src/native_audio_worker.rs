@@ -497,6 +497,7 @@ fn read_response<R: Read>(
     if msg_len > MAX_OPUS_ERROR_BYTES {
         bail!("native Opus worker error message too large");
     }
+    validate_worker_response_shape(status, samples_per_channel, float_count, msg_len)?;
     let mut pcm_bytes = vec![0u8; float_count * std::mem::size_of::<f32>()];
     reader
         .read_exact(&mut pcm_bytes)
@@ -515,6 +516,28 @@ fn read_response<R: Read>(
         pcm,
         message,
     })
+}
+
+fn validate_worker_response_shape(
+    status: u8,
+    samples_per_channel: usize,
+    float_count: usize,
+    msg_len: usize,
+) -> ResultType<()> {
+    match status {
+        STATUS_DECODED => {
+            if msg_len != 0 {
+                bail!("native Opus worker decoded response carried an error message");
+            }
+        }
+        STATUS_ERROR => {
+            if samples_per_channel != 0 || float_count != 0 {
+                bail!("native Opus worker error response carried PCM data");
+            }
+        }
+        _ => bail!("native Opus worker returned unknown status {status}"),
+    }
+    Ok(())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -681,5 +704,20 @@ mod tests {
         let mut bytes = Vec::new();
         write_f32_le(&mut bytes, &values).unwrap();
         assert_eq!(decode_f32_le(&bytes).unwrap(), values);
+    }
+
+    #[test]
+    fn opus_worker_response_shape_rejects_success_message() {
+        assert!(validate_worker_response_shape(STATUS_DECODED, 1, 2, 1).is_err());
+    }
+
+    #[test]
+    fn opus_worker_response_shape_rejects_error_pcm() {
+        assert!(validate_worker_response_shape(STATUS_ERROR, 1, 2, 4).is_err());
+    }
+
+    #[test]
+    fn opus_worker_response_shape_rejects_unknown_status() {
+        assert!(validate_worker_response_shape(99, 0, 0, 0).is_err());
     }
 }

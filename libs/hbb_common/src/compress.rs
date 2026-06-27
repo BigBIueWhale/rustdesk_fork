@@ -419,6 +419,7 @@ fn read_response<R: Read>(reader: &mut R) -> ResultType<Vec<u8>> {
             "native zstd worker error message too large"
         ));
     }
+    validate_worker_response_shape(status, out_len, msg_len)?;
     let mut out = vec![0u8; out_len];
     reader
         .read_exact(&mut out)
@@ -439,6 +440,36 @@ fn read_response<R: Read>(reader: &mut R) -> ResultType<Vec<u8>> {
             "native zstd worker returned unknown status {status}"
         ))
     }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn validate_worker_response_shape(
+    status: u8,
+    out_len: usize,
+    msg_len: usize,
+) -> ResultType<()> {
+    match status {
+        STATUS_DECOMPRESSED => {
+            if msg_len != 0 {
+                return Err(crate::anyhow::anyhow!(
+                    "native zstd worker success response carried an error message"
+                ));
+            }
+        }
+        STATUS_ERROR => {
+            if out_len != 0 {
+                return Err(crate::anyhow::anyhow!(
+                    "native zstd worker error response carried output bytes"
+                ));
+            }
+        }
+        _ => {
+            return Err(crate::anyhow::anyhow!(
+                "native zstd worker returned unknown status {status}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -487,4 +518,24 @@ fn read_u32<R: Read>(reader: &mut R) -> io::Result<u32> {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn write_u32<W: Write>(writer: &mut W, value: u32) -> io::Result<()> {
     writer.write_all(&value.to_le_bytes())
+}
+
+#[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zstd_worker_response_shape_rejects_success_message() {
+        assert!(validate_worker_response_shape(STATUS_DECOMPRESSED, 4, 1).is_err());
+    }
+
+    #[test]
+    fn zstd_worker_response_shape_rejects_error_output() {
+        assert!(validate_worker_response_shape(STATUS_ERROR, 1, 4).is_err());
+    }
+
+    #[test]
+    fn zstd_worker_response_shape_rejects_unknown_status() {
+        assert!(validate_worker_response_shape(99, 0, 0).is_err());
+    }
 }

@@ -570,7 +570,7 @@ where
     W: Write,
 {
     write_worker_request(writer, conn_id, data)?;
-    read_worker_response(reader)
+    read_worker_response(reader, conn_id)
 }
 
 fn write_worker_response<W: Write>(
@@ -580,6 +580,13 @@ fn write_worker_response<W: Write>(
     message: &str,
 ) -> Result<(), CliprdrError> {
     let payload = if status == STATUS_PARSED {
+        if files.len() > MAX_FILE_DESCRIPTORS {
+            return Err(common_error(format!(
+                "file descriptor worker returned too many descriptors: {} > {}",
+                files.len(),
+                MAX_FILE_DESCRIPTORS
+            )));
+        }
         hbb_common::serde_json::to_vec(files).map_err(|e| {
             common_error(format!("failed to serialize file descriptor response: {e}"))
         })?
@@ -607,7 +614,10 @@ fn write_worker_response<W: Write>(
     writer.write_all(&payload).map_err(io_error)
 }
 
-fn read_worker_response<R: Read>(reader: &mut R) -> Result<Vec<FileDescription>, CliprdrError> {
+fn read_worker_response<R: Read>(
+    reader: &mut R,
+    expected_conn_id: i32,
+) -> Result<Vec<FileDescription>, CliprdrError> {
     let magic = read_array::<4, _>(reader).map_err(io_error)?;
     if magic != RESPONSE_MAGIC {
         return Err(common_error(
@@ -637,8 +647,13 @@ fn read_worker_response<R: Read>(reader: &mut R) -> Result<Vec<FileDescription>,
     let mut payload = vec![0u8; len];
     reader.read_exact(&mut payload).map_err(io_error)?;
     match status {
-        STATUS_PARSED => hbb_common::serde_json::from_slice::<Vec<FileDescription>>(&payload)
-            .map_err(|e| common_error(format!("failed to parse file descriptor worker JSON: {e}"))),
+        STATUS_PARSED => {
+            let files = hbb_common::serde_json::from_slice::<Vec<FileDescription>>(&payload)
+                .map_err(|e| {
+                    common_error(format!("failed to parse file descriptor worker JSON: {e}"))
+                })?;
+            validate_worker_file_descriptions(files, expected_conn_id)
+        }
         STATUS_ERROR => Err(CliprdrError::InvalidRequest {
             description: String::from_utf8_lossy(&payload).to_string(),
         }),
@@ -646,6 +661,29 @@ fn read_worker_response<R: Read>(reader: &mut R) -> Result<Vec<FileDescription>,
             "file descriptor worker returned unknown status {status}"
         ))),
     }
+}
+
+fn validate_worker_file_descriptions(
+    mut files: Vec<FileDescription>,
+    expected_conn_id: i32,
+) -> Result<Vec<FileDescription>, CliprdrError> {
+    if files.len() > MAX_FILE_DESCRIPTORS {
+        return Err(common_error(format!(
+            "file descriptor worker returned too many descriptors: {} > {}",
+            files.len(),
+            MAX_FILE_DESCRIPTORS
+        )));
+    }
+    for file in &mut files {
+        if file.conn_id != expected_conn_id {
+            return Err(common_error(format!(
+                "file descriptor worker response conn_id mismatch: {} != {}",
+                file.conn_id, expected_conn_id
+            )));
+        }
+        file.name = FileDescription::normalize_relative_name(&file.name)?;
+    }
+    Ok(files)
 }
 
 fn read_array<const N: usize, R: Read>(reader: &mut R) -> io::Result<[u8; N]> {
@@ -696,6 +734,7 @@ fn unsafe_name_error(name: &Path, reason: &str) -> CliprdrError {
 mod tests {
     use super::*;
     use hbb_common::bytes::{BufMut, BytesMut};
+    use std::time::SystemTime;
 
     fn descriptor_pdu(name: &str) -> Vec<u8> {
         let mut out = BytesMut::with_capacity(4 + FILE_DESCRIPTOR_SIZE);
@@ -726,7 +765,8 @@ mod tests {
 
         let mut response = Vec::new();
         worker_loop(&request[..], &mut response).expect("run descriptor worker loop");
-        let parsed = read_worker_response(&mut &response[..]).expect("read descriptor response");
+        let parsed =
+            read_worker_response(&mut &response[..], 42).expect("read descriptor response");
 
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].conn_id, 42);
@@ -743,7 +783,56 @@ mod tests {
         let mut response = Vec::new();
         worker_loop(&request[..], &mut response).expect("run descriptor worker loop");
 
-        assert!(read_worker_response(&mut &response[..]).is_err());
+        assert!(read_worker_response(&mut &response[..], 42).is_err());
+    }
+
+    fn worker_file_description(conn_id: i32, name: &str) -> FileDescription {
+        FileDescription {
+            conn_id,
+            name: PathBuf::from(name),
+            kind: FileType::File,
+            atime: SystemTime::UNIX_EPOCH,
+            last_modified: SystemTime::UNIX_EPOCH,
+            last_metadata_changed: SystemTime::UNIX_EPOCH,
+            creation_time: SystemTime::UNIX_EPOCH,
+            size: 7,
+            perm: PERM_RW,
+        }
+    }
+
+    fn parsed_worker_response(files: &[FileDescription]) -> Vec<u8> {
+        let payload =
+            hbb_common::serde_json::to_vec(files).expect("serialize malicious worker response");
+        let mut response = Vec::new();
+        response.extend_from_slice(&RESPONSE_MAGIC);
+        response.extend_from_slice(&[PROTOCOL_VERSION, STATUS_PARSED, 0, 0]);
+        write_u32(&mut response, payload.len() as u32).expect("write response length");
+        response.extend_from_slice(&payload);
+        response
+    }
+
+    #[test]
+    fn file_descriptor_worker_response_rejects_too_many_files() {
+        let files = (0..=MAX_FILE_DESCRIPTORS)
+            .map(|idx| worker_file_description(42, &format!("f{idx}.txt")))
+            .collect::<Vec<_>>();
+        let response = parsed_worker_response(&files);
+
+        assert!(read_worker_response(&mut &response[..], 42).is_err());
+    }
+
+    #[test]
+    fn file_descriptor_worker_response_rejects_conn_id_mismatch() {
+        let response = parsed_worker_response(&[worker_file_description(99, "a.txt")]);
+
+        assert!(read_worker_response(&mut &response[..], 42).is_err());
+    }
+
+    #[test]
+    fn file_descriptor_worker_response_rejects_unsafe_worker_path() {
+        let response = parsed_worker_response(&[worker_file_description(42, "../escape.txt")]);
+
+        assert!(read_worker_response(&mut &response[..], 42).is_err());
     }
 
     #[test]

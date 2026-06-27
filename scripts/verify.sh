@@ -1761,6 +1761,10 @@ grep -qF 'MAX_NATIVE_VIDEO_DECODED_BYTES' libs/scrap/src/common/mod.rs ||
   r_native_bounds="$r_native_bounds video-decoded-cap"
 grep -qF 'checked_mul(bytes_per_row)' libs/scrap/src/common/mod.rs ||
   r_native_bounds="$r_native_bounds video-decoded-checked-mul"
+grep -qF 'fn validate_worker_rgb_response' src/native_video_worker.rs ||
+  r_native_bounds="$r_native_bounds video-worker-response-geometry"
+grep -qF 'native video worker raw length mismatch' src/native_video_worker.rs ||
+  r_native_bounds="$r_native_bounds video-worker-raw-len-match"
 grep -qF 'const MAX_PEER_VIDEO_DISPLAYS: usize = 16;' src/client/io_loop.rs ||
   r_native_bounds="$r_native_bounds viewer-video-display-cap"
 grep -qF 'fn bound_peer_info(mut pi: PeerInfo) -> PeerInfo' src/client/io_loop.rs ||
@@ -2119,6 +2123,18 @@ grep -qF 'native printer worker request too large' src/native_printer_worker.rs 
   r_native_bounds="$r_native_bounds windows-printer-worker-size-fail-closed"
 grep -qF 'native printer worker refuses NUL in printer name' src/native_printer_worker.rs ||
   r_native_bounds="$r_native_bounds windows-printer-worker-name-nul-fail-closed"
+grep -qF 'unsupported native printer worker response version' src/native_printer_worker.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-response-version"
+grep -qF 'native printer worker success response carried an error message' src/native_printer_worker.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-response-shape"
+grep -qF 'native printer worker response reserved field was nonzero' src/native_printer_worker.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-response-reserved"
+grep -qF 'printer_worker_response_rejects_bad_version' src/native_printer_worker.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-response-version-test"
+grep -qF 'printer_worker_response_rejects_success_message' src/native_printer_worker.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-response-shape-test"
+grep -qF 'printer_worker_response_rejects_nonzero_reserved' src/native_printer_worker.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-response-reserved-test"
 grep -qF 'crate::platform::windows::send_raw_data_to_printer(request.printer_name, request.data)' src/native_printer_worker.rs ||
   r_native_bounds="$r_native_bounds windows-printer-worker-owns-raw-call"
 grep -qF 'crate::native_printer_worker::send_raw_data_to_printer(' src/client/io_loop.rs ||
@@ -2269,6 +2285,12 @@ grep -qF 'mpsc::sync_channel::<VideoWorkerIoRequest>(1)' src/native_video_worker
   r_native_video_worker="$r_native_video_worker bounded-io-thread-channel"
 grep -qF '.name("rd-native-video-io".to_owned())' src/native_video_worker.rs ||
   r_native_video_worker="$r_native_video_worker persistent-io-thread"
+grep -qF 'fn validate_worker_response_shape' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker response-shape-validator"
+grep -qF 'native video worker no-frame response carried payload' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker no-frame-response-shape"
+grep -qF 'video_worker_response_shape_rejects_error_frame_data' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker response-shape-test"
 if grep -qF 'std::thread::spawn' src/native_video_worker.rs; then
   r_native_video_worker="$r_native_video_worker per-request-thread-spawn"
 fi
@@ -2373,6 +2395,12 @@ grep -qF 'mpsc::sync_channel::<OpusWorkerIoRequest>(1)' src/native_audio_worker.
   r_native_opus_worker="$r_native_opus_worker bounded-io-thread-channel"
 grep -qF '.name("rd-native-opus-io".to_owned())' src/native_audio_worker.rs ||
   r_native_opus_worker="$r_native_opus_worker persistent-io-thread"
+grep -qF 'fn validate_worker_response_shape' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker response-shape-validator"
+grep -qF 'native Opus worker error response carried PCM data' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker error-response-shape"
+grep -qF 'opus_worker_response_shape_rejects_success_message' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker response-shape-test"
 if grep -qF 'std::thread::spawn' src/native_audio_worker.rs; then
   r_native_opus_worker="$r_native_opus_worker per-request-thread-spawn"
 fi
@@ -2422,6 +2450,12 @@ grep -qF 'native zstd worker busy; refusing to queue peer decompress' libs/hbb_c
   r_native_zstd_worker="$r_native_zstd_worker busy-worker-fail-closed"
 grep -qF 'worker.try_lock()' libs/hbb_common/src/compress.rs ||
   r_native_zstd_worker="$r_native_zstd_worker nonblocking-worker-admission"
+grep -qF 'fn validate_worker_response_shape' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker response-shape-validator"
+grep -qF 'native zstd worker error response carried output bytes' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker error-response-shape"
+grep -qF 'zstd_worker_response_shape_rejects_success_message' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker response-shape-test"
 if grep -qF 'let mut guard = worker.lock()' libs/hbb_common/src/compress.rs; then
   r_native_zstd_worker="$r_native_zstd_worker blocking-worker-lock"
 fi
@@ -2473,6 +2507,12 @@ grep -qF 'native clipboard worker busy; refusing to queue peer clipboard SET' sr
   r_native_clipboard_worker="$r_native_clipboard_worker busy-worker-fail-closed"
 grep -qF 'worker.try_lock()' src/native_clipboard_worker.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker nonblocking-worker-admission"
+grep -qF 'fn validate_worker_response_shape' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker response-shape-validator"
+grep -qF 'native clipboard worker success response carried an error message' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker success-response-shape"
+grep -qF 'clipboard_worker_response_rejects_success_message' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker response-shape-test"
 grep -qF 'const CLIPBOARD_UPDATE_QUEUE_CAPACITY: usize = 1;' src/clipboard.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker bounded-dispatcher-capacity"
 grep -qF 'static CLIPBOARD_UPDATE_TX: OnceLock<Result<SyncSender<ClipboardUpdateRequest>, String>>' src/clipboard.rs ||
@@ -2580,6 +2620,18 @@ grep -qF 'file_descriptor_worker_loop_parses_valid_pdu' libs/clipboard/src/platf
   r_native_filedesc_worker="$r_native_filedesc_worker protocol-success-test"
 grep -qF 'file_descriptor_worker_loop_reports_parse_error' libs/clipboard/src/platform/unix/filetype.rs ||
   r_native_filedesc_worker="$r_native_filedesc_worker protocol-error-test"
+grep -qF 'fn validate_worker_file_descriptions' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker parent-response-validator"
+grep -qF 'file descriptor worker response conn_id mismatch' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker parent-conn-id-match"
+grep -qF 'FileDescription::normalize_relative_name(&file.name)' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker parent-path-renormalize"
+grep -qF 'file_descriptor_worker_response_rejects_too_many_files' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker parent-count-test"
+grep -qF 'file_descriptor_worker_response_rejects_conn_id_mismatch' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker parent-conn-id-test"
+grep -qF 'file_descriptor_worker_response_rejects_unsafe_worker_path' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker parent-path-test"
 grep -qF 'FileDescription::parse_file_descriptors_isolated(format_data, conn_id)' libs/clipboard/src/platform/unix/fuse/mod.rs ||
   r_native_filedesc_worker="$r_native_filedesc_worker linux-fuse-isolated-call"
 grep -qF 'FileDescription::parse_file_descriptors_isolated(format_data, conn_id)' libs/clipboard/src/platform/unix/macos/pasteboard_context.rs ||
@@ -2657,6 +2709,14 @@ grep -qF 'file_content_worker_loop_reads_file_range' libs/clipboard/src/platform
   r_native_filecontent_worker="$r_native_filecontent_worker protocol-read-test"
 grep -qF 'file_content_worker_response_rejects_oversized_result_count' libs/clipboard/src/platform/unix/serv_files.rs ||
   r_native_filecontent_worker="$r_native_filecontent_worker response-count-test"
+grep -qF 'MAX_FILE_CONTENT_RESULTS_PER_RESPONSE' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker semantic-response-count-cap"
+grep -qF 'MAX_FILE_CONTENT_AUDIT_FILES_PER_RESPONSE' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker audit-file-count-cap"
+grep -qF 'file_content_worker_response_rejects_semantic_result_count' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker semantic-count-test"
+grep -qF 'file_content_worker_response_rejects_audit_file_count' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker audit-file-count-test"
 grep -qF 'crate::native_file_contents_worker::run_worker()' src/core_main.rs ||
   r_native_filecontent_worker="$r_native_filecontent_worker core-worker-entry"
 grep -qF 'mod native_file_contents_worker;' src/lib.rs ||

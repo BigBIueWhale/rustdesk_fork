@@ -342,7 +342,9 @@ fn write_response<W: Write>(writer: &mut W, status: u8, message: &str) -> Result
     let message = message.as_bytes();
     let message_len = message.len().min(MAX_WORKER_ERROR_BYTES);
     writer.write_all(&RESPONSE_MAGIC)?;
+    write_u8(writer, PROTOCOL_VERSION)?;
     write_u8(writer, status)?;
+    write_u8(writer, 0)?;
     write_u32(
         writer,
         u32::try_from(message_len)
@@ -358,24 +360,51 @@ fn read_response<R: Read>(reader: &mut R) -> ResultType<()> {
     if magic != RESPONSE_MAGIC {
         bail!("bad native printer worker response magic");
     }
+    let version = read_u8(reader)
+        .map_err(|e| anyhow!("failed to read native printer worker response version: {e}"))?;
+    if version != PROTOCOL_VERSION {
+        bail!("unsupported native printer worker response version {version}");
+    }
     let status = read_u8(reader)
         .map_err(|e| anyhow!("failed to read native printer worker response status: {e}"))?;
+    let reserved = read_u8(reader)
+        .map_err(|e| anyhow!("failed to read native printer worker reserved field: {e}"))?;
+    if reserved != 0 {
+        bail!("native printer worker response reserved field was nonzero");
+    }
     let message_len = read_u32(reader)
         .map_err(|e| anyhow!("failed to read native printer worker response message length: {e}"))?
         as usize;
     if message_len > MAX_WORKER_ERROR_BYTES {
         bail!("native printer worker response message too large");
     }
-    let message = read_exact_vec(reader, message_len)
-        .map_err(|e| anyhow!("failed to read native printer worker response message: {e}"))?;
+    validate_worker_response_shape(status, message_len)?;
     match status {
         STATUS_OK => Ok(()),
-        STATUS_ERROR => bail!(
-            "native printer worker failed: {}",
-            String::from_utf8_lossy(&message)
-        ),
+        STATUS_ERROR => {
+            let message = read_exact_vec(reader, message_len).map_err(|e| {
+                anyhow!("failed to read native printer worker response message: {e}")
+            })?;
+            bail!(
+                "native printer worker failed: {}",
+                String::from_utf8_lossy(&message)
+            )
+        }
         status => bail!("native printer worker returned unknown status {status}"),
     }
+}
+
+fn validate_worker_response_shape(status: u8, message_len: usize) -> ResultType<()> {
+    match status {
+        STATUS_OK => {
+            if message_len != 0 {
+                bail!("native printer worker success response carried an error message");
+            }
+        }
+        STATUS_ERROR => {}
+        _ => bail!("native printer worker returned unknown status {status}"),
+    }
+    Ok(())
 }
 
 fn read_exact_vec<R: Read>(reader: &mut R, len: usize) -> io::Result<Vec<u8>> {
@@ -412,4 +441,42 @@ fn read_u64<R: Read>(reader: &mut R) -> io::Result<u64> {
 
 fn write_u64<W: Write>(writer: &mut W, value: u64) -> io::Result<()> {
     writer.write_all(&value.to_be_bytes())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn printer_response(version: u8, status: u8, message: &[u8]) -> Vec<u8> {
+        let mut response = Vec::new();
+        response.extend_from_slice(&RESPONSE_MAGIC);
+        write_u8(&mut response, version).unwrap();
+        write_u8(&mut response, status).unwrap();
+        write_u8(&mut response, 0).unwrap();
+        write_u32(&mut response, message.len() as u32).unwrap();
+        response.extend_from_slice(message);
+        response
+    }
+
+    #[test]
+    fn printer_worker_response_rejects_bad_version() {
+        let response = printer_response(PROTOCOL_VERSION.wrapping_add(1), STATUS_OK, &[]);
+
+        assert!(read_response(&mut &response[..]).is_err());
+    }
+
+    #[test]
+    fn printer_worker_response_rejects_success_message() {
+        let response = printer_response(PROTOCOL_VERSION, STATUS_OK, b"unexpected");
+
+        assert!(read_response(&mut &response[..]).is_err());
+    }
+
+    #[test]
+    fn printer_worker_response_rejects_nonzero_reserved() {
+        let mut response = printer_response(PROTOCOL_VERSION, STATUS_OK, &[]);
+        response[RESPONSE_MAGIC.len() + 2] = 1;
+
+        assert!(read_response(&mut &response[..]).is_err());
+    }
 }

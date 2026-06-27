@@ -1,4 +1,4 @@
-use super::local_file::LocalFile;
+use super::{filetype::MAX_FILE_DESCRIPTORS, local_file::LocalFile};
 use crate::{platform::unix::local_file::construct_file_list, ClipboardFile, CliprdrError};
 use hbb_common::{
     bytes::{BufMut, BytesMut},
@@ -37,6 +37,8 @@ const FILE_CONTENT_RESULT_ERROR: u8 = 2;
 const MAX_WORKER_REQUEST_BYTES: usize = 16 * 1024 * 1024;
 const MAX_WORKER_RESPONSE_BYTES: usize = 64 * 1024 * 1024;
 const MAX_WORKER_ERROR_BYTES: usize = 64 * 1024;
+const MAX_FILE_CONTENT_RESULTS_PER_RESPONSE: usize = 2;
+const MAX_FILE_CONTENT_AUDIT_FILES_PER_RESPONSE: usize = MAX_FILE_DESCRIPTORS;
 
 pub fn file_contents_worker_arg() -> &'static str {
     WORKER_ARG
@@ -763,7 +765,7 @@ fn encode_worker_response(response: &WorkerResponse) -> Result<(u8, Vec<u8>), Cl
         WorkerResponse::FileListPdu { pdu } => Ok((RESPONSE_STATUS_FILE_LIST_PDU, pdu.clone())),
         WorkerResponse::FileContents { results } => {
             let mut payload = Vec::new();
-            if results.len() > u32::MAX as usize {
+            if results.len() > MAX_FILE_CONTENT_RESULTS_PER_RESPONSE {
                 return Err(common_error("file-content worker result count too large"));
             }
             write_u32(&mut payload, results.len() as u32).map_err(io_error)?;
@@ -805,7 +807,7 @@ fn write_worker_file_content_result<W: Write>(
             }
             ClipboardFile::Files { files } => {
                 write_u8(writer, FILE_CONTENT_RESULT_FILES).map_err(io_error)?;
-                if files.len() > u32::MAX as usize {
+                if files.len() > MAX_FILE_CONTENT_AUDIT_FILES_PER_RESPONSE {
                     return Err(common_error(
                         "file-content worker audit file count too large",
                     ));
@@ -871,6 +873,11 @@ fn read_worker_response<R: Read>(reader: &mut R) -> Result<WorkerResponse, Clipr
         RESPONSE_STATUS_FILE_CONTENTS => {
             let mut payload = &payload[..];
             let count = read_u32(&mut payload).map_err(io_error)? as usize;
+            if count > MAX_FILE_CONTENT_RESULTS_PER_RESPONSE {
+                return Err(common_error(
+                    "file-content worker FileContents response result count too large",
+                ));
+            }
             if count > payload.len() {
                 return Err(common_error(
                     "file-content worker FileContents response count exceeds payload",
@@ -912,6 +919,11 @@ fn read_worker_file_content_result<R: Read>(
         }
         FILE_CONTENT_RESULT_FILES => {
             let count = read_u32(reader).map_err(io_error)? as usize;
+            if count > MAX_FILE_CONTENT_AUDIT_FILES_PER_RESPONSE {
+                return Err(common_error(
+                    "file-content worker audit file count too large",
+                ));
+            }
             let mut files = Vec::new();
             for _ in 0..count {
                 let path = read_string(reader, MAX_WORKER_RESPONSE_BYTES)?;
@@ -1240,6 +1252,56 @@ mod tests {
         ]);
         super::write_u32(&mut response, 4).expect("write response payload length");
         super::write_u32(&mut response, u32::MAX).expect("write malicious count");
+
+        assert!(super::read_worker_response(&mut &response[..]).is_err());
+    }
+
+    fn file_content_response(payload: &[u8]) -> Vec<u8> {
+        let mut response = Vec::new();
+        response.extend_from_slice(&super::RESPONSE_MAGIC);
+        response.extend_from_slice(&[
+            super::PROTOCOL_VERSION,
+            super::RESPONSE_STATUS_FILE_CONTENTS,
+            0,
+            0,
+        ]);
+        super::write_u32(&mut response, payload.len() as u32)
+            .expect("write response payload length");
+        response.extend_from_slice(payload);
+        response
+    }
+
+    #[test]
+    fn file_content_worker_response_rejects_semantic_result_count() {
+        let mut payload = Vec::new();
+        super::write_u32(
+            &mut payload,
+            (super::MAX_FILE_CONTENT_RESULTS_PER_RESPONSE + 1) as u32,
+        )
+        .expect("write malicious result count");
+        for _ in 0..=super::MAX_FILE_CONTENT_RESULTS_PER_RESPONSE {
+            super::write_u8(&mut payload, super::FILE_CONTENT_RESULT_ERROR)
+                .expect("write error result tag");
+            super::write_string(&mut payload, "", super::MAX_WORKER_ERROR_BYTES)
+                .expect("write empty error result");
+        }
+        let response = file_content_response(&payload);
+
+        assert!(super::read_worker_response(&mut &response[..]).is_err());
+    }
+
+    #[test]
+    fn file_content_worker_response_rejects_audit_file_count() {
+        let mut payload = Vec::new();
+        super::write_u32(&mut payload, 1).expect("write result count");
+        super::write_u8(&mut payload, super::FILE_CONTENT_RESULT_FILES)
+            .expect("write audit files tag");
+        super::write_u32(
+            &mut payload,
+            (super::MAX_FILE_CONTENT_AUDIT_FILES_PER_RESPONSE + 1) as u32,
+        )
+        .expect("write malicious audit file count");
+        let response = file_content_response(&payload);
 
         assert!(super::read_worker_response(&mut &response[..]).is_err());
     }

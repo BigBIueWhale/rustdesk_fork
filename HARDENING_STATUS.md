@@ -1302,6 +1302,76 @@ git diff --check              # GREEN after this ledger update
   isolated mobile media path exists, but the current no-decoder safety signal is
   now enforced end-to-end.
 
+- **Desktop native-video worker responses are parent-validated before UI
+  handoff.** The native video worker is a lower-trust parser boundary, so the
+  parent now rejects worker-returned decoded frames unless width, height, image
+  format, alignment, and raw byte length are mutually consistent and still under
+  `scrap::MAX_NATIVE_VIDEO_DECODED_BYTES`; it also rejects impossible decoded /
+  no-frame / error status shapes before the UI sees them. This closes a
+  trust-boundary gap in the existing desktop video-worker slice: a malformed or
+  compromised worker can no longer hand an impossible `ImageRgb` geometry or
+  semantically-invalid response to the viewer/UI path. `scripts/verify.sh` now
+  gates the parent geometry validator, raw-length mismatch marker, and
+  status-shape validators. Focused Docker evidence:
+
+```text
+docker run --rm ... rd-devcheck cargo test --lib --features linux-pkg-config native_video_worker::tests --color never
+# GREEN: 10 passed; 0 failed
+bash scripts/verify.sh        # GREEN: VERIFY: all gates green
+git diff --check              # GREEN
+bash -n scripts/verify.sh     # GREEN
+```
+
+- **Native worker response protocols now reject impossible status/data shapes
+  before parent consumption.** The lower-trust same-artifact workers no longer
+  get a blind trust handoff back into the parent: desktop audio rejects decoded
+  responses with error text and error responses carrying PCM/sample data; peer
+  zstd rejects success-with-message and error-with-output; normal clipboard
+  rejects OK-with-message and unknown statuses; and the Windows printer worker
+  response is versioned/reserved-byte checked, then rejects OK-with-message and
+  unknown statuses. These are not the public unauthenticated TCP DoS controls
+  of R-S7/R-P14b/R-S10/R-T1/R-T12; they close the Appendix-C-#2b
+  worker-boundary residual by making the parent fail closed on child protocol
+  contradictions. Focused Docker evidence:
+
+```text
+docker run --rm ... rd-devcheck cargo test --lib --features linux-pkg-config worker_response --color never
+# GREEN: 8 passed; 0 failed
+docker run --rm ... rd-devcheck cargo test --lib --features linux-pkg-config native_audio_worker::tests --color never
+# GREEN: 6 passed; 0 failed
+docker run --rm ... rd-devcheck cargo test --lib --features linux-pkg-config native_clipboard_worker::tests --color never
+# GREEN: 3 passed; 0 failed
+docker run --rm ... rd-devcheck cargo test -p hbb_common --lib compress::tests --color never
+# GREEN: 3 passed; 0 failed
+docker run --rm ... rd-devcheck cargo test --manifest-path /tmp/rd-printer-worker-harness/Cargo.toml --offline --lib native_printer_worker::tests --color never
+# GREEN: 3 passed; 0 failed
+bash scripts/verify.sh        # GREEN: VERIFY: all gates green
+git diff --check              # GREEN
+bash -n scripts/verify.sh     # GREEN
+```
+
+- **Unix/macOS file-copy worker responses are parent-revalidated before FUSE or
+  paste state consumes them.** The FILEDESCRIPTOR worker is a lower-trust parser
+  boundary, so the parent now rejects parsed descriptor responses that exceed
+  `MAX_FILE_DESCRIPTORS`, carry a different connection id than the request, or
+  contain a path that fails the same normalized relative-path check used on the
+  direct parser path. The FileContents worker response is likewise capped at the
+  protocol's legitimate two result slots and rejects oversized nested audit file
+  lists before allocation or forwarding. `scripts/verify.sh` now gates the
+  descriptor response validator, connection-id check, parent path
+  renormalization, FileContents semantic result cap, audit-file cap, and the
+  malicious worker-response regression tests. Focused Docker evidence:
+
+```text
+docker run --rm ... rd-devcheck cargo test -p clipboard --features unix-file-copy-paste --lib worker_response --color never
+# GREEN: 6 passed; 0 failed
+docker run --rm ... rd-devcheck cargo test -p clipboard --features unix-file-copy-paste --lib platform::unix:: --color never
+# GREEN: 21 passed; 0 failed
+bash scripts/verify.sh        # GREEN: VERIFY: all gates green
+git diff --check              # GREEN
+bash -n scripts/verify.sh     # GREEN
+```
+
 ### Larger Assurance / Hardening Items
 
 - **Native viewer decoder sandbox beyond the first desktop worker slices.** The

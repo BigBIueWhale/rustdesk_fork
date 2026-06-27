@@ -251,6 +251,13 @@ impl WorkerVideoDecoder {
         let response = self.decode_with_timeout(rgb.fmt(), rgb.align(), payload)?;
         match response.status {
             STATUS_DECODED => {
+                validate_worker_rgb_response(
+                    response.width,
+                    response.height,
+                    rgb.fmt(),
+                    rgb.align(),
+                    response.raw.len(),
+                )?;
                 rgb.w = response.width;
                 rgb.h = response.height;
                 rgb.raw = response.raw;
@@ -308,6 +315,50 @@ impl WorkerVideoDecoder {
             }
         }
     }
+}
+
+fn validate_worker_rgb_response(
+    width: usize,
+    height: usize,
+    fmt: ImageFormat,
+    align: usize,
+    raw_len: usize,
+) -> ResultType<()> {
+    if width == 0 || height == 0 {
+        bail!("native video worker returned an empty decoded frame: {width}x{height}");
+    }
+    let bytes_per_pixel = match fmt {
+        ImageFormat::Raw => 3usize,
+        ImageFormat::ABGR | ImageFormat::ARGB => 4usize,
+    };
+    let row = width
+        .checked_mul(bytes_per_pixel)
+        .ok_or_else(|| anyhow!("native video worker row size overflow"))?;
+    let bytes_per_row = if align <= 1 {
+        row
+    } else {
+        if !align.is_power_of_two() {
+            bail!("native video worker returned frame for invalid alignment {align}");
+        }
+        row.checked_add(align - 1)
+            .ok_or_else(|| anyhow!("native video worker aligned row size overflow"))?
+            & !(align - 1)
+    };
+    let expected_len = height
+        .checked_mul(bytes_per_row)
+        .ok_or_else(|| anyhow!("native video worker decoded size overflow"))?;
+    if expected_len > scrap::MAX_NATIVE_VIDEO_DECODED_BYTES {
+        bail!(
+            "native video worker decoded frame too large: {expected_len} > {}",
+            scrap::MAX_NATIVE_VIDEO_DECODED_BYTES
+        );
+    }
+    if raw_len != expected_len {
+        bail!(
+            "native video worker raw length mismatch: {raw_len} != {expected_len} for {width}x{height}"
+        );
+    }
+    Ok(())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -571,6 +622,7 @@ fn read_response<R: Read>(reader: &mut R) -> ResultType<WorkerResponse> {
     if msg_len > 64 * 1024 {
         bail!("native video worker error message too large");
     }
+    validate_worker_response_shape(status, chroma, width, height, raw_len, msg_len)?;
     let mut raw = vec![0u8; raw_len];
     reader
         .read_exact(&mut raw)
@@ -588,6 +640,38 @@ fn read_response<R: Read>(reader: &mut R) -> ResultType<WorkerResponse> {
         raw,
         message,
     })
+}
+
+fn validate_worker_response_shape(
+    status: u8,
+    chroma: Option<Chroma>,
+    width: usize,
+    height: usize,
+    raw_len: usize,
+    msg_len: usize,
+) -> ResultType<()> {
+    match status {
+        STATUS_DECODED => {
+            if msg_len != 0 {
+                bail!("native video worker decoded response carried an error message");
+            }
+            if width == 0 || height == 0 || raw_len == 0 {
+                bail!("native video worker decoded response carried empty frame geometry");
+            }
+        }
+        STATUS_NO_FRAME => {
+            if chroma.is_some() || width != 0 || height != 0 || raw_len != 0 || msg_len != 0 {
+                bail!("native video worker no-frame response carried payload");
+            }
+        }
+        STATUS_ERROR => {
+            if chroma.is_some() || width != 0 || height != 0 || raw_len != 0 {
+                bail!("native video worker error response carried decoded frame data");
+            }
+        }
+        _ => bail!("native video worker returned unknown status {status}"),
+    }
+    Ok(())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -768,5 +852,46 @@ mod tests {
         for chroma in [None, Some(Chroma::I420), Some(Chroma::I444)] {
             assert_eq!(chroma_from_u8(chroma_to_u8(chroma)).unwrap(), chroma);
         }
+    }
+
+    #[test]
+    fn worker_rgb_response_geometry_accepts_aligned_len() {
+        validate_worker_rgb_response(17, 2, ImageFormat::ABGR, 64, 256).unwrap();
+    }
+
+    #[test]
+    fn worker_rgb_response_geometry_rejects_mismatched_len() {
+        assert!(validate_worker_rgb_response(17, 2, ImageFormat::ABGR, 64, 127).is_err());
+    }
+
+    #[test]
+    fn worker_rgb_response_geometry_rejects_empty_dimensions() {
+        assert!(validate_worker_rgb_response(0, 2, ImageFormat::ABGR, 64, 128).is_err());
+        assert!(validate_worker_rgb_response(17, 0, ImageFormat::ABGR, 64, 0).is_err());
+    }
+
+    #[test]
+    fn worker_rgb_response_geometry_rejects_invalid_alignment() {
+        assert!(validate_worker_rgb_response(17, 2, ImageFormat::ABGR, 63, 128).is_err());
+    }
+
+    #[test]
+    fn video_worker_response_shape_rejects_decoded_message() {
+        assert!(
+            validate_worker_response_shape(STATUS_DECODED, Some(Chroma::I420), 1, 1, 4, 1)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn video_worker_response_shape_rejects_no_frame_payload() {
+        assert!(validate_worker_response_shape(STATUS_NO_FRAME, None, 1, 0, 0, 0).is_err());
+        assert!(validate_worker_response_shape(STATUS_NO_FRAME, Some(Chroma::I420), 0, 0, 0, 0)
+            .is_err());
+    }
+
+    #[test]
+    fn video_worker_response_shape_rejects_error_frame_data() {
+        assert!(validate_worker_response_shape(STATUS_ERROR, None, 0, 0, 1, 1).is_err());
     }
 }

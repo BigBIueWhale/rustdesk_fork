@@ -328,16 +328,32 @@ fn read_response<R: Read>(reader: &mut R) -> ResultType<()> {
     if msg_len > MAX_WORKER_ERROR_BYTES {
         bail!("native clipboard worker error message too large");
     }
-    let mut msg = vec![0u8; msg_len];
-    reader
-        .read_exact(&mut msg)
-        .map_err(|e| anyhow!("failed to read native clipboard worker message: {e}"))?;
-    let message = String::from_utf8_lossy(&msg).into_owned();
+    validate_worker_response_shape(status, msg_len)?;
     match status {
         STATUS_OK => Ok(()),
-        STATUS_ERROR => bail!("native clipboard worker failed: {}", message),
+        STATUS_ERROR => {
+            let mut msg = vec![0u8; msg_len];
+            reader
+                .read_exact(&mut msg)
+                .map_err(|e| anyhow!("failed to read native clipboard worker message: {e}"))?;
+            let message = String::from_utf8_lossy(&msg).into_owned();
+            bail!("native clipboard worker failed: {}", message)
+        }
         status => bail!("native clipboard worker returned unknown status {status}"),
     }
+}
+
+fn validate_worker_response_shape(status: u8, msg_len: usize) -> ResultType<()> {
+    match status {
+        STATUS_OK => {
+            if msg_len != 0 {
+                bail!("native clipboard worker success response carried an error message");
+            }
+        }
+        STATUS_ERROR => {}
+        _ => bail!("native clipboard worker returned unknown status {status}"),
+    }
+    Ok(())
 }
 
 fn write_ok<W: Write>(writer: &mut W) -> ResultType<()> {
@@ -412,5 +428,15 @@ mod tests {
         ));
         assert!(side_from_u8(0).is_none());
         assert!(side_from_u8(3).is_none());
+    }
+
+    #[test]
+    fn clipboard_worker_response_rejects_success_message() {
+        assert!(validate_worker_response_shape(STATUS_OK, 1).is_err());
+    }
+
+    #[test]
+    fn clipboard_worker_response_rejects_unknown_status() {
+        assert!(validate_worker_response_shape(99, 0).is_err());
     }
 }

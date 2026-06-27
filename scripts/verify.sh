@@ -1393,10 +1393,44 @@ fi
 # process silently join the group and steal inbound connections (invisible to R-A4's own-process
 # /proc self-check, violating R-D3 "no second listener"). It binds via the dedicated
 # new_listener_socket (SO_REUSEADDR on non-Windows only; Windows omits it for an exclusive bind).
-if grep -A14 'pub async fn listen_any_v4' libs/hbb_common/src/tcp.rs | grep -q 'new_listener_socket'; then
-  echo "  ok  R-T11 public listener binds via REUSEPORT-free new_listener_socket"
+# Production code must also have one bind shape: v4 ANY on the pinned public port. Test-only loopback
+# binding belongs in the smoke harness, not behind a runtime env selector in the shipped listener.
+listen_any_v4_body=$(awk '/pub async fn listen_any_v4/,/^}/' libs/hbb_common/src/tcp.rs)
+r_t11_missing=
+echo "$listen_any_v4_body" | grep -q 'new_listener_socket' || r_t11_missing="$r_t11_missing no-new-listener"
+echo "$listen_any_v4_body" | grep -q 'Ipv4Addr::UNSPECIFIED' || r_t11_missing="$r_t11_missing no-v4-unspecified"
+if echo "$listen_any_v4_body" | grep -qE 'std::env::var|Ipv4Addr::LOCALHOST|127\.0\.0\.1'; then
+  r_t11_missing="$r_t11_missing runtime-bind-selector"
+fi
+bind_knob='RUSTDESK_BIND_'
+bind_knob="${bind_knob}LOOPBACK"
+if grep -R -q "$bind_knob" libs src scripts 2>/dev/null; then
+  r_t11_missing="$r_t11_missing env-bind-knob"
+fi
+if [ -z "$r_t11_missing" ]; then
+  echo "  ok  R-T11 public listener is fixed-shape v4 ANY via REUSEPORT-free new_listener_socket"
 else
-  echo "  FAIL R-T11: listen_any_v4 must bind via new_listener_socket (no SO_REUSEPORT)"; rc=1
+  echo "  FAIL R-T11: listen_any_v4 bind invariant weakened:$r_t11_missing"; rc=1
+fi
+# R-S1/R-A1: the direct TCP path must not carry a legacy plaintext staging knob. The responder has
+# no `secure: bool` selector, direct_service cannot pass a false "unsecured" argument, and the viewer
+# `_start` returns only after CPace keying and host-proof attachment. The message-loop handoff remains
+# an assert, not a fallback keying site.
+r_s1_stage=
+grep -q 'secure: bool' src/server.rs && r_s1_stage="$r_s1_stage server-secure-bool"
+grep -q 'let _ = secure' src/server.rs && r_s1_stage="$r_s1_stage server-discarded-secure"
+direct_tcp_call=$(awk '/create_tcp_connection\(/,/permit,/' src/direct_service.rs)
+echo "$direct_tcp_call" | grep -qE 'false,|secure' && r_s1_stage="$r_s1_stage direct-service-plaintext-arg"
+viewer_start_body=$(awk '/pub async fn start\(/,/async fn _start\(/' src/client.rs)
+echo "$viewer_start_body" | grep -q 'key_initiator' && r_s1_stage="$r_s1_stage start-fallback-keying"
+viewer_direct_body=$(awk '/async fn _start\(/,/async fn key_initiator/' src/client.rs)
+echo "$viewer_direct_body" | grep -q 'return Ok' && r_s1_stage="$r_s1_stage unkeyed-early-return"
+echo "$viewer_direct_body" | grep -q 'Self::key_initiator' || r_s1_stage="$r_s1_stage no-direct-keying"
+echo "$viewer_direct_body" | grep -q 'Some(pk_b)' || r_s1_stage="$r_s1_stage no-host-key-attach"
+if [ -z "$r_s1_stage" ]; then
+  echo "  ok  R-S1/R-A1 direct TCP has no plaintext staging selector and _start returns keyed streams"
+else
+  echo "  FAIL R-S1/R-A1: direct TCP staging path not structurally collapsed:$r_s1_stage"; rc=1
 fi
 # R-A4 (§9 / §14): every shipped platform that exposes a controlled inbound
 # listener needs a live socket-surface assertion for exactly one v4 TCP listener

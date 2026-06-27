@@ -401,7 +401,6 @@ pub async fn create_tcp_connection(
     server: ServerPtr,
     stream: Stream,
     addr: SocketAddr,
-    secure: bool,
     control_permissions: Option<ControlPermissions>,
     // R-T1(b): the pre-key handshake slot, acquired in the accept loop before this task was
     // spawned. Held only across the handshake below; explicitly dropped on the keyed path
@@ -414,17 +413,15 @@ pub async fn create_tcp_connection(
     // UNCONDITIONALLY. The inherited secure-gated SignedId <-> PublicKey
     // device-identity bootstrap — its box_/sign keypair, the IdPk signature, the
     // symmetric-key unwrap (tcp::Encrypt::decode) — is removed: there are no
-    // identity keys (R-P5), no `secure` keying path to select, and no downgrade
+    // identity keys (R-P5), no alternate keying path to select, and no downgrade
     // (R-P11). With the rendezvous/relay paths neutralized (6920db9) the box only
     // serves direct connections, which always key via CPace below.
-    let _ = secure;
     {
         // R-P14 / R-S1: the single mandatory CPace handshake at the choke point.
-        // The flagship direct path (secure=false) ran no keying here before, so it
-        // GAINS the keying it never had — every transport is mutually
-        // password-authenticated and keyed before any application message. The PRS
-        // is the live permanent password read fresh per connection (R-P1/R-S16);
-        // an empty PRS fails closed (R-S9). Note: the matching viewer must run the
+        // The direct path gains mandatory keying here — every transport is mutually
+        // password-authenticated and keyed before any application message. The PRS is
+        // the live permanent password read fresh per connection (R-P1/R-S16); an
+        // empty PRS fails closed (R-S9). Note: the matching viewer must run the
         // CPace initiator (client.rs) — fork peers only, no downgrade (R-P11).
         let prs = Config::get_permanent_password_prs();
         if prs.is_empty() {

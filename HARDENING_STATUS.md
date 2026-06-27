@@ -123,6 +123,20 @@ periodically summarized with their errno class instead of merely rate-limited,
 and authenticated connection ids are allocated only after CPace succeeds with a
 non-wrapping/collision-avoiding counter.
 
+A follow-up current-code audit found two structural direct-TCP conformance gaps
+outside the transient-flood class. Both are now closed in this worktree:
+`listen_any_v4` has no production runtime bind-address environment selector and
+always uses the fixed v4 public listener path (`Ipv4Addr::UNSPECIFIED` through
+the REUSEPORT-free `new_listener_socket`); the loopback-only runtime smoke test
+now uses an external LD_PRELOAD bind shim inside the temporary Docker container
+instead of a shipped binary knob. The lingering responder `secure: bool`
+argument and direct-service `false` call-site are removed, and the viewer direct
+TCP `_start` path now performs CPace initiator keying plus host-proof attachment
+before returning the stream. `Client::start` retains only the R-A1 fail-closed
+handoff assertion and no longer acts as a fallback keying site. `scripts/verify.sh`
+gates the fixed-shape listener, absence of the old bind env knob, absence of the
+responder plaintext selector, and absence of unkeyed `_start` early returns.
+
 The first Appendix C #2b implementation slices now move desktop viewer
 VP8/VP9/AV1 software video decode, Opus packet decode, and peer-controlled zstd
 decompression, plus normal desktop clipboard protobuf-to-native conversion and
@@ -793,8 +807,11 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 ## Artifact State
 
 After commit `ec1b6f6` (`Bound peer info UI handoffs`), the Debian and Windows
-artifacts below were rebuilt from that current application source. This ledger
-update itself is documentation-only and does not alter that application source.
+artifacts below were rebuilt from that application source. Later source changes,
+including the current fixed-shape listener and direct-TCP staging collapse above,
+have not yet had refreshed platform artifacts, so these hashes are evidence for
+`ec1b6f6` and are stale for later application-source commits until those
+artifacts are rebuilt.
 The Debian path ran in the disposable `rustdesk-fork-harness-deb-builder` build
 container with the compile stage offline (`--network=none`) and
 `SOURCE_DATE_EPOCH=1700000000`, then performed its double-build determinism
@@ -1161,10 +1178,22 @@ bash scripts/build-debian.sh                               # GREEN: offline Dock
 ANDROID_KEYSTORE=... ANDROID_KEYSTORE_PASS_FILE=... bash scripts/build-android.sh # GREEN: offline Docker build, apksigner verified one signer with v1/v2/v3 true, 88039c3b25b264787ee1efefae8d6d7ba61caa2e4f3501ef440c7a2e92f91a0e
 ```
 
-The Windows VM build path is now current for the application source represented
-by the artifact hashes above. The separate build-host cleanliness issue remains
+After the fixed-shape public listener and direct-TCP staging collapse, the
+focused syntax/whitespace checks, full Docker-backed verifier, and loopback-only
+runtime smoke were re-run:
+
+```text
+bash -n scripts/smoke-server.sh && bash -n scripts/verify.sh  # GREEN
+git diff --check                                              # GREEN
+bash scripts/verify.sh                                        # GREEN: VERIFY: all gates green, incl. R-T11 fixed-shape v4 ANY listener and R-S1/R-A1 no plaintext staging selector / keyed _start gates
+bash scripts/smoke-server.sh                                  # GREEN: LD_PRELOAD smoke bind shim, one 127.0.0.1:21118 TCP listener, zero UDP, R-A1/R-S1 keying, R-T1 capacity-shed, owner-safe limiter, forged-frame rejection, no plaintext canary
+```
+
+The Windows VM build path is current for the application source represented by
+the artifact hashes above, not for later source changes until the Windows
+artifact job is re-run. The separate build-host cleanliness issue remains
 host-state, not application artifact state: an older harness revision installed
-system libvirt and left the host default network behind. The current per-build
+system libvirt and left the host default network behind. The recorded per-build
 Windows VM itself used `--network none` and only loopback VNC, but the host still
 needs privileged cleanup of the old `virbr0`/dnsmasq/IP-forwarding state before
 the build host satisfies R-B11/R-B11a end-to-end.

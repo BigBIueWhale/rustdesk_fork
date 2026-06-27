@@ -731,16 +731,11 @@ pub async fn listen_any(port: u16) -> ResultType<TcpListener> {
 /// connection.rs IPv6-prefix limiter (R-S10) as dead code by construction.
 pub async fn listen_any_v4(port: u16) -> ResultType<TcpListener> {
     // R-T11: the public listener uses the REUSEPORT-free, hijack-resistant constructor.
-    // RUSTDESK_BIND_LOOPBACK (TEST-ONLY): bind 127.0.0.1 instead of 0.0.0.0 so the docker-loopback
-    // runtime tests (scripts/smoke-server.sh) never listen on 0.0.0.0. Unset (the production
-    // default) = the all-interfaces bind the §17 DMZ box needs. A single env read, no normal-path
-    // cost, and the bound port/listener-count the R-A4 socket-surface check asserts is unchanged.
-    let bind_addr = if std::env::var("RUSTDESK_BIND_LOOPBACK").is_ok() {
-        IpAddr::V4(Ipv4Addr::LOCALHOST)
-    } else {
-        IpAddr::V4(Ipv4Addr::UNSPECIFIED)
-    };
-    Ok(new_listener_socket(SocketAddr::new(bind_addr, port))?.listen(DEFAULT_BACKLOG)?)
+    Ok(new_listener_socket(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+        port,
+    ))?
+    .listen(DEFAULT_BACKLOG)?)
 }
 
 impl Unpin for DynTcpStream {}

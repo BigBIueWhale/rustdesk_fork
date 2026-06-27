@@ -398,7 +398,6 @@ async fn direct_server(server: ServerPtr) {
                                 server,
                                 hbb_common::Stream::from(stream, local_addr),
                                 addr,
-                                false,
                                 None, // Direct connections don't have control_permissions
                                 permit,
                             )

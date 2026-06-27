@@ -214,52 +214,9 @@ impl Client {
                         interface.get_lch().write().unwrap().set_direct_failure(n);
                     }
                 }
-                // R-S13 / R-P14 (initiator): key the connection with the single mandatory
-                // CPace handshake BEFORE it reaches the message loop — the symmetric mirror
-                // of the responder's `run_responder` block. `_start`'s direct path returns
-                // an UNKEYED stream, so this is where the viewer gains the keying it never
-                // had (the dead rendezvous path is already keyed, so `is_secured` skips it).
-                // The PRS is the live R-S16 viewer twin (`PeerConfig.password_prs`).
-                if !x.0 .0.is_secured() {
-                    let (prs, onboarding) = {
-                        // Computed before the lch lock (no re-entrancy): the connect-time
-                        // password the operator supplied this session (URI/dialog/card).
-                        let connect_pw = interface.get_connect_password();
-                        let lch = interface.get_lch();
-                        let g = lch.read().unwrap();
-                        // R-S16: the live PRS for the balanced PAKE, from PRE-keying sources only
-                        // (the preset/default flow consumed in `handle_hash` runs AFTER keying, so
-                        // it cannot feed this). Precedence: the remembered per-peer plaintext (the
-                        // viewer twin) → the connect-time password (a FIRST connect to a not-yet-
-                        // remembered peer, the onboarding path) → the shared-address-book plaintext
-                        // (`shared_password`, set in `initialize`). An empty result fails closed in
-                        // key_initiator (R-S9), so each fallback is strictly additive. The bool
-                        // marks the connect-time onboarding case so its PRS can be persisted below.
-                        let from_prs =
-                            String::from_utf8(g.config.password_prs.clone()).unwrap_or_default();
-                        if !from_prs.is_empty() {
-                            (from_prs, false) // already the stored PRS
-                        } else if !connect_pw.is_empty() {
-                            (connect_pw, true) // onboarding — stage for persistence
-                        } else {
-                            (g.shared_password.clone().unwrap_or_default(), false)
-                            // ab: not per-peer
-                        }
-                    };
-                    let lch_for_key = interface.get_lch();
-                    let pk_b = Self::key_initiator(peer, &prs, &mut x.0 .0, &lch_for_key).await?;
-                    if onboarding {
-                        // R-S16: the connect-time password just keyed a not-yet-remembered peer —
-                        // stage it as the in-memory PRS so the peer-info save path persists it (when
-                        // the user remembers + it is not a shared-ab password), closing the
-                        // onboarding loop: the NEXT connect keys from the stored PRS, no re-entry.
-                        interface.get_lch().write().unwrap().password_prs = prs.into_bytes();
-                    }
-                    // Surface the verified+pinned host key as the connection pk (the UI
-                    // fingerprint, io_loop set_fingerprint, becomes the pinned host's).
-                    x.0 .2 = Some(pk_b);
-                }
-                // R-A1 (initiator analog): never hand an unkeyed stream to the message loop.
+                // R-A1 (initiator analog): `_start` must already have keyed the direct TCP stream
+                // and attached the verified host key. This handoff assert keeps the message loop from
+                // becoming a fallback keying site again.
                 if !x.0 .0.is_secured() {
                     bail!(
                         "R-A1: refusing to proceed on an unkeyed stream (initiator, fail-closed)"
@@ -291,43 +248,65 @@ impl Client {
         if config::is_incoming_only() {
             bail!("Incoming only mode");
         }
+        let _ = (key, token, conn_type);
         // to-do: remember the port for each peer, so that we can retry easier
-        if hbb_common::is_ip_str(peer) {
-            return Ok((
-                (
-                    connect_tcp_local(check_port(peer, DIRECT_PORT), None, CONNECT_TIMEOUT).await?,
-                    true,
-                    None,
-                    "TCP",
-                ),
-                (0, "".to_owned()),
-                false,
-            ));
-        }
-        // Allow connect to {domain}:{port}
-        if hbb_common::is_domain_port_str(peer) {
-            return Ok((
-                (
-                    connect_tcp_local(peer, None, CONNECT_TIMEOUT).await?,
-                    true,
-                    None,
-                    "TCP",
-                ),
-                (0, "".to_owned()),
-                false,
-            ));
-        }
+        let mut stream = if hbb_common::is_ip_str(peer) {
+            connect_tcp_local(check_port(peer, DIRECT_PORT), None, CONNECT_TIMEOUT).await?
+        } else if hbb_common::is_domain_port_str(peer) {
+            // Allow connect to {domain}:{port}
+            connect_tcp_local(peer, None, CONNECT_TIMEOUT).await?
+        } else {
+            // R-SV4(b) / R-D / R-S13(d): the fork is DIRECT-IP ONLY. The direct branches above
+            // handle every reachable address (an IP, or host:port). Anything else is a bare
+            // rendezvous "ID", which has NO path in this fork — the responder runs no mediator
+            // (6920db9) and `get_rendezvous_server` returns nothing (R-SV4), so a rendezvous attempt
+            // could only ever fail. The inherited initiator-side rendezvous/relay/NAT-punch
+            // machinery (`_start_inner`/`connect`/`request_relay`/`secure_connection`) is therefore
+            // dead and is removed (next commit); here we fail CLOSED with a clear message instead of
+            // dialing a mediator that does not exist (sovereign: dial nobody).
+            bail!("Direct-IP only: '{peer}' is not a direct address (use an IP or host:port)");
+        };
 
-        // R-SV4(b) / R-D / R-S13(d): the fork is DIRECT-IP ONLY. The two early-returns above
-        // handle every reachable address (an IP, or host:port). Anything else is a bare
-        // rendezvous "ID", which has NO path in this fork — the responder runs no mediator
-        // (6920db9) and `get_rendezvous_server` returns nothing (R-SV4), so a rendezvous attempt
-        // could only ever fail. The inherited initiator-side rendezvous/relay/NAT-punch
-        // machinery (`_start_inner`/`connect`/`request_relay`/`secure_connection`) is therefore
-        // dead and is removed (next commit); here we fail CLOSED with a clear message instead of
-        // dialing a mediator that does not exist (sovereign: dial nobody).
-        let _ = (key, token, conn_type, interface);
-        bail!("Direct-IP only: '{peer}' is not a direct address (use an IP or host:port)");
+        // R-S13 / R-P14 (initiator): key the connection with the single mandatory CPace handshake
+        // BEFORE `_start` returns it. The message-loop handoff is no longer a second-phase keying
+        // promise; it receives only a keyed stream with the verified+pinned host key attached. The
+        // PRS is the live R-S16 viewer twin (`PeerConfig.password_prs`).
+        let (prs, onboarding) = {
+            // Computed before the lch lock (no re-entrancy): the connect-time password the operator
+            // supplied this session (URI/dialog/card).
+            let connect_pw = interface.get_connect_password();
+            let lch = interface.get_lch();
+            let g = lch.read().unwrap();
+            // R-S16: the live PRS for the balanced PAKE, from PRE-keying sources only (the
+            // preset/default flow consumed in `handle_hash` runs AFTER keying, so it cannot feed
+            // this). Precedence: the remembered per-peer plaintext (the viewer twin) → the
+            // connect-time password (a FIRST connect to a not-yet-remembered peer, the onboarding
+            // path) → the shared-address-book plaintext (`shared_password`, set in `initialize`).
+            // An empty result fails closed in key_initiator (R-S9), so each fallback is strictly
+            // additive. The bool marks the connect-time onboarding case so its PRS can be persisted.
+            let from_prs = String::from_utf8(g.config.password_prs.clone()).unwrap_or_default();
+            if !from_prs.is_empty() {
+                (from_prs, false) // already the stored PRS
+            } else if !connect_pw.is_empty() {
+                (connect_pw, true) // onboarding — stage for persistence
+            } else {
+                (g.shared_password.clone().unwrap_or_default(), false)
+                // ab: not per-peer
+            }
+        };
+        let lch_for_key = interface.get_lch();
+        let pk_b = Self::key_initiator(peer, &prs, &mut stream, &lch_for_key).await?;
+        if onboarding {
+            // R-S16: the connect-time password just keyed a not-yet-remembered peer — stage it as
+            // the in-memory PRS so the peer-info save path persists it (when the user remembers + it
+            // is not a shared-ab password), closing the onboarding loop: the NEXT connect keys from
+            // the stored PRS, no re-entry.
+            interface.get_lch().write().unwrap().password_prs = prs.into_bytes();
+        }
+        if !stream.is_secured() {
+            bail!("R-A1: _start produced an unkeyed direct stream (initiator, fail-closed)");
+        }
+        Ok(((stream, true, Some(pk_b), "TCP"), (0, "".to_owned()), false))
     }
 
     /// R-S13 / R-P14 / R-S17 — the viewer (initiator) keying choke point: the mirror of

@@ -1302,6 +1302,14 @@ git diff --check              # GREEN after this ledger update
   isolated mobile media path exists, but the current no-decoder safety signal is
   now enforced end-to-end.
 
+- **Android peer clipboard SET helpers now fail closed themselves.** The peer
+  message routes already refused mobile clipboard SET instead of calling the
+  Android platform clipboard bridge, but the Android-only helper functions in
+  `src/clipboard.rs` still contained a latent direct
+  `call_clipboard_manager_update_clipboard` path. Those helpers now log and
+  return until a platform worker/service boundary exists, and `scripts/verify.sh`
+  fails if the direct platform call regrows in `src/clipboard.rs`.
+
 - **Desktop native-video worker responses are parent-validated before UI
   handoff.** The native video worker is a lower-trust parser boundary, so the
   parent now rejects worker-returned decoded frames unless width, height, image

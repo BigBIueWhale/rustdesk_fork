@@ -1024,27 +1024,17 @@ mod proto {
 }
 
 #[cfg(target_os = "android")]
-pub fn handle_msg_clipboard(cb: Clipboard) {
-    use hbb_common::protobuf::Message;
-
-    let Some(multi_clips) = sanitize_multi_clipboards_for_native_proto(vec![cb]) else {
-        return;
-    };
-    if let Ok(bytes) = multi_clips.write_to_bytes() {
-        let _ = scrap::android::ffi::call_clipboard_manager_update_clipboard(&bytes);
-    }
+pub fn handle_msg_clipboard(_cb: Clipboard) {
+    log::warn!(
+        "refusing in-process mobile peer clipboard SET helper until a platform worker/service boundary exists"
+    );
 }
 
 #[cfg(target_os = "android")]
-pub fn handle_msg_multi_clipboards(mcb: MultiClipboards) {
-    use hbb_common::protobuf::Message;
-
-    let Some(mcb) = sanitize_multi_clipboards_for_native_proto(mcb.clipboards) else {
-        return;
-    };
-    if let Ok(bytes) = mcb.write_to_bytes() {
-        let _ = scrap::android::ffi::call_clipboard_manager_update_clipboard(&bytes);
-    }
+pub fn handle_msg_multi_clipboards(_mcb: MultiClipboards) {
+    log::warn!(
+        "refusing in-process mobile peer multi-clipboard SET helper until a platform worker/service boundary exists"
+    );
 }
 
 #[cfg(target_os = "android")]

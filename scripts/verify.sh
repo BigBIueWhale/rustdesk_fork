@@ -2570,16 +2570,19 @@ fi
 if grep -qF 'crate::clipboard::handle_msg_multi_clipboards(_mcb)' src/server/connection.rs src/client/io_loop.rs; then
   r_native_clipboard_worker="$r_native_clipboard_worker mobile-peer-multiclipboard-platform-call"
 fi
+grep -qF 'refusing in-process mobile peer clipboard SET helper until a platform worker/service boundary exists' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-helper-clipboard-fail-closed"
+grep -qF 'refusing in-process mobile peer multi-clipboard SET helper until a platform worker/service boundary exists' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-helper-multiclipboard-fail-closed"
+if grep -qF 'call_clipboard_manager_update_clipboard' src/clipboard.rs; then
+  r_native_clipboard_worker="$r_native_clipboard_worker android-helper-direct-platform-call"
+fi
 grep -qF 'native_clipboard_data_from_multi_clipboards' src/clipboard.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker native-convert-helper"
 grep -qF 'MAX_NATIVE_CLIPBOARD_TOTAL_BYTES' src/clipboard.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker aggregate-cap"
 grep -qF 'MAX_NATIVE_CLIPBOARD_ITEMS' src/clipboard.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker item-cap"
-grep -qF 'sanitize_multi_clipboards_for_native_proto(mcb.clipboards)' src/clipboard.rs ||
-  r_native_clipboard_worker="$r_native_clipboard_worker android-aggregate-sanitize"
-grep -qF 'sanitize_multi_clipboards_for_native_proto(vec![cb])' src/clipboard.rs ||
-  r_native_clipboard_worker="$r_native_clipboard_worker android-single-aggregate-sanitize"
 if sed -n '/fn update_clipboard_/,/fn set_native_clipboard_data/p' src/clipboard.rs | grep -qF 'proto::from_multi_clipboards'; then
   r_native_clipboard_worker="$r_native_clipboard_worker parent-direct-native-convert"
 fi

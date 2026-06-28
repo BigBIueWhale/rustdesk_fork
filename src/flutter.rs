@@ -84,6 +84,21 @@ fn remote_cursor_rgba_for_ui(cd: &CursorData) -> Option<Vec<u8>> {
 
 #[cfg(target_os = "windows")]
 lazy_static::lazy_static! {
+    pub static ref TEXTURE_RGBA_RENDERER_PLUGIN: Result<Library, LibError> = load_plugin_in_app_path("texture_rgba_renderer_plugin.dll");
+}
+
+#[cfg(target_os = "linux")]
+lazy_static::lazy_static! {
+    pub static ref TEXTURE_RGBA_RENDERER_PLUGIN: Result<Library, LibError> = Library::open("libtexture_rgba_renderer_plugin.so");
+}
+
+#[cfg(target_os = "macos")]
+lazy_static::lazy_static! {
+    pub static ref TEXTURE_RGBA_RENDERER_PLUGIN: Result<Library, LibError> = Library::open_self();
+}
+
+#[cfg(target_os = "windows")]
+lazy_static::lazy_static! {
     pub static ref TEXTURE_GPU_RENDERER_PLUGIN: Result<Library, LibError> = load_plugin_in_app_path("flutter_gpu_texture_renderer_plugin.dll");
 }
 
@@ -226,6 +241,7 @@ struct SessionHandler {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum RenderType {
+    PixelBuffer,
     #[cfg(feature = "vram")]
     Texture,
 }
@@ -264,6 +280,15 @@ struct RgbaData {
     valid: bool,
 }
 
+pub type FlutterRgbaRendererPluginOnRgba = unsafe extern "C" fn(
+    texture_rgba: *mut c_void,
+    buffer: *const u8,
+    len: c_int,
+    width: c_int,
+    height: c_int,
+    dst_rgba_stride: c_int,
+);
+
 #[cfg(feature = "vram")]
 pub type FlutterGpuTextureRendererPluginCApiSetTexture =
     unsafe extern "C" fn(output: *mut c_void, texture: *mut c_void);
@@ -287,12 +312,33 @@ struct DisplaySessionInfo {
 struct VideoRenderer {
     is_support_multi_ui_session: bool,
     map_display_sessions: Arc<RwLock<HashMap<usize, DisplaySessionInfo>>>,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    on_rgba_func: Option<Symbol<'static, FlutterRgbaRendererPluginOnRgba>>,
     #[cfg(feature = "vram")]
     on_texture_func: Option<Symbol<'static, FlutterGpuTextureRendererPluginCApiSetTexture>>,
 }
 
 impl Default for VideoRenderer {
     fn default() -> Self {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        let on_rgba_func = match &*TEXTURE_RGBA_RENDERER_PLUGIN {
+            Ok(lib) => {
+                let find_sym_res = unsafe {
+                    lib.symbol::<FlutterRgbaRendererPluginOnRgba>("FlutterRgbaRendererPluginOnRgba")
+                };
+                match find_sym_res {
+                    Ok(sym) => Some(sym),
+                    Err(e) => {
+                        log::error!("Failed to find symbol FlutterRgbaRendererPluginOnRgba, {e}");
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to load texture rgba renderer plugin, {e}");
+                None
+            }
+        };
         #[cfg(feature = "vram")]
         let on_texture_func = match &*TEXTURE_GPU_RENDERER_PLUGIN {
             Ok(lib) => {
@@ -318,6 +364,8 @@ impl Default for VideoRenderer {
         Self {
             map_display_sessions: Default::default(),
             is_support_multi_ui_session: false,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            on_rgba_func,
             #[cfg(feature = "vram")]
             on_texture_func,
         }
@@ -425,6 +473,55 @@ impl VideoRenderer {
                     );
                 }
             }
+        }
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub fn on_rgba(&self, display: usize, rgba: &scrap::ImageRgb) -> bool {
+        let mut write_lock = self.map_display_sessions.write().unwrap();
+        let opt_info = if !self.is_support_multi_ui_session {
+            write_lock.values_mut().next()
+        } else {
+            write_lock.get_mut(&display)
+        };
+        let Some(info) = opt_info else {
+            return false;
+        };
+        if info.texture_rgba_ptr == usize::default() {
+            return false;
+        }
+
+        if info.size.0 != rgba.w || info.size.1 != rgba.h {
+            log::error!(
+                "width/height mismatch: ({},{}) != ({},{})",
+                info.size.0,
+                info.size.1,
+                rgba.w,
+                rgba.h
+            );
+            // Peer info's handling is async and may be late than video frame's handling
+            // Allow peer info not set, but not allow wrong width/height for correct local cursor position
+            if info.size != (0, 0) {
+                return false;
+            }
+        }
+        if let Some(func) = &self.on_rgba_func {
+            unsafe {
+                func(
+                    info.texture_rgba_ptr as _,
+                    rgba.raw.as_ptr() as _,
+                    rgba.raw.len() as _,
+                    rgba.w as _,
+                    rgba.h as _,
+                    rgba.align() as _,
+                )
+            };
+        }
+        if info.notify_render_type != Some(RenderType::PixelBuffer) {
+            info.notify_render_type = Some(RenderType::PixelBuffer);
+            true
+        } else {
+            false
         }
     }
 
@@ -777,7 +874,11 @@ impl InvokeUiSession for FlutterHandler {
     #[inline]
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     fn on_rgba(&self, display: usize, rgba: &mut scrap::ImageRgb) {
-        self.on_rgba_soft_render(display, rgba);
+        let use_texture_render = self.use_texture_render.load(Ordering::Relaxed);
+        self.on_rgba_flutter_texture_render(use_texture_render, display, rgba);
+        if !use_texture_render {
+            self.on_rgba_soft_render(display, rgba);
+        }
     }
 
     #[inline]
@@ -1122,6 +1223,10 @@ impl FlutterHandler {
         let mut is_sent = false;
         let is_multi_sessions = self.is_multi_ui_session();
         for h in self.session_handlers.read().unwrap().values() {
+            // The soft renderer does not support multi-displays session for now.
+            if h.displays.len() > 1 {
+                continue;
+            }
             // If there're multiple ui sessions, we only notify the ui session that has the display.
             if is_multi_sessions {
                 if !h.displays.contains(&display) {
@@ -1143,6 +1248,25 @@ impl FlutterHandler {
         if !is_sent {
             if let Some(rgba_data) = self.display_rgbas.write().unwrap().get_mut(&display) {
                 rgba_data.valid = false;
+            }
+        }
+    }
+
+    #[inline]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    fn on_rgba_flutter_texture_render(
+        &self,
+        use_texture_render: bool,
+        display: usize,
+        rgba: &mut scrap::ImageRgb,
+    ) {
+        for (_, session) in self.session_handlers.read().unwrap().iter() {
+            if use_texture_render || session.displays.len() > 1 {
+                if session.renderer.on_rgba(display, rgba) {
+                    if let Some(stream) = &session.event_stream {
+                        stream.add(EventToUI::Texture(display, false));
+                    }
+                }
             }
         }
     }

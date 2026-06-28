@@ -1645,18 +1645,8 @@ class VirtualMouseMode with ChangeNotifier {
 
 class ImageModel with ChangeNotifier {
   ui.Image? _image;
-  final Map<int, ui.Image> _displayImages = {};
 
-  ui.Image? get image {
-    final currentDisplay = parent.target?.ffiModel.pi.currentDisplay;
-    if (currentDisplay != null && currentDisplay != kAllDisplayValue) {
-      return _displayImages[currentDisplay] ??
-          (_displayImages.isEmpty ? _image : null);
-    }
-    return _image;
-  }
-
-  ui.Image? displayImage(int display) => _displayImages[display];
+  ui.Image? get image => _image;
 
   String id = '';
 
@@ -1676,10 +1666,7 @@ class ImageModel with ChangeNotifier {
 
   addCallbackOnFirstImage(Function(String) cb) => callbacksOnFirstImage.add(cb);
 
-  clearImage() {
-    _disposeImages();
-    notifyListeners();
-  }
+  clearImage() => _image = null;
 
   bool _webDecodingRgba = false;
   final List<Uint8List> _webRgbaList = List.empty(growable: true);
@@ -1723,12 +1710,11 @@ class ImageModel with ChangeNotifier {
           : ui.PixelFormat.bgra8888,
     );
     if (parent.target?.id != pid) return;
-    await update(image, display: display);
+    await update(image);
   }
 
-  update(ui.Image? image, {int? display}) async {
-    final hadImage = _image != null || _displayImages.isNotEmpty;
-    if (!hadImage && image != null) {
+  update(ui.Image? image) async {
+    if (_image == null && image != null) {
       if (isDesktop || isWebDesktop) {
         await parent.target?.canvasModel.updateViewStyle();
         await parent.target?.canvasModel.updateScrollStyle();
@@ -1738,12 +1724,7 @@ class ImageModel with ChangeNotifier {
         await initializeCursorAndCanvas(parent.target!);
       }
     }
-    if (display != null && image != null) {
-      final oldDisplayImage = _displayImages[display];
-      _displayImages[display] = image;
-      _disposeIfUnreferenced(oldDisplayImage, replacement: image);
-    }
-    _disposeIfUnreferenced(_image, replacement: image);
+    _image?.dispose();
     _image = image;
     if (image != null) notifyListeners();
   }
@@ -1780,32 +1761,8 @@ class ImageModel with ChangeNotifier {
   }
 
   void disposeImage() {
-    _disposeImages();
-  }
-
-  void _disposeImages() {
-    final images = <ui.Image>{};
-    if (_image != null) {
-      images.add(_image!);
-    }
-    images.addAll(_displayImages.values);
-    for (final image in images) {
-      image.dispose();
-    }
-    _displayImages.clear();
+    _image?.dispose();
     _image = null;
-  }
-
-  void _disposeIfUnreferenced(ui.Image? image, {ui.Image? replacement}) {
-    if (image == null || identical(image, replacement)) {
-      return;
-    }
-    for (final displayImage in _displayImages.values) {
-      if (identical(displayImage, image)) {
-        return;
-      }
-    }
-    image.dispose();
   }
 }
 
@@ -3621,6 +3578,15 @@ class FFI {
       }
       ffiModel.pi.currentDisplay = display;
     }
+    if (isDesktop && connType == ConnType.defaultConn) {
+      textureModel.updateCurrentDisplay(display ?? 0);
+    }
+    // FIXME: separate cameras displays or shift all indices.
+    if (isDesktop && connType == ConnType.viewCamera) {
+      // FIXME: currently the default 0 is not used.
+      textureModel.updateCurrentDisplay(display ?? 0);
+    }
+
     if (isDesktop) {
       inputModel.updateTrackpadSpeed();
     }
@@ -3916,7 +3882,7 @@ class PeerInfo with ChangeNotifier {
 
   bool get isSupportMultiDisplay =>
       (isDesktop || isWebDesktop) && isSupportMultiUiSession;
-  bool get forceTextureRender => false;
+  bool get forceTextureRender => currentDisplay == kAllDisplayValue;
 
   bool get cursorEmbedded => tryGetDisplay()?.cursorEmbedded ?? false;
 

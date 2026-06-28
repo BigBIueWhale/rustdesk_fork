@@ -28,12 +28,12 @@
 # see those C/C++ libraries, so this gate keeps the manual watch ledger in sync
 # with the exact vcpkg manifest and pins; it is not the decoder sandbox.
 #
-# COMPANION GATE: scripts/apple-conform-check.sh runs the R-R2 apple (macOS/iOS)
-# SOURCE-conformance gate — the retain-and-check invariant + the R-A6 greps on the
-# Apple cfg + a cross-compile `cargo check --target *-apple-*` (the macOS-pinned Rust
-# 1.81). Kept separate because it builds a second toolchain image and cross-checks the
-# apple targets (slower), and apple is NOT a build target (R-R2) — a pre-release / CI
-# gate, not an inner-loop one. The Linux `cargo check` below cannot see the cfg(macos)/
+# COMPANION GATE: scripts/apple-conform-check.sh runs the R-R2 Apple (macOS/iOS)
+# SOURCE-conformance gate: retain-and-check, R-A6 greps on the Apple cfg, structured
+# plist/entitlement/pod/Xcode allow-lists, and cargo cross-checks across the documented
+# Apple target matrix with the real Apple Flutter features. Kept separate because it
+# builds a second toolchain image and cross-checks the Apple targets (slower), and Apple
+# is NOT a build target (R-R2). The Linux `cargo check` below cannot see the cfg(macos)/
 # cfg(ios) clusters, so that gate is where their hardening is proven.
 #
 # Usage:  scripts/verify.sh
@@ -3412,6 +3412,29 @@ if [ -n "$rsv8_bad" ]; then
   echo "  FAIL R-SV8: Firebase/telemetry/auto-updater residue on an artifact or the Apple source (MUST be absent):$rsv8_bad"; rc=1
 else
   echo "  ok  R-SV8 no Firebase/FCM/Google-services + no Sparkle/Crashlytics/Sentry telemetry (iOS plist + push entitlements + Android + Apple source all clean)"
+fi
+# R-R2/R-A6 Apple gate shape: Linux cargo cannot see the Apple cfg or Xcode layer, so the
+# companion gate must not regress into a single-target grep script. This verifies the
+# checker itself still defaults to the full target matrix, uses the real Apple Flutter
+# feature sets, positively allow-lists plist/entitlements/pods/PBX shell phases, and
+# proves the cargo check does not silently mutate generated source.
+apple_gate_bad=
+apple_gate=scripts/apple-conform-check.sh
+grep -qF 'DEFAULT_APPLE_TARGETS=(aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios)' "$apple_gate" || apple_gate_bad="$apple_gate_bad target-matrix"
+grep -qF 'APPLE_TARGETS' "$apple_gate" || apple_gate_bad="$apple_gate_bad APPLE_TARGETS-override"
+grep -qF 'flutter,unix-file-copy-paste' "$apple_gate" || apple_gate_bad="$apple_gate_bad macos-real-features"
+grep -qF 'target_features()' "$apple_gate" || apple_gate_bad="$apple_gate_bad feature-dispatch"
+grep -qF 'plistlib' "$apple_gate" || apple_gate_bad="$apple_gate_bad plist-parser"
+grep -qF 'duplicate plist key' "$apple_gate" || apple_gate_bad="$apple_gate_bad plist-duplicate-check"
+grep -qF 'APPLE_POD_ALLOWLISTS' "$apple_gate" || apple_gate_bad="$apple_gate_bad pod-allowlist"
+grep -qF 'PBXShellScriptBuildPhase allow-list' "$apple_gate" || apple_gate_bad="$apple_gate_bad pbx-shell-allowlist"
+grep -qF 'SOURCE_DATE_EPOCH=1700000000' "$apple_gate" || apple_gate_bad="$apple_gate_bad source-date-epoch"
+grep -qF 'src/version.rs hash unchanged' "$apple_gate" || apple_gate_bad="$apple_gate_bad non-mutating-version-proof"
+grep -qF 'VCPKG_ROOT="$stub"' "$apple_gate" || apple_gate_bad="$apple_gate_bad apple-vcpkg-stub"
+if [ -n "$apple_gate_bad" ]; then
+  echo "  FAIL R-R2/R-A6 Apple companion gate lost required hardening structure:$apple_gate_bad"; rc=1
+else
+  echo "  ok  R-R2/R-A6 Apple companion gate covers target matrix + real features + plist/pod/PBX allow-lists + non-mutating cargo proof"
 fi
 # R-SV9 (§18 sovereignty): the front-ends MUST carry no PLAINTEXT-http link (a downgrade/MITM
 # vector), and the sovereign SHOULD removes the live upstream docs/download helper links until an

@@ -543,21 +543,20 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   is a no-network Seatbelt slice for the worker roles; it does not claim a
   full custom macOS allowlist, a BSD pledge/capsicum equivalent, or an iOS
   no-child-process model.
-- **Apple SDK-free source-conformance has useful boundary evidence, but the full
-  R-R2 gate is under-enforced.**
+- **Apple SDK-free source-conformance now covers the documented source gate shape.**
   `scripts/apple-conform-check.sh` caught a real Rust 1.81 Apple-target
   coherence break in the Unix file-transfer receive path: `openat(..., mode)` was
   passing `mode_t` directly through a C variadic call. `libs/hbb_common/src/fs.rs`
   now applies the C default-promotion cast (`mode as c_uint`) before the varargs
-  call. The existing Apple gate now passes through the Rust-only graph and stops
-  only at the expected SDK framework boundary (`coreaudio-sys`/`AudioUnit.h`) on
-  this Linux host for its default path. A later read-only audit found that this
-  is not a full R-R2 proof yet: the script defaults to one Apple target despite
-  documenting a macOS x86_64/macOS aarch64/iOS aarch64 matrix, it does not cover
-  the Apple Flutter feature surfaces the way actual Apple/mobile builds do, it
-  lacks positive plist/entitlement/pod/Xcode shell-phase allow-lists, and the
-  cargo-check step can still mutate generated source. Those are now tracked as
-  current Apple conformance follow-ups rather than treated as closed.
+  call. The gate now defaults to the documented macOS x86_64/macOS aarch64/iOS
+  aarch64 target matrix, uses the actual Apple Flutter feature surfaces
+  (`flutter,unix-file-copy-paste` on macOS and `flutter` on iOS), positively
+  allow-lists the Info.plist, entitlement, Podfile.lock, and Xcode shell-script
+  state, rejects duplicate plist keys, and snapshots `src/version.rs` so cargo's
+  `build.rs` cannot silently mutate generated source. On this Linux host without
+  an Apple SDK it remains an SDK-free source gate: a clean run reaches only the
+  expected Apple SDK/header boundary, while full macOS/iOS artifacts still need
+  the pinned Apple SDK/toolchain path.
 - **Windows artifact production is offline through helper containers.**
   `scripts/online-fetch.sh` builds the pinned
   `rustdesk-fork-harness-win-helper` image during the one networked phase.
@@ -1763,14 +1762,12 @@ bash -n scripts/verify.sh     # GREEN
   separation, and HostIdentity session binding. The existing docs and tests are
   audit inputs, not a substitute.
 
-- **Apple source-conformance and artifact builds.** The current SDK-free Apple
-  gate is useful evidence, but it is not yet a full R-R2 source proof: it must
-  default to the documented macOS x86_64/macOS aarch64/iOS aarch64 target
-  matrix, cover the Apple Flutter/mobile feature surfaces, positively allow-list
-  all plist/entitlement/pod/Xcode shell-phase state, and run without mutating the
-  worktree. Actual macOS/iOS artifact builds still need the pinned Apple
-  toolchain path. The ledger should not claim Apple source or artifact parity
-  until those gates and builds run.
+- **Apple artifact builds.** The SDK-free Apple source gate now covers the
+  documented target matrix, Apple Flutter/mobile feature surfaces, structured
+  plist/entitlement/pod/Xcode allow-lists, and non-mutating cargo execution. It
+  is still not an artifact build. Actual macOS/iOS artifacts require the pinned
+  Apple SDK/toolchain path outside this Linux host, and the ledger should not
+  claim Apple artifact parity until those builds run.
 
 - **Real two-host demonstrations.** The Docker loopback harness validates local
   executable properties. Separate operational evidence should demonstrate
@@ -1824,9 +1821,10 @@ Windows artifact hashes recorded above are refreshed for the current per-target
 application source; Android was refreshed after the isolated-service
 busy-admission/rate-limited busy-log follow-up and Windows was refreshed after
 the worker token-privilege hardening. The current Apple source-conformance gate
-is not a complete R-R2 source proof until it covers the documented target matrix,
-Apple Flutter/mobile features, plist/entitlement/pod/Xcode allow-lists, and
-non-mutating execution. The remaining local build-host residual is the old
+covers the documented target matrix, Apple Flutter/mobile features,
+plist/entitlement/pod/Xcode allow-lists, and non-mutating execution, but it is
+still SDK-free source evidence rather than an Apple artifact build. The remaining
+local build-host residual is the old
 harness-created system libvirt default network: the host has shown `virbr0`,
 `192.168.122.1:53/tcp+udp`, `0.0.0.0%virbr0:67/udp`, and
 `net.ipv4.ip_forward=1`. `.harness-state/provisioned` records that the harness
@@ -1841,10 +1839,9 @@ The remaining external or pre-exposure evidence items are:
 - **R-V3 independent expert audit.** The in-tree CPace construction is not yet
   independently audited. That disclosure is intentional and must remain until an
   outside audit is performed and published.
-- **Apple source-conformance hardening and artifact builds.** The Linux
-  SDK-free Apple gate is useful but under-enforced; it must be tightened before
-  the ledger can claim full Apple source parity. Full macOS/iOS artifact builds
-  still require the Apple SDK/toolchain path outside this Linux host.
+- **Apple artifact builds.** Full macOS/iOS artifact builds still require the
+  Apple SDK/toolchain path outside this Linux host. The Linux SDK-free source
+  gate is tightened, but it does not produce signed or unsigned Apple artifacts.
 - **Real two-host demonstrations.** The Docker loopback harness validates the
   executable security properties available on this machine. Real two-host MITM
   and RDP/tunnel wire demonstrations remain operational evidence, not required

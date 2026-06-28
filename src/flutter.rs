@@ -67,7 +67,13 @@ fn remote_cursor_rgba_len(width: i32, height: i32) -> Option<usize> {
 
 fn remote_cursor_rgba_for_ui(cd: &CursorData) -> Option<Vec<u8>> {
     let expected = remote_cursor_rgba_len(cd.width, cd.height)?;
-    let colors = hbb_common::compress::peer_decompress(&cd.colors);
+    let colors = match hbb_common::compress::peer_decompress(&cd.colors) {
+        Ok(colors) => colors,
+        Err(err) => {
+            log::warn!("dropping remote cursor after peer zstd failure: {err}");
+            return None;
+        }
+    };
     if colors.len() != expected || colors.len() > MAX_REMOTE_CURSOR_RGBA_BYTES {
         log::warn!(
             "dropping invalid remote cursor payload before Flutter handoff: width={}, height={}, bytes={}, expected={}, max={}",
@@ -1152,7 +1158,13 @@ impl InvokeUiSession for FlutterHandler {
             Some(Union::Data(data)) => {
                 // Decompress data if needed
                 let output_data = if data.compressed {
-                    hbb_common::compress::peer_decompress(&data.data)
+                    match hbb_common::compress::peer_decompress(&data.data) {
+                        Ok(output_data) => output_data,
+                        Err(err) => {
+                            log::warn!("dropping terminal response after peer zstd failure: {err}");
+                            return;
+                        }
+                    }
                 } else {
                     data.data.to_vec()
                 };

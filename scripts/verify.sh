@@ -2460,8 +2460,15 @@ fi
 r_native_zstd_worker=
 grep -qF 'const WORKER_ARG: &str = "--native-zstd-worker";' libs/hbb_common/src/compress.rs ||
   r_native_zstd_worker="$r_native_zstd_worker worker-arg"
-grep -qF 'pub fn peer_decompress(data: &[u8]) -> Vec<u8>' libs/hbb_common/src/compress.rs ||
+grep -qF 'pub fn peer_decompress(data: &[u8]) -> ResultType<Vec<u8>>' libs/hbb_common/src/compress.rs ||
   r_native_zstd_worker="$r_native_zstd_worker peer-api"
+grep -qF 'mobile peer zstd decompress unavailable until a platform worker/service boundary exists' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker explicit-mobile-peer-zstd-error"
+grep -qF 'oversized peer zstd payload:' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker explicit-oversize-peer-zstd-error"
+if awk '/pub fn peer_decompress\(data: \&\[u8\]\) -> ResultType<Vec<u8>>/ { in_peer_zstd=1 } in_peer_zstd { print } in_peer_zstd && /^}/ { exit }' libs/hbb_common/src/compress.rs | grep -qF 'Vec::new()'; then
+  r_native_zstd_worker="$r_native_zstd_worker peer-zstd-empty-fallback"
+fi
 grep -qF 'refusing in-process desktop peer decompress' libs/hbb_common/src/compress.rs ||
   r_native_zstd_worker="$r_native_zstd_worker no-desktop-inprocess-fallback"
 grep -qF 'refusing in-process mobile peer zstd decompress' libs/hbb_common/src/compress.rs ||
@@ -2491,6 +2498,8 @@ grep -qF 'native zstd worker error response carried output bytes' libs/hbb_commo
   r_native_zstd_worker="$r_native_zstd_worker error-response-shape"
 grep -qF 'zstd_worker_response_shape_rejects_success_message' libs/hbb_common/src/compress.rs ||
   r_native_zstd_worker="$r_native_zstd_worker response-shape-test"
+grep -qF 'peer_decompress_rejects_oversize_without_empty_fallback' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker explicit-peer-zstd-failure-test"
 if grep -qF 'let mut guard = worker.lock()' libs/hbb_common/src/compress.rs; then
   r_native_zstd_worker="$r_native_zstd_worker blocking-worker-lock"
 fi
@@ -2499,13 +2508,13 @@ if grep -qF 'std::thread::spawn' libs/hbb_common/src/compress.rs; then
 fi
 grep -qF 'hbb_common::compress::run_worker()' src/core_main.rs ||
   r_native_zstd_worker="$r_native_zstd_worker core-worker-entry"
-grep -qF 'peer_decompress(&block.data)' libs/hbb_common/src/fs.rs ||
+grep -qF 'peer zstd file block decompression failed' libs/hbb_common/src/fs.rs ||
   r_native_zstd_worker="$r_native_zstd_worker file-block-peer-worker"
-grep -qF 'hbb_common::compress::peer_decompress(&clipboard.content)' src/clipboard.rs ||
+grep -qF 'dropping clipboard payload after peer zstd failure' src/clipboard.rs ||
   r_native_zstd_worker="$r_native_zstd_worker clipboard-peer-worker"
-grep -qF 'hbb_common::compress::peer_decompress(&cd.colors)' src/flutter.rs ||
+grep -qF 'dropping remote cursor after peer zstd failure' src/flutter.rs ||
   r_native_zstd_worker="$r_native_zstd_worker cursor-peer-worker"
-grep -qF 'hbb_common::compress::peer_decompress(&data.data)' src/flutter.rs ||
+grep -qF 'dropping terminal response after peer zstd failure' src/flutter.rs ||
   r_native_zstd_worker="$r_native_zstd_worker terminal-peer-worker"
 if grep -RIn 'hbb_common::compress::decompress' src --include='*.rs' 2>/dev/null \
     | grep -v '//' >/tmp/rd_verify_peer_decompress.$$; then
@@ -2515,7 +2524,7 @@ rm -f /tmp/rd_verify_peer_decompress.$$
 if [ -n "$r_native_zstd_worker" ]; then
   echo "  FAIL Appendix C #2b: desktop peer zstd worker boundary regressed:$r_native_zstd_worker"; rc=1
 else
-  echo "  ok  Appendix C #2b peer zstd decompress uses timeout-bounded same-artifact worker on desktop, fails closed on mobile without an in-process native fallback, and uses Linux x86_64/aarch64 post-exec syscall filter (config/non-Linux tracked; other Linux arch workers fail closed)"
+  echo "  ok  Appendix C #2b peer zstd decompress uses timeout-bounded same-artifact worker on desktop, returns explicit errors instead of empty fallback on refusal/failure, fails closed on mobile without an in-process native fallback, and uses Linux x86_64/aarch64 post-exec syscall filter (config/non-Linux tracked; other Linux arch workers fail closed)"
 fi
 # Appendix C #2b fourth sandbox slice: desktop normal clipboard SET must cross a
 # hidden same-artifact worker before protobuf-to-native conversion and platform

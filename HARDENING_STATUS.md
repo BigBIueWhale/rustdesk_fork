@@ -13,7 +13,8 @@ history remains the traceability record for those intermediate notes.
 native-codec advisory-watch, native media/clipboard handoff-bound and
 CLIPRDR callback fail-closed follow-ups, the first desktop
 native-video/native-Opus/native-zstd/native-clipboard worker slices, the
-mobile media/clipboard/zstd fail-closed behavior, bounded worker-I/O thread and
+mobile media/clipboard/zstd fail-closed and peer-zstd explicit-failure behavior,
+bounded worker-I/O thread and
 bounded desktop clipboard/file-clipboard dispatcher, Linux
 FUSE clipboard mount-point no-follow/no-adoption setup,
 bounded Linux FUSE file-content response queue,
@@ -600,19 +601,22 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   `Unavailable`, and `NativeOpusDecoder::new` returns an error; mobile media
   remains unavailable until a platform worker/service boundary exists rather than
   parsing hostile-peer media in-process. `libs/hbb_common/src/compress.rs` adds
-  the analogous hidden `--native-zstd-worker` role. Peer-controlled receive decompression now
-  uses `peer_decompress`: desktop routes file blocks, compressed clipboard
-  payloads, cursor colors, and terminal output through a length-bounded stdio
-  worker with a fixed timeout and no in-process fallback. Android/iOS now
-  refuse peer zstd decompression rather than invoking native zstd in-process;
-  those compressed peer features stay unavailable on mobile until a platform
-  worker/service boundary exists. Local config decompression still uses
+  the analogous hidden `--native-zstd-worker` role. Peer-controlled receive
+  decompression now uses `peer_decompress`: desktop routes file blocks,
+  compressed clipboard payloads, cursor colors, and terminal output through a
+  length-bounded stdio worker with a fixed timeout and no in-process fallback.
+  The peer API now returns an explicit error on oversized input, worker failure,
+  or mobile refusal instead of using an empty-vector fallback. Compressed
+  file-transfer blocks fail the receive job on peer zstd failure; cursor,
+  terminal, and clipboard payloads log and drop that peer message. Android/iOS
+  still refuse peer zstd decompression rather than invoking native zstd
+  in-process; those compressed peer features stay unavailable on mobile until a
+  platform worker/service boundary exists. Local config decompression still uses
   `decompress` directly because it is persisted local state, not a peer parser
   path. `scripts/verify.sh` gates all three worker args, wrappers/core entries,
   no-fallback strings, the mobile video/Opus/zstd no-in-process fallbacks,
-  timeout/kill markers, peer zstd call sites, and absence of direct native
-  decoder ownership in
-  `src/client.rs`.
+  explicit peer-zstd failure semantics, timeout/kill markers, peer zstd call
+  sites, and absence of direct native decoder ownership in `src/client.rs`.
   `src/native_clipboard_worker.rs` adds the hidden same-artifact
   `--native-clipboard-worker` role. The desktop parent now sanitizes inbound
   `MultiClipboards`, rejects more than 16 items, caps aggregate content at
@@ -1221,6 +1225,17 @@ docker run ... cargo check -p hbb_common --lib --target aarch64-linux-android  #
 docker run ... git diff --check           # GREEN after this ledger update
 ```
 
+After the peer-zstd explicit-failure follow-up, these focused and full gates
+have been re-run successfully:
+
+```text
+docker run ... rustfmt --edition 2021 --check libs/hbb_common/src/compress.rs libs/hbb_common/src/fs.rs src/flutter.rs src/clipboard.rs  # GREEN
+docker run ... bash -n scripts/verify.sh  # GREEN in disposable bash:5.2
+docker run ... cargo test -p hbb_common --lib compress::tests --color never  # GREEN: 4 tests passed incl. peer_decompress_rejects_oversize_without_empty_fallback
+bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl. peer-zstd explicit-error gates
+git diff --check                          # GREEN after this ledger update
+```
+
 After the shared native-worker busy-admission change and the high-fd cleanup
 runtime probe, these focused and full gates have been re-run successfully:
 
@@ -1600,7 +1615,9 @@ accounting, and a same-artifact worker boundary; Windows remote-printer XPS
 handoff now has a bounded same-artifact worker boundary. Mobile media decode
 now fails closed/no-advertises, mobile peer clipboard SET now fails closed,
 and mobile peer zstd now fails closed rather than using in-process native
-parsers; that is secure but functionally incomplete for Android-as-viewer, so
+parsers and reports refusal as an explicit peer decompression error rather than
+as empty payload data; that is secure but functionally incomplete for
+Android-as-viewer, so
 Android artifact availability must not be treated as end-to-end feature parity
 until platform worker/service support or an equivalent isolated decode path is
 implemented and smoked.

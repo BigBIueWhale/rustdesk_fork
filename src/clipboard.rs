@@ -77,7 +77,13 @@ fn clipboard_content_for_native(
 ) -> Option<Vec<u8>> {
     let format = clipboard.format.enum_value().ok()?;
     let data = if clipboard.compress {
-        hbb_common::compress::peer_decompress(&clipboard.content)
+        match hbb_common::compress::peer_decompress(&clipboard.content) {
+            Ok(data) => data,
+            Err(err) => {
+                log::warn!("dropping clipboard payload after peer zstd failure: {err}");
+                return None;
+            }
+        }
     } else {
         clipboard.content.to_vec()
     };

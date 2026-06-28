@@ -1397,7 +1397,8 @@ impl TransferJob {
             }
         }
         if block.compressed {
-            let tmp = peer_decompress(&block.data);
+            let tmp = peer_decompress(&block.data)
+                .map_err(|err| anyhow!("peer zstd file block decompression failed: {err}"))?;
             self.data_stream
                 .as_mut()
                 .ok_or(anyhow!("data stream is None"))?

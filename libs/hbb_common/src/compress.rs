@@ -93,25 +93,29 @@ fn decompress_checked(data: &[u8]) -> ResultType<Vec<u8>> {
 /// Decompress peer-controlled zstd payloads. Desktop builds route hostile-peer
 /// compressed bytes through a same-artifact child process; local persisted
 /// config data intentionally continues to use [`decompress`] directly.
-pub fn peer_decompress(data: &[u8]) -> Vec<u8> {
+pub fn peer_decompress(data: &[u8]) -> ResultType<Vec<u8>> {
     if data.len() > MAX_COMPRESSED_INPUT {
         crate::log::warn!(
             "dropping oversized peer zstd payload before native worker: {} > {}",
             data.len(),
             MAX_COMPRESSED_INPUT
         );
-        return Vec::new();
+        return Err(crate::anyhow::anyhow!(
+            "oversized peer zstd payload: {} > {}",
+            data.len(),
+            MAX_COMPRESSED_INPUT
+        ));
     }
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         match peer_decompress_worker(data) {
-            Ok(out) => out,
+            Ok(out) => Ok(out),
             Err(err) => {
                 crate::log::warn!(
                     "native zstd worker failed; refusing in-process desktop peer decompress: {}",
                     err
                 );
-                Vec::new()
+                Err(err)
             }
         }
     }
@@ -120,7 +124,9 @@ pub fn peer_decompress(data: &[u8]) -> Vec<u8> {
         crate::log::warn!(
             "refusing in-process mobile peer zstd decompress until a platform worker/service boundary exists"
         );
-        Vec::new()
+        Err(crate::anyhow::anyhow!(
+            "mobile peer zstd decompress unavailable until a platform worker/service boundary exists"
+        ))
     }
 }
 
@@ -443,11 +449,7 @@ fn read_response<R: Read>(reader: &mut R) -> ResultType<Vec<u8>> {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn validate_worker_response_shape(
-    status: u8,
-    out_len: usize,
-    msg_len: usize,
-) -> ResultType<()> {
+fn validate_worker_response_shape(status: u8, out_len: usize, msg_len: usize) -> ResultType<()> {
     match status {
         STATUS_DECOMPRESSED => {
             if msg_len != 0 {
@@ -537,5 +539,12 @@ mod tests {
     #[test]
     fn zstd_worker_response_shape_rejects_unknown_status() {
         assert!(validate_worker_response_shape(99, 0, 0).is_err());
+    }
+
+    #[test]
+    fn peer_decompress_rejects_oversize_without_empty_fallback() {
+        let payload = vec![0u8; MAX_COMPRESSED_INPUT + 1];
+        let err = peer_decompress(&payload).expect_err("oversize peer zstd must fail explicitly");
+        assert!(err.to_string().contains("oversized peer zstd payload"));
     }
 }

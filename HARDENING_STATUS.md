@@ -42,10 +42,11 @@ capability-advertising wrapper closure, and Android isolated-service
 non-blocking busy-admission/rate-limited busy-log follow-ups are closed in
 source and gates; responder-side port-forward latent-connect and file
 write-response forwarding follow-ups remain closed. The existing Apple
-SDK-free source-conformance gate remains useful evidence but is now tracked as
-under-enforced for full R-R2 until the Apple target/Flutter/plist/pod/Xcode
-matrix is tightened. The full cross-platform native decoder/parser sandbox
-remains open beyond those worker slices.**
+SDK-free source-conformance gate now covers the documented target matrix,
+Apple Flutter/mobile features, structured plist/entitlement/pod/Xcode
+allow-lists, and non-mutating cargo execution; Apple artifact builds still
+require the Apple SDK/toolchain path. The full cross-platform native
+decoder/parser sandbox remains open beyond those worker slices.**
 
 On 2026-06-26, final reviewer `Maxwell` (`gpt-5.5`, `xhigh`) reviewed the
 then-current dirty worktree, read the full `requirements.html`, checked the previous
@@ -1744,14 +1745,20 @@ bash -n scripts/verify.sh     # GREEN
   and/or a future true allowlist sandbox, and timeout/kill/restart semantics for
   the remaining parser surfaces.
   A 2026-06-28 read-only audit also isolated a narrower desktop residual after
-  the worker boundary: worker-decoded, parent-bounded RGBA frames can still be
-  handed to the native Flutter texture renderer plugin in the main viewer
-  process through `FlutterRgbaRendererPluginOnRgba`. That is not a remaining
-  compressed-codec, zstd, or CLIPRDR parser bypass, because the current parent
-  validates decoded shape/length before UI handoff. It is still Appendix C
-  #2b-adjacent native main-process surface reachable by a deliberately connected
-  hostile peer, so it should remain tracked until the texture upload path is
-  disabled for peer video or moved behind an equivalent boundary.
+  the worker boundary: worker-decoded, parent-bounded RGBA frames were still
+  eligible for handoff to the native Flutter texture renderer plugin in the
+  main viewer process through `FlutterRgbaRendererPluginOnRgba`. That texture
+  upload route is now disabled for peer media in source and gate: desktop
+  `FlutterHandler::on_rgba` always takes the soft RGBA path, the old
+  peer-`EventToUI::Texture(display, false)` path is absent, the Rust
+  `TEXTURE_RGBA_RENDERER_PLUGIN`/`FlutterRgbaRendererPluginOnRgba` loader and
+  symbol path are gone, the texture-render preference is hard false, peer pages
+  no longer instantiate `Texture` widgets for remote/video frames, and
+  all-displays view uses display-keyed Dart `ui.Image` storage plus
+  `CustomPaint` instead of native texture registration.
+  This closes the texture-plugin residual without claiming a full UI-engine
+  sandbox: already bounded raw pixels still enter Flutter's normal image/paint
+  path in the main viewer process.
   The separate native codec CVE/advisory watch is wired and source-gated, but it
   is only a tracking/coverage mechanism for vcpkg C/C++ libraries, not a
   substitute for those boundaries.
@@ -1786,10 +1793,14 @@ cleanup, resource ceilings, and a post-exec syscall deny filter. Linux
 architectures without an implemented worker seccomp table now fail closed at
 worker entry instead of parsing hostile content with only partial confinement.
 Those closures deliberately do not claim full sandboxing or current CVE freedom.
-Desktop Flutter texture rendering still hands worker-decoded, parent-bounded
-peer RGBA frames to a native texture plugin in the main viewer process; that is
-not a remaining compressed-parser bypass, but it remains an Appendix C #2b
-process-boundary residual until disabled or isolated.
+The previous desktop Flutter native texture handoff residual is closed:
+worker-decoded, parent-bounded peer RGBA frames no longer enter the
+`FlutterRgbaRendererPluginOnRgba` path, its Rust loader/symbol path, or
+peer-page `Texture` widgets, including all-displays view. Bounded raw pixels
+still enter Flutter's ordinary
+`decodeImageFromPixels`/`CustomPaint` UI path in the main viewer process; that
+is not a remaining compressed-parser bypass and is tracked separately from the
+larger native decoder/parser sandbox work above.
 macOS worker children now apply the Seatbelt NoNetwork profile at worker entry,
 but that is not a full custom macOS allowlist or a BSD pledge/capsicum
 equivalent. Windows same-artifact worker children, including the CLIPRDR and

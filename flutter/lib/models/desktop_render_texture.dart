@@ -11,6 +11,8 @@ import './platform_model.dart';
 import 'package:texture_rgba_renderer/texture_rgba_renderer.dart'
     if (dart.library.html) 'package:flutter_hbb/web/texture_rgba_renderer.dart';
 
+bool get _peerNativeTextureRenderingEnabled => false;
+
 class _PixelbufferTexture {
   int _textureKey = -1;
   int _display = 0;
@@ -148,6 +150,9 @@ class TextureModel {
   TextureModel(this.parent);
 
   setTextureType({required int display, required bool gpuTexture}) {
+    if (!_peerNativeTextureRenderingEnabled) {
+      return;
+    }
     debugPrint("setTextureType: display=$display, isGpuTexture=$gpuTexture");
     ensureControl(display);
     _control[display]?.setTextureType(gpuTexture: gpuTexture);
@@ -181,6 +186,9 @@ class TextureModel {
   }
 
   updateCurrentDisplay(int curDisplay) {
+    if (!_peerNativeTextureRenderingEnabled) {
+      return;
+    }
     if (isWeb) return;
     final ffi = parent.target;
     if (ffi == null) return;

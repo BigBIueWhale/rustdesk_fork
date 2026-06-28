@@ -2463,6 +2463,62 @@ if [ -n "$r_native_video_worker" ]; then
 else
   echo "  ok  Appendix C #2b desktop native video decode uses timeout-bounded same-artifact worker plus Linux x86_64/aarch64 post-exec syscall filter; Android video decode crosses a non-exported isolatedProcess service after bind+self-test using SharedMemory/Messenger IPC; iOS video decode still fails closed until a platform worker/service exists (other Linux arch workers fail closed)"
 fi
+# Appendix C #2b viewer residual: hostile-peer RGBA frames must not be uploaded
+# through the in-process Flutter texture renderer plugin. The soft path keeps a
+# Dart-owned image per peer display so all-displays view does not need the native
+# Texture widget or the FlutterRgbaRendererPluginOnRgba byte path.
+r_peer_texture=
+grep -qF 'self.on_rgba_soft_render(display, rgba);' src/flutter.rs ||
+  r_peer_texture="$r_peer_texture rust-rgba-not-soft-rendered"
+if grep -qF 'on_rgba_flutter_texture_render' src/flutter.rs; then
+  r_peer_texture="$r_peer_texture rust-texture-helper-present"
+fi
+if grep -qF 'TEXTURE_RGBA_RENDERER_PLUGIN' src/flutter.rs; then
+  r_peer_texture="$r_peer_texture rust-rgba-texture-plugin-loader"
+fi
+if grep -qF 'FlutterRgbaRendererPluginOnRgba' src/flutter.rs; then
+  r_peer_texture="$r_peer_texture rust-rgba-texture-symbol"
+fi
+if grep -qF 'session.renderer.on_rgba(display, rgba)' src/flutter.rs; then
+  r_peer_texture="$r_peer_texture rust-peer-rgba-plugin-call"
+fi
+if grep -qF 'EventToUI::Texture(display, false)' src/flutter.rs; then
+  r_peer_texture="$r_peer_texture rust-peer-rgba-texture-event"
+fi
+grep -A3 'pub fn use_texture_render() -> bool' src/ui_interface.rs | grep -qF 'false' ||
+  r_peer_texture="$r_peer_texture texture-pref-not-pinned-false"
+grep -qF 'bool get _peerNativeTextureRenderingEnabled => false;' flutter/lib/models/desktop_render_texture.dart ||
+  r_peer_texture="$r_peer_texture texture-model-not-pinned-false"
+if grep -RInF 'textureModel.updateCurrentDisplay' flutter/lib --include='*.dart' >/dev/null; then
+  r_peer_texture="$r_peer_texture texture-registration-callsite"
+fi
+if grep -RInF 'Texture(' flutter/lib/desktop/pages/remote_page.dart flutter/lib/desktop/pages/view_camera_page.dart >/dev/null; then
+  r_peer_texture="$r_peer_texture peer-page-texture-widget"
+fi
+if grep -RInF 'm.useTextureRender' flutter/lib/desktop/pages/remote_page.dart flutter/lib/desktop/pages/view_camera_page.dart >/dev/null; then
+  r_peer_texture="$r_peer_texture peer-page-texture-pref-branch"
+fi
+grep -qF 'final Map<int, ui.Image> _displayImages = {};' flutter/lib/models/model.dart ||
+  r_peer_texture="$r_peer_texture no-display-image-map"
+grep -qF 'await update(image, display: display);' flutter/lib/models/model.dart ||
+  r_peer_texture="$r_peer_texture rgba-update-not-display-keyed"
+grep -qF 'ui.Image? displayImage(int display) => _displayImages[display];' flutter/lib/models/model.dart ||
+  r_peer_texture="$r_peer_texture no-display-image-accessor"
+grep -qF 'bool get forceTextureRender => false;' flutter/lib/models/model.dart ||
+  r_peer_texture="$r_peer_texture all-display-still-forces-texture"
+grep -qF '_buildAllDisplaysNonTextureRender' flutter/lib/desktop/pages/remote_page.dart ||
+  r_peer_texture="$r_peer_texture remote-page-no-soft-all-displays"
+grep -qF '_buildAllDisplaysNonTextureRender' flutter/lib/desktop/pages/view_camera_page.dart ||
+  r_peer_texture="$r_peer_texture camera-page-no-soft-all-displays"
+grep -qF 'm.displayImage(i)' flutter/lib/desktop/pages/remote_page.dart ||
+  r_peer_texture="$r_peer_texture remote-page-not-display-keyed"
+grep -qF 'm.displayImage(i)' flutter/lib/desktop/pages/view_camera_page.dart ||
+  r_peer_texture="$r_peer_texture camera-page-not-display-keyed"
+if [ -n "$r_peer_texture" ]; then
+  echo "  FAIL Appendix C #2b: peer RGBA native texture-renderer residual regressed:$r_peer_texture"; rc=1
+else
+  echo "  ok  Appendix C #2b peer RGBA uses display-keyed Dart soft rendering; native Flutter texture upload is pinned off for peer media"
+fi
 # Appendix C #2b second sandbox slice: desktop Opus packet decode must cross a
 # hidden same-artifact worker process before libopus sees hostile-peer bytes.
 # Android Opus decode must cross a non-exported isolatedProcess service with a

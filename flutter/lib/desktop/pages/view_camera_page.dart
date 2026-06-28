@@ -448,18 +448,19 @@ class _ViewCameraPageState extends State<ViewCameraPage>
         Future.delayed(Duration.zero, () => c.updateViewStyle());
         final peerDisplay = CurrentDisplayState.find(widget.id);
         return Obx(
-          () => _ffi.ffiModel.pi.isSet.isFalse
-              ? Container(color: Colors.transparent)
-              : Obx(() {
-                  _ffi.textureModel.updateCurrentDisplay(peerDisplay.value);
-                  return ImagePaint(
+          () {
+            final currentDisplay = peerDisplay.value;
+            return _ffi.ffiModel.pi.isSet.isFalse
+                ? Container(color: Colors.transparent)
+                : ImagePaint(
+                    key: ValueKey(currentDisplay),
                     id: widget.id,
                     cursorOverImage: _cursorOverImage,
                     listenerBuilder: (child) => _buildRawTouchAndPointerRegion(
                         child, enterView, leaveView),
                     ffi: _ffi,
                   );
-                }),
+          },
         );
       }))
     ];
@@ -510,16 +511,14 @@ class _ImagePaintState extends State<ImagePaint> {
     var c = Provider.of<CanvasModel>(context);
     final s = c.scale;
 
-    bool isViewOriginal() => c.viewStyle.style == kRemoteViewStyleOriginal;
-
     if (c.imageOverflow.isTrue && c.scrollStyle != ScrollStyle.scrollauto) {
       final paintWidth = c.getDisplayWidth() * s;
       final paintHeight = c.getDisplayHeight() * s;
       final paintSize = Size(paintWidth, paintHeight);
       final paintWidget =
-          m.useTextureRender || widget.ffi.ffiModel.pi.forceTextureRender
-              ? _BuildPaintTextureRender(
-                  c, s, Offset.zero, paintSize, isViewOriginal())
+          widget.ffi.ffiModel.pi.currentDisplay == kAllDisplayValue
+              ? _buildAllDisplaysNonTextureRender(
+                  m, c, s, Offset.zero, paintSize)
               : _buildScrollbarNonTextureRender(m, paintSize, s);
       return NotificationListener<ScrollNotification>(
         onNotification: (notification) {
@@ -539,16 +538,16 @@ class _ImagePaintState extends State<ImagePaint> {
     } else {
       if (c.size.width > 0 && c.size.height > 0) {
         final paintWidget =
-            m.useTextureRender || widget.ffi.ffiModel.pi.forceTextureRender
-                ? _BuildPaintTextureRender(
+            widget.ffi.ffiModel.pi.currentDisplay == kAllDisplayValue
+                ? _buildAllDisplaysNonTextureRender(
+                    m,
                     c,
                     s,
                     Offset(
                       isLinux ? c.x.toInt().toDouble() : c.x,
                       isLinux ? c.y.toInt().toDouble() : c.y,
                     ),
-                    c.size,
-                    isViewOriginal())
+                    c.size)
                 : _buildScrollAutoNonTextureRender(m, c, s);
         return Container(child: _buildListener(paintWidget));
       } else {
@@ -573,8 +572,8 @@ class _ImagePaintState extends State<ImagePaint> {
     );
   }
 
-  Widget _BuildPaintTextureRender(
-      CanvasModel c, double s, Offset offset, Size size, bool isViewOriginal) {
+  Widget _buildAllDisplaysNonTextureRender(
+      ImageModel m, CanvasModel c, double s, Offset offset, Size size) {
     final ffiModel = c.parent.target!.ffiModel;
     final displays = ffiModel.pi.getCurDisplays();
     final children = <Widget>[];
@@ -582,24 +581,25 @@ class _ImagePaintState extends State<ImagePaint> {
     if (rect == null) {
       return Container();
     }
-    final curDisplay = ffiModel.pi.currentDisplay;
+    final isPeerLinux = ffiModel.isPeerLinux;
     for (var i = 0; i < displays.length; i++) {
-      final textureId = widget.ffi.textureModel
-          .getTextureId(curDisplay == kAllDisplayValue ? i : curDisplay);
-      if (true) {
-        // both "textureId.value != -1" and "true" seems ok
-        children.add(Positioned(
-          left: (displays[i].x - rect.left) * s + offset.dx,
-          top: (displays[i].y - rect.top) * s + offset.dy,
-          width: displays[i].width * s,
-          height: displays[i].height * s,
-          child: Obx(() => Texture(
-                textureId: textureId.value,
-                filterQuality:
-                    isViewOriginal ? FilterQuality.none : FilterQuality.low,
-              )),
-        ));
+      final image = m.displayImage(i);
+      if (image == null) {
+        continue;
       }
+      final sizeScale = isPeerLinux ? s / displays[i].scale : s;
+      final width = displays[i].width * sizeScale;
+      final height = displays[i].height * sizeScale;
+      children.add(Positioned(
+        left: (displays[i].x - rect.left) * s + offset.dx,
+        top: (displays[i].y - rect.top) * s + offset.dy,
+        width: width,
+        height: height,
+        child: CustomPaint(
+          size: Size(width, height),
+          painter: ImagePainter(image: image, x: 0, y: 0, scale: sizeScale),
+        ),
+      ));
     }
     return SizedBox(
       width: size.width,

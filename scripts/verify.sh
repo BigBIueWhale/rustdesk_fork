@@ -1778,6 +1778,14 @@ ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-2fa-desc|enabl
 # LIVE to the VIEWER when a controlled host's elevated window can't take input (a direct-control tip,
 # not an elevation prompt), so removing it would orphan a referenced key.
 ra6_clean '"(request_elevation_tip|still_click_uac_tip|wait_accept_uac_tip|elevation_username_tip|No need to elevate|Accept and Elevate|accept_and_elevate_btn_tooltip)"' '§19 dead elevation/UAC lang keys (R-X9/R-X11)' || rc=1
+# §19 systematic dead-lang-key sweep — excised-feature UI strings with NO live translate() caller, found
+# by a full en.rs-key-vs-source scan (250 keys checked). Each group's UI is excised, so the key is dead:
+# Wayland keyboard-input consent (R-X12 input/capture), the OTP/2FA-bot/trusted-devices UI (R-X7), the
+# SOCKS/HTTP proxy editor, the address-book/account UI (R-G4/R-SV6), and the OS-credential login dialog
+# (R-S18/R-X8). The `(s)` in the Socks5/Http(s) key is regex-escaped (\( \)). NOTE: dynamic `{}`-template
+# keys (e.g. rel-mouse-exit-{}-tip, printer-{}-*) and the file-manager keys were deliberately EXCLUDED —
+# they need per-key vetting against the translate("…{}…").replace pattern before any removal.
+ra6_clean '"(wayland-keyboard-input-disabled-tip|wayland-keyboard-input-consent-tip|wayland-keyboard-input-applies-to-tip|wayland-soft-keyboard-input-label|wayland-keyboard-input-reset-choice-tip|remember-wayland-keyboard-choice-tip|doc_fix_wayland|One-time Password|enable-bot-desc|cancel-bot-confirm-tip|enable-trusted-devices-tip|Socks5 Proxy|Socks5/Http\(s\) Proxy|default_proxy_tip|push_ab_failed_tip|pull_group_failed_tip|ab_web_console_tip|OS Password|OS Account|os_account_desk_tip|login_linux_tip)"' '§19 dead excised-feature lang keys (R-X12/R-X7/R-G4/R-S18 + proxy)' || rc=1
 # §19 dead lang keys (post-sciter-excision sweep): the rendezvous/relay/lan/WS UI that referenced these
 # was excised from BOTH flutter AND sciter — empty_lan_tip (R-X5 lan tab), connecting_status/
 # not_ready_status (R-G2/R-G8 status), the ID/Relay Server + ID Server + Relay Server + Relay Connection

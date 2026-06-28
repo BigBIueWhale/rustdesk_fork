@@ -2446,10 +2446,12 @@ else
 fi
 # Appendix C #2b second sandbox slice: desktop Opus packet decode must cross a
 # hidden same-artifact worker process before libopus sees hostile-peer bytes.
-# Mobile Opus decode has no equivalent platform worker/service boundary yet, so
-# it must fail closed instead of falling back to in-process hostile-peer packet
-# parsing.
+# Android Opus decode must cross a non-exported isolatedProcess service with a
+# bind+self-test gate and SharedMemory/Messenger IPC; iOS still has no equivalent
+# platform worker/service boundary, so it must fail closed instead of falling
+# back to in-process hostile-peer packet parsing.
 r_native_opus_worker=
+android_audio=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/NativeAudioDecoderService.kt
 grep -qF 'const WORKER_ARG: &str = "--native-opus-worker";' src/native_audio_worker.rs ||
   r_native_opus_worker="$r_native_opus_worker worker-arg"
 grep -qF 'pub struct NativeOpusDecoder' src/native_audio_worker.rs ||
@@ -2459,7 +2461,59 @@ grep -qF 'WorkerOpusDecoder::spawn(sample_rate, channels)' src/native_audio_work
 grep -qF 'refusing in-process desktop decode' src/native_audio_worker.rs ||
   r_native_opus_worker="$r_native_opus_worker no-desktop-inprocess-fallback"
 grep -qF 'refusing in-process mobile Opus decode until a platform worker/service boundary exists' src/native_audio_worker.rs ||
-  r_native_opus_worker="$r_native_opus_worker no-mobile-inprocess-fallback"
+  r_native_opus_worker="$r_native_opus_worker ios-no-mobile-inprocess-fallback"
+grep -qF 'AndroidServiceOpusDecoder::new(sample_rate, channels)' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker android-service-backend"
+grep -qF 'fn service_ready() -> bool' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker android-service-ready-gate"
+grep -qF 'call_application_context_native_opus_decoder_ready' "$android_ffi" ||
+  r_native_opus_worker="$r_native_opus_worker android-app-ready-jni"
+grep -qF 'call_application_context_native_opus_decode' "$android_ffi" ||
+  r_native_opus_worker="$r_native_opus_worker android-app-decode-jni"
+grep -qF 'rustIsNativeOpusDecoderReady' "$android_app" ||
+  r_native_opus_worker="$r_native_opus_worker android-app-ready-bridge"
+grep -qF 'rustDecodeNativeOpus' "$android_app" ||
+  r_native_opus_worker="$r_native_opus_worker android-app-decode-bridge"
+grep -qF 'FFI.onAppStart(applicationContext)' "$android_audio" ||
+  r_native_opus_worker="$r_native_opus_worker android-service-native-init"
+grep -qF 'android:name=".NativeAudioDecoderService"' "$android_manifest" ||
+  r_native_opus_worker="$r_native_opus_worker android-service-manifest"
+grep -qF 'android:isolatedProcess="true"' "$android_manifest" ||
+  r_native_opus_worker="$r_native_opus_worker android-service-not-isolated"
+grep -qF 'android:exported="false"' "$android_manifest" ||
+  r_native_opus_worker="$r_native_opus_worker android-service-exported"
+grep -qF 'object NativeAudioDecoderClient' "$android_audio" ||
+  r_native_opus_worker="$r_native_opus_worker android-service-client"
+grep -qF 'SharedMemory.create("rd-native-opus-input"' "$android_audio" ||
+  r_native_opus_worker="$r_native_opus_worker android-service-no-input-shmem"
+grep -qF 'SharedMemory.create("rd-native-opus-output"' "$android_audio" ||
+  r_native_opus_worker="$r_native_opus_worker android-service-no-output-shmem"
+grep -qF 'Messenger(IncomingHandler(handlerThread.looper))' "$android_audio" ||
+  r_native_opus_worker="$r_native_opus_worker android-service-no-messenger"
+grep -qF 'NAD_MSG_SELF_TEST' "$android_audio" ||
+  r_native_opus_worker="$r_native_opus_worker android-service-no-selftest"
+grep -qF 'Process.isIsolated()' "$android_audio" ||
+  r_native_opus_worker="$r_native_opus_worker android-service-no-isolated-readback"
+grep -qF 'NAD_DECODE_TIMEOUT_MS = 3_000L' "$android_audio" ||
+  r_native_opus_worker="$r_native_opus_worker android-service-no-timeout"
+grep -qF 'dropping oversized isolated Opus decode request' "$android_audio" ||
+  r_native_opus_worker="$r_native_opus_worker android-service-no-request-cap"
+grep -qF 'decodeLock = Object()' "$android_audio" ||
+  r_native_opus_worker="$r_native_opus_worker android-service-no-inflight-guard"
+grep -qF 'synchronized(decodeLock)' "$android_audio" ||
+  r_native_opus_worker="$r_native_opus_worker android-service-no-decode-serialization"
+grep -qF 'Java_com_carriez_flutter_1hbb_NativeAudioDecoderService_nativeDecode' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker android-service-native-entry"
+grep -qF 'Java_com_carriez_flutter_1hbb_NativeAudioDecoderService_nativeSelfTest' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker android-service-native-selftest"
+grep -qF 'ANDROID_SERVICE_OPUS_DECODER' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker android-service-native-decoder"
+grep -qF 'read_response(&mut cursor, self.sample_rate, self.channels)' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker android-service-parent-response-validation"
+grep -qF 'let AndroidServiceOpusDecoderState { decoder, format } = &mut *state;' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker android-service-state-split"
+grep -qF 'decode_worker_request(&request, decoder, format)' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker android-service-reuses-worker-decoder"
 if grep -qF 'NativeOpusDecoderBackend::InProcess' src/native_audio_worker.rs; then
   r_native_opus_worker="$r_native_opus_worker mobile-inprocess-opus-backend"
 fi
@@ -2494,7 +2548,7 @@ if grep -qF 'std::thread::spawn' src/native_audio_worker.rs; then
   r_native_opus_worker="$r_native_opus_worker per-request-thread-spawn"
 fi
 grep -qF 'OpusDecoder::new(' src/native_audio_worker.rs ||
-  r_native_opus_worker="$r_native_opus_worker native-decode-only-in-worker"
+  r_native_opus_worker="$r_native_opus_worker native-decode-only-in-worker-or-service"
 grep -qF 'NativeOpusDecoder as AudioDecoder' src/client.rs ||
   r_native_opus_worker="$r_native_opus_worker client-audiohandler-wrapper"
 if grep -qE 'magnum_opus::.*Decoder as AudioDecoder|use magnum_opus::' src/client.rs; then
@@ -2503,9 +2557,9 @@ fi
 grep -qF 'crate::native_audio_worker::run_worker()' src/core_main.rs ||
   r_native_opus_worker="$r_native_opus_worker core-worker-entry"
 if [ -n "$r_native_opus_worker" ]; then
-  echo "  FAIL Appendix C #2b: desktop native Opus worker boundary regressed:$r_native_opus_worker"; rc=1
+  echo "  FAIL Appendix C #2b: native Opus worker/service boundary regressed:$r_native_opus_worker"; rc=1
 else
-  echo "  ok  Appendix C #2b desktop Opus decode uses timeout-bounded same-artifact worker plus Linux x86_64/aarch64 post-exec syscall filter; mobile Opus decode fails closed until a platform worker/service exists (other Linux arch workers fail closed)"
+  echo "  ok  Appendix C #2b desktop Opus decode uses timeout-bounded same-artifact worker plus Linux x86_64/aarch64 post-exec syscall filter; Android Opus decode crosses a non-exported isolatedProcess service after bind+self-test using SharedMemory/Messenger IPC; iOS Opus decode still fails closed until a platform worker/service exists (other Linux arch workers fail closed)"
 fi
 # Appendix C #2b third sandbox slice: peer-controlled zstd decompression must
 # cross a same-artifact worker on desktop. Local persisted config decompression

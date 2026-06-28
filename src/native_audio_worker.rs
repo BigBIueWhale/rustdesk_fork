@@ -1,3 +1,5 @@
+#[cfg(target_os = "android")]
+use hbb_common::log;
 use hbb_common::{
     anyhow::{anyhow, bail},
     ResultType,
@@ -28,6 +30,8 @@ pub struct NativeOpusDecoder {
 enum NativeOpusDecoderBackend {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Worker(WorkerOpusDecoder),
+    #[cfg(target_os = "android")]
+    AndroidService(AndroidServiceOpusDecoder),
     Unavailable,
 }
 
@@ -50,7 +54,23 @@ impl NativeOpusDecoder {
             }
         }
 
-        #[cfg(any(target_os = "android", target_os = "ios"))]
+        #[cfg(target_os = "android")]
+        {
+            match AndroidServiceOpusDecoder::new(sample_rate, channels) {
+                Ok(service) => {
+                    return Ok(Self {
+                        backend: NativeOpusDecoderBackend::AndroidService(service),
+                    });
+                }
+                Err(err) => {
+                    bail!(
+                        "android isolated Opus decoder service unavailable; refusing in-process mobile Opus decode: {err}"
+                    );
+                }
+            }
+        }
+
+        #[cfg(target_os = "ios")]
         {
             bail!(
                 "refusing in-process mobile Opus decode until a platform worker/service boundary exists"
@@ -75,6 +95,10 @@ impl NativeOpusDecoder {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             NativeOpusDecoderBackend::Worker(worker) => {
                 worker.decode_float(data, output, decode_fec)
+            }
+            #[cfg(target_os = "android")]
+            NativeOpusDecoderBackend::AndroidService(service) => {
+                service.decode_float(data, output, decode_fec)
             }
             NativeOpusDecoderBackend::Unavailable => {
                 bail!(
@@ -251,6 +275,97 @@ impl WorkerOpusDecoder {
     }
 }
 
+#[cfg(target_os = "android")]
+struct AndroidServiceOpusDecoder {
+    sample_rate: u32,
+    channels: u32,
+    valid: bool,
+}
+
+#[cfg(target_os = "android")]
+impl AndroidServiceOpusDecoder {
+    fn new(sample_rate: u32, channels: u32) -> ResultType<Self> {
+        validate_format(sample_rate, channels)?;
+        if !Self::service_ready() {
+            bail!("android isolated Opus decoder service bind+self-test failed");
+        }
+        Ok(Self {
+            sample_rate,
+            channels,
+            valid: true,
+        })
+    }
+
+    fn service_ready() -> bool {
+        match scrap::android::call_application_context_native_opus_decoder_ready() {
+            Ok(true) => true,
+            Ok(false) => false,
+            Err(err) => {
+                log::warn!("android isolated Opus decoder service self-test failed: {err}");
+                false
+            }
+        }
+    }
+
+    fn decode_float(
+        &mut self,
+        data: &[u8],
+        output: &mut [f32],
+        decode_fec: bool,
+    ) -> ResultType<usize> {
+        if !self.valid {
+            bail!("android isolated Opus decoder service is no longer valid");
+        }
+        if data.len() > MAX_OPUS_PACKET_BYTES {
+            bail!(
+                "android isolated Opus decoder request too large: {} > {}",
+                data.len(),
+                MAX_OPUS_PACKET_BYTES
+            );
+        }
+        let response = match scrap::android::call_application_context_native_opus_decode(
+            data,
+            self.sample_rate,
+            self.channels,
+            decode_fec,
+        ) {
+            Ok(response) => response,
+            Err(err) => {
+                self.valid = false;
+                bail!("android isolated Opus decoder bridge failed: {err}");
+            }
+        };
+        let mut cursor = std::io::Cursor::new(response.as_slice());
+        let response = read_response(&mut cursor, self.sample_rate, self.channels)?;
+        if cursor.position() as usize != cursor.get_ref().len() {
+            self.valid = false;
+            bail!("android isolated Opus decoder returned trailing bytes");
+        }
+        match response.status {
+            STATUS_DECODED => {
+                if response.pcm.len() > output.len() {
+                    self.valid = false;
+                    bail!(
+                        "android isolated Opus decoder response does not fit output buffer: {} > {}",
+                        response.pcm.len(),
+                        output.len()
+                    );
+                }
+                output[..response.pcm.len()].copy_from_slice(&response.pcm);
+                Ok(response.samples_per_channel)
+            }
+            STATUS_ERROR => {
+                self.valid = false;
+                bail!("android isolated Opus decoder failed: {}", response.message)
+            }
+            status => {
+                self.valid = false;
+                bail!("android isolated Opus decoder returned unknown status {status}")
+            }
+        }
+    }
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn spawn_worker_io_thread(
     mut stdin: ChildStdin,
@@ -278,7 +393,6 @@ fn spawn_worker_io_thread(
     Ok(tx)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct WorkerRequest {
     sample_rate: u32,
     channels: u32,
@@ -286,7 +400,6 @@ struct WorkerRequest {
     payload: Vec<u8>,
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct WorkerResponse {
     status: u8,
     sample_rate: u32,
@@ -326,7 +439,6 @@ where
     }
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn decode_worker_request(
     request: &WorkerRequest,
     decoder: &mut Option<OpusDecoder>,
@@ -462,7 +574,6 @@ fn worker_round_trip<W: Write, R: Read>(
     read_response(reader, sample_rate, channels)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn read_response<R: Read>(
     reader: &mut R,
     sample_rate: u32,
@@ -552,7 +663,6 @@ fn validate_worker_response_shape(
     Ok(())
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn write_decoded<W: Write>(writer: &mut W, response: &WorkerResponse) -> ResultType<()> {
     write_response_header(
         writer,
@@ -567,7 +677,6 @@ fn write_decoded<W: Write>(writer: &mut W, response: &WorkerResponse) -> ResultT
     Ok(())
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn write_error<W: Write>(
     writer: &mut W,
     sample_rate: u32,
@@ -589,7 +698,6 @@ fn write_error<W: Write>(
     Ok(())
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn write_response_header<W: Write>(
     writer: &mut W,
     status: u8,
@@ -623,29 +731,24 @@ fn write_response_header<W: Write>(
     Ok(())
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn read_array<const N: usize, R: Read>(reader: &mut R) -> std::io::Result<[u8; N]> {
     let mut out = [0u8; N];
     reader.read_exact(&mut out)?;
     Ok(out)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn read_u8<R: Read>(reader: &mut R) -> std::io::Result<u8> {
     Ok(read_array::<1, _>(reader)?[0])
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn read_u32<R: Read>(reader: &mut R) -> std::io::Result<u32> {
     Ok(u32::from_le_bytes(read_array::<4, _>(reader)?))
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn write_u32<W: Write>(writer: &mut W, value: u32) -> std::io::Result<()> {
     writer.write_all(&value.to_le_bytes())
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn write_f32_le<W: Write>(writer: &mut W, values: &[f32]) -> std::io::Result<()> {
     for value in values {
         writer.write_all(&value.to_le_bytes())?;
@@ -653,7 +756,6 @@ fn write_f32_le<W: Write>(writer: &mut W, values: &[f32]) -> std::io::Result<()>
     Ok(())
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn decode_f32_le(bytes: &[u8]) -> ResultType<Vec<f32>> {
     if bytes.len() % std::mem::size_of::<f32>() != 0 {
         bail!("native Opus worker returned a partial f32");
@@ -688,6 +790,130 @@ fn max_pcm_float_count(sample_rate: u32, channels: u32) -> ResultType<usize> {
     (sample_rate as usize)
         .checked_mul(channels as usize)
         .ok_or_else(|| anyhow!("native Opus PCM buffer size overflow"))
+}
+
+#[cfg(target_os = "android")]
+struct AndroidServiceOpusDecoderState {
+    decoder: Option<OpusDecoder>,
+    format: (u32, u32),
+}
+
+#[cfg(target_os = "android")]
+thread_local! {
+    static ANDROID_SERVICE_OPUS_DECODER: std::cell::RefCell<AndroidServiceOpusDecoderState> =
+        std::cell::RefCell::new(AndroidServiceOpusDecoderState {
+            decoder: None,
+            format: (0, 0),
+        });
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub unsafe extern "system" fn Java_com_carriez_flutter_1hbb_NativeAudioDecoderService_nativeSelfTest(
+    _env: jni::JNIEnv,
+    _this: jni::objects::JObject,
+) -> jni::sys::jboolean {
+    let ok = validate_format(48_000, 2).is_ok()
+        && channels_to_opus(1).is_ok()
+        && channels_to_opus(2).is_ok()
+        && max_pcm_float_count(48_000, 2).ok() == Some(96_000)
+        && MAX_OPUS_PACKET_BYTES == 4 * 1024;
+    if ok {
+        jni::sys::JNI_TRUE
+    } else {
+        jni::sys::JNI_FALSE
+    }
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub unsafe extern "system" fn Java_com_carriez_flutter_1hbb_NativeAudioDecoderService_nativeDecode(
+    env: jni::JNIEnv,
+    _this: jni::objects::JObject,
+    sample_rate: jni::sys::jint,
+    channels: jni::sys::jint,
+    decode_fec: jni::sys::jboolean,
+    payload: jni::objects::JByteArray,
+) -> jni::sys::jbyteArray {
+    let env = env;
+    let result = (|| -> ResultType<Vec<u8>> {
+        let sample_rate =
+            u32::try_from(sample_rate).map_err(|_| anyhow!("bad android Opus sample rate"))?;
+        let channels =
+            u32::try_from(channels).map_err(|_| anyhow!("bad android Opus channel count"))?;
+        let payload = env
+            .convert_byte_array(payload)
+            .map_err(|e| anyhow!("failed to copy android Opus payload from JNI: {e}"))?;
+        if payload.len() > MAX_OPUS_PACKET_BYTES {
+            bail!(
+                "android isolated Opus decoder request too large: {} > {}",
+                payload.len(),
+                MAX_OPUS_PACKET_BYTES
+            );
+        }
+        android_service_opus_decode_response_bytes(
+            sample_rate,
+            channels,
+            decode_fec != jni::sys::JNI_FALSE,
+            &payload,
+        )
+    })();
+
+    let response = match result {
+        Ok(response) => response,
+        Err(err) => {
+            let sample_rate = u32::try_from(sample_rate).unwrap_or(0);
+            let channels = u32::try_from(channels).unwrap_or(0);
+            let mut response = Vec::new();
+            if write_error(&mut response, sample_rate, channels, &err.to_string()).is_ok() {
+                response
+            } else {
+                Vec::new()
+            }
+        }
+    };
+    match env.byte_array_from_slice(&response) {
+        Ok(array) => array.into_raw(),
+        Err(err) => {
+            log::error!("failed to return android isolated Opus decode response: {err}");
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[cfg(target_os = "android")]
+fn android_service_opus_decode_response_bytes(
+    sample_rate: u32,
+    channels: u32,
+    decode_fec: bool,
+    payload: &[u8],
+) -> ResultType<Vec<u8>> {
+    let mut response = Vec::new();
+    match android_service_opus_decode_payload(sample_rate, channels, decode_fec, payload) {
+        Ok(decoded) => write_decoded(&mut response, &decoded)?,
+        Err(err) => write_error(&mut response, sample_rate, channels, &err.to_string())?,
+    }
+    Ok(response)
+}
+
+#[cfg(target_os = "android")]
+fn android_service_opus_decode_payload(
+    sample_rate: u32,
+    channels: u32,
+    decode_fec: bool,
+    payload: &[u8],
+) -> ResultType<WorkerResponse> {
+    let request = WorkerRequest {
+        sample_rate,
+        channels,
+        decode_fec,
+        payload: payload.to_vec(),
+    };
+    ANDROID_SERVICE_OPUS_DECODER.with(|state| -> ResultType<WorkerResponse> {
+        let mut state = state.borrow_mut();
+        let AndroidServiceOpusDecoderState { decoder, format } = &mut *state;
+        decode_worker_request(&request, decoder, format)
+    })
 }
 
 #[cfg(test)]

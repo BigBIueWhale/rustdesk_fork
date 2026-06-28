@@ -36,4 +36,25 @@ class MainApplication : Application() {
             align
         )
     }
+
+    @Keep
+    fun rustIsNativeOpusDecoderReady(): Boolean {
+        return NativeAudioDecoderClient.isReady(applicationContext)
+    }
+
+    @Keep
+    fun rustDecodeNativeOpus(
+        payload: ByteArray,
+        sampleRate: Int,
+        channels: Int,
+        decodeFec: Boolean
+    ): ByteArray? {
+        return NativeAudioDecoderClient.decode(
+            applicationContext,
+            payload,
+            sampleRate,
+            channels,
+            decodeFec
+        )
+    }
 }

@@ -158,13 +158,18 @@ kills the child if a decode round-trip exceeds the fixed timeout. The zstd
 parent length-bounds compressed peer input, routes file-block, clipboard,
 cursor, and terminal peer decompression through the child on desktop, reports
 invalid or over-cap worker decode as failure, and refuses a silent in-process
-desktop fallback. On Android/iOS, video decode advertising now returns no
-supported decoders, mobile video decoder construction returns an unavailable
-backend, mobile Opus decoder construction fails closed, and peer zstd
-decompression fails closed instead of invoking native zstd in-process until a
-platform worker/service boundary exists. Mobile peer clipboard SET and
-MultiClipboards messages likewise fail closed instead of entering the Android/iOS
-platform clipboard path in-process. Local persisted config decompression stays
+desktop fallback. On Android, VP8/VP9/AV1 video decode and Opus packet decode
+now advertise/construct only after binding to non-exported
+`android:isolatedProcess="true"` services whose native self-tests pass; hostile
+peer media bytes cross capped `SharedMemory` plus `Messenger` IPC and are
+parent-validated through the same worker response protocols before UI/audio
+handoff. Android releases without `SharedMemory` fail closed. iOS video and
+Opus decode still fail closed until an equivalent platform service exists, and
+peer zstd decompression still fails closed on Android/iOS instead of invoking
+native zstd in-process until a platform worker/service boundary exists. Mobile
+peer clipboard SET and `MultiClipboards` messages likewise fail closed instead
+of entering the Android/iOS platform clipboard path in-process. Local persisted
+config decompression stays
 in-process by design. The clipboard parent now sanitizes peer
 `MultiClipboards` before the
 handoff, rejects more than 16 items, caps aggregate clipboard content at 64 MiB,
@@ -579,8 +584,8 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   a Cargo/Dart-advisory coverage closure only; it is not a "no current CVEs"
   assertion and does not close the Appendix C #2b decoder-sandbox residual.
 - **Desktop native video, Opus, peer zstd, and normal clipboard SET cross worker
-  processes with bounded parent I/O threads, Linux child confinement, Windows Job
-  Object child limits, and Linux x86_64/aarch64 post-exec syscall filtering.**
+  processes, while Android video/Opus cross isolated services before native
+  parser entry.**
   `src/native_video_worker.rs` adds the hidden same-artifact
   `--native-video-worker` role, entered from `src/core_main.rs`, and
   `VideoHandler` now owns `NativeVideoDecoder` instead of
@@ -603,8 +608,14 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   bounded responses, one serialized in-flight decode, runtime isolated-process
   readback where Android exposes it, explicit native library/context
   initialization in the isolated process, and parent-side worker-protocol
-  response validation before UI handoff. Android API levels without
-  `SharedMemory` fail closed/no-advertise. iOS video decode and mobile Opus
+  response validation before UI handoff. `NativeOpusDecoder` now does the same
+  service-boundary check against `NativeAudioDecoderService` on Android; Opus
+  packets cross capped `SharedMemory`/`Messenger` IPC with a 4 KiB request cap,
+  512 KiB response cap, one serialized in-flight decode, runtime
+  isolated-process readback where Android exposes it, explicit native
+  library/context initialization in the isolated process, and parent-side worker
+  response validation before audio handoff. Android API levels without
+  `SharedMemory` fail closed/no-advertise or no-decode. iOS video and Opus
   decode still fail closed until an equivalent platform worker/service boundary
   exists rather than parsing hostile-peer media in-process.
   `libs/hbb_common/src/compress.rs` adds the analogous hidden
@@ -621,11 +632,11 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   platform worker/service boundary exists. Local config decompression still uses
   `decompress` directly because it is persisted local state, not a peer parser
   path. `scripts/verify.sh` gates all three worker args, wrappers/core entries,
-  no-fallback strings, the Android isolated video service manifest/JNI/Kotlin
-  bridge/SharedMemory/Messenger/self-test/decode-serialization markers, the iOS
-  video and mobile Opus/zstd no-in-process fallbacks, explicit peer-zstd failure
-  semantics, timeout/kill markers, peer zstd call sites, and absence of direct
-  native decoder ownership in `src/client.rs`.
+  no-fallback strings, the Android isolated video and Opus service
+  manifest/JNI/Kotlin bridge/SharedMemory/Messenger/self-test/decode-serialization
+  markers, the iOS video/Opus and mobile zstd no-in-process fallbacks, explicit
+  peer-zstd failure semantics, timeout/kill markers, peer zstd call sites, and
+  absence of direct native decoder ownership in `src/client.rs`.
   `src/native_clipboard_worker.rs` adds the hidden same-artifact
   `--native-clipboard-worker` role. The desktop parent now sanitizes inbound
   `MultiClipboards`, rejects more than 16 items, caps aggregate content at
@@ -1502,6 +1513,35 @@ ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYST
 # GREEN: offline Docker build; cargo-ndk aarch64 Rust + Gradle/Kotlin release APK; apksigner one signer with v1/v2/v3 true; dist/rustdesk-arm64.apk sha256 4f311bcad27376d38869a3416702f2aa6ef787a42ba8b039948bb9d7ba6c2134
 ```
 
+- **Android native-Opus decode now crosses an isolated service boundary before
+  hostile peer packets reach libopus.** Android audio no longer has to choose
+  between in-process hostile-peer Opus parsing and no audio decode. The viewer
+  constructs `NativeOpusDecoder` only after `NativeAudioDecoderClient.isReady`
+  binds to `NativeAudioDecoderService` and the service self-test succeeds. The
+  service is non-exported and declared with `android:isolatedProcess="true"`;
+  requests carry capped Opus packets through input `SharedMemory`, responses
+  carry the existing bounded worker protocol through output `SharedMemory`, and
+  the client serializes decode requests so Binder cannot accumulate an unbounded
+  audio decode queue. The isolated process initializes `librustdesk` explicitly,
+  verifies `Process.isIsolated()` where Android exposes that readback, and keeps
+  the stateful `magnum_opus::Decoder` inside the isolated process. The parent
+  validates worker response status, sample rate, channel count, sample count,
+  PCM length, and trailing bytes before audio handoff, then invalidates on
+  semantic contradictions. Android releases before `SharedMemory` support fail
+  closed, and iOS Opus still fails closed until an equivalent platform service
+  exists. Focused and artifact evidence:
+
+```text
+docker run --rm ... rustfmt --edition 2021 --check src/native_audio_worker.rs libs/scrap/src/android/ffi.rs
+# GREEN
+docker run --rm ... rd-devcheck cargo test --lib --features linux-pkg-config native_audio_worker::tests --color never
+# GREEN: 6 passed; 0 failed
+bash scripts/verify.sh
+# GREEN: VERIFY: all gates green, incl. Android isolatedProcess SharedMemory/Messenger Opus service markers
+ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYSTORE_PASS_FILE=.harness-state/android-keystore/pass bash scripts/build-android.sh
+# GREEN: offline Docker build; cargo-ndk aarch64 Rust + Gradle/Kotlin release APK; apksigner one signer with v1/v2/v3 true; dist/rustdesk-arm64.apk sha256 ef7fa44cb54633f52cdc49764134199c325b18695e0cd26ffb446e92633c6bad
+```
+
 - **Native worker response protocols now reject impossible status/data shapes
   before parent consumption.** The lower-trust same-artifact workers no longer
   get a blind trust handoff back into the parent: desktop audio rejects decoded
@@ -1590,13 +1630,15 @@ bash -n scripts/verify.sh     # GREEN
   `SeChangeNotifyPrivilege`, reads that token state back, and applies process
   mitigations for dynamic code, extension points, strict handle checks,
   child-process creation refusal, and remote/low-integrity image loads. Android
-  video decode now has a compiled isolated-service path for VP8/VP9/AV1, but
-  mobile Opus, mobile peer clipboard SET, and mobile peer zstd still fail closed
-  until platform workers/services exist instead of parsing hostile-peer bytes
-  in-process. That is the right interim safety posture, but it is not final
-  mobile client conformance: Android still needs device-level runtime smoke for
-  the isolated video service and platform-worker/service support where required
-  for the remaining mobile parser features, and iOS still needs a product-scope
+  video decode now has a compiled isolated-service path for VP8/VP9/AV1, and
+  Android Opus decode now has a compiled isolated-service path for hostile-peer
+  audio packets, but mobile peer clipboard SET and mobile peer zstd still fail
+  closed until platform workers/services exist instead of parsing hostile-peer
+  bytes in-process. That is the right interim safety posture, but it is not
+  final mobile client conformance: Android still needs device-level runtime
+  smoke for the isolated video and Opus services and platform-worker/service
+  support where required for the remaining mobile parser features, and iOS still
+  needs a product-scope
   decision for the no-child-process model, Windows low-privilege/AppContainer or syscall-allowlist
   hardening beyond Job Object/token-privilege/process-mitigation guards, a broader
   macOS/desktop-Unix syscall or Seatbelt allowlist beyond NoNetwork, equivalent seccomp support before enabling
@@ -1647,14 +1689,14 @@ restricted-token, or syscall allowlist sandbox. Windows CLIPRDR now has app-leve
 and Rust<->C bridge length
 caps plus null/bounded-read fail-closed guards, pending request/response
 accounting, and a same-artifact worker boundary; Windows remote-printer XPS
-handoff now has a bounded same-artifact worker boundary. Android video decode now
-has a compiled isolated-service path for VP8/VP9/AV1, but Android artifact
-availability must not be treated as end-to-end feature parity until that service
-is smoked on device. Mobile Opus decode, mobile peer clipboard SET, and mobile
-peer zstd still fail closed rather than using in-process native parsers; peer
-zstd reports refusal as an explicit peer decompression error rather than as
-empty payload data. Those remaining mobile closures are secure but functionally
-incomplete until platform worker/service support is added where required.
+handoff now has a bounded same-artifact worker boundary. Android video and Opus
+decode now have compiled isolated-service paths, but Android artifact
+availability must not be treated as end-to-end feature parity until those
+services are smoked on device. Mobile peer clipboard SET and mobile peer zstd
+still fail closed rather than using in-process native parsers; peer zstd reports
+refusal as an explicit peer decompression error rather than as empty payload
+data. Those remaining mobile closures are secure but functionally incomplete
+until platform worker/service support is added where required.
 Unix/macOS file-copy clipboard now has descriptor-count caps, a same-artifact
 worker boundary for peer FILEDESCRIPTOR PDU parsing, per-connection file-content
 request/byte accounting, and a

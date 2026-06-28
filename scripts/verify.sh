@@ -1786,6 +1786,16 @@ ra6_clean '"(request_elevation_tip|still_click_uac_tip|wait_accept_uac_tip|eleva
 # keys (e.g. rel-mouse-exit-{}-tip, printer-{}-*) and the file-manager keys were deliberately EXCLUDED —
 # they need per-key vetting against the translate("…{}…").replace pattern before any removal.
 ra6_clean '"(wayland-keyboard-input-disabled-tip|wayland-keyboard-input-consent-tip|wayland-keyboard-input-applies-to-tip|wayland-soft-keyboard-input-label|wayland-keyboard-input-reset-choice-tip|remember-wayland-keyboard-choice-tip|doc_fix_wayland|One-time Password|enable-bot-desc|cancel-bot-confirm-tip|enable-trusted-devices-tip|Socks5 Proxy|Socks5/Http\(s\) Proxy|default_proxy_tip|push_ab_failed_tip|pull_group_failed_tip|ab_web_console_tip|OS Password|OS Account|os_account_desk_tip|login_linux_tip)"' '§19 dead excised-feature lang keys (R-X12/R-X7/R-G4/R-S18 + proxy)' || rc=1
+# §19 systematic sweep, batch 2 — the remaining no-caller, NON-{}-template keys from the en.rs scan.
+# UI strings for excised/simplified surfaces: network-settings / connection-status editor (R-G4 + R-G3
+# badge-collapse: Direct/Secure/Insecure Connection, Direct IP Access, Local Address, Change Local Port,
+# Unlock Network Settings), server/HTTP error tips (sovereign, no api-server), elevation residuals (R-X9:
+# Elevation Error, Request Elevation), floating-window (R-X6), terminal-admin, the TLS-fallback tip, and
+# dead file-manager variants (the manager uses translate('Delete'), never 'Confirm Delete'/'Grid View'/
+# 'List View'/'Empty Directory'/'Two-Finger Tap'). All verified no-caller (never looked up) and free of
+# non-{} dynamic concat. The 5 {}-template keys (rel-mouse-exit-{}-tip, printer-{}-*, {}-to-update-tip)
+# are LIVE via translate("…{…}…") template-matching and are deliberately KEPT, not listed here.
+ra6_clean '"(id_change_tip|invalid_http|server_not_support|Confirm Delete|Empty Directory|Local Address|Change Local Port|Auto Login|Wrong credentials|Two-Finger Tap|doc_mac_permission|Direct Connection|Secure Connection|Insecure Connection|Unlock Network Settings|Direct IP Access|Elevation Error|Request Elevation|Switch Sides|Empty Username|remember_account_tip|clipboard_wait_response_timeout_tip|logout_tip|Refresh Password|Grid View|List View|floating_window_tip|terminal-admin-login-tip|allow-insecure-tls-fallback-tip|server-oss-not-support-tip|note-at-conn-end-tip|server_requires_deployment_tip)"' '§19 dead no-caller lang keys batch 2 (network/server/elevation/file-mgr-variant)' || rc=1
 # §19 dead lang keys (post-sciter-excision sweep): the rendezvous/relay/lan/WS UI that referenced these
 # was excised from BOTH flutter AND sciter — empty_lan_tip (R-X5 lan tab), connecting_status/
 # not_ready_status (R-G2/R-G8 status), the ID/Relay Server + ID Server + Relay Server + Relay Connection

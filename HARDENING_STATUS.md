@@ -32,8 +32,9 @@ admission,
 child-confinement, Windows Job Object child lifetime/limit/UI-restriction guards,
 token-privilege disable/readback, and process mitigations including no
 child-process creation, non-mobile desktop-Unix worker RLIMIT/fd-cleanup
-confinement, macOS worker NoNetwork Seatbelt confinement with AF_INET denial
-probe, Linux x86_64/aarch64 post-exec syscall-filter/fd-cleanup/readback
+confinement, macOS worker custom Seatbelt confinement denying network and
+process exec with AF_INET/process-exec denial probes, Linux x86_64/aarch64
+post-exec syscall-filter/fd-cleanup/readback
 follow-ups, Windows worker Job Object/token-privilege/process-mitigation
 readbacks, and unsupported
 Linux worker-architecture fail-closed behavior for those slices, desktop
@@ -255,9 +256,9 @@ would have failed against the earlier bounded `3..WORKER_NOFILE_LIMIT` loop. On
 non-Linux desktop Unix excluding Android/iOS, the parent
 pre-exec hook also applies the same file-descriptor, address-space, heap/data,
 stack, memlock, file-size, and core-dump resource ceilings before the worker
-role starts. On macOS, the worker entry hook additionally applies the named
-Seatbelt `kSBXProfileNoNetwork` profile before reading hostile-peer parser
-requests. On Linux
+role starts. On macOS, the worker entry hook additionally applies an inline
+Seatbelt profile that denies `network*` and `process-exec*` before reading
+hostile-peer parser requests. On Linux
 x86_64/aarch64, the entry hook additionally installs a seccomp-BPF deny filter
 before reading hostile-peer requests. The filter blocks direct TCP/UDP-capable
 socket families, listener/accept syscalls, process exec/fork/vfork/process-like
@@ -304,9 +305,9 @@ rejection, 120 second timeout/kill/restart semantics, and native-worker sandbox
 / Windows Job Object confinement. This is not yet the
 full sandbox: Android isolated-service runtime smoke and any remaining mobile
 platform-worker support before additional native parser features are enabled,
-iOS's no-child-process model, a broader
-macOS/desktop-Unix syscall or Seatbelt allowlist beyond NoNetwork, equivalent
-seccomp support before enabling parser workers on Linux architectures outside
+iOS's no-child-process model, a broader macOS/desktop-Unix filesystem/Mach/
+syscall allowlist beyond the current network/process-exec Seatbelt denial,
+equivalent seccomp support before enabling parser workers on Linux architectures outside
 x86_64/aarch64, and equivalent timeout/kill/restart semantics for any remaining
 native parser surfaces remain tracked residuals.
 
@@ -610,14 +611,16 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   enumeration. This is a resource/fd confinement slice only; it does not claim a
   macOS seatbelt profile, a BSD pledge/capsicum equivalent, or a syscall
   allowlist.
-- **macOS native worker children now apply the Seatbelt NoNetwork profile before parsing peer input.**
+- **macOS native worker children now apply a custom Seatbelt network/process-exec denial before parsing peer input.**
   The macOS worker entry path closes inherited fds and then calls
-  `sandbox_init(kSBXProfileNoNetwork, SANDBOX_NAMED, ...)` before the hidden
-  worker role reads hostile-peer parser requests. `scripts/verify.sh` and
-  `scripts/apple-conform-check.sh` now gate the macOS Seatbelt markers. This
-  is a no-network Seatbelt slice for the worker roles; it does not claim a
-  full custom macOS allowlist, a BSD pledge/capsicum equivalent, or an iOS
-  no-child-process model.
+  `sandbox_init(MACOS_WORKER_SANDBOX_PROFILE, 0, ...)` with an inline
+  default-allow Seatbelt profile that denies `network*` and `process-exec*`
+  before the hidden worker role reads hostile-peer parser requests.
+  `scripts/verify.sh` and `scripts/apple-conform-check.sh` now gate the macOS
+  Seatbelt markers and the AF_INET/process-exec denial probes. This is a
+  network/process-exec Seatbelt slice for the worker roles; it does not claim
+  a full macOS filesystem/Mach/syscall allowlist, a BSD pledge/capsicum
+  equivalent, or an iOS no-child-process model.
 - **Apple SDK-free source-conformance now covers the documented source gate shape.**
   `scripts/apple-conform-check.sh` caught a real Rust 1.81 Apple-target
   coherence break in the Unix file-transfer receive path: `openat(..., mode)` was
@@ -1011,14 +1014,15 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   `TokenPrivileges` so only `SeChangeNotifyPrivilege` may remain enabled, and
   reads back `GetProcessMitigationPolicy` for dynamic-code, extension-point,
   strict-handle, child-process, and image-load mitigations.
-  macOS worker entry now probes an AF_INET stream socket immediately after
-  `kSBXProfileNoNetwork` is installed and fails closed if the socket still
-  succeeds or fails for a non-permission reason. `scripts/verify.sh` gates the
-  Linux readback/probe tests, Windows Job Object/token/process readback APIs, and
-  macOS AF_INET probe markers. This is stronger evidence for the existing
+  macOS worker entry now probes an AF_INET stream socket and process exec
+  immediately after the custom Seatbelt profile is installed and fails closed if
+  either denied operation still succeeds or fails for a non-permission reason.
+  `scripts/verify.sh` gates the Linux readback/probe tests, Windows Job
+  Object/token/process readback APIs, and macOS AF_INET/process-exec probe
+  markers. This is stronger evidence for the existing
   desktop worker boundary,
   not a claim of Windows AppContainer, Windows restricted-token/syscall
-  allowlist, or a custom macOS Seatbelt allowlist.
+  allowlist, or a full macOS filesystem/Mach/syscall Seatbelt allowlist.
 
 ## Artifact State
 
@@ -1300,7 +1304,7 @@ docker run ... rustfmt --edition 2021 --check libs/hbb_common/src/native_worker_
 docker run ... bash -n scripts/verify.sh  # GREEN in a disposable bash:5.2 container
 docker run ... cargo test -p hbb_common --lib native_worker_sandbox::tests --color never  # GREEN: 12 tests passed, incl. Linux no-new-privs/dumpable/seccomp readback and process-spawn denial; only the pre-existing password_security.rs redundant-import warning remains
 docker run ... cargo check /tmp/rd-win-sandbox-check --target x86_64-pc-windows-msvc  # GREEN with RUSTFLAGS=-Dunused-imports: cfg(windows) native_worker_sandbox.rs Job Object readback incl. die-on-unhandled-exception + process-mitigation readback branch typechecked without the full native dependency graph
-bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl. Linux readback/process-spawn denial, Windows Job Object/process-mitigation readbacks, and macOS permission-checked AF_INET NoNetwork probe source gates
+bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl. Linux readback/process-spawn denial, Windows Job Object/process-mitigation readbacks, and macOS permission-checked AF_INET/process-exec Seatbelt probe source gates
 git diff --check                          # GREEN before this ledger update
 ```
 
@@ -1359,7 +1363,7 @@ the isolated-service sanitizer evidence below. iOS peer clipboard SET remains
 fail-closed.
 
 After the desktop-Unix Android/iOS cfg correction, macOS worker Seatbelt
-NoNetwork entry hook, and unsupported-Linux-architecture fail-closed worker
+network/process-exec denial entry hook, and unsupported-Linux-architecture fail-closed worker
 entry fallback, these focused and full gates have been re-run successfully:
 
 ```text
@@ -1368,8 +1372,8 @@ docker run ... bash -n scripts/verify.sh scripts/apple-conform-check.sh  # GREEN
 docker run ... cargo test -p hbb_common --lib native_worker_sandbox::tests --color never  # GREEN: 8 Linux worker sandbox tests incl. high-fd cleanup and seccomp runtime probes
 docker run ... cargo check temp include-harness --target x86_64-apple-darwin/aarch64-linux-android/x86_64-pc-windows-msvc  # GREEN: macOS/Android/Windows cfgs typecheck without the full native dependency graph
 docker run ... cargo check temp include-harness --target armv7-unknown-linux-gnueabihf  # GREEN: unsupported Linux worker-arch fail-closed branch typechecks
-bash scripts/apple-conform-check.sh       # GREEN: Apple source gate passes, incl. macOS worker Seatbelt NoNetwork assertion and SDK-free Rust-only boundary
-bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl. unsupported Linux worker-arch fail-closed, macOS Seatbelt NoNetwork, and desktop-Unix excluding Android/iOS platform hook gates
+bash scripts/apple-conform-check.sh       # GREEN: Apple source gate passes, incl. macOS worker Seatbelt network/process-exec denial assertion and SDK-free Rust-only boundary
+bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl. unsupported Linux worker-arch fail-closed, macOS Seatbelt network/process-exec denial, and desktop-Unix excluding Android/iOS platform hook gates
 docker run ... git diff --check           # GREEN after this ledger update
 ```
 
@@ -1878,8 +1882,9 @@ bash -n scripts/verify.sh     # GREEN
   product-scope decision for the no-child-process model, Windows
   low-privilege/AppContainer or syscall-allowlist hardening beyond Job
   Object/token-privilege/process-mitigation guards, a broader macOS/desktop-Unix
-  syscall or Seatbelt allowlist beyond NoNetwork, equivalent seccomp support
-  before enabling parser workers on Linux architectures outside x86_64/aarch64
+  filesystem/Mach/syscall allowlist beyond the current network/process-exec
+  Seatbelt denial, equivalent seccomp support before enabling parser workers on
+  Linux architectures outside x86_64/aarch64
   and/or a future true allowlist sandbox, and timeout/kill/restart semantics for
   the remaining parser surfaces.
   A 2026-06-28 read-only audit also isolated a narrower desktop residual after
@@ -1939,9 +1944,10 @@ still enter Flutter's ordinary
 `decodeImageFromPixels`/`CustomPaint` UI path in the main viewer process; that
 is not a remaining compressed-parser bypass and is tracked separately from the
 larger native decoder/parser sandbox work above.
-macOS worker children now apply the Seatbelt NoNetwork profile at worker entry,
-but that is not a full custom macOS allowlist or a BSD pledge/capsicum
-equivalent. Windows same-artifact worker children, including the CLIPRDR and
+macOS worker children now apply a custom Seatbelt profile denying `network*` and
+`process-exec*` at worker entry, but that is not a full macOS filesystem/Mach/
+syscall allowlist or a BSD pledge/capsicum equivalent. Windows same-artifact
+worker children, including the CLIPRDR and
 remote-printer workers, now get hidden-window Job Object active-process,
 kill-on-job-close, process-memory, and UI-restriction limits with a retained
 guard, plus entry-time process mitigations for dynamic code, extension points,

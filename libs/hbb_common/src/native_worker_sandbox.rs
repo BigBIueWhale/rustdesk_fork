@@ -176,7 +176,7 @@ fn enter_worker_process_platform() -> std::io::Result<()> {
 #[cfg(target_os = "macos")]
 fn enter_worker_process_platform() -> std::io::Result<()> {
     close_inherited_worker_fds()?;
-    apply_macos_worker_no_network_sandbox()
+    apply_macos_worker_restricted_sandbox()
 }
 
 #[cfg(target_os = "windows")]
@@ -801,15 +801,21 @@ fn apply_unix_worker_resource_sandbox() -> std::io::Result<()> {
 }
 
 #[cfg(target_os = "macos")]
-const MACOS_WORKER_SANDBOX_NAMED: u64 = 0x0001;
+const MACOS_WORKER_SANDBOX_PROFILE: &str = r#"
+(version 1)
+(allow default)
+(deny network*)
+(deny process-exec*)
+"#;
 
 #[cfg(target_os = "macos")]
-fn apply_macos_worker_no_network_sandbox() -> std::io::Result<()> {
-    use std::{ffi::CStr, ptr};
+fn apply_macos_worker_restricted_sandbox() -> std::io::Result<()> {
+    use std::{
+        ffi::{CStr, CString},
+        ptr,
+    };
 
     extern "C" {
-        static kSBXProfileNoNetwork: crate::libc::c_char;
-
         fn sandbox_init(
             profile: *const crate::libc::c_char,
             flags: u64,
@@ -819,16 +825,16 @@ fn apply_macos_worker_no_network_sandbox() -> std::io::Result<()> {
         fn sandbox_free_error(errorbuf: *mut crate::libc::c_char);
     }
 
-    let mut errorbuf: *mut crate::libc::c_char = ptr::null_mut();
-    let rc = unsafe {
-        sandbox_init(
-            &kSBXProfileNoNetwork as *const crate::libc::c_char,
-            MACOS_WORKER_SANDBOX_NAMED,
-            &mut errorbuf,
+    let profile = CString::new(MACOS_WORKER_SANDBOX_PROFILE).map_err(|err| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("invalid macOS worker sandbox profile: {err}"),
         )
-    };
+    })?;
+    let mut errorbuf: *mut crate::libc::c_char = ptr::null_mut();
+    let rc = unsafe { sandbox_init(profile.as_ptr(), 0, &mut errorbuf) };
     if rc == 0 {
-        return verify_macos_worker_no_network_sandbox();
+        return verify_macos_worker_restricted_sandbox();
     }
 
     let os_error = std::io::Error::last_os_error();
@@ -845,12 +851,18 @@ fn apply_macos_worker_no_network_sandbox() -> std::io::Result<()> {
     };
     Err(std::io::Error::new(
         os_error.kind(),
-        format!("failed to apply macOS NoNetwork worker sandbox: {detail}"),
+        format!("failed to apply macOS restricted worker sandbox: {detail}"),
     ))
 }
 
 #[cfg(target_os = "macos")]
-fn verify_macos_worker_no_network_sandbox() -> std::io::Result<()> {
+fn verify_macos_worker_restricted_sandbox() -> std::io::Result<()> {
+    verify_macos_worker_network_denied()?;
+    verify_macos_worker_process_exec_denied()
+}
+
+#[cfg(target_os = "macos")]
+fn verify_macos_worker_network_denied() -> std::io::Result<()> {
     let fd = unsafe { crate::libc::socket(crate::libc::AF_INET, crate::libc::SOCK_STREAM, 0) };
     if fd >= 0 {
         unsafe {
@@ -858,7 +870,7 @@ fn verify_macos_worker_no_network_sandbox() -> std::io::Result<()> {
         }
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
-            "macOS worker NoNetwork sandbox still permits AF_INET socket",
+            "macOS worker restricted sandbox still permits AF_INET socket",
         ));
     }
     let err = std::io::Error::last_os_error();
@@ -866,7 +878,34 @@ fn verify_macos_worker_no_network_sandbox() -> std::io::Result<()> {
         Some(code) if code == crate::libc::EPERM || code == crate::libc::EACCES => Ok(()),
         _ => Err(std::io::Error::new(
             err.kind(),
-            format!("macOS worker NoNetwork socket probe failed for an unexpected reason: {err}"),
+            format!("macOS worker restricted socket probe failed for an unexpected reason: {err}"),
+        )),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn verify_macos_worker_process_exec_denied() -> std::io::Result<()> {
+    match Command::new("/usr/bin/true").spawn() {
+        Ok(mut child) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "macOS worker restricted sandbox still permits process exec",
+            ))
+        }
+        Err(err)
+            if err.kind() == std::io::ErrorKind::PermissionDenied
+                || matches!(
+                    err.raw_os_error(),
+                    Some(code) if code == crate::libc::EPERM || code == crate::libc::EACCES
+                ) =>
+        {
+            Ok(())
+        }
+        Err(err) => Err(std::io::Error::new(
+            err.kind(),
+            format!("macOS worker process-exec probe failed for an unexpected reason: {err}"),
         )),
     }
 }

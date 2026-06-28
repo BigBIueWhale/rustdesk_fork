@@ -3540,20 +3540,32 @@ grep -qF 'linux_worker_entry_reports_no_new_privs_non_dumpable_and_seccomp' libs
   r_native_worker_platform="$r_native_worker_platform linux-entry-readback-test"
 grep -qF 'linux_worker_seccomp_blocks_process_spawn_at_runtime' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform linux-process-spawn-test"
-grep -qF 'apply_macos_worker_no_network_sandbox()' libs/hbb_common/src/native_worker_sandbox.rs ||
+grep -qF 'apply_macos_worker_restricted_sandbox()' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-seatbelt-entry-call"
-grep -qF 'kSBXProfileNoNetwork' libs/hbb_common/src/native_worker_sandbox.rs ||
-  r_native_worker_platform="$r_native_worker_platform macos-no-network-profile"
+grep -qF 'MACOS_WORKER_SANDBOX_PROFILE' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-restricted-profile"
+grep -qF '(deny network*)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-network-deny-profile"
+grep -qF '(deny process-exec*)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-process-exec-deny-profile"
 grep -qF 'sandbox_init(' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-sandbox-init"
 grep -qF 'sandbox_free_error' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-sandbox-error-cleanup"
-grep -qF 'verify_macos_worker_no_network_sandbox()' libs/hbb_common/src/native_worker_sandbox.rs ||
-  r_native_worker_platform="$r_native_worker_platform macos-no-network-runtime-probe-call"
-grep -qF 'macOS worker NoNetwork sandbox still permits AF_INET socket' libs/hbb_common/src/native_worker_sandbox.rs ||
+grep -qF 'verify_macos_worker_restricted_sandbox()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-restricted-runtime-probe-call"
+grep -qF 'verify_macos_worker_network_denied()?' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-network-runtime-probe-call"
+grep -qF 'verify_macos_worker_process_exec_denied()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-process-exec-runtime-probe-call"
+grep -qF 'macOS worker restricted sandbox still permits AF_INET socket' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-af-inet-denial-probe"
-grep -qF 'macOS worker NoNetwork socket probe failed for an unexpected reason' libs/hbb_common/src/native_worker_sandbox.rs ||
+grep -qF 'macOS worker restricted socket probe failed for an unexpected reason' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-af-inet-denial-error-check"
+grep -qF 'macOS worker restricted sandbox still permits process exec' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-process-exec-denial-probe"
+grep -qF 'macOS worker process-exec probe failed for an unexpected reason' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-process-exec-denial-error-check"
 grep -qF 'crate::libc::EPERM || code == crate::libc::EACCES' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-af-inet-denial-errno-check"
 grep -qF 'SOCK_STREAM' libs/hbb_common/src/native_worker_sandbox.rs ||
@@ -3659,7 +3671,7 @@ grep -qF 'failed to constrain file-content worker' libs/clipboard/src/platform/u
 if [ -n "$r_native_worker_platform" ]; then
   echo "  FAIL Appendix C #2b: native worker platform confinement hooks regressed:$r_native_worker_platform"; rc=1
 else
-  echo "  ok  Appendix C #2b native worker parents fail closed on post-spawn confinement failure; Windows workers keep read-back Job Object process-count/memory/kill-on-close/die-on-unhandled-exception/UI-restriction guards, read-back token privilege disablement preserving only traverse notification, and read-back dynamic-code/extension-point/strict-handle/no-child-process/image-load mitigations; Linux worker entry read-back confirms no-new-privs/non-dumpable/seccomp and process-spawn denial; macOS worker entry applies Seatbelt NoNetwork and probes permission-denied AF_INET denial; desktop Unix workers excluding Android/iOS get RLIMIT/fd cleanup"
+  echo "  ok  Appendix C #2b native worker parents fail closed on post-spawn confinement failure; Windows workers keep read-back Job Object process-count/memory/kill-on-close/die-on-unhandled-exception/UI-restriction guards, read-back token privilege disablement preserving only traverse notification, and read-back dynamic-code/extension-point/strict-handle/no-child-process/image-load mitigations; Linux worker entry read-back confirms no-new-privs/non-dumpable/seccomp and process-spawn denial; macOS worker entry applies a custom Seatbelt network/process-exec denial and probes permission-denied AF_INET/process-exec denial; desktop Unix workers excluding Android/iOS get RLIMIT/fd cleanup"
 fi
 # R-R2a (§12 / sovereignty): the .deb + systemd is the SOLE Linux package model. The AppImage
 # recipe (whose `update-information` self-updater collides with R-X1 "the fork ships its own

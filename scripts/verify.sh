@@ -1955,6 +1955,18 @@ grep -qF 'self.peer_text_gate.admit_chat(c.text)' src/server/connection.rs ||
   r_native_bounds="$r_native_bounds controlled-chat-admission"
 grep -qF 'pub const MAX_PEER_SCREENSHOT_RESPONSE_BYTES: usize = 32 * 1024 * 1024;' src/peer_text.rs ||
   r_native_bounds="$r_native_bounds screenshot-response-cap"
+grep -qF 'pub const MAX_PEER_SCREENSHOT_DIMENSION: u32 = 16_384;' src/peer_text.rs ||
+  r_native_bounds="$r_native_bounds screenshot-dimension-cap"
+grep -qF 'pub const MAX_PEER_SCREENSHOT_PIXELS: u64 = 8_192 * 8_192;' src/peer_text.rs ||
+  r_native_bounds="$r_native_bounds screenshot-pixel-cap"
+grep -qF 'pub const MAX_PEER_SCREENSHOT_PNG_CHUNKS: usize = 4_096;' src/peer_text.rs ||
+  r_native_bounds="$r_native_bounds screenshot-png-chunk-cap"
+grep -qF 'fn peer_screenshot_png_within_limit(data: &[u8]) -> bool' src/peer_text.rs ||
+  r_native_bounds="$r_native_bounds screenshot-png-structure-helper"
+grep -qF 'fn valid_png_ihdr(ihdr: &[u8]) -> bool' src/peer_text.rs ||
+  r_native_bounds="$r_native_bounds screenshot-png-ihdr-helper"
+grep -qF 'saw_idat' src/peer_text.rs ||
+  r_native_bounds="$r_native_bounds screenshot-png-idat-required"
 grep -qF 'pub fn admit_peer_screenshot_response' src/peer_text.rs ||
   r_native_bounds="$r_native_bounds screenshot-response-admission-helper"
 grep -qF 'crate::peer_text::admit_peer_screenshot_response(response)' src/client/io_loop.rs ||
@@ -1967,6 +1979,8 @@ grep -qF 'self.pending_screenshot_sids.insert(sid.clone())' src/client/io_loop.r
   r_native_bounds="$r_native_bounds screenshot-request-tracking"
 grep -qF 'if !self.pending_screenshot_sids.remove(&sid)' src/client/io_loop.rs ||
   r_native_bounds="$r_native_bounds screenshot-response-provenance"
+grep -qF 'if !data.is_empty() {' src/client/io_loop.rs ||
+  r_native_bounds="$r_native_bounds screenshot-cache-nonempty"
 if grep -qF 'set_screenshot(response.data)' src/client/io_loop.rs; then
   r_native_bounds="$r_native_bounds screenshot-response-direct-cache"
 fi

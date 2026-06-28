@@ -2288,7 +2288,9 @@ impl<T: InvokeUiSession> Remote<T> {
                             }
                             let data = response.data;
                             let msg = response.msg;
-                            crate::client::screenshot::set_screenshot(data);
+                            if !data.is_empty() {
+                                crate::client::screenshot::set_screenshot(data);
+                            }
                             self.handler.handle_screenshot_resp(sid, msg);
                         }
                         Err((sid, msg)) => {

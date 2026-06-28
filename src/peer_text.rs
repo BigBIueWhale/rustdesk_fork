@@ -5,6 +5,9 @@ use hbb_common::{
 use std::time::{Duration, Instant};
 
 pub const MAX_PEER_SCREENSHOT_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
+pub const MAX_PEER_SCREENSHOT_DIMENSION: u32 = 16_384;
+pub const MAX_PEER_SCREENSHOT_PIXELS: u64 = 8_192 * 8_192;
+pub const MAX_PEER_SCREENSHOT_PNG_CHUNKS: usize = 4_096;
 pub const MAX_PEER_SCREENSHOT_SID_BYTES: usize = 128;
 pub const MAX_PEER_SCREENSHOT_MSG_BYTES: usize = 1024;
 pub const MAX_PEER_CHAT_TEXT_BYTES: usize = 4 * 1024;
@@ -19,6 +22,8 @@ pub const PEER_DIALOG_EVENTS_PER_WINDOW: u32 = 4;
 pub const PEER_NOTIFICATION_EVENTS_PER_WINDOW: u32 = 8;
 pub const PEER_TEXT_RATE_WINDOW_SECS: u64 = 10;
 const PEER_SCREENSHOT_TOO_LARGE_MSG: &str = "Screenshot response too large";
+const PEER_SCREENSHOT_INVALID_PNG_MSG: &str = "Screenshot response is not a bounded PNG";
+const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 
 #[derive(Debug)]
 struct FixedWindowLimiter {
@@ -144,7 +149,108 @@ pub fn admit_peer_screenshot_response(
         );
         return Err((response.sid, PEER_SCREENSHOT_TOO_LARGE_MSG.to_owned()));
     }
+    if data_len == 0 {
+        return if response.msg.is_empty() {
+            Err((response.sid, PEER_SCREENSHOT_INVALID_PNG_MSG.to_owned()))
+        } else {
+            Ok(response)
+        };
+    }
+    if !response.msg.is_empty() {
+        return Err((response.sid, PEER_SCREENSHOT_INVALID_PNG_MSG.to_owned()));
+    }
+    if !peer_screenshot_png_within_limit(&response.data) {
+        log::warn!("dropping structurally invalid or oversized peer screenshot PNG");
+        return Err((response.sid, PEER_SCREENSHOT_INVALID_PNG_MSG.to_owned()));
+    }
     Ok(response)
+}
+
+fn peer_screenshot_png_within_limit(data: &[u8]) -> bool {
+    if data.len() < 33 || !data.starts_with(PNG_SIGNATURE) {
+        return false;
+    }
+
+    let mut pos = PNG_SIGNATURE.len();
+    let mut chunk_count = 0usize;
+    let mut saw_ihdr = false;
+    let mut saw_idat = false;
+    while pos < data.len() {
+        chunk_count = match chunk_count.checked_add(1) {
+            Some(count) if count <= MAX_PEER_SCREENSHOT_PNG_CHUNKS => count,
+            _ => return false,
+        };
+        let Some(header_end) = pos.checked_add(8) else {
+            return false;
+        };
+        if header_end > data.len() {
+            return false;
+        }
+        let chunk_len =
+            u32::from_be_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
+        let chunk_type = &data[pos + 4..pos + 8];
+        let Some(chunk_data_start) = pos.checked_add(8) else {
+            return false;
+        };
+        let Some(chunk_crc_start) = chunk_data_start.checked_add(chunk_len) else {
+            return false;
+        };
+        let Some(next_pos) = chunk_crc_start.checked_add(4) else {
+            return false;
+        };
+        if next_pos > data.len() {
+            return false;
+        }
+
+        if !saw_ihdr {
+            if chunk_type != b"IHDR" || chunk_len != 13 {
+                return false;
+            }
+            let ihdr = &data[chunk_data_start..chunk_crc_start];
+            if !valid_png_ihdr(ihdr) {
+                return false;
+            }
+            saw_ihdr = true;
+        }
+
+        if chunk_type == b"IDAT" {
+            saw_idat = true;
+        }
+        if chunk_type == b"IEND" {
+            return saw_ihdr && saw_idat && chunk_len == 0 && next_pos == data.len();
+        }
+        pos = next_pos;
+    }
+    false
+}
+
+fn valid_png_ihdr(ihdr: &[u8]) -> bool {
+    if ihdr.len() != 13 {
+        return false;
+    }
+    let width = u32::from_be_bytes([ihdr[0], ihdr[1], ihdr[2], ihdr[3]]);
+    let height = u32::from_be_bytes([ihdr[4], ihdr[5], ihdr[6], ihdr[7]]);
+    if width == 0
+        || height == 0
+        || width > MAX_PEER_SCREENSHOT_DIMENSION
+        || height > MAX_PEER_SCREENSHOT_DIMENSION
+    {
+        return false;
+    }
+    let pixels = u64::from(width) * u64::from(height);
+    if pixels > MAX_PEER_SCREENSHOT_PIXELS {
+        return false;
+    }
+    valid_png_bit_depth_color(ihdr[8], ihdr[9]) && ihdr[10] == 0 && ihdr[11] == 0 && ihdr[12] <= 1
+}
+
+fn valid_png_bit_depth_color(bit_depth: u8, color_type: u8) -> bool {
+    match color_type {
+        0 => matches!(bit_depth, 1 | 2 | 4 | 8 | 16),
+        2 | 4 | 6 => matches!(bit_depth, 8 | 16),
+        3 => matches!(bit_depth, 1 | 2 | 4 | 8),
+        _ => false,
+    }
 }
 
 fn bound_peer_label(input: String, max_bytes: usize) -> String {
@@ -176,6 +282,25 @@ fn bound_peer_text_with_controls(input: String, max_bytes: usize, allow_layout: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tiny_png(width: u32, height: u32) -> Vec<u8> {
+        let mut data = Vec::new();
+        data.extend_from_slice(PNG_SIGNATURE);
+        data.extend_from_slice(&13u32.to_be_bytes());
+        data.extend_from_slice(b"IHDR");
+        data.extend_from_slice(&width.to_be_bytes());
+        data.extend_from_slice(&height.to_be_bytes());
+        data.extend_from_slice(&[8, 6, 0, 0, 0]);
+        data.extend_from_slice(&0u32.to_be_bytes());
+        data.extend_from_slice(&1u32.to_be_bytes());
+        data.extend_from_slice(b"IDAT");
+        data.push(0);
+        data.extend_from_slice(&0u32.to_be_bytes());
+        data.extend_from_slice(&0u32.to_be_bytes());
+        data.extend_from_slice(b"IEND");
+        data.extend_from_slice(&0u32.to_be_bytes());
+        data
+    }
 
     #[test]
     fn peer_text_bound_preserves_utf8_and_strips_controls() {
@@ -224,21 +349,18 @@ mod tests {
 
     #[test]
     fn screenshot_response_fields_are_bounded() {
+        let png = tiny_png(2, 2);
         let response = ScreenshotResponse {
-            data: vec![1u8; 16].into(),
+            data: png.clone().into(),
             sid: format!("sid\n{}", "x".repeat(MAX_PEER_SCREENSHOT_SID_BYTES + 8)),
-            msg: format!(
-                "ok\u{0000}{}",
-                "m".repeat(MAX_PEER_SCREENSHOT_MSG_BYTES + 8)
-            ),
+            msg: String::new(),
             ..Default::default()
         };
         let admitted = admit_peer_screenshot_response(response).expect("response admitted");
-        assert_eq!(admitted.data.len(), 16);
+        assert_eq!(admitted.data.len(), png.len());
         assert!(admitted.sid.len() <= MAX_PEER_SCREENSHOT_SID_BYTES);
         assert!(!admitted.sid.contains('\n'));
-        assert!(admitted.msg.len() <= MAX_PEER_SCREENSHOT_MSG_BYTES);
-        assert!(!admitted.msg.contains('\u{0000}'));
+        assert!(admitted.msg.is_empty());
     }
 
     #[test]
@@ -256,5 +378,48 @@ mod tests {
         assert!(sid.len() <= MAX_PEER_SCREENSHOT_SID_BYTES);
         assert!(!sid.contains('\t'));
         assert_eq!(msg, PEER_SCREENSHOT_TOO_LARGE_MSG);
+    }
+
+    #[test]
+    fn screenshot_error_response_without_data_is_admitted() {
+        let response = ScreenshotResponse {
+            sid: "sid".to_owned(),
+            msg: "capture failed".to_owned(),
+            ..Default::default()
+        };
+        let admitted = admit_peer_screenshot_response(response).expect("error response admitted");
+        assert!(admitted.data.is_empty());
+        assert_eq!(admitted.msg, "capture failed");
+    }
+
+    #[test]
+    fn arbitrary_screenshot_bytes_are_rejected_before_cache() {
+        let response = ScreenshotResponse {
+            data: b"not a png".to_vec().into(),
+            sid: "sid".to_owned(),
+            ..Default::default()
+        };
+        let (_sid, msg) = admit_peer_screenshot_response(response).expect_err("blob rejected");
+        assert_eq!(msg, PEER_SCREENSHOT_INVALID_PNG_MSG);
+    }
+
+    #[test]
+    fn screenshot_png_dimensions_are_bounded() {
+        let response = ScreenshotResponse {
+            data: tiny_png(MAX_PEER_SCREENSHOT_DIMENSION + 1, 1).into(),
+            sid: "sid".to_owned(),
+            ..Default::default()
+        };
+        let (_sid, msg) = admit_peer_screenshot_response(response).expect_err("wide png rejected");
+        assert_eq!(msg, PEER_SCREENSHOT_INVALID_PNG_MSG);
+
+        let response = ScreenshotResponse {
+            data: tiny_png(8_193, 8_193).into(),
+            sid: "sid".to_owned(),
+            ..Default::default()
+        };
+        let (_sid, msg) =
+            admit_peer_screenshot_response(response).expect_err("pixel count rejected");
+        assert_eq!(msg, PEER_SCREENSHOT_INVALID_PNG_MSG);
     }
 }

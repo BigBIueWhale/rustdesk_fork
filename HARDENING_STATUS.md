@@ -873,15 +873,14 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 ## Artifact State
 
 After the fixed-shape listener/direct-TCP staging collapse, the artifact
-staleness correction, the Windows remote-printer worker handoff, and the Android
-clipboard Kotlin bridge, the artifacts below are the last completed per-target
-artifact builds. Debian and Windows were last rebuilt at the remote-printer
-worker handoff; Android was rebuilt after the Android clipboard Kotlin bridge.
-The current Windows worker token-privilege source hardening postdates the
-recorded Windows `.exe`/`.msi` hashes, so those Windows hashes are historical
-build evidence, not a current final-artifact claim, until the Windows VM job is
-re-run. These hashes supersede the `ec1b6f6`/`2d72f99` stale-artifact notes and
-the earlier `6e99f581...` Android APK.
+staleness correction, the Windows remote-printer worker handoff, the Android
+clipboard Kotlin bridge, and the Windows worker token-privilege hardening, the
+artifacts below are current for each target's application source. Debian was
+last rebuilt at the remote-printer worker handoff; Android was rebuilt after the
+Android clipboard Kotlin bridge; Windows was rebuilt after the token-privilege
+hardening. These hashes supersede the `ec1b6f6`/`2d72f99` stale-artifact notes,
+the earlier `6e99f581...` Android APK, and the earlier
+`dae6649f...`/`1e7b245f...` Windows artifacts.
 The Debian path ran in the disposable `rustdesk-fork-harness-deb-builder` build
 container with the compile stage offline (`--network=none`) and
 `SOURCE_DATE_EPOCH=1700000000`, then performed its double-build determinism
@@ -899,8 +898,8 @@ transient KVM path from the pinned golden qcow2, booted each per-build VM with
 ```text
 e5853fcca58b47860762acae9f0989c30ee0c266b4a79b473dfabf0ed786c1e8  dist/rustdesk-x86_64.deb
 08c39e7bd86579f07147aa40d9ce19dfa3951a89857c3722d60dfc5d8185d221  dist/rustdesk-arm64.apk
-dae6649f5db6e54b269b209982a3e0d9bd6efe7e30f7d359ef59064af6dbcb4b  dist/rustdesk-setup.exe
-1e7b245fa8a34955de3680927ee0df87718332a3a142bedbce0fa48e25f17db0  dist/rustdesk.msi
+ba45495ed5ee50d2be383a8bca09c4fb3187bbf16305d558fd24c088b10c6c31  dist/rustdesk-setup.exe
+c063d89c7efc78d94cc1e41935643c59dc53eb87599addd3b68f14eedd3b2c1d  dist/rustdesk.msi
 ```
 
 Build evidence:
@@ -913,13 +912,13 @@ Build evidence:
   `08c39e7bd86579f07147aa40d9ce19dfa3951a89857c3722d60dfc5d8185d221`
   after the Android clipboard Kotlin bridge change.
 - Windows `WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh`
-  passed from the then-current worktree snapshot in the transient KVM VM path.
-  It predates the current Windows worker token-privilege source hardening. The
-  guest `build-log.txt` contains pre-canonical hashes; the final release hashes
-  are the host-canonicalized `dist/*.sha256` values above, and the second VM
-  rebuild matched A==B with
-  `exe=dae6649f5db6e54b269b209982a3e0d9bd6efe7e30f7d359ef59064af6dbcb4b` and
-  `msi=1e7b245fa8a34955de3680927ee0df87718332a3a142bedbce0fa48e25f17db0`.
+  passed after the Windows worker token-privilege hardening from the clean
+  tracked worktree snapshot in the transient KVM VM path. The guest
+  `build-log.txt` contains pre-canonical hashes; the final release hashes are
+  the host-canonicalized `dist/*.sha256` values above, and the second VM rebuild
+  matched A==B with
+  `exe=ba45495ed5ee50d2be383a8bca09c4fb3187bbf16305d558fd24c088b10c6c31` and
+  `msi=c063d89c7efc78d94cc1e41935643c59dc53eb87599addd3b68f14eedd3b2c1d`.
 
 ## Validation Matrix
 
@@ -1154,6 +1153,14 @@ docker run ... bash -n scripts/verify.sh  # GREEN in a disposable bash:5.2 conta
 docker run ... cargo check /tmp/rd-win-sandbox-check --target x86_64-pc-windows-msvc  # GREEN: cfg(windows) native_worker_sandbox.rs token privilege disable/readback + Job Object/process-mitigation branch typechecked with a throwaway RUSTUP_HOME
 bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl. Windows token-privilege source gates and full Docker-backed Rust compile/test matrix
 git diff --check                          # GREEN after this ledger update
+```
+
+After refreshing the Windows artifacts for the token-privilege hardening, the
+Windows VM build path has been re-run successfully:
+
+```text
+WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh  # GREEN: transient KVM VMs, --network none, loopback-only VNC, double-build A==B, exe=ba45495ed5ee50d2be383a8bca09c4fb3187bbf16305d558fd24c088b10c6c31, msi=c063d89c7efc78d94cc1e41935643c59dc53eb87599addd3b68f14eedd3b2c1d
+git diff --check                                               # GREEN after this ledger update
 ```
 
 An attempted Docker-only `cargo check -p hbb_common --target
@@ -1602,11 +1609,10 @@ worker boundary for peer FILEDESCRIPTOR PDU parsing, per-connection file-content
 request/byte accounting, and a
 same-artifact worker boundary for the local file-list cache/PDU generation and
 FileContents size/range reads. Windows and Android platform-native
-socket-surface logic is present and source-gated. The Debian and Android
-artifact hashes recorded above remain the last refreshed hashes for their
-per-target application source, but the Windows hashes predate the current
-Windows worker token-privilege source hardening and must be refreshed before a
-final artifact-complete claim. The remaining local build-host residual is the old
+socket-surface logic is present and source-gated. The Debian, Android, and
+Windows artifact hashes recorded above are refreshed for the current per-target
+application source; Windows was refreshed after the worker token-privilege
+hardening. The remaining local build-host residual is the old
 harness-created system libvirt default network: the host has shown `virbr0`,
 `192.168.122.1:53/tcp+udp`, `0.0.0.0%virbr0:67/udp`, and
 `net.ipv4.ip_forward=1`. `.harness-state/provisioned` records that the harness

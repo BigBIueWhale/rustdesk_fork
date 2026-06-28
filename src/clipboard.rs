@@ -32,6 +32,7 @@ const CLIPBOARD_FORMAT_EXCEL_XML_SPREADSHEET: &'static str = "XML Spreadsheet";
 pub(crate) const MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES: usize = 64 * 1024 * 1024;
 pub(crate) const MAX_NATIVE_CLIPBOARD_TOTAL_BYTES: usize = 64 * 1024 * 1024;
 pub(crate) const MAX_NATIVE_CLIPBOARD_ITEMS: usize = 16;
+pub(crate) const MAX_NATIVE_CLIPBOARD_SPECIAL_NAME_BYTES: usize = 256;
 #[cfg(not(target_os = "android"))]
 const CLIPBOARD_UPDATE_QUEUE_CAPACITY: usize = 1;
 #[cfg(target_os = "android")]
@@ -111,6 +112,26 @@ fn clipboard_content_for_native(
 fn sanitize_clipboard_for_native_proto(
     mut clipboard: hbb_common::message_proto::Clipboard,
 ) -> Option<hbb_common::message_proto::Clipboard> {
+    let format = clipboard.format.enum_value().ok()?;
+    if format == hbb_common::message_proto::ClipboardFormat::Special {
+        if clipboard.special_name.len() > MAX_NATIVE_CLIPBOARD_SPECIAL_NAME_BYTES {
+            log::warn!(
+                "dropping clipboard special format with oversized name before native handoff: {} > {}",
+                clipboard.special_name.len(),
+                MAX_NATIVE_CLIPBOARD_SPECIAL_NAME_BYTES
+            );
+            return None;
+        }
+        if clipboard.special_name != CLIPBOARD_FORMAT_EXCEL_XML_SPREADSHEET {
+            log::warn!(
+                "dropping unsupported clipboard special format before native handoff: bytes={}",
+                clipboard.special_name.len()
+            );
+            return None;
+        }
+    } else {
+        clipboard.special_name.clear();
+    }
     let data = clipboard_content_for_native(&clipboard)?;
     clipboard.content = data.into();
     clipboard.compress = false;
@@ -542,8 +563,9 @@ pub fn update_clipboard_files(files: Vec<String>, side: ClipboardSide) {
 mod native_clipboard_limit_tests {
     use super::{
         native_clipboard_payload_within_limit, sanitize_multi_clipboards_for_native_proto,
-        MAX_NATIVE_CLIPBOARD_ITEMS, MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES,
-        MAX_NATIVE_CLIPBOARD_TOTAL_BYTES,
+        CLIPBOARD_FORMAT_EXCEL_XML_SPREADSHEET, MAX_NATIVE_CLIPBOARD_ITEMS,
+        MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES, MAX_NATIVE_CLIPBOARD_SPECIAL_NAME_BYTES,
+        MAX_NATIVE_CLIPBOARD_TOTAL_BYTES, RUSTDESK_CLIPBOARD_OWNER_FORMAT,
     };
     use hbb_common::message_proto::{Clipboard, ClipboardFormat};
 
@@ -617,6 +639,70 @@ mod native_clipboard_limit_tests {
             },
         ];
         assert!(sanitize_multi_clipboards_for_native_proto(clips).is_none());
+    }
+
+    #[test]
+    fn rejects_unallowlisted_special_clipboard_format_before_native_handoff() {
+        let clips = vec![Clipboard {
+            content: vec![b'a'].into(),
+            format: ClipboardFormat::Special.into(),
+            special_name: "attacker-native-format".to_owned(),
+            ..Default::default()
+        }];
+        assert!(sanitize_multi_clipboards_for_native_proto(clips).is_none());
+    }
+
+    #[test]
+    fn rejects_peer_supplied_owner_marker_before_native_handoff() {
+        let clips = vec![Clipboard {
+            content: vec![b'a'].into(),
+            format: ClipboardFormat::Special.into(),
+            special_name: RUSTDESK_CLIPBOARD_OWNER_FORMAT.to_owned(),
+            ..Default::default()
+        }];
+        assert!(sanitize_multi_clipboards_for_native_proto(clips).is_none());
+    }
+
+    #[test]
+    fn rejects_oversized_special_clipboard_name_before_native_handoff() {
+        let clips = vec![Clipboard {
+            content: vec![b'a'].into(),
+            format: ClipboardFormat::Special.into(),
+            special_name: "x".repeat(MAX_NATIVE_CLIPBOARD_SPECIAL_NAME_BYTES + 1),
+            ..Default::default()
+        }];
+        assert!(sanitize_multi_clipboards_for_native_proto(clips).is_none());
+    }
+
+    #[test]
+    fn accepts_allowlisted_excel_special_clipboard_format() {
+        let clips = vec![Clipboard {
+            content: vec![b'a'].into(),
+            format: ClipboardFormat::Special.into(),
+            special_name: CLIPBOARD_FORMAT_EXCEL_XML_SPREADSHEET.to_owned(),
+            ..Default::default()
+        }];
+        let sanitized = sanitize_multi_clipboards_for_native_proto(clips)
+            .expect("allowlisted Excel clipboard format should survive");
+        assert_eq!(sanitized.clipboards.len(), 1);
+        assert_eq!(
+            sanitized.clipboards[0].special_name,
+            CLIPBOARD_FORMAT_EXCEL_XML_SPREADSHEET
+        );
+    }
+
+    #[test]
+    fn strips_irrelevant_special_name_from_non_special_clipboard_format() {
+        let clips = vec![Clipboard {
+            content: vec![b'a'].into(),
+            format: ClipboardFormat::Text.into(),
+            special_name: "attacker-native-format".to_owned(),
+            ..Default::default()
+        }];
+        let sanitized = sanitize_multi_clipboards_for_native_proto(clips)
+            .expect("bounded text clipboard should survive");
+        assert_eq!(sanitized.clipboards.len(), 1);
+        assert!(sanitized.clipboards[0].special_name.is_empty());
     }
 }
 

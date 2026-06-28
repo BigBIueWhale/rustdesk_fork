@@ -3067,6 +3067,22 @@ grep -qF 'MAX_NATIVE_CLIPBOARD_TOTAL_BYTES' src/clipboard.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker aggregate-cap"
 grep -qF 'MAX_NATIVE_CLIPBOARD_ITEMS' src/clipboard.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker item-cap"
+grep -qF 'MAX_NATIVE_CLIPBOARD_SPECIAL_NAME_BYTES' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker special-name-cap"
+grep -qF 'dropping unsupported clipboard special format before native handoff' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker arbitrary-special-format-not-rejected"
+grep -qF 'clipboard.special_name != CLIPBOARD_FORMAT_EXCEL_XML_SPREADSHEET' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker special-format-not-allowlisted"
+grep -qF 'clipboard.special_name.clear()' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker non-special-name-not-stripped"
+grep -qF 'rejects_unallowlisted_special_clipboard_format_before_native_handoff' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker special-format-regression-test-missing"
+grep -qF 'rejects_peer_supplied_owner_marker_before_native_handoff' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker owner-marker-regression-test-missing"
+grep -qF 'rejects_oversized_special_clipboard_name_before_native_handoff' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker oversized-special-name-regression-test-missing"
+grep -qF 'strips_irrelevant_special_name_from_non_special_clipboard_format' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker non-special-name-strip-regression-test-missing"
 if sed -n '/fn update_clipboard_/,/fn set_native_clipboard_data/p' src/clipboard.rs | grep -qF 'proto::from_multi_clipboards'; then
   r_native_clipboard_worker="$r_native_clipboard_worker parent-direct-native-convert"
 fi

@@ -17,6 +17,7 @@ mobile media fail-closed, Android video/Opus/peer-zstd/peer-clipboard
 isolated-service paths, iOS peer-zstd and peer-clipboard fail-closed, and
 peer-zstd explicit-failure behavior,
 responder display-control validation and virtual-display policy pinning,
+desktop peer clipboard special-format allowlisting,
 bounded worker-I/O thread and
 bounded desktop clipboard/file-clipboard dispatcher, Linux
 FUSE clipboard mount-point no-follow/no-adoption setup,
@@ -306,6 +307,19 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 `requirements.html` is intentionally not edited by implementation work.
 
 ## Recent Closures
+
+- **Desktop peer clipboard SET no longer mints arbitrary native special formats.**
+  The desktop clipboard worker boundary remains the parser/platform boundary for
+  normal clipboard SET, but the parent sanitizer now narrows what reaches that
+  worker: peer `ClipboardFormat::Special` is capped by name length and accepted
+  only for the expected `XML Spreadsheet` format, peer-supplied RustDesk owner
+  markers are rejected, arbitrary special format names are rejected, and
+  irrelevant `special_name` values on non-special clipboard entries are stripped
+  before worker serialization. This preserves local outgoing clipboard capture
+  while preventing a password-correct peer from asking the OS clipboard to
+  register attacker-chosen native format names. `scripts/verify.sh` gates the
+  cap, allowlist, name stripping, unsupported-format rejection, and the focused
+  regression tests.
 
 - **Responder display-control messages are validated before display services or native display APIs.**
   Peer-supplied `CaptureDisplays`, `SwitchDisplay`, `RefreshVideoDisplay`,

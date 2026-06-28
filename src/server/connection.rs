@@ -16,7 +16,9 @@ use crate::platform::WallPaperRemover;
 // portable_check running-state probe are removed below).
 use crate::{
     client::{
-        new_voice_call_request, new_voice_call_response, start_audio_thread, MediaData, MediaSender,
+        native_opus_format_admission, native_opus_format_key, native_opus_format_within_limit,
+        new_voice_call_request, new_voice_call_response, start_audio_thread, MediaData,
+        MediaSender, NativeOpusFormatAdmission,
     },
     display_service, ipc, privacy_mode, video_service, VERSION,
 };
@@ -244,6 +246,8 @@ pub struct Connection {
     // by peer
     audio_sender: Option<MediaSender>,
     // audio by the remote peer/client
+    audio_format: Option<(u32, u32)>,
+    // audio format accepted from the remote peer/client
     tx_input: std_mpsc::Sender<MessageInput>,
     // handle input messages
     video_ack_required: bool,
@@ -420,6 +424,7 @@ impl Connection {
             portable: Default::default(),
             from_switch: false,
             audio_sender: None,
+            audio_format: None,
             voice_call_request_timestamp: None,
             voice_calling: false,
             options_in_login: None,
@@ -2588,14 +2593,48 @@ impl Connection {
                     }
                     Some(misc::Union::AudioFormat(format)) => {
                         if !self.disable_audio {
-                            // Drop the audio sender previously.
-                            drop(std::mem::replace(&mut self.audio_sender, None));
-                            self.audio_sender = Some(start_audio_thread());
-                            if let Some(sender) = &self.audio_sender {
-                                if let Err(err) = sender.try_send(MediaData::AudioFormat(format)) {
-                                    log::warn!(
-                                        "controlled audio decode queue full; dropping peer audio format: {err}"
-                                    );
+                            if !native_opus_format_within_limit(format.sample_rate, format.channels)
+                            {
+                                log::warn!(
+                                    "dropping unsupported Opus format before controlled audio thread setup: sample_rate={}, channels={}",
+                                    format.sample_rate,
+                                    format.channels
+                                );
+                            } else {
+                                match native_opus_format_admission(
+                                    self.audio_format,
+                                    format.sample_rate,
+                                    format.channels,
+                                ) {
+                                    NativeOpusFormatAdmission::AcceptFirst => {
+                                        let sender = start_audio_thread();
+                                        let format_key = native_opus_format_key(
+                                            format.sample_rate,
+                                            format.channels,
+                                        );
+                                        if let Err(err) =
+                                            sender.try_send(MediaData::AudioFormat(format))
+                                        {
+                                            log::warn!(
+                                                "controlled audio decode queue full; dropping peer audio format: {err}"
+                                            );
+                                        } else {
+                                            self.audio_format = Some(format_key);
+                                            self.audio_sender = Some(sender);
+                                        }
+                                    }
+                                    NativeOpusFormatAdmission::Duplicate => {
+                                        log::debug!(
+                                            "dropping repeated peer Opus format without recreating controlled audio thread"
+                                        );
+                                    }
+                                    NativeOpusFormatAdmission::Changed => {
+                                        log::warn!(
+                                            "dropping peer Opus format change after controlled audio setup: sample_rate={}, channels={}",
+                                            format.sample_rate,
+                                            format.channels
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -3418,6 +3457,10 @@ impl Connection {
         if let Ok(q) = o.disable_audio.enum_value() {
             if q != BoolOption::NotSet {
                 self.disable_audio = q == BoolOption::Yes;
+                if self.disable_audio {
+                    self.audio_sender = None;
+                    self.audio_format = None;
+                }
                 if let Some(s) = self.server.upgrade() {
                     if self.is_authed_view_camera_conn() {
                         if self.voice_calling || !self.audio_enabled() {

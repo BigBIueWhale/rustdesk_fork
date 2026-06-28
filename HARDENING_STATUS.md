@@ -23,7 +23,8 @@ bounded desktop clipboard/file-clipboard dispatcher, Linux
 FUSE clipboard mount-point no-follow/no-adoption setup,
 bounded Linux FUSE file-content response queue,
 bounded viewer peer-video display/thread admission and bounded media decode
-queues,
+queues plus peer Opus format pinning/sticky decode failure and
+locally-unsupported peer-video codec refusal before decoder respawn,
 bounded peer-triggered file-transfer metadata enumeration and read/write job
 admission,
 bounded peer-driven UI chat/message/notification text length and rate
@@ -455,10 +456,21 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   created with `sync_channel`. Peer-driven keyframes, video-queue signals,
   audio formats, audio frames, reset signals, and record-state updates now use
   nonblocking `try_send()` with shed logs instead of unbounded/blocking
-  `send()`. `scripts/verify.sh` runs focused bounded-queue and display-admission
-  tests and source-gates the cap, bounded channel type, nonblocking peer
-  admission, shed logs, and absence of the old unbounded `mpsc::channel` media
-  queues.
+  `send()`. When a native video decoder failure marks a codec unsupported, the
+  decoder thread now drops later peer frames in that codec before calling
+  `Decoder::new`; a peer that ignores the updated supported-decoding message
+  can no longer cycle `VP8`/`VP9`/`AV1` frames to repeatedly recreate
+  same-artifact decoder workers after local failure. `scripts/verify.sh` runs
+  focused bounded-queue, display-admission, Opus format-admission, and
+  locally-unsupported codec guard tests. The viewer audio handler now accepts
+  only the first valid peer `AudioFormat`, ignores duplicates, refuses
+  mid-stream format changes, and marks native Opus decode failure sticky for
+  that audio thread. The controlled side mirrors that admission before it
+  creates the audio decode thread, so repeated or changed peer `AudioFormat`
+  messages no longer tear down and recreate audio threads. `scripts/verify.sh`
+  source-gates the cap, bounded channel type, nonblocking peer admission, Opus
+  no-recreate/failure-sticky markers, locally-unsupported pre-decoder drop, shed
+  logs, and absence of the old unbounded `mpsc::channel` media queues.
 
 - **Desktop peer clipboard and file-clipboard parent paths no longer spawn one OS thread per peer message.**
   `src/clipboard.rs` now admits normal clipboard SET, Linux file-clipboard SET,
@@ -1210,6 +1222,17 @@ rustfmt --edition 2021 src/client.rs src/client/io_loop.rs src/server/connection
 bash -n scripts/verify.sh             # GREEN
 git diff --check                       # GREEN
 bash scripts/verify.sh                 # GREEN: VERIFY: all gates green, incl. viewer media display/thread and bounded media queue tests/source gates
+```
+
+After the peer Opus format-admission/sticky-failure guard and the
+locally-unsupported peer-video codec admission guard, these focused and full
+gates have been re-run successfully:
+
+```text
+docker run --rm ... rd-devcheck rustfmt --edition 2021 --check src/client.rs src/server/connection.rs  # GREEN
+bash -n scripts/verify.sh             # GREEN
+git diff --check                       # GREEN
+bash scripts/verify.sh                 # GREEN: VERIFY: all gates green, incl. peer Opus format-admission/sticky-failure and locally-unsupported peer-video codec guard tests/source gates
 ```
 
 After the peer-triggered file-transfer metadata enumeration and read/write

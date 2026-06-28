@@ -655,10 +655,47 @@ pub(crate) fn native_opus_format_within_limit(sample_rate: u32, channels: u32) -
     matches!(sample_rate, 8000 | 12000 | 16000 | 24000 | 48000) && matches!(channels, 1 | 2)
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum NativeOpusFormatAdmission {
+    AcceptFirst,
+    Duplicate,
+    Changed,
+}
+
+#[inline]
+pub(crate) fn native_opus_format_key(sample_rate: u32, channels: u32) -> (u32, u32) {
+    (sample_rate, channels)
+}
+
+#[inline]
+pub(crate) fn native_opus_format_admission(
+    current: Option<(u32, u32)>,
+    sample_rate: u32,
+    channels: u32,
+) -> NativeOpusFormatAdmission {
+    match current {
+        None => NativeOpusFormatAdmission::AcceptFirst,
+        Some(current) if current == native_opus_format_key(sample_rate, channels) => {
+            NativeOpusFormatAdmission::Duplicate
+        }
+        Some(_) => NativeOpusFormatAdmission::Changed,
+    }
+}
+
+#[inline]
+pub(crate) fn native_video_format_locally_unsupported(
+    mark_unsupported: &[CodecFormat],
+    format: CodecFormat,
+) -> bool {
+    mark_unsupported.contains(&format)
+}
+
 /// Audio handler for the [`Client`].
 #[derive(Default)]
 pub struct AudioHandler {
     audio_decoder: Option<(AudioDecoder, Vec<f32>)>,
+    audio_format: Option<(u32, u32)>,
+    audio_decode_failed: bool,
     #[cfg(target_os = "linux")]
     simple: Option<psimple::Simple>,
     #[cfg(not(target_os = "linux"))]
@@ -878,6 +915,12 @@ impl AudioHandler {
 
     /// Handle audio format and create an audio decoder.
     pub fn handle_format(&mut self, f: AudioFormat) {
+        if self.audio_decode_failed {
+            log::warn!(
+                "dropping peer Opus format after native decoder failure; audio decode is failed closed"
+            );
+            return;
+        }
         if !native_opus_format_within_limit(f.sample_rate, f.channels) {
             log::warn!(
                 "dropping unsupported Opus format before native decode setup: sample_rate={}, channels={}",
@@ -886,6 +929,22 @@ impl AudioHandler {
             );
             return;
         }
+        match native_opus_format_admission(self.audio_format, f.sample_rate, f.channels) {
+            NativeOpusFormatAdmission::AcceptFirst => {}
+            NativeOpusFormatAdmission::Duplicate => {
+                log::debug!("dropping repeated peer Opus format without recreating native decoder");
+                return;
+            }
+            NativeOpusFormatAdmission::Changed => {
+                log::warn!(
+                    "dropping peer Opus format change after decoder setup: sample_rate={}, channels={}",
+                    f.sample_rate,
+                    f.channels
+                );
+                return;
+            }
+        }
+        self.audio_format = Some(native_opus_format_key(f.sample_rate, f.channels));
         match AudioDecoder::new(f.sample_rate, f.channels) {
             Ok(d) => {
                 let buffer = vec![0.; f.sample_rate as usize * f.channels as usize];
@@ -894,6 +953,7 @@ impl AudioHandler {
                 allow_err!(self.start_audio(f));
             }
             Err(err) => {
+                self.audio_decode_failed = true;
                 log::error!("Failed to create audio decoder: {}", err);
             }
         }
@@ -919,42 +979,55 @@ impl AudioHandler {
             log::debug!("PulseAudio simple binding does not exists");
             return;
         }
-        self.audio_decoder.as_mut().map(|(d, buffer)| {
-            if let Ok(n) = d.decode_float(&frame.data, buffer, false) {
-                let channels = self.channels;
-                let n = n * (channels as usize);
-                #[cfg(not(target_os = "linux"))]
-                {
-                    let sample_rate0 = self.sample_rate.0;
-                    let sample_rate = self.sample_rate.1;
-                    let mut buffer = buffer[0..n].to_owned();
-                    if sample_rate != sample_rate0 {
-                        buffer = crate::audio_resample(
-                            &buffer[0..n],
-                            sample_rate0,
-                            sample_rate,
-                            channels,
-                        );
+        if self.audio_decode_failed {
+            return;
+        }
+        if let Some((d, buffer)) = self.audio_decoder.as_mut() {
+            match d.decode_float(&frame.data, buffer, false) {
+                Ok(n) => {
+                    let channels = self.channels;
+                    let n = n * (channels as usize);
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        let sample_rate0 = self.sample_rate.0;
+                        let sample_rate = self.sample_rate.1;
+                        let mut buffer = buffer[0..n].to_owned();
+                        if sample_rate != sample_rate0 {
+                            buffer = crate::audio_resample(
+                                &buffer[0..n],
+                                sample_rate0,
+                                sample_rate,
+                                channels,
+                            );
+                        }
+                        if self.channels != self.device_channel {
+                            buffer = crate::audio_rechannel(
+                                buffer,
+                                sample_rate,
+                                sample_rate,
+                                self.channels,
+                                self.device_channel,
+                            );
+                        }
+                        self.audio_buffer.append_pcm(&buffer);
                     }
-                    if self.channels != self.device_channel {
-                        buffer = crate::audio_rechannel(
-                            buffer,
-                            sample_rate,
-                            sample_rate,
-                            self.channels,
-                            self.device_channel,
-                        );
+                    #[cfg(target_os = "linux")]
+                    {
+                        let data_u8 = unsafe {
+                            std::slice::from_raw_parts::<u8>(buffer.as_ptr() as _, n * 4)
+                        };
+                        self.simple.as_mut().map(|x| x.write(data_u8));
                     }
-                    self.audio_buffer.append_pcm(&buffer);
                 }
-                #[cfg(target_os = "linux")]
-                {
-                    let data_u8 =
-                        unsafe { std::slice::from_raw_parts::<u8>(buffer.as_ptr() as _, n * 4) };
-                    self.simple.as_mut().map(|x| x.write(data_u8));
+                Err(err) => {
+                    log::warn!(
+                        "native Opus decode failed; refusing further audio decoder recreation: {err}"
+                    );
+                    self.audio_decoder = None;
+                    self.audio_decode_failed = true;
                 }
             }
-        });
+        }
     }
 
     /// Build audio output stream for current device.
@@ -2324,6 +2397,16 @@ pub fn start_video_thread<F, T>(
                         let display = vf.display as usize;
                         let start = std::time::Instant::now();
                         let format = CodecFormat::from(&vf);
+                        let locally_unsupported = {
+                            let lc = session.lc.read().unwrap();
+                            native_video_format_locally_unsupported(&lc.mark_unsupported, format)
+                        };
+                        if locally_unsupported {
+                            log::warn!(
+                                "dropping peer {format:?} video frame; local decoder is marked unsupported"
+                            );
+                            continue;
+                        }
                         if video_handler.is_none() {
                             let mut handler = VideoHandler::new(format, display);
                             let record_state = session.lc.read().unwrap().record_state;
@@ -3293,6 +3376,40 @@ mod tests {
         assert!(!native_opus_format_within_limit(96000, 2));
         assert!(!native_opus_format_within_limit(48000, 0));
         assert!(!native_opus_format_within_limit(48000, 3));
+    }
+
+    #[test]
+    fn native_opus_format_admission_pins_first_format() {
+        assert_eq!(
+            native_opus_format_admission(None, 48000, 2),
+            NativeOpusFormatAdmission::AcceptFirst
+        );
+        assert_eq!(
+            native_opus_format_admission(Some(native_opus_format_key(48000, 2)), 48000, 2),
+            NativeOpusFormatAdmission::Duplicate
+        );
+        assert_eq!(
+            native_opus_format_admission(Some(native_opus_format_key(48000, 2)), 24000, 1),
+            NativeOpusFormatAdmission::Changed
+        );
+    }
+
+    #[test]
+    fn native_video_unsupported_guard_blocks_marked_format() {
+        let unsupported = vec![CodecFormat::VP8, CodecFormat::AV1];
+
+        assert!(native_video_format_locally_unsupported(
+            &unsupported,
+            CodecFormat::VP8
+        ));
+        assert!(native_video_format_locally_unsupported(
+            &unsupported,
+            CodecFormat::AV1
+        ));
+        assert!(!native_video_format_locally_unsupported(
+            &unsupported,
+            CodecFormat::VP9
+        ));
     }
 
     #[test]

@@ -172,8 +172,20 @@ echo "== (3c-ii) native worker sandbox helper sanity (Appendix C #2b) =="
 # viewer must cap display-thread creation and use bounded media queues.
 echo "== (3c-ii-a) viewer peer media display/thread + queue bounds (Appendix C #2b/R-T0) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::media_data_queue_is_bounded --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::native_opus_format_admission_pins_first_format --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::native_video_unsupported_guard_blocks_marked_format --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::io_loop::tests --color never
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config common::codec::tests::encoder_negotiation --color never
+grep -qF 'native_video_format_locally_unsupported(&lc.mark_unsupported, format)' src/client.rs ||
+  { echo "  FAIL Appendix C #2b/R-T0: video receive loop must drop locally-unsupported peer codecs before recreating a native decoder worker"; rc=1; }
+grep -qF 'local decoder is marked unsupported' src/client.rs ||
+  { echo "  FAIL Appendix C #2b/R-T0: missing locally-unsupported video-frame drop marker"; rc=1; }
+grep -qF 'dropping repeated peer Opus format without recreating native decoder' src/client.rs ||
+  { echo "  FAIL Appendix C #2b/R-T0: viewer audio handler must not recreate native Opus decoders on repeated peer AudioFormat"; rc=1; }
+grep -qF 'dropping repeated peer Opus format without recreating controlled audio thread' src/server/connection.rs ||
+  { echo "  FAIL Appendix C #2b/R-T0: controlled side must not recreate audio decoder threads on repeated peer AudioFormat"; rc=1; }
+grep -qF 'audio_decode_failed = true' src/client.rs ||
+  { echo "  FAIL Appendix C #2b/R-T0: native Opus decode failure must be sticky for the audio thread"; rc=1; }
 
 # (3c-ii-b) Peer UI text admission (R-T0): a password-correct hostile peer can
 # send chat/messages/notification details repeatedly after keying. Bound text

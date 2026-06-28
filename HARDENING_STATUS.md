@@ -67,6 +67,20 @@ Windows printer path are restored to **in-process** decode/decompress/handoff
 to be closed later — if at all — by sandboxing the decode path, bounded
 operationally in the meantime.
 
+On the same date a separate beyond-spec change (f0b9966) that had disabled the
+desktop viewer's GPU texture-upload display path — routing decoded peer RGBA
+through the native `texture_rgba_renderer` plugin — was also **reverted** by
+maintainer decision, restoring upstream GPU rendering. That plugin is
+**#2b-adjacent native viewer surface**, but distinct from and smaller than the
+decode residual itself: it receives already-decoded, shape/length-validated RGBA
+(no compressed-codec or container parser), and the soft `CustomPaint` fallback it
+replaced hands the same validated pixels to Skia's native image decode — so no
+decoder/parser surface is removed either way. With hwcodec compiled out, the
+texture upload was the desktop pipeline's only GPU acceleration; disabling it made
+every desktop viewer fully CPU-bound for display at no real security gain. It is
+accepted alongside #2b (viewer-side only; desktop Windows/Debian/macOS — Android
+and iOS already software-render).
+
 The genuinely-good companion work from that session is **kept**: the post-key
 DoS bounds above (R-T0/R-S7/R-S10), the `sanitize_relative_names` path-traversal
 defense, the bounded in-process clipboard-SET dispatcher (anti thread-amplification),
@@ -77,6 +91,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 ## Open residuals (tracked, not regressions)
 
 - **Appendix C #2b decode sandbox** — accepted residual (above); SHOULD, not MUST.
+- **Desktop GPU texture-upload display** — #2b-adjacent native viewer surface
+  (`texture_rgba_renderer`), restored 2026-06-28 (f0b9966 revert); accepted
+  alongside #2b — already-validated pixels, no parser, viewer/desktop-only.
 - **R-V3 independent CPace audit** — the in-tree CPace implementation is
   vector/KAT-conformant and adversarially tested but **not yet independently
   audited**; the §11 "not independently audited" disclosure stands.

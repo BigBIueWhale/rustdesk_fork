@@ -1719,21 +1719,24 @@ bash -n scripts/verify.sh     # GREEN
 ```
 
 - **Shared native worker failures no longer allow immediate respawn churn.**
-  The reusable zstd, normal clipboard SET, and Windows printer worker parents
-  now keep a short failure cooldown beside the child slot. After spawn,
-  transport, timeout, or semantic worker failure, the parent clears the child
-  and refuses immediate replacement instead of letting a hostile peer churn
-  parser worker processes with repeated bad payloads. Successful steady-state
-  workers are unchanged, the existing one-in-flight admission remains in place,
-  and `scripts/verify.sh` gates the shared cooldown helper plus route-specific
-  zstd/clipboard/printer refusal and `mark_failed` markers. This is an
-  application DoS hardening closure; it does not claim to finish the broader
+  The reusable zstd, normal clipboard SET, Windows printer, Unix file
+  descriptor, and Unix file-content worker parents now keep a short failure
+  cooldown beside the child slot. After spawn, transport, timeout, or semantic
+  worker failure, the parent clears the child and refuses immediate replacement
+  instead of letting a hostile peer churn parser worker processes with repeated
+  bad payloads. Successful steady-state workers are unchanged, the existing
+  one-in-flight admission remains in place, and `scripts/verify.sh` gates the
+  shared cooldown helper plus route-specific zstd/clipboard/printer/file-copy
+  refusal and `mark_failed` markers. This is an application DoS hardening
+  closure; it does not claim to finish the broader
   AppContainer/Seatbelt/syscall-allowlist residual tracked below. Current
   Docker-backed evidence:
 
 ```text
 docker run --rm ... rd-devcheck cargo test -p hbb_common --lib native_worker_sandbox::cooldown_tests --color never
 # GREEN: 2 passed; 0 failed
+docker run --rm ... rd-devcheck cargo test -p clipboard --features unix-file-copy-paste --lib platform::unix:: --color never
+# GREEN: 21 passed; 0 failed
 bash scripts/verify.sh
 # GREEN: VERIFY: all gates green
 git diff --check

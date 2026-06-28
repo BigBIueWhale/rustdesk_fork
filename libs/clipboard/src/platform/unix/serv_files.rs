@@ -24,6 +24,7 @@ const MAX_FILE_CONTENT_BYTES_PER_CONN_WINDOW: u64 = 1024 * 1024 * 1024;
 const MAX_FILE_CONTENT_RESPONSE_BYTES: u64 = super::BLOCK_SIZE as u64;
 const WORKER_ARG: &str = "--native-filecontents-worker";
 const WORKER_ROUND_TRIP_TIMEOUT: Duration = Duration::from_secs(30);
+const WORKER_FAILURE_COOLDOWN: Duration = Duration::from_secs(5);
 const PROTOCOL_VERSION: u8 = 1;
 const REQUEST_MAGIC: [u8; 4] = *b"RCFW";
 const RESPONSE_MAGIC: [u8; 4] = *b"RCFR";
@@ -434,6 +435,12 @@ struct FileContentsWorker {
     io_tx: SyncSender<FileContentWorkerIoRequest>,
 }
 
+#[derive(Default)]
+struct FileContentsWorkerState {
+    worker: Option<FileContentsWorker>,
+    cooldown: hbb_common::native_worker_sandbox::NativeWorkerFailureCooldown,
+}
+
 struct FileContentWorkerIoRequest {
     request: WorkerRequest,
     reply: mpsc::Sender<Result<WorkerResponse, CliprdrError>>,
@@ -531,23 +538,43 @@ impl FileContentsWorker {
 }
 
 fn worker_request(request: WorkerRequest) -> Result<WorkerResponse, CliprdrError> {
-    static WORKER: OnceLock<parking_lot::Mutex<Option<FileContentsWorker>>> = OnceLock::new();
-    let worker = WORKER.get_or_init(|| parking_lot::Mutex::new(None));
+    static WORKER: OnceLock<parking_lot::Mutex<FileContentsWorkerState>> = OnceLock::new();
+    let worker =
+        WORKER.get_or_init(|| parking_lot::Mutex::new(FileContentsWorkerState::default()));
     let Some(mut guard) = worker.try_lock() else {
         return Err(common_error(
             "file-content worker busy; refusing to queue peer file-content request",
         ));
     };
-    if guard.is_none() {
-        *guard = Some(FileContentsWorker::spawn()?);
+    if guard.worker.is_none() {
+        if let Some(remaining) = guard.cooldown.active_remaining() {
+            return Err(common_error(format!(
+                "file-content worker cooling down after failure; refusing to queue peer file-content request for {:?}",
+                remaining
+            )));
+        }
+        match FileContentsWorker::spawn() {
+            Ok(worker) => {
+                guard.cooldown.clear();
+                guard.worker = Some(worker);
+            }
+            Err(err) => {
+                guard.cooldown.mark_failed(WORKER_FAILURE_COOLDOWN);
+                return Err(err);
+            }
+        }
     }
-    let Some(worker) = guard.as_mut() else {
-        return Err(common_error("native file-content worker unavailable"));
+    let result = match guard.worker.as_mut() {
+        Some(worker) => worker.request(request),
+        None => {
+            return Err(common_error("native file-content worker unavailable"));
+        }
     };
-    match worker.request(request) {
+    match result {
         Ok(response) => Ok(response),
         Err(err) => {
-            *guard = None;
+            guard.worker = None;
+            guard.cooldown.mark_failed(WORKER_FAILURE_COOLDOWN);
             Err(err)
         }
     }

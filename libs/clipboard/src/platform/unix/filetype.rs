@@ -45,6 +45,7 @@ const FILE_DESCRIPTOR_SIZE: usize = 592;
 const MAX_FILE_DESCRIPTOR_PDU_BYTES: usize = 4 + FILE_DESCRIPTOR_SIZE * MAX_FILE_DESCRIPTORS;
 const WORKER_ARG: &str = "--native-filedesc-worker";
 const WORKER_PARSE_TIMEOUT: Duration = Duration::from_secs(3);
+const WORKER_FAILURE_COOLDOWN: Duration = Duration::from_secs(5);
 const PROTOCOL_VERSION: u8 = 1;
 const REQUEST_MAGIC: [u8; 4] = *b"RDFW";
 const RESPONSE_MAGIC: [u8; 4] = *b"RDFR";
@@ -95,25 +96,45 @@ impl FileDescription {
             });
         }
 
-        static WORKER: OnceLock<parking_lot::Mutex<Option<FileDescriptorWorker>>> = OnceLock::new();
-        let worker = WORKER.get_or_init(|| parking_lot::Mutex::new(None));
+        static WORKER: OnceLock<parking_lot::Mutex<FileDescriptorWorkerState>> = OnceLock::new();
+        let worker =
+            WORKER.get_or_init(|| parking_lot::Mutex::new(FileDescriptorWorkerState::default()));
         let Some(mut guard) = worker.try_lock() else {
             return Err(common_error(
                 "file descriptor worker busy; refusing to queue peer descriptor parse".to_string(),
             ));
         };
-        if guard.is_none() {
-            *guard = Some(FileDescriptorWorker::spawn()?);
+        if guard.worker.is_none() {
+            if let Some(remaining) = guard.cooldown.active_remaining() {
+                return Err(common_error(format!(
+                    "file descriptor worker cooling down after failure; refusing to queue peer descriptor parse for {:?}",
+                    remaining
+                )));
+            }
+            match FileDescriptorWorker::spawn() {
+                Ok(worker) => {
+                    guard.cooldown.clear();
+                    guard.worker = Some(worker);
+                }
+                Err(err) => {
+                    guard.cooldown.mark_failed(WORKER_FAILURE_COOLDOWN);
+                    return Err(err);
+                }
+            }
         }
-        let Some(worker) = guard.as_mut() else {
-            return Err(common_error(
-                "native file descriptor worker unavailable".to_string(),
-            ));
+        let result = match guard.worker.as_mut() {
+            Some(worker) => worker.parse(conn_id, file_descriptor_pdu),
+            None => {
+                return Err(common_error(
+                    "native file descriptor worker unavailable".to_string(),
+                ));
+            }
         };
-        match worker.parse(conn_id, file_descriptor_pdu) {
+        match result {
             Ok(files) => Ok(files),
             Err(err) => {
-                *guard = None;
+                guard.worker = None;
+                guard.cooldown.mark_failed(WORKER_FAILURE_COOLDOWN);
                 Err(err)
             }
         }
@@ -331,6 +352,12 @@ struct FileDescriptorWorker {
     child: Child,
     _process_guard: hbb_common::native_worker_sandbox::WorkerProcessGuard,
     io_tx: SyncSender<FileDescriptorWorkerIoRequest>,
+}
+
+#[derive(Default)]
+struct FileDescriptorWorkerState {
+    worker: Option<FileDescriptorWorker>,
+    cooldown: hbb_common::native_worker_sandbox::NativeWorkerFailureCooldown,
 }
 
 struct FileDescriptorWorkerIoRequest {

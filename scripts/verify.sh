@@ -3128,6 +3128,14 @@ grep -qF 'FileDescriptorWorker::spawn()' libs/clipboard/src/platform/unix/filety
   r_native_filedesc_worker="$r_native_filedesc_worker worker-spawn"
 grep -qF 'file descriptor worker parse timed out after' libs/clipboard/src/platform/unix/filetype.rs ||
   r_native_filedesc_worker="$r_native_filedesc_worker timeout-kills-worker"
+grep -qF 'const WORKER_FAILURE_COOLDOWN: Duration = Duration::from_secs(5);' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker failure-cooldown"
+grep -qF 'NativeWorkerFailureCooldown' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker failure-cooldown-state"
+grep -qF 'file descriptor worker cooling down after failure; refusing to queue peer descriptor parse' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker failure-cooldown-refusal"
+grep -qF 'guard.cooldown.mark_failed(WORKER_FAILURE_COOLDOWN)' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_filedesc_worker="$r_native_filedesc_worker failure-cooldown-mark"
 grep -qF 'hbb_common::native_worker_sandbox::apply_to_command(&mut command)' libs/clipboard/src/platform/unix/filetype.rs ||
   r_native_filedesc_worker="$r_native_filedesc_worker linux-worker-sandbox-call"
 grep -qF 'hbb_common::native_worker_sandbox::enter_worker_process()' libs/clipboard/src/platform/unix/filetype.rs ||
@@ -3193,6 +3201,14 @@ grep -qF 'FileContentsWorker::spawn()' libs/clipboard/src/platform/unix/serv_fil
   r_native_filecontent_worker="$r_native_filecontent_worker worker-spawn"
 grep -qF 'file-content worker round-trip timed out after' libs/clipboard/src/platform/unix/serv_files.rs ||
   r_native_filecontent_worker="$r_native_filecontent_worker timeout-kills-worker"
+grep -qF 'const WORKER_FAILURE_COOLDOWN: Duration = Duration::from_secs(5);' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker failure-cooldown"
+grep -qF 'NativeWorkerFailureCooldown' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker failure-cooldown-state"
+grep -qF 'file-content worker cooling down after failure; refusing to queue peer file-content request' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker failure-cooldown-refusal"
+grep -qF 'guard.cooldown.mark_failed(WORKER_FAILURE_COOLDOWN)' libs/clipboard/src/platform/unix/serv_files.rs ||
+  r_native_filecontent_worker="$r_native_filecontent_worker failure-cooldown-mark"
 grep -qF 'hbb_common::native_worker_sandbox::apply_to_command(&mut command)' libs/clipboard/src/platform/unix/serv_files.rs ||
   r_native_filecontent_worker="$r_native_filecontent_worker linux-worker-sandbox-call"
 grep -qF 'hbb_common::native_worker_sandbox::enter_worker_process()' libs/clipboard/src/platform/unix/serv_files.rs ||

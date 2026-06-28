@@ -7,8 +7,9 @@
 # throwaway CoW overlay run --network=none (build-windows.ps1).
 #
 # Pinned set (pins.env): Rust 1.75 (MSVC), Flutter 3.24.5 (windows), LLVM 15.0.6 (windows),
-# VS Build Tools (MSVC + Win SDK), vcpkg @120deac3, Git. WiX v4 + the vcpkg x64-windows natives
-# are NuGet/vcpkg sets warmed against the repo (res/msi, res/vcpkg) -- see the TODO at the end.
+# VS Build Tools (MSVC + Win SDK), vcpkg @120deac3, Git. The vcpkg x64-windows natives are
+# warmed against res/vcpkg; the WiX v4 NuGet closure is staged on the per-build OFFLINE media
+# by scripts/online-fetch.sh and consumed by scripts/build-windows.ps1.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 function Log($m) { Write-Host "[guest-setup] $m" }
@@ -189,8 +190,8 @@ if ($src) {
 } else {
     Log 'WARN: no SRC CD (res\vcpkg) found -- skipped the vcpkg-native warm; the offline build cannot link codecs'
 }
-# TODO (milestone 2, the .msi): warm the WiX v4 NuGet set -- needs .NET (add the VS .NET workload) +
-# `dotnet restore res/msi/Package/Package.wixproj` into the global NuGet cache for the offline build.
+# WiX NuGet is intentionally per-build media, not golden-template state: scripts/build-windows.ps1
+# copies the staged closure from OFFLINE\wix-nuget into a writable NUGET_PACKAGES directory.
 
 # --- per-build harness: persistent auto-login + a logon task that runs the build CD's run-build.ps1 ----
 # A per-build is a throwaway CoW clone of this golden + a BUILD CD (the repo's run-build.ps1) + an OUTPUT

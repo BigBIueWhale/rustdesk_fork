@@ -28,7 +28,7 @@ Every script is held to the same bar as the rest of the spec:
 host-provision.sh   # once  — additive host runtimes only (R-B11)
 online-fetch.sh     # once, or on a pins.env change — the ONLY networked step (R-B10)
 build-debian.sh     # per build, offline (--network=none) — the one x86_64 .deb
-build-android.sh    # per build, offline — .apk (self-signed local key, R-B2)
+build-android.sh    # per build, offline — app + androidTest .apk pair (self-signed local key, R-B2)
 provision-windows-vm.sh + build-windows.ps1   # KVM Win11 guest (§12.2) — .exe/.msi
 cleanup.sh          # reversible-only teardown (R-B11)
 ```
@@ -49,7 +49,7 @@ structural, not aspirational.
 | `host-provision.sh` | Additive, idempotent host runtimes (docker pre-existing; qemu-system-x86 plus session-libvirt client/driver pieces, swtpm, and OVMF for the Win VM). It refuses system libvirt default networking, audits for virbr0/dnsmasq/IP-forwarding, installs only what's absent, and records to `.harness-state/provisioned` (outside `./online`, per R-B11's parenthetical). | **Done** |
 | `cleanup.sh` | Reversible-only teardown — default removes only harness-created artifacts (prefix `rustdesk-fork-harness`); `--build-host-network` manifest-gates old harness-created system-libvirt default-network teardown; `--reverse-host` removes only recorded packages, fail-closed if the manifest is absent (R-B11/R-B11a). | **Done** |
 | `build-debian.sh` | Debian x86_64 `.deb` in a digest-pinned `ubuntu:18.04` image, `--network=none`, wrapping `build.py --flutter --unix-file-copy-paste` (software codec, R-R2b). Env-validates, vendored-offline, SHA-256 + double-build determinism (R-B2). One binary — viewer + `--server` by argv. | **Done** |
-| `build-android.sh` | Android aarch64 `.apk` in digest-pinned `ubuntu:24.04`, offline: cargo-ndk (ndk_arm64.sh, features flutter — software codec) + `flutter build apk`, then apksigner v2 with the stable RSA-4096 local key (password via file, R-B2). | **Done** |
+| `build-android.sh` | Android aarch64 app `.apk` plus matching isolated-service `androidTest` smoke `.apk` in digest-pinned `ubuntu:24.04`, offline: cargo-ndk (ndk_arm64.sh, features flutter — software codec) + `flutter build apk` + `:app:assembleReleaseAndroidTest`, then apksigner v2 with the stable RSA-4096 local key (password via file, R-B2). | **Done** |
 | `provision-windows-vm.sh` | Golden Win11 KVM template (R-B8/§12.2): swtpm vTPM 2.0 + OVMF UEFI, unattended install to the pinned toolchain, evergreen ISO/VS-BuildTools SHA-pinned offline layout (R-B12c). Per-build = CoW overlay. | **Done** |
 | `build-windows.ps1` | Windows x86_64 `.exe`/`.msi` inside the KVM guest (PowerShell, $ErrorActionPreference=Stop): asserts pinned versions, vendored-offline, wraps `build.py --flutter` (software codec, R-R2b) + WiX v4 MSI, unsigned + SHA-256 (R-B2). | **Done** |
 

@@ -5,7 +5,8 @@
 # and the online gradle-warming stay byte-for-byte the same flow:
 #   - build-android.sh  build_apk        APK_MODE=offline   (the --network=none .apk build)
 #   - online-fetch.sh   stage_gradle     APK_MODE=warm      (the ONE networked gradle warm)
-# It builds the Rust JNI lib (cargo-ndk) + the Flutter APK from the staged ./online cache:
+# It builds the Rust JNI lib (cargo-ndk), the Flutter APK, and the matching
+# androidTest smoke APK from the staged ./online cache:
 # host rust + the aarch64-linux-android cross-std, the NDK, the arm64-android vcpkg natives,
 # cargo-ndk, the offline cargo vendor, the offline flutter shim, the SDK, and the gradle cache.
 #
@@ -82,11 +83,17 @@ flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
     --llvm-path "$LLVM_ROOT" \
     --llvm-compiler-opts="-I$(echo "$LLVM_ROOT"/lib/clang/*/include)"
 # The Rust JNI lib (cargo-ndk -> liblibrustdesk.so), copied into jniLibs as librustdesk.so
-# with the NDK libc++_shared.so, then the Flutter APK (gradle offline via the warm cache).
+# with the NDK libc++_shared.so, then the Flutter APK + matching androidTest smoke APK
+# (gradle offline via the warm cache).
 bash ./flutter/ndk_arm64.sh
 mkdir -p ./flutter/android/app/src/main/jniLibs/arm64-v8a
 cp ./target/aarch64-linux-android/release/liblibrustdesk.so \
     ./flutter/android/app/src/main/jniLibs/arm64-v8a/librustdesk.so
 cp "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so \
     ./flutter/android/app/src/main/jniLibs/arm64-v8a/
-cd flutter && flutter build apk --release --target-platform android-arm64 --split-per-abi
+( cd flutter && flutter build apk --release --target-platform android-arm64 --split-per-abi )
+gradle_args=(--no-daemon -Ptarget-platform=android-arm64)
+if [ "$APK_MODE" = offline ]; then
+    gradle_args+=(--offline)
+fi
+( cd flutter/android && ./gradlew "${gradle_args[@]}" :app:assembleReleaseAndroidTest )

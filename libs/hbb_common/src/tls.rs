@@ -73,8 +73,7 @@ pub fn get_cached_tls_accept_invalid_cert(_url: &str) -> Option<bool> {
     // R-G4/§8 hardening: insecure-TLS fallback is excised from the fork — outbound TLS NEVER
     // accepts an invalid certificate. This was gated by `allow_insecure_tls_fallback()`, an option
     // the lockdown pins `N`; the guarantee is now STRUCTURAL (no caller can ever obtain a
-    // `danger_accept_invalid_certs = true`), not merely config-disabled. The per-host danger cache
-    // is now write-only dead (left for a follow-on §8 tidy of the upsert/connector path).
+    // `danger_accept_invalid_certs = true`), not merely config-disabled.
     Some(false)
 }
 #[cfg(test)]

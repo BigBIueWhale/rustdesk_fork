@@ -44,8 +44,8 @@ pub(crate) mod wayland;
 // R-X13 (§8): the uinput + rdp_input injection modules are EXCISED — Wayland uinput (the cross-uid
 // _uinput_* IPC + /dev/uinput kernel injection) and the dbus-portal RDP injection. XTEST/enigo is the
 // pinned sole injector (wayland_use_uinput()/wayland_use_rdp_input() were already false by
-// construction), so these were dead compiled-in surface (§8 "removed not disabled"). The scrap::wayland
-// CAPTURE path (R-X12) remains a deferred stage (task #4).
+// construction), so these were dead compiled-in surface (§8 "removed not disabled"). The separate
+// scrap::wayland CAPTURE path is compiled out and source-gated under R-X12.
 // R-X6: the D-Bus deep-link module (org.rustdesk.rustdesk NewConnection) is excised.
 #[cfg(not(target_os = "android"))]
 pub mod input_service;

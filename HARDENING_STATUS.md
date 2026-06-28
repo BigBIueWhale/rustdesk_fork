@@ -43,7 +43,8 @@ containment, Windows remote-printer XPS same-artifact worker handoff, desktop vi
 capability-advertising wrapper closure, and Android isolated-service
 non-blocking busy-admission/rate-limited busy-log follow-ups plus the
 Android isolated-service device-smoke instrumentation entrypoint are closed in
-source and gates; responder-side port-forward latent-connect and file
+source, gates, and the Android artifact build now emits the matching
+androidTest APK; responder-side port-forward latent-connect and file
 write-response forwarding follow-ups remain closed. The existing Apple
 SDK-free source-conformance gate now covers the documented target matrix,
 Apple Flutter/mobile features, structured plist/entitlement/pod/Xcode
@@ -93,6 +94,15 @@ responder-side `TcpStream::connect` path, removes the per-connection
 `LoginRequest::PortForward` fail closed immediately with the direct-IP hardened
 build refusal. `scripts/verify.sh` now fails if the responder tunnel opener or
 viewer tunnel socket opener regrows.
+
+On 2026-06-28, a follow-up R-G4/§8 correctness sweep removed the remaining
+implementation hooks that could accept invalid TLS certificates if a future
+caller ever passed the old compatibility boolean differently. The normal caller
+was already pinned false, but the fork now goes further: the rustls
+assertion-only verifier and `client_config_danger` helper are absent, the
+native-tls connector no longer calls `danger_accept_invalid_certs(true)`, the
+rustls fallback no longer retries with invalid-certificate acceptance, and
+`scripts/verify.sh` fails if those dangerous symbols return.
 
 The latest DoS-focused TCP/path review separated two classes. The unauthenticated
 connection-flood class remains covered by the R-T1/R-T12 semaphore, cgroup, fd,
@@ -1403,14 +1413,29 @@ now wired but not yet executed here. `NativeIsolatedServicesSmokeInstrumentation
 is compiled as release androidTest code, binds the app's non-exported video,
 Opus, zstd, and clipboard isolated services, and requires each readiness/native
 self-test to pass; the wrapper script runs it through
-`adb shell am instrument` against caller-supplied, compatibly signed app/test
-APKs on an API 27+ device or emulator. Source/build evidence for this change:
+`adb shell am instrument` against the matching, compatibly signed app/test APKs
+on an API 27+ device or emulator. Source/build evidence for this change:
 
 ```text
 bash -n scripts/android-isolated-services-smoke.sh  # GREEN: syntax only, no device install/run
 bash -n scripts/verify.sh                           # GREEN
 docker run --rm --network=none ... ./gradlew --offline --no-daemon --console=plain -Ptarget-platform=android-arm64 :app:compileReleaseAndroidTestKotlin  # GREEN: release/arm64 androidTest Kotlin compile, including NativeIsolatedServicesSmokeInstrumentation
 bash scripts/verify.sh                              # GREEN: includes the Android smoke-entrypoint gate
+```
+
+After the Android app/test APK pairing follow-up, the offline Android artifact
+build now produces and signs the matching isolated-service androidTest APK
+alongside the app APK. This closes the reproducible artifact input for
+`scripts/android-isolated-services-smoke.sh`; it does not claim the runtime
+device smoke, because no device or emulator is attached here.
+
+```text
+ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYSTORE_PASS_FILE=.harness-state/android-keystore/pass bash scripts/build-android.sh
+# GREEN: offline Docker build with --network=none; cargo-ndk arm64 Rust + Flutter release APK + :app:assembleReleaseAndroidTest; apksigner verified one signer with v1/v2/v3 true for both APKs
+# dist/rustdesk-arm64.apk sha256 29dc7527beea12cd36fea64ea4d2a3b3a80ba1b716aee363fb21c0e5b6db4dd5
+# dist/rustdesk-arm64-androidTest.apk sha256 4a2f159e5e75edaf3dc5e16ccb46a09062a1b50bc384dc2736dd5cb3314a8c88
+online/android-sdk/platform-tools/adb devices
+# NO DEVICE/EMULATOR ATTACHED: runtime smoke not executed; adb server was killed afterward and no 5037 listener remained
 ```
 
 After the shared native-worker busy-admission change and the high-fd cleanup
@@ -1826,8 +1851,9 @@ bash -n scripts/verify.sh     # GREEN
   peer zstd and peer clipboard SET still fail closed until platform
   workers/services exist instead of parsing hostile-peer bytes in-process. That
   is the right interim safety posture, but it is not final mobile client
-  conformance: Android now has a committed device/emulator smoke entrypoint for
-  the isolated video, Opus, zstd, and clipboard services, but still needs
+  conformance: Android now has a committed device/emulator smoke entrypoint and
+  the offline artifact build emits a matching app/androidTest APK pair for the
+  isolated video, Opus, zstd, and clipboard services, but still needs
   executed device-level evidence for that smoke and platform-worker/service
   support where required for the remaining mobile parser features; iOS still needs a
   product-scope decision for the no-child-process model, Windows
@@ -1908,10 +1934,11 @@ and Rust<->C bridge length
 caps plus null/bounded-read fail-closed guards, pending request/response
 accounting, and a same-artifact worker boundary; Windows remote-printer XPS
 handoff now has a bounded same-artifact worker boundary. Android video, Opus,
-peer zstd, and peer clipboard SET now have compiled isolated-service paths, and
-the repository has an androidTest/adb smoke entrypoint for those four readiness
-self-tests, but Android artifact availability must not be treated as end-to-end
-feature parity until that smoke is executed on a real device or emulator. iOS peer zstd and peer clipboard SET
+peer zstd, and peer clipboard SET now have compiled isolated-service paths; the
+repository builds and signs a matching app/androidTest APK pair and has an adb
+smoke wrapper for those four readiness self-tests, but Android artifact
+availability must not be treated as end-to-end feature parity until that smoke
+is executed on a real device or emulator. iOS peer zstd and peer clipboard SET
 still fail closed rather than using in-process native parsers; peer zstd reports
 refusal as an explicit peer decompression error rather than as empty payload
 data. Those remaining mobile closures are secure but functionally incomplete

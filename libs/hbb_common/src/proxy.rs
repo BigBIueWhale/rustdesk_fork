@@ -481,11 +481,7 @@ impl Proxy {
         let stream = self.new_stream(local, proxy).await?;
         let s = super::timeout(
             self.ms_timeout,
-            self.https_connect_nativetls(
-                stream,
-                &target_addr,
-                danger_accept_invalid_cert.unwrap_or(false),
-            ),
+            self.https_connect_nativetls(stream, &target_addr, danger_accept_invalid_cert),
         )
         .await??;
         upsert_tls_cache(url, TlsType::NativeTls);
@@ -496,15 +492,12 @@ impl Proxy {
         &self,
         io: Input,
         target_addr: &TargetAddr<'a>,
-        danger_accept_invalid_cert: bool,
+        _danger_accept_invalid_cert: Option<bool>,
     ) -> Result<BufStream<TlsStream<Input>>, ProxyError>
     where
         Input: AsyncRead + AsyncWrite + Unpin,
     {
-        let mut tls_connector_builder = native_tls::TlsConnector::builder();
-        if danger_accept_invalid_cert {
-            tls_connector_builder.danger_accept_invalid_certs(true);
-        }
+        let tls_connector_builder = native_tls::TlsConnector::builder();
         let tls_connector = TlsConnector::from(tls_connector_builder.build()?);
         let stream = tls_connector
             .connect(&self.intercept.get_domain()?, io)
@@ -553,22 +546,7 @@ impl Proxy {
                 // If the cert verification fails, the error is:
                 // "IO Error: invalid peer certificate: UnknownIssuer"
 
-                let s = if danger_accept_invalid_cert.is_none() {
-                    log::warn!(
-                        "Falling back to rustls-tls (accept invalid cert) for HTTPS proxy server."
-                    );
-                    self.https_connect_rustls_wrap_danger(
-                        &url,
-                        local,
-                        proxy,
-                        None,
-                        target_addr,
-                        is_tls_type_cached,
-                        Some(true),
-                        origin_danger_accept_invalid_cert,
-                    )
-                    .await?
-                } else if !is_tls_type_cached {
+                let s = if !is_tls_type_cached {
                     log::warn!("Falling back to native-tls for HTTPS proxy server.");
                     self.https_connect_nativetls_wrap_danger(
                         &url,

@@ -8,8 +8,8 @@
 #   2. the wire-level CPace handshake + two-key-cipher integration tests;
 #   3. the R-S16 PINNED_SETTINGS policy funnel test (now unconditional, R-R2b);
 #   4. a compile check of the whole main crate (hardening unconditional);
-#   5. the R-A6 build-time greps — forbidden tokens of the COMPLETED excisions
-#      MUST be absent; tokens of the not-yet-excised paths are reported as TODO.
+#   5. the R-A6 build-time greps — forbidden tokens of the completed excisions
+#      and closed follow-up stages MUST be absent.
 #
 # This is the reproducible assurance basis the §11 review and the spec's
 # "secure by assertion" gates rest on. It is NOT the release build (that is the
@@ -442,7 +442,6 @@ ra6_clean 'RUSTDESK_FORCED_DISPLAY_SERVER'                                'R-X12
 # (libs/scrap/src/common/mod.rs) — the capture+input backend is X11 with NO runtime display-server
 # selector (the `*IS_X11` detection cache + the is_x11_or_headless() body are gone). Startup-asserted
 # (R-A4, direct_service). Guards a regression that re-adds runtime capture/input backend selection.
-# (The scrap `wayland` feature drop + `mod wayland` compile-out is the remaining R-X12 stage — task #4.)
 r_x12_pin=
 grep -A1 'pub fn is_x11() -> bool {' src/platform/linux.rs        | grep -qE '^\s*true\s*$' || r_x12_pin="$r_x12_pin main-is_x11"
 grep -A1 'pub fn is_x11() -> bool {' libs/scrap/src/common/mod.rs | grep -qE '^\s*true\s*$' || r_x12_pin="$r_x12_pin scrap-is_x11"
@@ -472,8 +471,8 @@ ra6_clean 'start_uinput_service'                                         'R-X13 
 # org.freedesktop.portal.RemoteDesktop session (RdpInputKeyboard/RdpInputMouse as the enigo custom
 # backend) — is EXCISED. XTEST/enigo is the pinned sole injector (wayland_use_rdp_input() was already
 # false by construction), so this was compiled-in dead surface (§8 "removed not disabled"). The module
-# file + setup_rdp_input + the selector + the dead branches are gone. (uinput + the scrap::wayland
-# capture path remain a deferred R-X12/R-X13 stage — task #4.)
+# file + setup_rdp_input + the selector + the dead branches are gone. The uinput sibling and
+# Wayland/pipewire capture path are asserted by the adjacent R-X13/R-X12 gates.
 if [ -e src/server/rdp_input.rs ]; then
   echo "  FAIL R-X13: the excised src/server/rdp_input.rs reappeared"; rc=1
 else
@@ -485,9 +484,9 @@ ra6_clean 'RdpInput|fn setup_rdp_input|wayland_use_rdp_input|mod rdp_input' 'R-X
 # pinned sole injector (wayland_use_uinput() was already false). Gone: the module, the client
 # (UInputKeyboard/UInputMouse + setup_uinput/set_uinput_resolution/update_mouse_resolution), and the
 # uinput-only IPC-auth helpers (log_rejected_uinput_connection, ensure_peer_executable_matches_current_by_fd).
-# The _service-channel peer-uid authorization is UNTOUCHED (gate 3b-i still green). [Deferred residual,
-# task #4: the dead wayland_use_uinput() selector + its dead dispatch guards + the `_uinput_` postfix in
-# is_service_ipc_postfix.]
+# The _service-channel peer-uid authorization is UNTOUCHED (gate 3b-i still green). The dead
+# selector/dispatch guards are asserted below, and config_it asserts `_uinput_*` is no longer a
+# world-connectable service IPC postfix.
 if [ -e src/server/uinput.rs ]; then
   echo "  FAIL R-X13: the excised src/server/uinput.rs reappeared"; rc=1
 else
@@ -555,11 +554,11 @@ fi
 # + shared_memory (capture shmem) deps removed. The installed LocalSystem service (launch_privileged_
 # process / CreateProcessAsUserW, KEPT) is the SOLE controlled entry. check_super_user_permission is
 # KEPT (R-X11 UI) but converted to a passive is_elevated() check — no UAC self-relaunch. (Patterns are
-# code-specific; the "...excised" // comments the removal left are stripped by ra6_clean's `grep -v //`.
+# code-specific; the "...excised" // comments the removal left are stripped by ra6_clean's `grep -v //`.)
 # NOTE: the orphaned portable-service IPC PEER-AUTH + LISTENER [ipc/auth.rs + ipc.rs `_portable_service`
-# branch + windows.rs portable_service_logon_helper_paths] is now removed + gated just below. Still
-# follow-on: the Layer-2 token handshake + DataPortableService data-enum [ipc.rs, needs ui_cm_interface] +
-# acl.rs shmem-ACL. (libs/portable is NOT dead — it is the live rustdesk-portable-packer installer.))
+# branch + windows.rs portable_service_logon_helper_paths] is now removed + gated just below. The
+# former Layer-2 token handshake, DataPortableService data-enum, and shmem-ACL follow-ups are gated
+# in the adjacent R-X9 clauses. (libs/portable is NOT dead — it is the live rustdesk-portable-packer installer.)
 ra6_clean 'pub mod portable_service|crate::portable_service::|portable_service::client|portable_service::server|fn run_uac|fn run_as_system|fn elevate_or_run_as_system|pub fn elevate\(arg: &str|impersonate_system::|set_quick_support|start_portable_service|set_portable_service_running|misc::Union::PortableServiceRunning|drop_portable_service_shared_memory' 'R-X9 portable run-mode + quick-support + interactive elevation (slices 2-4)' || rc=1
 # R-X9 slices 2-4: the impersonate_system (SYSTEM token-theft, drove run_as_system) + shared_memory
 # (portable capture shmem) Cargo deps are removed — both were used only by the excised portable_service.
@@ -580,16 +579,16 @@ fi
 # trait method portable_service_authorization_status_for_session are all removed. KEPT: the LIVE main-IPC
 # auth (authorize_windows_main_ipc_connection) + the `_service`-channel auth + ensure_peer_executable_
 # matches_current_by_pid (now WITHOUT the dead portable exception — behaviorally identical, no live caller
-# ever passed `_portable_service`). (Still follow-on: Layer-2 token handshake + DataPortableService
-# data-enum [needs ui_cm_interface CmShowElevation/RequestStart] + acl.rs shmem-ACL.)
+# ever passed `_portable_service`). The token-handshake, DataPortableService, and shmem-ACL follow-ups
+# are gated by the adjacent R-X9 clauses.
 ra6_clean 'fn portable_service_listener_security_attributes|fn authorize_windows_portable_service_ipc_connection|fn is_allowed_windows_portable_service_peer|fn portable_service_helper_is_trusted|fn windows_portable_service_ipc_allows_logon_helper_executable|fn portable_service_authorization_status_for_session|fn portable_service_logon_helper_paths|postfix == "_portable_service"' 'R-X9 orphaned portable-service IPC peer-auth + listener (slices 2-4 follow-on)' || rc=1
 # R-X9 (slices 2-4 follow-on, Layer 2a): the orphaned portable-service IPC TOKEN-HANDSHAKE cluster is
 # excised — the portable SYSTEM helper that did the one-time-token handshake over the `_portable_service`
 # pipe is deleted, so generate_one_time_ipc_token + constant_time_ipc_token_eq + the IPC_TOKEN_LEN/
 # RANDOM_BYTES consts + PORTABLE_SERVICE_IPC_HANDSHAKE_TIMEOUT_MS + the two handshake fns
 # (portable_service_ipc_handshake_as_client/_server, ZERO callers) + the DataPortableService AuthToken/
-# AuthResult variants (handshake-only) are all dead. (The DataPortableService RequestStart/CmShowElevation
-# variants + the CM elevation UI are a SEPARATE follow-on — Layer 2b.)
+# AuthResult variants (handshake-only) are all dead. The DataPortableService RequestStart/CmShowElevation
+# variants + the CM elevation UI are gated separately in Layer 2b.
 ra6_clean 'fn generate_one_time_ipc_token|fn constant_time_ipc_token_eq|fn portable_service_ipc_handshake|const IPC_TOKEN_LEN|PORTABLE_SERVICE_IPC_HANDSHAKE_TIMEOUT_MS' 'R-X9 orphaned portable-service IPC token-handshake (slices 2-4 follow-on, Layer 2a)' || rc=1
 # R-X9 (slices 2-4 follow-on, Layer 2b): the dead CM "elevate" UI + the DataPortableService IPC data-enum.
 # b3e8485 removed the SERVER-side portable-service/peer-elevation, leaving the CM elevate button + its
@@ -618,8 +617,8 @@ ra6_clean 'fn set_path_permission_for_portable_service_shmem|fn validate_path_fo
 # direct listener starts UNCONDITIONALLY (reads no option, R-A4/R-D4). "removed not disabled": no
 # get/set_option("stop-service"), option2bool, or check_if_stop_service in that machinery. The key
 # stays pinned "N" in PINNED_SETTINGS (R-S16) + in the is_option_can_save reject set (R-S11) — the
-# un-writable guarantee. (The flutter/sciter "Stop service" UI button + its FFI/macOS writers are a
-# documented follow-on; all pinned-safe/dead.)
+# un-writable guarantee. The Flutter hide/read-only behavior and the runtime service-kill writers are
+# gated by the R-S16(d) UI and R-X9/R-X10 clauses below.
 r_x9_stopsvc=
 grep -qE 'Config::(get|set)_option\([^)]*"stop-service"|option2bool\("stop-service"|fn check_if_stop_service' src/platform/windows.rs src/platform/linux.rs src/direct_service.rs && r_x9_stopsvc="$r_x9_stopsvc service-listener-reads-toggle"
 grep -qE '\("stop-service", *"N"\)' libs/hbb_common/src/config.rs || r_x9_stopsvc="$r_x9_stopsvc pin-removed"
@@ -1679,6 +1678,18 @@ if grep -qE '^[[:space:]]*reqwest[[:space:]]*=|^name = "reqwest"$' Cargo.toml Ca
 else
   echo "  ok  R-SV6/R-G4 reqwest dependency graph absent"
 fi
+# R-G4 / §8: insecure-TLS fallback is excised structurally, not just config-pinned. The old
+# call-site parameter names may remain for compatibility, but no connector/verifier may disable
+# certificate verification or install an assertion-only verifier.
+if grep -RInE 'danger_accept_invalid_certs[[:space:]]*\([[:space:]]*true[[:space:]]*\)|NoVerifier|client_config_danger|ServerCertVerified::assertion|HandshakeSignatureValid::assertion' src libs/hbb_common --include='*.rs' 2>/dev/null >/tmp/rd_verify_tls_danger.$$; then
+  echo "  FAIL R-G4/§8: invalid-certificate TLS acceptance path still present:"
+  cat /tmp/rd_verify_tls_danger.$$
+  rm -f /tmp/rd_verify_tls_danger.$$
+  rc=1
+else
+  rm -f /tmp/rd_verify_tls_danger.$$
+  echo "  ok  R-G4/§8 insecure-TLS fallback structurally absent (no invalid-cert connector/verifier path)"
+fi
 # R-SV4(b) / R-D5 / §18: the common.rs NAT-type/IPv6 STUN probes are removed — test_nat_ipv4 /
 # test_ipv6 -> stun_ipv4_test/stun_ipv6_test resolved + queried hardcoded public STUN servers
 # (stun.l.google.com etc.). A direct-IP fork does no NAT traversal; the probes were dead
@@ -1747,7 +1758,7 @@ fi
 # connection-failure "relay-hint" advice (try a relay / add the "/r" suffix) is dead and
 # misdirecting. on_establish_connection_error now always surfaces the plain error msgbox;
 # the "relay-hint"/"relay-hint2" emission is removed. (The hyphenated token is distinct from
-# the lang key `relay_hint_tip` (underscore), whose 51-file sweep is a deferred lang cleanup.)
+# the former lang key `relay_hint_tip` (underscore), whose 51-file sweep is asserted below.)
 ra6_clean 'relay-hint' 'R-G6 relay-fallback hint emission' || rc=1
 # §19 closing-box dead-lang-key sweep: lang keys whose UI was removed by earlier §8/§18/§19
 # work and which now have NO live translate() caller — relay_hint_tip/websocket_tip (R-G6,
@@ -3154,6 +3165,14 @@ grep -qF 'Activity.RESULT_OK' "$android_isolated_smoke" ||
   r_android_isolated_smoke="$r_android_isolated_smoke instrumentation-ok-code-missing"
 grep -qF 'Activity.RESULT_CANCELED' "$android_isolated_smoke" ||
   r_android_isolated_smoke="$r_android_isolated_smoke instrumentation-failure-code-missing"
+grep -qF ':app:assembleReleaseAndroidTest' scripts/android-apk-build.sh ||
+  r_android_isolated_smoke="$r_android_isolated_smoke android-test-apk-not-built"
+grep -qF -- '-Ptarget-platform=android-arm64' scripts/android-apk-build.sh ||
+  r_android_isolated_smoke="$r_android_isolated_smoke android-test-apk-target-platform-missing"
+grep -qF 'rustdesk-arm64-androidTest.apk' scripts/build-android.sh ||
+  r_android_isolated_smoke="$r_android_isolated_smoke android-test-apk-not-staged"
+grep -qF 'rustdesk-arm64-androidTest.apk.sha256' scripts/build-android.sh ||
+  r_android_isolated_smoke="$r_android_isolated_smoke android-test-apk-sha-missing"
 [ -x "$android_smoke_script" ] ||
   r_android_isolated_smoke="$r_android_isolated_smoke smoke-script-not-executable"
 grep -qF 'online/android-sdk/platform-tools/adb' "$android_smoke_script" ||
@@ -3162,6 +3181,10 @@ grep -qF 'APP_APK' "$android_smoke_script" ||
   r_android_isolated_smoke="$r_android_isolated_smoke smoke-script-no-app-apk-input"
 grep -qF 'TEST_APK' "$android_smoke_script" ||
   r_android_isolated_smoke="$r_android_isolated_smoke smoke-script-no-test-apk-input"
+grep -qF 'dist/rustdesk-arm64.apk' "$android_smoke_script" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke smoke-script-no-default-app-apk"
+grep -qF 'dist/rustdesk-arm64-androidTest.apk' "$android_smoke_script" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke smoke-script-no-default-test-apk"
 grep -qF 'am instrument -w -r "$component"' "$android_smoke_script" ||
   r_android_isolated_smoke="$r_android_isolated_smoke smoke-script-no-instrument-run"
 grep -qF 'com.carriez.flutter_hbb.NativeIsolatedServicesSmokeInstrumentation' "$android_smoke_script" ||
@@ -3174,7 +3197,7 @@ fi
 if [ -n "$r_android_isolated_smoke" ]; then
   echo "  FAIL Appendix C #2b: Android isolated-service device-smoke entrypoint regressed:$r_android_isolated_smoke"; rc=1
 else
-  echo "  ok  Appendix C #2b Android isolated-service device-smoke entrypoint exists: androidTest runner binds video/Opus/zstd/clipboard readiness self-tests; adb wrapper runs am instrument against caller-supplied app/test APKs and checks RESULT_OK"
+  echo "  ok  Appendix C #2b Android isolated-service device-smoke entrypoint exists: offline build emits app/test APK pair; androidTest runner binds video/Opus/zstd/clipboard readiness self-tests; adb wrapper runs am instrument and checks RESULT_OK"
 fi
 # Appendix C #2b fifth sandbox slice: Unix/macOS file-copy descriptor PDUs from
 # the peer must be parsed in a hidden same-artifact worker before FUSE or macOS

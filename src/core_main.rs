@@ -276,8 +276,8 @@ pub fn core_main() -> Option<Vec<String>> {
         }
         // R-X1: the macOS DMG `--update` apply-handler is excised — it ran the
         // osascript-admin root DMG install (update_from_dmg / update_me); the fork
-        // ships its own releases (§12). Its macos.rs source twin is a deferred
-        // Apple-source excision (R-X1 macOS, retained-but-flagged per R-R2).
+        // ships its own releases (§12). Its macos.rs source twin is also excised
+        // and covered by the Apple source-conformance gate.
         // R-X4: the ungated `--remove <path>` file-delete gadget is excised — it
         // deleted any path with no install/root gate.
         if args[0] == "--tray" {

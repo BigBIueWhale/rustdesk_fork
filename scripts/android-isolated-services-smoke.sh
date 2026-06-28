@@ -25,6 +25,10 @@ Optional:
   ANDROID_SERIAL=device-serial
   INSTALL_APKS=0      # skip adb install, run instrumentation against already-installed APKs
 
+Defaults when INSTALL_APKS is not 0:
+  APP_APK=dist/rustdesk-arm64.apk
+  TEST_APK=dist/rustdesk-arm64-androidTest.apk
+
 The app APK and androidTest APK must be built from the same source and signed
 compatibly for instrumentation. This script does not build them.
 EOF
@@ -57,6 +61,8 @@ esac
 [ "$api_level" -ge 27 ] || die "Android API $api_level lacks SharedMemory; run this smoke on API 27+"
 
 if [ "${INSTALL_APKS:-1}" != "0" ]; then
+  APP_APK=${APP_APK:-"$PWD/dist/rustdesk-arm64.apk"}
+  TEST_APK=${TEST_APK:-"$PWD/dist/rustdesk-arm64-androidTest.apk"}
   [ -n "${APP_APK:-}" ] || { usage; die "APP_APK is required unless INSTALL_APKS=0"; }
   [ -n "${TEST_APK:-}" ] || { usage; die "TEST_APK is required unless INSTALL_APKS=0"; }
   [ -f "$APP_APK" ] || die "APP_APK does not exist: $APP_APK"

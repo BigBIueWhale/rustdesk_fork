@@ -306,7 +306,7 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: HEAD
+      ref: bd6b5b41254e57c5bcece202ebfb234de63e6487
       resolved-ref: bd6b5b41254e57c5bcece202ebfb234de63e6487
       url: "https://github.com/rustdesk-org/Dash-Chat-2"
     source: git
@@ -339,7 +339,7 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: HEAD
+      ref: b47e8385e5a75d38319ad706a64b0ead3108b093
       resolved-ref: b47e8385e5a75d38319ad706a64b0ead3108b093
       url: "https://github.com/rustdesk-org/rustdesk_desktop_multi_window"
     source: git
@@ -1633,7 +1633,7 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: HEAD
+      ref: "85789bfe6e4cfaf4ecc00c52857467fdb7f26879"
       resolved-ref: "85789bfe6e4cfaf4ecc00c52857467fdb7f26879"
       url: "https://github.com/rustdesk-org/window_manager"
     source: git

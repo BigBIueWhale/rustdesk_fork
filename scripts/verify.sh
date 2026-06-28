@@ -2562,10 +2562,11 @@ else
   echo "  ok  Appendix C #2b desktop Opus decode uses timeout-bounded same-artifact worker plus Linux x86_64/aarch64 post-exec syscall filter; Android Opus decode crosses a non-exported isolatedProcess service after bind+self-test using SharedMemory/Messenger IPC; iOS Opus decode still fails closed until a platform worker/service exists (other Linux arch workers fail closed)"
 fi
 # Appendix C #2b third sandbox slice: peer-controlled zstd decompression must
-# cross a same-artifact worker on desktop. Local persisted config decompression
-# stays in-process; this gate covers file blocks, clipboard, cursor and terminal
-# session payloads.
+# cross a same-artifact worker on desktop and a non-exported isolatedProcess
+# service on Android. Local persisted config decompression stays in-process;
+# this gate covers file blocks, clipboard, cursor and terminal session payloads.
 r_native_zstd_worker=
+android_zstd=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/NativeZstdDecoderService.kt
 grep -qF 'const WORKER_ARG: &str = "--native-zstd-worker";' libs/hbb_common/src/compress.rs ||
   r_native_zstd_worker="$r_native_zstd_worker worker-arg"
 grep -qF 'pub fn peer_decompress(data: &[u8]) -> ResultType<Vec<u8>>' libs/hbb_common/src/compress.rs ||
@@ -2581,9 +2582,65 @@ grep -qF 'refusing in-process desktop peer decompress' libs/hbb_common/src/compr
   r_native_zstd_worker="$r_native_zstd_worker no-desktop-inprocess-fallback"
 grep -qF 'refusing in-process mobile peer zstd decompress' libs/hbb_common/src/compress.rs ||
   r_native_zstd_worker="$r_native_zstd_worker no-mobile-inprocess-fallback"
-if sed -n '/#\[cfg(any(target_os = "android", target_os = "ios"))\]/,/^}/p' libs/hbb_common/src/compress.rs | grep -qF 'decompress(data)'; then
+if sed -n '/#\[cfg(target_os = "ios")\]/,/^}/p' libs/hbb_common/src/compress.rs | grep -qF 'decompress(data)'; then
   r_native_zstd_worker="$r_native_zstd_worker mobile-inprocess-peer-decompress"
 fi
+grep -qF 'set_android_peer_zstd_service' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker android-callback-registration-api"
+grep -qF 'fn peer_decompress_android_service(data: &[u8]) -> ResultType<Vec<u8>>' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-parent"
+grep -qF 'android isolated zstd service busy; refusing to queue peer decompress' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-nonblocking-admission"
+grep -qF 'read_response(&mut cursor)' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-parent-response-validation"
+grep -qF 'android_service_zstd_decompress_response_bytes' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-response-writer"
+grep -qF 'Java_com_carriez_flutter_1hbb_NativeZstdDecoderService_nativeSelfTest' src/native_zstd_service.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-native-selftest"
+grep -qF 'Java_com_carriez_flutter_1hbb_NativeZstdDecoderService_nativeDecompress' src/native_zstd_service.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-native-entry"
+grep -qF 'mod native_zstd_service;' src/lib.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-native-module"
+grep -qF 'call_application_context_native_zstd_decoder_ready' "$android_ffi" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-app-ready-jni"
+grep -qF 'call_application_context_native_zstd_decompress' "$android_ffi" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-app-decompress-jni"
+grep -qF 'android_peer_zstd_service' "$android_ffi" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-peer-zstd-callback"
+grep -qF 'android isolated zstd service readiness self-test failed' "$android_ffi" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-peer-zstd-no-readiness-selftest"
+grep -qF 'rustIsNativeZstdDecoderReady' "$android_app" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-app-ready-bridge"
+grep -qF 'rustDecompressNativeZstd' "$android_app" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-app-decompress-bridge"
+grep -qF 'android:name=".NativeZstdDecoderService"' "$android_manifest" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-manifest"
+grep -qF 'android:isolatedProcess="true"' "$android_manifest" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-not-isolated"
+grep -qF 'android:exported="false"' "$android_manifest" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-exported"
+grep -qF 'object NativeZstdDecoderClient' "$android_zstd" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-client"
+grep -qF 'FFI.onAppStart(applicationContext)' "$android_zstd" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-native-init"
+grep -qF 'SharedMemory.create("rd-native-zstd-input"' "$android_zstd" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-no-input-shmem"
+grep -qF 'SharedMemory.create("rd-native-zstd-output"' "$android_zstd" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-no-output-shmem"
+grep -qF 'Messenger(IncomingHandler(handlerThread.looper))' "$android_zstd" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-no-messenger"
+grep -qF 'NZD_MSG_SELF_TEST' "$android_zstd" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-no-selftest"
+grep -qF 'Process.isIsolated()' "$android_zstd" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-no-isolated-readback"
+grep -qF 'NZD_DECOMPRESS_TIMEOUT_MS = 5_000L' "$android_zstd" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-no-timeout"
+grep -qF 'dropping oversized isolated zstd request' "$android_zstd" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-no-request-cap"
+grep -qF 'decompressLock = Object()' "$android_zstd" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-no-inflight-guard"
+grep -qF 'synchronized(decompressLock)' "$android_zstd" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-no-decompress-serialization"
 grep -qF 'const WORKER_DECOMPRESS_TIMEOUT: Duration = Duration::from_secs(5);' libs/hbb_common/src/compress.rs ||
   r_native_zstd_worker="$r_native_zstd_worker timeout"
 grep -qF 'native zstd worker decompress timed out after' libs/hbb_common/src/compress.rs ||
@@ -2630,9 +2687,9 @@ if grep -RIn 'hbb_common::compress::decompress' src --include='*.rs' 2>/dev/null
 fi
 rm -f /tmp/rd_verify_peer_decompress.$$
 if [ -n "$r_native_zstd_worker" ]; then
-  echo "  FAIL Appendix C #2b: desktop peer zstd worker boundary regressed:$r_native_zstd_worker"; rc=1
+  echo "  FAIL Appendix C #2b: peer zstd worker/service boundary regressed:$r_native_zstd_worker"; rc=1
 else
-  echo "  ok  Appendix C #2b peer zstd decompress uses timeout-bounded same-artifact worker on desktop, returns explicit errors instead of empty fallback on refusal/failure, fails closed on mobile without an in-process native fallback, and uses Linux x86_64/aarch64 post-exec syscall filter (config/non-Linux tracked; other Linux arch workers fail closed)"
+  echo "  ok  Appendix C #2b peer zstd decompress uses timeout-bounded same-artifact worker on desktop and a non-exported Android isolatedProcess service with SharedMemory/Messenger IPC; iOS still fails closed without an in-process native fallback; failures return explicit errors instead of empty fallback and Linux x86_64/aarch64 workers use post-exec syscall filters (config/non-Linux tracked; other Linux arch workers fail closed)"
 fi
 # Appendix C #2b fourth sandbox slice: desktop normal clipboard SET must cross a
 # hidden same-artifact worker before protobuf-to-native conversion and platform

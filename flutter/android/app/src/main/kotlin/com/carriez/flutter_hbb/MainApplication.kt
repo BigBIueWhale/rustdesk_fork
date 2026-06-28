@@ -57,4 +57,14 @@ class MainApplication : Application() {
             decodeFec
         )
     }
+
+    @Keep
+    fun rustIsNativeZstdDecoderReady(): Boolean {
+        return NativeZstdDecoderClient.isReady(applicationContext)
+    }
+
+    @Keep
+    fun rustDecompressNativeZstd(payload: ByteArray): ByteArray? {
+        return NativeZstdDecoderClient.decompress(applicationContext, payload)
+    }
 }

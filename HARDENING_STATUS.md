@@ -13,7 +13,8 @@ history remains the traceability record for those intermediate notes.
 native-codec advisory-watch, native media/clipboard handoff-bound and
 CLIPRDR callback fail-closed follow-ups, the first desktop
 native-video/native-Opus/native-zstd/native-clipboard worker slices, the
-mobile media/clipboard/zstd fail-closed and peer-zstd explicit-failure behavior,
+mobile media/clipboard fail-closed, Android peer-zstd isolated-service, iOS
+peer-zstd fail-closed, and peer-zstd explicit-failure behavior,
 bounded worker-I/O thread and
 bounded desktop clipboard/file-clipboard dispatcher, Linux
 FUSE clipboard mount-point no-follow/no-adoption setup,
@@ -163,12 +164,15 @@ now advertise/construct only after binding to non-exported
 `android:isolatedProcess="true"` services whose native self-tests pass; hostile
 peer media bytes cross capped `SharedMemory` plus `Messenger` IPC and are
 parent-validated through the same worker response protocols before UI/audio
-handoff. Android releases without `SharedMemory` fail closed. iOS video and
-Opus decode still fail closed until an equivalent platform service exists, and
-peer zstd decompression still fails closed on Android/iOS instead of invoking
-native zstd in-process until a platform worker/service boundary exists. Mobile
-peer clipboard SET and `MultiClipboards` messages likewise fail closed instead
-of entering the Android/iOS platform clipboard path in-process. Local persisted
+handoff. Android peer zstd decompression now also binds to a non-exported
+`android:isolatedProcess="true"` service, requires its readiness/self-test path
+before decompression, sends capped compressed bytes over `SharedMemory` plus
+`Messenger` IPC, serializes the parent call with non-blocking admission, and
+parent-validates the bounded worker response before accepting output. Android
+releases without `SharedMemory` fail closed. iOS video, Opus, and peer zstd
+still fail closed until an equivalent platform service exists. Mobile peer
+clipboard SET and `MultiClipboards` messages likewise fail closed instead of
+entering the Android/iOS platform clipboard path in-process. Local persisted
 config decompression stays
 in-process by design. The clipboard parent now sanitizes peer
 `MultiClipboards` before the
@@ -584,8 +588,8 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   a Cargo/Dart-advisory coverage closure only; it is not a "no current CVEs"
   assertion and does not close the Appendix C #2b decoder-sandbox residual.
 - **Desktop native video, Opus, peer zstd, and normal clipboard SET cross worker
-  processes, while Android video/Opus cross isolated services before native
-  parser entry.**
+  processes, while Android video/Opus/peer-zstd cross isolated services before
+  native parser entry.**
   `src/native_video_worker.rs` adds the hidden same-artifact
   `--native-video-worker` role, entered from `src/core_main.rs`, and
   `VideoHandler` now owns `NativeVideoDecoder` instead of
@@ -623,18 +627,25 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   decompression now uses `peer_decompress`: desktop routes file blocks,
   compressed clipboard payloads, cursor colors, and terminal output through a
   length-bounded stdio worker with a fixed timeout and no in-process fallback.
+  Android routes the same peer zstd API through `NativeZstdDecoderService`, a
+  non-exported isolated service whose readiness call checks isolated-process
+  status and a native zstd round trip before hostile payloads are decompressed.
+  Requests and responses are capped, copied through `SharedMemory`/`Messenger`,
+  serialized with a parent non-blocking in-flight guard, and parsed through the
+  same worker response validator before the parent accepts decompressed output.
   The peer API now returns an explicit error on oversized input, worker failure,
-  or mobile refusal instead of using an empty-vector fallback. Compressed
+  service failure, or iOS mobile refusal instead of using an empty-vector
+  fallback. Compressed
   file-transfer blocks fail the receive job on peer zstd failure; cursor,
-  terminal, and clipboard payloads log and drop that peer message. Android/iOS
-  still refuse peer zstd decompression rather than invoking native zstd
-  in-process; those compressed peer features stay unavailable on mobile until a
-  platform worker/service boundary exists. Local config decompression still uses
+  terminal, and clipboard payloads log and drop that peer message. iOS still
+  refuses peer zstd decompression rather than invoking native zstd in-process;
+  those compressed peer features stay unavailable on iOS until a platform
+  worker/service boundary exists. Local config decompression still uses
   `decompress` directly because it is persisted local state, not a peer parser
   path. `scripts/verify.sh` gates all three worker args, wrappers/core entries,
-  no-fallback strings, the Android isolated video and Opus service
+  no-fallback strings, the Android isolated video, Opus, and zstd service
   manifest/JNI/Kotlin bridge/SharedMemory/Messenger/self-test/decode-serialization
-  markers, the iOS video/Opus and mobile zstd no-in-process fallbacks, explicit
+  markers, the iOS video/Opus/zstd no-in-process fallbacks, explicit
   peer-zstd failure semantics, timeout/kill markers, peer zstd call sites, and
   absence of direct native decoder ownership in `src/client.rs`.
   `src/native_clipboard_worker.rs` adds the hidden same-artifact
@@ -1256,6 +1267,17 @@ bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl
 git diff --check                          # GREEN after this ledger update
 ```
 
+After the Android peer-zstd isolated-service change, these focused and full
+gates have been re-run successfully:
+
+```text
+docker run ... rustfmt --edition 2021 --check libs/hbb_common/src/compress.rs libs/scrap/src/android/ffi.rs src/native_zstd_service.rs src/lib.rs  # GREEN
+docker run ... bash -n scripts/verify.sh  # GREEN
+bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl. Android peer-zstd isolatedProcess service source gates and compile-check image
+ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYSTORE_PASS_FILE=.harness-state/android-keystore/pass bash scripts/build-android.sh  # GREEN: dist/rustdesk-arm64.apk sha256 20ca7204b04cd7063f1e0b22e549ef4dd259a064e168e36a9dc6f28a3450e31d
+git diff --check                          # GREEN after this ledger update
+```
+
 After the shared native-worker busy-admission change and the high-fd cleanup
 runtime probe, these focused and full gates have been re-run successfully:
 
@@ -1431,9 +1453,9 @@ git diff --check              # GREEN after this ledger update
   `CodecFormat::Unknown` when no advertised codec is mutually usable, and
   `video_service` refuses to start a video encoder in that state instead of
   falling back to VP9. Focused unit tests and `scripts/verify.sh` gate this
-  fail-closed behavior. Android remains functionally incomplete until an
-  isolated mobile media path exists, but the current no-decoder safety signal is
-  now enforced end-to-end.
+  fail-closed behavior. This remains the fallback for mobile platforms or
+  Android releases where the isolated decoder service is unavailable; Android
+  now has an isolated media path when the service bind and self-test succeed.
 
 - **Android peer clipboard SET helpers now fail closed themselves.** The peer
   message routes already refused mobile clipboard SET instead of calling the
@@ -1630,15 +1652,16 @@ bash -n scripts/verify.sh     # GREEN
   `SeChangeNotifyPrivilege`, reads that token state back, and applies process
   mitigations for dynamic code, extension points, strict handle checks,
   child-process creation refusal, and remote/low-integrity image loads. Android
-  video decode now has a compiled isolated-service path for VP8/VP9/AV1, and
+  video decode now has a compiled isolated-service path for VP8/VP9/AV1,
   Android Opus decode now has a compiled isolated-service path for hostile-peer
-  audio packets, but mobile peer clipboard SET and mobile peer zstd still fail
-  closed until platform workers/services exist instead of parsing hostile-peer
-  bytes in-process. That is the right interim safety posture, but it is not
-  final mobile client conformance: Android still needs device-level runtime
-  smoke for the isolated video and Opus services and platform-worker/service
-  support where required for the remaining mobile parser features, and iOS still
-  needs a product-scope
+  audio packets, and Android peer zstd now has a compiled isolated-service path
+  for hostile-peer compressed payloads. Mobile peer clipboard SET and iOS peer
+  zstd still fail closed until platform workers/services exist instead of
+  parsing hostile-peer bytes in-process. That is the right interim safety
+  posture, but it is not final mobile client conformance: Android still needs
+  device-level runtime smoke for the isolated video, Opus, and zstd services
+  and platform-worker/service support where required for the remaining mobile
+  parser features, and iOS still needs a product-scope
   decision for the no-child-process model, Windows low-privilege/AppContainer or syscall-allowlist
   hardening beyond Job Object/token-privilege/process-mitigation guards, a broader
   macOS/desktop-Unix syscall or Seatbelt allowlist beyond NoNetwork, equivalent seccomp support before enabling
@@ -1689,11 +1712,11 @@ restricted-token, or syscall allowlist sandbox. Windows CLIPRDR now has app-leve
 and Rust<->C bridge length
 caps plus null/bounded-read fail-closed guards, pending request/response
 accounting, and a same-artifact worker boundary; Windows remote-printer XPS
-handoff now has a bounded same-artifact worker boundary. Android video and Opus
-decode now have compiled isolated-service paths, but Android artifact
+handoff now has a bounded same-artifact worker boundary. Android video, Opus,
+and peer zstd now have compiled isolated-service paths, but Android artifact
 availability must not be treated as end-to-end feature parity until those
-services are smoked on device. Mobile peer clipboard SET and mobile peer zstd
-still fail closed rather than using in-process native parsers; peer zstd reports
+services are smoked on device. Mobile peer clipboard SET and iOS peer zstd still
+fail closed rather than using in-process native parsers; peer zstd reports
 refusal as an explicit peer decompression error rather than as empty payload
 data. Those remaining mobile closures are secure but functionally incomplete
 until platform worker/service support is added where required.

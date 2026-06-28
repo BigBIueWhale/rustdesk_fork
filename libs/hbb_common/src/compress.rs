@@ -3,19 +3,22 @@ use std::{
     cell::RefCell,
     convert::TryFrom,
     io::{self, Read, Write},
-    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
-    sync::{
-        mpsc::{self, SyncSender},
-        Mutex, OnceLock, TryLockError,
-    },
+    sync::{Mutex, OnceLock, TryLockError},
     time::Duration,
+};
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use std::{
+    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
+    sync::mpsc::{self, SyncSender},
 };
 use zstd::bulk::Compressor;
 
 const WORKER_ARG: &str = "--native-zstd-worker";
 const PROTOCOL_VERSION: u8 = 1;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 const REQUEST_MAGIC: [u8; 4] = *b"RDZW";
 const RESPONSE_MAGIC: [u8; 4] = *b"RDZR";
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 const OP_DECOMPRESS: u8 = 1;
 const STATUS_DECOMPRESSED: u8 = 0;
 const STATUS_ERROR: u8 = 1;
@@ -58,6 +61,17 @@ pub fn compress(data: &[u8]) -> Vec<u8> {
 /// well above any realistic single decompressed payload — the 128 KiB file
 /// block (`fs.rs`), a clipboard image, a cursor — yet bounds the amplification.
 const MAX_DECOMPRESSED: usize = 64 * 1024 * 1024;
+
+#[cfg(target_os = "android")]
+pub type AndroidPeerZstdService = fn(&[u8]) -> ResultType<Vec<u8>>;
+
+#[cfg(target_os = "android")]
+static ANDROID_PEER_ZSTD_SERVICE: OnceLock<AndroidPeerZstdService> = OnceLock::new();
+
+#[cfg(target_os = "android")]
+pub fn set_android_peer_zstd_service(service: AndroidPeerZstdService) {
+    let _ = ANDROID_PEER_ZSTD_SERVICE.set(service);
+}
 
 /// Decompress, bounding the output to [`MAX_DECOMPRESSED`] (R-S7 post-key twin).
 /// The inherited `zstd::decode_all` reads to EOF with NO output limit; this
@@ -119,7 +133,20 @@ pub fn peer_decompress(data: &[u8]) -> ResultType<Vec<u8>> {
             }
         }
     }
-    #[cfg(any(target_os = "android", target_os = "ios"))]
+    #[cfg(target_os = "android")]
+    {
+        match peer_decompress_android_service(data) {
+            Ok(out) => Ok(out),
+            Err(err) => {
+                crate::log::warn!(
+                    "android isolated zstd service failed; refusing in-process mobile peer decompress: {}",
+                    err
+                );
+                Err(err)
+            }
+        }
+    }
+    #[cfg(target_os = "ios")]
     {
         crate::log::warn!(
             "refusing in-process mobile peer zstd decompress until a platform worker/service boundary exists"
@@ -128,6 +155,37 @@ pub fn peer_decompress(data: &[u8]) -> ResultType<Vec<u8>> {
             "mobile peer zstd decompress unavailable until a platform worker/service boundary exists"
         ))
     }
+}
+
+#[cfg(target_os = "android")]
+fn peer_decompress_android_service(data: &[u8]) -> ResultType<Vec<u8>> {
+    static IN_FLIGHT: OnceLock<Mutex<()>> = OnceLock::new();
+    let service = *ANDROID_PEER_ZSTD_SERVICE.get().ok_or_else(|| {
+        crate::anyhow::anyhow!("android isolated zstd service callback is not registered")
+    })?;
+    let lock = IN_FLIGHT.get_or_init(|| Mutex::new(()));
+    let _guard = match lock.try_lock() {
+        Ok(guard) => guard,
+        Err(TryLockError::WouldBlock) => {
+            return Err(crate::anyhow::anyhow!(
+                "android isolated zstd service busy; refusing to queue peer decompress"
+            ));
+        }
+        Err(TryLockError::Poisoned(_)) => {
+            return Err(crate::anyhow::anyhow!(
+                "android isolated zstd service lock poisoned"
+            ));
+        }
+    };
+    let response = service(data)?;
+    let mut cursor = std::io::Cursor::new(response.as_slice());
+    let out = read_response(&mut cursor)?;
+    if cursor.position() as usize != cursor.get_ref().len() {
+        return Err(crate::anyhow::anyhow!(
+            "android isolated zstd service returned trailing bytes"
+        ));
+    }
+    Ok(out)
 }
 
 pub fn worker_arg() -> &'static str {
@@ -389,7 +447,6 @@ fn worker_round_trip<W: Write, R: Read>(
     read_response(reader)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn read_response<R: Read>(reader: &mut R) -> ResultType<Vec<u8>> {
     let magic = read_array::<4, _>(reader)
         .map_err(|e| crate::anyhow::anyhow!("failed to read native zstd response magic: {e}"))?;
@@ -448,7 +505,6 @@ fn read_response<R: Read>(reader: &mut R) -> ResultType<Vec<u8>> {
     }
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn validate_worker_response_shape(status: u8, out_len: usize, msg_len: usize) -> ResultType<()> {
     match status {
         STATUS_DECOMPRESSED => {
@@ -474,7 +530,6 @@ fn validate_worker_response_shape(status: u8, out_len: usize, msg_len: usize) ->
     Ok(())
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn write_response<W: Write>(
     writer: &mut W,
     status: u8,
@@ -500,26 +555,63 @@ fn write_response<W: Write>(
     Ok(())
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn read_array<const N: usize, R: Read>(reader: &mut R) -> io::Result<[u8; N]> {
     let mut out = [0u8; N];
     reader.read_exact(&mut out)?;
     Ok(out)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn read_u8<R: Read>(reader: &mut R) -> io::Result<u8> {
     Ok(read_array::<1, _>(reader)?[0])
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn read_u32<R: Read>(reader: &mut R) -> io::Result<u32> {
     Ok(u32::from_le_bytes(read_array::<4, _>(reader)?))
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn write_u32<W: Write>(writer: &mut W, value: u32) -> io::Result<()> {
     writer.write_all(&value.to_le_bytes())
+}
+
+#[cfg(target_os = "android")]
+pub fn android_service_zstd_self_test() -> bool {
+    (|| -> ResultType<bool> {
+        if MAX_COMPRESSED_INPUT != 32 * 1024 * 1024
+            || MAX_DECOMPRESSED != 64 * 1024 * 1024
+            || WORKER_DECOMPRESS_TIMEOUT != Duration::from_secs(5)
+        {
+            return Ok(false);
+        }
+        validate_worker_response_shape(STATUS_DECOMPRESSED, 1, 0)?;
+        validate_worker_response_shape(STATUS_ERROR, 0, 1)?;
+        let payload = b"rd-zstd-self-test";
+        let compressed = zstd::stream::encode_all(&payload[..], 0)
+            .map_err(|e| crate::anyhow::anyhow!("zstd self-test encode failed: {e}"))?;
+        let response = android_service_zstd_decompress_response_bytes(&compressed)?;
+        let mut cursor = std::io::Cursor::new(response.as_slice());
+        let out = read_response(&mut cursor)?;
+        Ok(out == payload)
+    })()
+    .unwrap_or(false)
+}
+
+#[cfg(target_os = "android")]
+pub fn android_service_zstd_decompress_response_bytes(data: &[u8]) -> ResultType<Vec<u8>> {
+    let result = if data.len() > MAX_COMPRESSED_INPUT {
+        Err(crate::anyhow::anyhow!(
+            "oversized android isolated zstd request: {} > {}",
+            data.len(),
+            MAX_COMPRESSED_INPUT
+        ))
+    } else {
+        decompress_checked(data)
+    };
+    let mut response = Vec::new();
+    match result {
+        Ok(out) => write_response(&mut response, STATUS_DECOMPRESSED, &out, "")?,
+        Err(err) => write_response(&mut response, STATUS_ERROR, &[], &err.to_string())?,
+    }
+    Ok(response)
 }
 
 #[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]

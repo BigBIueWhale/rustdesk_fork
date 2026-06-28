@@ -9,7 +9,7 @@ use jni::{
     JavaVM,
 };
 
-use hbb_common::{message_proto::MultiClipboards, protobuf::Message};
+use hbb_common::{anyhow::anyhow, message_proto::MultiClipboards, protobuf::Message, ResultType};
 use jni::errors::{Error as JniError, Result as JniResult};
 use lazy_static::lazy_static;
 use serde::Deserialize;
@@ -582,6 +582,58 @@ pub fn call_application_context_native_opus_decode(
     Err(JniError::ThrowFailed(-1))
 }
 
+pub fn call_application_context_native_zstd_decoder_ready() -> JniResult<bool> {
+    if let (Some(jvm), Some(ctx)) = (
+        JVM.read().unwrap().as_ref(),
+        APPLICATION_CONTEXT.read().unwrap().as_ref(),
+    ) {
+        let mut env = jvm.attach_current_thread_as_daemon()?;
+        return env
+            .call_method(ctx, "rustIsNativeZstdDecoderReady", "()Z", &[])?
+            .z();
+    }
+    Err(JniError::ThrowFailed(-1))
+}
+
+pub fn call_application_context_native_zstd_decompress(payload: &[u8]) -> JniResult<Vec<u8>> {
+    if let (Some(jvm), Some(ctx)) = (
+        JVM.read().unwrap().as_ref(),
+        APPLICATION_CONTEXT.read().unwrap().as_ref(),
+    ) {
+        let mut env = jvm.attach_current_thread_as_daemon()?;
+        return env.with_local_frame(8, |env| -> JniResult<Vec<u8>> {
+            let payload = env.byte_array_from_slice(payload)?;
+            let payload = JObject::from(payload);
+            let response = env
+                .call_method(
+                    ctx,
+                    "rustDecompressNativeZstd",
+                    "([B)[B",
+                    &[JValue::Object(&payload)],
+                )?
+                .l()?;
+            if response.is_null() {
+                return Err(JniError::ThrowFailed(-1));
+            }
+            let response = JByteArray::from(response);
+            env.convert_byte_array(response)
+        });
+    }
+    Err(JniError::ThrowFailed(-1))
+}
+
+fn android_peer_zstd_service(payload: &[u8]) -> ResultType<Vec<u8>> {
+    let ready = call_application_context_native_zstd_decoder_ready()
+        .map_err(|e| anyhow!("android isolated zstd service readiness check failed: {e}"))?;
+    if !ready {
+        return Err(anyhow!(
+            "android isolated zstd service readiness self-test failed"
+        ));
+    }
+    call_application_context_native_zstd_decompress(payload)
+        .map_err(|e| anyhow!("android isolated zstd service bridge failed: {e}"))
+}
+
 // Difference between MainService, MainActivity, JNI_OnLoad:
 //  jvm is the same, ctx is differen and ctx of JNI_OnLoad is null.
 //  cpal: all three works
@@ -638,6 +690,7 @@ pub extern "system" fn Java_ffi_FFI_onAppStart(mut env: JNIEnv, _class: JClass, 
         log::error!("application context is null");
         return;
     }
+    hbb_common::compress::set_android_peer_zstd_service(android_peer_zstd_service);
     if APPLICATION_CONTEXT.read().unwrap().is_some() {
         log::info!("application context already initialized");
         return;

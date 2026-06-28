@@ -41,7 +41,8 @@ Unix/macOS file-copy descriptor-parser/FileContents worker isolation, Windows
 CLIPRDR same-artifact worker isolation, macOS paste FILEDESCRIPTOR parent-path
 containment, Windows remote-printer XPS same-artifact worker handoff, desktop video
 capability-advertising wrapper closure, and Android isolated-service
-non-blocking busy-admission/rate-limited busy-log follow-ups are closed in
+non-blocking busy-admission/rate-limited busy-log follow-ups plus the
+Android isolated-service device-smoke instrumentation entrypoint are closed in
 source and gates; responder-side port-forward latent-connect and file
 write-response forwarding follow-ups remain closed. The existing Apple
 SDK-free source-conformance gate now covers the documented target matrix,
@@ -1397,6 +1398,21 @@ bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl
 ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYSTORE_PASS_FILE=.harness-state/android-keystore/pass bash scripts/build-android.sh  # GREEN: dist/rustdesk-arm64.apk sha256 c8cea19b54a368b3b93743d34b6e04363877a8a19e4a7460c4f6be5075552289; apksigner one signer with v1/v2/v3 true
 ```
 
+After the Android isolated-service smoke-entrypoint change, the device smoke is
+now wired but not yet executed here. `NativeIsolatedServicesSmokeInstrumentation`
+is compiled as release androidTest code, binds the app's non-exported video,
+Opus, zstd, and clipboard isolated services, and requires each readiness/native
+self-test to pass; the wrapper script runs it through
+`adb shell am instrument` against caller-supplied, compatibly signed app/test
+APKs on an API 27+ device or emulator. Source/build evidence for this change:
+
+```text
+bash -n scripts/android-isolated-services-smoke.sh  # GREEN: syntax only, no device install/run
+bash -n scripts/verify.sh                           # GREEN
+docker run --rm --network=none ... ./gradlew --offline --no-daemon --console=plain -Ptarget-platform=android-arm64 :app:compileReleaseAndroidTestKotlin  # GREEN: release/arm64 androidTest Kotlin compile, including NativeIsolatedServicesSmokeInstrumentation
+bash scripts/verify.sh                              # GREEN: includes the Android smoke-entrypoint gate
+```
+
 After the shared native-worker busy-admission change and the high-fd cleanup
 runtime probe, these focused and full gates have been re-run successfully:
 
@@ -1810,9 +1826,10 @@ bash -n scripts/verify.sh     # GREEN
   peer zstd and peer clipboard SET still fail closed until platform
   workers/services exist instead of parsing hostile-peer bytes in-process. That
   is the right interim safety posture, but it is not final mobile client
-  conformance: Android still needs device-level runtime smoke for the isolated
-  video, Opus, zstd, and clipboard services and platform-worker/service support
-  where required for the remaining mobile parser features, and iOS still needs a
+  conformance: Android now has a committed device/emulator smoke entrypoint for
+  the isolated video, Opus, zstd, and clipboard services, but still needs
+  executed device-level evidence for that smoke and platform-worker/service
+  support where required for the remaining mobile parser features; iOS still needs a
   product-scope decision for the no-child-process model, Windows
   low-privilege/AppContainer or syscall-allowlist hardening beyond Job
   Object/token-privilege/process-mitigation guards, a broader macOS/desktop-Unix
@@ -1891,9 +1908,10 @@ and Rust<->C bridge length
 caps plus null/bounded-read fail-closed guards, pending request/response
 accounting, and a same-artifact worker boundary; Windows remote-printer XPS
 handoff now has a bounded same-artifact worker boundary. Android video, Opus,
-peer zstd, and peer clipboard SET now have compiled isolated-service paths, but
-Android artifact availability must not be treated as end-to-end feature parity
-until those services are smoked on device. iOS peer zstd and peer clipboard SET
+peer zstd, and peer clipboard SET now have compiled isolated-service paths, and
+the repository has an androidTest/adb smoke entrypoint for those four readiness
+self-tests, but Android artifact availability must not be treated as end-to-end
+feature parity until that smoke is executed on a real device or emulator. iOS peer zstd and peer clipboard SET
 still fail closed rather than using in-process native parsers; peer zstd reports
 refusal as an explicit peer decompression error rather than as empty payload
 data. Those remaining mobile closures are secure but functionally incomplete

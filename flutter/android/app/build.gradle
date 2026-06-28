@@ -85,6 +85,7 @@ android {
     compileSdkVersion 34
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
+        androidTest.java.srcDirs += 'src/androidTest/kotlin'
 
         main.proto.srcDirs += '../../../libs/hbb_common/protos'
         main.proto.includes += "message.proto"
@@ -102,7 +103,10 @@ android {
         targetSdkVersion 33
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
+        testInstrumentationRunner "com.carriez.flutter_hbb.NativeIsolatedServicesSmokeInstrumentation"
     }
+
+    testBuildType "release"
 
     signingConfigs {
       release {
@@ -138,4 +142,5 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib") { version { strictly("1.9.10") } }
     implementation 'com.caverock:androidsvg-aar:1.4'
     implementation "rustls:rustls-platform-verifier:0.1.1"
+    androidTestImplementation 'androidx.core:core-ktx:1.13.1'
 }

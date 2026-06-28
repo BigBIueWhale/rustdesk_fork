@@ -3115,6 +3115,67 @@ if [ -n "$r_native_clipboard_worker" ]; then
 else
   echo "  ok  Appendix C #2b normal clipboard SET uses a timeout-bounded same-artifact worker on desktop and a non-exported Android isolatedProcess sanitizer service with SharedMemory/Messenger IPC plus simple text/html handoff; iOS still fails closed until a platform worker/service exists (Windows CLIPRDR has separate worker gates; other Linux arch workers fail closed)"
 fi
+# Android isolated-service device-smoke entrypoint (Appendix C #2b): source
+# gates prove the app has four non-exported isolatedProcess services; this gate
+# proves there is also a real Instrumentation runner and adb wrapper for the
+# device/emulator runtime check. The runner calls only the app's non-exported
+# bind+self-test readiness paths. The wrapper requires caller-supplied app/test
+# APKs and checks am instrument's result code; it is evidence plumbing, not a
+# substitute for actually running the device smoke.
+r_android_isolated_smoke=
+android_build_gradle=flutter/android/app/build.gradle
+android_isolated_smoke=flutter/android/app/src/androidTest/kotlin/com/carriez/flutter_hbb/NativeIsolatedServicesSmokeInstrumentation.kt
+android_smoke_script=scripts/android-isolated-services-smoke.sh
+grep -qF "androidTest.java.srcDirs += 'src/androidTest/kotlin'" "$android_build_gradle" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke android-test-kotlin-source-missing"
+grep -qF 'testInstrumentationRunner "com.carriez.flutter_hbb.NativeIsolatedServicesSmokeInstrumentation"' "$android_build_gradle" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke instrumentation-runner-missing"
+grep -qF 'testBuildType "release"' "$android_build_gradle" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke instrumentation-not-bound-to-release"
+grep -qF "androidTestImplementation 'androidx.core:core-ktx:1.13.1'" "$android_build_gradle" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke android-test-core-ktx-pin-missing"
+[ -f "$android_isolated_smoke" ] ||
+  r_android_isolated_smoke="$r_android_isolated_smoke instrumentation-source-missing"
+grep -qF 'class NativeIsolatedServicesSmokeInstrumentation : Instrumentation()' "$android_isolated_smoke" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke instrumentation-class-missing"
+grep -qF 'start()' "$android_isolated_smoke" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke instrumentation-not-started"
+grep -qF 'Build.VERSION_CODES.O_MR1' "$android_isolated_smoke" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke sharedmemory-api-floor-missing"
+grep -qF 'NativeVideoDecoderClient.isReady(context)' "$android_isolated_smoke" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke video-readiness-not-smoked"
+grep -qF 'NativeAudioDecoderClient.isReady(context)' "$android_isolated_smoke" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke opus-readiness-not-smoked"
+grep -qF 'NativeZstdDecoderClient.isReady(context)' "$android_isolated_smoke" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke zstd-readiness-not-smoked"
+grep -qF 'NativeClipboardSetClient.isReady(context)' "$android_isolated_smoke" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke clipboard-readiness-not-smoked"
+grep -qF 'Activity.RESULT_OK' "$android_isolated_smoke" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke instrumentation-ok-code-missing"
+grep -qF 'Activity.RESULT_CANCELED' "$android_isolated_smoke" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke instrumentation-failure-code-missing"
+[ -x "$android_smoke_script" ] ||
+  r_android_isolated_smoke="$r_android_isolated_smoke smoke-script-not-executable"
+grep -qF 'online/android-sdk/platform-tools/adb' "$android_smoke_script" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke smoke-script-not-pinned-adb"
+grep -qF 'APP_APK' "$android_smoke_script" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke smoke-script-no-app-apk-input"
+grep -qF 'TEST_APK' "$android_smoke_script" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke smoke-script-no-test-apk-input"
+grep -qF 'am instrument -w -r "$component"' "$android_smoke_script" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke smoke-script-no-instrument-run"
+grep -qF 'com.carriez.flutter_hbb.NativeIsolatedServicesSmokeInstrumentation' "$android_smoke_script" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke smoke-script-runner-missing"
+grep -qF 'INSTRUMENTATION_CODE: -1' "$android_smoke_script" ||
+  r_android_isolated_smoke="$r_android_isolated_smoke smoke-script-no-result-code-check"
+if grep -qF '0.0.0.0' "$android_smoke_script"; then
+  r_android_isolated_smoke="$r_android_isolated_smoke smoke-script-wildcard-listen-token"
+fi
+if [ -n "$r_android_isolated_smoke" ]; then
+  echo "  FAIL Appendix C #2b: Android isolated-service device-smoke entrypoint regressed:$r_android_isolated_smoke"; rc=1
+else
+  echo "  ok  Appendix C #2b Android isolated-service device-smoke entrypoint exists: androidTest runner binds video/Opus/zstd/clipboard readiness self-tests; adb wrapper runs am instrument against caller-supplied app/test APKs and checks RESULT_OK"
+fi
 # Appendix C #2b fifth sandbox slice: Unix/macOS file-copy descriptor PDUs from
 # the peer must be parsed in a hidden same-artifact worker before FUSE or macOS
 # paste-task state consumes the file list. The paired FileContents worker gate

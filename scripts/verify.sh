@@ -3464,6 +3464,28 @@ grep -qF 'CloseHandle(self.job);' libs/hbb_common/src/native_worker_sandbox.rs |
   r_native_worker_platform="$r_native_worker_platform windows-job-guard-drop"
 grep -qF 'apply_windows_worker_process_mitigations()' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-process-mitigation-entry"
+grep -qF 'set_windows_worker_low_integrity()?' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-low-integrity-entry"
+grep -qF 'TOKEN_ADJUST_DEFAULT' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-low-integrity-token-adjust-default"
+grep -qF 'SetTokenInformation' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-set-token-information"
+grep -qF 'TokenIntegrityLevel' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-token-integrity-level"
+grep -qF 'SECURITY_MANDATORY_LOW_RID' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-low-integrity-rid"
+grep -qF 'AllocateAndInitializeSid' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-integrity-sid-allocation"
+grep -qF 'GetSidSubAuthorityCount' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-integrity-rid-readback-count"
+grep -qF 'GetSidSubAuthority' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-integrity-rid-readback-value"
+grep -qF 'verify_windows_worker_low_integrity(token.0)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-low-integrity-readback-call"
+grep -qF 'query_windows_token_integrity_rid' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-low-integrity-readback-helper"
+grep -qF 'Windows worker token integrity readback did not report low integrity' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-low-integrity-readback-error"
 grep -qF 'disable_windows_worker_token_privileges()?' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-token-privilege-entry"
 grep -qF 'OpenProcessToken' libs/hbb_common/src/native_worker_sandbox.rs ||
@@ -3695,7 +3717,7 @@ grep -qF 'failed to constrain file-content worker' libs/clipboard/src/platform/u
 if [ -n "$r_native_worker_platform" ]; then
   echo "  FAIL Appendix C #2b: native worker platform confinement hooks regressed:$r_native_worker_platform"; rc=1
 else
-  echo "  ok  Appendix C #2b native worker parents fail closed on post-spawn confinement failure; Windows workers keep read-back Job Object process-count/memory/kill-on-close/die-on-unhandled-exception/UI-restriction guards, read-back token privilege disablement preserving only traverse notification, and read-back dynamic-code/extension-point/strict-handle/no-child-process/image-load mitigations; Linux worker entry read-back confirms no-new-privs/non-dumpable/seccomp and process-spawn denial; macOS worker entry applies a custom Seatbelt network/filesystem-write/process-fork/process-exec denial and probes permission-denied AF_INET/file-write/process-exec denial; desktop Unix workers excluding Android/iOS get RLIMIT/fd cleanup"
+  echo "  ok  Appendix C #2b native worker parents fail closed on post-spawn confinement failure; Windows workers keep read-back Job Object process-count/memory/kill-on-close/die-on-unhandled-exception/UI-restriction guards, read-back low-integrity token transition, read-back token privilege disablement preserving only traverse notification, and read-back dynamic-code/extension-point/strict-handle/no-child-process/image-load mitigations; Linux worker entry read-back confirms no-new-privs/non-dumpable/seccomp and process-spawn denial; macOS worker entry applies a custom Seatbelt network/filesystem-write/process-fork/process-exec denial and probes permission-denied AF_INET/file-write/process-exec denial; desktop Unix workers excluding Android/iOS get RLIMIT/fd cleanup"
 fi
 # R-R2a (§12 / sovereignty): the .deb + systemd is the SOLE Linux package model. The AppImage
 # recipe (whose `update-information` self-updater collides with R-X1 "the fork ships its own

@@ -181,6 +181,7 @@ fn enter_worker_process_platform() -> std::io::Result<()> {
 
 #[cfg(target_os = "windows")]
 fn enter_worker_process_platform() -> std::io::Result<()> {
+    set_windows_worker_low_integrity()?;
     disable_windows_worker_token_privileges()?;
     apply_windows_worker_process_mitigations()
 }
@@ -424,13 +425,25 @@ impl Drop for WindowsHandle {
 }
 
 #[cfg(target_os = "windows")]
-struct WindowsTokenPrivilegeBuffer {
+struct WindowsSid(winapi::um::winnt::PSID);
+
+#[cfg(target_os = "windows")]
+impl Drop for WindowsSid {
+    fn drop(&mut self) {
+        unsafe {
+            winapi::um::securitybaseapi::FreeSid(self.0);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+struct WindowsTokenInfoBuffer {
     storage: Vec<usize>,
     byte_len: u32,
 }
 
 #[cfg(target_os = "windows")]
-impl WindowsTokenPrivilegeBuffer {
+impl WindowsTokenInfoBuffer {
     fn new(byte_len: u32) -> std::io::Result<Self> {
         let word_size = std::mem::size_of::<usize>();
         let byte_len_usize = byte_len as usize;
@@ -441,7 +454,7 @@ impl WindowsTokenPrivilegeBuffer {
             .ok_or_else(|| {
                 std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
-                    "Windows token privilege query returned an invalid buffer size",
+                    "Windows token query returned an invalid buffer size",
                 )
             })?;
         Ok(Self {
@@ -450,12 +463,178 @@ impl WindowsTokenPrivilegeBuffer {
         })
     }
 
+    fn as_ptr<T>(&self) -> *const T {
+        self.storage.as_ptr() as *const T
+    }
+
+    fn as_mut_ptr<T>(&mut self) -> *mut T {
+        self.storage.as_mut_ptr() as *mut T
+    }
+}
+
+#[cfg(target_os = "windows")]
+struct WindowsTokenPrivilegeBuffer {
+    storage: WindowsTokenInfoBuffer,
+}
+
+#[cfg(target_os = "windows")]
+impl WindowsTokenPrivilegeBuffer {
+    fn new(byte_len: u32) -> std::io::Result<Self> {
+        Ok(Self {
+            storage: WindowsTokenInfoBuffer::new(byte_len)?,
+        })
+    }
+
     fn as_ptr(&self) -> *const winapi::um::winnt::TOKEN_PRIVILEGES {
-        self.storage.as_ptr() as *const _
+        self.storage.as_ptr()
     }
 
     fn as_mut_ptr(&mut self) -> *mut winapi::um::winnt::TOKEN_PRIVILEGES {
-        self.storage.as_mut_ptr() as *mut _
+        self.storage.as_mut_ptr()
+    }
+
+    fn byte_len(&self) -> u32 {
+        self.storage.byte_len
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn set_windows_worker_low_integrity() -> std::io::Result<()> {
+    use std::mem;
+    use winapi::um::{
+        securitybaseapi::{GetLengthSid, SetTokenInformation},
+        winnt::{
+            TokenIntegrityLevel, SECURITY_MANDATORY_LOW_RID, SE_GROUP_INTEGRITY,
+            TOKEN_ADJUST_DEFAULT, TOKEN_MANDATORY_LABEL, TOKEN_QUERY,
+        },
+    };
+
+    let token = open_current_process_token(TOKEN_ADJUST_DEFAULT | TOKEN_QUERY)?;
+    let sid = allocate_windows_integrity_sid(SECURITY_MANDATORY_LOW_RID)?;
+    let mut label: TOKEN_MANDATORY_LABEL = unsafe { mem::zeroed() };
+    label.Label.Attributes = SE_GROUP_INTEGRITY;
+    label.Label.Sid = sid.0;
+    let sid_len = unsafe { GetLengthSid(sid.0) };
+    if sid_len == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let info_len = (mem::size_of::<TOKEN_MANDATORY_LABEL>() as u32)
+        .checked_add(sid_len)
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Windows low-integrity token information length overflowed",
+            )
+        })?;
+    let ok = unsafe {
+        SetTokenInformation(
+            token.0,
+            TokenIntegrityLevel,
+            &mut label as *mut _ as *mut _,
+            info_len,
+        )
+    };
+    if ok == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    verify_windows_worker_low_integrity(token.0)
+}
+
+#[cfg(target_os = "windows")]
+fn allocate_windows_integrity_sid(rid: u32) -> std::io::Result<WindowsSid> {
+    use winapi::um::{
+        securitybaseapi::AllocateAndInitializeSid,
+        winnt::{PSID, SECURITY_MANDATORY_LABEL_AUTHORITY, SID_IDENTIFIER_AUTHORITY},
+    };
+
+    let mut authority = SID_IDENTIFIER_AUTHORITY {
+        Value: SECURITY_MANDATORY_LABEL_AUTHORITY,
+    };
+    let mut sid: PSID = std::ptr::null_mut();
+    let ok =
+        unsafe { AllocateAndInitializeSid(&mut authority, 1, rid, 0, 0, 0, 0, 0, 0, 0, &mut sid) };
+    if ok == 0 || sid.is_null() {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(WindowsSid(sid))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn verify_windows_worker_low_integrity(token: winapi::um::winnt::HANDLE) -> std::io::Result<()> {
+    let rid = query_windows_token_integrity_rid(token)?;
+    if rid == winapi::um::winnt::SECURITY_MANDATORY_LOW_RID {
+        Ok(())
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!(
+                "Windows worker token integrity readback did not report low integrity; rid={rid}"
+            ),
+        ))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn query_windows_token_integrity_rid(token: winapi::um::winnt::HANDLE) -> std::io::Result<u32> {
+    use std::ptr;
+    use winapi::um::{
+        securitybaseapi::{GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation},
+        winnt::{TokenIntegrityLevel, TOKEN_MANDATORY_LABEL},
+    };
+
+    let mut required_len = 0;
+    let _ = unsafe {
+        GetTokenInformation(
+            token,
+            TokenIntegrityLevel,
+            ptr::null_mut(),
+            0,
+            &mut required_len,
+        )
+    };
+    if required_len == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    let mut buffer = WindowsTokenInfoBuffer::new(required_len)?;
+    let ok = unsafe {
+        GetTokenInformation(
+            token,
+            TokenIntegrityLevel,
+            buffer.as_mut_ptr::<TOKEN_MANDATORY_LABEL>() as *mut _,
+            buffer.byte_len,
+            &mut required_len,
+        )
+    };
+    if ok == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    let label = unsafe { &*buffer.as_ptr::<TOKEN_MANDATORY_LABEL>() };
+    if label.Label.Sid.is_null() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "Windows worker token integrity readback returned a null SID",
+        ));
+    }
+    let subauthority_count = unsafe { GetSidSubAuthorityCount(label.Label.Sid) };
+    if subauthority_count.is_null() {
+        return Err(std::io::Error::last_os_error());
+    }
+    let count = unsafe { *subauthority_count as u32 };
+    let index = count.checked_sub(1).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "Windows worker token integrity SID has no subauthority",
+        )
+    })?;
+    let subauthority = unsafe { GetSidSubAuthority(label.Label.Sid, index) };
+    if subauthority.is_null() {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(unsafe { *subauthority })
     }
 }
 
@@ -561,7 +740,7 @@ fn query_windows_token_privileges(
             token,
             TokenPrivileges,
             buffer.as_mut_ptr() as *mut _,
-            buffer.byte_len,
+            buffer.byte_len(),
             &mut required_len,
         )
     };

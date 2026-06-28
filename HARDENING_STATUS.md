@@ -30,13 +30,15 @@ admission,
 bounded peer-driven UI chat/message/notification text length and rate
 admission,
 child-confinement, Windows Job Object child lifetime/limit/UI-restriction guards,
-token-privilege disable/readback, and process mitigations including no
+low-integrity token transition/readback, token-privilege disable/readback, and
+process mitigations including no
 child-process creation, non-mobile desktop-Unix worker RLIMIT/fd-cleanup
 confinement, macOS worker custom Seatbelt confinement denying network,
 filesystem writes, process fork, and process exec with
 AF_INET/file-write/process-exec denial probes, Linux x86_64/aarch64
 post-exec syscall-filter/fd-cleanup/readback
-follow-ups, Windows worker Job Object/token-privilege/process-mitigation
+follow-ups, Windows worker
+Job Object/low-integrity-token/token-privilege/process-mitigation
 readbacks, and unsupported
 Linux worker-architecture fail-closed behavior for those slices, desktop
 video/Opus semantic worker-failure child teardown,
@@ -581,7 +583,7 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   on the current Linux x86_64 validation host; an aarch64 runner would execute
   the same test under the aarch64 cfg.
 - **Windows native worker children now get fail-closed Job Object lifetime,
-  resource guards, token-privilege reduction, and process mitigations.**
+  resource guards, low-integrity token reduction, token-privilege reduction, and process mitigations.**
   `libs/hbb_common/src/native_worker_sandbox.rs` now exposes
   `apply_to_spawned_child`, because Windows needs a process handle before Job
   Object limits can be applied. The hook returns a must-use
@@ -598,13 +600,15 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   mitigations before hostile-peer parsing: dynamic-code prohibition, extension
   point disablement, strict invalid-handle checking, no child-process creation,
   and remote/low-integrity image-load refusal. Before those mitigations, worker
-  entry opens its process token, disables all adjustable token privileges except
-  `SeChangeNotifyPrivilege` for normal Windows traversal compatibility, and
-  reads the token back so any enabled non-traverse privilege fails closed before
-  hostile-peer parsing. This is a Windows
+  entry opens its process token, lowers the token integrity level to
+  `SECURITY_MANDATORY_LOW_RID` through `SetTokenInformation(TokenIntegrityLevel)`,
+  reads the integrity SID RID back, disables all adjustable token privileges
+  except `SeChangeNotifyPrivilege` for normal Windows traversal compatibility,
+  and reads the token privileges back so any enabled non-traverse privilege fails
+  closed before hostile-peer parsing. This is a Windows
   resource/lifetime/exploit-mitigation
   companion for the existing worker slices, not a Windows AppContainer,
-  restricted-token, or syscall-allowlist sandbox. The CLIPRDR-specific
+  creation-time restricted primary token, or syscall-allowlist sandbox. The CLIPRDR-specific
   process-boundary closure is tracked in its own worker bullet below.
 - **Non-mobile desktop Unix worker children now get RLIMIT ceilings and inherited-fd cleanup.**
   `libs/hbb_common/src/native_worker_sandbox.rs` now routes macOS/other
@@ -1019,7 +1023,8 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   worker parents now query the Job Object back with `QueryInformationJobObject`
   before assigning the worker, verifying the active-process, kill-on-job-close,
   die-on-unhandled-exception, process-memory, and UI-restriction masks that were
-  just set; worker entry likewise disables token privileges, reads back
+  just set; worker entry likewise sets and reads back the low-integrity token
+  RID, disables token privileges, reads back
   `TokenPrivileges` so only `SeChangeNotifyPrivilege` may remain enabled, and
   reads back `GetProcessMitigationPolicy` for dynamic-code, extension-point,
   strict-handle, child-process, and image-load mitigations.
@@ -1027,10 +1032,11 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   immediately after the custom Seatbelt profile is installed and fails closed if
   any denied operation still succeeds or fails for a non-permission reason.
   `scripts/verify.sh` gates the Linux readback/probe tests, Windows Job
-  Object/token/process readback APIs, and macOS AF_INET/file-write/process-exec probe
+  Object/low-integrity-token/token-privilege/process-mitigation readback APIs,
+  and macOS AF_INET/file-write/process-exec probe
   markers. This is stronger evidence for the existing
   desktop worker boundary,
-  not a claim of Windows AppContainer, Windows restricted-token/syscall
+  not a claim of Windows AppContainer, Windows creation-time restricted-token/syscall
   allowlist, or a full macOS filesystem-read/Mach/syscall Seatbelt allowlist.
 
 ## Artifact State
@@ -1339,6 +1345,18 @@ docker run ... bash -n scripts/verify.sh  # GREEN in a disposable bash:5.2 conta
 docker run ... cargo check /tmp/rd-win-sandbox-check --target x86_64-pc-windows-msvc  # GREEN: cfg(windows) native_worker_sandbox.rs token privilege disable/readback + Job Object/process-mitigation branch typechecked with a throwaway RUSTUP_HOME
 bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl. Windows token-privilege source gates and full Docker-backed Rust compile/test matrix
 git diff --check                          # GREEN after this ledger update
+```
+
+After the Windows worker low-integrity token transition/readback follow-up,
+these focused and full gates have been re-run successfully:
+
+```text
+docker run ... rustfmt --edition 2021 libs/hbb_common/src/native_worker_sandbox.rs  # GREEN
+docker run ... bash -n scripts/verify.sh                                           # GREEN
+docker run ... cargo test -p hbb_common --lib native_worker_sandbox::tests --color never  # GREEN: 12 tests passed, incl. Linux worker sandbox probes; only the pre-existing password_security.rs redundant-import warning remains
+docker run ... cargo check /tmp/rd-win-sandbox-check --target x86_64-pc-windows-msvc  # GREEN: cfg(windows) native_worker_sandbox.rs low-integrity token/SID branch typechecked without the full native dependency graph
+bash scripts/verify.sh                                                             # GREEN: VERIFY: all gates green, incl. Windows low-integrity token transition/readback source gates and full Docker-backed Rust compile/test matrix
+git diff --check                                                                   # GREEN after this ledger update
 ```
 
 After refreshing the Windows artifacts for the token-privilege hardening, the
@@ -1975,9 +1993,10 @@ remote-printer workers, now get hidden-window Job Object active-process,
 kill-on-job-close, process-memory, and UI-restriction limits with a retained
 guard, plus entry-time process mitigations for dynamic code, extension points,
 strict handle checks, child-process creation refusal, remote/low-integrity image
-loads, and token-privilege disable/readback preserving only
-`SeChangeNotifyPrivilege`, but that is not a Windows AppContainer,
-restricted-token, or syscall allowlist sandbox. Windows CLIPRDR now has app-level
+loads, low-integrity token transition/readback, and token-privilege
+disable/readback preserving only `SeChangeNotifyPrivilege`, but that is not a
+Windows AppContainer, creation-time restricted primary token, or syscall
+allowlist sandbox. Windows CLIPRDR now has app-level
 and Rust<->C bridge length
 caps plus null/bounded-read fail-closed guards, pending request/response
 accounting, and a same-artifact worker boundary; Windows remote-printer XPS

@@ -2870,6 +2870,20 @@ grep -qF 'CloseHandle(self.job);' libs/hbb_common/src/native_worker_sandbox.rs |
   r_native_worker_platform="$r_native_worker_platform windows-job-guard-drop"
 grep -qF 'apply_windows_worker_process_mitigations()' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-process-mitigation-entry"
+grep -qF 'disable_windows_worker_token_privileges()?' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-token-privilege-entry"
+grep -qF 'OpenProcessToken' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-open-process-token"
+grep -qF 'GetTokenInformation' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-query-token-privileges"
+grep -qF 'AdjustTokenPrivileges' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-adjust-token-privileges"
+grep -qF 'SE_CHANGE_NOTIFY_NAME' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-preserve-traverse-privilege"
+grep -qF 'SE_PRIVILEGE_ENABLED' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-token-privilege-enabled-mask"
+grep -qF 'verify_windows_worker_token_privileges_disabled' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-token-privilege-readback"
 grep -qF 'SetProcessMitigationPolicy' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-set-process-mitigation"
 grep -qF 'GetProcessMitigationPolicy' libs/hbb_common/src/native_worker_sandbox.rs ||
@@ -3008,6 +3022,8 @@ grep -qF '"jobapi2"' libs/hbb_common/Cargo.toml ||
   r_native_worker_platform="$r_native_worker_platform winapi-jobapi2-feature"
 grep -qF '"processthreadsapi"' libs/hbb_common/Cargo.toml ||
   r_native_worker_platform="$r_native_worker_platform winapi-processthreadsapi-feature"
+grep -qF '"securitybaseapi"' libs/hbb_common/Cargo.toml ||
+  r_native_worker_platform="$r_native_worker_platform winapi-securitybaseapi-feature"
 grep -qF '"winbase"' libs/hbb_common/Cargo.toml ||
   r_native_worker_platform="$r_native_worker_platform winapi-winbase-feature"
 grep -qF '"winnt"' libs/hbb_common/Cargo.toml ||
@@ -3063,7 +3079,7 @@ grep -qF 'failed to constrain file-content worker' libs/clipboard/src/platform/u
 if [ -n "$r_native_worker_platform" ]; then
   echo "  FAIL Appendix C #2b: native worker platform confinement hooks regressed:$r_native_worker_platform"; rc=1
 else
-  echo "  ok  Appendix C #2b native worker parents fail closed on post-spawn confinement failure; Windows workers keep read-back Job Object process-count/memory/kill-on-close/die-on-unhandled-exception/UI-restriction guards plus read-back dynamic-code/extension-point/strict-handle/no-child-process/image-load mitigations; Linux worker entry read-back confirms no-new-privs/non-dumpable/seccomp and process-spawn denial; macOS worker entry applies Seatbelt NoNetwork and probes permission-denied AF_INET denial; desktop Unix workers excluding Android/iOS get RLIMIT/fd cleanup"
+  echo "  ok  Appendix C #2b native worker parents fail closed on post-spawn confinement failure; Windows workers keep read-back Job Object process-count/memory/kill-on-close/die-on-unhandled-exception/UI-restriction guards, read-back token privilege disablement preserving only traverse notification, and read-back dynamic-code/extension-point/strict-handle/no-child-process/image-load mitigations; Linux worker entry read-back confirms no-new-privs/non-dumpable/seccomp and process-spawn denial; macOS worker entry applies Seatbelt NoNetwork and probes permission-denied AF_INET denial; desktop Unix workers excluding Android/iOS get RLIMIT/fd cleanup"
 fi
 # R-R2a (§12 / sovereignty): the .deb + systemd is the SOLE Linux package model. The AppImage
 # recipe (whose `update-information` self-updater collides with R-X1 "the fork ships its own

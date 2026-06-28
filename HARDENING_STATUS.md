@@ -23,10 +23,13 @@ bounded peer-triggered file-transfer metadata enumeration and read/write job
 admission,
 bounded peer-driven UI chat/message/notification text length and rate
 admission,
-child-confinement, Windows Job Object child lifetime/limit/UI-restriction guards and process mitigations including no child-process creation, non-mobile desktop-Unix worker RLIMIT/fd-cleanup
+child-confinement, Windows Job Object child lifetime/limit/UI-restriction guards,
+token-privilege disable/readback, and process mitigations including no
+child-process creation, non-mobile desktop-Unix worker RLIMIT/fd-cleanup
 confinement, macOS worker NoNetwork Seatbelt confinement with AF_INET denial
 probe, Linux x86_64/aarch64 post-exec syscall-filter/fd-cleanup/readback
-follow-ups, Windows worker Job Object and process-mitigation readbacks, and unsupported
+follow-ups, Windows worker Job Object/token-privilege/process-mitigation
+readbacks, and unsupported
 Linux worker-architecture fail-closed behavior for those slices, desktop
 video/Opus semantic worker-failure child teardown,
 Unix/macOS file-copy descriptor-parser/FileContents worker isolation, Windows
@@ -461,7 +464,7 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   on the current Linux x86_64 validation host; an aarch64 runner would execute
   the same test under the aarch64 cfg.
 - **Windows native worker children now get fail-closed Job Object lifetime,
-  resource guards, and process mitigations.**
+  resource guards, token-privilege reduction, and process mitigations.**
   `libs/hbb_common/src/native_worker_sandbox.rs` now exposes
   `apply_to_spawned_child`, because Windows needs a process handle before Job
   Object limits can be applied. The hook returns a must-use
@@ -477,7 +480,11 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   clipboard-related children. The worker-entry hook then installs Windows process
   mitigations before hostile-peer parsing: dynamic-code prohibition, extension
   point disablement, strict invalid-handle checking, no child-process creation,
-  and remote/low-integrity image-load refusal. This is a Windows
+  and remote/low-integrity image-load refusal. Before those mitigations, worker
+  entry opens its process token, disables all adjustable token privileges except
+  `SeChangeNotifyPrivilege` for normal Windows traversal compatibility, and
+  reads the token back so any enabled non-traverse privilege fails closed before
+  hostile-peer parsing. This is a Windows
   resource/lifetime/exploit-mitigation
   companion for the existing worker slices, not a Windows AppContainer,
   restricted-token, or syscall-allowlist sandbox. The CLIPRDR-specific
@@ -850,14 +857,16 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   worker parents now query the Job Object back with `QueryInformationJobObject`
   before assigning the worker, verifying the active-process, kill-on-job-close,
   die-on-unhandled-exception, process-memory, and UI-restriction masks that were
-  just set; worker entry likewise reads back `GetProcessMitigationPolicy` for
-  dynamic-code, extension-point, strict-handle, child-process, and image-load
-  mitigations.
+  just set; worker entry likewise disables token privileges, reads back
+  `TokenPrivileges` so only `SeChangeNotifyPrivilege` may remain enabled, and
+  reads back `GetProcessMitigationPolicy` for dynamic-code, extension-point,
+  strict-handle, child-process, and image-load mitigations.
   macOS worker entry now probes an AF_INET stream socket immediately after
   `kSBXProfileNoNetwork` is installed and fails closed if the socket still
   succeeds or fails for a non-permission reason. `scripts/verify.sh` gates the
-  Linux readback/probe tests, Windows readback APIs, and macOS AF_INET probe
-  markers. This is stronger evidence for the existing desktop worker boundary,
+  Linux readback/probe tests, Windows Job Object/token/process readback APIs, and
+  macOS AF_INET probe markers. This is stronger evidence for the existing
+  desktop worker boundary,
   not a claim of Windows AppContainer, Windows restricted-token/syscall
   allowlist, or a custom macOS Seatbelt allowlist.
 
@@ -865,12 +874,14 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 
 After the fixed-shape listener/direct-TCP staging collapse, the artifact
 staleness correction, the Windows remote-printer worker handoff, and the Android
-clipboard Kotlin bridge, the artifacts below are current for the source shipped
-by each target. Debian and Windows were last rebuilt at the remote-printer worker
-handoff; the later Android-only Kotlin source change does not enter those
-targets. Android was rebuilt after the Kotlin bridge change. These hashes
-supersede the `ec1b6f6`/`2d72f99` stale-artifact notes and the earlier
-`6e99f581...` Android APK.
+clipboard Kotlin bridge, the artifacts below are the last completed per-target
+artifact builds. Debian and Windows were last rebuilt at the remote-printer
+worker handoff; Android was rebuilt after the Android clipboard Kotlin bridge.
+The current Windows worker token-privilege source hardening postdates the
+recorded Windows `.exe`/`.msi` hashes, so those Windows hashes are historical
+build evidence, not a current final-artifact claim, until the Windows VM job is
+re-run. These hashes supersede the `ec1b6f6`/`2d72f99` stale-artifact notes and
+the earlier `6e99f581...` Android APK.
 The Debian path ran in the disposable `rustdesk-fork-harness-deb-builder` build
 container with the compile stage offline (`--network=none`) and
 `SOURCE_DATE_EPOCH=1700000000`, then performed its double-build determinism
@@ -902,7 +913,8 @@ Build evidence:
   `08c39e7bd86579f07147aa40d9ce19dfa3951a89857c3722d60dfc5d8185d221`
   after the Android clipboard Kotlin bridge change.
 - Windows `WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh`
-  passed from the current worktree snapshot in the transient KVM VM path. The
+  passed from the then-current worktree snapshot in the transient KVM VM path.
+  It predates the current Windows worker token-privilege source hardening. The
   guest `build-log.txt` contains pre-canonical hashes; the final release hashes
   are the host-canonicalized `dist/*.sha256` values above, and the second VM
   rebuild matched A==B with
@@ -1131,6 +1143,17 @@ docker run ... cargo test -p hbb_common --lib native_worker_sandbox::tests --col
 docker run ... cargo check /tmp/rd-win-sandbox-check --target x86_64-pc-windows-msvc  # GREEN with RUSTFLAGS=-Dunused-imports: cfg(windows) native_worker_sandbox.rs Job Object readback incl. die-on-unhandled-exception + process-mitigation readback branch typechecked without the full native dependency graph
 bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl. Linux readback/process-spawn denial, Windows Job Object/process-mitigation readbacks, and macOS permission-checked AF_INET NoNetwork probe source gates
 git diff --check                          # GREEN before this ledger update
+```
+
+After the Windows worker token-privilege disable/readback follow-up, these
+focused and full gates have been re-run successfully:
+
+```text
+docker run ... rustfmt --edition 2021 --check libs/hbb_common/src/native_worker_sandbox.rs  # GREEN in a disposable rust:1.75-slim container
+docker run ... bash -n scripts/verify.sh  # GREEN in a disposable bash:5.2 container
+docker run ... cargo check /tmp/rd-win-sandbox-check --target x86_64-pc-windows-msvc  # GREEN: cfg(windows) native_worker_sandbox.rs token privilege disable/readback + Job Object/process-mitigation branch typechecked with a throwaway RUSTUP_HOME
+bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl. Windows token-privilege source gates and full Docker-backed Rust compile/test matrix
+git diff --check                          # GREEN after this ledger update
 ```
 
 An attempted Docker-only `cargo check -p hbb_common --target
@@ -1503,9 +1526,11 @@ bash -n scripts/verify.sh     # GREEN
   worker children are now hidden and assigned to a Job Object with active-process,
   kill-on-job-close, per-process memory, and UI-restriction limits before
   hostile-peer bytes are sent, with the Job Object guard retained for the child
-  lifetime; worker entry also applies process mitigations for dynamic code,
-  extension points, strict handle checks, child-process creation refusal, and
-  remote/low-integrity image loads. Mobile media decode, peer
+  lifetime; worker entry also disables adjustable token privileges except
+  `SeChangeNotifyPrivilege`, reads that token state back, and applies process
+  mitigations for dynamic code, extension points, strict handle checks,
+  child-process creation refusal, and remote/low-integrity image loads. Mobile
+  media decode, peer
   clipboard SET, and peer zstd now fail closed until platform workers/services
   exist instead of parsing hostile-peer bytes in-process. That is the right
   interim safety posture, but it is not final Android client conformance:
@@ -1516,7 +1541,7 @@ bash -n scripts/verify.sh     # GREEN
   feature parity, Android's separate-process service shape, an iOS
   product-scope decision for the
   no-child-process model, Windows low-privilege/AppContainer or syscall-allowlist
-  hardening beyond Job Object/process-mitigation guards, a broader
+  hardening beyond Job Object/token-privilege/process-mitigation guards, a broader
   macOS/desktop-Unix syscall or Seatbelt allowlist beyond NoNetwork, equivalent seccomp support before enabling
   parser workers on Linux architectures outside x86_64/aarch64 and/or a future
   true allowlist sandbox, and timeout/kill/restart semantics for the remaining
@@ -1558,9 +1583,11 @@ equivalent. Windows same-artifact worker children, including the CLIPRDR and
 remote-printer workers, now get hidden-window Job Object active-process,
 kill-on-job-close, process-memory, and UI-restriction limits with a retained
 guard, plus entry-time process mitigations for dynamic code, extension points,
-strict handle checks, child-process creation refusal, and remote/low-integrity
-image loads, but that is not a Windows AppContainer, restricted-token, or syscall
-allowlist sandbox. Windows CLIPRDR now has app-level and Rust<->C bridge length
+strict handle checks, child-process creation refusal, remote/low-integrity image
+loads, and token-privilege disable/readback preserving only
+`SeChangeNotifyPrivilege`, but that is not a Windows AppContainer,
+restricted-token, or syscall allowlist sandbox. Windows CLIPRDR now has app-level
+and Rust<->C bridge length
 caps plus null/bounded-read fail-closed guards, pending request/response
 accounting, and a same-artifact worker boundary; Windows remote-printer XPS
 handoff now has a bounded same-artifact worker boundary. Mobile media decode
@@ -1570,16 +1597,17 @@ parsers; that is secure but functionally incomplete for Android-as-viewer, so
 Android artifact availability must not be treated as end-to-end feature parity
 until platform worker/service support or an equivalent isolated decode path is
 implemented and smoked.
-Unix/macOS file-copy
-clipboard now has descriptor-count caps, a same-artifact worker boundary for peer FILEDESCRIPTOR
-PDU parsing, per-connection file-content request/byte accounting, and a
+Unix/macOS file-copy clipboard now has descriptor-count caps, a same-artifact
+worker boundary for peer FILEDESCRIPTOR PDU parsing, per-connection file-content
+request/byte accounting, and a
 same-artifact worker boundary for the local file-list cache/PDU generation and
 FileContents size/range reads. Windows and Android platform-native
-socket-surface logic is present and source-gated. The Debian, Android, and
-Windows artifact hashes recorded above are refreshed for the current per-target
-application source; Android was refreshed after the Kotlin clipboard bridge
-change. The remaining local build-host residual is the old harness-created
-system libvirt default network: the host has shown `virbr0`,
+socket-surface logic is present and source-gated. The Debian and Android
+artifact hashes recorded above remain the last refreshed hashes for their
+per-target application source, but the Windows hashes predate the current
+Windows worker token-privilege source hardening and must be refreshed before a
+final artifact-complete claim. The remaining local build-host residual is the old
+harness-created system libvirt default network: the host has shown `virbr0`,
 `192.168.122.1:53/tcp+udp`, `0.0.0.0%virbr0:67/udp`, and
 `net.ipv4.ip_forward=1`. `.harness-state/provisioned` records that the harness
 installed `libvirt-daemon-system`, so cleanup is allowed to reverse it, but this

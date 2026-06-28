@@ -141,6 +141,7 @@ fn enter_worker_process_platform() -> std::io::Result<()> {
 
 #[cfg(target_os = "windows")]
 fn enter_worker_process_platform() -> std::io::Result<()> {
+    disable_windows_worker_token_privileges()?;
     apply_windows_worker_process_mitigations()
 }
 
@@ -368,6 +369,218 @@ fn ensure_windows_job_flag(flags: u32, expected: u32, name: &str) -> std::io::Re
             format!("Windows worker Job Object readback missed {name}"),
         ))
     }
+}
+
+#[cfg(target_os = "windows")]
+struct WindowsHandle(winapi::um::winnt::HANDLE);
+
+#[cfg(target_os = "windows")]
+impl Drop for WindowsHandle {
+    fn drop(&mut self) {
+        unsafe {
+            winapi::um::handleapi::CloseHandle(self.0);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+struct WindowsTokenPrivilegeBuffer {
+    storage: Vec<usize>,
+    byte_len: u32,
+}
+
+#[cfg(target_os = "windows")]
+impl WindowsTokenPrivilegeBuffer {
+    fn new(byte_len: u32) -> std::io::Result<Self> {
+        let word_size = std::mem::size_of::<usize>();
+        let byte_len_usize = byte_len as usize;
+        let word_len = byte_len_usize
+            .checked_add(word_size - 1)
+            .map(|len| len / word_size)
+            .filter(|len| *len > 0)
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Windows token privilege query returned an invalid buffer size",
+                )
+            })?;
+        Ok(Self {
+            storage: vec![0; word_len],
+            byte_len,
+        })
+    }
+
+    fn as_ptr(&self) -> *const winapi::um::winnt::TOKEN_PRIVILEGES {
+        self.storage.as_ptr() as *const _
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut winapi::um::winnt::TOKEN_PRIVILEGES {
+        self.storage.as_mut_ptr() as *mut _
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn disable_windows_worker_token_privileges() -> std::io::Result<()> {
+    use std::ptr;
+    use winapi::um::winnt::{TOKEN_ADJUST_PRIVILEGES, TOKEN_QUERY};
+
+    let token = open_current_process_token(TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY)?;
+    let mut privileges = query_windows_token_privileges(token.0)?;
+    let change_notify_luid = windows_worker_change_notify_luid()?;
+    set_windows_token_privileges_disabled_except_change_notify(
+        &mut privileges,
+        &change_notify_luid,
+    );
+
+    let ok = unsafe {
+        winapi::um::securitybaseapi::AdjustTokenPrivileges(
+            token.0,
+            0,
+            privileges.as_mut_ptr(),
+            0,
+            ptr::null_mut(),
+            ptr::null_mut(),
+        )
+    };
+    if ok == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    let last_error = std::io::Error::last_os_error();
+    if last_error.raw_os_error() == Some(winapi::shared::winerror::ERROR_NOT_ALL_ASSIGNED as i32) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Windows worker token did not assign all requested privilege disablements",
+        ));
+    }
+
+    verify_windows_worker_token_privileges_disabled(token.0, &change_notify_luid)
+}
+
+#[cfg(target_os = "windows")]
+fn open_current_process_token(access: u32) -> std::io::Result<WindowsHandle> {
+    let mut token = std::ptr::null_mut();
+    let ok = unsafe {
+        winapi::um::processthreadsapi::OpenProcessToken(
+            winapi::um::processthreadsapi::GetCurrentProcess(),
+            access,
+            &mut token,
+        )
+    };
+    if ok == 0 || token.is_null() {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(WindowsHandle(token))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_worker_change_notify_luid() -> std::io::Result<winapi::shared::ntdef::LUID> {
+    use std::ptr;
+    use winapi::um::winnt::SE_CHANGE_NOTIFY_NAME;
+
+    let mut luid = unsafe { std::mem::zeroed() };
+    let name: Vec<u16> = SE_CHANGE_NOTIFY_NAME
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let ok = unsafe {
+        winapi::um::winbase::LookupPrivilegeValueW(ptr::null(), name.as_ptr(), &mut luid)
+    };
+    if ok == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(luid)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn query_windows_token_privileges(
+    token: winapi::um::winnt::HANDLE,
+) -> std::io::Result<WindowsTokenPrivilegeBuffer> {
+    use std::ptr;
+    use winapi::um::winnt::TokenPrivileges;
+
+    let mut required_len = 0;
+    let _ = unsafe {
+        winapi::um::securitybaseapi::GetTokenInformation(
+            token,
+            TokenPrivileges,
+            ptr::null_mut(),
+            0,
+            &mut required_len,
+        )
+    };
+    if required_len == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    let mut buffer = WindowsTokenPrivilegeBuffer::new(required_len)?;
+    let ok = unsafe {
+        winapi::um::securitybaseapi::GetTokenInformation(
+            token,
+            TokenPrivileges,
+            buffer.as_mut_ptr() as *mut _,
+            buffer.byte_len,
+            &mut required_len,
+        )
+    };
+    if ok == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(buffer)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn set_windows_token_privileges_disabled_except_change_notify(
+    buffer: &mut WindowsTokenPrivilegeBuffer,
+    change_notify_luid: &winapi::shared::ntdef::LUID,
+) {
+    let privileges = buffer.as_mut_ptr();
+    let privilege_count = unsafe { (*privileges).PrivilegeCount as usize };
+    let privilege_entries = unsafe { (*privileges).Privileges.as_mut_ptr() };
+    for index in 0..privilege_count {
+        let privilege = unsafe { privilege_entries.add(index) };
+        let is_change_notify = unsafe { windows_luid_eq(&(*privilege).Luid, change_notify_luid) };
+        if !is_change_notify {
+            unsafe {
+                (*privilege).Attributes = 0;
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn verify_windows_worker_token_privileges_disabled(
+    token: winapi::um::winnt::HANDLE,
+    change_notify_luid: &winapi::shared::ntdef::LUID,
+) -> std::io::Result<()> {
+    use winapi::um::winnt::SE_PRIVILEGE_ENABLED;
+
+    let privileges = query_windows_token_privileges(token)?;
+    let token_privileges = privileges.as_ptr();
+    let privilege_count = unsafe { (*token_privileges).PrivilegeCount as usize };
+    let privilege_entries = unsafe { (*token_privileges).Privileges.as_ptr() };
+    for index in 0..privilege_count {
+        let privilege = unsafe { privilege_entries.add(index) };
+        let privilege_is_enabled =
+            unsafe { (*privilege).Attributes & SE_PRIVILEGE_ENABLED == SE_PRIVILEGE_ENABLED };
+        let privilege_is_change_notify =
+            unsafe { windows_luid_eq(&(*privilege).Luid, change_notify_luid) };
+        if privilege_is_enabled && !privilege_is_change_notify {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "Windows worker token privilege readback still reports an enabled non-traverse privilege",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn windows_luid_eq(a: &winapi::shared::ntdef::LUID, b: &winapi::shared::ntdef::LUID) -> bool {
+    a.LowPart == b.LowPart && a.HighPart == b.HighPart
 }
 
 #[cfg(target_os = "windows")]

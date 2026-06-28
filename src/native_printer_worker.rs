@@ -23,6 +23,7 @@ const MAX_PRINTER_NAME_BYTES: usize = 1024;
 const MAX_PRINTER_DATA_BYTES: usize = 128 * 1024 * 1024;
 const MAX_WORKER_ERROR_BYTES: usize = 64 * 1024;
 const WORKER_PRINT_TIMEOUT: Duration = Duration::from_secs(120);
+const WORKER_FAILURE_COOLDOWN: Duration = Duration::from_secs(5);
 
 pub fn worker_arg() -> &'static str {
     WORKER_ARG
@@ -31,8 +32,8 @@ pub fn worker_arg() -> &'static str {
 pub fn send_raw_data_to_printer(printer_name: Option<String>, data: Vec<u8>) -> ResultType<()> {
     validate_request(printer_name.as_deref(), data.len())?;
 
-    static WORKER: OnceLock<Mutex<Option<PrinterWorker>>> = OnceLock::new();
-    let worker = WORKER.get_or_init(|| Mutex::new(None));
+    static WORKER: OnceLock<Mutex<PrinterWorkerState>> = OnceLock::new();
+    let worker = WORKER.get_or_init(|| Mutex::new(PrinterWorkerState::default()));
     let mut guard = match worker.try_lock() {
         Ok(guard) => guard,
         Err(TryLockError::WouldBlock) => {
@@ -42,16 +43,35 @@ pub fn send_raw_data_to_printer(printer_name: Option<String>, data: Vec<u8>) -> 
             bail!("native printer worker lock poisoned");
         }
     };
-    if guard.is_none() {
-        *guard = Some(PrinterWorker::spawn()?);
+    if guard.worker.is_none() {
+        if let Some(remaining) = guard.cooldown.active_remaining() {
+            bail!(
+                "native printer worker cooling down after failure; refusing to queue remote print job for {:?}",
+                remaining
+            );
+        }
+        match PrinterWorker::spawn() {
+            Ok(worker) => {
+                guard.cooldown.clear();
+                guard.worker = Some(worker);
+            }
+            Err(err) => {
+                guard.cooldown.mark_failed(WORKER_FAILURE_COOLDOWN);
+                return Err(err);
+            }
+        }
     }
-    let Some(worker) = guard.as_mut() else {
-        bail!("native printer worker unavailable");
+    let result = match guard.worker.as_mut() {
+        Some(worker) => worker.print(printer_name, data),
+        None => {
+            bail!("native printer worker unavailable");
+        }
     };
-    match worker.print(printer_name, data) {
+    match result {
         Ok(()) => Ok(()),
         Err(err) => {
-            *guard = None;
+            guard.worker = None;
+            guard.cooldown.mark_failed(WORKER_FAILURE_COOLDOWN);
             Err(err)
         }
     }
@@ -66,6 +86,12 @@ struct PrinterWorker {
     child: Child,
     _process_guard: hbb_common::native_worker_sandbox::WorkerProcessGuard,
     io_tx: SyncSender<PrinterWorkerIoRequest>,
+}
+
+#[derive(Default)]
+struct PrinterWorkerState {
+    worker: Option<PrinterWorker>,
+    cooldown: hbb_common::native_worker_sandbox::NativeWorkerFailureCooldown,
 }
 
 struct PrinterWorkerIoRequest {

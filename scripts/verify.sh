@@ -2218,6 +2218,14 @@ grep -qF 'const MAX_PRINTER_DATA_BYTES: usize = 128 * 1024 * 1024;' src/native_p
   r_native_bounds="$r_native_bounds windows-printer-worker-data-cap"
 grep -qF 'native printer worker busy; refusing to queue remote print job' src/native_printer_worker.rs ||
   r_native_bounds="$r_native_bounds windows-printer-worker-busy-fail-closed"
+grep -qF 'const WORKER_FAILURE_COOLDOWN: Duration = Duration::from_secs(5);' src/native_printer_worker.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-failure-cooldown"
+grep -qF 'NativeWorkerFailureCooldown' src/native_printer_worker.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-failure-cooldown-state"
+grep -qF 'native printer worker cooling down after failure; refusing to queue remote print job' src/native_printer_worker.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-failure-cooldown-refusal"
+grep -qF 'guard.cooldown.mark_failed(WORKER_FAILURE_COOLDOWN)' src/native_printer_worker.rs ||
+  r_native_bounds="$r_native_bounds windows-printer-worker-failure-cooldown-mark"
 grep -qF 'native printer worker request too large' src/native_printer_worker.rs ||
   r_native_bounds="$r_native_bounds windows-printer-worker-size-fail-closed"
 grep -qF 'native printer worker refuses NUL in printer name' src/native_printer_worker.rs ||
@@ -2818,6 +2826,14 @@ if grep -qF 'Log.w(NZD_LOG_TAG, "isolated zstd decoder busy; refusing to queue p
 fi
 grep -qF 'const WORKER_DECOMPRESS_TIMEOUT: Duration = Duration::from_secs(5);' libs/hbb_common/src/compress.rs ||
   r_native_zstd_worker="$r_native_zstd_worker timeout"
+grep -qF 'const WORKER_FAILURE_COOLDOWN: Duration = Duration::from_secs(5);' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker failure-cooldown"
+grep -qF 'NativeWorkerFailureCooldown' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker failure-cooldown-state"
+grep -qF 'native zstd worker cooling down after failure; refusing to queue peer decompress' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker failure-cooldown-refusal"
+grep -qF 'guard.cooldown.mark_failed(WORKER_FAILURE_COOLDOWN)' libs/hbb_common/src/compress.rs ||
+  r_native_zstd_worker="$r_native_zstd_worker failure-cooldown-mark"
 grep -qF 'native zstd worker decompress timed out after' libs/hbb_common/src/compress.rs ||
   r_native_zstd_worker="$r_native_zstd_worker timeout-kills-worker"
 grep -qF 'crate::native_worker_sandbox::apply_to_command(&mut command)' libs/hbb_common/src/compress.rs ||
@@ -2880,6 +2896,14 @@ grep -qF 'pub fn update_clipboard(' src/native_clipboard_worker.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker worker-api"
 grep -qF 'const WORKER_SET_TIMEOUT: Duration = Duration::from_secs(3);' src/native_clipboard_worker.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker timeout"
+grep -qF 'const WORKER_FAILURE_COOLDOWN: Duration = Duration::from_secs(5);' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker failure-cooldown"
+grep -qF 'NativeWorkerFailureCooldown' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker failure-cooldown-state"
+grep -qF 'native clipboard worker cooling down after failure; refusing to queue peer clipboard SET' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker failure-cooldown-refusal"
+grep -qF 'guard.cooldown.mark_failed(WORKER_FAILURE_COOLDOWN)' src/native_clipboard_worker.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker failure-cooldown-mark"
 grep -qF 'native clipboard worker set timed out after' src/native_clipboard_worker.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker timeout-kills-worker"
 grep -qF 'hbb_common::native_worker_sandbox::apply_to_command(&mut command)' src/native_clipboard_worker.rs ||
@@ -3255,6 +3279,12 @@ grep -qF 'dropping this guard immediately releases the worker process confinemen
   r_native_worker_platform="$r_native_worker_platform spawned-child-guard-must-use"
 grep -qF 'pub fn apply_to_spawned_child(child: &mut Child) -> std::io::Result<WorkerProcessGuard>' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform spawned-child-api"
+grep -qF 'pub struct NativeWorkerFailureCooldown' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform worker-failure-cooldown-type"
+grep -qF 'pub fn active_remaining(&self) -> Option<Duration>' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform worker-failure-cooldown-query"
+grep -qF 'pub fn mark_failed(&mut self, cooldown: Duration)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform worker-failure-cooldown-mark"
 grep -qF 'apply_windows_worker_job_limits(child)' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-job-call"
 grep -qF 'CREATE_NO_WINDOW' libs/hbb_common/src/native_worker_sandbox.rs ||

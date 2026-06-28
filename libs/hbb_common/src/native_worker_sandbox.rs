@@ -1,4 +1,7 @@
-use std::process::{Child, Command};
+use std::{
+    process::{Child, Command},
+    time::{Duration, Instant},
+};
 
 #[cfg(unix)]
 pub const WORKER_NOFILE_LIMIT: u64 = 64;
@@ -8,6 +11,43 @@ pub const WORKER_ADDRESS_SPACE_LIMIT: u64 = 1536 * 1024 * 1024;
 pub const WORKER_DATA_LIMIT: u64 = 1024 * 1024 * 1024;
 #[cfg(unix)]
 pub const WORKER_STACK_LIMIT: u64 = 16 * 1024 * 1024;
+
+/// Parent-side respawn throttle for reusable hostile-peer native workers.
+///
+/// Per-request timeouts kill a wedged parser child, but immediately spawning a
+/// fresh child for the next peer-controlled packet turns repeated parser
+/// failures into process churn. Shared worker parents keep this state next to
+/// their child slot and consult it only before spawning a replacement.
+#[derive(Debug, Default)]
+pub struct NativeWorkerFailureCooldown {
+    next_spawn_at: Option<Instant>,
+}
+
+impl NativeWorkerFailureCooldown {
+    pub fn active_remaining(&self) -> Option<Duration> {
+        self.active_remaining_at(Instant::now())
+    }
+
+    pub fn mark_failed(&mut self, cooldown: Duration) {
+        let now = Instant::now();
+        self.next_spawn_at = now.checked_add(cooldown).or(Some(now));
+    }
+
+    pub fn clear(&mut self) {
+        self.next_spawn_at = None;
+    }
+
+    fn active_remaining_at(&self, now: Instant) -> Option<Duration> {
+        let remaining = self
+            .next_spawn_at
+            .and_then(|next_spawn_at| next_spawn_at.checked_duration_since(now))?;
+        if remaining == Duration::ZERO {
+            None
+        } else {
+            Some(remaining)
+        }
+    }
+}
 
 /// Apply OS-level confinement to hostile-peer native parser workers.
 ///
@@ -1427,6 +1467,38 @@ fn bpf_stmt(code: u16, k: u32) -> crate::libc::sock_filter {
 ))]
 fn bpf_jump(code: u16, k: u32, jt: u8, jf: u8) -> crate::libc::sock_filter {
     crate::libc::sock_filter { code, jt, jf, k }
+}
+
+#[cfg(test)]
+mod cooldown_tests {
+    use super::*;
+
+    #[test]
+    fn native_worker_failure_cooldown_reports_remaining_window() {
+        let mut cooldown = NativeWorkerFailureCooldown::default();
+        let now = Instant::now();
+        cooldown.next_spawn_at = Some(now + Duration::from_secs(5));
+
+        assert_eq!(
+            cooldown.active_remaining_at(now + Duration::from_secs(2)),
+            Some(Duration::from_secs(3))
+        );
+        assert_eq!(
+            cooldown.active_remaining_at(now + Duration::from_secs(5)),
+            None
+        );
+    }
+
+    #[test]
+    fn native_worker_failure_cooldown_clear_reopens_spawn() {
+        let mut cooldown = NativeWorkerFailureCooldown::default();
+
+        cooldown.mark_failed(Duration::from_secs(5));
+        assert!(cooldown.active_remaining().is_some());
+
+        cooldown.clear();
+        assert!(cooldown.active_remaining().is_none());
+    }
 }
 
 #[cfg(all(test, target_os = "linux"))]

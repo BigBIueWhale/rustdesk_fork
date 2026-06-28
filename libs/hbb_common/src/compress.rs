@@ -25,6 +25,8 @@ const STATUS_ERROR: u8 = 1;
 const MAX_COMPRESSED_INPUT: usize = 32 * 1024 * 1024;
 const MAX_WORKER_ERROR_BYTES: usize = 64 * 1024;
 const WORKER_DECOMPRESS_TIMEOUT: Duration = Duration::from_secs(5);
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const WORKER_FAILURE_COOLDOWN: Duration = Duration::from_secs(5);
 
 // The library supports regular compression levels from 1 up to ZSTD_maxCLevel(),
 // which is currently 22. Levels >= 20
@@ -200,8 +202,8 @@ pub fn run_worker() -> ResultType<()> {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn peer_decompress_worker(data: &[u8]) -> ResultType<Vec<u8>> {
-    static WORKER: OnceLock<Mutex<Option<ZstdWorker>>> = OnceLock::new();
-    let worker = WORKER.get_or_init(|| Mutex::new(None));
+    static WORKER: OnceLock<Mutex<ZstdWorkerState>> = OnceLock::new();
+    let worker = WORKER.get_or_init(|| Mutex::new(ZstdWorkerState::default()));
     let mut guard = match worker.try_lock() {
         Ok(guard) => guard,
         Err(TryLockError::WouldBlock) => {
@@ -213,19 +215,45 @@ fn peer_decompress_worker(data: &[u8]) -> ResultType<Vec<u8>> {
             return Err(crate::anyhow::anyhow!("native zstd worker lock poisoned"));
         }
     };
-    if guard.is_none() {
-        *guard = Some(ZstdWorker::spawn()?);
+    if guard.worker.is_none() {
+        if let Some(remaining) = guard.cooldown.active_remaining() {
+            return Err(crate::anyhow::anyhow!(
+                "native zstd worker cooling down after failure; refusing to queue peer decompress for {:?}",
+                remaining
+            ));
+        }
+        match ZstdWorker::spawn() {
+            Ok(worker) => {
+                guard.cooldown.clear();
+                guard.worker = Some(worker);
+            }
+            Err(err) => {
+                guard.cooldown.mark_failed(WORKER_FAILURE_COOLDOWN);
+                return Err(err);
+            }
+        }
     }
-    let Some(worker) = guard.as_mut() else {
-        return Err(crate::anyhow::anyhow!("native zstd worker unavailable"));
+    let result = match guard.worker.as_mut() {
+        Some(worker) => worker.decompress(data),
+        None => {
+            return Err(crate::anyhow::anyhow!("native zstd worker unavailable"));
+        }
     };
-    match worker.decompress(data) {
+    match result {
         Ok(out) => Ok(out),
         Err(err) => {
-            *guard = None;
+            guard.worker = None;
+            guard.cooldown.mark_failed(WORKER_FAILURE_COOLDOWN);
             Err(err)
         }
     }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Default)]
+struct ZstdWorkerState {
+    worker: Option<ZstdWorker>,
+    cooldown: crate::native_worker_sandbox::NativeWorkerFailureCooldown,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

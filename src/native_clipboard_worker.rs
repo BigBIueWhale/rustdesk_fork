@@ -27,6 +27,7 @@ const MAX_WORKER_REQUEST_BYTES: usize =
     crate::clipboard::MAX_NATIVE_CLIPBOARD_TOTAL_BYTES + 64 * 1024;
 const MAX_WORKER_ERROR_BYTES: usize = 64 * 1024;
 const WORKER_SET_TIMEOUT: Duration = Duration::from_secs(3);
+const WORKER_FAILURE_COOLDOWN: Duration = Duration::from_secs(5);
 
 pub fn worker_arg() -> &'static str {
     WORKER_ARG
@@ -44,8 +45,8 @@ pub fn update_clipboard(multi_clipboards: MultiClipboards, side: ClipboardSide) 
         );
     }
 
-    static WORKER: OnceLock<Mutex<Option<ClipboardWorker>>> = OnceLock::new();
-    let worker = WORKER.get_or_init(|| Mutex::new(None));
+    static WORKER: OnceLock<Mutex<ClipboardWorkerState>> = OnceLock::new();
+    let worker = WORKER.get_or_init(|| Mutex::new(ClipboardWorkerState::default()));
     let mut guard = match worker.try_lock() {
         Ok(guard) => guard,
         Err(TryLockError::WouldBlock) => {
@@ -55,19 +56,44 @@ pub fn update_clipboard(multi_clipboards: MultiClipboards, side: ClipboardSide) 
             bail!("native clipboard worker lock poisoned");
         }
     };
-    if guard.is_none() {
-        *guard = Some(ClipboardWorker::spawn()?);
+    if guard.worker.is_none() {
+        if let Some(remaining) = guard.cooldown.active_remaining() {
+            bail!(
+                "native clipboard worker cooling down after failure; refusing to queue peer clipboard SET for {:?}",
+                remaining
+            );
+        }
+        match ClipboardWorker::spawn() {
+            Ok(worker) => {
+                guard.cooldown.clear();
+                guard.worker = Some(worker);
+            }
+            Err(err) => {
+                guard.cooldown.mark_failed(WORKER_FAILURE_COOLDOWN);
+                return Err(err);
+            }
+        }
     }
-    let Some(worker) = guard.as_mut() else {
-        bail!("native clipboard worker unavailable");
+    let result = match guard.worker.as_mut() {
+        Some(worker) => worker.set_clipboard(side, payload),
+        None => {
+            bail!("native clipboard worker unavailable");
+        }
     };
-    match worker.set_clipboard(side, payload) {
+    match result {
         Ok(()) => Ok(()),
         Err(err) => {
-            *guard = None;
+            guard.worker = None;
+            guard.cooldown.mark_failed(WORKER_FAILURE_COOLDOWN);
             Err(err)
         }
     }
+}
+
+#[derive(Default)]
+struct ClipboardWorkerState {
+    worker: Option<ClipboardWorker>,
+    cooldown: hbb_common::native_worker_sandbox::NativeWorkerFailureCooldown,
 }
 
 pub fn run_worker() -> ResultType<()> {

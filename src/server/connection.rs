@@ -46,6 +46,7 @@ use serde_json::{json, value::Value};
 use std::sync::atomic::Ordering;
 use std::{
     collections::HashSet,
+    fmt,
     num::NonZeroI64,
     path::PathBuf,
     sync::{atomic::AtomicI64, mpsc as std_mpsc},
@@ -60,6 +61,29 @@ use crate::virtual_display_manager;
 pub type Sender = mpsc::UnboundedSender<(Instant, Arc<Message>)>;
 const TUNNEL_DISABLED_MESSAGE: &str =
     "Port forwarding/RDP tunnel is unavailable in this direct-IP hardened build";
+const MAX_PEER_DISPLAY_DIMENSION: i32 = 16_384;
+const MAX_PEER_CAPTURE_DISPLAY_ENTRIES: usize = 32;
+const DISPLAY_CONTROL_LOG_INTERVAL: Duration = Duration::from_secs(5);
+
+#[derive(Default)]
+struct DisplayControlRejectLog {
+    last_log_at: Option<Instant>,
+    suppressed: u64,
+}
+
+impl DisplayControlRejectLog {
+    fn on_reject(&mut self) -> Option<u64> {
+        let now = Instant::now();
+        if let Some(last) = self.last_log_at {
+            if now.saturating_duration_since(last) < DISPLAY_CONTROL_LOG_INTERVAL {
+                self.suppressed += 1;
+                return None;
+            }
+        }
+        self.last_log_at = Some(now);
+        Some(std::mem::take(&mut self.suppressed))
+    }
+}
 
 lazy_static::lazy_static! {
     // R-T15(b)/R-S10: the inherited LOGIN_FAILURES limiter is excised (see update/check_failure) —
@@ -271,6 +295,7 @@ pub struct Connection {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     terminal_user_token: Option<TerminalUserToken>,
     terminal_generic_service: Option<Box<GenericService>>,
+    display_control_reject_log: DisplayControlRejectLog,
 }
 
 impl ConnInner {
@@ -428,6 +453,7 @@ impl Connection {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             terminal_user_token: None,
             terminal_generic_service: None,
+            display_control_reject_log: Default::default(),
         };
         let addr = hbb_common::try_into_v4(addr);
         if !conn.on_open(addr).await {
@@ -2462,9 +2488,47 @@ impl Connection {
                         self.handle_switch_display(s).await;
                     }
                     Some(misc::Union::CaptureDisplays(displays)) => {
-                        let add = displays.add.iter().map(|d| *d as usize).collect::<Vec<_>>();
-                        let sub = displays.sub.iter().map(|d| *d as usize).collect::<Vec<_>>();
-                        let set = displays.set.iter().map(|d| *d as usize).collect::<Vec<_>>();
+                        let non_empty_ops = usize::from(!displays.add.is_empty())
+                            + usize::from(!displays.sub.is_empty())
+                            + usize::from(!displays.set.is_empty());
+                        if non_empty_ops > 1 {
+                            self.note_display_control_reject(format_args!(
+                                "capture display message has multiple non-empty operations"
+                            ));
+                            return true;
+                        }
+                        if !self.validate_peer_display_indexes_syntax(&displays.add, "capture add")
+                            || !self
+                                .validate_peer_display_indexes_syntax(&displays.sub, "capture sub")
+                            || !self
+                                .validate_peer_display_indexes_syntax(&displays.set, "capture set")
+                        {
+                            return true;
+                        }
+                        let Some(display_count) = self.peer_display_count() else {
+                            return true;
+                        };
+                        let Some(add) = self.validate_peer_display_indexes(
+                            &displays.add,
+                            "capture add",
+                            display_count,
+                        ) else {
+                            return true;
+                        };
+                        let Some(sub) = self.validate_peer_display_indexes(
+                            &displays.sub,
+                            "capture sub",
+                            display_count,
+                        ) else {
+                            return true;
+                        };
+                        let Some(set) = self.validate_peer_display_indexes(
+                            &displays.set,
+                            "capture set",
+                            display_count,
+                        ) else {
+                            return true;
+                        };
                         self.capture_displays(&add, &sub, &set).await;
                     }
                     #[cfg(windows)]
@@ -2493,7 +2557,11 @@ impl Connection {
                         self.update_auto_disconnect_timer();
                     }
                     Some(misc::Union::RefreshVideoDisplay(display)) => {
-                        self.refresh_video_display(Some(display as usize));
+                        if let Some(display) =
+                            self.validate_peer_display_index(display, "refresh video display")
+                        {
+                            self.refresh_video_display(Some(display));
+                        }
                         self.update_auto_disconnect_timer();
                     }
                     Some(misc::Union::VideoReceived(_)) => {
@@ -2536,7 +2604,7 @@ impl Connection {
                     Some(misc::Union::ChangeResolution(r)) => self.change_resolution(None, &r),
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
                     Some(misc::Union::ChangeDisplayResolution(dr)) => {
-                        self.change_resolution(Some(dr.display as _), &dr.resolution)
+                        self.change_resolution(Some(dr.display), &dr.resolution)
                     }
                     Some(misc::Union::AutoAdjustFps(fps)) => video_service::VIDEO_QOS
                         .lock()
@@ -2576,8 +2644,14 @@ impl Connection {
                         }
                     }
                     Some(misc::Union::MessageQuery(mq)) => {
+                        let Some(display) = self.validate_peer_display_index(
+                            mq.switch_display,
+                            "message query switch display",
+                        ) else {
+                            return true;
+                        };
                         if let Some(msg_out) = video_service::make_display_changed_msg(
-                            mq.switch_display as _,
+                            display,
                             None,
                             self.video_source(),
                         ) {
@@ -2620,12 +2694,13 @@ impl Connection {
                 }
                 Some(message::Union::ScreenshotRequest(request)) => {
                     if let Some(tx) = self.inner.tx.clone() {
-                        crate::video_service::set_take_screenshot(
-                            request.display as _,
-                            request.sid.clone(),
-                            tx,
-                        );
-                        self.refresh_video_display(Some(request.display as usize));
+                        let Some(display) =
+                            self.validate_peer_display_index(request.display, "screenshot request")
+                        else {
+                            return true;
+                        };
+                        crate::video_service::set_take_screenshot(display, request.sid.clone(), tx);
+                        self.refresh_video_display(Some(display));
                     }
                 }
                 Some(message::Union::TerminalAction(action)) => {
@@ -2778,8 +2853,187 @@ impl Connection {
         });
     }
 
+    fn note_display_control_reject(&mut self, detail: fmt::Arguments<'_>) {
+        let Some(suppressed) = self.display_control_reject_log.on_reject() else {
+            return;
+        };
+        if suppressed > 0 {
+            log::warn!(
+                "refusing peer display-control message: {detail}; ip={} conn_id={} (suppressed {} similar events)",
+                self.ip,
+                self.inner.id(),
+                suppressed
+            );
+        } else {
+            log::warn!(
+                "refusing peer display-control message: {detail}; ip={} conn_id={}",
+                self.ip,
+                self.inner.id()
+            );
+        }
+    }
+
+    fn peer_display_count(&mut self) -> Option<usize> {
+        if self.view_camera {
+            Some(camera::Cameras::get_sync_cameras().len())
+        } else {
+            match display_service::try_get_displays() {
+                Ok(displays) => Some(displays.len()),
+                Err(err) => {
+                    self.note_display_control_reject(format_args!(
+                        "failed to enumerate displays: {err}"
+                    ));
+                    None
+                }
+            }
+        }
+    }
+
+    fn validate_peer_display_index(&mut self, raw_display: i32, context: &str) -> Option<usize> {
+        if !self.validate_peer_display_index_syntax(raw_display, context) {
+            return None;
+        }
+        let Some(display_count) = self.peer_display_count() else {
+            return None;
+        };
+        self.validate_peer_display_index_against_count(raw_display, context, display_count)
+    }
+
+    fn validate_peer_display_index_syntax(&mut self, raw_display: i32, context: &str) -> bool {
+        if raw_display < 0 {
+            self.note_display_control_reject(format_args!(
+                "{context}: negative display index {raw_display}"
+            ));
+            return false;
+        }
+        true
+    }
+
+    fn validate_peer_display_indexes_syntax(&mut self, displays: &[i32], context: &str) -> bool {
+        if displays.len() > MAX_PEER_CAPTURE_DISPLAY_ENTRIES {
+            self.note_display_control_reject(format_args!(
+                "{context}: {} display entries exceeds cap {}",
+                displays.len(),
+                MAX_PEER_CAPTURE_DISPLAY_ENTRIES
+            ));
+            return false;
+        }
+        let mut seen = HashSet::with_capacity(displays.len());
+        for raw in displays {
+            let display = match usize::try_from(*raw) {
+                Ok(display) => display,
+                Err(_) => {
+                    self.note_display_control_reject(format_args!(
+                        "{context}: negative display index {raw}"
+                    ));
+                    return false;
+                }
+            };
+            if !seen.insert(display) {
+                self.note_display_control_reject(format_args!(
+                    "{context}: duplicate display index {display}"
+                ));
+                return false;
+            }
+        }
+        true
+    }
+
+    fn validate_peer_display_index_against_count(
+        &mut self,
+        raw_display: i32,
+        context: &str,
+        display_count: usize,
+    ) -> Option<usize> {
+        let display = match usize::try_from(raw_display) {
+            Ok(display) => display,
+            Err(_) => {
+                self.note_display_control_reject(format_args!(
+                    "{context}: negative display index {raw_display}"
+                ));
+                return None;
+            }
+        };
+        if display >= display_count {
+            self.note_display_control_reject(format_args!(
+                "{context}: display index {display} outside display_count={display_count}"
+            ));
+            return None;
+        }
+        Some(display)
+    }
+
+    fn validate_peer_display_indexes(
+        &mut self,
+        displays: &[i32],
+        context: &str,
+        display_count: usize,
+    ) -> Option<Vec<usize>> {
+        if displays.len() > MAX_PEER_CAPTURE_DISPLAY_ENTRIES {
+            self.note_display_control_reject(format_args!(
+                "{context}: {} display entries exceeds cap {}",
+                displays.len(),
+                MAX_PEER_CAPTURE_DISPLAY_ENTRIES
+            ));
+            return None;
+        }
+        if displays.len() > display_count {
+            self.note_display_control_reject(format_args!(
+                "{context}: {} display entries exceeds display_count={display_count}",
+                displays.len()
+            ));
+            return None;
+        }
+        let mut out = Vec::with_capacity(displays.len());
+        let mut seen = HashSet::with_capacity(displays.len());
+        for raw in displays {
+            let display = match usize::try_from(*raw) {
+                Ok(display) => display,
+                Err(_) => {
+                    self.note_display_control_reject(format_args!(
+                        "{context}: negative display index {raw}"
+                    ));
+                    return None;
+                }
+            };
+            if display >= display_count {
+                self.note_display_control_reject(format_args!(
+                    "{context}: display index {display} outside display_count={display_count}"
+                ));
+                return None;
+            }
+            if !seen.insert(display) {
+                self.note_display_control_reject(format_args!(
+                    "{context}: duplicate display index {display}"
+                ));
+                return None;
+            }
+            out.push(display);
+        }
+        Some(out)
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    fn validate_peer_resolution_dims(&mut self, r: &Resolution, context: &str) -> bool {
+        if r.width <= 0
+            || r.height <= 0
+            || r.width > MAX_PEER_DISPLAY_DIMENSION
+            || r.height > MAX_PEER_DISPLAY_DIMENSION
+        {
+            self.note_display_control_reject(format_args!(
+                "{context}: invalid resolution {}x{}",
+                r.width, r.height
+            ));
+            return false;
+        }
+        true
+    }
+
     async fn handle_switch_display(&mut self, s: SwitchDisplay) {
-        let display_idx = s.display as usize;
+        let Some(display_idx) = self.validate_peer_display_index(s.display, "switch display")
+        else {
+            return;
+        };
         if self.display_idx != display_idx {
             if let Some(server) = self.server.upgrade() {
                 self.switch_display_to(display_idx, server.clone());
@@ -2794,6 +3048,11 @@ impl Connection {
                             ..Default::default()
                         },
                     );
+                } else if s.width != 0 || s.height != 0 {
+                    self.note_display_control_reject(format_args!(
+                        "switch display resolution: partial dimensions {}x{}",
+                        s.width, s.height
+                    ));
                 }
             }
 
@@ -2876,6 +3135,23 @@ impl Connection {
 
     #[cfg(windows)]
     async fn toggle_virtual_display(&mut self, t: ToggleVirtualDisplay) {
+        if !config::option2bool(
+            keys::OPTION_ENABLE_VIRTUAL_DISPLAY,
+            &Config::get_option(keys::OPTION_ENABLE_VIRTUAL_DISPLAY),
+        ) {
+            self.note_display_control_reject(format_args!(
+                "refusing peer virtual-display toggle under pinned policy: display={} on={}",
+                t.display, t.on
+            ));
+            return;
+        }
+        if t.display < 0 {
+            self.note_display_control_reject(format_args!(
+                "virtual-display toggle with negative display index: display={} on={}",
+                t.display, t.on
+            ));
+            return;
+        }
         let make_msg = |text: String| {
             let mut msg_out = Message::new();
             let res = MessageBox {
@@ -2925,54 +3201,103 @@ impl Connection {
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn change_resolution(&mut self, d: Option<usize>, r: &Resolution) {
+    fn change_resolution(&mut self, d: Option<i32>, r: &Resolution) {
         if self.keyboard {
-            if let Ok(displays) = display_service::try_get_displays() {
-                let display_idx = d.unwrap_or(self.display_idx);
-                if let Some(display) = displays.get(display_idx) {
-                    let name = display.name();
-                    #[cfg(windows)]
-                    if let Some(_ok) =
-                        virtual_display_manager::rustdesk_idd::change_resolution_if_is_virtual_display(
-                            &name,
-                            r.width as _,
-                            r.height as _,
-                        )
-                    {
+            if !self.validate_peer_resolution_dims(r, "change resolution") {
+                return;
+            }
+            if let Some(display) = d {
+                if !self.validate_peer_display_index_syntax(display, "change resolution") {
+                    return;
+                }
+            }
+            let displays = match display_service::try_get_displays() {
+                Ok(displays) => displays,
+                Err(err) => {
+                    self.note_display_control_reject(format_args!(
+                        "change resolution: failed to enumerate displays: {err}"
+                    ));
+                    return;
+                }
+            };
+            let display_idx = match d {
+                Some(display) => {
+                    let Some(display) = self.validate_peer_display_index_against_count(
+                        display,
+                        "change resolution",
+                        displays.len(),
+                    ) else {
+                        return;
+                    };
+                    display
+                }
+                None => {
+                    if self.display_idx >= displays.len() {
+                        let current_display_idx = self.display_idx;
+                        let display_count = displays.len();
+                        self.note_display_control_reject(format_args!(
+                            "change resolution: current display index {} outside display_count={}",
+                            current_display_idx, display_count
+                        ));
                         return;
                     }
-                    #[allow(unused_mut)]
-                    let mut record_changed = true;
-                    #[cfg(windows)]
-                    if virtual_display_manager::amyuni_idd::is_my_display(&name) {
-                        record_changed = false;
-                    }
-                    #[cfg(not(target_os = "macos"))]
-                    let scale = 1.0;
-                    #[cfg(target_os = "macos")]
-                    let scale = display.scale();
-                    let original = (
-                        ((display.width() as f64) / scale).round() as _,
-                        (display.height() as f64 / scale).round() as _,
+                    self.display_idx
+                }
+            };
+            if let Some(display) = displays.get(display_idx) {
+                let name = display.name();
+                let supported_modes = crate::platform::resolutions(&name);
+                if !supported_modes
+                    .iter()
+                    .any(|mode| mode.width == r.width && mode.height == r.height)
+                {
+                    self.note_display_control_reject(format_args!(
+                        "change resolution for '{}': unsupported mode {}x{}",
+                        &name, r.width, r.height
+                    ));
+                    return;
+                }
+                #[cfg(windows)]
+                if let Some(_ok) =
+                    virtual_display_manager::rustdesk_idd::change_resolution_if_is_virtual_display(
+                        &name,
+                        r.width as _,
+                        r.height as _,
+                    )
+                {
+                    return;
+                }
+                #[allow(unused_mut)]
+                let mut record_changed = true;
+                #[cfg(windows)]
+                if virtual_display_manager::amyuni_idd::is_my_display(&name) {
+                    record_changed = false;
+                }
+                #[cfg(not(target_os = "macos"))]
+                let scale = 1.0;
+                #[cfg(target_os = "macos")]
+                let scale = display.scale();
+                let original = (
+                    ((display.width() as f64) / scale).round() as _,
+                    (display.height() as f64 / scale).round() as _,
+                );
+                if record_changed {
+                    display_service::set_last_changed_resolution(
+                        &name,
+                        original,
+                        (r.width, r.height),
                     );
-                    if record_changed {
-                        display_service::set_last_changed_resolution(
-                            &name,
-                            original,
-                            (r.width, r.height),
-                        );
-                    }
-                    if let Err(e) =
-                        crate::platform::change_resolution(&name, r.width as _, r.height as _)
-                    {
-                        log::error!(
-                            "Failed to change resolution '{}' to ({},{}): {:?}",
-                            &name,
-                            r.width,
-                            r.height,
-                            e
-                        );
-                    }
+                }
+                if let Err(e) =
+                    crate::platform::change_resolution(&name, r.width as _, r.height as _)
+                {
+                    log::error!(
+                        "Failed to change resolution '{}' to ({},{}): {:?}",
+                        &name,
+                        r.width,
+                        r.height,
+                        e
+                    );
                 }
             }
         }

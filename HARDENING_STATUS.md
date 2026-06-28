@@ -16,6 +16,7 @@ native-video/native-Opus/native-zstd/native-clipboard worker slices, the
 mobile media fail-closed, Android video/Opus/peer-zstd/peer-clipboard
 isolated-service paths, iOS peer-zstd and peer-clipboard fail-closed, and
 peer-zstd explicit-failure behavior,
+responder display-control validation and virtual-display policy pinning,
 bounded worker-I/O thread and
 bounded desktop clipboard/file-clipboard dispatcher, Linux
 FUSE clipboard mount-point no-follow/no-adoption setup,
@@ -305,6 +306,27 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 `requirements.html` is intentionally not edited by implementation work.
 
 ## Recent Closures
+
+- **Responder display-control messages are validated before display services or native display APIs.**
+  Peer-supplied `CaptureDisplays`, `SwitchDisplay`, `RefreshVideoDisplay`,
+  `MessageQuery.switch_display`, `ScreenshotRequest.display`, and
+  `ChangeDisplayResolution` inputs now reject negative signed display indexes,
+  out-of-range indexes, duplicate capture indexes, excessive capture-list
+  length, ambiguous multi-operation capture messages, invalid/oversized
+  dimensions, and unsupported resolution modes before they can reach display
+  services or native display/capture APIs. Negative/cap/duplicate syntax is
+  rejected before display enumeration, and the capture-display path enumerates
+  displays once per peer message and reuses that count for add/sub/set
+  bounds validation. Windows `ToggleVirtualDisplay` is now pinned off by
+  `enable-virtual-display=N` in the immutable policy table and rejects negative
+  indexes before any virtual-display driver call if the pin is ever deliberately
+  changed in a rebuild. Reject logging is throttled per connection with a
+  suppressed-count summary, so the validation path does not create a
+  log-amplification DoS. `scripts/verify.sh` gates the pin, policy test
+  coverage, cheap syntax validators, checked index conversions, refresh/query/screenshot index
+  validation, capture caps, duplicate/ambiguous-operation rejection, shared
+  display enumeration, supported-mode checks, virtual-display policy gate, and
+  throttled reject logging.
 
 - **PeerInfo UI handoffs are bounded and allowlisted before local/UI state.**
   `src/client/io_loop.rs` now routes both login-time and in-session `PeerInfo`

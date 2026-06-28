@@ -36,6 +36,7 @@ fn pinned_policy_is_the_single_source_of_truth() {
         "enable-record-session",
         "enable-block-input",
         "enable-privacy-mode",
+        "enable-virtual-display",
         "enable-remote-printer",
         "allow-websocket",
         "allow-insecure-tls-fallback",

@@ -1088,6 +1088,86 @@ if [ -n "$r_t12_eb" ]; then
 else
   echo "  ok  R-T12 accept-error escalating bounded back-off + EMFILE/ENFILE errno mapping present"
 fi
+# R-T0 / Appendix C #2b-adjacent responder display control: authenticated peers must not be
+# able to drive native display/capture/virtual-display driver APIs through unchecked signed
+# display indexes, unsupported resolution dimensions, or a live virtual-display toggle.
+r_display_control=
+grep -qF 'pub const OPTION_ENABLE_VIRTUAL_DISPLAY: &str = "enable-virtual-display";' libs/hbb_common/src/config.rs ||
+  r_display_control="$r_display_control no-virtual-display-option"
+grep -qF '(OPTION_ENABLE_VIRTUAL_DISPLAY, "N")' libs/hbb_common/src/config.rs ||
+  r_display_control="$r_display_control virtual-display-not-pinned-off"
+grep -qF '        OPTION_ENABLE_VIRTUAL_DISPLAY,' libs/hbb_common/src/config.rs ||
+  r_display_control="$r_display_control virtual-display-not-in-keys-settings"
+grep -qF '"enable-virtual-display",' libs/config_it/tests/lockdown.rs ||
+  r_display_control="$r_display_control virtual-display-pin-not-tested"
+grep -qF 'struct DisplayControlRejectLog' src/server/connection.rs ||
+  r_display_control="$r_display_control no-display-reject-log-throttle"
+grep -qF 'DISPLAY_CONTROL_LOG_INTERVAL' src/server/connection.rs ||
+  r_display_control="$r_display_control no-display-reject-log-interval"
+grep -qF 'suppressed {} similar events' src/server/connection.rs ||
+  r_display_control="$r_display_control no-display-reject-suppression-summary"
+grep -qF 'fn validate_peer_display_index' src/server/connection.rs ||
+  r_display_control="$r_display_control no-display-index-validator"
+grep -qF 'fn validate_peer_display_index_syntax' src/server/connection.rs ||
+  r_display_control="$r_display_control no-cheap-display-index-syntax-validator"
+grep -qF 'usize::try_from(raw_display)' src/server/connection.rs ||
+  r_display_control="$r_display_control no-checked-display-index-conversion"
+grep -qF 'fn validate_peer_display_indexes' src/server/connection.rs ||
+  r_display_control="$r_display_control no-display-list-validator"
+grep -qF 'fn validate_peer_display_indexes_syntax' src/server/connection.rs ||
+  r_display_control="$r_display_control no-cheap-display-list-syntax-validator"
+grep -qF 'MAX_PEER_CAPTURE_DISPLAY_ENTRIES' src/server/connection.rs ||
+  r_display_control="$r_display_control no-capture-display-entry-cap"
+grep -qF 'capture display message has multiple non-empty operations' src/server/connection.rs ||
+  r_display_control="$r_display_control no-ambiguous-capture-operation-reject"
+grep -qF 'let Some(display_count) = self.peer_display_count()' src/server/connection.rs ||
+  r_display_control="$r_display_control no-shared-display-enumeration"
+grep -qF 'duplicate display index' src/server/connection.rs ||
+  r_display_control="$r_display_control no-duplicate-display-reject"
+grep -qF 'refresh video display' src/server/connection.rs ||
+  r_display_control="$r_display_control refresh-video-display-not-validated"
+grep -qF 'message query switch display' src/server/connection.rs ||
+  r_display_control="$r_display_control message-query-switch-display-not-validated"
+grep -qF 'screenshot request' src/server/connection.rs ||
+  r_display_control="$r_display_control screenshot-display-not-validated"
+grep -qF '&displays.add,' src/server/connection.rs ||
+  r_display_control="$r_display_control capture-add-not-validated"
+grep -qF '&displays.sub,' src/server/connection.rs ||
+  r_display_control="$r_display_control capture-sub-not-validated"
+grep -qF '&displays.set,' src/server/connection.rs ||
+  r_display_control="$r_display_control capture-set-not-validated"
+if grep -qF 'displays.add.iter().map(|d| *d as usize)' src/server/connection.rs; then
+  r_display_control="$r_display_control unchecked-capture-add-cast"
+fi
+if grep -qF 'self.refresh_video_display(Some(display as usize))' src/server/connection.rs; then
+  r_display_control="$r_display_control unchecked-refresh-video-display-cast"
+fi
+if grep -qF 'request.display as _' src/server/connection.rs || grep -qF 'request.display as usize' src/server/connection.rs; then
+  r_display_control="$r_display_control unchecked-screenshot-display-cast"
+fi
+if grep -qF 'mq.switch_display as _' src/server/connection.rs; then
+  r_display_control="$r_display_control unchecked-message-query-switch-display-cast"
+fi
+if grep -qF 'self.change_resolution(Some(dr.display as _), &dr.resolution)' src/server/connection.rs; then
+  r_display_control="$r_display_control unchecked-change-display-resolution-cast"
+fi
+grep -qF 'validate_peer_resolution_dims' src/server/connection.rs ||
+  r_display_control="$r_display_control no-resolution-dimension-validator"
+grep -qF 'MAX_PEER_DISPLAY_DIMENSION' src/server/connection.rs ||
+  r_display_control="$r_display_control no-resolution-dimension-cap"
+grep -qF 'crate::platform::resolutions(&name)' src/server/connection.rs ||
+  r_display_control="$r_display_control no-supported-mode-check"
+grep -qF 'unsupported mode' src/server/connection.rs ||
+  r_display_control="$r_display_control no-unsupported-mode-log"
+grep -qF 'refusing peer virtual-display toggle under pinned policy' src/server/connection.rs ||
+  r_display_control="$r_display_control virtual-display-toggle-not-policy-gated"
+grep -qF 't.display < 0' src/server/connection.rs ||
+  r_display_control="$r_display_control virtual-display-negative-index-not-rejected"
+if [ -n "$r_display_control" ]; then
+  echo "  FAIL R-T0/App.C#2b: responder display-control validation incomplete:$r_display_control"; rc=1
+else
+  echo "  ok  R-T0/App.C#2b responder display-control messages validate indexes/modes and virtual-display toggles are pinned off"
+fi
 # R-SV10 (§18, the FIFTH config funnel): LocalConfig::get_option reads the UNPINNED _local namespace —
 # unlike Config::get_option it has NO PINNED_SETTINGS head-guard (config.rs). CI MUST assert no
 # SECURITY-RELEVANT key resolves through it without a pin or a compile-out (mirroring R-S16(d)(iv)'s

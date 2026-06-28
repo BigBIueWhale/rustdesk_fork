@@ -2877,6 +2877,7 @@ pub mod keys {
     pub const OPTION_ENABLE_RECORD_SESSION: &str = "enable-record-session";
     pub const OPTION_ENABLE_BLOCK_INPUT: &str = "enable-block-input";
     pub const OPTION_ENABLE_PRIVACY_MODE: &str = "enable-privacy-mode";
+    pub const OPTION_ENABLE_VIRTUAL_DISPLAY: &str = "enable-virtual-display";
     pub const OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW: &str =
         "enable-perm-change-in-accept-window";
     pub const OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION: &str = "allow-remote-config-modification";
@@ -3097,6 +3098,7 @@ pub mod keys {
         OPTION_ENABLE_RECORD_SESSION,
         OPTION_ENABLE_BLOCK_INPUT,
         OPTION_ENABLE_PRIVACY_MODE,
+        OPTION_ENABLE_VIRTUAL_DISPLAY,
         OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION,
         OPTION_WHITELIST,
         OPTION_ALLOW_AUTO_DISCONNECT,
@@ -3166,6 +3168,7 @@ pub mod keys {
         (OPTION_ENABLE_RECORD_SESSION, "N"),
         (OPTION_ENABLE_BLOCK_INPUT, "N"),
         (OPTION_ENABLE_PRIVACY_MODE, "N"),
+        (OPTION_ENABLE_VIRTUAL_DISPLAY, "N"),
         (OPTION_ENABLE_REMOTE_PRINTER, "N"),
         // No remote modification of the controlled box's config: the §11 controlled-side policy is a
         // compile-time table (R-D2/R-S16(d)). This was the ONE capability key left operator-settable

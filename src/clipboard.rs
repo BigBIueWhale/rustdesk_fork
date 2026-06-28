@@ -3,6 +3,8 @@ use arboard::{ClipboardData, ClipboardFormat};
 // R-X13 (§8): arboard LinuxClipboardKind/SetExtLinux were used only by the removed
 // set_with_owner_marker_for_linux (Wayland uinput clipboard-paste SET) — import dropped.
 use hbb_common::{bail, log, message_proto::*, ResultType};
+#[cfg(target_os = "android")]
+use hbb_common::protobuf::Message as _;
 #[cfg(not(target_os = "android"))]
 use std::sync::{
     mpsc::{self, SyncSender, TrySendError},
@@ -32,6 +34,12 @@ pub(crate) const MAX_NATIVE_CLIPBOARD_TOTAL_BYTES: usize = 64 * 1024 * 1024;
 pub(crate) const MAX_NATIVE_CLIPBOARD_ITEMS: usize = 16;
 #[cfg(not(target_os = "android"))]
 const CLIPBOARD_UPDATE_QUEUE_CAPACITY: usize = 1;
+#[cfg(target_os = "android")]
+const ANDROID_SANITIZED_CLIPBOARD_MAGIC: [u8; 4] = *b"RDCB";
+#[cfg(target_os = "android")]
+const ANDROID_SANITIZED_CLIPBOARD_VERSION: u8 = 1;
+#[cfg(target_os = "android")]
+const ANDROID_SANITIZED_CLIPBOARD_HEADER_BYTES: usize = 16;
 
 #[cfg(not(target_os = "android"))]
 enum ClipboardUpdateRequest {
@@ -152,6 +160,248 @@ fn sanitize_multi_clipboards_for_native_proto(
         clipboards: sanitized,
         ..Default::default()
     })
+}
+
+#[cfg(target_os = "android")]
+fn android_service_clipboard_content_for_native(
+    clipboard: hbb_common::message_proto::Clipboard,
+) -> ResultType<Vec<u8>> {
+    let format = clipboard
+        .format
+        .enum_value()
+        .map_err(|e| hbb_common::anyhow::anyhow!("invalid clipboard format: {e}"))?;
+    let data = if clipboard.compress {
+        hbb_common::compress::android_isolated_worker_decompress(&clipboard.content)?
+    } else {
+        clipboard.content.to_vec()
+    };
+    if !native_clipboard_payload_within_limit(format, clipboard.width, clipboard.height, data.len())
+    {
+        bail!(
+            "oversized or invalid Android clipboard payload before platform handoff: format={format:?}, width={}, height={}, bytes={}",
+            clipboard.width,
+            clipboard.height,
+            data.len()
+        );
+    }
+    Ok(data)
+}
+
+#[cfg(target_os = "android")]
+fn write_android_sanitized_clipboard_payload(
+    text: &[u8],
+    html: Option<&[u8]>,
+) -> ResultType<Vec<u8>> {
+    if text.is_empty() {
+        bail!("Android sanitized clipboard payload requires text");
+    }
+    let html = html.filter(|value| !value.is_empty());
+    let html_len = html.map_or(0usize, |value| value.len());
+    let total = text
+        .len()
+        .checked_add(html_len)
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("Android clipboard payload length overflow"))?;
+    if total > MAX_NATIVE_CLIPBOARD_TOTAL_BYTES {
+        bail!(
+            "oversized Android sanitized clipboard payload: {} > {}",
+            total,
+            MAX_NATIVE_CLIPBOARD_TOTAL_BYTES
+        );
+    }
+
+    let mut out = Vec::with_capacity(ANDROID_SANITIZED_CLIPBOARD_HEADER_BYTES + total);
+    out.extend_from_slice(&ANDROID_SANITIZED_CLIPBOARD_MAGIC);
+    out.push(ANDROID_SANITIZED_CLIPBOARD_VERSION);
+    out.push(if html.is_some() { 1 } else { 0 });
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(
+        &u32::try_from(text.len())
+            .map_err(|_| hbb_common::anyhow::anyhow!("Android clipboard text too large"))?
+            .to_le_bytes(),
+    );
+    out.extend_from_slice(
+        &u32::try_from(html_len)
+            .map_err(|_| hbb_common::anyhow::anyhow!("Android clipboard HTML too large"))?
+            .to_le_bytes(),
+    );
+    out.extend_from_slice(text);
+    if let Some(html) = html {
+        out.extend_from_slice(html);
+    }
+    Ok(out)
+}
+
+#[cfg(target_os = "android")]
+fn android_sanitized_clipboard_payload_slices(data: &[u8]) -> ResultType<(&[u8], Option<&[u8]>)> {
+    if data.len() < ANDROID_SANITIZED_CLIPBOARD_HEADER_BYTES {
+        bail!("Android sanitized clipboard payload is too short");
+    }
+    if data.get(..4) != Some(&ANDROID_SANITIZED_CLIPBOARD_MAGIC) {
+        bail!("bad Android sanitized clipboard magic");
+    }
+    if data[4] != ANDROID_SANITIZED_CLIPBOARD_VERSION {
+        bail!(
+            "unsupported Android sanitized clipboard version {}",
+            data[4]
+        );
+    }
+    let flags = data[5];
+    if flags & !1 != 0 {
+        bail!("unsupported Android sanitized clipboard flags {flags}");
+    }
+    if data[6] != 0 || data[7] != 0 {
+        bail!("non-zero Android sanitized clipboard reserved bytes");
+    }
+    let text_len = u32::from_le_bytes(
+        data[8..12]
+            .try_into()
+            .map_err(|_| hbb_common::anyhow::anyhow!("bad Android clipboard text length"))?,
+    ) as usize;
+    let html_len = u32::from_le_bytes(
+        data[12..16]
+            .try_into()
+            .map_err(|_| hbb_common::anyhow::anyhow!("bad Android clipboard HTML length"))?,
+    ) as usize;
+    if text_len == 0 {
+        bail!("Android sanitized clipboard payload has no text");
+    }
+    let total = text_len
+        .checked_add(html_len)
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("Android clipboard payload length overflow"))?;
+    if total > MAX_NATIVE_CLIPBOARD_TOTAL_BYTES {
+        bail!(
+            "oversized Android sanitized clipboard aggregate payload: {} > {}",
+            total,
+            MAX_NATIVE_CLIPBOARD_TOTAL_BYTES
+        );
+    }
+    let expected = ANDROID_SANITIZED_CLIPBOARD_HEADER_BYTES
+        .checked_add(total)
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("Android clipboard payload length overflow"))?;
+    if data.len() != expected {
+        bail!("Android sanitized clipboard payload length mismatch");
+    }
+    let text_start = ANDROID_SANITIZED_CLIPBOARD_HEADER_BYTES;
+    let html_start = text_start + text_len;
+    let text = &data[text_start..html_start];
+    std::str::from_utf8(text)
+        .map_err(|e| hbb_common::anyhow::anyhow!("Android clipboard text is not UTF-8: {e}"))?;
+    let html = if html_len > 0 {
+        let html = &data[html_start..];
+        std::str::from_utf8(html)
+            .map_err(|e| hbb_common::anyhow::anyhow!("Android clipboard HTML is not UTF-8: {e}"))?;
+        Some(html)
+    } else {
+        None
+    };
+    if flags == 0 && html.is_some() {
+        bail!("Android sanitized clipboard HTML present without flag");
+    }
+    if flags == 1 && html.is_none() {
+        bail!("Android sanitized clipboard HTML flag set without data");
+    }
+    Ok((text, html))
+}
+
+#[cfg(target_os = "android")]
+pub(crate) fn android_validate_sanitized_clipboard_payload(data: &[u8]) -> ResultType<()> {
+    let _ = android_sanitized_clipboard_payload_slices(data)?;
+    Ok(())
+}
+
+#[cfg(target_os = "android")]
+pub fn android_service_clipboard_sanitize_payload(data: &[u8]) -> ResultType<Vec<u8>> {
+    if data.len() > MAX_NATIVE_CLIPBOARD_TOTAL_BYTES {
+        bail!(
+            "oversized Android clipboard sanitize request: {} > {}",
+            data.len(),
+            MAX_NATIVE_CLIPBOARD_TOTAL_BYTES
+        );
+    }
+    let multi_clipboards = MultiClipboards::parse_from_bytes(data).map_err(|e| {
+        hbb_common::anyhow::anyhow!("failed to parse Android clipboard request: {e}")
+    })?;
+    if multi_clipboards.clipboards.len() > MAX_NATIVE_CLIPBOARD_ITEMS {
+        bail!(
+            "too many Android clipboard items: {} > {}",
+            multi_clipboards.clipboards.len(),
+            MAX_NATIVE_CLIPBOARD_ITEMS
+        );
+    }
+
+    let mut text = None;
+    let mut html = None;
+    let mut aggregate = 0usize;
+    let mut duplicate_items = 0usize;
+    let mut unsupported_items = 0usize;
+    for clipboard in multi_clipboards.clipboards {
+        let format = clipboard
+            .format
+            .enum_value()
+            .map_err(|e| hbb_common::anyhow::anyhow!("invalid Android clipboard format: {e}"))?;
+        let target = match format {
+            ClipboardFormat::Text if text.is_none() => Some(&mut text),
+            ClipboardFormat::Html if html.is_none() => Some(&mut html),
+            ClipboardFormat::Text | ClipboardFormat::Html => {
+                duplicate_items += 1;
+                None
+            }
+            _ => {
+                unsupported_items += 1;
+                None
+            }
+        };
+        let Some(target) = target else {
+            continue;
+        };
+        let data = android_service_clipboard_content_for_native(clipboard)?;
+        std::str::from_utf8(&data).map_err(|e| {
+            hbb_common::anyhow::anyhow!("Android clipboard {format:?} is not UTF-8: {e}")
+        })?;
+        aggregate = aggregate
+            .checked_add(data.len())
+            .ok_or_else(|| hbb_common::anyhow::anyhow!("Android clipboard aggregate overflow"))?;
+        if aggregate > MAX_NATIVE_CLIPBOARD_TOTAL_BYTES {
+            bail!(
+                "oversized Android clipboard aggregate payload: {} > {}",
+                aggregate,
+                MAX_NATIVE_CLIPBOARD_TOTAL_BYTES
+            );
+        }
+        *target = Some(data);
+    }
+    if duplicate_items != 0 || unsupported_items != 0 {
+        log::debug!(
+            "dropped Android peer clipboard items before isolated SET handoff: duplicates={}, unsupported={}",
+            duplicate_items,
+            unsupported_items
+        );
+    }
+
+    let text =
+        text.ok_or_else(|| hbb_common::anyhow::anyhow!("Android clipboard SET has no text"))?;
+    let payload = write_android_sanitized_clipboard_payload(&text, html.as_deref())?;
+    android_validate_sanitized_clipboard_payload(&payload)?;
+    Ok(payload)
+}
+
+#[cfg(target_os = "android")]
+pub fn android_service_clipboard_self_test() -> bool {
+    (|| -> ResultType<bool> {
+        let mut multi = MultiClipboards::new();
+        multi.clipboards.push(Clipboard {
+            format: ClipboardFormat::Text.into(),
+            content: b"rd-clipboard-self-test".to_vec().into(),
+            ..Default::default()
+        });
+        let request = multi.write_to_bytes().map_err(|e| {
+            hbb_common::anyhow::anyhow!("clipboard self-test serialize failed: {e}")
+        })?;
+        let payload = android_service_clipboard_sanitize_payload(&request)?;
+        let (text, html) = android_sanitized_clipboard_payload_slices(&payload)?;
+        Ok(text == b"rd-clipboard-self-test" && html.is_none())
+    })()
+    .unwrap_or(false)
 }
 
 #[cfg(not(target_os = "android"))]
@@ -1030,17 +1280,41 @@ mod proto {
 }
 
 #[cfg(target_os = "android")]
-pub fn handle_msg_clipboard(_cb: Clipboard) {
-    log::warn!(
-        "refusing in-process mobile peer clipboard SET helper until a platform worker/service boundary exists"
-    );
+pub fn handle_msg_clipboard(cb: Clipboard) {
+    handle_msg_multi_clipboards(MultiClipboards {
+        clipboards: vec![cb],
+        ..Default::default()
+    });
 }
 
 #[cfg(target_os = "android")]
-pub fn handle_msg_multi_clipboards(_mcb: MultiClipboards) {
-    log::warn!(
-        "refusing in-process mobile peer multi-clipboard SET helper until a platform worker/service boundary exists"
-    );
+pub fn handle_msg_multi_clipboards(mcb: MultiClipboards) {
+    let payload = match mcb.write_to_bytes() {
+        Ok(payload) => payload,
+        Err(err) => {
+            log::warn!(
+                "failed to serialize Android peer clipboard SET for isolated service: {err}"
+            );
+            return;
+        }
+    };
+    let sanitized =
+        match scrap::android::ffi::call_application_context_native_clipboard_sanitize(&payload) {
+            Ok(sanitized) => sanitized,
+            Err(err) => {
+                log::warn!("Android isolated clipboard SET service failed: {err}");
+                return;
+            }
+        };
+    if let Err(err) = android_validate_sanitized_clipboard_payload(&sanitized) {
+        log::warn!("Android isolated clipboard SET service returned invalid payload: {err}");
+        return;
+    }
+    if let Err(err) =
+        scrap::android::ffi::call_clipboard_manager_update_sanitized_clipboard(&sanitized)
+    {
+        log::warn!("Android sanitized clipboard SET platform handoff failed: {err}");
+    }
 }
 
 #[cfg(target_os = "android")]

@@ -394,7 +394,7 @@ where
     }
 }
 
-pub fn call_clipboard_manager_update_clipboard(data: &[u8]) -> JniResult<()> {
+pub fn call_clipboard_manager_update_sanitized_clipboard(data: &[u8]) -> JniResult<()> {
     if let (Some(jvm), Some(cm)) = (
         JVM.read().unwrap().as_ref(),
         CLIPBOARD_MANAGER.read().unwrap().as_ref(),
@@ -404,7 +404,7 @@ pub fn call_clipboard_manager_update_clipboard(data: &[u8]) -> JniResult<()> {
 
         env.call_method(
             cm,
-            "rustUpdateClipboard",
+            "rustUpdateSanitizedClipboard",
             "([B)V",
             &[JValue::Object(&JObject::from(data))],
         )?;
@@ -608,6 +608,52 @@ pub fn call_application_context_native_zstd_decompress(payload: &[u8]) -> JniRes
                 .call_method(
                     ctx,
                     "rustDecompressNativeZstd",
+                    "([B)[B",
+                    &[JValue::Object(&payload)],
+                )?
+                .l()?;
+            if response.is_null() {
+                return Err(JniError::ThrowFailed(-1));
+            }
+            let response = JByteArray::from(response);
+            env.convert_byte_array(response)
+        });
+    }
+    Err(JniError::ThrowFailed(-1))
+}
+
+pub fn call_application_context_native_clipboard_ready() -> JniResult<bool> {
+    if let (Some(jvm), Some(ctx)) = (
+        JVM.read().unwrap().as_ref(),
+        APPLICATION_CONTEXT.read().unwrap().as_ref(),
+    ) {
+        let mut env = jvm.attach_current_thread_as_daemon()?;
+        return env
+            .call_method(ctx, "rustIsNativeClipboardSetReady", "()Z", &[])?
+            .z();
+    }
+    Err(JniError::ThrowFailed(-1))
+}
+
+pub fn call_application_context_native_clipboard_sanitize(payload: &[u8]) -> JniResult<Vec<u8>> {
+    if let (Some(jvm), Some(ctx)) = (
+        JVM.read().unwrap().as_ref(),
+        APPLICATION_CONTEXT.read().unwrap().as_ref(),
+    ) {
+        let mut env = jvm.attach_current_thread_as_daemon()?;
+        return env.with_local_frame(8, |env| -> JniResult<Vec<u8>> {
+            let payload = env.byte_array_from_slice(payload)?;
+            let payload = JObject::from(payload);
+            let ready = env
+                .call_method(ctx, "rustIsNativeClipboardSetReady", "()Z", &[])?
+                .z()?;
+            if !ready {
+                return Err(JniError::ThrowFailed(-1));
+            }
+            let response = env
+                .call_method(
+                    ctx,
+                    "rustSanitizeNativeClipboardSet",
                     "([B)[B",
                     &[JValue::Object(&payload)],
                 )?

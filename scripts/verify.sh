@@ -2693,9 +2693,12 @@ else
 fi
 # Appendix C #2b fourth sandbox slice: desktop normal clipboard SET must cross a
 # hidden same-artifact worker before protobuf-to-native conversion and platform
-# clipboard handlers see hostile-peer bytes. CLIPRDR and mobile process models
-# remain tracked separately.
+# clipboard handlers see hostile-peer bytes. Android peer clipboard SET must
+# cross a non-exported isolatedProcess sanitizer service before the app process
+# receives a simple validated text/html payload for the OS clipboard write. iOS
+# remains fail-closed until an equivalent platform boundary exists.
 r_native_clipboard_worker=
+android_clipboard=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/NativeClipboardSetService.kt
 grep -qF 'const WORKER_ARG: &str = "--native-clipboard-worker";' src/native_clipboard_worker.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker worker-arg"
 grep -qF 'pub fn update_clipboard(' src/native_clipboard_worker.rs ||
@@ -2765,26 +2768,86 @@ grep -qF 'crate::native_clipboard_worker::update_clipboard' src/clipboard.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker parent-worker-call"
 grep -qF 'native clipboard worker failed; refusing in-process desktop clipboard update' src/clipboard.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker no-desktop-inprocess-fallback"
+grep -qF 'android_service_clipboard_sanitize_payload' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-service-sanitize"
+grep -qF 'android_service_clipboard_self_test' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-service-selftest"
+grep -qF 'ANDROID_SANITIZED_CLIPBOARD_MAGIC' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-simple-wire-magic"
+grep -qF 'android_validate_sanitized_clipboard_payload(&sanitized)' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-parent-simple-wire-validation"
+grep -qF 'hbb_common::compress::android_isolated_worker_decompress' src/clipboard.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-service-zstd-decompress"
+grep -qF 'pub fn android_isolated_worker_decompress(data: &[u8]) -> ResultType<Vec<u8>>' libs/hbb_common/src/compress.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-isolated-zstd-helper"
+grep -qF 'call_application_context_native_clipboard_sanitize' "$android_ffi" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-app-clipboard-sanitize-jni"
+grep -qF 'call_clipboard_manager_update_sanitized_clipboard' "$android_ffi" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-app-sanitized-platform-jni"
+grep -qF 'rustIsNativeClipboardSetReady' "$android_app" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-app-clipboard-ready-bridge"
+grep -qF 'rustSanitizeNativeClipboardSet' "$android_app" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-app-clipboard-sanitize-bridge"
+grep -qF 'android:name=".NativeClipboardSetService"' "$android_manifest" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-service-manifest"
+grep -qF 'android:isolatedProcess="true"' "$android_manifest" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-service-not-isolated"
+grep -qF 'android:exported="false"' "$android_manifest" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-service-exported"
+grep -qF 'mod native_clipboard_service;' src/lib.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-native-clipboard-module"
+grep -qF 'Java_com_carriez_flutter_1hbb_NativeClipboardSetService_nativeSelfTest' src/native_clipboard_service.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-native-clipboard-selftest"
+grep -qF 'Java_com_carriez_flutter_1hbb_NativeClipboardSetService_nativeSanitize' src/native_clipboard_service.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-native-clipboard-sanitize"
+grep -qF 'object NativeClipboardSetClient' "$android_clipboard" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-service-client"
+grep -qF 'FFI.onAppStart(applicationContext)' "$android_clipboard" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-service-native-init"
+grep -qF 'SharedMemory.create("rd-native-clipboard-set-input"' "$android_clipboard" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-no-input-shmem"
+grep -qF 'SharedMemory.create("rd-native-clipboard-set-output"' "$android_clipboard" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-no-output-shmem"
+grep -qF 'Messenger(IncomingHandler(handlerThread.looper))' "$android_clipboard" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-no-messenger"
+grep -qF 'NCS_MSG_SELF_TEST' "$android_clipboard" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-no-selftest"
+grep -qF 'Process.isIsolated()' "$android_clipboard" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-no-isolated-readback"
+grep -qF 'NCS_SANITIZE_TIMEOUT_MS = 5_000L' "$android_clipboard" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-no-timeout"
+grep -qF 'dropping oversized isolated clipboard SET request' "$android_clipboard" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-no-request-cap"
+grep -qF 'sanitizeLock = ReentrantLock()' "$android_clipboard" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-no-inflight-guard"
+grep -qF 'sanitizeLock.tryLock()' "$android_clipboard" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-no-busy-shed"
+grep -qF 'isolated clipboard SET sanitizer busy; refusing to queue peer request' "$android_clipboard" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-no-busy-log"
+grep -qF 'nativeSanitize(payload)' "$android_clipboard" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-no-native-sanitize"
 grep -qF 'refusing in-process mobile peer clipboard SET until a platform worker/service boundary exists' src/server/connection.rs ||
-  r_native_clipboard_worker="$r_native_clipboard_worker server-mobile-clipboard-fail-closed"
+  r_native_clipboard_worker="$r_native_clipboard_worker server-ios-clipboard-fail-closed"
 grep -qF 'refusing in-process mobile peer multi-clipboard SET until a platform worker/service boundary exists' src/server/connection.rs ||
-  r_native_clipboard_worker="$r_native_clipboard_worker server-mobile-multiclipboard-fail-closed"
+  r_native_clipboard_worker="$r_native_clipboard_worker server-ios-multiclipboard-fail-closed"
 grep -qF 'refusing in-process mobile peer clipboard SET until a platform worker/service boundary exists' src/client/io_loop.rs ||
-  r_native_clipboard_worker="$r_native_clipboard_worker viewer-mobile-clipboard-fail-closed"
+  r_native_clipboard_worker="$r_native_clipboard_worker viewer-ios-clipboard-fail-closed"
 grep -qF 'refusing in-process mobile peer multi-clipboard SET until a platform worker/service boundary exists' src/client/io_loop.rs ||
-  r_native_clipboard_worker="$r_native_clipboard_worker viewer-mobile-multiclipboard-fail-closed"
-if grep -qF 'crate::clipboard::handle_msg_clipboard(cb)' src/server/connection.rs src/client/io_loop.rs; then
-  r_native_clipboard_worker="$r_native_clipboard_worker mobile-peer-clipboard-platform-call"
-fi
-if grep -qF 'crate::clipboard::handle_msg_multi_clipboards(_mcb)' src/server/connection.rs src/client/io_loop.rs; then
-  r_native_clipboard_worker="$r_native_clipboard_worker mobile-peer-multiclipboard-platform-call"
-fi
-grep -qF 'refusing in-process mobile peer clipboard SET helper until a platform worker/service boundary exists' src/clipboard.rs ||
-  r_native_clipboard_worker="$r_native_clipboard_worker android-helper-clipboard-fail-closed"
-grep -qF 'refusing in-process mobile peer multi-clipboard SET helper until a platform worker/service boundary exists' src/clipboard.rs ||
-  r_native_clipboard_worker="$r_native_clipboard_worker android-helper-multiclipboard-fail-closed"
-if grep -R -qF 'call_clipboard_manager_update_clipboard' src libs/hbb_common; then
+  r_native_clipboard_worker="$r_native_clipboard_worker viewer-ios-multiclipboard-fail-closed"
+grep -qF 'crate::clipboard::handle_msg_clipboard(cb)' src/server/connection.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker server-android-clipboard-service-route"
+grep -qF 'crate::clipboard::handle_msg_multi_clipboards(_mcb)' src/server/connection.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker server-android-multiclipboard-service-route"
+grep -qF 'crate::clipboard::handle_msg_clipboard(cb)' src/client/io_loop.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker viewer-android-clipboard-service-route"
+grep -qF 'crate::clipboard::handle_msg_multi_clipboards(_mcb)' src/client/io_loop.rs ||
+  r_native_clipboard_worker="$r_native_clipboard_worker viewer-android-multiclipboard-service-route"
+if grep -R -qF 'call_clipboard_manager_update_clipboard' src libs; then
   r_native_clipboard_worker="$r_native_clipboard_worker android-helper-direct-platform-call"
+fi
+kcm=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/RdClipboardManager.kt
+if grep -qF 'fun rustUpdateClipboard(clips: ByteArray)' "$kcm"; then
+  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-direct-protobuf-setter"
 fi
 grep -qF 'MAX_ANDROID_CLIPBOARD_UPDATE_BYTES' libs/scrap/src/android/ffi.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-ffi-cap"
@@ -2796,7 +2859,6 @@ grep -qF 'dropping oversized Android clipboard update before protobuf parse' lib
   r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-ffi-oversize-drop"
 grep -qF 'data.get(ANDROID_CLIPBOARD_SIDE_PREFIX_BYTES..)' libs/scrap/src/android/ffi.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-ffi-checked-slice"
-kcm=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/RdClipboardManager.kt
 grep -qF 'MAX_ANDROID_CLIPBOARD_PAYLOAD_BYTES' "$kcm" ||
   r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-clipboard-payload-cap"
 grep -qF 'boundedUtf8Content' "$kcm" ||
@@ -2805,14 +2867,20 @@ grep -qF 'dropping oversized Android clipboard update before JNI' "$kcm" ||
   r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-clipboard-jni-cap"
 grep -qF 'clipsMsg.serializedSize' "$kcm" ||
   r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-clipboard-size-before-serialize"
-grep -qF 'dropping oversized Android clipboard SET before parse' "$kcm" ||
-  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-clipboard-set-cap"
-grep -qF 'dropping malformed Android clipboard SET before parse' "$kcm" ||
-  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-clipboard-set-malformed-drop"
 grep -qF 'CodingErrorAction.REPORT' "$kcm" ||
   r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-clipboard-set-utf8-report"
-grep -qF 'clips.clipboardsCount > MAX_ANDROID_CLIPBOARD_ITEMS' "$kcm" ||
-  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-clipboard-item-cap"
+grep -qF 'rustUpdateSanitizedClipboard' "$kcm" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-sanitized-setter"
+grep -qF 'dropping oversized Android sanitized clipboard SET before platform clipboard' "$kcm" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-sanitized-setter-cap"
+grep -qF 'ANDROID_SANITIZED_CLIPBOARD_MAGIC' "$kcm" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-simple-wire-magic"
+grep -qF 'ByteOrder.LITTLE_ENDIAN' "$kcm" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-simple-wire-endian"
+grep -qF 'setTextHtmlClipboard(text, html)' "$kcm" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-final-setter"
+grep -qF 'dropping Android sanitized clipboard SET with bad magic' "$kcm" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-kotlin-sanitized-shape-gate"
 grep -qF 'native_clipboard_data_from_multi_clipboards' src/clipboard.rs ||
   r_native_clipboard_worker="$r_native_clipboard_worker native-convert-helper"
 grep -qF 'MAX_NATIVE_CLIPBOARD_TOTAL_BYTES' src/clipboard.rs ||
@@ -2823,9 +2891,9 @@ if sed -n '/fn update_clipboard_/,/fn set_native_clipboard_data/p' src/clipboard
   r_native_clipboard_worker="$r_native_clipboard_worker parent-direct-native-convert"
 fi
 if [ -n "$r_native_clipboard_worker" ]; then
-  echo "  FAIL Appendix C #2b: desktop normal clipboard worker boundary regressed:$r_native_clipboard_worker"; rc=1
+  echo "  FAIL Appendix C #2b: normal clipboard worker/service boundary regressed:$r_native_clipboard_worker"; rc=1
 else
-  echo "  ok  Appendix C #2b desktop normal clipboard SET uses timeout-bounded same-artifact worker plus Linux x86_64/aarch64 post-exec syscall filter; mobile peer clipboard SET fails closed until a platform worker/service exists (Windows CLIPRDR has separate worker gates; other Linux arch workers fail closed)"
+  echo "  ok  Appendix C #2b normal clipboard SET uses a timeout-bounded same-artifact worker on desktop and a non-exported Android isolatedProcess sanitizer service with SharedMemory/Messenger IPC plus simple text/html handoff; iOS still fails closed until a platform worker/service exists (Windows CLIPRDR has separate worker gates; other Linux arch workers fail closed)"
 fi
 # Appendix C #2b fifth sandbox slice: Unix/macOS file-copy descriptor PDUs from
 # the peer must be parsed in a hidden same-artifact worker before FUSE or macOS

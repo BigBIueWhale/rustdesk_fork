@@ -1685,7 +1685,9 @@ impl<T: InvokeUiSession> Remote<T> {
                     if !self.handler.lc.read().unwrap().disable_clipboard.v {
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]
                         update_clipboard(vec![cb], ClipboardSide::Client);
-                        #[cfg(any(target_os = "android", target_os = "ios"))]
+                        #[cfg(target_os = "android")]
+                        crate::clipboard::handle_msg_clipboard(cb);
+                        #[cfg(target_os = "ios")]
                         {
                             let _ = cb;
                             log::warn!(
@@ -1698,7 +1700,9 @@ impl<T: InvokeUiSession> Remote<T> {
                     if !self.handler.lc.read().unwrap().disable_clipboard.v {
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]
                         update_clipboard(_mcb.clipboards, ClipboardSide::Client);
-                        #[cfg(any(target_os = "android", target_os = "ios"))]
+                        #[cfg(target_os = "android")]
+                        crate::clipboard::handle_msg_multi_clipboards(_mcb);
+                        #[cfg(target_os = "ios")]
                         {
                             let _ = _mcb;
                             log::warn!(

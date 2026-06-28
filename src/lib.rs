@@ -13,6 +13,8 @@ mod server;
 pub use self::server::*;
 mod client;
 mod native_audio_worker;
+#[cfg(target_os = "android")]
+mod native_clipboard_service;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod native_clipboard_worker;
 #[cfg(all(feature = "unix-file-copy-paste", target_family = "unix"))]

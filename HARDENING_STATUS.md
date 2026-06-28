@@ -13,8 +13,9 @@ history remains the traceability record for those intermediate notes.
 native-codec advisory-watch, native media/clipboard handoff-bound and
 CLIPRDR callback fail-closed follow-ups, the first desktop
 native-video/native-Opus/native-zstd/native-clipboard worker slices, the
-mobile media/clipboard fail-closed, Android peer-zstd isolated-service, iOS
-peer-zstd fail-closed, and peer-zstd explicit-failure behavior,
+mobile media fail-closed, Android peer-zstd and peer-clipboard
+isolated-service paths, iOS peer-zstd and peer-clipboard fail-closed, and
+peer-zstd explicit-failure behavior,
 bounded worker-I/O thread and
 bounded desktop clipboard/file-clipboard dispatcher, Linux
 FUSE clipboard mount-point no-follow/no-adoption setup,
@@ -95,10 +96,13 @@ checked arithmetic plus a hard byte ceiling, Opus packet and format fields are
 validated before audio queueing and decoder setup, text/image clipboard payloads
 are capped before native handoff, remote cursor RGBA payloads must match checked
 positive dimensions before the Flutter image-decode handoff, CLIPRDR
-format/data/file-content payloads are capped, mobile peer clipboard SET now
-fails closed instead of entering Android/iOS platform clipboard handling
-in-process, Android clipboard handoff helpers still keep the same aggregate
-item/count caps as desktop before any JNI/platform forwarding,
+format/data/file-content payloads are capped, Android peer clipboard SET now
+enters a non-exported isolatedProcess sanitizer service with 64 MiB
+request/response caps, a 16-item cap, text/html-only filtering before
+decompression, no blocking sanitizer queue via `tryLock` busy-shed, fixed
+`RDCB` text/html handoff, and parent/app-process revalidation before platform
+clipboard SET; iOS peer clipboard SET still fails closed instead of entering
+platform clipboard handling in-process,
 Unix file-copy descriptor PDUs reject excessive descriptor counts before
 allocation, Unix file-content reads are admitted through a per-connection
 sliding request/byte budget before local file I/O, the Windows CLIPRDR Rust<->C
@@ -170,10 +174,16 @@ before decompression, sends capped compressed bytes over `SharedMemory` plus
 `Messenger` IPC, serializes the parent call with non-blocking admission, and
 parent-validates the bounded worker response before accepting output. Android
 releases without `SharedMemory` fail closed. iOS video, Opus, and peer zstd
-still fail closed until an equivalent platform service exists. Mobile peer
-clipboard SET and `MultiClipboards` messages likewise fail closed instead of
-entering the Android/iOS platform clipboard path in-process. Local persisted
-config decompression stays
+still fail closed until an equivalent platform service exists. Android peer
+clipboard SET and `MultiClipboards` messages now serialize bounded protobufs
+into a non-exported `android:isolatedProcess="true"`
+`NativeClipboardSetService`, pass capped bytes over `SharedMemory`/`Messenger`,
+run the Rust sanitizer in the isolated process, and return only the fixed
+`RDCB` text/html payload that the parent and app-process setter both revalidate
+before platform clipboard SET. `SharedMemory`-unavailable, service-bind,
+self-test, timeout, busy, parse, cap, or validation failure all fail closed.
+iOS peer clipboard SET still fails closed until an equivalent platform service
+exists. Local persisted config decompression stays
 in-process by design. The clipboard parent now sanitizes peer
 `MultiClipboards` before the
 handoff, rejects more than 16 items, caps aggregate clipboard content at 64 MiB,
@@ -264,9 +274,9 @@ framed request validation. Parent admission is single-worker/no-queue with a
 busy fail-closed result, 128 MiB data cap, 1024 byte printer-name cap, NUL-name
 rejection, 120 second timeout/kill/restart semantics, and native-worker sandbox
 / Windows Job Object confinement. This is not yet the
-full sandbox: mobile media/clipboard/zstd platform-worker support if those
-features are to be enabled on mobile, Android's process model, iOS's
-no-child-process model, a broader
+full sandbox: Android isolated-service runtime smoke and any remaining mobile
+platform-worker support before additional native parser features are enabled,
+iOS's no-child-process model, a broader
 macOS/desktop-Unix syscall or Seatbelt allowlist beyond NoNetwork, equivalent
 seccomp support before enabling parser workers on Linux architectures outside
 x86_64/aarch64, and equivalent timeout/kill/restart semantics for any remaining
@@ -711,17 +721,24 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   the Rust and Dart cursor cap markers so this downstream image-decode guard
   cannot silently regress while the larger mobile/process-boundary residuals
   remain tracked separately.
-- **Mobile peer clipboard SET now fails closed without a platform worker/service.**
-  The Android single-clipboard and multi-clipboard helpers still call
-  `sanitize_multi_clipboards_for_native_proto` before serializing
-  `MultiClipboards` toward the Android clipboard manager JNI/FFI boundary; that
-  keeps the same 16-item and 64 MiB aggregate cap as defense in depth if a future
-  platform service owns the handoff. The live peer message paths in
-  `src/server/connection.rs` and `src/client/io_loop.rs` now drop Android/iOS
-  peer `Clipboard` and `MultiClipboards` SET messages with a fail-closed warning
-  instead of invoking those helpers in-process. `scripts/verify.sh` gates both
-  mobile drop markers and fails if the peer paths call
-  `handle_msg_clipboard`/`handle_msg_multi_clipboards` again.
+- **Android peer clipboard SET now crosses an isolated sanitizer service; iOS
+  still fails closed.**
+  `src/server/connection.rs` and `src/client/io_loop.rs` now route Android peer
+  `Clipboard`/`MultiClipboards` SET messages to `crate::clipboard::handle_msg_*`
+  while iOS keeps the fail-closed drop. `src/clipboard.rs` serializes a bounded
+  `MultiClipboards` request, calls the Android isolated sanitizer service,
+  validates the returned `RDCB` text/html payload, and only then calls the
+  sanitized platform setter. `NativeClipboardSetService.kt` is non-exported
+  `isolatedProcess`, uses `SharedMemory`/`Messenger` IPC, self-tests
+  isolation/native parsing, enforces the same 64 MiB/16-item caps, and returns
+  null on bind/self-test/timeout/parse/cap failure. `NativeClipboardSetClient`
+  uses `ReentrantLock.tryLock()` so concurrent peer SETs are refused instead of
+  queued. `RdClipboardManager.kt` exposes only `rustUpdateSanitizedClipboard`;
+  the legacy `rustUpdateClipboard` protobuf platform setter and
+  `call_clipboard_manager_update_clipboard` JNI helper are absent except for
+  verify absence checks. `scripts/verify.sh` gates the isolated-service path,
+  busy-shed marker, fixed-payload validator, and the absence of direct platform
+  setter calls.
 - **Unix/macOS file-copy descriptor PDUs have a cheap descriptor-count ceiling
   and now parse out-of-process.**
   `libs/clipboard/src/platform/unix/filetype.rs` now rejects more than 4096 file
@@ -909,12 +926,13 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 
 After the fixed-shape listener/direct-TCP staging collapse, the artifact
 staleness correction, the Windows remote-printer worker handoff, the Android
-clipboard Kotlin bridge, and the Windows worker token-privilege hardening, the
-artifacts below are current for each target's application source. Debian was
-last rebuilt at the remote-printer worker handoff; Android was rebuilt after the
-Android clipboard Kotlin bridge; Windows was rebuilt after the token-privilege
-hardening. These hashes supersede the `ec1b6f6`/`2d72f99` stale-artifact notes,
-the earlier `6e99f581...` Android APK, and the earlier
+peer-clipboard isolated-service bridge, and the Windows worker token-privilege
+hardening, the artifacts below are current for each target's application source.
+Debian was last rebuilt at the remote-printer worker handoff; Android was
+rebuilt after the Android peer-clipboard isolated-service bridge; Windows was
+rebuilt after the token-privilege hardening. These hashes supersede the
+`ec1b6f6`/`2d72f99` stale-artifact notes, the earlier `6e99f581...` and
+`08c39e7...` Android APKs, and the earlier
 `dae6649f...`/`1e7b245f...` Windows artifacts.
 The Debian path ran in the disposable `rustdesk-fork-harness-deb-builder` build
 container with the compile stage offline (`--network=none`) and
@@ -932,7 +950,7 @@ transient KVM path from the pinned golden qcow2, booted each per-build VM with
 
 ```text
 e5853fcca58b47860762acae9f0989c30ee0c266b4a79b473dfabf0ed786c1e8  dist/rustdesk-x86_64.deb
-08c39e7bd86579f07147aa40d9ce19dfa3951a89857c3722d60dfc5d8185d221  dist/rustdesk-arm64.apk
+99c0594a0e26346c316351410dfd6c79a26b2e528df71e44cd81bd9d3cc5a3d3  dist/rustdesk-arm64.apk
 ba45495ed5ee50d2be383a8bca09c4fb3187bbf16305d558fd24c088b10c6c31  dist/rustdesk-setup.exe
 c063d89c7efc78d94cc1e41935643c59dc53eb87599addd3b68f14eedd3b2c1d  dist/rustdesk.msi
 ```
@@ -944,8 +962,8 @@ Build evidence:
 - Android
   `ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYSTORE_PASS_FILE=.harness-state/android-keystore/pass bash scripts/build-android.sh`
   passed the offline Docker build and apksigner verification, producing
-  `08c39e7bd86579f07147aa40d9ce19dfa3951a89857c3722d60dfc5d8185d221`
-  after the Android clipboard Kotlin bridge change.
+  `99c0594a0e26346c316351410dfd6c79a26b2e528df71e44cd81bd9d3cc5a3d3`
+  after the Android peer-clipboard isolated-service bridge change.
 - Windows `WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh`
   passed after the Windows worker token-privilege hardening from the clean
   tracked worktree snapshot in the transient KVM VM path. The guest
@@ -1229,6 +1247,10 @@ scripts/build-android.sh                  # NOT RUN: pinned android-builder imag
 APPLE_TARGET=aarch64-apple-ios bash scripts/apple-conform-check.sh  # STOPPED at the SDK-free cc-rs/xcrun tool boundary in ring/zstd-sys, not in this code path; no iOS artifact/typecheck claim made
 ```
 
+The fail-closed peer-clipboard evidence above is now superseded for Android by
+the isolated-service sanitizer evidence below. iOS peer clipboard SET remains
+fail-closed.
+
 After the desktop-Unix Android/iOS cfg correction, macOS worker Seatbelt
 NoNetwork entry hook, and unsupported-Linux-architecture fail-closed worker
 entry fallback, these focused and full gates have been re-run successfully:
@@ -1276,6 +1298,16 @@ docker run ... bash -n scripts/verify.sh  # GREEN
 bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl. Android peer-zstd isolatedProcess service source gates and compile-check image
 ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYSTORE_PASS_FILE=.harness-state/android-keystore/pass bash scripts/build-android.sh  # GREEN: dist/rustdesk-arm64.apk sha256 20ca7204b04cd7063f1e0b22e549ef4dd259a064e168e36a9dc6f28a3450e31d
 git diff --check                          # GREEN after this ledger update
+```
+
+After the Android peer-clipboard isolated-service change, these focused/full
+gates and the Android artifact build have been re-run successfully:
+
+```text
+bash -n scripts/verify.sh                 # GREEN
+git diff --check                          # GREEN before this ledger update
+bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl. Android isolated clipboard sanitizer service source gates, busy-shed gate, direct-setter absence, and main-crate compile
+ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYSTORE_PASS_FILE=.harness-state/android-keystore/pass bash scripts/build-android.sh  # GREEN: dist/rustdesk-arm64.apk sha256 99c0594a0e26346c316351410dfd6c79a26b2e528df71e44cd81bd9d3cc5a3d3; apksigner one signer with v1/v2/v3 true
 ```
 
 After the shared native-worker busy-admission change and the high-fd cleanup
@@ -1457,13 +1489,14 @@ git diff --check              # GREEN after this ledger update
   Android releases where the isolated decoder service is unavailable; Android
   now has an isolated media path when the service bind and self-test succeed.
 
-- **Android peer clipboard SET helpers now fail closed themselves.** The peer
-  message routes already refused mobile clipboard SET instead of calling the
-  Android platform clipboard bridge, but the Android-only helper functions in
-  `src/clipboard.rs` still contained a latent direct
-  `call_clipboard_manager_update_clipboard` path. Those helpers now log and
-  return until a platform worker/service boundary exists. `scripts/verify.sh`
-  also fails if a Rust app/common caller regrows a direct platform-call path.
+- **Android peer clipboard SET helpers now require the isolated sanitizer.**
+  The earlier fail-closed helper state has been superseded: peer message routes
+  call the Android helper only on Android, and that helper serializes bounded
+  `MultiClipboards` into the isolated sanitizer service before any platform SET.
+  If the service is unavailable, busy, times out, or returns an invalid `RDCB`
+  response, the helper logs and returns without a platform clipboard write. The
+  live app-process setter accepts only `rustUpdateSanitizedClipboard`; direct
+  protobuf-to-platform helpers remain absent.
 
 - **Android local clipboard JNI updates are length-bounded before protobuf parse.**
   The active Android clipboard path polls the local platform clipboard and sends
@@ -1654,14 +1687,15 @@ bash -n scripts/verify.sh     # GREEN
   child-process creation refusal, and remote/low-integrity image loads. Android
   video decode now has a compiled isolated-service path for VP8/VP9/AV1,
   Android Opus decode now has a compiled isolated-service path for hostile-peer
-  audio packets, and Android peer zstd now has a compiled isolated-service path
-  for hostile-peer compressed payloads. Mobile peer clipboard SET and iOS peer
-  zstd still fail closed until platform workers/services exist instead of
-  parsing hostile-peer bytes in-process. That is the right interim safety
-  posture, but it is not final mobile client conformance: Android still needs
-  device-level runtime smoke for the isolated video, Opus, and zstd services
-  and platform-worker/service support where required for the remaining mobile
-  parser features, and iOS still needs a product-scope
+  audio packets, and Android peer zstd and peer clipboard SET now have compiled
+  isolated-service paths for hostile-peer compressed/clipboard payloads. iOS
+  peer zstd and peer clipboard SET still fail closed until platform
+  workers/services exist instead of parsing hostile-peer bytes in-process. That
+  is the right interim safety posture, but it is not final mobile client
+  conformance: Android still needs device-level runtime smoke for the isolated
+  video, Opus, zstd, and clipboard services and platform-worker/service support
+  where required for the remaining mobile parser features, and iOS still needs a
+  product-scope
   decision for the no-child-process model, Windows low-privilege/AppContainer or syscall-allowlist
   hardening beyond Job Object/token-privilege/process-mitigation guards, a broader
   macOS/desktop-Unix syscall or Seatbelt allowlist beyond NoNetwork, equivalent seccomp support before enabling
@@ -1713,10 +1747,10 @@ and Rust<->C bridge length
 caps plus null/bounded-read fail-closed guards, pending request/response
 accounting, and a same-artifact worker boundary; Windows remote-printer XPS
 handoff now has a bounded same-artifact worker boundary. Android video, Opus,
-and peer zstd now have compiled isolated-service paths, but Android artifact
-availability must not be treated as end-to-end feature parity until those
-services are smoked on device. Mobile peer clipboard SET and iOS peer zstd still
-fail closed rather than using in-process native parsers; peer zstd reports
+peer zstd, and peer clipboard SET now have compiled isolated-service paths, but
+Android artifact availability must not be treated as end-to-end feature parity
+until those services are smoked on device. iOS peer zstd and peer clipboard SET
+still fail closed rather than using in-process native parsers; peer zstd reports
 refusal as an explicit peer decompression error rather than as empty payload
 data. Those remaining mobile closures are secure but functionally incomplete
 until platform worker/service support is added where required.
@@ -1727,8 +1761,9 @@ same-artifact worker boundary for the local file-list cache/PDU generation and
 FileContents size/range reads. Windows and Android platform-native
 socket-surface logic is present and source-gated. The Debian, Android, and
 Windows artifact hashes recorded above are refreshed for the current per-target
-application source; Windows was refreshed after the worker token-privilege
-hardening. The remaining local build-host residual is the old
+application source; Android was refreshed after the peer-clipboard
+isolated-service bridge and Windows was refreshed after the worker
+token-privilege hardening. The remaining local build-host residual is the old
 harness-created system libvirt default network: the host has shown `virbr0`,
 `192.168.122.1:53/tcp+udp`, `0.0.0.0%virbr0:67/udp`, and
 `net.ipv4.ip_forward=1`. `.harness-state/provisioned` records that the harness

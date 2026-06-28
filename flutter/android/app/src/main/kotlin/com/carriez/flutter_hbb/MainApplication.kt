@@ -67,4 +67,14 @@ class MainApplication : Application() {
     fun rustDecompressNativeZstd(payload: ByteArray): ByteArray? {
         return NativeZstdDecoderClient.decompress(applicationContext, payload)
     }
+
+    @Keep
+    fun rustIsNativeClipboardSetReady(): Boolean {
+        return NativeClipboardSetClient.isReady(applicationContext)
+    }
+
+    @Keep
+    fun rustSanitizeNativeClipboardSet(payload: ByteArray): ByteArray? {
+        return NativeClipboardSetClient.sanitize(applicationContext, payload)
+    }
 }

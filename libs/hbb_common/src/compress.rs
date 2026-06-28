@@ -597,7 +597,18 @@ pub fn android_service_zstd_self_test() -> bool {
 
 #[cfg(target_os = "android")]
 pub fn android_service_zstd_decompress_response_bytes(data: &[u8]) -> ResultType<Vec<u8>> {
-    let result = if data.len() > MAX_COMPRESSED_INPUT {
+    let result = android_isolated_worker_decompress(data);
+    let mut response = Vec::new();
+    match result {
+        Ok(out) => write_response(&mut response, STATUS_DECOMPRESSED, &out, "")?,
+        Err(err) => write_response(&mut response, STATUS_ERROR, &[], &err.to_string())?,
+    }
+    Ok(response)
+}
+
+#[cfg(target_os = "android")]
+pub fn android_isolated_worker_decompress(data: &[u8]) -> ResultType<Vec<u8>> {
+    if data.len() > MAX_COMPRESSED_INPUT {
         Err(crate::anyhow::anyhow!(
             "oversized android isolated zstd request: {} > {}",
             data.len(),
@@ -605,13 +616,7 @@ pub fn android_service_zstd_decompress_response_bytes(data: &[u8]) -> ResultType
         ))
     } else {
         decompress_checked(data)
-    };
-    let mut response = Vec::new();
-    match result {
-        Ok(out) => write_response(&mut response, STATUS_DECOMPRESSED, &out, "")?,
-        Err(err) => write_response(&mut response, STATUS_ERROR, &[], &err.to_string())?,
     }
-    Ok(response)
 }
 
 #[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]

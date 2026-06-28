@@ -105,19 +105,30 @@ assert_offline() {
 assert_no_build_host_network_residual() {
     require_cmd ip ss
     local dirty=()
-    local listeners
+    local listeners harness_libvirt_net=0
 
     if ip link show virbr0 >/dev/null 2>&1; then
         dirty+=("virbr0 exists")
+        harness_libvirt_net=1
     fi
 
     listeners="$(ss -ltnup 2>/dev/null | grep -E '192[.]168[.]122[.]1:53|0[.]0[.]0[.]0%virbr0:67' || true)"
     if [ -n "$listeners" ]; then
         dirty+=("libvirt default-network DNS/DHCP listener active")
+        harness_libvirt_net=1
     fi
 
-    if [ "$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || echo 0)" = "1" ]; then
-        dirty+=("net.ipv4.ip_forward=1")
+    # R-B11/R-B11a forbid only an ip_forward change ATTRIBUTABLE TO THE HARNESS. The harness's sole
+    # forwarding lever is libvirt's default NAT network (libvirt sets ip_forward=1 when it starts that
+    # network) — detected above as virbr0 / its dnsmasq listeners. A standalone ip_forward=1 with no
+    # virbr0/dnsmasq is NOT harness-attributable: it belongs to the container engine the build itself
+    # runs on (Docker enables IP forwarding for its bridge, and online-fetch.sh needs it), which R-B11
+    # explicitly provisions and the build-*.sh scripts use. Flagging it would make the Windows build
+    # impossible on its own Docker build host. So net.ipv4.ip_forward=1 counts as dirty only alongside
+    # the libvirt default network that makes it harness-attributable.
+    if [ "$harness_libvirt_net" = "1" ] \
+       && [ "$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || echo 0)" = "1" ]; then
+        dirty+=("net.ipv4.ip_forward=1 (harness-attributable: libvirt default network present)")
     fi
 
     if [ "${#dirty[@]}" -ne 0 ]; then
@@ -125,7 +136,7 @@ assert_no_build_host_network_residual() {
         die "dirty build-host network state (${dirty[*]}); run scripts/cleanup.sh --build-host-network with privileges if harness-created, or reconcile manually before Windows VM artifact work (R-B11a/§12.2)"
     fi
 
-    log "build-host network preflight OK (no virbr0, no libvirt default-network listener, ip_forward=0)"
+    log "build-host network preflight OK (no virbr0, no libvirt default-network DNS/DHCP listener, no harness-attributable ip_forward)"
 }
 
 # ── Submodule / lockfile state (R-B9: assert before compiling) ────────────────

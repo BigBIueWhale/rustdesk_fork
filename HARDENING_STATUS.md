@@ -1022,34 +1022,32 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 
 ## Artifact State
 
-After the fixed-shape listener/direct-TCP staging collapse, the artifact
-staleness correction, the Windows remote-printer worker handoff, the Android
-isolated-service busy-admission follow-up, the Windows worker token-privilege
-hardening, and the desktop peer clipboard special-format allowlisting, the
-artifacts below are current for each target's application source at commit
-`81002f2c3fc126a922f30473bd562d9196de1d3b`. Debian, Android, and Windows were
-rebuilt after that clipboard special-format allowlisting. These hashes supersede the
-`ec1b6f6`/`2d72f99` stale-artifact notes, the earlier `6e99f581...` and
-`08c39e7...` Android APKs, the Android peer-clipboard
-`99c0594a...` APK, the pre-rate-limiter `60adfb97...` APK, and the earlier
-`dae6649f...`/`1e7b245f...` Windows artifacts.
-The Debian path ran in the disposable `rustdesk-fork-harness-deb-builder` build
-container with the compile stage offline (`--network=none`) and
-`SOURCE_DATE_EPOCH=1700000000`, then performed its double-build determinism
-check. The Android path ran in the disposable
-`rustdesk-fork-harness-android-builder` container with the compile stage offline
-(`--network=none`), signed with the stable local RSA-4096 keystore from
-`.harness-state/android-keystore/`, and `apksigner verify` reported one signer
-with v1/v2/v3 true. The Windows path ran
-`WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh` from the
-current tracked plus untracked non-ignored worktree snapshot through the
-transient KVM path from the pinned golden qcow2, booted each per-build VM with
-`--network none`, used loopback-only VNC, extracted/canonicalized the `.exe` and
-`.msi`, and passed the default Windows double-build A==B assertion.
+After the desktop native decoder-respawn churn follow-up at
+`af90d11d55c4ba7d322ab097f6271dce8502b982`, the Debian and Android artifact
+paths have been refreshed from the current committed source. The Debian path ran
+in the disposable `rustdesk-fork-harness-deb-builder` build container with the
+compile stage offline (`--network=none`) and `SOURCE_DATE_EPOCH=1700000000`,
+then performed its double-build determinism check. The Android path ran in the
+disposable `rustdesk-fork-harness-android-builder` container with the compile
+stage offline (`--network=none`), signed with the stable local RSA-4096
+keystore from `.harness-state/android-keystore/`, built both the app APK and the
+matching `androidTest` smoke APK, and `apksigner verify` reported one signer
+with v1/v2/v3 true.
+
+The Windows `.exe`/`.msi` outputs below are retained as stale workspace artifacts,
+not current release evidence for `af90d11`. The current Windows refresh was
+attempted through the real entrypoint, but
+`WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh` failed closed
+before VM work because the host still has dirty libvirt default-network state:
+`virbr0` exists, `192.168.122.1:53/tcp+udp` and
+`0.0.0.0%virbr0:67/udp` are listening, and `net.ipv4.ip_forward=1`. Until that
+host state is cleaned with the manifest-gated build-host cleanup path and the
+Windows VM build is re-run, Windows artifacts must be treated as stale.
 
 ```text
-7704a68f3e6bee6ab84caf520fa97fd3f69196ba3fbd25bb56c1f7152178bcf2  dist/rustdesk-x86_64.deb
-b9ea64a4dc21219882d443cf6f753d31bb4ab25853a26342e86cc81674765271  dist/rustdesk-arm64.apk
+6e2a7634b423f6528ff97f1e349eceddfbb50cbfb8aced9187637be479fc560f  dist/rustdesk-x86_64.deb
+c183977d365571746a981b4bf30cc4be3d9387290be36bda72e11b8a9757a766  dist/rustdesk-arm64.apk
+4a2f159e5e75edaf3dc5e16ccb46a09062a1b50bc384dc2736dd5cb3314a8c88  dist/rustdesk-arm64-androidTest.apk
 39c5894bad915bfa81fbb3440289e84da1f55d317e0396cdb54afc736e9c3d0e  dist/rustdesk-setup.exe
 190e05ed10f8445ebd94d9b305f628e4cefc3fe516f72917c984868df1af37a9  dist/rustdesk.msi
 ```
@@ -1057,21 +1055,19 @@ b9ea64a4dc21219882d443cf6f753d31bb4ab25853a26342e86cc81674765271  dist/rustdesk-
 Build evidence:
 
 - Debian `bash scripts/build-debian.sh` passed its offline Docker double-build
-  A==B gate, producing `7704a68f3e6bee6ab84caf520fa97fd3f69196ba3fbd25bb56c1f7152178bcf2`.
+  A==B gate, producing `6e2a7634b423f6528ff97f1e349eceddfbb50cbfb8aced9187637be479fc560f`.
 - Android
   `ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYSTORE_PASS_FILE=.harness-state/android-keystore/pass bash scripts/build-android.sh`
-  passed the offline Docker build and apksigner verification, producing
-  `b9ea64a4dc21219882d443cf6f753d31bb4ab25853a26342e86cc81674765271`
-  after the desktop peer clipboard special-format allowlisting.
-- Windows `WINDOWS_BUILD_SOURCE=head bash scripts/build-windows-vm.sh`
-  passed after the Windows worker token-privilege hardening; the current refresh
-  used the clean committed `HEAD` snapshot at
-  `81002f2c3fc126a922f30473bd562d9196de1d3b` in the transient KVM VM path. The guest
-  `build-log.txt` contains pre-canonical hashes; the final release hashes are
-  the host-canonicalized `dist/*.sha256` values above, and the second VM rebuild
-  matched A==B with
-  `exe=39c5894bad915bfa81fbb3440289e84da1f55d317e0396cdb54afc736e9c3d0e` and
-  `msi=190e05ed10f8445ebd94d9b305f628e4cefc3fe516f72917c984868df1af37a9`.
+  passed the offline Docker build, `:app:assembleReleaseAndroidTest`, and
+  apksigner verification, producing
+  `c183977d365571746a981b4bf30cc4be3d9387290be36bda72e11b8a9757a766` for the
+  app APK and `4a2f159e5e75edaf3dc5e16ccb46a09062a1b50bc384dc2736dd5cb3314a8c88`
+  for the androidTest APK.
+- Windows
+  `WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh` failed closed
+  at `assert_no_build_host_network_residual` with `virbr0`, libvirt
+  DNS/DHCP listeners, and `net.ipv4.ip_forward=1` present. No current-source
+  Windows artifact claim is made.
 
 ## Validation Matrix
 
@@ -1971,15 +1967,15 @@ worker boundary for peer FILEDESCRIPTOR PDU parsing, per-connection file-content
 request/byte accounting, and a
 same-artifact worker boundary for the local file-list cache/PDU generation and
 FileContents size/range reads. Windows and Android platform-native
-socket-surface logic is present and source-gated. The Debian, Android, and
-Windows artifact hashes recorded above are refreshed for the current per-target
-application source; Android was refreshed after the isolated-service
-busy-admission/rate-limited busy-log follow-up and Windows was refreshed after
-the worker token-privilege hardening. The current Apple source-conformance gate
-covers the documented target matrix, Apple Flutter/mobile features,
-plist/entitlement/pod/Xcode allow-lists, and non-mutating execution, but it is
-still SDK-free source evidence rather than an Apple artifact build. The remaining
-local build-host residual is the old
+socket-surface logic is present and source-gated. The Debian and Android
+artifact hashes recorded above are refreshed for the current committed source at
+`af90d11d55c4ba7d322ab097f6271dce8502b982`; the Windows hashes recorded above
+are explicitly stale workspace artifacts until the fail-closed build-host
+network preflight is satisfied and the Windows VM build is re-run. The current
+Apple source-conformance gate covers the documented target matrix, Apple
+Flutter/mobile features, plist/entitlement/pod/Xcode allow-lists, and
+non-mutating execution, but it is still SDK-free source evidence rather than an
+Apple artifact build. The remaining local build-host residual is the old
 harness-created system libvirt default network: the host has shown `virbr0`,
 `192.168.122.1:53/tcp+udp`, `0.0.0.0%virbr0:67/udp`, and
 `net.ipv4.ip_forward=1`. `.harness-state/provisioned` records that the harness

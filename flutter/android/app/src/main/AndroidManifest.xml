@@ -99,6 +99,12 @@
             android:enabled="true"
             android:foregroundServiceType="mediaProjection" />
 
+        <service
+            android:name=".NativeVideoDecoderService"
+            android:enabled="true"
+            android:exported="false"
+            android:isolatedProcess="true" />
+
         <!--
  Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java

@@ -32,6 +32,8 @@ pub struct NativeVideoDecoder {
 enum NativeVideoDecoderBackend {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Worker(WorkerVideoDecoder),
+    #[cfg(target_os = "android")]
+    AndroidService(AndroidServiceVideoDecoder),
     Unavailable,
 }
 
@@ -58,7 +60,28 @@ impl NativeVideoDecoder {
             }
         }
 
-        #[cfg(any(target_os = "android", target_os = "ios"))]
+        #[cfg(target_os = "android")]
+        {
+            match AndroidServiceVideoDecoder::new(format) {
+                Ok(service) => {
+                    return Self {
+                        format,
+                        backend: NativeVideoDecoderBackend::AndroidService(service),
+                    };
+                }
+                Err(err) => {
+                    log::warn!(
+                        "refusing in-process mobile video decode until a platform worker/service boundary exists: {err}"
+                    );
+                    return Self {
+                        format,
+                        backend: NativeVideoDecoderBackend::Unavailable,
+                    };
+                }
+            }
+        }
+
+        #[cfg(target_os = "ios")]
         {
             log::warn!(
                 "refusing in-process mobile video decode until a platform worker/service boundary exists"
@@ -78,6 +101,8 @@ impl NativeVideoDecoder {
         match &self.backend {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             NativeVideoDecoderBackend::Worker(worker) => worker.valid,
+            #[cfg(target_os = "android")]
+            NativeVideoDecoderBackend::AndroidService(service) => service.valid,
             NativeVideoDecoderBackend::Unavailable => false,
         }
     }
@@ -88,7 +113,27 @@ impl NativeVideoDecoder {
         luid: Option<i64>,
         mark_unsupported: &Vec<CodecFormat>,
     ) -> SupportedDecoding {
-        #[cfg(any(target_os = "android", target_os = "ios"))]
+        #[cfg(target_os = "android")]
+        {
+            let _ = luid;
+            if !AndroidServiceVideoDecoder::service_ready() {
+                log::warn!(
+                    "refusing to advertise mobile video decoding until isolated service bind+self-test succeeds"
+                );
+                return SupportedDecoding::default();
+            }
+            let mut decoding = scrap::codec::Decoder::supported_decodings(
+                id_for_prefer,
+                use_texture_render,
+                None,
+                mark_unsupported,
+            );
+            decoding.ability_h264 = 0;
+            decoding.ability_h265 = 0;
+            return decoding;
+        }
+
+        #[cfg(target_os = "ios")]
         {
             let _ = (id_for_prefer, use_texture_render, luid, mark_unsupported);
             log::warn!(
@@ -126,6 +171,11 @@ impl NativeVideoDecoder {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             NativeVideoDecoderBackend::Worker(worker) => {
                 worker.decode(frame, rgb, pixelbuffer, chroma)
+            }
+            #[cfg(target_os = "android")]
+            NativeVideoDecoderBackend::AndroidService(service) => {
+                let _ = texture;
+                service.decode(frame, rgb, pixelbuffer, chroma)
             }
             NativeVideoDecoderBackend::Unavailable => {
                 let _ = texture;
@@ -327,6 +377,112 @@ impl WorkerVideoDecoder {
     }
 }
 
+#[cfg(target_os = "android")]
+struct AndroidServiceVideoDecoder {
+    format: CodecFormat,
+    valid: bool,
+}
+
+#[cfg(target_os = "android")]
+impl AndroidServiceVideoDecoder {
+    fn new(format: CodecFormat) -> ResultType<Self> {
+        if !matches!(
+            format,
+            CodecFormat::VP8 | CodecFormat::VP9 | CodecFormat::AV1
+        ) {
+            bail!("android isolated video decoder accepts only software VP8/VP9/AV1");
+        }
+        if !Self::service_ready() {
+            bail!("android isolated video decoder service is unavailable");
+        }
+        Ok(Self {
+            format,
+            valid: true,
+        })
+    }
+
+    fn service_ready() -> bool {
+        match scrap::android::call_application_context_native_video_decoder_ready() {
+            Ok(true) => true,
+            Ok(false) => false,
+            Err(err) => {
+                log::warn!("android isolated video decoder service self-test failed: {err}");
+                false
+            }
+        }
+    }
+
+    fn decode(
+        &mut self,
+        frame: &video_frame::Union,
+        rgb: &mut ImageRgb,
+        pixelbuffer: &mut bool,
+        chroma: &mut Option<Chroma>,
+    ) -> ResultType<bool> {
+        if !self.valid {
+            bail!("android isolated video decoder service is no longer valid");
+        }
+        let mut vf = VideoFrame::new();
+        vf.union = Some(frame.clone());
+        let payload = vf
+            .write_to_bytes()
+            .map_err(|e| anyhow!("failed to serialize video frame for android service: {e}"))?;
+        if payload.len() > MAX_WORKER_FRAME_PROTO_BYTES {
+            bail!(
+                "android isolated video decoder request too large: {} > {}",
+                payload.len(),
+                MAX_WORKER_FRAME_PROTO_BYTES
+            );
+        }
+
+        let response = scrap::android::call_application_context_native_video_decode(
+            &payload,
+            codec_to_u8(self.format),
+            image_format_to_u8(rgb.fmt()),
+            u32::try_from(rgb.align()).map_err(|_| anyhow!("android video align too large"))?,
+        )
+        .map_err(|e| anyhow!("android isolated video decoder bridge failed: {e}"))?;
+        let mut cursor = std::io::Cursor::new(response.as_slice());
+        let response = read_response(&mut cursor)?;
+        if cursor.position() as usize != cursor.get_ref().len() {
+            self.valid = false;
+            bail!("android isolated video decoder returned trailing bytes");
+        }
+        match response.status {
+            STATUS_DECODED => {
+                if let Err(err) = validate_worker_rgb_response(
+                    response.width,
+                    response.height,
+                    rgb.fmt(),
+                    rgb.align(),
+                    response.raw.len(),
+                ) {
+                    self.valid = false;
+                    bail!("android isolated video decoder returned invalid frame: {err}");
+                }
+                rgb.w = response.width;
+                rgb.h = response.height;
+                rgb.raw = response.raw;
+                *pixelbuffer = true;
+                *chroma = response.chroma;
+                Ok(true)
+            }
+            STATUS_NO_FRAME => Ok(false),
+            STATUS_ERROR => {
+                self.valid = false;
+                bail!(
+                    "android isolated video decoder failed: {}",
+                    response.message
+                )
+            }
+            status => {
+                self.valid = false;
+                bail!("android isolated video decoder returned unknown status {status}")
+            }
+        }
+    }
+}
+
 fn validate_worker_rgb_response(
     width: usize,
     height: usize,
@@ -397,7 +553,6 @@ fn spawn_worker_io_thread(
     Ok(tx)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct WorkerResponse {
     status: u8,
     width: usize,
@@ -592,7 +747,6 @@ fn worker_round_trip<W: Write, R: Read>(
     read_response(reader)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn read_response<R: Read>(reader: &mut R) -> ResultType<WorkerResponse> {
     let magic = read_array::<4, _>(reader)
         .map_err(|e| anyhow!("failed to read native video worker response magic: {e}"))?;
@@ -684,7 +838,6 @@ fn validate_worker_response_shape(
     Ok(())
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn write_decoded<W: Write>(
     writer: &mut W,
     rgb: &ImageRgb,
@@ -703,12 +856,10 @@ fn write_decoded<W: Write>(
     Ok(())
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn write_no_frame<W: Write>(writer: &mut W) -> ResultType<()> {
     write_response_header(writer, STATUS_NO_FRAME, chroma_to_u8(None), 0, 0, 0, 0)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn write_error<W: Write>(writer: &mut W, message: &str) -> ResultType<()> {
     let bytes = message.as_bytes();
     let len = bytes.len().min(64 * 1024);
@@ -717,7 +868,6 @@ fn write_error<W: Write>(writer: &mut W, message: &str) -> ResultType<()> {
     Ok(())
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn write_response_header<W: Write>(
     writer: &mut W,
     status: u8,
@@ -748,24 +898,20 @@ fn write_response_header<W: Write>(
     Ok(())
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn read_array<const N: usize, R: Read>(reader: &mut R) -> std::io::Result<[u8; N]> {
     let mut out = [0u8; N];
     reader.read_exact(&mut out)?;
     Ok(out)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn read_u8<R: Read>(reader: &mut R) -> std::io::Result<u8> {
     Ok(read_array::<1, _>(reader)?[0])
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn read_u32<R: Read>(reader: &mut R) -> std::io::Result<u32> {
     Ok(u32::from_le_bytes(read_array::<4, _>(reader)?))
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn write_u32<W: Write>(writer: &mut W, value: u32) -> std::io::Result<()> {
     writer.write_all(&value.to_le_bytes())
 }
@@ -781,7 +927,6 @@ fn codec_to_u8(format: CodecFormat) -> u8 {
     }
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn codec_from_u8(value: u8) -> Option<CodecFormat> {
     Some(match value {
         0 => CodecFormat::Unknown,
@@ -802,7 +947,6 @@ fn image_format_to_u8(format: ImageFormat) -> u8 {
     }
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn image_format_from_u8(value: u8) -> Option<ImageFormat> {
     Some(match value {
         0 => ImageFormat::Raw,
@@ -812,7 +956,6 @@ fn image_format_from_u8(value: u8) -> Option<ImageFormat> {
     })
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn chroma_to_u8(chroma: Option<Chroma>) -> u8 {
     match chroma {
         Some(Chroma::I420) => 1,
@@ -821,13 +964,175 @@ fn chroma_to_u8(chroma: Option<Chroma>) -> u8 {
     }
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn chroma_from_u8(value: u8) -> ResultType<Option<Chroma>> {
     Ok(match value {
         0 => None,
         1 => Some(Chroma::I420),
         2 => Some(Chroma::I444),
         _ => bail!("bad native video worker chroma value {value}"),
+    })
+}
+
+#[cfg(target_os = "android")]
+struct AndroidServiceDecoderState {
+    decoder: Option<scrap::codec::Decoder>,
+    format: CodecFormat,
+}
+
+#[cfg(target_os = "android")]
+thread_local! {
+    static ANDROID_SERVICE_DECODER: std::cell::RefCell<AndroidServiceDecoderState> =
+        std::cell::RefCell::new(AndroidServiceDecoderState {
+            decoder: None,
+            format: CodecFormat::Unknown,
+        });
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub unsafe extern "system" fn Java_com_carriez_flutter_1hbb_NativeVideoDecoderService_nativeSelfTest(
+    _env: jni::JNIEnv,
+    _this: jni::objects::JObject,
+) -> jni::sys::jboolean {
+    let ok = codec_from_u8(codec_to_u8(CodecFormat::VP9)) == Some(CodecFormat::VP9)
+        && image_format_from_u8(image_format_to_u8(ImageFormat::ARGB)).map(image_format_to_u8)
+            == Some(image_format_to_u8(ImageFormat::ARGB))
+        && chroma_from_u8(chroma_to_u8(Some(Chroma::I420))).ok() == Some(Some(Chroma::I420))
+        && MAX_WORKER_FRAME_PROTO_BYTES == 32 * 1024 * 1024;
+    if ok {
+        jni::sys::JNI_TRUE
+    } else {
+        jni::sys::JNI_FALSE
+    }
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub unsafe extern "system" fn Java_com_carriez_flutter_1hbb_NativeVideoDecoderService_nativeDecode(
+    env: jni::JNIEnv,
+    _this: jni::objects::JObject,
+    codec: jni::sys::jint,
+    image_format: jni::sys::jint,
+    align: jni::sys::jint,
+    payload: jni::objects::JByteArray,
+) -> jni::sys::jbyteArray {
+    let mut env = env;
+    let result = (|| -> ResultType<Vec<u8>> {
+        let format =
+            codec_from_u8(u8::try_from(codec).map_err(|_| anyhow!("bad android video codec id"))?)
+                .ok_or_else(|| anyhow!("bad android video codec id"))?;
+        let image_format = image_format_from_u8(
+            u8::try_from(image_format).map_err(|_| anyhow!("bad android video image format id"))?,
+        )
+        .ok_or_else(|| anyhow!("bad android video image format id"))?;
+        let align = usize::try_from(align).map_err(|_| anyhow!("bad android video alignment"))?;
+        let payload = env
+            .convert_byte_array(payload)
+            .map_err(|e| anyhow!("failed to copy android video payload from JNI: {e}"))?;
+        if payload.len() > MAX_WORKER_FRAME_PROTO_BYTES {
+            bail!(
+                "android isolated video decoder request too large: {} > {}",
+                payload.len(),
+                MAX_WORKER_FRAME_PROTO_BYTES
+            );
+        }
+        android_service_decode_response_bytes(format, image_format, align, &payload)
+    })();
+
+    let response = match result {
+        Ok(response) => response,
+        Err(err) => {
+            let mut response = Vec::new();
+            if write_error(&mut response, &err.to_string()).is_ok() {
+                response
+            } else {
+                Vec::new()
+            }
+        }
+    };
+    match env.byte_array_from_slice(&response) {
+        Ok(array) => array.into_raw(),
+        Err(err) => {
+            log::error!("failed to return android isolated video decode response: {err}");
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[cfg(target_os = "android")]
+fn android_service_decode_response_bytes(
+    format: CodecFormat,
+    image_format: ImageFormat,
+    align: usize,
+    payload: &[u8],
+) -> ResultType<Vec<u8>> {
+    let mut response = Vec::new();
+    match android_service_decode_payload(format, image_format, align, payload) {
+        Ok(Some((rgb, chroma))) => write_decoded(&mut response, &rgb, chroma)?,
+        Ok(None) => write_no_frame(&mut response)?,
+        Err(err) => write_error(&mut response, &err.to_string())?,
+    }
+    Ok(response)
+}
+
+#[cfg(target_os = "android")]
+fn android_service_decode_payload(
+    format: CodecFormat,
+    image_format: ImageFormat,
+    align: usize,
+    payload: &[u8],
+) -> ResultType<Option<(ImageRgb, Option<Chroma>)>> {
+    let vf = VideoFrame::parse_from_bytes(payload)
+        .map_err(|e| anyhow!("failed to parse android video frame protobuf: {e}"))?;
+    let frame_format = CodecFormat::from(&vf);
+    if frame_format == CodecFormat::Unknown {
+        bail!("android isolated service received unsupported video frame");
+    }
+    if !matches!(
+        frame_format,
+        CodecFormat::VP8 | CodecFormat::VP9 | CodecFormat::AV1
+    ) {
+        bail!("android isolated service accepts only software VP8/VP9/AV1 video frames");
+    }
+    if format != frame_format {
+        bail!(
+            "android isolated service request codec {:?} does not match frame codec {:?}",
+            format,
+            frame_format
+        );
+    }
+    let Some(frame) = vf.union.as_ref() else {
+        bail!("android isolated service video frame has no union");
+    };
+
+    ANDROID_SERVICE_DECODER.with(|state| -> ResultType<Option<(ImageRgb, Option<Chroma>)>> {
+        let mut state = state.borrow_mut();
+        if state.decoder.is_none() || state.format != frame_format {
+            state.decoder = Some(scrap::codec::Decoder::new(frame_format, None));
+            state.format = frame_format;
+        }
+        let Some(decoder) = state.decoder.as_mut() else {
+            bail!("android isolated service decoder unavailable");
+        };
+        let mut rgb = ImageRgb::new(image_format, align);
+        let mut texture = ImageTexture::default();
+        let mut pixelbuffer = true;
+        let mut chroma = None;
+        let decoded = decoder.handle_video_frame(
+            frame,
+            &mut rgb,
+            &mut texture,
+            &mut pixelbuffer,
+            &mut chroma,
+        )?;
+        if !pixelbuffer {
+            bail!("android isolated service unexpectedly produced a process-local texture");
+        }
+        if decoded {
+            Ok(Some((rgb, chroma)))
+        } else {
+            Ok(None)
+        }
     })
 }
 

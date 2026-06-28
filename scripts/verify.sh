@@ -2256,10 +2256,14 @@ else
 fi
 # Appendix C #2b first sandbox slice: desktop video decode must cross a hidden
 # same-artifact worker process before libvpx/aom/libyuv sees hostile-peer bytes.
-# Mobile video decode has no equivalent platform worker/service boundary yet, so
-# it must fail closed and advertise no decoder instead of falling back to
-# in-process hostile-peer media parsing.
+# Android video decode must cross a non-exported isolatedProcess service with a
+# bind+self-test gate and SharedMemory/Messenger IPC; iOS still has no equivalent
+# platform worker/service boundary, so it must fail closed and advertise no decoder.
 r_native_video_worker=
+android_manifest=flutter/android/app/src/main/AndroidManifest.xml
+android_nvd=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/NativeVideoDecoderService.kt
+android_app=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainApplication.kt
+android_ffi=libs/scrap/src/android/ffi.rs
 grep -qF 'const WORKER_ARG: &str = "--native-video-worker";' src/native_video_worker.rs ||
   r_native_video_worker="$r_native_video_worker worker-arg"
 grep -qF 'pub struct NativeVideoDecoder' src/native_video_worker.rs ||
@@ -2271,9 +2275,59 @@ grep -qF 'refusing in-process desktop decode' src/native_video_worker.rs ||
 grep -qF 'refusing in-process mobile video decode until a platform worker/service boundary exists' src/native_video_worker.rs ||
   r_native_video_worker="$r_native_video_worker no-mobile-inprocess-fallback"
 grep -qF 'refusing to advertise mobile video decoding until a platform worker/service boundary exists' src/native_video_worker.rs ||
-  r_native_video_worker="$r_native_video_worker mobile-no-decode-advertise"
+  r_native_video_worker="$r_native_video_worker ios-mobile-no-decode-advertise"
+grep -qF 'refusing to advertise mobile video decoding until isolated service bind+self-test succeeds' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker android-no-decode-advertise-before-selftest"
 grep -qF 'return SupportedDecoding::default();' src/native_video_worker.rs ||
   r_native_video_worker="$r_native_video_worker mobile-empty-supported-decoding"
+grep -qF 'NativeVideoDecoderBackend::AndroidService' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker android-service-backend"
+grep -qF 'AndroidServiceVideoDecoder::service_ready()' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker android-service-ready-gate"
+grep -qF 'call_application_context_native_video_decoder_ready' "$android_ffi" ||
+  r_native_video_worker="$r_native_video_worker android-app-ready-jni"
+grep -qF 'call_application_context_native_video_decode' "$android_ffi" ||
+  r_native_video_worker="$r_native_video_worker android-app-decode-jni"
+grep -qF 'rustIsNativeVideoDecoderReady' "$android_app" ||
+  r_native_video_worker="$r_native_video_worker android-app-ready-bridge"
+grep -qF 'rustDecodeNativeVideo' "$android_app" ||
+  r_native_video_worker="$r_native_video_worker android-app-decode-bridge"
+grep -qF 'FFI.onAppStart(applicationContext)' "$android_nvd" ||
+  r_native_video_worker="$r_native_video_worker android-service-native-init"
+grep -qF 'android:name=".NativeVideoDecoderService"' "$android_manifest" ||
+  r_native_video_worker="$r_native_video_worker android-service-manifest"
+grep -qF 'android:isolatedProcess="true"' "$android_manifest" ||
+  r_native_video_worker="$r_native_video_worker android-service-not-isolated"
+grep -qF 'android:exported="false"' "$android_manifest" ||
+  r_native_video_worker="$r_native_video_worker android-service-exported"
+grep -qF 'object NativeVideoDecoderClient' "$android_nvd" ||
+  r_native_video_worker="$r_native_video_worker android-service-client"
+grep -qF 'SharedMemory.create("rd-native-video-input"' "$android_nvd" ||
+  r_native_video_worker="$r_native_video_worker android-service-no-input-shmem"
+grep -qF 'SharedMemory.create("rd-native-video-output"' "$android_nvd" ||
+  r_native_video_worker="$r_native_video_worker android-service-no-output-shmem"
+grep -qF 'Messenger(IncomingHandler(handlerThread.looper))' "$android_nvd" ||
+  r_native_video_worker="$r_native_video_worker android-service-no-messenger"
+grep -qF 'NVD_MSG_SELF_TEST' "$android_nvd" ||
+  r_native_video_worker="$r_native_video_worker android-service-no-selftest"
+grep -qF 'Process.isIsolated()' "$android_nvd" ||
+  r_native_video_worker="$r_native_video_worker android-service-no-isolated-readback"
+grep -qF 'NVD_DECODE_TIMEOUT_MS = 10_000L' "$android_nvd" ||
+  r_native_video_worker="$r_native_video_worker android-service-no-timeout"
+grep -qF 'dropping oversized isolated video decode request' "$android_nvd" ||
+  r_native_video_worker="$r_native_video_worker android-service-no-request-cap"
+grep -qF 'decodeLock = Object()' "$android_nvd" ||
+  r_native_video_worker="$r_native_video_worker android-service-no-inflight-guard"
+grep -qF 'synchronized(decodeLock)' "$android_nvd" ||
+  r_native_video_worker="$r_native_video_worker android-service-no-decode-serialization"
+grep -qF 'Java_com_carriez_flutter_1hbb_NativeVideoDecoderService_nativeDecode' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker android-service-native-entry"
+grep -qF 'Java_com_carriez_flutter_1hbb_NativeVideoDecoderService_nativeSelfTest' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker android-service-native-selftest"
+grep -qF 'android isolated service accepts only software VP8/VP9/AV1 video frames' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker android-service-software-only"
+grep -qF 'state.decoder = Some(scrap::codec::Decoder::new(frame_format, None));' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker android-service-native-decoder"
 grep -qF 's.ability_vp9 > 0' libs/scrap/src/common/codec.rs ||
   r_native_video_worker="$r_native_video_worker vp9-advertisement-not-honored"
 grep -qF 'CodecFormat::Unknown' libs/scrap/src/common/codec.rs ||
@@ -2320,7 +2374,7 @@ if grep -qF 'std::thread::spawn' src/native_video_worker.rs; then
   r_native_video_worker="$r_native_video_worker per-request-thread-spawn"
 fi
 grep -qF 'scrap::codec::Decoder::new(frame_format, None)' src/native_video_worker.rs ||
-  r_native_video_worker="$r_native_video_worker native-decode-only-in-worker"
+  r_native_video_worker="$r_native_video_worker native-decode-only-in-worker-or-service"
 grep -qF 'NativeVideoDecoder as Decoder' src/client.rs ||
   r_native_video_worker="$r_native_video_worker client-videohandler-wrapper"
 if grep -qF 'codec::Decoder' src/client.rs; then
@@ -2386,9 +2440,9 @@ grep -qF 'linux_worker_entry_reports_no_new_privs_non_dumpable_and_seccomp' libs
 grep -qF 'linux_worker_seccomp_blocks_process_spawn_at_runtime' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_video_worker="$r_native_video_worker runtime-process-spawn-denial-probe"
 if [ -n "$r_native_video_worker" ]; then
-  echo "  FAIL Appendix C #2b: desktop native video worker boundary regressed:$r_native_video_worker"; rc=1
+  echo "  FAIL Appendix C #2b: native video worker/service boundary regressed:$r_native_video_worker"; rc=1
 else
-  echo "  ok  Appendix C #2b desktop native video decode uses timeout-bounded same-artifact worker plus Linux x86_64/aarch64 post-exec syscall filter; mobile video decode fails closed until a platform worker/service exists (other Linux arch workers fail closed)"
+  echo "  ok  Appendix C #2b desktop native video decode uses timeout-bounded same-artifact worker plus Linux x86_64/aarch64 post-exec syscall filter; Android video decode crosses a non-exported isolatedProcess service after bind+self-test using SharedMemory/Messenger IPC; iOS video decode still fails closed until a platform worker/service exists (other Linux arch workers fail closed)"
 fi
 # Appendix C #2b second sandbox slice: desktop Opus packet decode must cross a
 # hidden same-artifact worker process before libopus sees hostile-peer bytes.

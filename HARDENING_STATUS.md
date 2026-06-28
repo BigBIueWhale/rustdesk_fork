@@ -596,12 +596,19 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   targets, Opus packets are serialized to a length-bounded stdio request,
   decoded by the child, and returned as bounded f32 PCM. The parent refuses a
   silent in-process desktop fallback and kills the child on decode timeout or
-  transport failure. On Android/iOS, `NativeVideoDecoder::supported_decodings`
-  returns an empty `SupportedDecoding`, mobile video decoder construction returns
-  `Unavailable`, and `NativeOpusDecoder::new` returns an error; mobile media
-  remains unavailable until a platform worker/service boundary exists rather than
-  parsing hostile-peer media in-process. `libs/hbb_common/src/compress.rs` adds
-  the analogous hidden `--native-zstd-worker` role. Peer-controlled receive
+  transport failure. On Android, `NativeVideoDecoder::supported_decodings` now
+  advertises only after a bind+self-test succeeds against the non-exported
+  `android:isolatedProcess="true"` `NativeVideoDecoderService`; Android VP8/VP9/AV1
+  frames cross `Messenger` plus `SharedMemory`, with 32 MiB request caps,
+  bounded responses, one serialized in-flight decode, runtime isolated-process
+  readback where Android exposes it, explicit native library/context
+  initialization in the isolated process, and parent-side worker-protocol
+  response validation before UI handoff. Android API levels without
+  `SharedMemory` fail closed/no-advertise. iOS video decode and mobile Opus
+  decode still fail closed until an equivalent platform worker/service boundary
+  exists rather than parsing hostile-peer media in-process.
+  `libs/hbb_common/src/compress.rs` adds the analogous hidden
+  `--native-zstd-worker` role. Peer-controlled receive
   decompression now uses `peer_decompress`: desktop routes file blocks,
   compressed clipboard payloads, cursor colors, and terminal output through a
   length-bounded stdio worker with a fixed timeout and no in-process fallback.
@@ -614,9 +621,11 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   platform worker/service boundary exists. Local config decompression still uses
   `decompress` directly because it is persisted local state, not a peer parser
   path. `scripts/verify.sh` gates all three worker args, wrappers/core entries,
-  no-fallback strings, the mobile video/Opus/zstd no-in-process fallbacks,
-  explicit peer-zstd failure semantics, timeout/kill markers, peer zstd call
-  sites, and absence of direct native decoder ownership in `src/client.rs`.
+  no-fallback strings, the Android isolated video service manifest/JNI/Kotlin
+  bridge/SharedMemory/Messenger/self-test/decode-serialization markers, the iOS
+  video and mobile Opus/zstd no-in-process fallbacks, explicit peer-zstd failure
+  semantics, timeout/kill markers, peer zstd call sites, and absence of direct
+  native decoder ownership in `src/client.rs`.
   `src/native_clipboard_worker.rs` adds the hidden same-artifact
   `--native-clipboard-worker` role. The desktop parent now sanitizes inbound
   `MultiClipboards`, rejects more than 16 items, caps aggregate content at
@@ -1464,6 +1473,35 @@ git diff --check              # GREEN
 bash -n scripts/verify.sh     # GREEN
 ```
 
+- **Android native-video decode now crosses an isolated service boundary before
+  hostile peer frames reach software codec parsers.** Android no longer has to
+  choose between in-process hostile-peer video parsing and no video decode at
+  all. The viewer advertises VP8/VP9/AV1 decode only after
+  `NativeVideoDecoderClient.isReady` binds to `NativeVideoDecoderService` and
+  the service self-test succeeds. The service is non-exported and declared with
+  `android:isolatedProcess="true"`; requests carry frame bytes through capped
+  input `SharedMemory` rather than raw Binder payloads, responses carry the
+  existing bounded worker protocol through capped output `SharedMemory`, and the
+  client serializes decode requests so the Binder queue cannot grow under frame
+  pressure. The isolated process initializes `librustdesk` explicitly, verifies
+  `Process.isIsolated()` where Android exposes that readback, and the native
+  entry accepts only software VP8/VP9/AV1 frames. The parent still validates
+  response shape/geometry before UI handoff and invalidates on semantic
+  contradictions. Android releases before `SharedMemory` support fail
+  closed/no-advertise, and iOS video still fails closed until an equivalent
+  platform service exists. Focused and artifact evidence:
+
+```text
+docker run --rm ... rustfmt --edition 2021 --check src/native_video_worker.rs libs/scrap/src/android/ffi.rs
+# GREEN
+docker run --rm ... rd-devcheck cargo test --lib --features linux-pkg-config native_video_worker::tests --color never
+# GREEN: 10 passed; 0 failed
+bash scripts/verify.sh
+# GREEN: VERIFY: all gates green, incl. Android isolatedProcess SharedMemory/Messenger video service markers
+ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYSTORE_PASS_FILE=.harness-state/android-keystore/pass bash scripts/build-android.sh
+# GREEN: offline Docker build; cargo-ndk aarch64 Rust + Gradle/Kotlin release APK; apksigner one signer with v1/v2/v3 true; dist/rustdesk-arm64.apk sha256 4f311bcad27376d38869a3416702f2aa6ef787a42ba8b039948bb9d7ba6c2134
+```
+
 - **Native worker response protocols now reject impossible status/data shapes
   before parent consumption.** The lower-trust same-artifact workers no longer
   get a blind trust handoff back into the parent: desktop audio rejects decoded
@@ -1551,18 +1589,15 @@ bash -n scripts/verify.sh     # GREEN
   lifetime; worker entry also disables adjustable token privileges except
   `SeChangeNotifyPrivilege`, reads that token state back, and applies process
   mitigations for dynamic code, extension points, strict handle checks,
-  child-process creation refusal, and remote/low-integrity image loads. Mobile
-  media decode, peer
-  clipboard SET, and peer zstd now fail closed until platform workers/services
-  exist instead of parsing hostile-peer bytes in-process. That is the right
-  interim safety posture, but it is not final Android client conformance:
-  Android is a required shipped target, and Android-as-viewer needs a functional
-  isolated media path rather than an empty decode advertisement. That is not yet
-  a complete low-privilege sandbox. Remaining work includes mobile
-  media/clipboard/zstd platform-worker support where required for Android
-  feature parity, Android's separate-process service shape, an iOS
-  product-scope decision for the
-  no-child-process model, Windows low-privilege/AppContainer or syscall-allowlist
+  child-process creation refusal, and remote/low-integrity image loads. Android
+  video decode now has a compiled isolated-service path for VP8/VP9/AV1, but
+  mobile Opus, mobile peer clipboard SET, and mobile peer zstd still fail closed
+  until platform workers/services exist instead of parsing hostile-peer bytes
+  in-process. That is the right interim safety posture, but it is not final
+  mobile client conformance: Android still needs device-level runtime smoke for
+  the isolated video service and platform-worker/service support where required
+  for the remaining mobile parser features, and iOS still needs a product-scope
+  decision for the no-child-process model, Windows low-privilege/AppContainer or syscall-allowlist
   hardening beyond Job Object/token-privilege/process-mitigation guards, a broader
   macOS/desktop-Unix syscall or Seatbelt allowlist beyond NoNetwork, equivalent seccomp support before enabling
   parser workers on Linux architectures outside x86_64/aarch64 and/or a future
@@ -1612,15 +1647,14 @@ restricted-token, or syscall allowlist sandbox. Windows CLIPRDR now has app-leve
 and Rust<->C bridge length
 caps plus null/bounded-read fail-closed guards, pending request/response
 accounting, and a same-artifact worker boundary; Windows remote-printer XPS
-handoff now has a bounded same-artifact worker boundary. Mobile media decode
-now fails closed/no-advertises, mobile peer clipboard SET now fails closed,
-and mobile peer zstd now fails closed rather than using in-process native
-parsers and reports refusal as an explicit peer decompression error rather than
-as empty payload data; that is secure but functionally incomplete for
-Android-as-viewer, so
-Android artifact availability must not be treated as end-to-end feature parity
-until platform worker/service support or an equivalent isolated decode path is
-implemented and smoked.
+handoff now has a bounded same-artifact worker boundary. Android video decode now
+has a compiled isolated-service path for VP8/VP9/AV1, but Android artifact
+availability must not be treated as end-to-end feature parity until that service
+is smoked on device. Mobile Opus decode, mobile peer clipboard SET, and mobile
+peer zstd still fail closed rather than using in-process native parsers; peer
+zstd reports refusal as an explicit peer decompression error rather than as
+empty payload data. Those remaining mobile closures are secure but functionally
+incomplete until platform worker/service support is added where required.
 Unix/macOS file-copy clipboard now has descriptor-count caps, a same-artifact
 worker boundary for peer FILEDESCRIPTOR PDU parsing, per-connection file-content
 request/byte accounting, and a

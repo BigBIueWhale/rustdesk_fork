@@ -1,6 +1,6 @@
-use jni::objects::JByteBuffer;
 use jni::objects::JString;
 use jni::objects::JValue;
+use jni::objects::{JByteArray, JByteBuffer};
 use jni::sys::jboolean;
 use jni::JNIEnv;
 use jni::{
@@ -480,6 +480,56 @@ pub fn call_main_service_set_by_name(
     } else {
         return Err(JniError::ThrowFailed(-1));
     }
+}
+
+pub fn call_application_context_native_video_decoder_ready() -> JniResult<bool> {
+    if let (Some(jvm), Some(ctx)) = (
+        JVM.read().unwrap().as_ref(),
+        APPLICATION_CONTEXT.read().unwrap().as_ref(),
+    ) {
+        let mut env = jvm.attach_current_thread_as_daemon()?;
+        return env
+            .call_method(ctx, "rustIsNativeVideoDecoderReady", "()Z", &[])?
+            .z();
+    }
+    Err(JniError::ThrowFailed(-1))
+}
+
+pub fn call_application_context_native_video_decode(
+    payload: &[u8],
+    codec: u8,
+    image_format: u8,
+    align: u32,
+) -> JniResult<Vec<u8>> {
+    if let (Some(jvm), Some(ctx)) = (
+        JVM.read().unwrap().as_ref(),
+        APPLICATION_CONTEXT.read().unwrap().as_ref(),
+    ) {
+        let mut env = jvm.attach_current_thread_as_daemon()?;
+        return env.with_local_frame(16, |env| -> JniResult<Vec<u8>> {
+            let payload = env.byte_array_from_slice(payload)?;
+            let payload = JObject::from(payload);
+            let response = env
+                .call_method(
+                    ctx,
+                    "rustDecodeNativeVideo",
+                    "([BIII)[B",
+                    &[
+                        JValue::Object(&payload),
+                        JValue::Int(codec.into()),
+                        JValue::Int(image_format.into()),
+                        JValue::Int(align.min(i32::MAX as u32) as i32),
+                    ],
+                )?
+                .l()?;
+            if response.is_null() {
+                return Err(JniError::ThrowFailed(-1));
+            }
+            let response = JByteArray::from(response);
+            env.convert_byte_array(response)
+        });
+    }
+    Err(JniError::ThrowFailed(-1))
 }
 
 // Difference between MainService, MainActivity, JNI_OnLoad:

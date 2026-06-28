@@ -24,6 +24,7 @@ import ffi.FFI
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.locks.ReentrantLock
 
 private const val NVD_LOG_TAG = "NativeVideoDecoder"
 private const val NVD_MSG_SELF_TEST = 1
@@ -47,7 +48,11 @@ private const val NVD_MAX_RESPONSE_BYTES = 160 * 1024 * 1024 + 64 * 1024
 
 object NativeVideoDecoderClient {
     private val requestSeq = AtomicInteger()
-    private val decodeLock = Object()
+    private val decodeLock = ReentrantLock()
+    private val busyLog = RateLimitedWarning(
+        NVD_LOG_TAG,
+        "isolated video decoder busy; refusing to queue peer frame"
+    )
     private val lock = Object()
     private val replyThread = HandlerThread("rd-native-video-client").apply { start() }
 
@@ -104,8 +109,14 @@ object NativeVideoDecoderClient {
             Log.w(NVD_LOG_TAG, "dropping oversized isolated video decode request: ${payload.size}")
             return null
         }
-        return synchronized(decodeLock) {
+        if (!decodeLock.tryLock()) {
+            busyLog.warn()
+            return null
+        }
+        return try {
             decodeApi27(context.applicationContext, payload, codec, imageFormat, align)
+        } finally {
+            decodeLock.unlock()
         }
     }
 

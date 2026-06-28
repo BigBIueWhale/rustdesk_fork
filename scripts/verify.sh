@@ -2262,8 +2262,17 @@ fi
 r_native_video_worker=
 android_manifest=flutter/android/app/src/main/AndroidManifest.xml
 android_nvd=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/NativeVideoDecoderService.kt
+android_rate_limited_warning=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/RateLimitedWarning.kt
 android_app=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainApplication.kt
 android_ffi=libs/scrap/src/android/ffi.rs
+grep -qF 'class RateLimitedWarning' "$android_rate_limited_warning" ||
+  r_native_video_worker="$r_native_video_worker android-rate-warning-helper-missing"
+grep -qF 'SystemClock.elapsedRealtime()' "$android_rate_limited_warning" ||
+  r_native_video_worker="$r_native_video_worker android-rate-warning-no-monotonic-clock"
+grep -qF 'AtomicLong' "$android_rate_limited_warning" ||
+  r_native_video_worker="$r_native_video_worker android-rate-warning-no-atomic"
+grep -qF 'compareAndSet' "$android_rate_limited_warning" ||
+  r_native_video_worker="$r_native_video_worker android-rate-warning-no-cas"
 grep -qF 'const WORKER_ARG: &str = "--native-video-worker";' src/native_video_worker.rs ||
   r_native_video_worker="$r_native_video_worker worker-arg"
 grep -qF 'pub struct NativeVideoDecoder' src/native_video_worker.rs ||
@@ -2316,10 +2325,20 @@ grep -qF 'NVD_DECODE_TIMEOUT_MS = 10_000L' "$android_nvd" ||
   r_native_video_worker="$r_native_video_worker android-service-no-timeout"
 grep -qF 'dropping oversized isolated video decode request' "$android_nvd" ||
   r_native_video_worker="$r_native_video_worker android-service-no-request-cap"
-grep -qF 'decodeLock = Object()' "$android_nvd" ||
+grep -qF 'decodeLock = ReentrantLock()' "$android_nvd" ||
   r_native_video_worker="$r_native_video_worker android-service-no-inflight-guard"
-grep -qF 'synchronized(decodeLock)' "$android_nvd" ||
-  r_native_video_worker="$r_native_video_worker android-service-no-decode-serialization"
+grep -qF 'decodeLock.tryLock()' "$android_nvd" ||
+  r_native_video_worker="$r_native_video_worker android-service-no-busy-shed"
+grep -qF 'RateLimitedWarning(' "$android_nvd" ||
+  r_native_video_worker="$r_native_video_worker android-service-no-busy-rate-limit"
+grep -qF 'isolated video decoder busy; refusing to queue peer frame' "$android_nvd" ||
+  r_native_video_worker="$r_native_video_worker android-service-no-busy-log"
+if grep -qF 'synchronized(decodeLock)' "$android_nvd"; then
+  r_native_video_worker="$r_native_video_worker android-service-blocking-decode-lock"
+fi
+if grep -qF 'Log.w(NVD_LOG_TAG, "isolated video decoder busy; refusing to queue peer frame")' "$android_nvd"; then
+  r_native_video_worker="$r_native_video_worker android-service-unbounded-busy-log"
+fi
 grep -qF 'Java_com_carriez_flutter_1hbb_NativeVideoDecoderService_nativeDecode' src/native_video_worker.rs ||
   r_native_video_worker="$r_native_video_worker android-service-native-entry"
 grep -qF 'Java_com_carriez_flutter_1hbb_NativeVideoDecoderService_nativeSelfTest' src/native_video_worker.rs ||
@@ -2498,10 +2517,20 @@ grep -qF 'NAD_DECODE_TIMEOUT_MS = 3_000L' "$android_audio" ||
   r_native_opus_worker="$r_native_opus_worker android-service-no-timeout"
 grep -qF 'dropping oversized isolated Opus decode request' "$android_audio" ||
   r_native_opus_worker="$r_native_opus_worker android-service-no-request-cap"
-grep -qF 'decodeLock = Object()' "$android_audio" ||
+grep -qF 'decodeLock = ReentrantLock()' "$android_audio" ||
   r_native_opus_worker="$r_native_opus_worker android-service-no-inflight-guard"
-grep -qF 'synchronized(decodeLock)' "$android_audio" ||
-  r_native_opus_worker="$r_native_opus_worker android-service-no-decode-serialization"
+grep -qF 'decodeLock.tryLock()' "$android_audio" ||
+  r_native_opus_worker="$r_native_opus_worker android-service-no-busy-shed"
+grep -qF 'RateLimitedWarning(' "$android_audio" ||
+  r_native_opus_worker="$r_native_opus_worker android-service-no-busy-rate-limit"
+grep -qF 'isolated Opus decoder busy; refusing to queue peer packet' "$android_audio" ||
+  r_native_opus_worker="$r_native_opus_worker android-service-no-busy-log"
+if grep -qF 'synchronized(decodeLock)' "$android_audio"; then
+  r_native_opus_worker="$r_native_opus_worker android-service-blocking-decode-lock"
+fi
+if grep -qF 'Log.w(NAD_LOG_TAG, "isolated Opus decoder busy; refusing to queue peer packet")' "$android_audio"; then
+  r_native_opus_worker="$r_native_opus_worker android-service-unbounded-busy-log"
+fi
 grep -qF 'Java_com_carriez_flutter_1hbb_NativeAudioDecoderService_nativeDecode' src/native_audio_worker.rs ||
   r_native_opus_worker="$r_native_opus_worker android-service-native-entry"
 grep -qF 'Java_com_carriez_flutter_1hbb_NativeAudioDecoderService_nativeSelfTest' src/native_audio_worker.rs ||
@@ -2637,10 +2666,20 @@ grep -qF 'NZD_DECOMPRESS_TIMEOUT_MS = 5_000L' "$android_zstd" ||
   r_native_zstd_worker="$r_native_zstd_worker android-service-no-timeout"
 grep -qF 'dropping oversized isolated zstd request' "$android_zstd" ||
   r_native_zstd_worker="$r_native_zstd_worker android-service-no-request-cap"
-grep -qF 'decompressLock = Object()' "$android_zstd" ||
+grep -qF 'decompressLock = ReentrantLock()' "$android_zstd" ||
   r_native_zstd_worker="$r_native_zstd_worker android-service-no-inflight-guard"
-grep -qF 'synchronized(decompressLock)' "$android_zstd" ||
-  r_native_zstd_worker="$r_native_zstd_worker android-service-no-decompress-serialization"
+grep -qF 'decompressLock.tryLock()' "$android_zstd" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-no-busy-shed"
+grep -qF 'RateLimitedWarning(' "$android_zstd" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-no-busy-rate-limit"
+grep -qF 'isolated zstd decoder busy; refusing to queue peer decompress' "$android_zstd" ||
+  r_native_zstd_worker="$r_native_zstd_worker android-service-no-busy-log"
+if grep -qF 'synchronized(decompressLock)' "$android_zstd"; then
+  r_native_zstd_worker="$r_native_zstd_worker android-service-blocking-decompress-lock"
+fi
+if grep -qF 'Log.w(NZD_LOG_TAG, "isolated zstd decoder busy; refusing to queue peer decompress")' "$android_zstd"; then
+  r_native_zstd_worker="$r_native_zstd_worker android-service-unbounded-busy-log"
+fi
 grep -qF 'const WORKER_DECOMPRESS_TIMEOUT: Duration = Duration::from_secs(5);' libs/hbb_common/src/compress.rs ||
   r_native_zstd_worker="$r_native_zstd_worker timeout"
 grep -qF 'native zstd worker decompress timed out after' libs/hbb_common/src/compress.rs ||
@@ -2822,8 +2861,13 @@ grep -qF 'sanitizeLock = ReentrantLock()' "$android_clipboard" ||
   r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-no-inflight-guard"
 grep -qF 'sanitizeLock.tryLock()' "$android_clipboard" ||
   r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-no-busy-shed"
+grep -qF 'RateLimitedWarning(' "$android_clipboard" ||
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-no-busy-rate-limit"
 grep -qF 'isolated clipboard SET sanitizer busy; refusing to queue peer request' "$android_clipboard" ||
   r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-no-busy-log"
+if grep -qF 'Log.w(NCS_LOG_TAG, "isolated clipboard SET sanitizer busy; refusing to queue peer request")' "$android_clipboard"; then
+  r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-unbounded-busy-log"
+fi
 grep -qF 'nativeSanitize(payload)' "$android_clipboard" ||
   r_native_clipboard_worker="$r_native_clipboard_worker android-clipboard-no-native-sanitize"
 grep -qF 'refusing in-process mobile peer clipboard SET until a platform worker/service boundary exists' src/server/connection.rs ||

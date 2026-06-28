@@ -24,6 +24,7 @@ import ffi.FFI
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.locks.ReentrantLock
 
 private const val NAD_LOG_TAG = "NativeAudioDecoder"
 private const val NAD_MSG_SELF_TEST = 1
@@ -47,7 +48,11 @@ private const val NAD_MAX_RESPONSE_BYTES = 512 * 1024
 
 object NativeAudioDecoderClient {
     private val requestSeq = AtomicInteger()
-    private val decodeLock = Object()
+    private val decodeLock = ReentrantLock()
+    private val busyLog = RateLimitedWarning(
+        NAD_LOG_TAG,
+        "isolated Opus decoder busy; refusing to queue peer packet"
+    )
     private val lock = Object()
     private val replyThread = HandlerThread("rd-native-audio-client").apply { start() }
 
@@ -104,8 +109,14 @@ object NativeAudioDecoderClient {
             Log.w(NAD_LOG_TAG, "dropping oversized isolated Opus decode request: ${payload.size}")
             return null
         }
-        return synchronized(decodeLock) {
+        if (!decodeLock.tryLock()) {
+            busyLog.warn()
+            return null
+        }
+        return try {
             decodeApi27(context.applicationContext, payload, sampleRate, channels, decodeFec)
+        } finally {
+            decodeLock.unlock()
         }
     }
 

@@ -46,6 +46,10 @@ private const val NCS_MAX_RESPONSE_BYTES = 64 * 1024 * 1024 + 64
 object NativeClipboardSetClient {
     private val requestSeq = AtomicInteger()
     private val sanitizeLock = ReentrantLock()
+    private val busyLog = RateLimitedWarning(
+        NCS_LOG_TAG,
+        "isolated clipboard SET sanitizer busy; refusing to queue peer request"
+    )
     private val lock = Object()
     private val replyThread = HandlerThread("rd-native-clipboard-set-client").apply { start() }
 
@@ -97,7 +101,7 @@ object NativeClipboardSetClient {
             return null
         }
         if (!sanitizeLock.tryLock()) {
-            Log.w(NCS_LOG_TAG, "isolated clipboard SET sanitizer busy; refusing to queue peer request")
+            busyLog.warn()
             return null
         }
         return try {

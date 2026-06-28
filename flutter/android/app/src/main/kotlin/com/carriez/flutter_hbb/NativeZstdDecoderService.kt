@@ -24,6 +24,7 @@ import ffi.FFI
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.locks.ReentrantLock
 
 private const val NZD_LOG_TAG = "NativeZstdDecoder"
 private const val NZD_MSG_SELF_TEST = 1
@@ -44,7 +45,11 @@ private const val NZD_MAX_RESPONSE_BYTES = 64 * 1024 * 1024 + 64 * 1024 + 64
 
 object NativeZstdDecoderClient {
     private val requestSeq = AtomicInteger()
-    private val decompressLock = Object()
+    private val decompressLock = ReentrantLock()
+    private val busyLog = RateLimitedWarning(
+        NZD_LOG_TAG,
+        "isolated zstd decoder busy; refusing to queue peer decompress"
+    )
     private val lock = Object()
     private val replyThread = HandlerThread("rd-native-zstd-client").apply { start() }
 
@@ -95,8 +100,14 @@ object NativeZstdDecoderClient {
             Log.w(NZD_LOG_TAG, "dropping oversized isolated zstd request: ${payload.size}")
             return null
         }
-        return synchronized(decompressLock) {
+        if (!decompressLock.tryLock()) {
+            busyLog.warn()
+            return null
+        }
+        return try {
             decompressApi27(context.applicationContext, payload)
+        } finally {
+            decompressLock.unlock()
         }
     }
 

@@ -13,7 +13,7 @@ history remains the traceability record for those intermediate notes.
 native-codec advisory-watch, native media/clipboard handoff-bound and
 CLIPRDR callback fail-closed follow-ups, the first desktop
 native-video/native-Opus/native-zstd/native-clipboard worker slices, the
-mobile media fail-closed, Android peer-zstd and peer-clipboard
+mobile media fail-closed, Android video/Opus/peer-zstd/peer-clipboard
 isolated-service paths, iOS peer-zstd and peer-clipboard fail-closed, and
 peer-zstd explicit-failure behavior,
 bounded worker-I/O thread and
@@ -38,11 +38,14 @@ video/Opus semantic worker-failure child teardown,
 Unix/macOS file-copy descriptor-parser/FileContents worker isolation, Windows
 CLIPRDR same-artifact worker isolation, macOS paste FILEDESCRIPTOR parent-path
 containment, Windows remote-printer XPS same-artifact worker handoff, desktop video
-capability-advertising wrapper closure, and Apple SDK-free source-conformance
-are closed in source and gates; responder-side port-forward latent-connect and
-file write-response forwarding follow-ups remain closed. The full
-cross-platform native
-decoder/parser sandbox remains open beyond those worker slices.**
+capability-advertising wrapper closure, and Android isolated-service
+non-blocking busy-admission/rate-limited busy-log follow-ups are closed in
+source and gates; responder-side port-forward latent-connect and file
+write-response forwarding follow-ups remain closed. The existing Apple
+SDK-free source-conformance gate remains useful evidence but is now tracked as
+under-enforced for full R-R2 until the Apple target/Flutter/plist/pod/Xcode
+matrix is tightened. The full cross-platform native decoder/parser sandbox
+remains open beyond those worker slices.**
 
 On 2026-06-26, final reviewer `Maxwell` (`gpt-5.5`, `xhigh`) reviewed the
 then-current dirty worktree, read the full `requirements.html`, checked the previous
@@ -96,13 +99,17 @@ checked arithmetic plus a hard byte ceiling, Opus packet and format fields are
 validated before audio queueing and decoder setup, text/image clipboard payloads
 are capped before native handoff, remote cursor RGBA payloads must match checked
 positive dimensions before the Flutter image-decode handoff, CLIPRDR
-format/data/file-content payloads are capped, Android peer clipboard SET now
-enters a non-exported isolatedProcess sanitizer service with 64 MiB
-request/response caps, a 16-item cap, text/html-only filtering before
-decompression, no blocking sanitizer queue via `tryLock` busy-shed, fixed
-`RDCB` text/html handoff, and parent/app-process revalidation before platform
-clipboard SET; iOS peer clipboard SET still fails closed instead of entering
-platform clipboard handling in-process,
+format/data/file-content payloads are capped, Android video/Opus/zstd isolated
+service callers now admit only one in-flight peer request with non-blocking
+`tryLock`, shed concurrent work instead of blocking behind service timeouts, and
+route busy warnings through a monotonic-clock atomic rate limiter, Android peer
+clipboard SET now enters a non-exported isolatedProcess sanitizer service with
+64 MiB request/response caps, a 16-item cap, text/html-only filtering before
+decompression, no blocking sanitizer queue via the same `tryLock` busy-shed and
+rate-limited busy-log pattern, fixed `RDCB` text/html handoff, and
+parent/app-process revalidation before platform clipboard SET; iOS peer
+clipboard SET still fails closed instead of entering platform clipboard handling
+in-process,
 Unix file-copy descriptor PDUs reject excessive descriptor counts before
 allocation, Unix file-content reads are admitted through a per-connection
 sliding request/byte budget before local file I/O, the Windows CLIPRDR Rust<->C
@@ -168,20 +175,26 @@ now advertise/construct only after binding to non-exported
 `android:isolatedProcess="true"` services whose native self-tests pass; hostile
 peer media bytes cross capped `SharedMemory` plus `Messenger` IPC and are
 parent-validated through the same worker response protocols before UI/audio
-handoff. Android peer zstd decompression now also binds to a non-exported
+handoff. The app-process callers admit one in-flight decode with non-blocking
+`tryLock`, shed concurrent peer frames/packets instead of blocking behind the
+service timeout, and rate-limit busy warnings through a shared monotonic-clock
+atomic logger. Android peer zstd decompression now also binds to a non-exported
 `android:isolatedProcess="true"` service, requires its readiness/self-test path
 before decompression, sends capped compressed bytes over `SharedMemory` plus
-`Messenger` IPC, serializes the parent call with non-blocking admission, and
-parent-validates the bounded worker response before accepting output. Android
-releases without `SharedMemory` fail closed. iOS video, Opus, and peer zstd
-still fail closed until an equivalent platform service exists. Android peer
+`Messenger` IPC, uses the same non-blocking one-in-flight admission and
+rate-limited busy-log pattern, and parent-validates the bounded worker response
+before accepting output. Android releases without `SharedMemory` fail closed.
+iOS video, Opus, and peer zstd still fail closed until an equivalent platform
+service exists. Android peer
 clipboard SET and `MultiClipboards` messages now serialize bounded protobufs
 into a non-exported `android:isolatedProcess="true"`
 `NativeClipboardSetService`, pass capped bytes over `SharedMemory`/`Messenger`,
 run the Rust sanitizer in the isolated process, and return only the fixed
 `RDCB` text/html payload that the parent and app-process setter both revalidate
-before platform clipboard SET. `SharedMemory`-unavailable, service-bind,
-self-test, timeout, busy, parse, cap, or validation failure all fail closed.
+before platform clipboard SET; the sanitizer caller also sheds concurrent peer
+requests with non-blocking admission and rate-limited busy logging.
+`SharedMemory`-unavailable, service-bind, self-test, timeout, busy, parse, cap,
+or validation failure all fail closed.
 iOS peer clipboard SET still fails closed until an equivalent platform service
 exists. Local persisted config decompression stays
 in-process by design. The clipboard parent now sanitizes peer
@@ -530,14 +543,21 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   is a no-network Seatbelt slice for the worker roles; it does not claim a
   full custom macOS allowlist, a BSD pledge/capsicum equivalent, or an iOS
   no-child-process model.
-- **Apple SDK-free source-conformance reaches the intended SDK boundary.**
+- **Apple SDK-free source-conformance has useful boundary evidence, but the full
+  R-R2 gate is under-enforced.**
   `scripts/apple-conform-check.sh` caught a real Rust 1.81 Apple-target
   coherence break in the Unix file-transfer receive path: `openat(..., mode)` was
   passing `mode_t` directly through a C variadic call. `libs/hbb_common/src/fs.rs`
   now applies the C default-promotion cast (`mode as c_uint`) before the varargs
-  call. The Apple gate now passes through the Rust-only graph and stops only at
-  the expected SDK framework boundary (`coreaudio-sys`/`AudioUnit.h`) on this
-  Linux host.
+  call. The existing Apple gate now passes through the Rust-only graph and stops
+  only at the expected SDK framework boundary (`coreaudio-sys`/`AudioUnit.h`) on
+  this Linux host for its default path. A later read-only audit found that this
+  is not a full R-R2 proof yet: the script defaults to one Apple target despite
+  documenting a macOS x86_64/macOS aarch64/iOS aarch64 matrix, it does not cover
+  the Apple Flutter feature surfaces the way actual Apple/mobile builds do, it
+  lacks positive plist/entitlement/pod/Xcode shell-phase allow-lists, and the
+  cargo-check step can still mutate generated source. Those are now tracked as
+  current Apple conformance follow-ups rather than treated as closed.
 - **Windows artifact production is offline through helper containers.**
   `scripts/online-fetch.sh` builds the pinned
   `rustdesk-fork-harness-win-helper` image during the one networked phase.
@@ -619,16 +639,18 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   advertises only after a bind+self-test succeeds against the non-exported
   `android:isolatedProcess="true"` `NativeVideoDecoderService`; Android VP8/VP9/AV1
   frames cross `Messenger` plus `SharedMemory`, with 32 MiB request caps,
-  bounded responses, one serialized in-flight decode, runtime isolated-process
+  bounded responses, one non-blocking in-flight decode admission, busy-shed of
+  concurrent frames, rate-limited busy warnings, runtime isolated-process
   readback where Android exposes it, explicit native library/context
   initialization in the isolated process, and parent-side worker-protocol
   response validation before UI handoff. `NativeOpusDecoder` now does the same
   service-boundary check against `NativeAudioDecoderService` on Android; Opus
   packets cross capped `SharedMemory`/`Messenger` IPC with a 4 KiB request cap,
-  512 KiB response cap, one serialized in-flight decode, runtime
-  isolated-process readback where Android exposes it, explicit native
-  library/context initialization in the isolated process, and parent-side worker
-  response validation before audio handoff. Android API levels without
+  512 KiB response cap, one non-blocking in-flight decode admission, busy-shed of
+  concurrent packets, rate-limited busy warnings, runtime isolated-process
+  readback where Android exposes it, explicit native library/context
+  initialization in the isolated process, and parent-side worker response
+  validation before audio handoff. Android API levels without
   `SharedMemory` fail closed/no-advertise or no-decode. iOS video and Opus
   decode still fail closed until an equivalent platform worker/service boundary
   exists rather than parsing hostile-peer media in-process.
@@ -641,8 +663,9 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   non-exported isolated service whose readiness call checks isolated-process
   status and a native zstd round trip before hostile payloads are decompressed.
   Requests and responses are capped, copied through `SharedMemory`/`Messenger`,
-  serialized with a parent non-blocking in-flight guard, and parsed through the
-  same worker response validator before the parent accepts decompressed output.
+  admitted with the same parent non-blocking one-in-flight guard, busy-shed with
+  rate-limited warnings, and parsed through the same worker response validator
+  before the parent accepts decompressed output.
   The peer API now returns an explicit error on oversized input, worker failure,
   service failure, or iOS mobile refusal instead of using an empty-vector
   fallback. Compressed
@@ -654,10 +677,11 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   `decompress` directly because it is persisted local state, not a peer parser
   path. `scripts/verify.sh` gates all three worker args, wrappers/core entries,
   no-fallback strings, the Android isolated video, Opus, and zstd service
-  manifest/JNI/Kotlin bridge/SharedMemory/Messenger/self-test/decode-serialization
-  markers, the iOS video/Opus/zstd no-in-process fallbacks, explicit
-  peer-zstd failure semantics, timeout/kill markers, peer zstd call sites, and
-  absence of direct native decoder ownership in `src/client.rs`.
+  manifest/JNI/Kotlin bridge/SharedMemory/Messenger/self-test/non-blocking
+  busy-shed and `RateLimitedWarning` markers, the iOS video/Opus/zstd
+  no-in-process fallbacks, explicit peer-zstd failure semantics, timeout/kill
+  markers, peer zstd call sites, and absence of direct native decoder ownership
+  in `src/client.rs`.
   `src/native_clipboard_worker.rs` adds the hidden same-artifact
   `--native-clipboard-worker` role. The desktop parent now sanitizes inbound
   `MultiClipboards`, rejects more than 16 items, caps aggregate content at
@@ -926,13 +950,14 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 
 After the fixed-shape listener/direct-TCP staging collapse, the artifact
 staleness correction, the Windows remote-printer worker handoff, the Android
-peer-clipboard isolated-service bridge, and the Windows worker token-privilege
+isolated-service busy-admission follow-up, and the Windows worker token-privilege
 hardening, the artifacts below are current for each target's application source.
 Debian was last rebuilt at the remote-printer worker handoff; Android was
-rebuilt after the Android peer-clipboard isolated-service bridge; Windows was
+rebuilt after the Android isolated-service busy-admission follow-up; Windows was
 rebuilt after the token-privilege hardening. These hashes supersede the
 `ec1b6f6`/`2d72f99` stale-artifact notes, the earlier `6e99f581...` and
-`08c39e7...` Android APKs, and the earlier
+`08c39e7...` Android APKs, the Android peer-clipboard
+`99c0594a...` APK, the pre-rate-limiter `60adfb97...` APK, and the earlier
 `dae6649f...`/`1e7b245f...` Windows artifacts.
 The Debian path ran in the disposable `rustdesk-fork-harness-deb-builder` build
 container with the compile stage offline (`--network=none`) and
@@ -950,7 +975,7 @@ transient KVM path from the pinned golden qcow2, booted each per-build VM with
 
 ```text
 e5853fcca58b47860762acae9f0989c30ee0c266b4a79b473dfabf0ed786c1e8  dist/rustdesk-x86_64.deb
-99c0594a0e26346c316351410dfd6c79a26b2e528df71e44cd81bd9d3cc5a3d3  dist/rustdesk-arm64.apk
+c8cea19b54a368b3b93743d34b6e04363877a8a19e4a7460c4f6be5075552289  dist/rustdesk-arm64.apk
 ba45495ed5ee50d2be383a8bca09c4fb3187bbf16305d558fd24c088b10c6c31  dist/rustdesk-setup.exe
 c063d89c7efc78d94cc1e41935643c59dc53eb87599addd3b68f14eedd3b2c1d  dist/rustdesk.msi
 ```
@@ -962,8 +987,9 @@ Build evidence:
 - Android
   `ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYSTORE_PASS_FILE=.harness-state/android-keystore/pass bash scripts/build-android.sh`
   passed the offline Docker build and apksigner verification, producing
-  `99c0594a0e26346c316351410dfd6c79a26b2e528df71e44cd81bd9d3cc5a3d3`
-  after the Android peer-clipboard isolated-service bridge change.
+  `c8cea19b54a368b3b93743d34b6e04363877a8a19e4a7460c4f6be5075552289`
+  after the Android isolated-service busy-admission/rate-limited busy-log
+  follow-up.
 - Windows `WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh`
   passed after the Windows worker token-privilege hardening from the clean
   tracked worktree snapshot in the transient KVM VM path. The guest
@@ -1310,6 +1336,16 @@ bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl
 ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYSTORE_PASS_FILE=.harness-state/android-keystore/pass bash scripts/build-android.sh  # GREEN: dist/rustdesk-arm64.apk sha256 99c0594a0e26346c316351410dfd6c79a26b2e528df71e44cd81bd9d3cc5a3d3; apksigner one signer with v1/v2/v3 true
 ```
 
+After the Android isolated-service busy-admission follow-up, these source gates
+and the Android artifact build have been re-run successfully:
+
+```text
+bash -n scripts/verify.sh                 # GREEN
+git diff --check                          # GREEN after this ledger update
+bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl. Android video/Opus/zstd tryLock busy-shed gates, RateLimitedWarning helper gates, Android clipboard rate-limited busy-log gate, and main-crate compile
+ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYSTORE_PASS_FILE=.harness-state/android-keystore/pass bash scripts/build-android.sh  # GREEN: dist/rustdesk-arm64.apk sha256 c8cea19b54a368b3b93743d34b6e04363877a8a19e4a7460c4f6be5075552289; apksigner one signer with v1/v2/v3 true
+```
+
 After the shared native-worker busy-admission change and the high-fd cleanup
 runtime probe, these focused and full gates have been re-run successfully:
 
@@ -1547,9 +1583,12 @@ bash -n scripts/verify.sh     # GREEN
   the service self-test succeeds. The service is non-exported and declared with
   `android:isolatedProcess="true"`; requests carry frame bytes through capped
   input `SharedMemory` rather than raw Binder payloads, responses carry the
-  existing bounded worker protocol through capped output `SharedMemory`, and the
-  client serializes decode requests so the Binder queue cannot grow under frame
-  pressure. The isolated process initializes `librustdesk` explicitly, verifies
+  existing bounded worker protocol through capped output `SharedMemory`, and
+  the client admits one in-flight decode with non-blocking `tryLock`, shedding
+  concurrent frames instead of blocking or growing a Binder-backed decode queue.
+  Busy-shed warnings are rate-limited through the shared Android
+  `RateLimitedWarning` helper. The isolated process initializes `librustdesk`
+  explicitly, verifies
   `Process.isIsolated()` where Android exposes that readback, and the native
   entry accepts only software VP8/VP9/AV1 frames. The parent still validates
   response shape/geometry before UI handoff and invalidates on semantic
@@ -1576,9 +1615,12 @@ ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYST
   service is non-exported and declared with `android:isolatedProcess="true"`;
   requests carry capped Opus packets through input `SharedMemory`, responses
   carry the existing bounded worker protocol through output `SharedMemory`, and
-  the client serializes decode requests so Binder cannot accumulate an unbounded
-  audio decode queue. The isolated process initializes `librustdesk` explicitly,
-  verifies `Process.isIsolated()` where Android exposes that readback, and keeps
+  the client admits one in-flight decode with non-blocking `tryLock`, shedding
+  concurrent packets instead of blocking or accumulating a Binder-backed audio
+  decode queue. Busy-shed warnings are rate-limited through the shared Android
+  `RateLimitedWarning` helper. The isolated process initializes `librustdesk`
+  explicitly, verifies `Process.isIsolated()` where Android exposes that
+  readback, and keeps
   the stateful `magnum_opus::Decoder` inside the isolated process. The parent
   validates worker response status, sample rate, channel count, sample count,
   PCM length, and trailing bytes before audio handoff, then invalidates on
@@ -1695,13 +1737,22 @@ bash -n scripts/verify.sh     # GREEN
   conformance: Android still needs device-level runtime smoke for the isolated
   video, Opus, zstd, and clipboard services and platform-worker/service support
   where required for the remaining mobile parser features, and iOS still needs a
-  product-scope
-  decision for the no-child-process model, Windows low-privilege/AppContainer or syscall-allowlist
-  hardening beyond Job Object/token-privilege/process-mitigation guards, a broader
-  macOS/desktop-Unix syscall or Seatbelt allowlist beyond NoNetwork, equivalent seccomp support before enabling
-  parser workers on Linux architectures outside x86_64/aarch64 and/or a future
-  true allowlist sandbox, and timeout/kill/restart semantics for the remaining
-  parser surfaces.
+  product-scope decision for the no-child-process model, Windows
+  low-privilege/AppContainer or syscall-allowlist hardening beyond Job
+  Object/token-privilege/process-mitigation guards, a broader macOS/desktop-Unix
+  syscall or Seatbelt allowlist beyond NoNetwork, equivalent seccomp support
+  before enabling parser workers on Linux architectures outside x86_64/aarch64
+  and/or a future true allowlist sandbox, and timeout/kill/restart semantics for
+  the remaining parser surfaces.
+  A 2026-06-28 read-only audit also isolated a narrower desktop residual after
+  the worker boundary: worker-decoded, parent-bounded RGBA frames can still be
+  handed to the native Flutter texture renderer plugin in the main viewer
+  process through `FlutterRgbaRendererPluginOnRgba`. That is not a remaining
+  compressed-codec, zstd, or CLIPRDR parser bypass, because the current parent
+  validates decoded shape/length before UI handoff. It is still Appendix C
+  #2b-adjacent native main-process surface reachable by a deliberately connected
+  hostile peer, so it should remain tracked until the texture upload path is
+  disabled for peer video or moved behind an equivalent boundary.
   The separate native codec CVE/advisory watch is wired and source-gated, but it
   is only a tracking/coverage mechanism for vcpkg C/C++ libraries, not a
   substitute for those boundaries.
@@ -1712,9 +1763,14 @@ bash -n scripts/verify.sh     # GREEN
   separation, and HostIdentity session binding. The existing docs and tests are
   audit inputs, not a substitute.
 
-- **Apple artifact builds.** Source conformance is checked here, but actual
-  macOS/iOS artifact builds still need the pinned Apple toolchain path. The
-  ledger should not claim Apple artifact parity until those builds run.
+- **Apple source-conformance and artifact builds.** The current SDK-free Apple
+  gate is useful evidence, but it is not yet a full R-R2 source proof: it must
+  default to the documented macOS x86_64/macOS aarch64/iOS aarch64 target
+  matrix, cover the Apple Flutter/mobile feature surfaces, positively allow-list
+  all plist/entitlement/pod/Xcode shell-phase state, and run without mutating the
+  worktree. Actual macOS/iOS artifact builds still need the pinned Apple
+  toolchain path. The ledger should not claim Apple source or artifact parity
+  until those gates and builds run.
 
 - **Real two-host demonstrations.** The Docker loopback harness validates local
   executable properties. Separate operational evidence should demonstrate
@@ -1733,6 +1789,10 @@ cleanup, resource ceilings, and a post-exec syscall deny filter. Linux
 architectures without an implemented worker seccomp table now fail closed at
 worker entry instead of parsing hostile content with only partial confinement.
 Those closures deliberately do not claim full sandboxing or current CVE freedom.
+Desktop Flutter texture rendering still hands worker-decoded, parent-bounded
+peer RGBA frames to a native texture plugin in the main viewer process; that is
+not a remaining compressed-parser bypass, but it remains an Appendix C #2b
+process-boundary residual until disabled or isolated.
 macOS worker children now apply the Seatbelt NoNetwork profile at worker entry,
 but that is not a full custom macOS allowlist or a BSD pledge/capsicum
 equivalent. Windows same-artifact worker children, including the CLIPRDR and
@@ -1761,9 +1821,12 @@ same-artifact worker boundary for the local file-list cache/PDU generation and
 FileContents size/range reads. Windows and Android platform-native
 socket-surface logic is present and source-gated. The Debian, Android, and
 Windows artifact hashes recorded above are refreshed for the current per-target
-application source; Android was refreshed after the peer-clipboard
-isolated-service bridge and Windows was refreshed after the worker
-token-privilege hardening. The remaining local build-host residual is the old
+application source; Android was refreshed after the isolated-service
+busy-admission/rate-limited busy-log follow-up and Windows was refreshed after
+the worker token-privilege hardening. The current Apple source-conformance gate
+is not a complete R-R2 source proof until it covers the documented target matrix,
+Apple Flutter/mobile features, plist/entitlement/pod/Xcode allow-lists, and
+non-mutating execution. The remaining local build-host residual is the old
 harness-created system libvirt default network: the host has shown `virbr0`,
 `192.168.122.1:53/tcp+udp`, `0.0.0.0%virbr0:67/udp`, and
 `net.ipv4.ip_forward=1`. `.harness-state/provisioned` records that the harness
@@ -1778,9 +1841,10 @@ The remaining external or pre-exposure evidence items are:
 - **R-V3 independent expert audit.** The in-tree CPace construction is not yet
   independently audited. That disclosure is intentional and must remain until an
   outside audit is performed and published.
-- **Apple artifact builds.** Apple source conformance is checked here, but full
-  macOS/iOS artifact builds require the Apple SDK/toolchain path outside this
-  Linux host.
+- **Apple source-conformance hardening and artifact builds.** The Linux
+  SDK-free Apple gate is useful but under-enforced; it must be tightened before
+  the ledger can claim full Apple source parity. Full macOS/iOS artifact builds
+  still require the Apple SDK/toolchain path outside this Linux host.
 - **Real two-host demonstrations.** The Docker loopback harness validates the
   executable security properties available on this machine. Real two-host MITM
   and RDP/tunnel wire demonstrations remain operational evidence, not required

@@ -1754,11 +1754,23 @@ fi
 # the former lang key `relay_hint_tip` (underscore), whose 51-file sweep is asserted below.)
 ra6_clean 'relay-hint' 'R-G6 relay-fallback hint emission' || rc=1
 # §19 closing-box dead-lang-key sweep: lang keys whose UI was removed by earlier §8/§18/§19
-# work and which now have NO live translate() caller — relay_hint_tip/websocket_tip (R-G6,
-# relay/websocket UI), enable-2fa-title/enable-bot-tip (R-X7, 2FA UI), powered_by_me (R-G8,
-# the "Powered by RustDesk" badge). Removed from all 51 lang tables + the lang.rs RustDesk
-# app-name substitution exclusion that only existed to protect the powered_by_me string.
-ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-bot-tip|powered_by_me)"' '§19 dead lang keys' || rc=1
+# work and which now have NO live translate() caller. Grouped by the excision that orphaned them:
+#   - R-G6 (relay/websocket UI):  relay_hint_tip, websocket_tip
+#   - R-G8 ("Powered by RustDesk" badge):  powered_by_me  (also drops the lang.rs RustDesk
+#     app-name substitution exclusion that existed only to protect this string)
+#   - R-X7 (2FA UI, fully excised):  enable-2fa-title, enable-2fa-desc, enable-bot-tip,
+#     wrong-2fa-code, enter-2fa-title, cancel-2fa-confirm-tip
+#   - R-X1 (auto-updater UI, fully excised):  download-new-version-failed-tip, new-version-of-{}-tip,
+#     upgrade_remote_rustdesk_client_to_{}_tip, upgrade_rustdesk_server_pro_to_{}_tip
+# All removed from every one of the 51 lang tables. The R-X1/R-X7 RCE/feature gates above match the
+# FUNCTION / quoted-key tokens (e.g. `"download-new-version"`, whose CLOSING quote excludes the
+# `-failed-tip`/`-{}-tip` display-string siblings), which is why these translation entries outlived
+# the original sweep. NOTE: update-failed-check-msi-tip is DELIBERATELY NOT listed — unlike the
+# above it still has a live producer (flutter_ffi.rs main_get_common's `download-file-` handler, the
+# §12 win/mac packaging asset-name path, returns `error:update-failed-check-msi-tip`), so deleting
+# its table entries would orphan a referenced key. The `{}` placeholders are regex-escaped (\{\})
+# because ra6_clean matches with grep -E.
+ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-2fa-desc|enable-bot-tip|wrong-2fa-code|enter-2fa-title|cancel-2fa-confirm-tip|powered_by_me|download-new-version-failed-tip|new-version-of-\{\}-tip|upgrade_remote_rustdesk_client_to_\{\}_tip|upgrade_rustdesk_server_pro_to_\{\}_tip)"' '§19 dead lang keys' || rc=1
 # §19 dead lang keys (post-sciter-excision sweep): the rendezvous/relay/lan/WS UI that referenced these
 # was excised from BOTH flutter AND sciter — empty_lan_tip (R-X5 lan tab), connecting_status/
 # not_ready_status (R-G2/R-G8 status), the ID/Relay Server + ID Server + Relay Server + Relay Connection

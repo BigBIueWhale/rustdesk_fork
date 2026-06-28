@@ -3024,17 +3024,24 @@ else
   echo "  ok  R-SV8 no Firebase/FCM/Google-services + no Sparkle/Crashlytics/Sentry telemetry (iOS plist + push entitlements + Android + Apple source all clean)"
 fi
 # R-SV9 (§18 sovereignty): the front-ends MUST carry no PLAINTEXT-http link (a downgrade/MITM
-# vector). The installer's EULA #agreement link opened http://rustdesk.com/privacy over cleartext —
-# fixed to https. (The broader SHOULD — delete/repoint the ~28 rustdesk.com / github.com/rustdesk
-# advertising + doc links across both front-ends + the config.rs HELPER_URL doc map — is a separate
-# de-branding pass needing an operator-resource decision; not yet gated.) Gate the MUST: no
-# `http://`-scheme rustdesk/github link in the UI front-ends (.tis / .dart). The common.rs is_public
-# unit-test string is a .rs test, not a UI link, so it is out of scope.
+# vector), and the sovereign SHOULD removes the live upstream docs/download helper links until an
+# operator-owned docs/privacy target exists. The remaining RustDesk brand strings are app/driver
+# nomenclature or comments; this gate targets live string-literal links in the front-end link path
+# plus the config.rs HELPER_URL expansion map.
 rsv9_http=$(grep -rInE 'http://[^ ]*(rustdesk|github)' flutter/lib --include='*.dart' 2>/dev/null || true)
+if ! grep -qF "pub static ref HELPER_URL: HashMap<&'static str, &'static str> = HashMap::new();" libs/hbb_common/src/config.rs; then
+  rsv9_http="$rsv9_http
+libs/hbb_common/src/config.rs:HELPER_URL is not empty"
+fi
+rsv9_upstream_link_literals=$(rg -n '"https?://[^"]*(rustdesk\.com|github\.com/rustdesk)[^"]*"' src/client.rs libs/hbb_common/src/config.rs flutter/lib --glob '*.rs' --glob '*.dart' 2>/dev/null || true)
+if [ -n "$rsv9_upstream_link_literals" ]; then
+  rsv9_http="$rsv9_http
+$rsv9_upstream_link_literals"
+fi
 if [ -n "$rsv9_http" ]; then
-  echo "  FAIL R-SV9: a plaintext-http rustdesk/github link remains in a front-end (MUST be https or removed):"; echo "$rsv9_http" | sed 's/^/      /'; rc=1
+  echo "  FAIL R-SV9: upstream RustDesk/GitHub link remains live in a front-end/helper path:"; echo "$rsv9_http" | sed '/^$/d; s/^/      /'; rc=1
 else
-  echo "  ok  R-SV9 no plaintext-http rustdesk/github link in the front-ends (the MUST; the SHOULD de-brand is pending)"
+  echo "  ok  R-SV9 front-end/helper paths carry no plaintext or live upstream RustDesk/GitHub URL literals"
 fi
 # R-S11a / R-S8 (cross-uid IPC authorization + parent-dir hardening): two MUSTs over the world-mode
 # 0o0666 `_service`/`_uinput_*` sockets. (a) AUTHORIZATION — the `_service` UID gate authorizes the

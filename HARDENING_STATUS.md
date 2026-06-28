@@ -817,6 +817,16 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   still require a shape. Live `force-always-relay` behavior is gone; remaining
   mentions are limited to verification/tests or inert generated/API-compatibility
   shapes.
+- **Live upstream RustDesk documentation links are removed from front-end/helper
+  paths.** `src/client.rs` no longer attaches `rustdesk.com` or
+  `github.com/rustdesk` URLs to Linux login/X11 error message boxes, and
+  `libs/hbb_common/src/config.rs::HELPER_URL` is now an empty map rather than an
+  upstream-doc symbolic link expander. `scripts/verify.sh` now gates both the
+  empty helper map and the absence of quoted upstream RustDesk/GitHub URL
+  literals in the front-end link path (`src/client.rs`, `flutter/lib`, and the
+  config helper map). This is the live-link R-SV9/R-G8 closure; it does not
+  claim that source comments, app-name strings, or driver nomenclature are
+  removed.
 - **Malformed post-key `Message` frames fail closed.** A keyed frame that
   decrypts but does not parse as a protobuf `Message` now closes the responder
   session or viewer session instead of being ignored. `scripts/verify.sh` gates

@@ -20,6 +20,7 @@ GOLDEN="$STATE_DIR/win11-golden.qcow2"
 WIN_HELPER_IMAGE="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-helper"
 
 require_cmd docker
+assert_no_build_host_network_residual
 [ -f "$GOLDEN" ] || die "golden not found: $GOLDEN (run provision-windows-vm.sh first)"
 [ -e /dev/kvm ] || die "/dev/kvm absent — the libguestfs-in-docker appliance needs it"
 verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"

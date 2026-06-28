@@ -97,6 +97,37 @@ assert_offline() {
     log "offline guard OK"
 }
 
+# assert_no_build_host_network_residual: the Windows VM harness must not run on
+# a host where the old system-libvirt default NAT network is still present. That
+# network creates virbr0, host DNS/DHCP listeners, and usually enables IPv4
+# forwarding. The cleanup path is manifest-gated in cleanup.sh; this check is the
+# artifact/provision preflight that refuses to build from a dirty host.
+assert_no_build_host_network_residual() {
+    require_cmd ip ss
+    local dirty=()
+    local listeners
+
+    if ip link show virbr0 >/dev/null 2>&1; then
+        dirty+=("virbr0 exists")
+    fi
+
+    listeners="$(ss -ltnup 2>/dev/null | grep -E '192[.]168[.]122[.]1:53|0[.]0[.]0[.]0%virbr0:67' || true)"
+    if [ -n "$listeners" ]; then
+        dirty+=("libvirt default-network DNS/DHCP listener active")
+    fi
+
+    if [ "$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || echo 0)" = "1" ]; then
+        dirty+=("net.ipv4.ip_forward=1")
+    fi
+
+    if [ "${#dirty[@]}" -ne 0 ]; then
+        [ -z "$listeners" ] || printf '%s\n' "$listeners" >&2
+        die "dirty build-host network state (${dirty[*]}); run scripts/cleanup.sh --build-host-network with privileges if harness-created, or reconcile manually before Windows VM artifact work (R-B11a/§12.2)"
+    fi
+
+    log "build-host network preflight OK (no virbr0, no libvirt default-network listener, ip_forward=0)"
+}
+
 # ── Submodule / lockfile state (R-B9: assert before compiling) ────────────────
 # assert_repo_state: hbb_common is absorbed in-tree (not a submodule) and the
 # committed lockfile must be the one we build from (--locked).

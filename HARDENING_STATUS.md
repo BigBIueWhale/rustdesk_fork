@@ -308,6 +308,21 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 
 ## Recent Closures
 
+- **Windows VM artifact/provision scripts now fail closed on dirty build-host networking.**
+  A current host audit still shows the old harness-created system-libvirt
+  default network class (`virbr0`, `192.168.122.1:53/tcp+udp`,
+  `0.0.0.0%virbr0:67/udp`, and `net.ipv4.ip_forward=1`), and
+  `scripts/cleanup.sh --build-host-network` correctly refuses to proceed in this
+  session without noninteractive sudo. The stronger closure is now in the
+  harness itself: `scripts/lib.sh::assert_no_build_host_network_residual`
+  rejects that dirty state, and `build-windows-vm.sh`,
+  `provision-windows-vm.sh`, and `verify-windows-golden.sh` call it in
+  preflight before using the golden image, helper media, or libguestfs. Future
+  Windows artifact, golden-provision, or golden-verify claims therefore cannot
+  be made from a host with the stale libvirt default NAT network still active.
+  `scripts/verify.sh` gates the shared helper, its virbr0/DNS-DHCP/ip-forward
+  checks, and all three Windows-script preflight call sites.
+
 - **Desktop peer clipboard SET no longer mints arbitrary native special formats.**
   The desktop clipboard worker boundary remains the parser/platform boundary for
   normal clipboard SET, but the parent sanitizer now narrows what reaches that
@@ -1879,7 +1894,10 @@ installed `libvirt-daemon-system`, so cleanup is allowed to reverse it, but this
 session lacks noninteractive sudo. `scripts/cleanup.sh --build-host-network`
 now performs the manifest-gated teardown and fails closed without privileges;
 `scripts/host-provision.sh` no longer installs `libvirt-daemon-system` and
-pre/post-audits for this class before future provisioning.
+pre/post-audits for this class before future provisioning; and the Windows VM
+artifact/provision/verify scripts now fail closed in preflight when this dirty
+state is present. The residual is therefore host cleanup/evidence, not a silent
+future Windows-build bypass.
 
 The remaining external or pre-exposure evidence items are:
 

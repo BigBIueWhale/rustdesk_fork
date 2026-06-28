@@ -28,6 +28,7 @@ WINDOWS_BUILD_SOURCE="${WINDOWS_BUILD_SOURCE:-head}" # head = committed release 
 
 preflight() {
     require_cmd qemu-img virt-install virsh xorriso mkfs.vfat docker git
+    assert_no_build_host_network_residual
     [ -f "$GOLDEN" ] || die "golden image missing ($GOLDEN) — run scripts/provision-windows-vm.sh first"
     verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"
     docker image inspect "$WIN_HELPER_IMAGE" >/dev/null 2>&1 || die "Windows helper image missing: $WIN_HELPER_IMAGE — run scripts/online-fetch.sh"

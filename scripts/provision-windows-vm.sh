@@ -33,6 +33,7 @@ SRC_ISO="$STATE_DIR/src.iso"                      # the SRC CD: the committed re
 
 preflight() {
     require_cmd virt-install virsh qemu-img xorriso docker
+    assert_no_build_host_network_residual
     [ -d /usr/share/OVMF ] || die "OVMF (UEFI firmware) not found — run host-provision.sh first (R-B11)"
     [ -e /dev/kvm ] || die "/dev/kvm absent — Windows helper libguestfs inspection needs it"
     docker image inspect "$WIN_HELPER_IMAGE" >/dev/null 2>&1 || die "Windows helper image missing: $WIN_HELPER_IMAGE — run scripts/online-fetch.sh"

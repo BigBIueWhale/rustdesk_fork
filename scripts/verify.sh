@@ -3986,6 +3986,13 @@ grep -qF 'assert_no_system_libvirt_network' scripts/host-provision.sh || rb_stru
 grep -qF 'forbid_system_libvirt_package' scripts/host-provision.sh    || rb_struct="$rb_struct host-provision:no-system-libvirt-package-guard"
 grep -qF 'non_loopback_listeners' scripts/host-provision.sh           || rb_struct="$rb_struct host-provision:no-new-listener-audit"
 grep -qF 'require_cmd ip ss' scripts/host-provision.sh                || rb_struct="$rb_struct host-provision:no-ip-ss-preflight"
+grep -qF 'assert_no_build_host_network_residual' scripts/lib.sh       || rb_struct="$rb_struct lib:no-build-host-network-residual-helper"
+grep -qF 'virbr0 exists' scripts/lib.sh                               || rb_struct="$rb_struct lib:no-virbr0-residual-check"
+grep -qF '192[.]168[.]122[.]1:53|0[.]0[.]0[.]0%virbr0:67' scripts/lib.sh || rb_struct="$rb_struct lib:no-libvirt-listener-residual-check"
+grep -qF 'net.ipv4.ip_forward=1' scripts/lib.sh                       || rb_struct="$rb_struct lib:no-ip-forward-residual-check"
+for f in scripts/build-windows-vm.sh scripts/provision-windows-vm.sh scripts/verify-windows-golden.sh; do
+  grep -qF 'assert_no_build_host_network_residual' "$f" || rb_struct="$rb_struct ${f##*/}:no-build-host-network-preflight"
+done
 grep -qF 'provision_pkg libvirt-daemon-driver-qemu' scripts/host-provision.sh || rb_struct="$rb_struct host-provision:no-session-qemu-driver"
 grep -qF 'provision_pkg libvirt-daemon ' scripts/host-provision.sh           || rb_struct="$rb_struct host-provision:no-session-libvirt-daemon"
 grep -qF 'cleanup_build_host_network' scripts/cleanup.sh              || rb_struct="$rb_struct cleanup:no-build-host-network-cleanup"

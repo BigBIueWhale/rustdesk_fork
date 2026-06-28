@@ -35,12 +35,20 @@ FileContents response queue, and the FILEDESCRIPTOR path-traversal sanitizer
 build is reproducible for Debian/Android/Windows (R-B2), and the Apple
 SDK-free source-conformance gate covers the macOS/iOS code paths (R-R2).
 
-**Validation (2026-06-28):** `scripts/verify.sh` is **all-gates-green**
+**Validation (2026-06-28/29):** `scripts/verify.sh` is **all-gates-green**
 (PAKE KATs + wire handshake + two-key cipher + R-S16 policy funnel + main-crate
 compile under `linux-pkg-config,unix-file-copy-paste` + the R-A6 done-set
 greps). The full server binary builds and the loopback runtime smoke
 (`scripts/smoke-server.sh`) exercises the one-TCP/zero-UDP surface, fail-closed
-startup, graceful shutdown, and the no-plaintext wire-capture.
+startup, graceful shutdown, and the no-plaintext wire-capture. The reproducible
+release builds are re-proven at HEAD: the Debian `.deb` (Flutter) builds offline,
+and the Windows `.exe`/`.msi` R-B2 double-build is byte-identical (A==B: exe
+`b87a9b6b…`, msi `5d023302…`). The Windows VM build — the only path that
+compiles the `cfg(windows)` code — caught a worker-revert base-restore residual
+(a dropped `as Box<_>` trait-object coercion in the CLIPRDR clipboard dispatch,
+`libs/clipboard/src/platform/mod.rs`) that the Linux gates structurally cannot
+see; it is fixed (008e2ba) and the in-VM honesty gate prevented any stale
+artifact from shipping.
 
 ## Appendix C #2b (native-decode RCE surface) — ACCEPTED residual
 

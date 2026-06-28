@@ -914,7 +914,7 @@ pub fn has_vram() -> bool {
 #[cfg(feature = "flutter")]
 #[inline]
 pub fn supported_hwdecodings() -> (bool, bool) {
-    let decoding = crate::native_video_worker::NativeVideoDecoder::supported_decodings(
+    let decoding = scrap::codec::Decoder::supported_decodings(
         None,
         use_texture_render(),
         None,

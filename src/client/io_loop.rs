@@ -422,7 +422,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 let (_tx_holder, mut rx_clip_client) = mpsc::unbounded_channel::<i32>();
 
                 #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
-                let (_tx_holder, rx) = mpsc::channel(clipboard::CLIPRDR_MSG_CHANNEL_CAPACITY);
+                let (_tx_holder, rx) = mpsc::unbounded_channel();
                 #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
                 let mut rx_clip_client_holder = (Arc::new(TokioMutex::new(rx)), None);
                 #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
@@ -1952,12 +1952,12 @@ impl<T: InvokeUiSession> Remote<T> {
                                                 );
                                                 let _ = hbb_common::tokio::task::spawn_blocking(
                                                     move || {
-                                                        if let Err(err) = crate::native_printer_worker::send_raw_data_to_printer(
+                                                        if let Err(err) = crate::platform::windows::send_raw_data_to_printer(
                                                             printer_name,
                                                             data,
                                                         ) {
                                                             log::error!(
-                                                                "native printer worker refused remote print job: {}",
+                                                                "failed to send remote print job to printer: {}",
                                                                 err
                                                             );
                                                         }

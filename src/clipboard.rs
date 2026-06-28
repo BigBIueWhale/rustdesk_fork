@@ -2,9 +2,9 @@
 use arboard::{ClipboardData, ClipboardFormat};
 // R-X13 (§8): arboard LinuxClipboardKind/SetExtLinux were used only by the removed
 // set_with_owner_marker_for_linux (Wayland uinput clipboard-paste SET) — import dropped.
-use hbb_common::{bail, log, message_proto::*, ResultType};
 #[cfg(target_os = "android")]
 use hbb_common::protobuf::Message as _;
+use hbb_common::{bail, log, message_proto::*, ResultType};
 #[cfg(not(target_os = "android"))]
 use std::sync::{
     mpsc::{self, SyncSender, TrySendError},
@@ -33,6 +33,12 @@ pub(crate) const MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES: usize = 64 * 1024 * 1024;
 pub(crate) const MAX_NATIVE_CLIPBOARD_TOTAL_BYTES: usize = 64 * 1024 * 1024;
 pub(crate) const MAX_NATIVE_CLIPBOARD_ITEMS: usize = 16;
 pub(crate) const MAX_NATIVE_CLIPBOARD_SPECIAL_NAME_BYTES: usize = 256;
+#[cfg(all(target_os = "linux", feature = "unix-file-copy-paste"))]
+pub(crate) const MAX_FILE_CLIPBOARD_URLS: usize = 1024;
+#[cfg(all(target_os = "linux", feature = "unix-file-copy-paste"))]
+pub(crate) const MAX_FILE_CLIPBOARD_URL_BYTES: usize = 4096;
+#[cfg(all(target_os = "linux", feature = "unix-file-copy-paste"))]
+pub(crate) const MAX_FILE_CLIPBOARD_TOTAL_BYTES: usize = 4 * 1024 * 1024;
 #[cfg(not(target_os = "android"))]
 const CLIPBOARD_UPDATE_QUEUE_CAPACITY: usize = 1;
 #[cfg(target_os = "android")]
@@ -86,13 +92,7 @@ fn clipboard_content_for_native(
 ) -> Option<Vec<u8>> {
     let format = clipboard.format.enum_value().ok()?;
     let data = if clipboard.compress {
-        match hbb_common::compress::peer_decompress(&clipboard.content) {
-            Ok(data) => data,
-            Err(err) => {
-                log::warn!("dropping clipboard payload after peer zstd failure: {err}");
-                return None;
-            }
-        }
+        hbb_common::compress::decompress(&clipboard.content)
     } else {
         clipboard.content.to_vec()
     };
@@ -183,6 +183,66 @@ fn sanitize_multi_clipboards_for_native_proto(
     })
 }
 
+#[cfg(all(target_os = "linux", feature = "unix-file-copy-paste"))]
+fn is_linux_file_clipboard_url_for_side(file: &str, side: ClipboardSide) -> bool {
+    if file.is_empty() || file.len() > MAX_FILE_CLIPBOARD_URL_BYTES || file.as_bytes().contains(&0)
+    {
+        return false;
+    }
+    let exclude_path =
+        clipboard::platform::unix::fuse::get_exclude_paths(side == ClipboardSide::Client);
+    let prefix = exclude_path.as_str();
+    let Some(relative) = file
+        .strip_prefix(prefix)
+        .and_then(|value| value.strip_prefix('/'))
+    else {
+        return false;
+    };
+    if relative.is_empty() {
+        return false;
+    }
+    !relative
+        .split('/')
+        .any(|component| component.is_empty() || component == "." || component == "..")
+}
+
+#[cfg(all(target_os = "linux", feature = "unix-file-copy-paste"))]
+pub(crate) fn sanitize_linux_file_clipboard_urls(
+    files: Vec<String>,
+    side: ClipboardSide,
+) -> ResultType<Vec<String>> {
+    if files.is_empty() {
+        bail!("Linux file clipboard SET had no FUSE URLs");
+    }
+    if files.len() > MAX_FILE_CLIPBOARD_URLS {
+        bail!(
+            "Linux file clipboard SET had too many URLs: {} > {}",
+            files.len(),
+            MAX_FILE_CLIPBOARD_URLS
+        );
+    }
+
+    let mut total = 0usize;
+    let mut sanitized = Vec::with_capacity(files.len());
+    for file in files {
+        total = total
+            .checked_add(file.len())
+            .ok_or_else(|| hbb_common::anyhow::anyhow!("Linux file clipboard URL size overflow"))?;
+        if total > MAX_FILE_CLIPBOARD_TOTAL_BYTES {
+            bail!(
+                "Linux file clipboard SET exceeded aggregate URL bytes: {} > {}",
+                total,
+                MAX_FILE_CLIPBOARD_TOTAL_BYTES
+            );
+        }
+        if !is_linux_file_clipboard_url_for_side(&file, side) {
+            bail!("Linux file clipboard SET contained a non-local RustDesk FUSE URL");
+        }
+        sanitized.push(file);
+    }
+    Ok(sanitized)
+}
+
 #[cfg(target_os = "android")]
 fn android_service_clipboard_content_for_native(
     clipboard: hbb_common::message_proto::Clipboard,
@@ -192,7 +252,7 @@ fn android_service_clipboard_content_for_native(
         .enum_value()
         .map_err(|e| hbb_common::anyhow::anyhow!("invalid clipboard format: {e}"))?;
     let data = if clipboard.compress {
-        hbb_common::compress::android_isolated_worker_decompress(&clipboard.content)?
+        hbb_common::compress::decompress(&clipboard.content)
     } else {
         clipboard.content.to_vec()
     };
@@ -719,29 +779,34 @@ pub fn try_empty_clipboard_files(_side: ClipboardSide, _conn_id: i32) {
 
 #[cfg(all(feature = "unix-file-copy-paste", not(target_os = "windows")))]
 fn try_empty_clipboard_files_(_side: ClipboardSide, _conn_id: i32) {
-    let mut ctx = CLIPBOARD_CTX.lock().unwrap();
-    if ctx.is_none() {
-        match ClipboardContext::new() {
-            Ok(x) => {
-                *ctx = Some(x);
-            }
-            Err(e) => {
-                log::error!("Failed to create clipboard context: {}", e);
-                return;
+    #[cfg(target_os = "linux")]
+    {
+        use clipboard::platform::unix;
+        if unix::fuse::empty_local_files(_side == ClipboardSide::Client, _conn_id) {
+            match ClipboardContext::new() {
+                Ok(mut ctx) => ctx.try_empty_clipboard_files(_side),
+                Err(e) => log::debug!("Failed to empty file clipboard: {}", e),
             }
         }
+        return;
     }
-    #[allow(unused_mut)]
-    if let Some(mut ctx) = ctx.as_mut() {
-        #[cfg(target_os = "linux")]
-        {
-            use clipboard::platform::unix;
-            if unix::fuse::empty_local_files(_side == ClipboardSide::Client, _conn_id) {
-                ctx.try_empty_clipboard_files(_side);
+
+    #[cfg(target_os = "macos")]
+    {
+        let mut ctx = CLIPBOARD_CTX.lock().unwrap();
+        if ctx.is_none() {
+            match ClipboardContext::new() {
+                Ok(x) => {
+                    *ctx = Some(x);
+                }
+                Err(e) => {
+                    log::error!("Failed to create clipboard context: {}", e);
+                    return;
+                }
             }
         }
-        #[cfg(target_os = "macos")]
-        {
+        #[allow(unused_mut)]
+        if let Some(mut ctx) = ctx.as_mut() {
             ctx.try_empty_clipboard_files(_side);
             // No need to make sure the context is enabled.
             clipboard::ContextSend::proc(|context| -> ResultType<()> {
@@ -790,11 +855,9 @@ fn update_clipboard_(multi_clipboards: Vec<Clipboard>, side: ClipboardSide) {
     else {
         return;
     };
-    if let Err(e) = crate::native_clipboard_worker::update_clipboard(multi_clipboards, side) {
-        log::warn!(
-            "native clipboard worker failed; refusing in-process desktop clipboard update: {}",
-            e
-        );
+    let data = native_clipboard_data_from_multi_clipboards(multi_clipboards.clipboards);
+    if let Err(e) = set_native_clipboard_data(data, side) {
+        log::warn!("failed to set native clipboard: {}", e);
     }
 }
 
@@ -839,11 +902,10 @@ fn append_owner_marker(mut data: Vec<ClipboardData>, side: ClipboardSide) -> Vec
 
 #[cfg(not(target_os = "android"))]
 pub fn update_clipboard(multi_clipboards: Vec<Clipboard>, side: ClipboardSide) {
-    // Appendix C #2b / R-T0: peer clipboard SET is a hostile-peer path. The
-    // native conversion/platform SET runs behind `native_clipboard_worker`, but
-    // spawning a fresh OS thread for each peer message would be a pre-worker
-    // thread-amplification DoS. Use one bounded dispatcher and shed newest
-    // excess while a previous clipboard update is still being processed.
+    // R-T0: peer clipboard SET is a hostile-peer path. Spawning a fresh OS
+    // thread for each peer message would be a thread-amplification DoS, so use
+    // one bounded dispatcher and shed newest excess while a previous clipboard
+    // update is still being processed.
     enqueue_clipboard_update(
         ClipboardUpdateRequest::SetMulti {
             multi_clipboards,
@@ -896,8 +958,15 @@ fn handle_clipboard_update_request(request: ClipboardUpdateRequest) {
         } => update_clipboard_(multi_clipboards, side),
         #[cfg(all(target_os = "linux", feature = "unix-file-copy-paste"))]
         ClipboardUpdateRequest::SetFiles { files, side } => {
-            if let Err(e) = set_native_clipboard_data(vec![ClipboardData::FileUrl(files)], side) {
-                log::debug!("Failed to set file clipboard: {}", e);
+            match sanitize_linux_file_clipboard_urls(files, side) {
+                Ok(files) => {
+                    if let Err(e) =
+                        set_native_clipboard_data(vec![ClipboardData::FileUrl(files)], side)
+                    {
+                        log::debug!("Failed to set file clipboard: {}", e);
+                    }
+                }
+                Err(e) => log::debug!("dropping invalid file clipboard URLs: {}", e),
             }
         }
         #[cfg(all(feature = "unix-file-copy-paste", not(target_os = "windows")))]
@@ -1071,13 +1140,11 @@ impl ClipboardContext {
 
     #[cfg(all(feature = "unix-file-copy-paste", target_os = "linux"))]
     fn get_file_urls_set_by_rustdesk(data: Vec<ClipboardData>, side: ClipboardSide) -> Vec<String> {
-        let exclude_path =
-            clipboard::platform::unix::fuse::get_exclude_paths(side == ClipboardSide::Client);
         data.into_iter()
             .filter_map(|c| match c {
                 ClipboardData::FileUrl(urls) => Some(
                     urls.into_iter()
-                        .filter(|s| s.starts_with(&*exclude_path))
+                        .filter(|s| is_linux_file_clipboard_url_for_side(s, side))
                         .collect::<Vec<_>>(),
                 ),
                 _ => None,
@@ -1087,7 +1154,7 @@ impl ClipboardContext {
     }
 
     #[cfg(feature = "unix-file-copy-paste")]
-    fn try_empty_clipboard_files(&mut self, side: ClipboardSide) {
+    pub(crate) fn try_empty_clipboard_files(&mut self, side: ClipboardSide) {
         let _lock = ARBOARD_MTX.lock().unwrap();
         if let Ok(data) = self.get_formats(&[ClipboardFormat::FileUrl]) {
             let urls = Self::get_file_urls_set_by_rustdesk(data, side);
@@ -1384,14 +1451,13 @@ pub fn handle_msg_multi_clipboards(mcb: MultiClipboards) {
             return;
         }
     };
-    let sanitized =
-        match scrap::android::ffi::call_application_context_native_clipboard_sanitize(&payload) {
-            Ok(sanitized) => sanitized,
-            Err(err) => {
-                log::warn!("Android isolated clipboard SET service failed: {err}");
-                return;
-            }
-        };
+    let sanitized = match android_service_clipboard_sanitize_payload(&payload) {
+        Ok(sanitized) => sanitized,
+        Err(err) => {
+            log::warn!("Android peer clipboard SET sanitize failed: {err}");
+            return;
+        }
+    };
     if let Err(err) = android_validate_sanitized_clipboard_payload(&sanitized) {
         log::warn!("Android isolated clipboard SET service returned invalid payload: {err}");
         return;

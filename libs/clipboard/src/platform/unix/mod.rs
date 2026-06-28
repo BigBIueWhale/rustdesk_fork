@@ -2,9 +2,7 @@ use dashmap::DashMap;
 use lazy_static::lazy_static;
 
 mod filetype;
-pub use filetype::{
-    file_descriptor_worker_arg, run_file_descriptor_worker, FileDescription, FileType,
-};
+pub use filetype::{FileDescription, FileType};
 /// use FUSE for file pasting on these platforms
 #[cfg(target_os = "linux")]
 pub mod fuse;
@@ -13,7 +11,6 @@ pub mod macos;
 
 pub mod local_file;
 pub mod serv_files;
-pub use serv_files::{file_contents_worker_arg, run_file_contents_worker};
 
 /// has valid file attributes
 pub const FLAGS_FD_ATTRIBUTES: u32 = 0x04;

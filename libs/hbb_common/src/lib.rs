@@ -31,7 +31,6 @@ pub use futures_util;
 pub mod config;
 pub mod fs;
 pub mod mem;
-pub mod native_worker_sandbox;
 pub use lazy_static;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use mac_address;

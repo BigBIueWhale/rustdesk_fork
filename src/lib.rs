@@ -12,20 +12,6 @@ mod server;
 #[cfg(not(any(target_os = "ios")))]
 pub use self::server::*;
 mod client;
-mod native_audio_worker;
-#[cfg(target_os = "android")]
-mod native_clipboard_service;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-mod native_clipboard_worker;
-#[cfg(all(feature = "unix-file-copy-paste", target_family = "unix"))]
-mod native_file_contents_worker;
-#[cfg(all(feature = "unix-file-copy-paste", target_family = "unix"))]
-mod native_file_descriptor_worker;
-#[cfg(target_os = "windows")]
-mod native_printer_worker;
-mod native_video_worker;
-#[cfg(target_os = "android")]
-mod native_zstd_service;
 mod peer_text;
 // R-X5 / R-SV1 / R-D7a: LAN discovery is fully removed (the `mod lan` no-op stubs — discover()
 // and send_wol() — are gone, along with the sciter Discovered-tab UI, ui_interface get_lan_peers/

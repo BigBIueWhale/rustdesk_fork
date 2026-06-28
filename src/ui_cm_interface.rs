@@ -525,7 +525,7 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
         } else {
             log::debug!("Clipboard is enabled from client peer, actually useless: type 2");
             let rx_clip2;
-            (_tx_clip, rx_clip2) = mpsc::channel(clipboard::CLIPRDR_MSG_CHANNEL_CAPACITY);
+            (_tx_clip, rx_clip2) = mpsc::unbounded_channel();
             rx_clip_holder = (Arc::new(TokioMutex::new(rx_clip2)), None);
             rx_clip = rx_clip_holder.0.lock().await;
         }

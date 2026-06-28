@@ -18,7 +18,7 @@ use tokio::{
 use crate::{anyhow::anyhow, bail, get_version_number, message_proto::*, ResultType, Stream};
 // https://doc.rust-lang.org/std/os/windows/fs/trait.MetadataExt.html
 use crate::{
-    compress::{compress, peer_decompress},
+    compress::{compress, decompress},
     config::Config,
 };
 
@@ -1397,8 +1397,7 @@ impl TransferJob {
             }
         }
         if block.compressed {
-            let tmp = peer_decompress(&block.data)
-                .map_err(|err| anyhow!("peer zstd file block decompression failed: {err}"))?;
+            let tmp = decompress(&block.data);
             self.data_stream
                 .as_mut()
                 .ok_or(anyhow!("data stream is None"))?

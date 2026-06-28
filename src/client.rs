@@ -9,6 +9,7 @@ use cpal::{
     Device, Host, StreamConfig,
 };
 use crossbeam_queue::ArrayQueue;
+use magnum_opus::{Channels::*, Decoder as AudioDecoder};
 #[cfg(not(target_os = "linux"))]
 use ringbuf::{ring_buffer::RbBase, Rb};
 use serde::{Deserialize, Serialize};
@@ -28,8 +29,6 @@ use crate::{
     check_port,
     common::input::{MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_TYPE_DOWN, MOUSE_TYPE_UP},
     is_keyboard_mode_supported,
-    native_audio_worker::NativeOpusDecoder as AudioDecoder,
-    native_video_worker::NativeVideoDecoder as Decoder,
     ui_interface::{get_builtin_option, resolve_avatar_url, use_texture_render},
     ui_session_interface::{InvokeUiSession, Session},
 };
@@ -72,6 +71,7 @@ use hbb_common::{
 use hbb_common::tokio;
 pub use helper::*;
 use scrap::{
+    codec::Decoder,
     record::{Recorder, RecorderContext},
     CodecFormat, ImageFormat, ImageRgb, ImageTexture,
 };
@@ -642,8 +642,7 @@ impl ClientClipboardHandler {
 /// Maximum compressed Opus packet bytes handed to libopus for one AudioFrame.
 /// Opus packets are small; this is deliberately generous while still making the
 /// native decoder handoff length-bounded.
-pub(crate) const MAX_NATIVE_OPUS_PACKET_BYTES: usize =
-    crate::native_audio_worker::MAX_OPUS_PACKET_BYTES;
+pub(crate) const MAX_NATIVE_OPUS_PACKET_BYTES: usize = 4096;
 
 #[inline]
 pub(crate) fn native_opus_packet_within_limit(len: usize) -> bool {
@@ -945,7 +944,7 @@ impl AudioHandler {
             }
         }
         self.audio_format = Some(native_opus_format_key(f.sample_rate, f.channels));
-        match AudioDecoder::new(f.sample_rate, f.channels) {
+        match AudioDecoder::new(f.sample_rate, if f.channels > 1 { Stereo } else { Mono }) {
             Ok(d) => {
                 let buffer = vec![0.; f.sample_rate as usize * f.channels as usize];
                 self.audio_decoder = Some((d, buffer));

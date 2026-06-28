@@ -158,11 +158,14 @@ macos_worker_sandbox="$REPO/libs/hbb_common/src/native_worker_sandbox.rs"
 if grep -qF 'apply_macos_worker_restricted_sandbox()' "$macos_worker_sandbox" \
    && grep -qF 'MACOS_WORKER_SANDBOX_PROFILE' "$macos_worker_sandbox" \
    && grep -qF '(deny network*)' "$macos_worker_sandbox" \
+   && grep -qF '(deny file-write*)' "$macos_worker_sandbox" \
+   && grep -qF '(deny process-fork*)' "$macos_worker_sandbox" \
    && grep -qF '(deny process-exec*)' "$macos_worker_sandbox" \
    && grep -qF 'sandbox_init(' "$macos_worker_sandbox" \
    && grep -qF 'sandbox_free_error' "$macos_worker_sandbox" \
+   && grep -qF 'verify_macos_worker_file_write_denied()' "$macos_worker_sandbox" \
    && grep -qF 'verify_macos_worker_process_exec_denied()' "$macos_worker_sandbox"; then
-  note "ok  Appendix C #2b macOS worker applies custom Seatbelt network/process-exec denial before hostile parser input"
+  note "ok  Appendix C #2b macOS worker applies custom Seatbelt network/file-write/process denial before hostile parser input"
 else
   echo "  FAIL Appendix C #2b: macOS native worker restricted Seatbelt entry hook is missing"
   rc=1

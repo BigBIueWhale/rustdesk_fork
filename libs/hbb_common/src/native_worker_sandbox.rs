@@ -805,6 +805,8 @@ const MACOS_WORKER_SANDBOX_PROFILE: &str = r#"
 (version 1)
 (allow default)
 (deny network*)
+(deny file-write*)
+(deny process-fork*)
 (deny process-exec*)
 "#;
 
@@ -858,6 +860,7 @@ fn apply_macos_worker_restricted_sandbox() -> std::io::Result<()> {
 #[cfg(target_os = "macos")]
 fn verify_macos_worker_restricted_sandbox() -> std::io::Result<()> {
     verify_macos_worker_network_denied()?;
+    verify_macos_worker_file_write_denied()?;
     verify_macos_worker_process_exec_denied()
 }
 
@@ -879,6 +882,40 @@ fn verify_macos_worker_network_denied() -> std::io::Result<()> {
         _ => Err(std::io::Error::new(
             err.kind(),
             format!("macOS worker restricted socket probe failed for an unexpected reason: {err}"),
+        )),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn verify_macos_worker_file_write_denied() -> std::io::Result<()> {
+    let path = format!(
+        "/tmp/rustdesk-native-worker-sandbox-write-probe-{}",
+        std::process::id()
+    );
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+    {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&path);
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "macOS worker restricted sandbox still permits filesystem writes",
+            ))
+        }
+        Err(err)
+            if err.kind() == std::io::ErrorKind::PermissionDenied
+                || matches!(
+                    err.raw_os_error(),
+                    Some(code) if code == crate::libc::EPERM || code == crate::libc::EACCES
+                ) =>
+        {
+            Ok(())
+        }
+        Err(err) => Err(std::io::Error::new(
+            err.kind(),
+            format!("macOS worker filesystem-write probe failed for an unexpected reason: {err}"),
         )),
     }
 }

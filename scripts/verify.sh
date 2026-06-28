@@ -2034,6 +2034,18 @@ grep -qF 'write_command_frame(&mut stdin, command.seq, &command.command)' libs/c
   r_native_bounds="$r_native_bounds cliprdr-windows-worker-parent-writer"
 grep -qF 'read_output_frame(&mut stdout)' libs/clipboard/src/platform/windows.rs ||
   r_native_bounds="$r_native_bounds cliprdr-windows-worker-parent-reader"
+grep -qF 'CLIPRDR worker returned semantic error; killed child' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-semantic-error-keeps-child"
+grep -qF 'CLIPRDR worker command thread unavailable; killed child' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-command-send-keeps-child"
+grep -qF 'fn request_unit(&mut self, command: WorkerCommand)' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-no-unit-response-validator"
+grep -qF 'CLIPRDR worker returned bool for unit response; killed child' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-unit-shape-keeps-child"
+grep -qF 'fn request_bool(&mut self, command: WorkerCommand, operation: &str)' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-no-bool-response-validator"
+grep -qF 'CLIPRDR worker returned no bool for {}; killed child' libs/clipboard/src/platform/windows.rs ||
+  r_native_bounds="$r_native_bounds cliprdr-windows-bool-shape-keeps-child"
 grep -qF 'worker_event_sender_lock()' libs/clipboard/src/platform/windows.rs ||
   r_native_bounds="$r_native_bounds cliprdr-windows-worker-event-sender"
 grep -qF 'fn clear_event_sender()' libs/clipboard/src/platform/windows.rs ||

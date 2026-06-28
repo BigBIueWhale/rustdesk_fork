@@ -780,22 +780,28 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   bounded stdio frames, a bounded child-output queue, and bounded parent
   per-connection `ClipboardFile` queues. The same retained Windows Job Object
   process-count/memory/kill-on-close/UI-restriction guard used by the other
-  same-artifact workers is kept for the child lifetime. The parent kills the child on timeout
-  or transport failure, clamps the CLIPRDR wait to the fixed 30-second constant
-  plus a 3-second response grace, clears the child's global event sender before
-  joining the output thread, and routes the `conn_id == 0` format-list broadcast
-  through the proxy event path instead of a process-local `VEC_MSG_CHANNEL`
-  write. Disconnect cleanup now enqueues a bounded `ClearPendingConn` worker
-  command and `EmptyClipboard` also clears child-side pending request accounting,
-  so cleanup targets the process that owns the pending map. The raw
+  same-artifact workers is kept for the child lifetime. The parent kills the
+  child on timeout, command-channel/transport failure, child-reported semantic
+  failure (`STATUS_ERROR`), and impossible success response shapes: unit commands
+  must return unit, and `EmptyClipboard` must return a bool. This prevents a stale
+  native CLIPRDR parser child from surviving after the lower-trust worker says
+  it failed semantically or violates its response protocol. The parent clamps
+  the CLIPRDR wait to the fixed 30-second constant plus a 3-second response
+  grace, clears the child's global event sender before joining the output
+  thread, and routes the `conn_id == 0` format-list broadcast through the proxy
+  event path instead of a process-local `VEC_MSG_CHANNEL` write. Disconnect
+  cleanup now enqueues a bounded `ClearPendingConn` worker command and
+  `EmptyClipboard` also clears child-side pending request accounting, so cleanup
+  targets the process that owns the pending map. The raw
   `CliprdrClientContext::create` initializer plus the direct server helper
   functions are no longer public Rust APIs; parent code is expected to enter
   through the worker proxy factory.
   `scripts/verify.sh` gates the proxy factory, child native-context ownership,
   worker entrypoint, bounded frames/queues on both sides of the worker boundary,
-  callback event forwarding, fixed/clamped timeout markers, event-sender cleanup,
-  child pending cleanup, absence of public native-context constructors/helpers,
-  and absence of direct `VEC_MSG_CHANNEL` use in the Windows CLIPRDR module.
+  callback event forwarding, fixed/clamped timeout markers, semantic-failure
+  child kill, unit/bool response-shape validators, event-sender cleanup, child
+  pending cleanup, absence of public native-context constructors/helpers, and
+  absence of direct `VEC_MSG_CHANNEL` use in the Windows CLIPRDR module.
   This closes the tracked Windows CLIPRDR process-boundary residual; it is still
   not a Windows syscall allowlist sandbox.
 - **Windows validation builds the tracked worktree when requested.**

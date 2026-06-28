@@ -1545,12 +1545,11 @@ mod cliprdr_worker {
             self.process
                 .get_mut()
                 .map_err(|_| anyhow!("CLIPRDR worker process lock poisoned"))?
-                .request(WorkerCommand::Init {
+                .request_unit(WorkerCommand::Init {
                     enable_files,
                     enable_others,
                     response_wait_timeout_secs,
-                })?;
-            Ok(())
+                })
         }
 
         fn process(&self) -> Result<MutexGuard<'_, CliprdrWorkerProcess>, CliprdrError> {
@@ -1571,21 +1570,14 @@ mod cliprdr_worker {
     impl CliprdrServiceContext for CliprdrWorkerProxy {
         fn set_is_stopped(&mut self) -> Result<(), CliprdrError> {
             self.process()?
-                .request(WorkerCommand::SetStopped)
-                .map(|_| ())
+                .request_unit(WorkerCommand::SetStopped)
                 .map_err(cliprdr_worker_error)
         }
 
         fn empty_clipboard(&mut self, conn_id: i32) -> Result<bool, CliprdrError> {
-            let response = self
-                .process()?
-                .request(WorkerCommand::EmptyClipboard { conn_id })
-                .map_err(cliprdr_worker_error)?;
-            response
-                .bool_value
-                .ok_or_else(|| CliprdrError::CommonError {
-                    description: "CLIPRDR worker returned no bool for empty_clipboard".to_owned(),
-                })
+            self.process()?
+                .request_bool(WorkerCommand::EmptyClipboard { conn_id }, "empty_clipboard")
+                .map_err(cliprdr_worker_error)
         }
 
         fn server_clip_file(
@@ -1594,8 +1586,7 @@ mod cliprdr_worker {
             msg: ClipboardFile,
         ) -> Result<(), CliprdrError> {
             self.process()?
-                .request(WorkerCommand::ServerClipFile { conn_id, msg })
-                .map(|_| ())
+                .request_unit(WorkerCommand::ServerClipFile { conn_id, msg })
                 .map_err(cliprdr_worker_error)
         }
 
@@ -1605,7 +1596,7 @@ mod cliprdr_worker {
 
         fn cancel(&mut self) {
             if let Ok(mut process) = self.process() {
-                let _ = process.request(WorkerCommand::Cancel);
+                let _ = process.request_unit(WorkerCommand::Cancel);
             }
         }
     }
@@ -1681,6 +1672,31 @@ mod cliprdr_worker {
             })
         }
 
+        fn request_unit(&mut self, command: WorkerCommand) -> ResultType<()> {
+            let response = self.request(command)?;
+            if response.bool_value.is_some() {
+                self.kill_child();
+                return Err(anyhow!(
+                    "CLIPRDR worker returned bool for unit response; killed child"
+                ));
+            }
+            Ok(())
+        }
+
+        fn request_bool(&mut self, command: WorkerCommand, operation: &str) -> ResultType<bool> {
+            let response = self.request(command)?;
+            match response.bool_value {
+                Some(value) => Ok(value),
+                None => {
+                    self.kill_child();
+                    Err(anyhow!(
+                        "CLIPRDR worker returned no bool for {}; killed child",
+                        operation
+                    ))
+                }
+            }
+        }
+
         fn request(&mut self, command: WorkerCommand) -> ResultType<WorkerResponse> {
             self.next_seq = self
                 .next_seq
@@ -1697,11 +1713,19 @@ mod cliprdr_worker {
             }
             if let Err(err) = self.command_tx.send(ParentCommand { seq, command }) {
                 remove_pending(&self.pending, seq);
-                return Err(anyhow!("CLIPRDR worker command thread unavailable: {err}"));
+                self.kill_child();
+                return Err(anyhow!(
+                    "CLIPRDR worker command thread unavailable; killed child: {err}"
+                ));
             }
             match reply_rx.recv_timeout(self.response_timeout) {
                 Ok(Ok(response)) => Ok(response),
-                Ok(Err(err)) => Err(anyhow!("{err}")),
+                Ok(Err(err)) => {
+                    self.kill_child();
+                    Err(anyhow!(
+                        "CLIPRDR worker returned semantic error; killed child: {err}"
+                    ))
+                }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     remove_pending(&self.pending, seq);
                     self.kill_child();

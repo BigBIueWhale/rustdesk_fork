@@ -1771,6 +1771,13 @@ ra6_clean 'relay-hint' 'R-G6 relay-fallback hint emission' || rc=1
 # its table entries would orphan a referenced key. The `{}` placeholders are regex-escaped (\{\})
 # because ra6_clean matches with grep -E.
 ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-2fa-desc|enable-bot-tip|wrong-2fa-code|enter-2fa-title|cancel-2fa-confirm-tip|powered_by_me|download-new-version-failed-tip|new-version-of-\{\}-tip|upgrade_remote_rustdesk_client_to_\{\}_tip|upgrade_rustdesk_server_pro_to_\{\}_tip)"' '§19 dead lang keys' || rc=1
+# §19 dead-lang-key sweep (R-X9/R-X11 elevation/UAC UI): the peer-triggered elevation AND the Windows
+# attended-mode "accept and elevate" / UAC-prompt UI are excised — the host runs as a root systemd
+# service (R-D1/R-X10), so per-session elevation is dead. These 7 keys have no live translate() caller.
+# KEPT (deliberately NOT listed): elevated_foreground_window_tip — io_loop.rs (2157/2170) renders it
+# LIVE to the VIEWER when a controlled host's elevated window can't take input (a direct-control tip,
+# not an elevation prompt), so removing it would orphan a referenced key.
+ra6_clean '"(request_elevation_tip|still_click_uac_tip|wait_accept_uac_tip|elevation_username_tip|No need to elevate|Accept and Elevate|accept_and_elevate_btn_tooltip)"' '§19 dead elevation/UAC lang keys (R-X9/R-X11)' || rc=1
 # §19 dead lang keys (post-sciter-excision sweep): the rendezvous/relay/lan/WS UI that referenced these
 # was excised from BOTH flutter AND sciter — empty_lan_tip (R-X5 lan tab), connecting_status/
 # not_ready_status (R-G2/R-G8 status), the ID/Relay Server + ID Server + Relay Server + Relay Connection

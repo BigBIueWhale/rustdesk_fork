@@ -2502,7 +2502,7 @@ grep -qF 'native video worker decode failed; killed child' src/native_video_work
   r_native_video_worker="$r_native_video_worker semantic-decode-error-keeps-child"
 grep -qF 'hbb_common::native_worker_sandbox::apply_to_command(&mut command)' src/native_video_worker.rs ||
   r_native_video_worker="$r_native_video_worker linux-worker-sandbox-call"
-grep -qF 'hbb_common::native_worker_sandbox::enter_worker_process()?' src/native_video_worker.rs ||
+grep -qF 'hbb_common::native_worker_sandbox::enter_pure_parser_worker_process()?' src/native_video_worker.rs ||
   r_native_video_worker="$r_native_video_worker linux-worker-entry-sandbox"
 grep -qF 'mpsc::sync_channel::<VideoWorkerIoRequest>(1)' src/native_video_worker.rs ||
   r_native_video_worker="$r_native_video_worker bounded-io-thread-channel"
@@ -2742,7 +2742,7 @@ grep -qF 'native Opus worker decode failed; killed child' src/native_audio_worke
   r_native_opus_worker="$r_native_opus_worker semantic-decode-error-keeps-child"
 grep -qF 'hbb_common::native_worker_sandbox::apply_to_command(&mut command)' src/native_audio_worker.rs ||
   r_native_opus_worker="$r_native_opus_worker linux-worker-sandbox-call"
-grep -qF 'hbb_common::native_worker_sandbox::enter_worker_process()?' src/native_audio_worker.rs ||
+grep -qF 'hbb_common::native_worker_sandbox::enter_pure_parser_worker_process()?' src/native_audio_worker.rs ||
   r_native_opus_worker="$r_native_opus_worker linux-worker-entry-sandbox"
 grep -qF 'mpsc::sync_channel::<OpusWorkerIoRequest>(1)' src/native_audio_worker.rs ||
   r_native_opus_worker="$r_native_opus_worker bounded-io-thread-channel"
@@ -2875,7 +2875,7 @@ grep -qF 'native zstd worker decompress timed out after' libs/hbb_common/src/com
   r_native_zstd_worker="$r_native_zstd_worker timeout-kills-worker"
 grep -qF 'crate::native_worker_sandbox::apply_to_command(&mut command)' libs/hbb_common/src/compress.rs ||
   r_native_zstd_worker="$r_native_zstd_worker linux-worker-sandbox-call"
-grep -qF 'crate::native_worker_sandbox::enter_worker_process()?' libs/hbb_common/src/compress.rs ||
+grep -qF 'crate::native_worker_sandbox::enter_pure_parser_worker_process()?' libs/hbb_common/src/compress.rs ||
   r_native_zstd_worker="$r_native_zstd_worker linux-worker-entry-sandbox"
 grep -qF 'mpsc::sync_channel::<ZstdWorkerIoRequest>(1)' libs/hbb_common/src/compress.rs ||
   r_native_zstd_worker="$r_native_zstd_worker bounded-io-thread-channel"
@@ -3248,7 +3248,7 @@ grep -qF 'guard.cooldown.mark_failed(WORKER_FAILURE_COOLDOWN)' libs/clipboard/sr
   r_native_filedesc_worker="$r_native_filedesc_worker failure-cooldown-mark"
 grep -qF 'hbb_common::native_worker_sandbox::apply_to_command(&mut command)' libs/clipboard/src/platform/unix/filetype.rs ||
   r_native_filedesc_worker="$r_native_filedesc_worker linux-worker-sandbox-call"
-grep -qF 'hbb_common::native_worker_sandbox::enter_worker_process()' libs/clipboard/src/platform/unix/filetype.rs ||
+grep -qF 'hbb_common::native_worker_sandbox::enter_pure_parser_worker_process()' libs/clipboard/src/platform/unix/filetype.rs ||
   r_native_filedesc_worker="$r_native_filedesc_worker linux-worker-entry-sandbox"
 grep -qF 'mpsc::sync_channel::<FileDescriptorWorkerIoRequest>(1)' libs/clipboard/src/platform/unix/filetype.rs ||
   r_native_filedesc_worker="$r_native_filedesc_worker bounded-io-thread-channel"
@@ -3576,12 +3576,16 @@ grep -qF 'linux_worker_entry_reports_no_new_privs_non_dumpable_and_seccomp' libs
   r_native_worker_platform="$r_native_worker_platform linux-entry-readback-test"
 grep -qF 'linux_worker_seccomp_blocks_process_spawn_at_runtime' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform linux-process-spawn-test"
-grep -qF 'apply_macos_worker_restricted_sandbox()' libs/hbb_common/src/native_worker_sandbox.rs ||
+grep -qF 'apply_macos_worker_restricted_sandbox(' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-seatbelt-entry-call"
 grep -qF 'MACOS_WORKER_SANDBOX_PROFILE' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-restricted-profile"
+grep -qF 'MACOS_PURE_PARSER_WORKER_SANDBOX_PROFILE' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-pure-parser-profile"
 grep -qF '(deny network*)' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-network-deny-profile"
+grep -qF '(deny file-read*)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-file-read-deny-profile"
 grep -qF '(deny file-write*)' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-file-write-deny-profile"
 grep -qF '(deny process-fork*)' libs/hbb_common/src/native_worker_sandbox.rs ||
@@ -3592,10 +3596,12 @@ grep -qF 'sandbox_init(' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-sandbox-init"
 grep -qF 'sandbox_free_error' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-sandbox-error-cleanup"
-grep -qF 'verify_macos_worker_restricted_sandbox()' libs/hbb_common/src/native_worker_sandbox.rs ||
+grep -qF 'verify_macos_worker_restricted_sandbox(' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-restricted-runtime-probe-call"
 grep -qF 'verify_macos_worker_network_denied()?' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-network-runtime-probe-call"
+grep -qF 'verify_macos_worker_file_read_denied()?' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-file-read-runtime-probe-call"
 grep -qF 'verify_macos_worker_file_write_denied()?' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-file-write-runtime-probe-call"
 grep -qF 'verify_macos_worker_process_exec_denied()' libs/hbb_common/src/native_worker_sandbox.rs ||
@@ -3604,6 +3610,10 @@ grep -qF 'macOS worker restricted sandbox still permits AF_INET socket' libs/hbb
   r_native_worker_platform="$r_native_worker_platform macos-af-inet-denial-probe"
 grep -qF 'macOS worker restricted socket probe failed for an unexpected reason' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-af-inet-denial-error-check"
+grep -qF 'macOS pure-parser worker sandbox still permits filesystem reads' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-file-read-denial-probe"
+grep -qF 'macOS worker filesystem-read probe failed for an unexpected reason' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-file-read-denial-error-check"
 grep -qF 'macOS worker restricted sandbox still permits filesystem writes' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-file-write-denial-probe"
 grep -qF 'macOS worker filesystem-write probe failed for an unexpected reason' libs/hbb_common/src/native_worker_sandbox.rs ||
@@ -3618,6 +3628,17 @@ grep -qF 'SOCK_STREAM' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-socket-stream-probe"
 grep -qF 'not(any(target_os = "linux", target_os = "android", target_os = "ios"))' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform desktop-unix-excludes-mobile-cfg"
+grep -qF 'hbb_common::native_worker_sandbox::enter_pure_parser_worker_process()?' src/native_video_worker.rs ||
+  r_native_worker_platform="$r_native_worker_platform video-worker-not-pure-parser-entry"
+grep -qF 'hbb_common::native_worker_sandbox::enter_pure_parser_worker_process()?' src/native_audio_worker.rs ||
+  r_native_worker_platform="$r_native_worker_platform opus-worker-not-pure-parser-entry"
+grep -qF 'crate::native_worker_sandbox::enter_pure_parser_worker_process()?' libs/hbb_common/src/compress.rs ||
+  r_native_worker_platform="$r_native_worker_platform zstd-worker-not-pure-parser-entry"
+grep -qF 'hbb_common::native_worker_sandbox::enter_pure_parser_worker_process()' libs/clipboard/src/platform/unix/filetype.rs ||
+  r_native_worker_platform="$r_native_worker_platform filedesc-worker-not-pure-parser-entry"
+if grep -qF 'enter_pure_parser_worker_process' libs/clipboard/src/platform/unix/serv_files.rs; then
+  r_native_worker_platform="$r_native_worker_platform filecontents-worker-would-deny-local-file-read"
+fi
 if grep -qF 'cfg(all(unix, not(target_os = "linux")))' libs/hbb_common/src/native_worker_sandbox.rs; then
   r_native_worker_platform="$r_native_worker_platform broad-mobile-unix-cfg"
 fi
@@ -3717,7 +3738,7 @@ grep -qF 'failed to constrain file-content worker' libs/clipboard/src/platform/u
 if [ -n "$r_native_worker_platform" ]; then
   echo "  FAIL Appendix C #2b: native worker platform confinement hooks regressed:$r_native_worker_platform"; rc=1
 else
-  echo "  ok  Appendix C #2b native worker parents fail closed on post-spawn confinement failure; Windows workers keep read-back Job Object process-count/memory/kill-on-close/die-on-unhandled-exception/UI-restriction guards, read-back low-integrity token transition, read-back token privilege disablement preserving only traverse notification, and read-back dynamic-code/extension-point/strict-handle/no-child-process/image-load mitigations; Linux worker entry read-back confirms no-new-privs/non-dumpable/seccomp and process-spawn denial; macOS worker entry applies a custom Seatbelt network/filesystem-write/process-fork/process-exec denial and probes permission-denied AF_INET/file-write/process-exec denial; desktop Unix workers excluding Android/iOS get RLIMIT/fd cleanup"
+  echo "  ok  Appendix C #2b native worker parents fail closed on post-spawn confinement failure; Windows workers keep read-back Job Object process-count/memory/kill-on-close/die-on-unhandled-exception/UI-restriction guards, read-back low-integrity token transition, read-back token privilege disablement preserving only traverse notification, and read-back dynamic-code/extension-point/strict-handle/no-child-process/image-load mitigations; Linux worker entry read-back confirms no-new-privs/non-dumpable/seccomp and process-spawn denial; macOS worker entry applies custom Seatbelt network/filesystem-write/process-fork/process-exec denial, pure parser workers add read-back filesystem-read denial, and probes permission-denied AF_INET/file-read/file-write/process-exec denial; desktop Unix workers excluding Android/iOS get RLIMIT/fd cleanup"
 fi
 # R-R2a (§12 / sovereignty): the .deb + systemd is the SOLE Linux package model. The AppImage
 # recipe (whose `update-information` self-updater collides with R-X1 "the fork ships its own

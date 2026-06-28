@@ -155,19 +155,27 @@ fi
 
 echo "== (2c) Appendix C #2b macOS worker Seatbelt assertion =="
 macos_worker_sandbox="$REPO/libs/hbb_common/src/native_worker_sandbox.rs"
-if grep -qF 'apply_macos_worker_restricted_sandbox()' "$macos_worker_sandbox" \
+if grep -qF 'apply_macos_worker_restricted_sandbox(' "$macos_worker_sandbox" \
    && grep -qF 'MACOS_WORKER_SANDBOX_PROFILE' "$macos_worker_sandbox" \
+   && grep -qF 'MACOS_PURE_PARSER_WORKER_SANDBOX_PROFILE' "$macos_worker_sandbox" \
    && grep -qF '(deny network*)' "$macos_worker_sandbox" \
+   && grep -qF '(deny file-read*)' "$macos_worker_sandbox" \
    && grep -qF '(deny file-write*)' "$macos_worker_sandbox" \
    && grep -qF '(deny process-fork*)' "$macos_worker_sandbox" \
    && grep -qF '(deny process-exec*)' "$macos_worker_sandbox" \
    && grep -qF 'sandbox_init(' "$macos_worker_sandbox" \
    && grep -qF 'sandbox_free_error' "$macos_worker_sandbox" \
+   && grep -qF 'verify_macos_worker_file_read_denied()' "$macos_worker_sandbox" \
    && grep -qF 'verify_macos_worker_file_write_denied()' "$macos_worker_sandbox" \
-   && grep -qF 'verify_macos_worker_process_exec_denied()' "$macos_worker_sandbox"; then
-  note "ok  Appendix C #2b macOS worker applies custom Seatbelt network/file-write/process denial before hostile parser input"
+   && grep -qF 'verify_macos_worker_process_exec_denied()' "$macos_worker_sandbox" \
+   && grep -qF 'enter_pure_parser_worker_process()' "$REPO/src/native_video_worker.rs" \
+   && grep -qF 'enter_pure_parser_worker_process()' "$REPO/src/native_audio_worker.rs" \
+   && grep -qF 'enter_pure_parser_worker_process()' "$REPO/libs/hbb_common/src/compress.rs" \
+   && grep -qF 'enter_pure_parser_worker_process()' "$REPO/libs/clipboard/src/platform/unix/filetype.rs" \
+   && ! grep -qF 'enter_pure_parser_worker_process' "$REPO/libs/clipboard/src/platform/unix/serv_files.rs"; then
+  note "ok  Appendix C #2b macOS worker applies custom Seatbelt network/file-write/process denial, and pure parser workers add filesystem-read denial before hostile parser input"
 else
-  echo "  FAIL Appendix C #2b: macOS native worker restricted Seatbelt entry hook is missing"
+  echo "  FAIL Appendix C #2b: macOS native worker restricted/strict Seatbelt entry hooks are missing or misrouted"
   rc=1
 fi
 

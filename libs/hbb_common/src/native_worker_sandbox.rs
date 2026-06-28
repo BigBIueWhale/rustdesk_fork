@@ -110,7 +110,20 @@ pub fn apply_to_spawned_child(child: &mut Child) -> std::io::Result<WorkerProces
 /// role: the filter blocks future exec/process creation, so installing it from
 /// `pre_exec` would prevent `Command` from starting the worker binary at all.
 pub fn enter_worker_process() -> std::io::Result<()> {
-    enter_worker_process_platform()
+    enter_worker_process_platform(NativeWorkerSandboxProfile::Default)
+}
+
+/// Enter the worker sandbox for hostile-byte parser roles that should not need
+/// local filesystem reads. On macOS this selects the stricter Seatbelt profile
+/// and verifies that a new filesystem read is denied before parsing starts.
+pub fn enter_pure_parser_worker_process() -> std::io::Result<()> {
+    enter_worker_process_platform(NativeWorkerSandboxProfile::PureParserNoFileRead)
+}
+
+#[derive(Clone, Copy)]
+enum NativeWorkerSandboxProfile {
+    Default,
+    PureParserNoFileRead,
 }
 
 #[cfg(target_os = "linux")]
@@ -167,20 +180,20 @@ fn apply_to_spawned_child_platform(_child: &mut Child) -> std::io::Result<Worker
 }
 
 #[cfg(target_os = "linux")]
-fn enter_worker_process_platform() -> std::io::Result<()> {
+fn enter_worker_process_platform(_profile: NativeWorkerSandboxProfile) -> std::io::Result<()> {
     close_inherited_worker_fds()?;
     apply_linux_worker_syscall_filter()?;
     verify_linux_worker_entry_sandbox()
 }
 
 #[cfg(target_os = "macos")]
-fn enter_worker_process_platform() -> std::io::Result<()> {
+fn enter_worker_process_platform(profile: NativeWorkerSandboxProfile) -> std::io::Result<()> {
     close_inherited_worker_fds()?;
-    apply_macos_worker_restricted_sandbox()
+    apply_macos_worker_restricted_sandbox(profile)
 }
 
 #[cfg(target_os = "windows")]
-fn enter_worker_process_platform() -> std::io::Result<()> {
+fn enter_worker_process_platform(_profile: NativeWorkerSandboxProfile) -> std::io::Result<()> {
     set_windows_worker_low_integrity()?;
     disable_windows_worker_token_privileges()?;
     apply_windows_worker_process_mitigations()
@@ -195,7 +208,7 @@ fn enter_worker_process_platform() -> std::io::Result<()> {
         target_os = "ios"
     ))
 ))]
-fn enter_worker_process_platform() -> std::io::Result<()> {
+fn enter_worker_process_platform(_profile: NativeWorkerSandboxProfile) -> std::io::Result<()> {
     close_inherited_worker_fds()
 }
 
@@ -213,7 +226,7 @@ fn enter_worker_process_platform() -> std::io::Result<()> {
         ))
     )
 )))]
-fn enter_worker_process_platform() -> std::io::Result<()> {
+fn enter_worker_process_platform(_profile: NativeWorkerSandboxProfile) -> std::io::Result<()> {
     Ok(())
 }
 
@@ -990,7 +1003,36 @@ const MACOS_WORKER_SANDBOX_PROFILE: &str = r#"
 "#;
 
 #[cfg(target_os = "macos")]
-fn apply_macos_worker_restricted_sandbox() -> std::io::Result<()> {
+const MACOS_PURE_PARSER_WORKER_SANDBOX_PROFILE: &str = r#"
+(version 1)
+(allow default)
+(deny network*)
+(deny file-read*)
+(deny file-write*)
+(deny process-fork*)
+(deny process-exec*)
+"#;
+
+#[cfg(target_os = "macos")]
+impl NativeWorkerSandboxProfile {
+    fn macos_profile(self) -> &'static str {
+        match self {
+            NativeWorkerSandboxProfile::Default => MACOS_WORKER_SANDBOX_PROFILE,
+            NativeWorkerSandboxProfile::PureParserNoFileRead => {
+                MACOS_PURE_PARSER_WORKER_SANDBOX_PROFILE
+            }
+        }
+    }
+
+    fn denies_file_read(self) -> bool {
+        matches!(self, NativeWorkerSandboxProfile::PureParserNoFileRead)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn apply_macos_worker_restricted_sandbox(
+    profile_kind: NativeWorkerSandboxProfile,
+) -> std::io::Result<()> {
     use std::{
         ffi::{CStr, CString},
         ptr,
@@ -1006,7 +1048,7 @@ fn apply_macos_worker_restricted_sandbox() -> std::io::Result<()> {
         fn sandbox_free_error(errorbuf: *mut crate::libc::c_char);
     }
 
-    let profile = CString::new(MACOS_WORKER_SANDBOX_PROFILE).map_err(|err| {
+    let profile = CString::new(profile_kind.macos_profile()).map_err(|err| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             format!("invalid macOS worker sandbox profile: {err}"),
@@ -1015,7 +1057,7 @@ fn apply_macos_worker_restricted_sandbox() -> std::io::Result<()> {
     let mut errorbuf: *mut crate::libc::c_char = ptr::null_mut();
     let rc = unsafe { sandbox_init(profile.as_ptr(), 0, &mut errorbuf) };
     if rc == 0 {
-        return verify_macos_worker_restricted_sandbox();
+        return verify_macos_worker_restricted_sandbox(profile_kind);
     }
 
     let os_error = std::io::Error::last_os_error();
@@ -1037,8 +1079,13 @@ fn apply_macos_worker_restricted_sandbox() -> std::io::Result<()> {
 }
 
 #[cfg(target_os = "macos")]
-fn verify_macos_worker_restricted_sandbox() -> std::io::Result<()> {
+fn verify_macos_worker_restricted_sandbox(
+    profile_kind: NativeWorkerSandboxProfile,
+) -> std::io::Result<()> {
     verify_macos_worker_network_denied()?;
+    if profile_kind.denies_file_read() {
+        verify_macos_worker_file_read_denied()?;
+    }
     verify_macos_worker_file_write_denied()?;
     verify_macos_worker_process_exec_denied()
 }
@@ -1061,6 +1108,29 @@ fn verify_macos_worker_network_denied() -> std::io::Result<()> {
         _ => Err(std::io::Error::new(
             err.kind(),
             format!("macOS worker restricted socket probe failed for an unexpected reason: {err}"),
+        )),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn verify_macos_worker_file_read_denied() -> std::io::Result<()> {
+    match std::fs::File::open("/System/Library/CoreServices/SystemVersion.plist") {
+        Ok(_) => Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "macOS pure-parser worker sandbox still permits filesystem reads",
+        )),
+        Err(err)
+            if err.kind() == std::io::ErrorKind::PermissionDenied
+                || matches!(
+                    err.raw_os_error(),
+                    Some(code) if code == crate::libc::EPERM || code == crate::libc::EACCES
+                ) =>
+        {
+            Ok(())
+        }
+        Err(err) => Err(std::io::Error::new(
+            err.kind(),
+            format!("macOS worker filesystem-read probe failed for an unexpected reason: {err}"),
         )),
     }
 }

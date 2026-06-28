@@ -60,7 +60,7 @@ pub fn file_descriptor_worker_arg() -> &'static str {
 }
 
 pub fn run_file_descriptor_worker() -> Result<(), CliprdrError> {
-    hbb_common::native_worker_sandbox::enter_worker_process().map_err(|e| {
+    hbb_common::native_worker_sandbox::enter_pure_parser_worker_process().map_err(|e| {
         common_error(format!(
             "failed to enter file descriptor worker sandbox: {e}"
         ))

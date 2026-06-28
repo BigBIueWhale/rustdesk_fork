@@ -111,7 +111,7 @@ impl NativeOpusDecoder {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn run_worker() -> ResultType<()> {
-    hbb_common::native_worker_sandbox::enter_worker_process()?;
+    hbb_common::native_worker_sandbox::enter_pure_parser_worker_process()?;
     worker_loop(std::io::stdin(), std::io::stdout())
 }
 

@@ -196,7 +196,7 @@ pub fn worker_arg() -> &'static str {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn run_worker() -> ResultType<()> {
-    crate::native_worker_sandbox::enter_worker_process()?;
+    crate::native_worker_sandbox::enter_pure_parser_worker_process()?;
     worker_loop(std::io::stdin(), std::io::stdout())
 }
 

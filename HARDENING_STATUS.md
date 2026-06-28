@@ -986,11 +986,11 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
 
 After the fixed-shape listener/direct-TCP staging collapse, the artifact
 staleness correction, the Windows remote-printer worker handoff, the Android
-isolated-service busy-admission follow-up, and the Windows worker token-privilege
-hardening, the artifacts below are current for each target's application source.
-Debian was last rebuilt at the remote-printer worker handoff; Android was
-rebuilt after the Android isolated-service busy-admission follow-up; Windows was
-rebuilt after the token-privilege hardening. These hashes supersede the
+isolated-service busy-admission follow-up, the Windows worker token-privilege
+hardening, and the desktop peer clipboard special-format allowlisting, the
+artifacts below are current for each target's application source at commit
+`81002f2c3fc126a922f30473bd562d9196de1d3b`. Debian, Android, and Windows were
+rebuilt after that clipboard special-format allowlisting. These hashes supersede the
 `ec1b6f6`/`2d72f99` stale-artifact notes, the earlier `6e99f581...` and
 `08c39e7...` Android APKs, the Android peer-clipboard
 `99c0594a...` APK, the pre-rate-limiter `60adfb97...` APK, and the earlier
@@ -1010,30 +1010,30 @@ transient KVM path from the pinned golden qcow2, booted each per-build VM with
 `.msi`, and passed the default Windows double-build A==B assertion.
 
 ```text
-e5853fcca58b47860762acae9f0989c30ee0c266b4a79b473dfabf0ed786c1e8  dist/rustdesk-x86_64.deb
-c8cea19b54a368b3b93743d34b6e04363877a8a19e4a7460c4f6be5075552289  dist/rustdesk-arm64.apk
-ba45495ed5ee50d2be383a8bca09c4fb3187bbf16305d558fd24c088b10c6c31  dist/rustdesk-setup.exe
-c063d89c7efc78d94cc1e41935643c59dc53eb87599addd3b68f14eedd3b2c1d  dist/rustdesk.msi
+7704a68f3e6bee6ab84caf520fa97fd3f69196ba3fbd25bb56c1f7152178bcf2  dist/rustdesk-x86_64.deb
+b9ea64a4dc21219882d443cf6f753d31bb4ab25853a26342e86cc81674765271  dist/rustdesk-arm64.apk
+39c5894bad915bfa81fbb3440289e84da1f55d317e0396cdb54afc736e9c3d0e  dist/rustdesk-setup.exe
+190e05ed10f8445ebd94d9b305f628e4cefc3fe516f72917c984868df1af37a9  dist/rustdesk.msi
 ```
 
 Build evidence:
 
 - Debian `bash scripts/build-debian.sh` passed its offline Docker double-build
-  A==B gate, producing `e5853fcca58b47860762acae9f0989c30ee0c266b4a79b473dfabf0ed786c1e8`.
+  A==B gate, producing `7704a68f3e6bee6ab84caf520fa97fd3f69196ba3fbd25bb56c1f7152178bcf2`.
 - Android
   `ANDROID_KEYSTORE=.harness-state/android-keystore/rustdesk-fork.jks ANDROID_KEYSTORE_PASS_FILE=.harness-state/android-keystore/pass bash scripts/build-android.sh`
   passed the offline Docker build and apksigner verification, producing
-  `c8cea19b54a368b3b93743d34b6e04363877a8a19e4a7460c4f6be5075552289`
-  after the Android isolated-service busy-admission/rate-limited busy-log
-  follow-up.
-- Windows `WINDOWS_BUILD_SOURCE=worktree bash scripts/build-windows-vm.sh`
-  passed after the Windows worker token-privilege hardening from the clean
-  tracked worktree snapshot in the transient KVM VM path. The guest
+  `b9ea64a4dc21219882d443cf6f753d31bb4ab25853a26342e86cc81674765271`
+  after the desktop peer clipboard special-format allowlisting.
+- Windows `WINDOWS_BUILD_SOURCE=head bash scripts/build-windows-vm.sh`
+  passed after the Windows worker token-privilege hardening; the current refresh
+  used the clean committed `HEAD` snapshot at
+  `81002f2c3fc126a922f30473bd562d9196de1d3b` in the transient KVM VM path. The guest
   `build-log.txt` contains pre-canonical hashes; the final release hashes are
   the host-canonicalized `dist/*.sha256` values above, and the second VM rebuild
   matched A==B with
-  `exe=ba45495ed5ee50d2be383a8bca09c4fb3187bbf16305d558fd24c088b10c6c31` and
-  `msi=c063d89c7efc78d94cc1e41935643c59dc53eb87599addd3b68f14eedd3b2c1d`.
+  `exe=39c5894bad915bfa81fbb3440289e84da1f55d317e0396cdb54afc736e9c3d0e` and
+  `msi=190e05ed10f8445ebd94d9b305f628e4cefc3fe516f72917c984868df1af37a9`.
 
 ## Validation Matrix
 

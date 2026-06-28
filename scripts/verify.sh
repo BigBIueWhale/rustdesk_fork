@@ -2363,6 +2363,10 @@ grep -qF 'linux_worker_seccomp_arch_is_known_64bit' libs/hbb_common/src/native_w
   r_native_video_worker="$r_native_video_worker seccomp-arch-test"
 grep -qF 'linux_worker_seccomp_blocks_inet_socket_at_runtime' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_video_worker="$r_native_video_worker runtime-seccomp-probe"
+grep -qF 'linux_worker_entry_reports_no_new_privs_non_dumpable_and_seccomp' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker runtime-seccomp-readback-probe"
+grep -qF 'linux_worker_seccomp_blocks_process_spawn_at_runtime' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_video_worker="$r_native_video_worker runtime-process-spawn-denial-probe"
 if [ -n "$r_native_video_worker" ]; then
   echo "  FAIL Appendix C #2b: desktop native video worker boundary regressed:$r_native_video_worker"; rc=1
 else
@@ -2797,6 +2801,14 @@ grep -qF 'CreateJobObjectW' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-create-job"
 grep -qF 'SetInformationJobObject' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-set-job-limits"
+grep -qF 'QueryInformationJobObject' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-query-job-limits"
+grep -qF 'verify_windows_worker_job_limits(job)' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-job-readback-call"
+grep -qF 'fn query_windows_job_object<T>' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-job-readback-helper"
+grep -qF 'fn windows_worker_expected_ui_restrictions()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-job-ui-expected-mask"
 grep -qF 'JobObjectBasicUIRestrictions' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-job-ui-restriction-class"
 grep -qF 'JOBOBJECT_BASIC_UI_RESTRICTIONS' libs/hbb_common/src/native_worker_sandbox.rs ||
@@ -2822,6 +2834,8 @@ grep -qF 'JOB_OBJECT_LIMIT_ACTIVE_PROCESS' libs/hbb_common/src/native_worker_san
   r_native_worker_platform="$r_native_worker_platform windows-active-process-limit"
 grep -qF 'JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-kill-on-job-close"
+grep -qF 'die-on-unhandled-exception' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-die-on-unhandled-exception-readback"
 grep -qF 'JOB_OBJECT_LIMIT_PROCESS_MEMORY' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-process-memory-limit"
 grep -qF 'WINDOWS_WORKER_PROCESS_MEMORY_LIMIT' libs/hbb_common/src/native_worker_sandbox.rs ||
@@ -2834,40 +2848,80 @@ grep -qF 'apply_windows_worker_process_mitigations()' libs/hbb_common/src/native
   r_native_worker_platform="$r_native_worker_platform windows-process-mitigation-entry"
 grep -qF 'SetProcessMitigationPolicy' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-set-process-mitigation"
+grep -qF 'GetProcessMitigationPolicy' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-get-process-mitigation"
+grep -qF 'GetCurrentProcess()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-current-process-readback"
+grep -qF 'verify_windows_worker_process_mitigations()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-process-mitigation-readback-call"
+grep -qF 'fn get_windows_process_mitigation<T>' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-process-mitigation-readback-helper"
 grep -qF 'ProcessDynamicCodePolicy' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-dynamic-code-policy"
 grep -qF 'PROCESS_MITIGATION_DYNAMIC_CODE_POLICY' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-dynamic-code-policy-struct"
 grep -qF 'set_ProhibitDynamicCode(1)' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-prohibit-dynamic-code"
+grep -qF 'ProhibitDynamicCode()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-prohibit-dynamic-code-readback"
 grep -qF 'ProcessExtensionPointDisablePolicy' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-extension-policy"
 grep -qF 'PROCESS_MITIGATION_EXTENSION_POINT_DISABLE_POLICY' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-extension-policy-struct"
 grep -qF 'set_DisableExtensionPoints(1)' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-disable-extension-points"
+grep -qF 'DisableExtensionPoints()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-disable-extension-points-readback"
 grep -qF 'ProcessStrictHandleCheckPolicy' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-strict-handle-policy"
 grep -qF 'PROCESS_MITIGATION_STRICT_HANDLE_CHECK_POLICY' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-strict-handle-policy-struct"
 grep -qF 'set_RaiseExceptionOnInvalidHandleReference(1)' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-invalid-handle-exception"
+grep -qF 'RaiseExceptionOnInvalidHandleReference()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-invalid-handle-exception-readback"
 grep -qF 'WINDOWS_PROCESS_CHILD_PROCESS_POLICY' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-child-process-policy-constant"
 grep -qF 'PROCESS_MITIGATION_CHILD_PROCESS_POLICY' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-child-process-policy-struct"
 grep -qF 'set_NoChildProcessCreation(1)' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-no-child-process-creation"
+grep -qF 'NoChildProcessCreation()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-no-child-process-creation-readback"
 grep -qF 'set_AllowSecureProcessCreation(0)' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-no-secure-child-process-exception"
+grep -qF 'AllowSecureProcessCreation()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-secure-child-process-exception-readback"
 grep -qF 'ProcessImageLoadPolicy' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-image-load-policy"
 grep -qF 'PROCESS_MITIGATION_IMAGE_LOAD_POLICY' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-image-load-policy-struct"
 grep -qF 'set_NoRemoteImages(1)' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-no-remote-images"
+grep -qF 'NoRemoteImages()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-no-remote-images-readback"
 grep -qF 'set_NoLowMandatoryLabelImages(1)' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-no-low-label-images"
+grep -qF 'NoLowMandatoryLabelImages()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-no-low-label-images-readback"
+grep -qF 'PreferSystem32Images()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-system32-image-readback"
+grep -qF 'PR_GET_NO_NEW_PRIVS' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform linux-no-new-privs-readback"
+grep -qF 'PR_GET_DUMPABLE' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform linux-dumpable-readback"
+grep -qF 'PR_GET_SECCOMP' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform linux-seccomp-readback"
+grep -qF 'verify_linux_worker_entry_sandbox()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform linux-entry-readback-call"
+grep -qF 'RD_NATIVE_WORKER_ENTRY_READBACK_PROBE' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform linux-entry-readback-env"
+grep -qF 'RD_NATIVE_WORKER_PROCESS_SPAWN_PROBE' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform linux-process-spawn-probe-env"
+grep -qF 'linux_worker_entry_reports_no_new_privs_non_dumpable_and_seccomp' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform linux-entry-readback-test"
+grep -qF 'linux_worker_seccomp_blocks_process_spawn_at_runtime' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform linux-process-spawn-test"
 grep -qF 'apply_macos_worker_no_network_sandbox()' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-seatbelt-entry-call"
 grep -qF 'kSBXProfileNoNetwork' libs/hbb_common/src/native_worker_sandbox.rs ||
@@ -2876,6 +2930,16 @@ grep -qF 'sandbox_init(' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-sandbox-init"
 grep -qF 'sandbox_free_error' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform macos-sandbox-error-cleanup"
+grep -qF 'verify_macos_worker_no_network_sandbox()' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-no-network-runtime-probe-call"
+grep -qF 'macOS worker NoNetwork sandbox still permits AF_INET socket' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-af-inet-denial-probe"
+grep -qF 'macOS worker NoNetwork socket probe failed for an unexpected reason' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-af-inet-denial-error-check"
+grep -qF 'crate::libc::EPERM || code == crate::libc::EACCES' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-af-inet-denial-errno-check"
+grep -qF 'SOCK_STREAM' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform macos-socket-stream-probe"
 grep -qF 'not(any(target_os = "linux", target_os = "android", target_os = "ios"))' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform desktop-unix-excludes-mobile-cfg"
 if grep -qF 'cfg(all(unix, not(target_os = "linux")))' libs/hbb_common/src/native_worker_sandbox.rs; then
@@ -2975,7 +3039,7 @@ grep -qF 'failed to constrain file-content worker' libs/clipboard/src/platform/u
 if [ -n "$r_native_worker_platform" ]; then
   echo "  FAIL Appendix C #2b: native worker platform confinement hooks regressed:$r_native_worker_platform"; rc=1
 else
-  echo "  ok  Appendix C #2b native worker parents fail closed on post-spawn confinement failure; Windows workers keep Job Object process-count/memory/kill-on-close/UI-restriction guards plus dynamic-code/extension-point/strict-handle/no-child-process/image-load mitigations; macOS worker entry applies Seatbelt NoNetwork; desktop Unix workers excluding Android/iOS get RLIMIT/fd cleanup"
+  echo "  ok  Appendix C #2b native worker parents fail closed on post-spawn confinement failure; Windows workers keep read-back Job Object process-count/memory/kill-on-close/die-on-unhandled-exception/UI-restriction guards plus read-back dynamic-code/extension-point/strict-handle/no-child-process/image-load mitigations; Linux worker entry read-back confirms no-new-privs/non-dumpable/seccomp and process-spawn denial; macOS worker entry applies Seatbelt NoNetwork and probes permission-denied AF_INET denial; desktop Unix workers excluding Android/iOS get RLIMIT/fd cleanup"
 fi
 # R-R2a (§12 / sovereignty): the .deb + systemd is the SOLE Linux package model. The AppImage
 # recipe (whose `update-information` self-updater collides with R-X1 "the fork ships its own

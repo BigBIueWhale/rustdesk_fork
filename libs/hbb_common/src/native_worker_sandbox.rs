@@ -129,7 +129,8 @@ fn apply_to_spawned_child_platform(_child: &mut Child) -> std::io::Result<Worker
 #[cfg(target_os = "linux")]
 fn enter_worker_process_platform() -> std::io::Result<()> {
     close_inherited_worker_fds()?;
-    apply_linux_worker_syscall_filter()
+    apply_linux_worker_syscall_filter()?;
+    verify_linux_worker_entry_sandbox()
 }
 
 #[cfg(target_os = "macos")]
@@ -190,9 +191,6 @@ fn apply_windows_worker_job_limits(child: &mut Child) -> std::io::Result<WorkerP
             JOBOBJECT_BASIC_UI_RESTRICTIONS, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
             JOB_OBJECT_LIMIT_ACTIVE_PROCESS, JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION,
             JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_LIMIT_PROCESS_MEMORY,
-            JOB_OBJECT_UILIMIT_DESKTOP, JOB_OBJECT_UILIMIT_DISPLAYSETTINGS,
-            JOB_OBJECT_UILIMIT_EXITWINDOWS, JOB_OBJECT_UILIMIT_GLOBALATOMS,
-            JOB_OBJECT_UILIMIT_HANDLES, JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS,
         },
     };
 
@@ -226,12 +224,7 @@ fn apply_windows_worker_job_limits(child: &mut Child) -> std::io::Result<WorkerP
     }
 
     let mut ui_limits: JOBOBJECT_BASIC_UI_RESTRICTIONS = unsafe { mem::zeroed() };
-    ui_limits.UIRestrictionsClass = JOB_OBJECT_UILIMIT_HANDLES
-        | JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS
-        | JOB_OBJECT_UILIMIT_DISPLAYSETTINGS
-        | JOB_OBJECT_UILIMIT_GLOBALATOMS
-        | JOB_OBJECT_UILIMIT_DESKTOP
-        | JOB_OBJECT_UILIMIT_EXITWINDOWS;
+    ui_limits.UIRestrictionsClass = windows_worker_expected_ui_restrictions();
 
     let set_ui_ok = unsafe {
         SetInformationJobObject(
@@ -249,6 +242,13 @@ fn apply_windows_worker_job_limits(child: &mut Child) -> std::io::Result<WorkerP
         return Err(err);
     }
 
+    if let Err(err) = verify_windows_worker_job_limits(job) {
+        unsafe {
+            CloseHandle(job);
+        }
+        return Err(err);
+    }
+
     if unsafe { AssignProcessToJobObject(job, child.as_raw_handle() as _) } == 0 {
         let err = std::io::Error::last_os_error();
         unsafe {
@@ -257,6 +257,116 @@ fn apply_windows_worker_job_limits(child: &mut Child) -> std::io::Result<WorkerP
         Err(err)
     } else {
         Ok(WorkerProcessGuard::from_windows_job(job))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_worker_expected_ui_restrictions() -> u32 {
+    use winapi::um::winnt::{
+        JOB_OBJECT_UILIMIT_DESKTOP, JOB_OBJECT_UILIMIT_DISPLAYSETTINGS,
+        JOB_OBJECT_UILIMIT_EXITWINDOWS, JOB_OBJECT_UILIMIT_GLOBALATOMS, JOB_OBJECT_UILIMIT_HANDLES,
+        JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS,
+    };
+
+    JOB_OBJECT_UILIMIT_HANDLES
+        | JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS
+        | JOB_OBJECT_UILIMIT_DISPLAYSETTINGS
+        | JOB_OBJECT_UILIMIT_GLOBALATOMS
+        | JOB_OBJECT_UILIMIT_DESKTOP
+        | JOB_OBJECT_UILIMIT_EXITWINDOWS
+}
+
+#[cfg(target_os = "windows")]
+fn verify_windows_worker_job_limits(job: winapi::um::winnt::HANDLE) -> std::io::Result<()> {
+    use std::mem;
+    use winapi::um::winnt::{
+        JobObjectBasicUIRestrictions, JobObjectExtendedLimitInformation,
+        JOBOBJECT_BASIC_UI_RESTRICTIONS, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_ACTIVE_PROCESS, JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_LIMIT_PROCESS_MEMORY,
+    };
+
+    let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { mem::zeroed() };
+    query_windows_job_object(job, JobObjectExtendedLimitInformation, &mut limits)?;
+
+    let flags = limits.BasicLimitInformation.LimitFlags;
+    ensure_windows_job_flag(
+        flags,
+        JOB_OBJECT_LIMIT_ACTIVE_PROCESS,
+        "active-process limit",
+    )?;
+    ensure_windows_job_flag(
+        flags,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        "kill-on-job-close",
+    )?;
+    ensure_windows_job_flag(
+        flags,
+        JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION,
+        "die-on-unhandled-exception",
+    )?;
+    ensure_windows_job_flag(
+        flags,
+        JOB_OBJECT_LIMIT_PROCESS_MEMORY,
+        "process memory limit",
+    )?;
+    if limits.BasicLimitInformation.ActiveProcessLimit != 1 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Windows worker Job Object readback did not report ActiveProcessLimit == 1",
+        ));
+    }
+    if limits.ProcessMemoryLimit != WINDOWS_WORKER_PROCESS_MEMORY_LIMIT {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Windows worker Job Object readback did not report the configured process memory limit",
+        ));
+    }
+
+    let mut ui_limits: JOBOBJECT_BASIC_UI_RESTRICTIONS = unsafe { mem::zeroed() };
+    query_windows_job_object(job, JobObjectBasicUIRestrictions, &mut ui_limits)?;
+    let expected_ui = windows_worker_expected_ui_restrictions();
+    if ui_limits.UIRestrictionsClass & expected_ui != expected_ui {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Windows worker Job Object readback did not report the expected UI restrictions",
+        ));
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn query_windows_job_object<T>(
+    job: winapi::um::winnt::HANDLE,
+    class: winapi::um::winnt::JOBOBJECTINFOCLASS,
+    out: &mut T,
+) -> std::io::Result<()> {
+    let ok = unsafe {
+        winapi::um::jobapi2::QueryInformationJobObject(
+            job,
+            class,
+            out as *mut _ as *mut _,
+            std::mem::size_of::<T>() as u32,
+            std::ptr::null_mut(),
+        )
+    };
+    if ok == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn ensure_windows_job_flag(flags: u32, expected: u32, name: &str) -> std::io::Result<()> {
+    if flags & expected == expected {
+        Ok(())
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!("Windows worker Job Object readback missed {name}"),
+        ))
     }
 }
 
@@ -296,7 +406,9 @@ fn apply_windows_worker_process_mitigations() -> std::io::Result<()> {
     image_load.set_NoRemoteImages(1);
     image_load.set_NoLowMandatoryLabelImages(1);
     image_load.set_PreferSystem32Images(1);
-    set_windows_process_mitigation(ProcessImageLoadPolicy, &mut image_load)
+    set_windows_process_mitigation(ProcessImageLoadPolicy, &mut image_load)?;
+
+    verify_windows_worker_process_mitigations()
 }
 
 #[cfg(target_os = "windows")]
@@ -315,6 +427,103 @@ fn set_windows_process_mitigation<T>(
         Err(std::io::Error::last_os_error())
     } else {
         Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn verify_windows_worker_process_mitigations() -> std::io::Result<()> {
+    use std::mem;
+    use winapi::um::winnt::{
+        ProcessDynamicCodePolicy, ProcessExtensionPointDisablePolicy, ProcessImageLoadPolicy,
+        ProcessStrictHandleCheckPolicy, PROCESS_MITIGATION_CHILD_PROCESS_POLICY,
+        PROCESS_MITIGATION_DYNAMIC_CODE_POLICY, PROCESS_MITIGATION_EXTENSION_POINT_DISABLE_POLICY,
+        PROCESS_MITIGATION_IMAGE_LOAD_POLICY, PROCESS_MITIGATION_STRICT_HANDLE_CHECK_POLICY,
+    };
+
+    let mut dynamic_code: PROCESS_MITIGATION_DYNAMIC_CODE_POLICY = unsafe { mem::zeroed() };
+    get_windows_process_mitigation(ProcessDynamicCodePolicy, &mut dynamic_code)?;
+    ensure_windows_mitigation_bit(
+        dynamic_code.ProhibitDynamicCode(),
+        "dynamic-code prohibition",
+    )?;
+
+    let mut extension_points: PROCESS_MITIGATION_EXTENSION_POINT_DISABLE_POLICY =
+        unsafe { mem::zeroed() };
+    get_windows_process_mitigation(ProcessExtensionPointDisablePolicy, &mut extension_points)?;
+    ensure_windows_mitigation_bit(
+        extension_points.DisableExtensionPoints(),
+        "extension-point disablement",
+    )?;
+
+    let mut strict_handles: PROCESS_MITIGATION_STRICT_HANDLE_CHECK_POLICY =
+        unsafe { mem::zeroed() };
+    get_windows_process_mitigation(ProcessStrictHandleCheckPolicy, &mut strict_handles)?;
+    ensure_windows_mitigation_bit(
+        strict_handles.RaiseExceptionOnInvalidHandleReference(),
+        "strict invalid-handle exceptions",
+    )?;
+    ensure_windows_mitigation_bit(
+        strict_handles.HandleExceptionsPermanentlyEnabled(),
+        "permanent strict-handle exceptions",
+    )?;
+
+    let mut child_process: PROCESS_MITIGATION_CHILD_PROCESS_POLICY = unsafe { mem::zeroed() };
+    get_windows_process_mitigation(WINDOWS_PROCESS_CHILD_PROCESS_POLICY, &mut child_process)?;
+    ensure_windows_mitigation_bit(
+        child_process.NoChildProcessCreation(),
+        "child-process creation refusal",
+    )?;
+    if child_process.AllowSecureProcessCreation() != 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Windows worker process mitigation readback still allows secure child-process creation",
+        ));
+    }
+
+    let mut image_load: PROCESS_MITIGATION_IMAGE_LOAD_POLICY = unsafe { mem::zeroed() };
+    get_windows_process_mitigation(ProcessImageLoadPolicy, &mut image_load)?;
+    ensure_windows_mitigation_bit(image_load.NoRemoteImages(), "remote-image load refusal")?;
+    ensure_windows_mitigation_bit(
+        image_load.NoLowMandatoryLabelImages(),
+        "low-integrity image-load refusal",
+    )?;
+    ensure_windows_mitigation_bit(
+        image_load.PreferSystem32Images(),
+        "System32 image preference",
+    )?;
+
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn get_windows_process_mitigation<T>(
+    policy: winapi::um::winnt::PROCESS_MITIGATION_POLICY,
+    out: &mut T,
+) -> std::io::Result<()> {
+    let ok = unsafe {
+        winapi::um::processthreadsapi::GetProcessMitigationPolicy(
+            winapi::um::processthreadsapi::GetCurrentProcess(),
+            policy,
+            out as *mut _ as *mut _,
+            std::mem::size_of::<T>(),
+        )
+    };
+    if ok == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn ensure_windows_mitigation_bit(value: u32, name: &str) -> std::io::Result<()> {
+    if value == 1 {
+        Ok(())
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!("Windows worker process mitigation readback missed {name}"),
+        ))
     }
 }
 
@@ -366,7 +575,7 @@ fn apply_macos_worker_no_network_sandbox() -> std::io::Result<()> {
         )
     };
     if rc == 0 {
-        return Ok(());
+        return verify_macos_worker_no_network_sandbox();
     }
 
     let os_error = std::io::Error::last_os_error();
@@ -385,6 +594,28 @@ fn apply_macos_worker_no_network_sandbox() -> std::io::Result<()> {
         os_error.kind(),
         format!("failed to apply macOS NoNetwork worker sandbox: {detail}"),
     ))
+}
+
+#[cfg(target_os = "macos")]
+fn verify_macos_worker_no_network_sandbox() -> std::io::Result<()> {
+    let fd = unsafe { crate::libc::socket(crate::libc::AF_INET, crate::libc::SOCK_STREAM, 0) };
+    if fd >= 0 {
+        unsafe {
+            crate::libc::close(fd);
+        }
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "macOS worker NoNetwork sandbox still permits AF_INET socket",
+        ));
+    }
+    let err = std::io::Error::last_os_error();
+    match err.raw_os_error() {
+        Some(code) if code == crate::libc::EPERM || code == crate::libc::EACCES => Ok(()),
+        _ => Err(std::io::Error::new(
+            err.kind(),
+            format!("macOS worker NoNetwork socket probe failed for an unexpected reason: {err}"),
+        )),
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -411,6 +642,59 @@ fn cvt_prctl(rc: crate::libc::c_int) -> std::io::Result<()> {
     } else {
         Err(std::io::Error::last_os_error())
     }
+}
+
+#[cfg(target_os = "linux")]
+fn get_prctl_value(option: crate::libc::c_int) -> std::io::Result<crate::libc::c_int> {
+    let rc = unsafe { crate::libc::prctl(option, 0, 0, 0, 0) };
+    if rc >= 0 {
+        Ok(rc)
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn verify_linux_worker_entry_sandbox() -> std::io::Result<()> {
+    let no_new_privs = get_prctl_value(crate::libc::PR_GET_NO_NEW_PRIVS)?;
+    if no_new_privs != 1 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Linux worker sandbox readback did not report PR_GET_NO_NEW_PRIVS == 1",
+        ));
+    }
+
+    let dumpable = get_prctl_value(crate::libc::PR_GET_DUMPABLE)?;
+    if dumpable != 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Linux worker sandbox readback did not report PR_GET_DUMPABLE == 0",
+        ));
+    }
+
+    let seccomp = get_prctl_value(crate::libc::PR_GET_SECCOMP)?;
+    if seccomp != SECCOMP_MODE_FILTER as crate::libc::c_int {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Linux worker sandbox readback did not report PR_GET_SECCOMP == filter mode",
+        ));
+    }
+
+    Ok(())
+}
+
+#[cfg(all(
+    target_os = "linux",
+    not(any(target_arch = "x86_64", target_arch = "aarch64"))
+))]
+fn verify_linux_worker_entry_sandbox() -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "native worker Linux seccomp readback is not implemented for this architecture; refusing parser worker entry",
+    ))
 }
 
 #[cfg(target_os = "linux")]
@@ -1070,13 +1354,97 @@ mod tests {
 
     #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     #[test]
+    fn linux_worker_entry_reports_no_new_privs_non_dumpable_and_seccomp() {
+        let exe = std::env::current_exe().expect("current test executable");
+        let output = std::process::Command::new(exe)
+            .env("RD_NATIVE_WORKER_ENTRY_READBACK_PROBE", "1")
+            .arg("--exact")
+            .arg("native_worker_sandbox::tests::linux_worker_entry_readback_probe_child")
+            .output()
+            .expect("spawn worker-entry readback probe child");
+        assert!(
+            output.status.success(),
+            "worker-entry readback probe child failed: status={:?}\nstdout={}\nstderr={}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[test]
+    fn linux_worker_entry_readback_probe_child() {
+        if std::env::var_os("RD_NATIVE_WORKER_ENTRY_READBACK_PROBE").is_none() {
+            return;
+        }
+
+        super::set_prctl_no_new_privs().expect("enable no-new-privs for readback probe");
+        super::set_prctl_not_dumpable().expect("disable dumpability for readback probe");
+        super::apply_linux_worker_syscall_filter().expect("install seccomp readback probe filter");
+        super::verify_linux_worker_entry_sandbox().expect("worker sandbox readback");
+    }
+
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[test]
+    fn linux_worker_seccomp_blocks_process_spawn_at_runtime() {
+        let exe = std::env::current_exe().expect("current test executable");
+        let output = std::process::Command::new(exe)
+            .env("RD_NATIVE_WORKER_PROCESS_SPAWN_PROBE", "1")
+            .arg("--exact")
+            .arg("native_worker_sandbox::tests::linux_worker_process_spawn_probe_child")
+            .output()
+            .expect("spawn worker process-spawn probe child");
+        assert!(
+            output.status.success(),
+            "worker process-spawn probe child failed: status={:?}\nstdout={}\nstderr={}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[test]
+    fn linux_worker_process_spawn_probe_child() {
+        if std::env::var_os("RD_NATIVE_WORKER_PROCESS_SPAWN_PROBE").is_none() {
+            return;
+        }
+
+        let exe = std::env::current_exe().expect("current test executable");
+        super::set_prctl_no_new_privs().expect("enable no-new-privs for spawn probe");
+        super::set_prctl_not_dumpable().expect("disable dumpability for spawn probe");
+        super::apply_linux_worker_syscall_filter().expect("install seccomp spawn probe filter");
+        super::verify_linux_worker_entry_sandbox().expect("worker sandbox readback before spawn");
+
+        let err = match std::process::Command::new(exe).arg("--help").spawn() {
+            Ok(mut child) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("process spawn unexpectedly escaped worker seccomp");
+            }
+            Err(err) => err,
+        };
+        assert!(
+            matches!(
+                err.raw_os_error(),
+                Some(code) if code == crate::libc::EPERM || code == crate::libc::ENOSYS
+            ),
+            "process spawn failed for an unexpected reason: {}",
+            err
+        );
+    }
+
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[test]
     fn linux_worker_seccomp_probe_child() {
         if std::env::var_os("RD_NATIVE_WORKER_SANDBOX_PROBE").is_none() {
             return;
         }
 
         super::set_prctl_no_new_privs().expect("enable no-new-privs for seccomp probe");
+        super::set_prctl_not_dumpable().expect("disable dumpability for seccomp probe");
         super::apply_linux_worker_syscall_filter().expect("install seccomp probe filter");
+        super::verify_linux_worker_entry_sandbox().expect("worker sandbox readback before socket");
         let fd = unsafe {
             crate::libc::socket(
                 crate::libc::AF_INET,

@@ -24,8 +24,9 @@ admission,
 bounded peer-driven UI chat/message/notification text length and rate
 admission,
 child-confinement, Windows Job Object child lifetime/limit/UI-restriction guards and process mitigations including no child-process creation, non-mobile desktop-Unix worker RLIMIT/fd-cleanup
-confinement, macOS worker NoNetwork Seatbelt confinement, Linux
-x86_64/aarch64 post-exec syscall-filter/fd-cleanup follow-ups, and unsupported
+confinement, macOS worker NoNetwork Seatbelt confinement with AF_INET denial
+probe, Linux x86_64/aarch64 post-exec syscall-filter/fd-cleanup/readback
+follow-ups, Windows worker Job Object and process-mitigation readbacks, and unsupported
 Linux worker-architecture fail-closed behavior for those slices,
 Unix/macOS file-copy descriptor-parser/FileContents worker isolation, Windows
 CLIPRDR same-artifact worker isolation, macOS paste FILEDESCRIPTOR parent-path
@@ -832,6 +833,26 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   session or viewer session instead of being ignored. `scripts/verify.sh` gates
   both post-key dispatch roots so the old silent `if let Ok(parse)` pattern
   cannot return.
+- **Native worker confinement now performs OS readback/self-probes before
+  hostile-peer parsing.** Linux worker entry now installs the x86_64/aarch64
+  seccomp filter and then reads back `PR_GET_NO_NEW_PRIVS == 1`,
+  `PR_GET_DUMPABLE == 0`, and `PR_GET_SECCOMP == filter mode` before parsing
+  peer-controlled worker requests. The Linux runtime test set now also proves
+  that a post-filter worker process cannot spawn another process, in addition to
+  the existing AF_INET socket-denial and inherited-fd cleanup probes. Windows
+  worker parents now query the Job Object back with `QueryInformationJobObject`
+  before assigning the worker, verifying the active-process, kill-on-job-close,
+  die-on-unhandled-exception, process-memory, and UI-restriction masks that were
+  just set; worker entry likewise reads back `GetProcessMitigationPolicy` for
+  dynamic-code, extension-point, strict-handle, child-process, and image-load
+  mitigations.
+  macOS worker entry now probes an AF_INET stream socket immediately after
+  `kSBXProfileNoNetwork` is installed and fails closed if the socket still
+  succeeds or fails for a non-permission reason. `scripts/verify.sh` gates the
+  Linux readback/probe tests, Windows readback APIs, and macOS AF_INET probe
+  markers. This is stronger evidence for the existing desktop worker boundary,
+  not a claim of Windows AppContainer, Windows restricted-token/syscall
+  allowlist, or a custom macOS Seatbelt allowlist.
 
 ## Artifact State
 
@@ -1092,6 +1113,25 @@ docker run ... cargo check /tmp/rd-win-mitigation-check --target x86_64-pc-windo
 bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl. native-worker post-spawn confinement hook, stored guard, Windows Job Object, and Windows process-mitigation source gates
 git diff --check                          # GREEN after this ledger update
 ```
+
+After the native-worker confinement readback/self-probe follow-up, these focused
+and full gates have been re-run successfully:
+
+```text
+docker run ... rustfmt --edition 2021 --check libs/hbb_common/src/native_worker_sandbox.rs  # GREEN in a disposable rust:1.75-slim container
+docker run ... bash -n scripts/verify.sh  # GREEN in a disposable bash:5.2 container
+docker run ... cargo test -p hbb_common --lib native_worker_sandbox::tests --color never  # GREEN: 12 tests passed, incl. Linux no-new-privs/dumpable/seccomp readback and process-spawn denial; only the pre-existing password_security.rs redundant-import warning remains
+docker run ... cargo check /tmp/rd-win-sandbox-check --target x86_64-pc-windows-msvc  # GREEN with RUSTFLAGS=-Dunused-imports: cfg(windows) native_worker_sandbox.rs Job Object readback incl. die-on-unhandled-exception + process-mitigation readback branch typechecked without the full native dependency graph
+bash scripts/verify.sh                    # GREEN: VERIFY: all gates green, incl. Linux readback/process-spawn denial, Windows Job Object/process-mitigation readbacks, and macOS permission-checked AF_INET NoNetwork probe source gates
+git diff --check                          # GREEN before this ledger update
+```
+
+An attempted Docker-only `cargo check -p hbb_common --target
+x86_64-pc-windows-msvc` did not reach the native-worker code because
+`libsodium-sys` stopped in pkg-config cross-compilation setup without a Windows
+sysroot. The focused Windows cfg harness above is the validation used for this
+readback patch until the full Windows cross-check image carries that native
+dependency setup.
 
 After the mobile media fail-closed change, these focused and full gates have
 been re-run successfully:

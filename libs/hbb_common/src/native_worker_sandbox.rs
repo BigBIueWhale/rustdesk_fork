@@ -186,9 +186,13 @@ fn apply_windows_worker_job_limits(child: &mut Child) -> std::io::Result<WorkerP
         handleapi::{CloseHandle, INVALID_HANDLE_VALUE},
         jobapi2::{AssignProcessToJobObject, CreateJobObjectW, SetInformationJobObject},
         winnt::{
-            JobObjectExtendedLimitInformation, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JobObjectBasicUIRestrictions, JobObjectExtendedLimitInformation,
+            JOBOBJECT_BASIC_UI_RESTRICTIONS, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
             JOB_OBJECT_LIMIT_ACTIVE_PROCESS, JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION,
             JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_LIMIT_PROCESS_MEMORY,
+            JOB_OBJECT_UILIMIT_DESKTOP, JOB_OBJECT_UILIMIT_DISPLAYSETTINGS,
+            JOB_OBJECT_UILIMIT_EXITWINDOWS, JOB_OBJECT_UILIMIT_GLOBALATOMS,
+            JOB_OBJECT_UILIMIT_HANDLES, JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS,
         },
     };
 
@@ -214,6 +218,30 @@ fn apply_windows_worker_job_limits(child: &mut Child) -> std::io::Result<WorkerP
         )
     };
     if set_ok == 0 {
+        let err = std::io::Error::last_os_error();
+        unsafe {
+            CloseHandle(job);
+        }
+        return Err(err);
+    }
+
+    let mut ui_limits: JOBOBJECT_BASIC_UI_RESTRICTIONS = unsafe { mem::zeroed() };
+    ui_limits.UIRestrictionsClass = JOB_OBJECT_UILIMIT_HANDLES
+        | JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS
+        | JOB_OBJECT_UILIMIT_DISPLAYSETTINGS
+        | JOB_OBJECT_UILIMIT_GLOBALATOMS
+        | JOB_OBJECT_UILIMIT_DESKTOP
+        | JOB_OBJECT_UILIMIT_EXITWINDOWS;
+
+    let set_ui_ok = unsafe {
+        SetInformationJobObject(
+            job,
+            JobObjectBasicUIRestrictions,
+            &mut ui_limits as *mut _ as *mut _,
+            mem::size_of::<JOBOBJECT_BASIC_UI_RESTRICTIONS>() as u32,
+        )
+    };
+    if set_ui_ok == 0 {
         let err = std::io::Error::last_os_error();
         unsafe {
             CloseHandle(job);

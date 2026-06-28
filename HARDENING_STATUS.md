@@ -23,7 +23,7 @@ bounded peer-triggered file-transfer metadata enumeration and read/write job
 admission,
 bounded peer-driven UI chat/message/notification text length and rate
 admission,
-child-confinement, Windows Job Object child lifetime/limit guards and process mitigations including no child-process creation, non-mobile desktop-Unix worker RLIMIT/fd-cleanup
+child-confinement, Windows Job Object child lifetime/limit/UI-restriction guards and process mitigations including no child-process creation, non-mobile desktop-Unix worker RLIMIT/fd-cleanup
 confinement, macOS worker NoNetwork Seatbelt confinement, Linux
 x86_64/aarch64 post-exec syscall-filter/fd-cleanup follow-ups, and unsupported
 Linux worker-architecture fail-closed behavior for those slices,
@@ -467,8 +467,12 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   beside its `Child`, immediately after `spawn()` and before writing
   hostile-peer bytes to the child. On failure the parent kills/waits the child and
   refuses the in-process fallback. The Windows hook hides the worker console and
-  assigns the child to a Job Object with active-process, per-process memory, and
-  kill-on-job-close limits. The worker-entry hook then installs Windows process
+  assigns the child to a Job Object with active-process, per-process memory,
+  kill-on-job-close, and UI-restriction limits. The UI restrictions deny
+  cross-process USER handles, system-parameter and display-setting changes,
+  global atoms, desktop switching, and shutdown; clipboard UI restrictions are
+  deliberately not applied because this shared worker class includes
+  clipboard-related children. The worker-entry hook then installs Windows process
   mitigations before hostile-peer parsing: dynamic-code prohibition, extension
   point disablement, strict invalid-handle checking, no child-process creation,
   and remote/low-integrity image-load refusal. This is a Windows
@@ -624,13 +628,14 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   helper applies no-new-privs, parent-death SIGKILL, non-dumpability, and RLIMIT
   ceilings for fds/address-space/data/stack/memlock, regular-file size, and core
   dumps. On Windows the post-spawn hook hides the worker console, assigns the
-  child to a Job Object with active-process, kill-on-job-close, and per-process
-  memory limits, and returns a guard that each worker parent stores for the child
-  lifetime before any hostile-peer request is sent to the child. The worker-role
-  entrypoints then call the post-exec sandbox hook before request parsing. On
-  Windows that hook applies process mitigations for dynamic-code prohibition,
-  extension-point disablement, strict invalid-handle checking, and
-  remote/low-integrity image-load refusal. On Unix-like worker children, the hook
+  child to a Job Object with active-process, kill-on-job-close, per-process
+  memory, and UI-restriction limits, and returns a guard that each worker parent
+  stores for the child lifetime before any hostile-peer request is sent to the
+  child. The worker-role entrypoints then call the post-exec sandbox hook before
+  request parsing. On Windows that hook applies process mitigations for
+  dynamic-code prohibition, extension-point disablement, strict invalid-handle
+  checking, child-process creation refusal, and remote/low-integrity image-load
+  refusal. On Unix-like worker children, the hook
   closes inherited fds above stdio using the wide fd cleanup path and, on Linux
   x86_64/aarch64, also installs a seccomp-BPF deny filter. The filter blocks
   AF_INET/AF_INET6/AF_PACKET/AF_NETLINK/AF_BLUETOOTH/AF_VSOCK
@@ -646,9 +651,10 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   `hbb_common` unit sanity/runtime-probe test set for the worker-limit
   constants, filter constants, and kernel-enforced AF_INET socket denial. A
   separate `scripts/verify.sh` gate now requires the Windows Job Object
-  primitives, process mitigation policy markers, winapi feature flags, must-use
-  guard, kill-on-job-close limit, guard drop path, and fail-closed post-spawn hook
-  call plus stored guard field at every same-artifact worker spawn site.
+  primitives, UI-restriction markers, process mitigation policy markers, winapi
+  feature flags, must-use guard, kill-on-job-close limit, guard drop path, and
+  fail-closed post-spawn hook call plus stored guard field at every
+  same-artifact worker spawn site.
 - **Remote cursor image handoff is dimension- and byte-checked before Flutter decode.**
   Peer cursor colors already route through `peer_decompress`, which on desktop
   means the same-artifact zstd worker rather than in-process zstd. `src/flutter.rs`
@@ -771,8 +777,8 @@ d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.h
   CLIPRDR context and forwards callback-generated events to the parent through
   bounded stdio frames, a bounded child-output queue, and bounded parent
   per-connection `ClipboardFile` queues. The same retained Windows Job Object
-  process-count/memory/kill-on-close guard used by the other same-artifact
-  workers is kept for the child lifetime. The parent kills the child on timeout
+  process-count/memory/kill-on-close/UI-restriction guard used by the other
+  same-artifact workers is kept for the child lifetime. The parent kills the child on timeout
   or transport failure, clamps the CLIPRDR wait to the fixed 30-second constant
   plus a 3-second response grace, clears the child's global event sender before
   joining the output thread, and routes the `conn_id == 0` format-list broadcast
@@ -1421,11 +1427,11 @@ bash -n scripts/verify.sh     # GREEN
   non-dumpability, fd/memory/file-size/core resource ceilings, inherited-fd
   cleanup, and a Linux x86_64/aarch64 post-exec seccomp deny filter. Windows
   worker children are now hidden and assigned to a Job Object with active-process,
-  kill-on-job-close, and per-process memory limits before hostile-peer bytes are
-  sent, with the Job Object guard retained for the child lifetime; worker entry
-  also applies process mitigations for dynamic code, extension points, strict
-  handle checks, child-process creation refusal, and remote/low-integrity image
-  loads. Mobile media decode, peer
+  kill-on-job-close, per-process memory, and UI-restriction limits before
+  hostile-peer bytes are sent, with the Job Object guard retained for the child
+  lifetime; worker entry also applies process mitigations for dynamic code,
+  extension points, strict handle checks, child-process creation refusal, and
+  remote/low-integrity image loads. Mobile media decode, peer
   clipboard SET, and peer zstd now fail closed until platform workers/services
   exist instead of parsing hostile-peer bytes in-process. That is the right
   interim safety posture, but it is not final Android client conformance:
@@ -1476,11 +1482,10 @@ macOS worker children now apply the Seatbelt NoNetwork profile at worker entry,
 but that is not a full custom macOS allowlist or a BSD pledge/capsicum
 equivalent. Windows same-artifact worker children, including the CLIPRDR and
 remote-printer workers, now get hidden-window Job Object active-process,
-kill-on-job-close, and
-process-memory limits with a retained guard, plus entry-time process mitigations
-for dynamic code, extension points, strict handle checks, child-process creation
-refusal, and remote/low-integrity image loads, but that is not a Windows
-AppContainer, restricted-token, or syscall
+kill-on-job-close, process-memory, and UI-restriction limits with a retained
+guard, plus entry-time process mitigations for dynamic code, extension points,
+strict handle checks, child-process creation refusal, and remote/low-integrity
+image loads, but that is not a Windows AppContainer, restricted-token, or syscall
 allowlist sandbox. Windows CLIPRDR now has app-level and Rust<->C bridge length
 caps plus null/bounded-read fail-closed guards, pending request/response
 accounting, and a same-artifact worker boundary; Windows remote-printer XPS

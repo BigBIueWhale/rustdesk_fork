@@ -2797,6 +2797,25 @@ grep -qF 'CreateJobObjectW' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-create-job"
 grep -qF 'SetInformationJobObject' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-set-job-limits"
+grep -qF 'JobObjectBasicUIRestrictions' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-job-ui-restriction-class"
+grep -qF 'JOBOBJECT_BASIC_UI_RESTRICTIONS' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-job-ui-restriction-struct"
+grep -qF 'JOB_OBJECT_UILIMIT_HANDLES' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-job-ui-handles"
+grep -qF 'JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-job-ui-systemparameters"
+grep -qF 'JOB_OBJECT_UILIMIT_DISPLAYSETTINGS' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-job-ui-displaysettings"
+grep -qF 'JOB_OBJECT_UILIMIT_GLOBALATOMS' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-job-ui-globalatoms"
+grep -qF 'JOB_OBJECT_UILIMIT_DESKTOP' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-job-ui-desktop"
+grep -qF 'JOB_OBJECT_UILIMIT_EXITWINDOWS' libs/hbb_common/src/native_worker_sandbox.rs ||
+  r_native_worker_platform="$r_native_worker_platform windows-job-ui-exitwindows"
+if rg -n 'JOB_OBJECT_UILIMIT_(READCLIPBOARD|WRITECLIPBOARD)' libs/hbb_common/src/native_worker_sandbox.rs >/dev/null; then
+  r_native_worker_platform="$r_native_worker_platform windows-job-ui-clipboard-breaks-shared-workers"
+fi
 grep -qF 'AssignProcessToJobObject' libs/hbb_common/src/native_worker_sandbox.rs ||
   r_native_worker_platform="$r_native_worker_platform windows-assign-job"
 grep -qF 'JOB_OBJECT_LIMIT_ACTIVE_PROCESS' libs/hbb_common/src/native_worker_sandbox.rs ||
@@ -2956,7 +2975,7 @@ grep -qF 'failed to constrain file-content worker' libs/clipboard/src/platform/u
 if [ -n "$r_native_worker_platform" ]; then
   echo "  FAIL Appendix C #2b: native worker platform confinement hooks regressed:$r_native_worker_platform"; rc=1
 else
-  echo "  ok  Appendix C #2b native worker parents fail closed on post-spawn confinement failure; Windows workers keep Job Object process-count/memory/kill-on-close guards plus dynamic-code/extension-point/strict-handle/no-child-process/image-load mitigations; macOS worker entry applies Seatbelt NoNetwork; desktop Unix workers excluding Android/iOS get RLIMIT/fd cleanup"
+  echo "  ok  Appendix C #2b native worker parents fail closed on post-spawn confinement failure; Windows workers keep Job Object process-count/memory/kill-on-close/UI-restriction guards plus dynamic-code/extension-point/strict-handle/no-child-process/image-load mitigations; macOS worker entry applies Seatbelt NoNetwork; desktop Unix workers excluding Android/iOS get RLIMIT/fd cleanup"
 fi
 # R-R2a (§12 / sovereignty): the .deb + systemd is the SOLE Linux package model. The AppImage
 # recipe (whose `update-information` self-updater collides with R-X1 "the fork ships its own

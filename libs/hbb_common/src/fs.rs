@@ -1692,6 +1692,14 @@ impl TransferJob {
 
     async fn set_stream_offset(&mut self, file_num: usize, offset: u64) {
         if let DataSource::FilePath(p) = &self.data_source {
+            // §20 post-key DoS bound (defensive — mirrors write()'s "Wrong file number" guard):
+            // file_num arrives from a peer FileTransferSendConfirmRequest. confirm() gates it on
+            // self.file_num(), but that defaults to 0 and self.files can be empty (e.g. an
+            // empty-directory send job), so a crafted confirm(file_num=0, OffsetBlk>0) would index
+            // out of bounds and panic the connection task. Fail closed instead of indexing.
+            if file_num >= self.files.len() {
+                return;
+            }
             let entry = &self.files[file_num];
             let Some(path) = self.resolve_entry_path(p, &entry.name) else {
                 return;
@@ -2297,6 +2305,34 @@ mod tests {
         )
         .with_files(vec![new_file_entry(name)])?;
         Ok(job)
+    }
+
+    // §20 post-key DoS regression: a peer FileTransferSendConfirmRequest(file_num=0, OffsetBlk>0)
+    // against a SEND job whose self.files is empty (e.g. an empty-directory send) must NOT index
+    // self.files[0] out of bounds and panic the connection task. confirm() gates file_num on
+    // self.file_num() (default 0), but with empty files self.files[0] is OOB; set_stream_offset()
+    // now bounds-checks like write() does. Without that guard this test panics "index out of bounds".
+    #[test]
+    fn confirm_offset_blk_on_empty_files_job_does_not_panic() {
+        let mut job = TransferJob::new_write(
+            1,
+            JobType::Generic,
+            "/fake/remote".to_string(),
+            DataSource::FilePath(PathBuf::from("/nonexistent-empty-job")),
+            0, // file_num == default self.file_num(), so confirm() takes the seek branch
+            false,
+            true,
+            false,
+        );
+        assert!(job.files.is_empty(), "precondition: empty-files send job");
+        let mut r = FileTransferSendConfirmRequest::default();
+        r.file_num = 0;
+        r.union = Some(file_transfer_send_confirm_request::Union::OffsetBlk(1));
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async {
+                let _ = job.confirm(&r).await;
+            });
     }
 
     fn assert_err_contains(err: anyhow::Error, expected: &str) {

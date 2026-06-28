@@ -126,6 +126,11 @@ impl WorkerOpusDecoder {
         let _ = self.child.wait();
     }
 
+    fn invalidate_and_kill(&mut self) {
+        self.valid = false;
+        self.kill_child();
+    }
+
     fn spawn(sample_rate: u32, channels: u32) -> ResultType<Self> {
         let exe = std::env::current_exe()
             .map_err(|e| anyhow!("failed to resolve current executable for Opus worker: {e}"))?;
@@ -187,8 +192,9 @@ impl WorkerOpusDecoder {
         match response.status {
             STATUS_DECODED => {
                 if response.pcm.len() > output.len() {
+                    self.invalidate_and_kill();
                     bail!(
-                        "native Opus worker response does not fit output buffer: {} > {}",
+                        "native Opus worker response does not fit output buffer; killed child: {} > {}",
                         response.pcm.len(),
                         output.len()
                     );
@@ -196,8 +202,17 @@ impl WorkerOpusDecoder {
                 output[..response.pcm.len()].copy_from_slice(&response.pcm);
                 Ok(response.samples_per_channel)
             }
-            STATUS_ERROR => bail!("native Opus worker decode failed: {}", response.message),
-            status => bail!("native Opus worker returned unknown status {status}"),
+            STATUS_ERROR => {
+                self.invalidate_and_kill();
+                bail!(
+                    "native Opus worker decode failed; killed child: {}",
+                    response.message
+                )
+            }
+            status => {
+                self.invalidate_and_kill();
+                bail!("native Opus worker returned unknown status {status}; killed child")
+            }
         }
     }
 
@@ -218,21 +233,18 @@ impl WorkerOpusDecoder {
         match rx.recv_timeout(WORKER_DECODE_TIMEOUT) {
             Ok(Ok(response)) => Ok(response),
             Ok(Err(err)) => {
-                self.valid = false;
-                self.kill_child();
+                self.invalidate_and_kill();
                 bail!("native Opus worker transport failed: {err}")
             }
             Err(RecvTimeoutError::Timeout) => {
-                self.valid = false;
-                self.kill_child();
+                self.invalidate_and_kill();
                 bail!(
                     "native Opus worker decode timed out after {:?}; killed child",
                     WORKER_DECODE_TIMEOUT
                 )
             }
             Err(RecvTimeoutError::Disconnected) => {
-                self.valid = false;
-                self.kill_child();
+                self.invalidate_and_kill();
                 bail!("native Opus worker I/O thread exited without a response")
             }
         }

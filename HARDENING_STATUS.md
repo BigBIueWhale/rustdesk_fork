@@ -27,7 +27,8 @@ child-confinement, Windows Job Object child lifetime/limit/UI-restriction guards
 confinement, macOS worker NoNetwork Seatbelt confinement with AF_INET denial
 probe, Linux x86_64/aarch64 post-exec syscall-filter/fd-cleanup/readback
 follow-ups, Windows worker Job Object and process-mitigation readbacks, and unsupported
-Linux worker-architecture fail-closed behavior for those slices,
+Linux worker-architecture fail-closed behavior for those slices, desktop
+video/Opus semantic worker-failure child teardown,
 Unix/macOS file-copy descriptor-parser/FileContents worker isolation, Windows
 CLIPRDR same-artifact worker isolation, macOS paste FILEDESCRIPTOR parent-path
 containment, Windows remote-printer XPS same-artifact worker handoff, desktop video
@@ -1438,6 +1439,23 @@ docker run --rm ... rd-devcheck cargo test --manifest-path /tmp/rd-printer-worke
 bash scripts/verify.sh        # GREEN: VERIFY: all gates green
 git diff --check              # GREEN
 bash -n scripts/verify.sh     # GREEN
+```
+
+- **Desktop video/Opus semantic worker failures now tear down the child.**
+  Transport errors, timeouts, and disconnected worker I/O already killed the
+  lower-trust child. The current worktree extends that fail-closed behavior to
+  semantic worker failures too: desktop video now kills the worker if it returns
+  invalid decoded geometry/raw length, a decode-error status, or an unknown
+  status; desktop Opus now kills the worker if the decoded PCM cannot fit the
+  parent buffer, if the worker reports a decode-error status, or if it returns an
+  unknown status. This prevents a stale native parser child from surviving after
+  a malformed hostile-peer decode result and keeps the worker boundary's
+  timeout/kill discipline consistent. `scripts/verify.sh` now gates the
+  `invalidate_and_kill` helper and the semantic-failure kill markers for both
+  worker parents. Current Docker-backed evidence:
+
+```text
+scripts/verify.sh             # GREEN: VERIFY: all gates green
 ```
 
 - **Unix/macOS file-copy worker responses are parent-revalidated before FUSE or

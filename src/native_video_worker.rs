@@ -178,6 +178,11 @@ impl WorkerVideoDecoder {
         let _ = self.child.wait();
     }
 
+    fn invalidate_and_kill(&mut self) {
+        self.valid = false;
+        self.kill_child();
+    }
+
     fn spawn(format: CodecFormat) -> ResultType<Self> {
         let exe = std::env::current_exe()
             .map_err(|e| anyhow!("failed to resolve current executable for video worker: {e}"))?;
@@ -251,13 +256,18 @@ impl WorkerVideoDecoder {
         let response = self.decode_with_timeout(rgb.fmt(), rgb.align(), payload)?;
         match response.status {
             STATUS_DECODED => {
-                validate_worker_rgb_response(
+                if let Err(err) = validate_worker_rgb_response(
                     response.width,
                     response.height,
                     rgb.fmt(),
                     rgb.align(),
                     response.raw.len(),
-                )?;
+                ) {
+                    self.invalidate_and_kill();
+                    bail!(
+                        "native video worker returned invalid decoded frame; killed child: {err}"
+                    );
+                }
                 rgb.w = response.width;
                 rgb.h = response.height;
                 rgb.raw = response.raw;
@@ -267,12 +277,15 @@ impl WorkerVideoDecoder {
             }
             STATUS_NO_FRAME => Ok(false),
             STATUS_ERROR => {
-                self.valid = false;
-                bail!("native video worker decode failed: {}", response.message)
+                self.invalidate_and_kill();
+                bail!(
+                    "native video worker decode failed; killed child: {}",
+                    response.message
+                )
             }
             status => {
-                self.valid = false;
-                bail!("native video worker returned unknown status {status}")
+                self.invalidate_and_kill();
+                bail!("native video worker returned unknown status {status}; killed child")
             }
         }
     }
@@ -296,21 +309,18 @@ impl WorkerVideoDecoder {
         match rx.recv_timeout(WORKER_DECODE_TIMEOUT) {
             Ok(Ok(response)) => Ok(response),
             Ok(Err(err)) => {
-                self.valid = false;
-                self.kill_child();
+                self.invalidate_and_kill();
                 bail!("native video worker transport failed: {err}")
             }
             Err(RecvTimeoutError::Timeout) => {
-                self.valid = false;
-                self.kill_child();
+                self.invalidate_and_kill();
                 bail!(
                     "native video worker decode timed out after {:?}; killed child",
                     WORKER_DECODE_TIMEOUT
                 )
             }
             Err(RecvTimeoutError::Disconnected) => {
-                self.valid = false;
-                self.kill_child();
+                self.invalidate_and_kill();
                 bail!("native video worker I/O thread exited without a response")
             }
         }
@@ -878,16 +888,17 @@ mod tests {
     #[test]
     fn video_worker_response_shape_rejects_decoded_message() {
         assert!(
-            validate_worker_response_shape(STATUS_DECODED, Some(Chroma::I420), 1, 1, 4, 1)
-                .is_err()
+            validate_worker_response_shape(STATUS_DECODED, Some(Chroma::I420), 1, 1, 4, 1).is_err()
         );
     }
 
     #[test]
     fn video_worker_response_shape_rejects_no_frame_payload() {
         assert!(validate_worker_response_shape(STATUS_NO_FRAME, None, 1, 0, 0, 0).is_err());
-        assert!(validate_worker_response_shape(STATUS_NO_FRAME, Some(Chroma::I420), 0, 0, 0, 0)
-            .is_err());
+        assert!(
+            validate_worker_response_shape(STATUS_NO_FRAME, Some(Chroma::I420), 0, 0, 0, 0)
+                .is_err()
+        );
     }
 
     #[test]

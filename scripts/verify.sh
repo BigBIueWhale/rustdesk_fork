@@ -2284,6 +2284,12 @@ grep -qF 'const WORKER_DECODE_TIMEOUT: Duration = Duration::from_secs(10);' src/
   r_native_video_worker="$r_native_video_worker decode-timeout"
 grep -qF 'native video worker decode timed out after' src/native_video_worker.rs ||
   r_native_video_worker="$r_native_video_worker timeout-kills-worker"
+grep -qF 'fn invalidate_and_kill(&mut self)' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker no-semantic-failure-kill-helper"
+grep -qF 'native video worker returned invalid decoded frame; killed child' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker invalid-decoded-response-keeps-child"
+grep -qF 'native video worker decode failed; killed child' src/native_video_worker.rs ||
+  r_native_video_worker="$r_native_video_worker semantic-decode-error-keeps-child"
 grep -qF 'hbb_common::native_worker_sandbox::apply_to_command(&mut command)' src/native_video_worker.rs ||
   r_native_video_worker="$r_native_video_worker linux-worker-sandbox-call"
 grep -qF 'hbb_common::native_worker_sandbox::enter_worker_process()?' src/native_video_worker.rs ||
@@ -2398,6 +2404,12 @@ grep -qF 'const WORKER_DECODE_TIMEOUT: Duration = Duration::from_secs(3);' src/n
   r_native_opus_worker="$r_native_opus_worker decode-timeout"
 grep -qF 'native Opus worker decode timed out after' src/native_audio_worker.rs ||
   r_native_opus_worker="$r_native_opus_worker timeout-kills-worker"
+grep -qF 'fn invalidate_and_kill(&mut self)' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker no-semantic-failure-kill-helper"
+grep -qF 'native Opus worker response does not fit output buffer; killed child' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker invalid-decoded-response-keeps-child"
+grep -qF 'native Opus worker decode failed; killed child' src/native_audio_worker.rs ||
+  r_native_opus_worker="$r_native_opus_worker semantic-decode-error-keeps-child"
 grep -qF 'hbb_common::native_worker_sandbox::apply_to_command(&mut command)' src/native_audio_worker.rs ||
   r_native_opus_worker="$r_native_opus_worker linux-worker-sandbox-call"
 grep -qF 'hbb_common::native_worker_sandbox::enter_worker_process()?' src/native_audio_worker.rs ||

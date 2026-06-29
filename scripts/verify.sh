@@ -1740,6 +1740,24 @@ if [ -n "$r_sv4_webrtc" ]; then
 else
   echo "  ok  R-SV4 webrtc transport fully excised (no module, no dep/feature, no ICE/STUN/TURN crates in Cargo.lock)"
 fi
+# R-A7 (parser-safety floor): the rust-protobuf RUNTIME crate is the FIRST code to touch attacker
+# bytes — the unauthenticated pre-key `parse_from_bytes::<Cpace>` (R-S7/R-P14) and the post-key
+# `Message`-union parse. With `panic = 'abort'` (release) a parser crash is a whole-process DoS, so
+# the decoder MUST stay >= 3.7.2 — the version that fixes RUSTSEC-2024-0437 (uncontrolled-recursion
+# crash via unknown-field parsing). Audited 2026-06-29 (cloned the v3.7.2 source): 3.7.2 enforces
+# DEFAULT_RECURSION_LIMIT=100, caps the speculative reserve at 10MB (READ_RAW_BYTES_MAX_ALLOC), and
+# validates a length prefix against bytes-until-limit BEFORE allocating; a downgrade below 3.7.2
+# reopens the recursion DoS. `scripts/audit.sh` (cargo-audit) also catches this dynamically against the
+# advisory-db; this is the self-documenting structural floor that does not depend on the db being current.
+# The `$`-anchored name match excludes protobuf-codegen/parse/support (build-time, not attacker-reachable).
+pb_ver=$(awk '/^name = "protobuf"$/{f=1;next} f&&/^version = /{gsub(/version = "|"/,"");print;f=0}' Cargo.lock | sort -V | head -1)
+if [ -z "$pb_ver" ]; then
+  echo "  FAIL R-A7: protobuf runtime crate absent from Cargo.lock — parser-safety floor uncheckable"; rc=1
+elif [ "$(printf '%s\n3.7.2\n' "$pb_ver" | sort -V | head -1)" != "3.7.2" ]; then
+  echo "  FAIL R-A7: rust-protobuf $pb_ver < 3.7.2 reopens RUSTSEC-2024-0437 recursion-crash DoS (parser-safety floor)"; rc=1
+else
+  echo "  ok  R-A7 protobuf parser-safety floor: rust-protobuf $pb_ver >= 3.7.2 (RUSTSEC-2024-0437 recursion-limit fix; pre-key Cpace + post-key Message parse; audited 2026-06-29)"
+fi
 # R-D5 / R-SV4 / R-G1: config-option keys + an IPC vestige orphaned by the UDP / webrtc / WebSocket
 # excisions are REMOVED, not just left unread — OPTION_DISABLE_UDP (the UDP transport is gone) +
 # OPTION_ICE_SERVERS (its only reader was the now-deleted webrtc.rs get_ice_servers) const keys and

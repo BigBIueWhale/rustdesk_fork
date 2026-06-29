@@ -1050,6 +1050,16 @@ fi
 if grep -q 'failed to set TCP keepalive on' src/direct_service.rs; then
   r_t1_missing="$r_t1_missing per-accept-keepalive-warning"
 fi
+# R-T1 / R-P14b (active-router threat model): the pre-key handshake SEND must be deadline-bounded, not
+# only the read. A malicious router manipulating TCP flow control (a forged zero-window advertisement
+# or dropped ACKs) can stall even a sub-buffer-sized CPace send forever; without a send deadline the
+# responder/initiator blocks inside `send` holding its R-T1 semaphore permit (+task+fd) indefinitely,
+# and 256 such stalls exhaust the slots to deny legitimate handshakes (keepalive can't help — the
+# router ACKs probes while pinning the window at zero). send_cpace MUST carry the SAME per-step
+# deadline recv_cpace already applies (next_timeout), so the handshake is fully step-bounded in BOTH
+# directions and a router-stalled send drops the permit fail-closed. Covers both roles (the responder
+# and initiator drivers share send_cpace), per the user's "both sides on a malicious router" model.
+grep -qE 'timeout\(HANDSHAKE_STEP_TIMEOUT_MS,[[:space:]]*stream\.send' libs/hbb_common/src/cpace.rs || r_t1_missing="$r_t1_missing cpace.rs:send_cpace-not-deadline-bounded"
 # R-T1(a): the memory ceilings MUST be host-RELATIVE percentages, NEVER an absolute byte count — an
 # absolute `4G` is a no-op on a 2 GiB box (the spec names this exact regression). Anchored `^…=NN%$`
 # fails on MemoryMax=4G / =2147483648 / =infinity; presence-only greps did not. TasksMax is a count.

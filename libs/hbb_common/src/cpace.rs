@@ -196,7 +196,21 @@ fn from_step4(s: &Step4) -> Cpace {
 // ── framed I/O on the unkeyed stream ─────────────────────────────────────────
 
 async fn send_cpace(stream: &mut FramedStream, msg: Cpace) -> HResult<()> {
-    stream.send(&msg).await.map_err(|_| HandshakeError::Io)
+    // R-P14b / R-T1 (active-router threat model): bound the pre-key SEND with the same per-step
+    // deadline `recv_cpace` already applies to reads, so the handshake is fully step-bounded in BOTH
+    // directions. A passive peer cannot stall a send of a sub-buffer-sized CPace frame — but a
+    // MALICIOUS ROUTER manipulating TCP flow control (a forged zero-window advertisement, or dropping
+    // the peer's ACKs) can stall ANY send regardless of frame size, leaving `poll_write` Pending
+    // forever. Without this deadline the responder/initiator would block inside `send` indefinitely,
+    // holding its R-T1 handshake permit (+ task + fd); 256 such stalled connections exhaust the
+    // semaphore and deny legitimate handshakes, and keepalive cannot help (the router ACKs probes
+    // while holding the window at zero). The bound is therefore the DEADLINE, not the frame size. A
+    // timeout aborts the handshake fail-closed (HandshakeError::Io); the stream is then dropped, so
+    // the partially-flushed pre-key frame is discarded (no cipher is engaged yet, so no nonce state).
+    match crate::timeout(HANDSHAKE_STEP_TIMEOUT_MS, stream.send(&msg)).await {
+        Ok(send_result) => send_result.map_err(|_| HandshakeError::Io),
+        Err(_) => Err(HandshakeError::Io), // send deadline exceeded — router-stalled flow control
+    }
 }
 
 /// Read exactly one `Cpace` frame under the bounded-read deadline (R-P14b). A

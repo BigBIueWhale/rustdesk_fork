@@ -33,7 +33,7 @@ VCPKG_BASELINE: 120deac3062162151622ca4860575a33844ba10b
 ## Overlay-Pinned Libraries
 
 Package: aom
-Status: reviewed
+Status: reviewed — OPEN ADVISORIES (CVE-2026-56208/56209/56210/56211, see below)
 Disposition: source-pinned overlay; monitor upstream aom advisories and treat a
 decoder-memory-safety advisory as release-blocking until patched or isolated by
 the decoder sandbox.
@@ -42,6 +42,28 @@ AOM_COMMIT: 10aece4157eb79315da205f39e19bf6ab3ee30d0
 aom SHA512: 59c3e3f3fbf649857fcba1af63593a06336377fed554f9696c1965580b95778ded76ac409b40589e1f44a94b9fea6df777b7c58760b7c3df6f8274b968b83a05
 Watch sources: aomedia upstream release/security notes, NVD/CVE, OSV, distro
 security trackers.
+OPEN ADVISORIES (recorded 2026-06-29, per the Debian security tracker —
+https://security-tracker.debian.org/tracker/source-package/aom — all FOUR open
+and UNFIXED across every Debian release, affecting aom 3.12.1 and later):
+  - CVE-2026-56211 : remote code execution in libaom
+  - CVE-2026-56209 : arbitrary address write in libaom
+  - CVE-2026-56210 : heap-buffer-overflow read in libaom
+  - CVE-2026-56208 : heap buffer overflow in libaom
+These are the live, severe form of the Appendix C #2b native-decode residual IF
+they lie in the AV1 DECODER (aomdec) — the path a hostile peer reaches by sending
+malformed AV1 video (the viewer decode; the controlled side only ENCODES its own
+screen, so any encoder-only CVE among them is N/A, cf. the libvpx CVE-2025-5283
+note). Decoder-vs-encoder localization per CVE is OUTSTANDING (the descriptions
+don't say). Disposition: the spec's #2b explicitly ACCEPTS this ("Pinned codecs
+≠ CVE-free", bounded operationally — connect only to peers you trust) and is a
+SPEC-MUST-met residual, NOT a completion blocker. UNLIKE libvpx, NO fixed aom
+version exists yet, so there is nothing to bump to — the available mitigations
+are exactly the spec's: (a) the operational bound, and (b) the #2b SHOULD-sandbox
+of the decode path (built then reverted this session by maintainer decision per
+the ACCEPT disposition — these open RCE-class advisories are the strongest
+argument to RECONSIDER re-instating a *narrow* decoder sandbox, a maintainer call
+to weigh; do NOT re-add unilaterally). ACTION: localize decoder-vs-encoder per
+CVE; track for an upstream aom fix and bump when one lands.
 
 Package: libvpx
 Status: reviewed — OPEN ADVISORY (CVE-2026-1861, see below)

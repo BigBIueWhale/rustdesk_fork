@@ -76,16 +76,48 @@ accept-shed reorder, fs/clipboard arithmetic fixes) does **not** regress
 reproducibility. The Android `.apk` R-B2 was **likewise re-proven at HEAD
 `cbd4711` → `b49c4f20…`** (two independent offline builds, byte-identical). So
 both Linux-host platforms reproduce byte-for-byte at the post-audit HEAD. The
-Windows `.exe`/`.msi` R-B2 double-build is
-byte-identical (A==B: exe `b87a9b6b…`, msi `5d023302…`, at `b1ed623`; a Windows
-rebuild at this HEAD needs the §12.2 KVM VM + the build-host-network sudo, so
-`dist/SHA256SUMS-HEAD.txt` remains the last full three-platform snapshot at
-`b1ed623`). The Windows VM build — the only path that
+Windows `.exe`/`.msi` R-B2 was **also re-proven at HEAD `313f776` → exe
+`5f280a07…` / msi `48a301bb…`** via the §12.2 KVM golden-VM `DOUBLE_BUILD` (no
+sudo needed — `qemu:///session` + the `/dev/kvm` POSIX ACL; the old "build-host
+sudo" note applied only to the unused system-libvirt path). So **all three
+platforms are now byte-reproducible (A==B) at the post-audit HEAD**, and
+`dist/SHA256SUMS-HEAD.txt` is the consistent full **3/3** manifest at `313f776`
+(the binaries are identical across the doc-only commits `5cd5907..313f776`). The
+Windows VM build — the only path that
 compiles the `cfg(windows)` code — caught a worker-revert base-restore residual
 (a dropped `as Box<_>` trait-object coercion in the CLIPRDR clipboard dispatch,
 `libs/clipboard/src/platform/mod.rs`) that the Linux gates structurally cannot
 see; it is fixed (008e2ba) and the in-VM honesty gate prevented any stale
 artifact from shipping.
+
+## Upstream-CVE coverage — the 2026 RustDesk client CVE inventory
+
+Cross-checked (2026-06-29) the fork's hardening against the **complete public 2026
+RustDesk client CVE set** (the spec's batch `CVE-2026-30783..30798`/`3598`/`2490`
+plus the post-spec **`CVE-2026-58056`**). **Every one is covered** — the
+spec's PAKE-plus-excisions design attacks exactly the root-cause classes the CVE
+researchers later found:
+- **signaling / strategy-sync / heartbeat / address-book** (`30783`/`30792`/
+  `30798`/`30795`/`30796`) → the rendezvous mediator, `hbbs_http::sync`, and the
+  account/address-book module are **excised** (R-D4/R-X3/R-SV6).
+- **URI-scheme CSRF / missing-authz config-import** (`30793`/`30797`/`30791`) →
+  the deep-link config/password/key write authorities are **excised** (R-X6/R-X4).
+- **offline password brute-force / weak hashing** (`30789`/`30785`) → the PAKE
+  replaces the unstretched hash; no offline-crackable material (R-S6); the
+  at-rest store is the #14 HARDEN+ACCEPT residual.
+- **client AiTM (cert-validation on retry)** (`30794`) → insecure-TLS-fallback
+  excised, pinned `N`.
+- **`CVE-2026-58056` session-type-confusion** (a FileTransfer-authorized peer
+  injecting keyboard/mouse + reaching screenshot/display handlers) → **non-issue
+  by design**: all those handlers sit behind the lone post-PAKE `self.authorized`
+  edge (connection.rs, set only on the CPace `KEYED` success, R-S2/R-A2), so
+  reaching them requires the PAKE password = the §2-trusted owner; and R-S2/R-S18
+  make conn-type an intentional capability *tag* (capabilities gated by the pinned
+  `Permission` flags, not conn-type). The single-PAKE-credential model dissolves
+  the upstream confusion — a "FileTransfer peer" here is a password-knower
+  exercising access it already has, no escalation.
+- The **server / Server Pro** CVEs (`30784`/`3598`/`30796`-Pro) are N/A — the
+  rendezvous/relay server is excised entirely.
 
 ## Appendix C #2b (native-decode RCE surface) — ACCEPTED residual
 

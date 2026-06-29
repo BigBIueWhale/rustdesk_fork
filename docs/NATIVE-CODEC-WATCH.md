@@ -44,7 +44,7 @@ Watch sources: aomedia upstream release/security notes, NVD/CVE, OSV, distro
 security trackers.
 
 Package: libvpx
-Status: reviewed
+Status: reviewed — OPEN ADVISORY (CVE-2026-1861, see below)
 Disposition: source-pinned overlay; monitor upstream libvpx advisories and treat
 VP8/VP9 decoder-memory-safety advisories as release-blocking until patched or
 isolated by the decoder sandbox.
@@ -52,6 +52,23 @@ libvpx version: 1.15.2
 libvpx SHA512: 824fe8719e4115ec359ae0642f5e1cea051d458f09eb8c24d60858cf082f66e411215e23228173ab154044bafbdfbb2d93b589bb726f55b233939b91f928aae0
 Watch sources: webmproject/libvpx release/security notes, NVD/CVE, OSV, distro
 security trackers.
+OPEN ADVISORY (recorded 2026-06-29): CVE-2026-1861 — a VP8/VP9 *decoder* heap
+buffer overflow (malformed video -> out-of-bounds heap write), fixed in Chrome
+144.0.7559.132 via "enhanced bounds checking in the libvpx decoder". The exact
+fixed libvpx version is not published in the CVE (Chrome bundles its own libvpx),
+so the pinned 1.15.2 (a 2025 release) most likely predates the fix. This is the
+Appendix C #2b viewer-side native-decode surface, which the spec ACCEPTS (bounded
+operationally — connect only to peers you trust — + SHOULD-sandbox), so it is NOT
+a spec-MUST blocker; but per this watch's release-blocking-until-updated policy it
+is an ACTION ITEM (a deliberate build-infra change, deferred):
+  (1) determine the CVE-2026-1861-fixed libvpx commit/version (webmproject/libvpx
+      git history + the Chromium issue tracker referenced from the CVE);
+  (2) bump the overlay pin (res/vcpkg) + re-capture the SHA512 archive into
+      ./online per the R-B12(a) git-archive-capture pattern;
+  (3) re-test the vcpkg `libvpx` build and re-run the reproducible release builds.
+  (CVE-2025-5283, a libvpx *encoder* double-free in WebRTC's enc_init_multi, is
+   N/A: the encoder processes the box's own screen, not attacker data, and the
+   WebRTC path it lives in is excised — R-SV4.)
 
 Package: libyuv
 Status: reviewed

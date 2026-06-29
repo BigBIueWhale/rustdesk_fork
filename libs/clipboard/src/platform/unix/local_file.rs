@@ -157,9 +157,12 @@ impl LocalFile {
         buf.put_u32_le(size_high);
         // file size (low)
         buf.put_u32_le(size_low);
-        // put name and padding to 520 bytes
-        let name_len = name.len();
-        buf.put(name);
+        // put name into the fixed 520-byte field, padding the remainder. TRUNCATE an over-long
+        // UTF-16 name (a relative path > 260 chars): `520 - name.len()` would otherwise UNDERFLOW
+        // usize and over-allocate vec![0u8; ~u64::MAX], and an unbounded name would overrun the
+        // fixed-width field, corrupting the 592-byte FILEDESCRIPTOR layout.
+        let name_len = name.len().min(520);
+        buf.put(&name[..name_len]);
         buf.put(&vec![0u8; 520 - name_len][..]);
 
         buf.to_vec()

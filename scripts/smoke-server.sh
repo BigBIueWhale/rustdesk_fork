@@ -19,11 +19,16 @@
 #     listener on the pinned port (21118) and ZERO UDP — the §17 direct-IP/no-UDP thesis, empirical;
 #   - R-A4 (runtime socket self-check) : `assert_socket_surface` confirms the same from inside;
 #   - R-T9 : SIGTERM -> "graceful shutdown initiated" -> "complete — exiting 0";
+#   - R-D8 / R-D2 (real --password provisioning) : the PRODUCTION `--password` CLI — install-gated
+#     (binary under /usr) + root-gated, run against a live --server — provisions over the uid-scoped
+#     daemon IPC and CLEANLY set-and-exits (no hang); the IPC-provisioned credential then keys a
+#     session and the old one is rejected (the headless deploy contract haggai's setup.sh leans on);
 #   - R-A9 (wire-capture) : a distinctive plaintext canary sent in a POST-KEY LoginRequest NEVER
 #     appears in a tcpdump of the loopback — the keyed session bytes carry no recoverable plaintext.
 #
-# The permanent password is seeded by the TEST-ONLY `examples/seed_password` (the production
-# `--password` CLI is install-privilege-gated and refuses in a container).
+# Most stages seed the permanent password via the TEST-ONLY `examples/seed_password` (a direct Config
+# write) for speed; stage (2b) additionally exercises the PRODUCTION `--password` CLI end-to-end by
+# installing the binary to the .deb path (/usr/share/rustdesk) so its install-privilege gate is met.
 #
 # Usage:  scripts/smoke-server.sh           (the fast default path)
 #         SMOKE_DECAY=1 scripts/smoke-server.sh   (also runs stage 10 — the R-A8 limiter-DECAY proof,
@@ -84,6 +89,45 @@ echo "$out2" | grep -q 'socket surface verified — exactly one TCP v4:21118, ze
   || { echo "  FAIL R-A4: the runtime socket-surface self-check did not pass"; rc=1; }
 echo "$out2" | grep -q 'R-T9: graceful shutdown complete — exiting 0' \
   || { echo "  FAIL R-T9: no graceful SIGTERM shutdown"; rc=1; }
+
+echo "== (2b) R-D8/R-D2: the REAL 'rustdesk --password' CLI provisions over the uid-scoped daemon IPC and cleanly set-and-exits =="
+# R-D8 MUST: "R-B4's smoke-test MUST add a provisioning check on the .deb run headless: a clean
+# --password set-and-exit, then a keyed Direct-IP session." The other stages seed via the test-only
+# examples/seed_password (a direct Config write) for speed, which BYPASSES the production path. This
+# stage runs the REAL `--password` CLI — install-gated (is_installed() => exe under /usr) + root-gated
+# (is_root()), both satisfied here — so it exercises ipc::set_permanent_password END-TO-END: the
+# root->daemon socket resolution (connect() at geteuid()==0 scans /proc via running_server_uids_for_
+# current_exe; the cross-uid SELECTION is unit-tested at ipc.rs), send_config("permanent-password"),
+# the 1s ACK wait, the storage sync, and the current-thread-runtime CLEAN TEARDOWN — the "set-and-exit"
+# stock RustDesk lacked (a real deployment found stock --password never returns and had to detach it).
+# We provision by CHANGING an initial seeded password (--server refuses to listen with none, R-A4) —
+# the identical IPC path; BOTH --server and --password run from the same /usr path so the /proc
+# exe-match resolves the daemon.
+out2b=$("${RUN[@]}" bash -c '
+  export HOME=/tmp/rd2b; mkdir -p "$HOME"
+  install -D ./target/debug/rustdesk /usr/share/rustdesk/rustdesk
+  ./target/debug/examples/seed_password "Initial-Seed-Pw-000" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
+  LD_PRELOAD=/work/target/smoke-bind-loopback.so /usr/share/rustdesk/rustdesk --server >/tmp/srv.log 2>&1 & SRV=$!
+  sleep 8
+  # timeout so a HANG (the stock "never returns" regression R-D2 fixes) FAILS the test, not wedges it.
+  timeout 15 /usr/share/rustdesk/rustdesk --password "Changed-Via-Ipc-Pw-9" >/tmp/pw.out 2>&1
+  echo "PW_EXIT=$?"
+  echo "PW_OUT=[$(tr -d "\n" </tmp/pw.out)]"
+  # Proof the round-trip reached the daemon, which APPLIED + PERSISTED it: the NEW credential keys a
+  # CPace session and the OLD one is now rejected (R-P1: read live each handshake, no cached PRS).
+  echo "KEYED_NEW: $(./target/debug/examples/probe_client "127.0.0.1:21118" "Changed-Via-Ipc-Pw-9" ok 2>&1 | grep -oE "keying ok=(true|false)")"
+  echo "KEYED_OLD: $(./target/debug/examples/probe_client "127.0.0.1:21118" "Initial-Seed-Pw-000" fail 2>&1 | grep -oE "keying ok=(true|false)")"
+  kill -TERM $SRV 2>/dev/null; sleep 1
+' || true)
+echo "$out2b"
+echo "$out2b" | grep -q 'PW_EXIT=0' \
+  || { echo "  FAIL R-D2: the real --password CLI did not cleanly exit 0 within the timeout (hang/error — the stock never-returns regression)"; rc=1; }
+echo "$out2b" | grep -q 'Done!' \
+  || { echo "  FAIL R-D2: --password did not confirm success (no 'Done!') — the daemon did not ACK the IPC set"; rc=1; }
+echo "$out2b" | grep -q 'KEYED_NEW: keying ok=true' \
+  || { echo "  FAIL R-D8: the IPC-provisioned password is not usable — a CPace probe could not key with it"; rc=1; }
+echo "$out2b" | grep -q 'KEYED_OLD: keying ok=false' \
+  || { echo "  FAIL R-D8: the old password still keys — the --password change did not take effect over the daemon IPC"; rc=1; }
 
 echo "== (3) two-process: a CPace probe client keys the REAL server (R-A1/R-S1) + a wrong password is refused (R-P3/R-P14c) + the R-T12 observability fires =="
 out3=$("${RUN[@]}" bash -c '
@@ -265,7 +309,7 @@ DECAY_NOTE=" + R-A8 limiter-decay (tripped block self-heals after the 60s window
 fi
 
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-T15(d) startup-warning AND session-enforcement + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
+  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 real --password IPC provisioning (clean set-and-exit) + R-T15(d) startup-warning AND session-enforcement + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

@@ -73,7 +73,10 @@ release builds hold: the Debian `.deb` (Flutter) R-B2 double-build is
 byte-identical (A==B) and was **re-proven at the post-audit HEAD `5cd5907` →
 `c2d9aa04…`** — this session's transport/parser hardening (cpace send-deadline,
 accept-shed reorder, fs/clipboard arithmetic fixes) does **not** regress
-reproducibility — and the Windows `.exe`/`.msi` R-B2 double-build is
+reproducibility. The Android `.apk` R-B2 was **likewise re-proven at HEAD
+`cbd4711` → `b49c4f20…`** (two independent offline builds, byte-identical). So
+both Linux-host platforms reproduce byte-for-byte at the post-audit HEAD. The
+Windows `.exe`/`.msi` R-B2 double-build is
 byte-identical (A==B: exe `b87a9b6b…`, msi `5d023302…`, at `b1ed623`; a Windows
 rebuild at this HEAD needs the §12.2 KVM VM + the build-host-network sudo, so
 `dist/SHA256SUMS-HEAD.txt` remains the last full three-platform snapshot at

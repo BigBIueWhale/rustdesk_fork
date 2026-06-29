@@ -110,6 +110,32 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 - **R-V3 independent CPace audit** — the in-tree CPace implementation is
   vector/KAT-conformant and adversarially tested but **not yet independently
   audited**; the §11 "not independently audited" disclosure stands.
+- **Protobuf parser attack-surface audit (TODO — not yet performed; high
+  priority).** The `protobuf` crate (rust-protobuf) **v3.7.2** (crates.io,
+  `Cargo.lock` checksum `d65a1d4ddae7d8b5de68153b48f6aa3bba8cb002b243dbdbc55a5afbc98f99f4`)
+  is the **first code that touches attacker bytes** on both surfaces: the
+  *unauthenticated, pre-key* `parse_from_bytes::<Cpace>` (the sole pre-auth
+  parser, R-S7/R-P14) and the post-key full `Message`-union `parse_from_bytes`
+  (connection.rs / io_loop.rs). Every hardening above *assumes* this decoder is
+  memory-safe and panic-free on malformed input — and with `panic = 'abort'`
+  (release, Cargo.toml) **any decoder panic is a whole-process DoS**, so the
+  assumption is load-bearing and unverified. **Task:** clone the exact pinned
+  source into `/tmp` (`rust-protobuf` at tag `v3.7.2`, or fetch the crates.io
+  `.crate` and verify it matches the lockfile checksum above), then audit its
+  **runtime** decode path — `CodedInputStream`, varint/tag/length-delimited
+  decoding, nested-message and group recursion, `UnknownFields`, string/bytes
+  length handling — for attacker-reachable: (a) panics (index-OOB, unwrap,
+  slice, debug-assert), (b) **unbounded recursion → stack overflow** via deeply
+  nested submessages (the 4 KiB pre-key / 32 MiB post-key frame cap bounds total
+  *input size* but **not nesting depth** — a few KB can nest thousands deep),
+  (c) unbounded allocation / `reserve` from an attacker length prefix, (d)
+  integer-overflow/truncation in length/varint math, and (e) non-termination /
+  quadratic blowup. Cross-check RUSTSEC + the crate's changelog for known parse
+  CVEs/fixes after 3.7.2. **The load-bearing question: can a malformed pre-auth
+  `Cpace` frame crash, hang, or OOM the responder before keying?** If a real
+  defect is found, the fix is a bounded/recursion-limited decode wrapper or a
+  crate bump (re-pinned per R-B5a/`--locked`). (Build-time `protobuf-codegen`/
+  `protobuf-parse` are out of scope — not attacker-reachable.)
 - **Apple artifacts** — macOS/iOS are source-conformed (R-R2 retain-and-check),
   not built; full artifacts need the Apple SDK/toolchain path.
 - **R-R3 dependency-advisory gates** — `cargo audit`/`cargo deny` (`scripts/audit.sh`)

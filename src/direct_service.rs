@@ -332,6 +332,33 @@ async fn direct_server(server: ServerPtr) {
             match hbb_common::timeout(1000, l.accept()).await {
                 Ok(Ok((stream, addr))) => {
                     accept_err_streak = 0; // R-T12: a successful accept resets the error back-off
+                    // R-T1(b) / R-T0 rule 2 ("shed cheaply, early"): acquire the pre-key handshake
+                    // slot FIRST — before ANY per-socket setup, the task spawn, or the server lock —
+                    // so a SHED connection (semaphore full under a flood) costs accept+close, not
+                    // accept+setsockopt(×2)+close. Under a sustained flood — including a malicious
+                    // router opening connections faster than handshakes complete — the shed path is
+                    // the hot path, so it must touch no resource the connection will not use. The
+                    // permit moves into the spawned task and is released after keying (server.rs),
+                    // bounding only the attacker-reachable half-open population.
+                    let permit = match crate::server::PREKEY_HANDSHAKE_SLOTS
+                        .clone()
+                        .try_acquire_owned()
+                    {
+                        Ok(p) => p,
+                        Err(_) => {
+                            crate::server::note_security_event(
+                                crate::server::SecurityEvent::Shed,
+                                addr.ip(),
+                            );
+                            // R-T1: damp the accept-and-drop CPU spin under a sustained flood
+                            // without materially delaying a legitimate connection (the kernel
+                            // backlog absorbs the burst); dropping `stream` here closes the fd.
+                            sleep(0.002).await;
+                            continue;
+                        }
+                    };
+                    // Permit held — this connection WILL be handled, so set up its socket now (a
+                    // shed connection skipped all of the below).
                     if let Err(e) = stream.set_nodelay(true) {
                         crate::server::note_accept_setup_error(
                             crate::server::AcceptSetupEvent::NodelayFailed,
@@ -367,27 +394,6 @@ async fn direct_server(server: ServerPtr) {
                             );
                         }
                     }
-                    // R-T1(b) / R-T0 rule 2: acquire a pre-key handshake slot BEFORE spawning a
-                    // task or taking the server lock — so a shed connection costs accept+close,
-                    // not spawn+lock+handshake. The permit moves into the task and is released
-                    // after keying (server.rs), bounding only the attacker-reachable half-opens.
-                    let permit = match crate::server::PREKEY_HANDSHAKE_SLOTS
-                        .clone()
-                        .try_acquire_owned()
-                    {
-                        Ok(p) => p,
-                        Err(_) => {
-                            crate::server::note_security_event(
-                                crate::server::SecurityEvent::Shed,
-                                addr.ip(),
-                            );
-                            // R-T1: damp the accept-and-drop CPU spin under a sustained flood
-                            // without materially delaying a legitimate connection (the kernel
-                            // backlog absorbs the burst); dropping `stream` here closes the fd.
-                            sleep(0.002).await;
-                            continue;
-                        }
-                    };
                     let local_addr = stream
                         .local_addr()
                         .unwrap_or(Config::get_any_listen_addr(true));

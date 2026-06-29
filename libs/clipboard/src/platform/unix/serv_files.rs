@@ -180,11 +180,11 @@ impl ClipFiles {
                         ),
                     });
                 }
-                let read_size = if offset + length > file.size {
-                    file.size - offset
-                } else {
-                    length
-                };
+                // §20 integer-overflow guard: a peer cb_requested=-1 makes length=u64::MAX; the old
+                // `offset + length > file.size` WRAPPED, selected `length`, and `vec![0u8; length]`
+                // below OOMs/panics. clamp_file_read_size() reads at most `length`, capped at the
+                // remaining file bytes, overflow-safe (unit-tested at the bottom of this file).
+                let read_size = clamp_file_read_size(offset, length, file.size);
 
                 let mut buf = vec![0u8; read_size as usize];
 
@@ -268,4 +268,28 @@ pub fn sync_files(files: &[String]) -> Result<(), CliprdrError> {
 
 pub fn get_file_list_pdu() -> Vec<u8> {
     CLIP_FILES.lock().files_pdu.clone()
+}
+
+/// Clamp a peer-requested read `length` to the bytes remaining after `offset`, overflow-safe.
+/// The CLIPRDR file-contents serve path computes `length = cb_requested as u64` from a peer i32, so a
+/// negative cb_requested yields u64::MAX and `offset + length` would WRAP; `saturating_sub` keeps this
+/// correct even if `offset` exceeds `file_size` (the caller validates offset <= file_size first).
+fn clamp_file_read_size(offset: u64, length: u64, file_size: u64) -> u64 {
+    std::cmp::min(length, file_size.saturating_sub(offset))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clamp_file_read_size;
+
+    // §20: a peer FileContentsRequest with cb_requested=-1 makes length=u64::MAX; the old
+    // `offset + length > file.size` wrapped, selected `length`, and over-allocated vec![0u8; length].
+    #[test]
+    fn clamp_file_read_size_is_overflow_safe() {
+        assert_eq!(clamp_file_read_size(5, u64::MAX, 100), 95); // capped at remaining (95), NOT u64::MAX
+        assert_eq!(clamp_file_read_size(0, 10, 100), 10); // normal read
+        assert_eq!(clamp_file_read_size(90, 50, 100), 10); // length exceeds remaining -> clamp
+        assert_eq!(clamp_file_read_size(100, 10, 100), 0); // at EOF -> 0
+        assert_eq!(clamp_file_read_size(200, 10, 100), 0); // offset past EOF (saturating) -> 0
+    }
 }

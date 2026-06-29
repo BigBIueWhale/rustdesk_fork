@@ -204,6 +204,12 @@ echo "== (3c-iii-b) Linux FUSE clipboard mount-point component validation (R-S11
 echo "== (3c-iii-c) Linux FUSE file-content response queue bound (R-T0/R-S7) =="
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib fuse_response_queue --color never
 
+# (3c-iii-d) the CLIPRDR file-contents SERVE read clamps the peer-requested length to the file's
+# remaining bytes via min() — NOT `offset + length > file.size`, which WRAPS for a peer cb_requested=-1
+# (i32 -> length=u64::MAX), selecting `length` and over-allocating vec![0u8; length] (§20 DoS).
+echo "== (3c-iii-d) CLIPRDR file-contents read_size overflow guard (§20) =="
+"${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib clamp_file_read_size --color never
+
 echo "== (4) main crate compile check (hardening is UNCONDITIONAL — one binary, R-R2b) =="
 "${RUN[@]}" cargo check --features linux-pkg-config --color never
 

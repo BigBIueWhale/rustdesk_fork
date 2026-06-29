@@ -40,6 +40,29 @@ wrap, and the descriptor serializer truncates an over-long name with no
 build is reproducible for Debian/Android/Windows (R-B2), and the Apple
 SDK-free source-conformance gate covers the macOS/iOS code paths (R-R2).
 
+**§20 TCP active-router audit (2026-06-29).** The full TCP transport — both the
+controlled (responder) and viewer (initiator) sides — was audited under the
+*strongest* network-adversary model: both peers connected through a fully
+malicious router that can inject / drop / modify / replay / reorder / reset /
+segment / coalesce / flow-control-manipulate the connection at will. The
+cryptographic construction reduces this attacker to (at most) a DoS: post-key
+manipulation fails the Poly1305 tag (R-T7, no ≤1-byte bypass) → poison →
+fail-closed; reorder/replay/drop desync the per-direction monotonic nonce
+(R-A5); first-contact MITM fails the mutual PAKE; substitution fails the R-S17
+Ed25519 host-proof bound to the session transcript; and the pre-key parsers
+(frame codec, protobuf 3.7.2, CPace fixed-length fields) are panic-free, so
+injected garbage cannot crash the `panic='abort'` process. One genuine DoS lever
+the model surfaced was **fixed** (`f1ecfb0`): the pre-key handshake *sends* had
+no deadline (only reads did), so a router stalling flow control (forged
+zero-window / dropped ACKs) could block a send forever and hold an R-T1
+handshake permit indefinitely — `send_cpace` now carries the same per-step
+deadline as `recv_cpace` (handshake fully step-bounded both directions; new
+verify.sh R-T1 gate). The accept-path bound (R-T1 semaphore + host-relative
+cgroup ceilings), cancellation safety (R-T2–T5 writer-task / poison / Drop
+cleanup), socket options (R-T10 keepalive / R-T11 no-`SO_REUSEPORT`), accept
+observability (R-T12), and graceful shutdown (R-T9) were each confirmed
+conformant on both sides.
+
 **Validation (2026-06-28/29):** `scripts/verify.sh` is **all-gates-green**
 (PAKE KATs + wire handshake + two-key cipher + R-S16 policy funnel + main-crate
 compile under `linux-pkg-config,unix-file-copy-paste` + the R-A6 done-set

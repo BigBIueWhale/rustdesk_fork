@@ -32,6 +32,11 @@ ceiling, bounded peer screenshot/PeerInfo/UI-text/file-transfer admission,
 display-control validation, FUSE mount-point no-follow setup and bounded
 FileContents response queue, and the FILEDESCRIPTOR path-traversal sanitizer
 (`sanitize_relative_names`) with its count cap (`MAX_FILE_DESCRIPTORS`). The
+file-clipboard serve/confirm paths are additionally arithmetic/index-safe — the
+peer-supplied `file_num` is bounded before indexing in `set_stream_offset`, the
+CLIPRDR file-read clamps `length` to the remaining bytes with no `offset+length`
+wrap, and the descriptor serializer truncates an over-long name with no
+`520 - name_len` underflow (each overflow-safe, unit-tested). The
 build is reproducible for Debian/Android/Windows (R-B2), and the Apple
 SDK-free source-conformance gate covers the macOS/iOS code paths (R-R2).
 

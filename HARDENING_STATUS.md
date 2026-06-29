@@ -69,9 +69,15 @@ compile under `linux-pkg-config,unix-file-copy-paste` + the R-A6 done-set
 greps). The full server binary builds and the loopback runtime smoke
 (`scripts/smoke-server.sh`) exercises the one-TCP/zero-UDP surface, fail-closed
 startup, graceful shutdown, and the no-plaintext wire-capture. The reproducible
-release builds are re-proven at HEAD: the Debian `.deb` (Flutter) builds offline,
-and the Windows `.exe`/`.msi` R-B2 double-build is byte-identical (A==B: exe
-`b87a9b6b…`, msi `5d023302…`). The Windows VM build — the only path that
+release builds hold: the Debian `.deb` (Flutter) R-B2 double-build is
+byte-identical (A==B) and was **re-proven at the post-audit HEAD `5cd5907` →
+`c2d9aa04…`** — this session's transport/parser hardening (cpace send-deadline,
+accept-shed reorder, fs/clipboard arithmetic fixes) does **not** regress
+reproducibility — and the Windows `.exe`/`.msi` R-B2 double-build is
+byte-identical (A==B: exe `b87a9b6b…`, msi `5d023302…`, at `b1ed623`; a Windows
+rebuild at this HEAD needs the §12.2 KVM VM + the build-host-network sudo, so
+`dist/SHA256SUMS-HEAD.txt` remains the last full three-platform snapshot at
+`b1ed623`). The Windows VM build — the only path that
 compiles the `cfg(windows)` code — caught a worker-revert base-restore residual
 (a dropped `as Box<_>` trait-object coercion in the CLIPRDR clipboard dispatch,
 `libs/clipboard/src/platform/mod.rs`) that the Linux gates structurally cannot

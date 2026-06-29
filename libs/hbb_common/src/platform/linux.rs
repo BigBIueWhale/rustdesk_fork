@@ -129,41 +129,23 @@ pub fn is_x11_or_headless() -> bool {
     !is_desktop_wayland()
 }
 
-// -1
-const INVALID_SESSION: &str = "4294967295";
-
 pub fn get_display_server() -> String {
-    // R-X12: the forced-display-server env override is removed — a runtime knob that
-    // re-selects the security-relevant capture/input backend (X11 vs Wayland/
-    // pipewire) is exactly the R-S12 "control removed, not defaulted off" case. The
-    // §17 box is Xorg; the backend is determined by detection below, and the fork
-    // additionally drops the `wayland` scrap feature so the Wayland path is compiled
-    // out (and pins is_x11() — R-X12 — making this determinism a binary property).
-
-    // Check if `loginctl` can be called successfully
-    if run_loginctl(None).is_err() {
-        return DISPLAY_SERVER_X11.to_owned();
-    }
-
-    let mut session = get_values_of_seat0(&[0])[0].clone();
-    if session.is_empty() {
-        // loginctl has not given the expected output.  try something else.
-        if let Ok(sid) = std::env::var("XDG_SESSION_ID") {
-            // could also execute "cat /proc/self/sessionid"
-            session = sid;
-        }
-        if session.is_empty() {
-            session = run_cmds("cat /proc/self/sessionid").unwrap_or_default();
-            if session == INVALID_SESSION {
-                session = "".to_owned();
-            }
-        }
-    }
-    if session.is_empty() {
-        std::env::var("XDG_SESSION_TYPE").unwrap_or("x11".to_owned())
-    } else {
-        get_display_server_of_session(&session)
-    }
+    // R-X12 (§8): the display server is COMPILE-PINNED to X11 — a constant, not a
+    // runtime probe. This fork is X11-only (the Wayland/pipewire capture path is
+    // compiled out and is_x11() is a pinned `true`), so "what display server is
+    // this?" has exactly one answer on every shipped binary. The earlier R-X12
+    // change removed the forced-display-server env override but left THIS function
+    // still probing (loginctl, with a stray session-type fallback) — a half-measure
+    // that did NOT deliver R-X12's stated promise, because the session-admission
+    // gate (server::connection, "Unsupported display server type") and
+    // ui_interface::get_error() consult THIS function, not is_x11(). A
+    // seatless/container session whose environment leaked a non-x11 type could
+    // therefore still refuse an incoming connection outright — the exact failure
+    // R-X12 says the x11 pin eliminates ("determinism a property of the binary, so
+    // no operator ever needs the env override"). Pinning the *answer* (mirroring the
+    // is_x11() pin) closes it for every caller. Per-session queries that legitimately
+    // concern OTHER seats keep their own runtime path, which is unaffected.
+    DISPLAY_SERVER_X11.to_owned()
 }
 
 pub fn get_display_server_of_session(session: &str) -> String {

@@ -450,6 +450,20 @@ if [ -n "$r_x12_pin" ]; then
 else
   echo "  ok  R-X12 is_x11() compile-pinned true (main + scrap; no runtime display-server selection)"
 fi
+# R-X12: get_display_server() is ALSO compile-pinned to the X11 constant — NOT just is_x11(). The
+# session-admission gate (server::connection "Unsupported display server type") and ui_interface
+# get_error() consult get_display_server(), not is_x11(); leaving it a runtime probe (loginctl /
+# stray session-type) let a seatless/container session still REFUSE an incoming connection — the
+# exact failure R-X12 says the x11 pin eliminates ("determinism a property of the binary, so no
+# operator ever needs the env override"). The body MUST be the constant return, no runtime probe.
+# (Comment lines are stripped before the probe check so the rationale can name the removed probe.)
+r_x12_gds_code="$(awk '/^pub fn get_display_server\(\) -> String \{/{f=1} f && $0 !~ /^[[:space:]]*\/\//{print} f && /^\}/{exit}' libs/hbb_common/src/platform/linux.rs)"
+if printf '%s\n' "$r_x12_gds_code" | grep -qE 'DISPLAY_SERVER_X11' \
+   && ! printf '%s\n' "$r_x12_gds_code" | grep -qE 'run_loginctl|XDG_SESSION_TYPE'; then
+  echo "  ok  R-X12 get_display_server() compile-pinned to the X11 constant (no runtime probe; refuse-path cannot misfire)"
+else
+  echo "  FAIL R-X12: get_display_server() still runtime-probes — the 'Unsupported display server type' refuse-path can misfire (R-X12 promise undelivered)"; rc=1
+fi
 # R-X12 (§8) — the Wayland/pipewire CAPTURE path is COMPILED OUT (the CI-grep deliverable): the scrap
 # `wayland` feature + `mod wayland` (libs/scrap/src/wayland/ — the xdg-portal ScreenCast + restore-token
 # persistence, R-S14) are REMOVED; X11 is the sole compile-pinned capture backend (the gstreamer/dbus/

@@ -133,6 +133,49 @@ bounded — a partial read cannot drive unbounded memory.
 
 ---
 
+## 7. Threat model — an active network attacker is reduced to denial of service (§2 / §20 / R-V1)
+
+The transport assumes the *strongest* network adversary: an active attacker on
+the path — up to and including a **fully compromised router** — that can inject,
+drop, modify, replay, reorder, reset, segment, coalesce, and **manipulate TCP
+flow control** at will, on both the controlled (responder) and viewer (initiator)
+sides. Against this attacker the construction guarantees the worst achievable
+outcome is a **denial of service**; confidentiality, integrity, and
+authentication never degrade:
+
+| Active manipulation | Outcome |
+|---|---|
+| Inject / modify a **post-key** frame | Fails the Poly1305 tag (§3, R-T7 — no ≤1-byte bypass) → stream poisoned → fail-closed |
+| Reorder / replay / drop frames | Desyncs the per-direction monotonic nonce (§2, R-A5) → tag fails → abort |
+| MITM first contact | Cannot complete the mutual CPace PAKE without the password (R-S1) |
+| Substitute its own endpoint (even one that knows the password) | Fails the R-S17 Ed25519 host-proof signed over this session's transcript (`sid‖CI‖Ya‖Yb`) — a substitute lacks the pinned private key |
+| Replay a whole captured session | A fresh responder `sid_b`/`Yb` diverges the ISK → key-confirmation fails (R-P14c) |
+| Inject malformed **pre-key** bytes | The only pre-key parsers — the frame codec, `protobuf` 3.7.2 (recursion/alloc/varint bounded, R-A7), and the CPace fixed-length fields (`exact::<N>`) — are panic-free, so injected garbage is a clean error, never a `panic='abort'` process crash |
+| RST / SYN flood / drop the connection | A pure availability attack, inherent to TCP and unpreventable at this layer; no confidentiality/integrity impact |
+
+**Bounding the pre-key handshake against flow-control manipulation.** The one
+place an active router reaches *un-authenticated* code is the CPace handshake
+(before keys are engaged). Both directions are deadline-bounded so a router
+cannot hold resources open indefinitely: `recv_cpace` reads under
+`HANDSHAKE_STEP_TIMEOUT_MS` and `send_cpace` wraps its send in the *same*
+deadline (`cpace.rs`). The send bound is load-bearing under this model — a router
+that forges a zero-window advertisement or drops ACKs can stall a send of even a
+sub-buffer-sized frame forever, and without the deadline the responder would
+block holding its R-T1 connection-flood permit (exhausting the semaphore to deny
+legitimate handshakes; keepalive cannot help — the router ACKs probes while
+pinning the window at zero). The permit is also acquired *before* any per-socket
+setup, so a shed connection under a flood costs accept+close, not
+accept+setsockopt+close (`direct_service.rs`, §20.0 "shed cheaply, early").
+
+**Residuals (bounded, accepted).** A slowloris router can hold a handshake permit
+up to ~4 × `HANDSHAKE_STEP_TIMEOUT_MS` before it recycles — bounded by the
+per-step deadlines and the generous semaphore budget; the systemd cgroup ceilings
+(`MemoryMax`/`TasksMax`/`LimitNOFILE`) bound the blast radius to the service, not
+the host. RST/SYN-level denial is inherent to TCP. Neither affects
+confidentiality, integrity, or authentication.
+
+---
+
 ## Audit pointers and test basis
 
 | R-V3 / §20 concern | Where |
@@ -144,6 +187,8 @@ bounded — a partial read cannot drive unbounded memory.
 | Cancellation safety | `cpace.rs:444-449`, `tcp.rs:86-89` |
 | Single writer / poison / back-pressure | `tcp.rs:417` (`send_bytes`), `:574` (`writer_task`), `:588` (`Drop`) |
 | Frame cap | `tcp.rs:528`, `:379-386` |
+| Pre-key handshake deadlines (both directions) | `cpace.rs` `recv_cpace` / `send_cpace` (`HANDSHAKE_STEP_TIMEOUT_MS`) |
+| Connection-flood shed (permit before socket setup) | `direct_service.rs` accept loop, `server.rs` `PREKEY_HANDSHAKE_SLOTS` |
 
 **Runtime test basis.** The integration `cpace_it` suite drives two real
 `FramedStream`s through keying and asserts: replay/reorder/duplicate-first-frame

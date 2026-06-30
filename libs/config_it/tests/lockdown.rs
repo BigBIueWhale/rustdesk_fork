@@ -17,27 +17,31 @@ fn pinned_policy_is_the_single_source_of_truth() {
         "use-permanent-password"
     );
     assert_eq!(Config::get_option("approve-mode"), "password");
-    assert_eq!(Config::get_option("access-mode"), "custom");
-    // Content channels a remote-control + file-transfer box needs (Y).
+    // FULL ACCESS is the one pinned mode: access-mode=full + every capability granted (R-D8/R-X8/R-F1).
+    assert_eq!(Config::get_option("access-mode"), "full");
+    // Every session-type / content capability is granted to the authenticated owner (Y).
     for k in [
         "enable-keyboard",
         "enable-clipboard",
         "enable-file-transfer",
         "enable-audio",
         "enable-camera",
-    ] {
-        assert_eq!(Config::get_option(k), "Y", "{k} must be pinned Y");
-    }
-    // Escalation / headless-meaningless capabilities off (N).
-    for k in [
         "enable-terminal",
         "enable-tunnel",
         "enable-remote-restart",
         "enable-record-session",
         "enable-block-input",
         "enable-privacy-mode",
-        "enable-virtual-display",
         "enable-remote-printer",
+        "allow-remote-config-modification",
+    ] {
+        assert_eq!(Config::get_option(k), "Y", "{k} must be pinned Y (full access)");
+    }
+    // Pinned OFF (N): the egress / transport / service sovereignty + no-self-DoS invariants
+    // (R-D6/R-X9), PLUS the ONE capability exception — enable-virtual-display (R-T0/Appendix C #2b:
+    // a native display-DRIVER surface kept off as defense-in-depth; everything else is full access).
+    for k in [
+        "enable-virtual-display",
         "allow-websocket",
         "allow-insecure-tls-fallback",
         "allow-linux-headless",
@@ -60,20 +64,22 @@ fn pinned_policy_is_the_single_source_of_truth() {
 
     // The bool resolver (option2bool) sees the pin too.
     assert!(Config::get_bool_option("enable-keyboard"));
-    assert!(!Config::get_bool_option("enable-terminal"));
+    assert!(Config::get_bool_option("enable-terminal")); // full access — terminal granted
     assert!(!Config::get_bool_option("stop-service"));
 
-    // ── Write guard (R-S16c): an attempt to override a pinned key is rejected
-    //    and the pin still holds. ──
-    Config::set_option("access-mode".into(), "full".into()); // the dangerous shortcut
+    // ── Write guard (R-S16c): an attempt to override a pinned key is rejected and the pin still
+    //    holds — in EITHER direction. A password-knower can neither WIDEN the policy (egress, kill
+    //    the service) nor NARROW the pinned full-access policy (drop to view-only, disable the
+    //    terminal) at runtime; the funnel rejects every write to a pinned key. ──
+    Config::set_option("access-mode".into(), "view".into()); // try to narrow to view-only
     Config::set_option("approve-mode".into(), "click".into()); // silent click-to-accept
     Config::set_option("api-server".into(), "https://evil.example".into()); // egress
-    Config::set_option("enable-terminal".into(), "Y".into()); // re-enable escalation
+    Config::set_option("enable-terminal".into(), "N".into()); // try to disable the terminal
     Config::set_option("stop-service".into(), "Y".into()); // kill the service
-    assert_eq!(Config::get_option("access-mode"), "custom");
+    assert_eq!(Config::get_option("access-mode"), "full");
     assert_eq!(Config::get_option("approve-mode"), "password");
     assert_eq!(Config::get_option("api-server"), "");
-    assert_eq!(Config::get_option("enable-terminal"), "N");
+    assert_eq!(Config::get_option("enable-terminal"), "Y");
     assert_eq!(Config::get_option("stop-service"), "N");
     // The rejected writes never reach the persisted options map.
     let opts = Config::get_options();

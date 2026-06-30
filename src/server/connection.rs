@@ -1694,17 +1694,15 @@ impl Connection {
                     }
                     self.view_camera = true;
                 }
-                // R-X8/R-R2b: the terminal session-type CODE stays in the one binary
-                // (its existence is a non-goal to remove, §14 — an operator who needs an
-                // attended terminal edits the enable-terminal pin and rebuilds, R-F4),
-                // but it is runtime-LOCKED on the box. The pinned enable-terminal=N
-                // (R-S16, UNCONDITIONAL since the lockdown feature was retired) makes
-                // Self::permission(OPTION_ENABLE_TERMINAL) resolve false, so this arm
-                // refuses the LoginRequest.Terminal below — self.terminal is never set,
-                // so the root PTY is unreachable. The pin is the closure (R-A6 CI-proves
-                // it); no separate compiled-out refusal arm is needed. (handle_terminal_action
-                // also bails fail-closed when terminal_user_token is None, which it stays
-                // when no Terminal session was authorized.)
+                // R-X8/R-D8/R-F1: the terminal is GRANTED to the authenticated owner — full access
+                // is the one pinned mode. The pinned enable-terminal=Y (R-S16, UNCONDITIONAL) makes
+                // Self::permission(OPTION_ENABLE_TERMINAL) resolve true, so this arm AUTHORIZES the
+                // LoginRequest.Terminal below (self.terminal is set; the root PTY is the owner's by
+                // design — they already hold the box's sudo password, and §2 does not confine a
+                // password-knower). Still defensive: the terminal is the service user's shell (R-F1),
+                // the Windows-LogonUserW / Linux os_login SECOND credential stays excised (R-X14/
+                // R-S18 — the plain PTY adds no second credential), and the pin is funnel-locked so
+                // no runtime write can narrow it (R-A6). The check below is that funnel gate itself.
                 Some(login_request::Union::Terminal(terminal)) => {
                     if !Self::permission(keys::OPTION_ENABLE_TERMINAL, &self.control_permissions) {
                         self.send_login_error("No permission of terminal").await;
@@ -2743,13 +2741,13 @@ impl Connection {
                     }
                 }
                 Some(message::Union::TerminalAction(action)) => {
-                    // R-X8/R-R2b: the handler stays compiled into the one binary (the
-                    // terminal session-type code's existence is a non-goal to remove,
-                    // §14) and is gated only by platform. On the box it is unreachable at
-                    // RUNTIME because the enable-terminal=N pin never authorizes a Terminal
-                    // session (so self.terminal stays false and terminal_user_token None,
-                    // and handle_terminal_action bails fail-closed on that) — not because
-                    // it is compiled out.
+                    // R-X8/R-D8: the handler stays compiled into the one binary (§14) and is gated
+                    // by platform. On the desktop box the terminal is GRANTED (enable-terminal=Y,
+                    // full access — the one mode), so an authorized Terminal session sets
+                    // self.terminal and a terminal_user_token (SelfUser — the service user's shell,
+                    // no second credential, R-X14/R-S18) and handle_terminal_action drives the
+                    // owner's PTY. It still bails fail-closed if no Terminal session was authorized
+                    // (token None).
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
                     allow_err!(self.handle_terminal_action(action).await);
                     #[cfg(any(target_os = "android", target_os = "ios"))]

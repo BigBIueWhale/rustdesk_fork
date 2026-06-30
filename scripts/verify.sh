@@ -2614,14 +2614,13 @@ fi
 
 echo "== (7) capability-key pin completeness (R-S16(d)/R-G1/R-D2) =="
 # Every controlled-side capability key is a compile-time PINNED_SETTINGS entry; none is left
-# operator-settable. allow-remote-config-modification was the one omission (config_it covers the funnel
-# MECHANISM, but not that this specific key is in the table). Pinned "N" -> no remote config-write AND
-# canBeBlocked() stays true under the pinned access-mode=custom, so the local settings UI stays
-# block-masked during a session. Assert it cannot silently drop back out.
-if grep -qE '\(OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION, *"N"\)' libs/hbb_common/src/config.rs; then
-  echo "  ok  R-S16(d)/R-G1 allow-remote-config-modification pinned 'N' in PINNED_SETTINGS (no capability key left live)"
+# operator-settable. Under the full-access policy (R-D8/R-X8) allow-remote-config-modification is
+# pinned "Y" — the authenticated owner manages RustDesk itself from the session — but it is STILL a
+# pin, not a runtime knob (the funnel rejects every write to it, R-S16). Assert it stays in the table.
+if grep -qE '\(OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION, *"Y"\)' libs/hbb_common/src/config.rs; then
+  echo "  ok  R-S16(d)/R-G1 allow-remote-config-modification pinned 'Y' in PINNED_SETTINGS (full access; pinned, not operator-settable)"
 else
-  echo "  FAIL R-S16(d): allow-remote-config-modification missing from PINNED_SETTINGS (capability key left operator-settable)"; rc=1
+  echo "  FAIL R-S16(d): allow-remote-config-modification missing/mis-pinned in PINNED_SETTINGS (full-access policy expects 'Y')"; rc=1
 fi
 
 echo "== pending excisions =="
@@ -2631,11 +2630,12 @@ echo "== pending excisions =="
 #    get_custom_server_from_string / get_license_from_exe_name / CustomServer / EXE_RENDEZVOUS_SERVER all
 #    absent; get_key() returns the baked RS_PUB_KEY unconditionally (override ignored, regression-tested).
 #    (The old TODO was a FALSE POSITIVE: its `mod custom_server` grep matched the removal-COMMENT this gate left.)
-#  - R-X8 terminal_helper/terminal_service: these modules INTENTIONALLY remain per §14 — "the session-type
-#    code stays in the one binary (its existence is a non-goal to remove)" / "the terminal session type may
-#    stay buildable." R-X8's MUSTs are the immutable enable-terminal=N pin + the refused LoginRequest.Terminal
-#    arm + the ignored TerminalAction + the os_login (R-S18) deletion — all hard-gated above; NOT a module excision.
-echo "  ok  no pending excisions (R-X4 custom_server removed + hard-gated; R-X8 terminal modules stay per §14, MUSTs gated)"
+#  - R-X8 terminal_helper/terminal_service: these modules remain and the terminal is now GRANTED to the
+#    authenticated owner (full access — the one mode, R-D8/R-X8/R-F1: enable-terminal=Y pinned, the
+#    LoginRequest.Terminal arm honored). R-X8's surviving MUST is the immutable enable-terminal=Y pin
+#    (a value, no runtime flip) + the still-excised os_login/LogonUserW SECOND-credential path (R-S18,
+#    hard-gated above) — granting the plain terminal adds NO second credential. NOT a module excision.
+echo "  ok  no pending excisions (R-X4 custom_server removed + hard-gated; R-X8 terminal granted to the owner, second-credential path still excised)"
 
 if [ "$rc" -ne 0 ]; then
   echo "VERIFY: FAILED (a completed-excision R-A6 gate regressed)"; exit 1

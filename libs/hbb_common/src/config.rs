@@ -3152,30 +3152,37 @@ pub mod keys {
         // one-time-password path, no silent click-to-accept (R-S16, R-X7).
         (OPTION_VERIFICATION_METHOD, "use-permanent-password"),
         (OPTION_APPROVE_MODE, "password"),
-        // Neutralize the access-mode "full" → grant-every-capability shortcut.
-        (OPTION_ACCESS_MODE, "custom"),
-        // The content channels a remote-control + file-transfer box needs (§4.3).
+        // FULL ACCESS is the ONE pinned mode (R-D8/R-X8/R-F1). The CPace-authenticated peer is the
+        // sovereign OWNER who holds the password (on the §17 box that password is also the OS/sudo
+        // login) — §2 explicitly does NOT confine a password-knower, and the bar is SSH (one auth →
+        // a full shell + port-forwarding). Denying the owner capabilities is theater (keyboard + the
+        // shared sudo password already reach a root shell, a tunnel, a reboot), so every capability is
+        // GRANTED — except enable-virtual-display (a native display-DRIVER surface, R-T0/#2b, below).
+        // Still defensive: post-CPace (owner-only), funnel-pinned (no runtime flip — a
+        // password-knower can neither widen nor narrow it, R-S16), and the genuinely-separate
+        // SECOND-OS-CREDENTIAL path stays excised (Windows LogonUserW / Linux os_login->PAM, R-X14/
+        // R-S18; the Linux terminal is a plain root PTY, so granting it adds no second credential).
+        (OPTION_ACCESS_MODE, "full"),
         (OPTION_ENABLE_KEYBOARD, "Y"),
         (OPTION_ENABLE_CLIPBOARD, "Y"),
         (OPTION_ENABLE_FILE_TRANSFER, "Y"),
         (OPTION_ENABLE_AUDIO, "Y"),
         (OPTION_ENABLE_CAMERA, "Y"),
-        // Escalation + outbound-proxy vectors (R-X8, R-D6).
-        (OPTION_ENABLE_TERMINAL, "N"),
-        (OPTION_ENABLE_TUNNEL, "N"),
-        // Meaningless on a headless root box, or better done out-of-band.
-        (OPTION_ENABLE_REMOTE_RESTART, "N"),
-        (OPTION_ENABLE_RECORD_SESSION, "N"),
-        (OPTION_ENABLE_BLOCK_INPUT, "N"),
-        (OPTION_ENABLE_PRIVACY_MODE, "N"),
+        (OPTION_ENABLE_TERMINAL, "Y"),
+        (OPTION_ENABLE_TUNNEL, "Y"),
+        (OPTION_ENABLE_REMOTE_RESTART, "Y"),
+        (OPTION_ENABLE_RECORD_SESSION, "Y"),
+        (OPTION_ENABLE_BLOCK_INPUT, "Y"),
+        (OPTION_ENABLE_PRIVACY_MODE, "Y"),
+        // The ONE exception to full access (R-T0/Appendix C #2b): enable-virtual-display drives a
+        // native display-DRIVER API (Windows IddCx; the native-code surface the fork minimizes). It is
+        // NOT control the owner reaches another way, and a no-op on the §17 headless Xvfb box — so it
+        // stays OFF as defense-in-depth on the native-driver surface.
         (OPTION_ENABLE_VIRTUAL_DISPLAY, "N"),
-        (OPTION_ENABLE_REMOTE_PRINTER, "N"),
-        // No remote modification of the controlled box's config: the §11 controlled-side policy is a
-        // compile-time table (R-D2/R-S16(d)). This was the ONE capability key left operator-settable
-        // (R-G1: removed/greyed, never live) — every sibling above is pinned. Pinning it "N" also keeps
-        // canBeBlocked() true under the pinned access-mode="custom", so the local settings UI stays
-        // block-masked during a remote session (the operator can no longer disable that mask).
-        (OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION, "N"),
+        (OPTION_ENABLE_REMOTE_PRINTER, "Y"),
+        // Manage RustDesk itself from the session: the owner has complete control of the box, its
+        // remote-desktop config included. Funnel-pinned ON (R-S16) — a value, not a runtime toggle.
+        (OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION, "Y"),
         // No TOTP, no Telegram-bot push (R-X7, R-D6); trusted-devices is fully excised, not just pinned.
         ("2fa", ""),
         ("bot", ""),

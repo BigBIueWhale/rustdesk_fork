@@ -182,7 +182,7 @@ echo "$out5"
 echo "$out5" | grep -q 'Your ip is blocked by the peer' \
   || { echo "  FAIL R-T15(d): a fully-keyed connection was NOT denied by the empty default-deny whitelist"; rc=1; }
 
-echo "== (6) FULL SESSION (R-S6/R-S2/R-S18): a keyed client + a credential-free LoginRequest is AUTHORIZED (whitelist=0.0.0.0/0) =="
+echo "== (6) FULL SESSION (R-S6/R-S2/R-S18 + R-D8/R-X8): a keyed credential-free LoginRequest is ADMITTED and the FULL-ACCESS policy denies NOTHING (whitelist=0.0.0.0/0) =="
 out6=$("${RUN[@]}" bash -c '
   export HOME=/tmp/rd6; mkdir -p "$HOME"
   ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" "0.0.0.0/0" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
@@ -192,15 +192,26 @@ out6=$("${RUN[@]}" bash -c '
   kill -TERM $SRV 2>/dev/null
 ' || true)
 echo "$out6"
-# An authorized session emits PermissionInfo (session-setup) — proving the keyed edge IS the
-# authorization (R-S6/R-S18: the password proof is collapsed into the PAKE; LoginRequest carries
-# no second credential and still authorizes because CPace already authenticated, and the whitelist admits).
-echo "$out6" | grep -q 'PermissionInfo\|PeerInfo' \
-  || { echo "  FAIL R-S6/R-S18: a keyed credential-free LoginRequest did NOT authorize / start a session"; rc=1; }
-# R-S17: the probe (a faithful viewer) verified the responder's HostIdentity host-proof as the
-# FIRST post-key frame — the SSH-known_hosts-style defence against a substituted/MITM host.
+# R-S6/R-S18: the keyed edge IS the authorization — the credential-free LoginRequest (no second
+# credential; the password proof is collapsed into the PAKE) is ADMITTED because CPace already
+# authenticated and the whitelist permits. Proven POSITIVELY under the full-access policy: RustDesk
+# NOTIFIES the viewer only of DENIED permissions, so an authorized FULL-ACCESS session emits ZERO
+# `enabled: false` PermissionInfo — vs stage 5 (blocked -> a LoginResponse Error) and vs the OLD
+# least-privilege policy (which emitted Restart/Recording/BlockInput/PrivacyMode = false). So: the
+# host-proof verifies, NO capability is denied, and the request is NOT rejected. (A headless box sends
+# no PeerInfo either way, so denial-notifications were the OLD signal — wrong under full access.)
+s6_ok=1
+# R-S17: the probe (a faithful viewer) verified the responder's HostIdentity host-proof as the FIRST
+# post-key frame — the SSH-known_hosts-style defence against a substituted/MITM host.
 echo "$out6" | grep -q 'R-S17 host-proof VERIFIED' \
-  || { echo "  FAIL R-S17: the responder's HostIdentity host-proof did not verify"; rc=1; }
+  || { echo "  FAIL R-S17: the responder's HostIdentity host-proof did not verify"; rc=1; s6_ok=0; }
+if echo "$out6" | grep -qE 'blocked by the peer|Some\(Error'; then
+  echo "  FAIL R-S6/R-S18: the keyed credential-free LoginRequest was REJECTED (must be ADMITTED under whitelist=0.0.0.0/0)"; rc=1; s6_ok=0
+fi
+if echo "$out6" | grep -q 'enabled: false'; then
+  echo "  FAIL R-D8/R-X8: a capability was DENIED (PermissionInfo enabled:false) — the full-access policy must deny nothing"; rc=1; s6_ok=0
+fi
+[ "$s6_ok" = 1 ] && echo "  ok  R-S6/R-S18 credential-free LoginRequest ADMITTED + R-D8/R-X8 full access (host-proof verified; zero denied-permission notifications; not rejected)"
 
 echo "== (7) R-A8 / R-T7: an INJECTED (forged) frame on the keyed stream is rejected by the AEAD =="
 out7=$("${RUN[@]}" bash -c '

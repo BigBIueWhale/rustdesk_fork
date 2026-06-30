@@ -1836,7 +1836,7 @@ ra6_clean 'relay-hint' 'R-G6 relay-fallback hint emission' || rc=1
 # §12 win/mac packaging asset-name path, returns `error:update-failed-check-msi-tip`), so deleting
 # its table entries would orphan a referenced key. The `{}` placeholders are regex-escaped (\{\})
 # because ra6_clean matches with grep -E.
-ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-2fa-desc|enable-bot-tip|wrong-2fa-code|enter-2fa-title|cancel-2fa-confirm-tip|powered_by_me|download-new-version-failed-tip|new-version-of-\{\}-tip|upgrade_remote_rustdesk_client_to_\{\}_tip|upgrade_rustdesk_server_pro_to_\{\}_tip)"' '§19 dead lang keys' || rc=1
+ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-2fa-desc|enable-bot-tip|wrong-2fa-code|enter-2fa-title|cancel-2fa-confirm-tip|powered_by_me|download-new-version-failed-tip|new-version-of-\{\}-tip|upgrade_remote_rustdesk_client_to_\{\}_tip|upgrade_rustdesk_server_pro_to_\{\}_tip|whitelist_tip|Use IP Whitelisting|IP Whitelisting)"' '§19 dead lang keys' || rc=1
 # §19 dead-lang-key sweep (R-X9/R-X11 elevation/UAC UI): the peer-triggered elevation AND the Windows
 # attended-mode "accept and elevate" / UAC-prompt UI are excised — the host runs as a root systemd
 # service (R-D1/R-X10), so per-session elevation is dead. These 7 keys have no live translate() caller.

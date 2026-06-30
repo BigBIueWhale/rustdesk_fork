@@ -2945,21 +2945,12 @@ oLink.Save
     .to_owned())
 }
 
-fn get_import_config(exe: &str) -> String {
-    if config::is_outgoing_only() {
-        return "".to_string();
-    }
-    format!("
-sc stop {app_name}
-sc delete {app_name}
-sc create {app_name} binpath= \"\\\"{exe}\\\" --import-config \\\"{config_path}\\\"\" start= auto DisplayName= \"{app_name} Service\"
-sc start {app_name}
-sc stop {app_name}
-sc delete {app_name}
-",
-    app_name = crate::get_app_name(),
-    config_path=Config::file().to_str().unwrap_or(""),
-)
+fn get_import_config(_exe: &str) -> String {
+    // R-X4: `--import-config` is excised from core_main (its arg-arm overwrote the entire config —
+    // trust anchor + servers — from an attacker-suppliable file). The upstream installer's
+    // service-recreation dance that ran `rustdesk --import-config <path>` is therefore a no-op, so it
+    // is dropped here entirely — carrying no such literal into the shipped installer.
+    String::new()
 }
 
 fn get_create_service(exe: &str) -> String {

@@ -69,25 +69,38 @@ compile under `linux-pkg-config,unix-file-copy-paste` + the R-A6 done-set
 greps). The full server binary builds and the loopback runtime smoke
 (`scripts/smoke-server.sh`) exercises the one-TCP/zero-UDP surface, fail-closed
 startup, graceful shutdown, and the no-plaintext wire-capture. The reproducible
-release builds hold: the Debian `.deb` (Flutter) R-B2 double-build is
-byte-identical (A==B) and was **re-proven at the post-audit HEAD `5cd5907` →
-`c2d9aa04…`** — this session's transport/parser hardening (cpace send-deadline,
-accept-shed reorder, fs/clipboard arithmetic fixes) does **not** regress
-reproducibility. The Android `.apk` R-B2 was **likewise re-proven at HEAD
-`cbd4711` → `b49c4f20…`** (two independent offline builds, byte-identical). So
-both Linux-host platforms reproduce byte-for-byte at the post-audit HEAD. The
-Windows `.exe`/`.msi` R-B2 was **also re-proven at HEAD `313f776` → exe
-`5f280a07…` / msi `48a301bb…`** via the §12.2 KVM golden-VM `DOUBLE_BUILD` (no
-sudo needed — `qemu:///session` + the `/dev/kvm` POSIX ACL; the old "build-host
-sudo" note applied only to the unused system-libvirt path). So **all three
-platforms are now byte-reproducible (A==B) at the post-audit HEAD**, and
-`dist/SHA256SUMS-HEAD.txt` is the consistent full **3/3** manifest at `313f776`
-(the binaries are identical across the doc-only commits `5cd5907..313f776`). The
-Windows VM build — the only path that
-compiles the `cfg(windows)` code — caught a worker-revert base-restore residual
-(a dropped `as Box<_>` trait-object coercion in the CLIPRDR clipboard dispatch,
-`libs/clipboard/src/platform/mod.rs`) that the Linux gates structurally cannot
-see; it is fixed (008e2ba) and the in-VM honesty gate prevented any stale
+release builds hold. **R-B2 was re-proven on all three platforms at HEAD
+`6fbae50`** — after this session's two *source-changing* commits: the full-access
+pin reversal (`9a83b50`, one controlled-side mode for the authenticated owner)
+and the at-rest credential change (`6fbae50`, the CPace PRS now stored as a
+memory-hard Argon2id hash salted by the host key, never the plaintext — R-P1).
+Those genuinely change the binaries, so the new hashes differ from the prior
+doc-only-stable `313f776` set — **A==B at this HEAD is the proof, not a match to
+the old hashes**. The new byte-identical (A==B) double-build SHA-256s:
+
+```
+7cadaaab23788b73417ebd6348290dd1e5831ff088bee9826ded834c32a22472  rustdesk-x86_64.deb
+9468236ab2f2eff7ad71b63339e21705cd7fabc650ca871fa906ec10f6254d2d  rustdesk-setup.exe
+bc5135c5c738908ba5a454a70331103dab44bb10405bf7fff20384d70dea23d8  rustdesk.msi
+54e26d37e46bdc3a788972df57fd1848b4df0403b10c0bd01d555b9083f6c593  rustdesk-arm64.apk
+```
+
+The Debian `.deb` is an offline `DOUBLE_BUILD` A==B (`build-debian.sh`, `dist`
+vs `dist/_rebuild`); the Windows `.exe`/`.msi` are a §12.2 KVM golden-VM
+`DOUBLE_BUILD` A==B (a fresh CoW overlay cloned from the byte-identical golden
+*per cycle*, the in-VM `build-windows.ps1 exit=0` honesty gate confirming a real
+compile rather than a stale artifact); the Android `.apk` is two independent
+offline builds proven byte-identical, signed (apksigner v2+v3, RSA-4096). So
+**all three platforms are byte-reproducible (A==B) at HEAD `6fbae50`**, and the
+full-access + Argon2id-PRS changes compile cleanly on every target — including
+the `cfg(windows)` path that only an actual build can validate.
+`dist/SHA256SUMS-HEAD.txt` is regenerated as the consistent full **3/3** manifest
+at `6fbae50`, superseding the `313f776` set (deb `c2d9aa04…` / exe `5f280a07…` /
+msi `48a301bb…` / apk `b49c4f20…`). The Windows VM build — the only path that
+compiles the `cfg(windows)` code — remains the sole validator there (it earlier
+caught a dropped `as Box<_>` trait-object coercion in the CLIPRDR clipboard
+dispatch, `libs/clipboard/src/platform/mod.rs`, that the Linux gates structurally
+cannot see; fixed 008e2ba), and the in-VM honesty gate prevents any stale
 artifact from shipping.
 
 ## Upstream-CVE coverage — the 2026 RustDesk client CVE inventory

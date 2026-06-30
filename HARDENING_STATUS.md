@@ -158,6 +158,15 @@ Windows printer path are restored to **in-process** decode/decompress/handoff
 to be closed later — if at all — by sandboxing the decode path, bounded
 operationally in the meantime.
 
+A follow-on fix (2026-07-01) closed the **one stale expectation the revert missed**:
+`scripts/apple-conform-check.sh` still listed the deleted
+`libs/hbb_common/src/native_worker_sandbox.rs` in its R-R2 retain-and-check set and
+ran a macOS-worker Seatbelt assertion over that absent file, so the Apple R-R2
+source-conformance gate had been **failing on a deliberately-absent file** since the
+revert. The gate now reflects the accepted residual (`apple-conform-check` **PASS** at
+HEAD); re-closing #2b later restores the worker subsystem on *all* platforms, so the
+removal is deliberately not a presence-of-absence pin.
+
 On the same date a separate beyond-spec change (f0b9966) that had disabled the
 desktop viewer's GPU texture-upload display path — routing decoded peer RGBA
 through the native `texture_rgba_renderer` plugin — was also **reverted** by
@@ -222,6 +231,12 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   bypass the depth limit; the gate + this note flag it.
 - **Apple artifacts** — macOS/iOS are source-conformed (R-R2 retain-and-check),
   not built; full artifacts need the Apple SDK/toolchain path.
+- **Apple R-R2 gate runs outside `verify.sh`** — `scripts/apple-conform-check.sh`
+  needs the `rd-apple-check` image + cargo cross-checks, so it is **not in the default
+  verify loop**; its `0c54912` #2b leftover (above) therefore went unnoticed through the
+  "complete"/"proven" milestones. GREEN again at HEAD (2026-07-01). **To wire in:** add
+  it to the release-verification path so future Apple-source drift fails fast rather than
+  silently.
 - **R-R3 dependency-advisory gates** — `cargo audit`/`cargo deny` (`scripts/audit.sh`)
   and `osv-scanner` (`scripts/dart-audit.sh`) are wired; the documented-accept
   ledger is maintained there.

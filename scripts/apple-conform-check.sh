@@ -93,7 +93,6 @@ APPLE_RS=(
   src/privacy_mode/macos.rs
   src/whiteboard/macos.rs
   libs/hbb_common/src/platform/macos.rs
-  libs/hbb_common/src/native_worker_sandbox.rs
   libs/enigo/src/macos/macos_impl.rs
 )
 APPLE_OTHER=(
@@ -153,31 +152,15 @@ else
   rc=1
 fi
 
-echo "== (2c) Appendix C #2b macOS worker Seatbelt assertion =="
-macos_worker_sandbox="$REPO/libs/hbb_common/src/native_worker_sandbox.rs"
-if grep -qF 'apply_macos_worker_restricted_sandbox(' "$macos_worker_sandbox" \
-   && grep -qF 'MACOS_WORKER_SANDBOX_PROFILE' "$macos_worker_sandbox" \
-   && grep -qF 'MACOS_PURE_PARSER_WORKER_SANDBOX_PROFILE' "$macos_worker_sandbox" \
-   && grep -qF '(deny network*)' "$macos_worker_sandbox" \
-   && grep -qF '(deny file-read*)' "$macos_worker_sandbox" \
-   && grep -qF '(deny file-write*)' "$macos_worker_sandbox" \
-   && grep -qF '(deny process-fork*)' "$macos_worker_sandbox" \
-   && grep -qF '(deny process-exec*)' "$macos_worker_sandbox" \
-   && grep -qF 'sandbox_init(' "$macos_worker_sandbox" \
-   && grep -qF 'sandbox_free_error' "$macos_worker_sandbox" \
-   && grep -qF 'verify_macos_worker_file_read_denied()' "$macos_worker_sandbox" \
-   && grep -qF 'verify_macos_worker_file_write_denied()' "$macos_worker_sandbox" \
-   && grep -qF 'verify_macos_worker_process_exec_denied()' "$macos_worker_sandbox" \
-   && grep -qF 'enter_pure_parser_worker_process()' "$REPO/src/native_video_worker.rs" \
-   && grep -qF 'enter_pure_parser_worker_process()' "$REPO/src/native_audio_worker.rs" \
-   && grep -qF 'enter_pure_parser_worker_process()' "$REPO/libs/hbb_common/src/compress.rs" \
-   && grep -qF 'enter_pure_parser_worker_process()' "$REPO/libs/clipboard/src/platform/unix/filetype.rs" \
-   && ! grep -qF 'enter_pure_parser_worker_process' "$REPO/libs/clipboard/src/platform/unix/serv_files.rs"; then
-  note "ok  Appendix C #2b macOS worker applies custom Seatbelt network/file-write/process denial, and pure parser workers add filesystem-read denial before hostile parser input"
-else
-  echo "  FAIL Appendix C #2b: macOS native worker restricted/strict Seatbelt entry hooks are missing or misrouted"
-  rc=1
-fi
+# (2c) Appendix C #2b is an ACCEPTED, documented residual: the fork SHOULD (not MUST) sandbox the decode
+# path. Commit 0c54912 deliberately reverted the ENTIRE native-worker decode-sandbox subsystem (the
+# per-codec worker processes + the macOS Seatbelt sandbox file + the Android isolatedProcess services
+# + ~1800 lines of verify.sh worker gates) as "a documented residual, not a MUST". That revert updated
+# verify.sh but missed THIS macOS Seatbelt assertion, leaving apple-conform-check failing on a
+# deliberately-absent file. Removed to match: the macOS worker sandbox is intentionally gone (the
+# universal #2b residual), so the Apple source carries no worker hardening to retain. (Re-closing #2b
+# later restores the subsystem on ALL platforms, not Apple alone — this is not a presence-of-absence pin.)
+echo "== (2c) Appendix C #2b native-worker decode sandbox: accepted residual (reverted 0c54912) — no macOS worker hardening to assert =="
 
 echo "== (2d) Apple metadata allow-lists: plist/entitlements/pods/Xcode shell phases =="
 docker run --rm -i -v "$REPO:/work:ro" -w /work "$IMG" python3 - <<'PY' || rc=1

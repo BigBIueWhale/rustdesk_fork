@@ -144,6 +144,19 @@ else
   echo "  ok  R-S11/R-A6 the 9 is_option_can_save-bypassing config-writes in handle() are all reached via main_channel_admits-denied arms (Socks/Config-nonwhitelist/SyncConfig) — no new bypassing write"
 fi
 
+# A2/R-D8: the --password provisioning arm MUST stay install-gated but NOT root-gated. An unprivileged
+# same-uid owner (haggai_computer's uid-1000 supervisord `user`, R-D8) provisions over its OWN per-uid
+# IPC, whose 0600 + SO_PEERCRED (R-S11) is the real authorization — not the CLI gate. Re-adding an
+# is_root() gate would break non-root provisioning and force CAP_SYS_PTRACE in a container. Range = the
+# --password arm up to the next CLI arm (--set-unlock-pin, which legitimately keeps is_root()); comment
+# lines are stripped so the A2 rationale comment (which names is_root()) cannot false-match.
+pw_arm=$(awk '/args\[0\] == "--password"/,/args\[0\] == "--set-unlock-pin"/' src/core_main.rs | grep -vE '^[[:space:]]*//')
+if echo "$pw_arm" | grep -q 'set_permanent_password' && ! echo "$pw_arm" | grep -q 'is_root'; then
+  echo "  ok  A2/R-D8 --password is install-gated, not root-gated (same-uid owner provisions; the IPC uid-scoping authorizes — no CAP_SYS_PTRACE)"
+else
+  echo "  FAIL A2/R-D8: the --password arm is missing set_permanent_password or is still is_root()-gated — would break non-root same-uid provisioning (haggai/R-D8)"; rc=1
+fi
+
 # (3c) File-transfer write-path safety (R-S8/R-A5): the receive-write opens are NO-FOLLOW
 # (open_recv_write_no_follow / O_NOFOLLOW) so a local symlink swapped in at the target after the
 # path-validation fails the open rather than redirecting root's write (the §4.3 symlink TOCTOU).

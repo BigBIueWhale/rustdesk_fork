@@ -335,14 +335,24 @@ pub fn core_main() -> Option<Vec<String>> {
                 return None;
             }
             if args.len() == 2 {
-                if crate::platform::is_installed() && is_root() {
+                // A2/R-D8: provisioning the permanent password requires only the INSTALLED binary
+                // that can reach a running `--server`'s per-uid IPC — NOT additionally root. The IPC
+                // socket is per-uid (`/tmp/<app>-<uid>/ipc`), mode 0600, gated by SO_PEERCRED +
+                // parent-dir hardening (R-S11), so `set_permanent_password` succeeds only for the
+                // `--server`'s own uid (the same-uid owner) or root (which reaches the user IPC via
+                // `UserMainIpcScope`); any other uid simply fails to connect. Dropping the `is_root()`
+                // pre-gate lets an unprivileged owner provision their own box under a per-user
+                // supervisor / container (R-D8) WITHOUT the cross-uid `/proc/<pid>/exe` scan that
+                // otherwise forces CAP_SYS_PTRACE in a container — the IPC's uid-scoping is the real
+                // authorization, not the CLI gate.
+                if crate::platform::is_installed() {
                     if let Err(err) = crate::ipc::set_permanent_password(args[1].to_owned()) {
                         println!("{err}");
                     } else {
                         println!("Done!");
                     }
                 } else {
-                    println!("Installation and administrative privileges required!");
+                    println!("Run the installed binary to set the permanent password.");
                 }
             }
             return None;

@@ -19,7 +19,8 @@
 #   - R-A4 (runtime socket self-check) : `assert_socket_surface` confirms the same from inside;
 #   - R-T9 : SIGTERM -> "graceful shutdown initiated" -> "complete — exiting 0";
 #   - R-D8 / R-D2 (real --password provisioning) : the PRODUCTION `--password` CLI — install-gated
-#     (binary under /usr) + root-gated, run against a live --server — provisions over the uid-scoped
+#     (binary under /usr; A2: no longer root-gated), run against a live --server (2b root cross-uid,
+#     2c non-root same-uid) — provisions over the uid-scoped
 #     daemon IPC and CLEANLY set-and-exits (no hang); the IPC-provisioned credential then keys a
 #     session and the old one is rejected (the headless deploy contract haggai's setup.sh leans on);
 #   - R-A9 (wire-capture) : a distinctive plaintext canary sent in a POST-KEY LoginRequest NEVER
@@ -91,8 +92,9 @@ echo "== (2b) R-D8/R-D2: the REAL 'rustdesk --password' CLI provisions over the 
 # R-D8 MUST: "R-B4's smoke-test MUST add a provisioning check on the .deb run headless: a clean
 # --password set-and-exit, then a keyed Direct-IP session." The other stages seed via the test-only
 # examples/seed_password (a direct Config write) for speed, which BYPASSES the production path. This
-# stage runs the REAL `--password` CLI — install-gated (is_installed() => exe under /usr) + root-gated
-# (is_root()), both satisfied here — so it exercises ipc::set_permanent_password END-TO-END: the
+# stage runs the REAL `--password` CLI — install-gated (is_installed() => exe under /usr); A2 dropped
+# the is_root() gate, but this stage still runs as root to exercise the cross-uid UserMainIpcScope hop
+# (the non-root same-uid path is stage 2c) — so it exercises ipc::set_permanent_password END-TO-END: the
 # root->daemon socket resolution (connect() at geteuid()==0 scans /proc via running_server_uids_for_
 # current_exe; the cross-uid SELECTION is unit-tested at ipc.rs), send_config("permanent-password"),
 # the 1s ACK wait, the storage sync, and the current-thread-runtime CLEAN TEARDOWN — the "set-and-exit"
@@ -125,6 +127,46 @@ echo "$out2b" | grep -q 'KEYED_NEW: keying ok=true' \
   || { echo "  FAIL R-D8: the IPC-provisioned password is not usable — a CPace probe could not key with it"; rc=1; }
 echo "$out2b" | grep -q 'KEYED_OLD: keying ok=false' \
   || { echo "  FAIL R-D8: the old password still keys — the --password change did not take effect over the daemon IPC"; rc=1; }
+
+echo "== (2c) A2: the REAL 'rustdesk --password' provisions over the SAME-UID daemon IPC as a NON-ROOT owner (no root, no /proc scan, no CAP_SYS_PTRACE — the haggai_computer deployment) =="
+# A2/R-D8: the production --password is install-gated (R-S11) but NO LONGER root-gated. An unprivileged
+# owner (uid 4000 here, like haggai_computer's uid-1000 supervisord `user`) runs BOTH --server and
+# --password as ITSELF: set_permanent_password connects to its OWN per-uid IPC (/tmp/<app>-<uid>/ipc)
+# directly — no geteuid()==0 /proc scan, hence no CAP_SYS_PTRACE. The IPC's per-uid 0600 + SO_PEERCRED
+# (R-S11) is the real authorization; the dropped is_root() CLI gate was redundant with it. (Incidentally
+# also proves the B1 RLIMIT_NOFILE self-enforcement runs cleanly under a non-root --server.)
+out2c=$("${RUN[@]}" bash -c '
+  install -D ./target/debug/rustdesk /usr/share/rustdesk/rustdesk
+  id -u rduser >/dev/null 2>&1 || useradd -m -u 4000 rduser
+  chmod 0644 target/smoke-bind-loopback.so
+  cat > /tmp/a2.sh <<"EOS"
+export HOME=/home/rduser
+cd /work
+echo "UID=$(id -u)"
+./target/debug/examples/seed_password Initial-Seed-Pw-000 >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
+LD_PRELOAD=/work/target/smoke-bind-loopback.so /usr/share/rustdesk/rustdesk --server >/tmp/srv2c.log 2>&1 &
+sleep 8
+timeout 15 /usr/share/rustdesk/rustdesk --password Changed-Same-Uid-Pw-9 >/tmp/pw2c.out 2>&1
+echo "PW_EXIT=$?"
+echo "PW_OUT=[$(tr -d "\n" </tmp/pw2c.out)]"
+echo "KEYED_NEW: $(./target/debug/examples/probe_client 127.0.0.1:21118 Changed-Same-Uid-Pw-9 ok 2>&1 | grep -oE "keying ok=(true|false)")"
+echo "KEYED_OLD: $(./target/debug/examples/probe_client 127.0.0.1:21118 Initial-Seed-Pw-000 fail 2>&1 | grep -oE "keying ok=(true|false)")"
+pkill -TERM -f "rustdesk --server" 2>/dev/null || true
+EOS
+  chmod 0644 /tmp/a2.sh
+  su rduser -c "bash /tmp/a2.sh"
+' || true)
+echo "$out2c"
+echo "$out2c" | grep -q 'UID=4000' \
+  || { echo "  FAIL A2: stage (2c) did not run as the intended non-root uid (4000)"; rc=1; }
+echo "$out2c" | grep -q 'PW_EXIT=0' \
+  || { echo "  FAIL A2: same-uid --password did not cleanly exit 0 (the is_root() drop or the same-uid IPC reach regressed)"; rc=1; }
+echo "$out2c" | grep -q 'Done!' \
+  || { echo "  FAIL A2: same-uid --password did not confirm 'Done!' — the daemon did not ACK the non-root IPC set"; rc=1; }
+echo "$out2c" | grep -q 'KEYED_NEW: keying ok=true' \
+  || { echo "  FAIL A2: the same-uid-provisioned password is not usable — a CPace probe could not key with it"; rc=1; }
+echo "$out2c" | grep -q 'KEYED_OLD: keying ok=false' \
+  || { echo "  FAIL A2: the old password still keys after the same-uid change"; rc=1; }
 
 echo "== (3) two-process: a CPace probe client keys the REAL server (R-A1/R-S1) + a wrong password is refused (R-P3/R-P14c) + the R-T12 observability fires =="
 out3=$("${RUN[@]}" bash -c '
@@ -301,7 +343,7 @@ DECAY_NOTE=" + R-A8 limiter-decay (tripped block self-heals after the 60s window
 fi
 
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 real --password IPC provisioning (clean set-and-exit) + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
+  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 real --password IPC provisioning (clean set-and-exit; root + A2 non-root same-uid) + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

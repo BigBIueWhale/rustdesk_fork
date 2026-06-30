@@ -92,23 +92,49 @@ fn pinned_policy_is_the_single_source_of_truth() {
     assert_eq!(Config::get_option("a-non-pinned-ui-key"), "hello");
 }
 
-/// R-P1/R-S16: the permanent password is held as PRS-usable plaintext at rest
-/// (not a one-way salted hash), read live on every connection, so a change takes
-/// effect on the next handshake.
+/// R-P1/R-S16: the permanent password is held at rest ONLY as the memory-hard,
+/// host-key-salted Argon2id CPace PRS — NEVER the plaintext and NEVER a fast
+/// (SHA256) hash. Read live on every connection, so a change takes effect on the
+/// next handshake.
 #[test]
-fn permanent_password_is_prs_usable_plaintext() {
-    assert!(Config::set_permanent_password("hunter2-correct-horse"));
-    assert_eq!(Config::get_permanent_password_prs(), "hunter2-correct-horse");
+fn permanent_password_prs_is_memory_hard_hash() {
+    let pw = "hunter2-correct-horse";
+    assert!(Config::set_permanent_password(pw));
+    let prs = Config::get_permanent_password_prs();
 
-    // A change takes effect immediately — no cached PRS.
+    // The stored PRS is a HASH, not the plaintext.
+    assert_ne!(prs, pw, "the PRS must not be the plaintext password");
+    assert!(!prs.is_empty(), "a set password yields a non-empty PRS");
+
+    // It is EXACTLY base64(Argon2id(NFC(pw), salt(host_pubkey))): deriving against the
+    // box's own host public key reproduces the stored PRS, so both ends agree (the
+    // viewer derives the identical value from the box's PINNED key).
+    let host_pubkey = Config::get_key_pair().1;
+    assert_eq!(
+        prs,
+        hbb_common::config::derive_cpace_prs(pw, &host_pubkey).expect("derive PRS"),
+        "the stored PRS must equal the documented Argon2id derivation"
+    );
+
+    // Stable for the same password + key: re-setting the SAME password is idempotent
+    // and yields the SAME PRS (no per-set randomness — the salt is the host key).
+    assert!(Config::set_permanent_password(pw));
+    assert_eq!(Config::get_permanent_password_prs(), prs);
+
+    // A different password yields a different PRS, and the change takes effect at once
+    // (no cached PRS).
     assert!(Config::set_permanent_password("a-new-password"));
-    assert_eq!(Config::get_permanent_password_prs(), "a-new-password");
+    let prs2 = Config::get_permanent_password_prs();
+    assert_ne!(prs2, prs, "a new password must change the PRS");
+    assert_ne!(prs2, "a-new-password", "the new PRS is the hash, not the plaintext");
 
-    // The legacy hashed storage stays a hash (not the plaintext) — the PRS lives
-    // in its own at-rest slot, so this is additive, not a downgrade of the hash.
-    let (h1_storage, _) = Config::get_local_permanent_password_storage_and_salt();
-    assert_ne!(h1_storage, "a-new-password");
-    assert!(!h1_storage.is_empty());
+    // The legacy `config.password` slot also holds the Argon2id PRS (NOT the plaintext,
+    // NOT a fast SHA256) and stays salt-bound — so a full config dump has no plaintext
+    // and no fast hash of the password.
+    let (pw_storage, salt) = Config::get_local_permanent_password_storage_and_salt();
+    assert_ne!(pw_storage, "a-new-password");
+    assert!(!pw_storage.is_empty());
+    assert!(!salt.is_empty(), "the hash-shaped storage stays salt-bound (R-S9)");
 
     // Clearing the password clears the PRS (no shared secret ⇒ handshake fails closed).
     assert!(Config::set_permanent_password(""));

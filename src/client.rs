@@ -309,34 +309,54 @@ impl Client {
         Ok(((stream, true, Some(pk_b), "TCP"), (0, "".to_owned()), false))
     }
 
-    /// R-S13 / R-P14 / R-S17 — the viewer (initiator) keying choke point: the mirror of
-    /// the responder's `run_responder` block (server.rs). The fork keys EVERY connection
+    /// R-S13 / R-P14 / R-S17 / R-P1 — the viewer (initiator) keying choke point: the mirror
+    /// of the responder's `run_responder` block (server.rs). The fork keys EVERY connection
     /// with the single mandatory CPace handshake, run over the direct TCP stream BEFORE any
     /// application message, fail-closed. On success it returns the responder's verified
     /// Ed25519 host key (`pk_B`) — surfaced as the connection's pk so the UI fingerprint is
-    /// the pinned host's. `prs` is the live plaintext password (the R-S16 viewer twin
-    /// `PeerConfig.password_prs`); `peer_addr` keys the R-S17 pin lookup.
+    /// the pinned host's. `password` is the operator's live credential (the R-S16 viewer twin
+    /// `PeerConfig.password_prs`); `peer_addr` keys the R-S17 pin lookup. The CPace PRS is
+    /// DERIVED here (R-P1) as the memory-hard Argon2id hash salted with the box's PINNED host
+    /// key — so a box's identity is woven into the PAKE secret and the SOLE derivation site
+    /// for a viewer connection is this one choke point.
     async fn key_initiator(
         peer_addr: &str,
-        prs: &str,
+        password: &str,
         conn: &mut Stream,
         lch: &Arc<RwLock<LoginConfigHandler>>,
     ) -> ResultType<Vec<u8>> {
-        // R-S9: an empty PRS has no shared secret — fail closed (never key in the open).
-        if prs.is_empty() {
+        // R-S9: an empty credential has no shared secret — fail closed (never key in the open).
+        if password.is_empty() {
             bail!("No remembered password for this peer — cannot run the CPace handshake (R-S9, fail-closed). Connect once with the box's password remembered so the viewer can key.");
         }
+        // R-S17 / R-P1: the CPace PRS is bound to the box's PINNED Ed25519 host key (the PRS
+        // salt IS that key), so the pin MUST exist BEFORE keying — with no pin (R-S17 no
+        // trust-on-first-use) the viewer cannot derive the matching PRS and MUST NOT connect.
+        // The operator pins the box's key out-of-band first (`--get-fingerprint` on the box,
+        // whose output IS the full key, then `--pin-host`). This is strictly stronger than the
+        // old learn-the-key-on-first-connect: a substitute box with a different key now fails
+        // at CPace key-confirmation, not merely at the post-key host-proof.
+        let Some(pinned) = hbb_common::host_pin::get_pinned_pk(peer_addr) else {
+            bail!(
+                "R-S17: host {peer_addr} is not pinned (first contact) — the CPace credential is bound to the box's host key, so the viewer cannot derive it until you pin the key. Get it out-of-band (`--get-fingerprint` on the box), then pin it (GUI: pin dialog; CLI: `--pin-host {peer_addr} <fingerprint>`) and reconnect. Refusing (fail-closed; no trust-on-first-use)."
+            );
+        };
+        // R-P1: derive the memory-hard PRS = base64(Argon2id(NFC(password), salt(pinned key))).
+        let Some(prs) = hbb_common::config::derive_cpace_prs(password, &pinned) else {
+            bail!("R-S9: could not derive the CPace PRS (empty password or host key) — fail-closed.");
+        };
         // The balanced PAKE runs over the direct TCP stream (the flagship path is always TCP).
         let (keys, transcript) = {
             let Some(fs) = conn.as_framed_tcp_mut() else {
                 bail!("CPace handshake requires a direct TCP stream");
             };
-            match hbb_common::cpace::run_initiator_with_transcript(fs, prs).await {
+            match hbb_common::cpace::run_initiator_with_transcript(fs, &prs).await {
                 Ok(v) => v,
-                // A confirmation mismatch here = wrong password (or a non-fork/substitute
-                // peer). The viewer cannot tell which, by design; fail closed either way.
+                // A confirmation mismatch here = wrong password, a substitute box whose host
+                // key differs from the pin (so its PRS differs), or a non-fork peer. The viewer
+                // cannot tell which, by design; fail closed either way.
                 Err(_) => bail!(
-                    "CPace handshake failed — wrong password, or the peer is not a fork box (fail-closed)"
+                    "CPace handshake failed — wrong password, the box's host key does not match your pin, or the peer is not a fork box (fail-closed)"
                 ),
             }
         };
@@ -353,38 +373,20 @@ impl Client {
                 bail!("R-S17: the responder's HostIdentity host-proof did not verify (fail-closed)")
             }
         };
-        // R-S17 pin compare — the SSH known_hosts check. The pin store normalizes the
-        // address (shared with R-SV5), so a spelling variant cannot silently re-seed.
-        match hbb_common::host_pin::get_pinned_pk(peer_addr) {
-            // Known host: the box proved the SAME key the operator pinned out-of-band.
-            Some(pinned) if pinned == pk_b => {}
-            // A box that knows the password but presents a DIFFERENT host key — the
-            // substitution R-S17 exists to catch. Refuse the keying (fail-closed). R-G5: stash
-            // the VERIFIED new key so the GUI mismatch dialog's FRICTION-BEARING re-pin (the
-            // operator must TYPE the new fingerprint, after verifying it out-of-band) can pin it
-            // — never a default-OK click-through. Headless/CLI has no dialog, so the bail stands
-            // and the pin is changed only by an explicit `--forget-host` + reconnect. Show old
-            // vs new fingerprints so the operator can see exactly what changed.
-            Some(pinned) => {
-                let old_fp = crate::common::pk_to_fingerprint(pinned);
-                let new_fp = crate::common::pk_to_fingerprint(pk_b.clone());
-                lch.write().unwrap().pending_host_pk = Some(pk_b.clone());
-                bail!(
-                    "R-S17: HOST KEY MISMATCH for {peer_addr} — the box presented a DIFFERENT host key than the one pinned (possible substitution / MITM).\n    pinned (old):    {old_fp}\n    presented (new): {new_fp}\nVerify the new fingerprint out-of-band (`--get-fingerprint` on the box) BEFORE re-pinning. Refusing until you re-pin (GUI: type the new fingerprint to confirm; CLI: `--forget-host {peer_addr}` then reconnect)."
-                );
-            }
-            // First contact, no pin. NO silent trust-on-first-use (R-S17): require an
-            // explicit, out-of-band-verified seed. Print the fingerprint to compare against
-            // the box's `--get-fingerprint`, then pin via `--pin-host`.
-            None => {
-                let fp = crate::common::pk_to_fingerprint(pk_b.clone());
-                // R-G5: stash the verified host key so the GUI seed dialog's accept can pin
-                // THIS exact key + reconnect (the operator confirms `fp` out-of-band first).
-                lch.write().unwrap().pending_host_pk = Some(pk_b.clone());
-                bail!(
-                    "R-S17: host {peer_addr} is not pinned (first contact). Its host-key fingerprint is:\n    {fp}\nVerify it equals `--get-fingerprint` on the box (over your trusted channel), then pin it (GUI: accept the prompt; CLI: `--pin-host {peer_addr} <fingerprint>`).\nRefusing until pinned (fail-closed; no trust-on-first-use)."
-                );
-            }
+        // R-S17 pin compare against the SAME pin the PRS was keyed against. With the host key
+        // woven into the PRS, a successful handshake already implies the box presented the
+        // pinned key; this confirms it holds the matching PRIVATE key (belt-and-suspenders). A
+        // mismatch is near-unreachable (a different key would have failed CPace), but if it
+        // ever surfaces, refuse fail-closed and stash the VERIFIED key so the GUI's
+        // friction-bearing re-pin (the operator TYPES the new fingerprint) can adopt it — never
+        // a default-OK click-through; CLI changes the pin only via `--forget-host` + reconnect.
+        if pinned != pk_b {
+            let old_fp = crate::common::pk_to_fingerprint(pinned);
+            let new_fp = crate::common::pk_to_fingerprint(pk_b.clone());
+            lch.write().unwrap().pending_host_pk = Some(pk_b.clone());
+            bail!(
+                "R-S17: HOST KEY MISMATCH for {peer_addr} — the box presented a DIFFERENT host key than the one pinned (possible substitution / MITM).\n    pinned (old):    {old_fp}\n    presented (new): {new_fp}\nVerify the new fingerprint out-of-band (`--get-fingerprint` on the box) BEFORE re-pinning. Refusing until you re-pin (GUI: type the new fingerprint to confirm; CLI: `--forget-host {peer_addr}` then reconnect)."
+            );
         }
         Ok(pk_b)
     }

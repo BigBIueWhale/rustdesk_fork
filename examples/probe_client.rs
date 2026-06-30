@@ -39,6 +39,15 @@ fn main() {
     // for the R-A8.2 owner-safe limiter test (a flood from one source must not block another).
     let local = a.get(5).and_then(|s| s.parse::<std::net::SocketAddr>().ok());
 
+    // R-P1: the CPace PRS is base64(Argon2id(NFC(pw), salt(host_pubkey))) — a faithful viewer derives
+    // it from the box's PINNED host key. This loopback probe shares the server's config dir ($HOME),
+    // so it reads the box's own Ed25519 host public key directly (equivalent to having pinned it via
+    // `--pin-host`) and derives the SAME PRS the server stored at provisioning. A WRONG password
+    // derives a DIFFERENT PRS ⇒ CPace key-confirmation fails (the `fail` path) — exactly as for a real
+    // viewer. This is the decisive two-process keying proof: viewer-derived PRS == server-stored PRS.
+    let host_pubkey = hbb_common::config::Config::get_key_pair().1;
+    let prs = hbb_common::config::derive_cpace_prs(&pw, &host_pubkey).unwrap_or_default();
+
     let rt = hbb_common::tokio::runtime::Runtime::new().expect("tokio runtime");
     let (keyed, postkey) = rt.block_on(async {
         let mut stream = match FramedStream::new(&addr, local, 5000).await {
@@ -48,7 +57,7 @@ fn main() {
                 std::process::exit(2);
             }
         };
-        match run_initiator_with_transcript(&mut stream, &pw).await {
+        match run_initiator_with_transcript(&mut stream, &prs).await {
             Ok((keys, transcript)) => {
                 let mut pk = String::new();
                 if do_read {

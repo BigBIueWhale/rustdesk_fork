@@ -96,12 +96,111 @@ pub(super) fn decrypt_permanent_password_str_or_original(storage: &str) -> (Stri
     (storage.to_owned(), false, !storage.is_empty())
 }
 
-/// R-P1: store the permanent password as PRS-usable plaintext at rest — encrypted
-/// under the same machine-UUID wrapper as the hashed storage (R-S9), NOT a salted
-/// hash. The CPace handshake reads it live and NFC-normalizes it; an empty result
-/// means there is no usable plaintext credential.
-pub(super) fn encrypt_permanent_password_prs_storage(plaintext: &str) -> Option<String> {
-    encrypt_permanent_password_storage(plaintext)
+// ── R-P1: the memory-hard CPace PRS derivation (Argon2id) ────────────────────
+//
+// The CPace PRS is NEITHER the plaintext password NOR a fast hash of it: it is a
+// memory-hard, salted Argon2id hash. So the value stored at rest (and the value fed
+// to the balanced PAKE) cannot be brute-forced offline cheaply if the config file
+// leaks. Both ends — the controlled side at provisioning and the viewer at keying —
+// MUST compute IDENTICAL bytes, so EVERY parameter here is FIXED FOREVER.
+
+/// R-P1 Argon2id salt domain separator. The PRS salt is bound to the box's own
+/// Ed25519 host PUBLIC key, so (a) the same password on two different boxes yields a
+/// different PRS, and (b) the viewer's PRS only matches when it derived against the
+/// box's PINNED key (R-S17) — weaving the host identity into the PAKE secret itself,
+/// so a substitute box with a different key cannot key even if it knows the password.
+const CPACE_PRS_SALT_DSI: &[u8] = b"rustdesk-cpace-prs-salt-v1";
+
+/// The libsodium Argon2id13 INTERACTIVE cost parameters (R-P1) — phone-safe
+/// (Android/iOS viewers derive this too). FIXED FOREVER: the controlled side's
+/// at-rest PRS and the viewer's freshly-derived PRS must agree, so changing these
+/// would break every stored credential. (OpsLimit(2) / MemLimit(64 MiB) are exactly
+/// `crypto_pwhash_argon2id_OPSLIMIT_INTERACTIVE` / `..._MEMLIMIT_INTERACTIVE`.)
+const CPACE_PRS_OPSLIMIT: usize = 2;
+const CPACE_PRS_MEMLIMIT: usize = 64 * 1024 * 1024;
+
+/// Derive the raw 32 bytes of the CPace PRS:
+///   `Argon2id( NFC(password), salt = SHA256(DSI ++ host_pubkey)[..16] )`.
+/// `None` when the password is empty after NFC normalization or the host public key
+/// is empty (no shared secret ⇒ the handshake fails closed, R-S9), or on the
+/// practically-impossible Argon2id failure. This is the SINGLE source of truth for
+/// the PRS bytes — both the base64 PRS string and the at-rest storage are built from
+/// it.
+fn derive_cpace_prs_raw(
+    password: &str,
+    host_pubkey: &[u8],
+) -> Option<[u8; PERMANENT_PASSWORD_H1_LEN]> {
+    use sodiumoxide::crypto::pwhash::argon2id13::{derive_key, MemLimit, OpsLimit, Salt, SALTBYTES};
+    if host_pubkey.is_empty() {
+        return None;
+    }
+    // R-P1: the IDENTICAL NFC (no case-fold) normalization the CPace path applies to
+    // the password before the PAKE — so the Argon2id input and the PAKE input are the
+    // same bytes. Empty after normalization ⇒ no credential (R-S9).
+    let nfc_pwd = pake::nfc_normalize(password);
+    if nfc_pwd.is_empty() {
+        return None;
+    }
+    // salt = SHA256(DSI ++ host_pubkey)[..16]  (16 == crypto_pwhash_argon2id_SALTBYTES).
+    let mut hasher = Sha256::new();
+    hasher.update(CPACE_PRS_SALT_DSI);
+    hasher.update(host_pubkey);
+    let digest = hasher.finalize();
+    let mut salt = Salt([0u8; SALTBYTES]);
+    salt.0.copy_from_slice(&digest[..SALTBYTES]);
+    let mut out = [0u8; PERMANENT_PASSWORD_H1_LEN];
+    derive_key(
+        &mut out,
+        nfc_pwd.as_slice(),
+        &salt,
+        OpsLimit(CPACE_PRS_OPSLIMIT),
+        MemLimit(CPACE_PRS_MEMLIMIT),
+    )
+    .ok()?;
+    Some(out)
+}
+
+/// R-P1: the CPace PRS as the fixed ASCII string both ends feed to the balanced PAKE
+/// as the shared secret:
+///   `base64_Original( Argon2id( NFC(password), SHA256(DSI ++ host_pubkey)[..16] ) )`.
+/// The controlled side derives it from its own host key (`Config::get_key_pair().1`)
+/// at provisioning; the viewer derives it from the box's PINNED key
+/// (`host_pin::get_pinned_pk`) at keying. `None` on an empty password or empty pubkey
+/// (the handshake then has no shared secret and fails closed, R-S9).
+pub fn derive_cpace_prs(password: &str, host_pubkey: &[u8]) -> Option<String> {
+    let raw = derive_cpace_prs_raw(password, host_pubkey)?;
+    Some(base64::encode(raw, base64::Variant::Original))
+}
+
+/// R-P1: build BOTH at-rest forms of the permanent-password credential from ONE
+/// Argon2id derivation, so neither the plaintext nor any fast (SHA256) hash of the
+/// password is EVER written to disk:
+///   - `.0` → `config.password`: the PRS's raw 32 bytes in the legacy hashed-storage
+///            envelope (machine-UUID-encrypted). The Argon2id output simply REPLACES
+///            the old SHA256 `h1` inside the exact same envelope, so all the "is a
+///            password set" / load / store / service-sync machinery keeps working
+///            unchanged — only the 32 bytes inside are now memory-hard, never a fast
+///            hash, never the plaintext.
+///   - `.1` → `config.password_prs`: the base64 PRS string the CPace handshake reads
+///            live (`get_permanent_password_prs`), machine-UUID-encrypted.
+/// `None` on an empty password / pubkey or a derivation/encoding failure.
+pub(super) fn derive_permanent_password_storages(
+    password: &str,
+    host_pubkey: &[u8],
+) -> Option<(String, String)> {
+    let raw = derive_cpace_prs_raw(password, host_pubkey)?;
+    let password_storage = encode_permanent_password_encrypted_storage_from_h1(&raw)?;
+    let prs_string = base64::encode(raw, base64::Variant::Original);
+    let prs_storage = encrypt_permanent_password_prs_storage(&prs_string)?;
+    Some((password_storage, prs_storage))
+}
+
+/// R-P1: store the memory-hard CPace PRS (the Argon2id base64 string from
+/// `derive_cpace_prs`) at rest — encrypted under the same machine-UUID wrapper as the
+/// hashed storage (R-S9). NOT the plaintext (the wrapper is harmless on a hash). The
+/// CPace handshake reads it live; an empty result means there is no usable credential.
+pub(super) fn encrypt_permanent_password_prs_storage(prs: &str) -> Option<String> {
+    encrypt_permanent_password_storage(prs)
 }
 
 pub(super) fn decrypt_permanent_password_prs_storage(storage: &str) -> Option<String> {

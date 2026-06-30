@@ -307,14 +307,28 @@ fn verify_tag(mac_key: &[u8; 64], y: &[u8], ad: &[u8], tag: &[u8; 64]) -> bool {
     mac.verify_slice(tag).is_ok()
 }
 
+/// R-P1: the EXACT NFC (no case-fold) password normalization the CPace PRS uses — a
+/// deliberate NFC-only subset of RFC 8265 OpaqueString. Exposed (and reused by
+/// `normalize_prs` below) so the at-rest memory-hard PRS derivation
+/// (`hbb_common::config::derive_cpace_prs`) applies the IDENTICAL normalization to
+/// the password BEFORE Argon2id: the bytes fed to the PAKE and the bytes fed to
+/// Argon2id MUST be the same, or the controlled side's stored PRS and the viewer's
+/// freshly-derived PRS would never agree. Returns the NFC bytes (may be empty after
+/// normalization — the caller enforces the non-empty/empty-PRS guard, R-S9). The
+/// result self-wipes (`Zeroizing`).
+pub fn nfc_normalize(password: &str) -> Zeroizing<Vec<u8>> {
+    let prs: String = password.nfc().collect();
+    Zeroizing::new(prs.into_bytes())
+}
+
 /// PRS = NFC(password), no case-fold — a deliberate NFC-only subset of RFC 8265
 /// OpaqueString (R-P1). MUST be non-empty after normalization (R-P1/R-S9).
 fn normalize_prs(password: &str) -> Result<Zeroizing<Vec<u8>>, PakeError> {
-    let prs: String = password.nfc().collect();
+    let prs = nfc_normalize(password);
     if prs.is_empty() {
         return Err(PakeError::EmptyPassword);
     }
-    Ok(Zeroizing::new(prs.into_bytes()))
+    Ok(prs)
 }
 
 fn fill_random(buf: &mut [u8]) -> Result<(), PakeError> {

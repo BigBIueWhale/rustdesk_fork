@@ -22,13 +22,13 @@ mod permanent_password;
 
 pub use permanent_password::{
     compute_permanent_password_h1, decode_permanent_password_h1_from_storage,
-    decode_preset_password_h1_from_storage, local_permanent_password_storage_is_usable_for_auth,
+    decode_preset_password_h1_from_storage, derive_cpace_prs,
+    local_permanent_password_storage_is_usable_for_auth,
     preset_permanent_password_storage_is_usable_for_auth, ENCRYPT_MAX_LEN,
 };
 use permanent_password::{
     decode_permanent_password_h1_from_hashed_storage, decrypt_permanent_password_prs_storage,
-    decrypt_permanent_password_str_or_original,
-    encode_permanent_password_encrypted_storage_from_h1, encrypt_permanent_password_prs_storage,
+    decrypt_permanent_password_str_or_original, derive_permanent_password_storages,
     password_is_empty_or_not_hashed, preset_permanent_password_storage_matches_plain,
     DEFAULT_SALT_LEN, PASSWORD_ENC_VERSION,
 };
@@ -1339,26 +1339,61 @@ impl Config {
             }
         }
 
+        // R-P1: the CPace PRS is a memory-hard Argon2id hash SALTED with the box's own
+        // Ed25519 host public key. Fetch the FULL key pair BEFORE taking the CONFIG write
+        // lock: get_key_pair() locks KEY_PAIR (and lazily generates the key on first use,
+        // so it exists at provisioning), and the codebase's lock discipline is "never hold
+        // CONFIG while taking KEY_PAIR" (see Config::set) — reading it here honors that
+        // ordering. Skipped on an empty (clearing) password.
+        let key_pair = if password.is_empty() {
+            None
+        } else {
+            Some(Self::get_key_pair())
+        };
+        let host_pubkey = key_pair.as_ref().map(|k| k.1.clone()).unwrap_or_default();
+
         let mut config = CONFIG.write().unwrap();
 
-        let stored = if password.is_empty() {
-            Some(String::new())
+        // R-P1: the PRS salt IS the box's host public key, so that key MUST be persisted
+        // ALONGSIDE the credential — get_key_pair() persists it lazily via a background
+        // thread that can lag a short-lived provisioning process, leaving the PRS bound to
+        // a key not yet on disk. set_permanent_password is the provisioning point, so pin
+        // the key into the stored config HERE (when not already present) so this one
+        // synchronous store() commits the host key + the PRS together; the separate
+        // viewer/server processes then read the SAME key the PRS binds to.
+        let key_committed = match key_pair {
+            Some(kp) if config.key_pair.0.is_empty() => {
+                config.key_pair = kp;
+                true
+            }
+            _ => false,
+        };
+
+        // R-P1: BOTH at-rest forms are the memory-hard PRS (Argon2id), never the
+        // plaintext and never a fast SHA256 — `config.password` holds the PRS's raw 32
+        // bytes in the legacy hashed-storage envelope (so the "is set" / load / sync
+        // machinery is untouched), `config.password_prs` holds the base64 PRS string the
+        // handshake reads live. Empty password clears both ⇒ no shared secret, fails
+        // closed (R-S9).
+        let (stored, prs) = if password.is_empty() {
+            (String::new(), String::new())
         } else {
-            Self::compute_permanent_password_storage_for_update(&mut config, password)
+            // Keep config.salt non-empty so the hashed-storage envelope reads as
+            // "salt-bound, usable for auth" (R-S9). The Argon2id salt itself is bound to
+            // the host key (above), NOT to config.salt — config.salt is now only the
+            // hash-shaped-storage marker.
+            Self::ensure_permanent_password_salt(&mut config);
+            match derive_permanent_password_storages(password, &host_pubkey) {
+                Some(pair) => pair,
+                None => {
+                    log::error!("Failed to derive the CPace PRS; refusing permanent password update");
+                    return false;
+                }
+            }
         };
-        let Some(stored) = stored else {
-            log::error!("Failed to compute permanent password storage; refusing update");
-            return false;
-        };
-        // R-P1: keep the PRS-usable plaintext credential in sync with the hashed
-        // storage, so the CPace handshake can read it live (R-S16). Empty password
-        // clears it.
-        let prs = if password.is_empty() {
-            String::new()
-        } else {
-            encrypt_permanent_password_prs_storage(password).unwrap_or_default()
-        };
-        if stored == config.password && prs == config.password_prs {
+        // Idempotent steady-state re-set: nothing to persist UNLESS we just committed the
+        // host key (which MUST reach disk for the PRS to be usable by the other process).
+        if !key_committed && stored == config.password && prs == config.password_prs {
             return true;
         }
         config.password = stored;
@@ -1367,26 +1402,15 @@ impl Config {
         true
     }
 
-    /// R-P1: the live, NFC-normalizable plaintext permanent password used as the
-    /// CPace PRS (R-S16). Empty when no PRS-usable credential is stored — the
-    /// handshake then has no shared secret and fails closed. Read fresh on every
-    /// connection (no caching), so a `--password` change (R-D2) takes effect on
-    /// the next handshake. The CPace layer applies NFC and the non-empty check
-    /// (R-P1/R-S9), so the stored value may be the password exactly as entered.
+    /// R-P1: the live CPace PRS — the memory-hard, host-key-salted Argon2id hash
+    /// (base64), NOT the plaintext. Empty when no credential is stored — the handshake
+    /// then has no shared secret and fails closed. Read fresh on every connection (no
+    /// caching), so a `--password` change (R-D2) takes effect on the next handshake.
+    /// The CPace layer applies NFC and the non-empty check (R-P1/R-S9); on this ASCII
+    /// base64 string the NFC pass is a harmless no-op.
     pub fn get_permanent_password_prs() -> String {
         decrypt_permanent_password_prs_storage(&CONFIG.read().unwrap().password_prs)
             .unwrap_or_default()
-    }
-
-    fn compute_permanent_password_storage_for_update(
-        config: &mut Config,
-        password: &str,
-    ) -> Option<String> {
-        // Keep salt stable for user-initiated permanent password updates.
-        // Salt should only change when service->user sync updates storage and salt as a pair.
-        Self::ensure_permanent_password_salt(config);
-        let h1 = compute_permanent_password_h1(password, &config.salt);
-        encode_permanent_password_encrypted_storage_from_h1(&h1)
     }
 
     /// Returns the locally persisted permanent password storage and salt (NOT the hard/preset one).
@@ -3290,7 +3314,12 @@ impl Status {
 
 #[cfg(test)]
 mod tests {
-    use super::{permanent_password::PERMANENT_PASSWORD_ENC_VERSION, *};
+    use super::{
+        permanent_password::{
+            encode_permanent_password_encrypted_storage_from_h1, PERMANENT_PASSWORD_ENC_VERSION,
+        },
+        *,
+    };
 
     static CONFIG_STATE_TEST_LOCK: Mutex<()> = Mutex::new(());
 

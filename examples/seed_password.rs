@@ -7,15 +7,24 @@
 //! in a container). Same `$HOME` + APP_NAME "RustDesk" => same config path as the server.
 //!
 //! Usage: `cargo run --example seed_password --features linux-pkg-config -- <password> [whitelist]`
+//!
+//! R-P1 note: the permanent-password PRS is a memory-hard Argon2id hash SALTED with the box's own
+//! Ed25519 host PUBLIC key. set_permanent_password co-persists that key SYNCHRONOUSLY (the lazy
+//! get_key_pair() background flush would otherwise race a short-lived seeder), so the separate
+//! `--server` process reads the SAME key the PRS binds to.
 fn main() {
+    use hbb_common::config::Config;
     let a: Vec<String> = std::env::args().collect();
     let pw = a.get(1).expect("usage: seed_password <password> [whitelist]");
-    let ok = hbb_common::config::Config::set_permanent_password(pw);
-    let prs_empty = hbb_common::config::Config::get_permanent_password_prs().is_empty();
-    println!("seed_password: set_permanent_password ok={ok}, prs_empty={prs_empty}");
+    let ok = Config::set_permanent_password(pw);
+    let prs = Config::get_permanent_password_prs();
+    let prs_empty = prs.is_empty();
+    // R-P1: the stored PRS is the Argon2id hash, NEVER the plaintext.
+    let prs_is_plaintext = &prs == pw;
+    println!("seed_password: set_permanent_password ok={ok}, prs_empty={prs_empty}, prs_is_plaintext={prs_is_plaintext}");
     assert!(
-        ok && !prs_empty,
-        "seed_password: the credential did not round-trip into at-rest storage"
+        ok && !prs_empty && !prs_is_plaintext,
+        "seed_password: the credential did not round-trip into at-rest storage as a non-plaintext PRS"
     );
 
     if let Some(wl) = a.get(2) {

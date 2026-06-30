@@ -1086,6 +1086,15 @@ grep -qE '^TasksMax=[0-9]+$'    res/rustdesk.service            || r_t1_missing=
 grep -qE '^LimitNOFILE=8192$'   res/rustdesk.service            || r_t1_missing="$r_t1_missing service:LimitNOFILE(bounded-8192-not-100000)"
 grep -qE '^Restart=on-failure$' res/rustdesk.service            || r_t1_missing="$r_t1_missing service:Restart"
 grep -qE '^RestartSec=[0-9]+$'  res/rustdesk.service            || r_t1_missing="$r_t1_missing service:RestartSec"
+# R-T1(a) self-enforced in the BINARY (launcher-independent — the new MUST; the unit ceilings above are
+# now the REDUNDANT outer RSS/task bound): the --server self-applies RLIMIT_NOFILE at startup and rejects
+# past a hard global concurrent-authorized-session cap (MAX_AUTHED_SESSIONS) at on_open, so the §20
+# fd/session blast-radius bound holds under supervisord / a bare container too, not only the cgroup.
+grep -q 'fn self_enforce_resource_limits' src/direct_service.rs              || r_t1_missing="$r_t1_missing self:rlimit-fn"
+grep -q 'setrlimit(libc::RLIMIT_NOFILE' src/direct_service.rs                || r_t1_missing="$r_t1_missing self:rlimit-nofile"
+grep -q 'self_enforce_resource_limits();' src/direct_service.rs              || r_t1_missing="$r_t1_missing self:rlimit-called"
+grep -q 'const MAX_AUTHED_SESSIONS' src/server/connection.rs                 || r_t1_missing="$r_t1_missing self:session-cap-const"
+grep -q 'AUTHED_CONNS.lock().unwrap().len() >= MAX_AUTHED_SESSIONS' src/server/connection.rs || r_t1_missing="$r_t1_missing self:session-cap-check"
 if [ -n "$r_t1_missing" ]; then
   echo "  FAIL R-T1: connection-flood bound / flood-safe observability absent:$r_t1_missing"; rc=1
 else

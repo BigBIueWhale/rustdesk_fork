@@ -86,6 +86,12 @@ impl DisplayControlRejectLog {
     }
 }
 
+// R-T1(a) (§20): a self-enforced hard cap on concurrent AUTHORIZED sessions — the post-key
+// population the pre-key handshake semaphore (R-T1(b)) does not cover. Bounds a descriptor/session
+// runaway (a leak, or a password-knower looping reconnects) under ANY launcher, not only the
+// systemd cgroup. A single owner never has this many concurrent sessions.
+const MAX_AUTHED_SESSIONS: usize = 16;
+
 lazy_static::lazy_static! {
     // R-T15(b)/R-S10: the inherited LOGIN_FAILURES limiter is excised (see update/check_failure) —
     // an unbounded/never-decaying/full-IPv6-keyed map on dead paths; CPace's GUESS_FAILURES is live.
@@ -995,6 +1001,12 @@ impl Connection {
 
     async fn on_open(&mut self, addr: SocketAddr) -> bool {
         log::debug!("#{} Connection opened from {}.", self.inner.id, addr);
+        // R-T1(a): reject past the global authorized-session cap (post-key, pre-authorization) so a
+        // session/descriptor runaway is bounded under any launcher, not only the systemd cgroup.
+        if crate::server::AUTHED_CONNS.lock().unwrap().len() >= MAX_AUTHED_SESSIONS {
+            self.send_login_error("Too many active sessions").await;
+            return false;
+        }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         if crate::is_server() && Config::get_option("allow-only-conn-window-open") == "Y" {
             if !crate::check_process("", !crate::platform::is_root()) {

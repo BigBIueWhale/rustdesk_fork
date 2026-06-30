@@ -156,8 +156,40 @@ fn assert_socket_surface(port: u16) {
 /// demand anyway, so the headless service entry stands up no codec at startup. The AV1
 /// gate then resolves useable-without-benchmark — acceptable on the §17 desktop (VP9
 /// fallback + PreferCodec remain).
+/// R-T1(a) (§20): self-enforce a per-process file-descriptor ceiling at startup so the flood/leak
+/// blast-radius bound holds under ANY launcher (systemd, a per-user supervisor, a bare container —
+/// R-D8), not only the unit's LimitNOFILE. Legitimate single-user use is a handful of sessions; a
+/// high fd ceiling only serves an attacker or a descriptor leak. The concurrent-authorized-session
+/// cap (connection.rs, MAX_AUTHED_SESSIONS) is the companion in-process bound. A per-process RSS
+/// ceiling has no clean setrlimit (RLIMIT_AS is virtual not resident; RLIMIT_NPROC is per-UID), so
+/// the cgroup MemoryMax/TasksMax remains the redundant outer RSS/task bound.
+#[cfg(target_os = "linux")]
+fn self_enforce_resource_limits() {
+    use hbb_common::libc;
+    const NOFILE: libc::rlim_t = 8192;
+    let lim = libc::rlimit {
+        rlim_cur: NOFILE,
+        rlim_max: NOFILE,
+    };
+    // SAFETY: a valid resource id + rlimit pointer; only LOWERS the inherited limit (an
+    // unprivileged process may lower, never raise, the hard limit).
+    let rc = unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &lim) };
+    if rc == 0 {
+        log::info!("R-T1(a): self-enforced RLIMIT_NOFILE={NOFILE} (launcher-independent fd ceiling)");
+    } else {
+        log::warn!(
+            "R-T1(a): setrlimit(RLIMIT_NOFILE, {NOFILE}) failed: {}",
+            std::io::Error::last_os_error()
+        );
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn self_enforce_resource_limits() {}
+
 pub async fn start_direct_only() {
     assert_startup_invariants();
+    self_enforce_resource_limits();
     if config::is_outgoing_only() {
         // A viewer-only box binds no inbound listener (R-SV5); park the service future.
         loop {

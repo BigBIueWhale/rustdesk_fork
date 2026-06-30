@@ -88,7 +88,6 @@ const String kOptionD3DRender = "allow-d3d-render";
 const String kOptionOpenInTabs = "allow-open-in-tabs";
 const String kOptionOpenInWindows = "allow-open-in-windows";
 const String kOptionViewOnly = "view_only";
-const String kOptionWhitelist = "whitelist";
 const String kOptionEnableAbr = "enable-abr";
 const String kOptionEnableRecordSession = "enable-record-session";
 const String kOptionAllowAutoDisconnect = "allow-auto-disconnect";

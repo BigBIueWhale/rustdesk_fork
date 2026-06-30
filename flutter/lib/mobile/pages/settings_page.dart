@@ -46,7 +46,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   var _ignoreBatteryOpt = false;
   var _showTerminalExtraKeys = false;
   var _enableAbr = false;
-  var _onlyWhiteList = false;
   var _enableRecordSession = false;
   var _autoRecordIncomingSession = false;
   var _autoRecordOutgoingSession = false;
@@ -60,7 +59,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   _SettingsState() {
     _enableAbr = option2bool(
         kOptionEnableAbr, bind.mainGetOptionSync(key: kOptionEnableAbr));
-    _onlyWhiteList = whitelistNotEmpty();
     _enableRecordSession = option2bool(kOptionEnableRecordSession,
         bind.mainGetOptionSync(key: kOptionEnableRecordSession));
     _autoRecordIncomingSession = option2bool(kOptionAllowAutoRecordIncoming,
@@ -169,31 +167,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
     ));
     final List<AbstractSettingsTile> enhancementsTiles = [];
     final List<AbstractSettingsTile> shareScreenTiles = [
-      SettingsTile.switchTile(
-        title: Row(children: [
-          Expanded(child: Text(translate('Use IP Whitelisting'))),
-          // R-S9 / BUG3: fork whitelist is default-DENY -- EMPTY blocks ALL inbound (unreachable), the
-          // inverse of upstream; flag the EMPTY state (looks "off" but is actually unreachable), not set.
-          Offstage(
-                  offstage: _onlyWhiteList,
-                  child: const Icon(Icons.warning_amber_rounded,
-                      color: Color.fromARGB(255, 255, 204, 0)))
-              .marginOnly(left: 5)
-        ]),
-        initialValue: _onlyWhiteList,
-        onToggle: (_) async {
-          update() async {
-            final onlyWhiteList = whitelistNotEmpty();
-            if (onlyWhiteList != _onlyWhiteList) {
-              setState(() {
-                _onlyWhiteList = onlyWhiteList;
-              });
-            }
-          }
-
-          changeWhiteList(callback: update);
-        },
-      ),
       SettingsTile.switchTile(
         title: Text(translate('Adaptive bitrate')),
         initialValue: _enableAbr,

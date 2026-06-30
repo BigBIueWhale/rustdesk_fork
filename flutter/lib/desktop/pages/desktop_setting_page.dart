@@ -905,7 +905,6 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
     bool enabled = !locked;
     return _Card(title: 'Security', children: [
       shareRdp(context, enabled),
-      whitelist(),
       ...autoDisconnect(context),
       _OptionCheckBox(context, 'keep-awake-during-incoming-sessions-label',
           kOptionKeepAwakeDuringIncomingSessions,
@@ -943,61 +942,6 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
           ).marginOnly(left: _kCheckBoxLeftMargin),
           onTap: enabled ? () => onChanged(!value) : null),
     );
-  }
-
-  Widget whitelist() {
-    bool enabled = !locked;
-    // Simple temp wrapper for PR check
-    tmpWrapper() {
-      RxBool hasWhitelist = whitelistNotEmpty().obs;
-      update() async {
-        hasWhitelist.value = whitelistNotEmpty();
-      }
-
-      onChanged(bool? checked) async {
-        changeWhiteList(callback: update);
-      }
-
-      final isOptFixed = isOptionFixed(kOptionWhitelist);
-      return GestureDetector(
-        child: Tooltip(
-          message: translate('whitelist_tip'),
-          child: Obx(() => Row(
-                children: [
-                  Checkbox(
-                          value: hasWhitelist.value,
-                          onChanged: enabled && !isOptFixed ? onChanged : null)
-                      .marginOnly(right: 5),
-                  // R-S9 / BUG3: the fork whitelist is default-DENY -- an EMPTY whitelist blocks ALL
-                  // inbound (the device is unreachable), the inverse of upstream. So the caution icon
-                  // flags the EMPTY state (looks "off" but is actually unreachable), NOT the set state.
-                  Offstage(
-                    offstage: hasWhitelist.value,
-                    child: MouseRegion(
-                      child: const Icon(Icons.warning_amber_rounded,
-                              color: Color.fromARGB(255, 255, 204, 0))
-                          .marginOnly(right: 5),
-                      cursor: SystemMouseCursors.click,
-                    ),
-                  ),
-                  Expanded(
-                      child: Text(
-                    translate('Use IP Whitelisting'),
-                    style:
-                        TextStyle(color: disabledTextColor(context, enabled)),
-                  ))
-                ],
-              )),
-        ),
-        onTap: enabled
-            ? () {
-                onChanged(!hasWhitelist.value);
-              }
-            : null,
-      ).marginOnly(left: _kCheckBoxLeftMargin);
-    }
-
-    return tmpWrapper();
   }
 
   Widget hide_cm(bool enabled) {
@@ -1111,7 +1055,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
       changeUnlockPinDialog(unlockPin.value, update);
     }
 
-    final isOptFixed = isOptionFixed(kOptionWhitelist);
+    final isOptFixed = isOptionFixed(kOptionDisableUnlockPin);
     return GestureDetector(
       child: Obx(() => Row(
             children: [

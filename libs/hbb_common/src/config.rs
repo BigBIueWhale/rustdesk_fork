@@ -2905,7 +2905,6 @@ pub mod keys {
     pub const OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW: &str =
         "enable-perm-change-in-accept-window";
     pub const OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION: &str = "allow-remote-config-modification";
-    pub const OPTION_WHITELIST: &str = "whitelist";
     pub const OPTION_ALLOW_AUTO_DISCONNECT: &str = "allow-auto-disconnect";
     pub const OPTION_AUTO_DISCONNECT_TIMEOUT: &str = "auto-disconnect-timeout";
     pub const OPTION_ALLOW_ONLY_CONN_WINDOW_OPEN: &str = "allow-only-conn-window-open";
@@ -3124,7 +3123,6 @@ pub mod keys {
         OPTION_ENABLE_PRIVACY_MODE,
         OPTION_ENABLE_VIRTUAL_DISPLAY,
         OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION,
-        OPTION_WHITELIST,
         OPTION_ALLOW_AUTO_DISCONNECT,
         OPTION_AUTO_DISCONNECT_TIMEOUT,
         OPTION_ALLOW_ONLY_CONN_WINDOW_OPEN,

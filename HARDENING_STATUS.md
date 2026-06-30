@@ -20,7 +20,8 @@ with no short-frame bypass (R-T7), and the `set_raw` plaintext-tunnel escape is
 sealed to a backstop with no app caller (R-S5/R-A3). The rendezvous mediator,
 relay, KCP, `udp_nat_connect`, and LAN discovery are compiled out so the exposed
 `--server` binds exactly one v4-only TCP port and zero UDP (R-D3/R-D4/R-D5,
-asserted at startup by R-A4); egress is silent by construction (R-D6/§18); the
+asserted at startup by R-A4); inbound has no in-app source ACL — CPace is the sole gate (like SSH); source-IP scoping,
+if wanted, is a firewall rule (R-S9/R-D2); egress is silent by construction (R-D6/§18); the
 §8 excisions (auto-updater, plugin loader, `ConfigureUpdate`, trust-anchor
 overrides, `os_login`→PAM, terminal root-PTY policy-lock, the OTP/2FA cluster)
 are done and CI-grepped absent (R-A6); the R-S16 compile-time policy funnel pins

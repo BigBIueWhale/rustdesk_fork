@@ -22,11 +22,12 @@ Related: [`HOST-KEY-PIN.md`](./HOST-KEY-PIN.md) (identity pinning),
 - **One inbound port:** TCP **21118** (`DIRECT_PORT`). Zero UDP. No other listener.
 - **Authentication:** a CPace PAKE keyed by the host's permanent password. There is
   no anonymous access and no "accept once" prompt — every session is authenticated.
-- **Default-deny:** the host refuses every inbound peer unless it is admitted by an
-  explicitly-configured IP whitelist.
-- **Fail-closed:** with no password set, or with an empty/default-open whitelist, the
-  host **refuses to listen at all** and logs the reason. Misconfiguration cannot
-  silently expose the box.
+- **Reachable, CPace-gated:** the host binds 21118 on all interfaces and admits any peer
+  that completes the CPace handshake — like SSH, there is **no in-app source allow-list**.
+  To restrict by source IP, do it at the **firewall** (§3), where the kernel sheds the
+  packet before it ever reaches RustDesk.
+- **Fail-closed:** with no password set the host **refuses to listen at all** and logs
+  the reason. Misconfiguration cannot silently expose the box.
 
 ---
 
@@ -51,7 +52,7 @@ not listen until you complete step 2.
 
 ---
 
-## 2. Configure (mandatory — the host stays fail-closed until both are set)
+## 2. Configure (mandatory — the host stays fail-closed until the password is set)
 
 ### 2a. Set the host password (the CPace credential)
 
@@ -63,19 +64,7 @@ This is the shared secret a viewer must know. It is stored only as a salted
 password-equivalent, never in cleartext. Without it the service logs
 *"no permanent password is set — refusing to listen"* and does not bind.
 
-### 2b. Set the access whitelist (default-deny)
-
-```sh
-sudo rustdesk --option whitelist '<allowed-viewer-CIDRs>'
-```
-
-- Format: one or more IPs/CIDRs, **separated by comma, semicolon, spaces, or newlines**
-  (e.g. `203.0.113.10, 198.51.100.0/24`).
-- An **unset or empty** whitelist is rejected — the host will not default-open. To
-  *deliberately* accept any source, set it explicitly to `0.0.0.0/0` (not recommended
-  for a DMZ host).
-
-### 2c. Apply
+### 2b. Apply
 
 ```sh
 sudo systemctl restart rustdesk
@@ -88,14 +77,21 @@ and begins listening on TCP 21118.
 
 ## 3. Firewall
 
-Open **only** TCP 21118, and only to the operator/viewer networks:
+Open **only** TCP 21118 (zero UDP). This is the layer where you scope by source IP, if
+you want to — the same place you'd scope SSH:
 
-```sh
-sudo ufw allow from <viewer-CIDR> to any port 21118 proto tcp
-```
+- **Reach-from-anywhere — the sovereign direct-IP box:** open 21118 to the internet — CPace is
+  the authentication gate, the same exposure as a public password-SSH on `:22`.
+  ```sh
+  sudo ufw allow 21118/tcp
+  ```
+- **Scope to a known network:** restrict the port to the viewer's CIDR, so non-allowlisted
+  IPs are dropped in the kernel before they reach RustDesk (defense-in-depth, never a substitute for CPace).
+  ```sh
+  sudo ufw allow from <viewer-CIDR> to any port 21118 proto tcp
+  ```
 
-No UDP rule is needed. Keep 21118 closed to the public internet; the whitelist is a
-second layer, not a substitute for the firewall.
+No UDP rule is needed.
 
 ---
 
@@ -164,7 +160,7 @@ A correctly-deployed host shows a single `127-or-host:21118` TCP LISTEN line and
   `apt install ./rustdesk-<ver>.deb`; the `postinst` reloads the service.
 - **Stop/disable:** `sudo systemctl disable --now rustdesk`. The `prerm` stops/disables
   the unit on package removal.
-- **Logs:** `journalctl -u rustdesk`. The fail-closed refusals (no password / open
-  whitelist / managed-override) are logged at error level with their R-ID.
+- **Logs:** `journalctl -u rustdesk`. The fail-closed refusals (no password /
+  managed-override) are logged at error level with their R-ID.
 - **Android/Windows clients** connect to the same `<host-ip>:21118` with the same
   password + pinned fingerprint.

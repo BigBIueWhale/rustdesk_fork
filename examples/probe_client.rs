@@ -4,11 +4,11 @@
 //! and reports whether KEYING succeeded — runtime-validating, end-to-end against the REAL server:
 //!   - R-A1 / R-S1   : the mandatory CPace keying choke-point — a correct password keys;
 //!   - R-P3 / R-P14c : a WRONG password is refused (key-confirmation fails, no key derived).
-//! (Keying runs BEFORE `check_whitelist`, so the probe keys regardless of the whitelist policy.)
+//! (CPace keying is the sole gate; there is no source-IP ACL — the probe keys on the correct password.)
 //!
 //! 4th arg modes (after keying):
-//!   - `read`   : engage the session keys and read the post-key flow (observe the R-T15(d)
-//!                default-deny ENFORCEMENT on a keyed connection, or the legacy `Hash` on admit);
+//!   - `read`   : engage the session keys and read the post-key flow (the host-proof and the
+//!                normal keyed session);
 //!   - `login`  : also send a minimal `LoginRequest` (CPace already authenticated, so the password
 //!                proof is collapsed — empty `password`) to drive the post-key login flow. Its
 //!                `my_id` is the ASCII canary `PLAINTEXT-CANARY-DEADBEEF` so the R-A9 wire-capture

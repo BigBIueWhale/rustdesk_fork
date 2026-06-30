@@ -14,7 +14,6 @@
 # Validated at RUNTIME (not merely compile):
 #   - R-B4 build  : the full `rustdesk` binary builds + links + runs headless (sciter is `dyn`);
 #   - R-A4 (fail-closed startup) : with NO permanent password the box refuses to listen + exits;
-#   - R-T15(d)/R-S9 : the empty-whitelist default-deny WARNING is surfaced (never a silent lockout);
 #   - R-B4 / R-D3/R-D5/R-D6 socket surface : with a password seeded the box binds EXACTLY ONE v4 TCP
 #     listener on the pinned port (21118) and ZERO UDP — the §17 direct-IP/no-UDP thesis, empirical;
 #   - R-A4 (runtime socket self-check) : `assert_socket_surface` confirms the same from inside;
@@ -57,15 +56,13 @@ echo "$mdwe_out" | grep -qE 'MDWE_CODEC_OK' && echo "$mdwe_out" | grep -q 'EXIT=
   && echo "  ok  R-D3a: VP9 encoder W^X-clean under MemoryDenyWriteExecute (init + 5/5 encodes, no W+X mapping)" \
   || { echo "  FAIL R-D3a: the codec path is NOT W^X-safe under MDWE — do NOT ship MemoryDenyWriteExecute=yes:"; echo "$mdwe_out" | tail -3; rc=1; }
 
-echo "== (1) fail-closed startup: --server with NO password MUST refuse (R-A4 / R-T15(d)) =="
+echo "== (1) fail-closed startup: --server with NO password MUST refuse (R-A4) =="
 out1=$("${RUN[@]}" bash -c 'export HOME=/tmp/rd1; mkdir -p "$HOME"; timeout 12 env LD_PRELOAD=/work/target/smoke-bind-loopback.so ./target/debug/rustdesk --server 2>&1' || true)
 echo "$out1" | grep -q 'no permanent password is set — refusing to listen' \
   || { echo "  FAIL R-A4: server did not refuse on a missing permanent password"; rc=1; }
 echo "$out1" | grep -q 'startup invariants violated — the box refuses to run insecure' \
   || { echo "  FAIL R-A4: no fail-closed refusal"; rc=1; }
-echo "$out1" | grep -q 'R-S9: the source whitelist is EMPTY' \
-  || { echo "  FAIL R-T15(d): the empty-whitelist default-deny warning was not surfaced"; rc=1; }
-[ "$rc" = 0 ] && echo "  ok  R-A4 fail-closed startup + R-T15(d) whitelist warning (runtime)"
+[ "$rc" = 0 ] && echo "  ok  R-A4 fail-closed startup (no password -> refuse to listen, runtime)"
 
 echo "== (2) seed a password, LISTEN on 127.0.0.1, assert the socket surface (R-B4) + R-T9 drain =="
 out2=$("${RUN[@]}" bash -c '
@@ -166,26 +163,10 @@ echo "$out4"
 echo "$out4" | grep -qE 'security summary .* shed=[1-9]' \
   || { echo "  FAIL R-T1: the connection-flood capacity shed did not fire (budget 256; flooded 300)"; rc=1; }
 
-echo "== (5) R-T15(d) ENFORCED: a fully KEYED connection is DENIED by the empty default-deny whitelist =="
-out5=$("${RUN[@]}" bash -c '
-  export HOME=/tmp/rd5; mkdir -p "$HOME"
-  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
-  LD_PRELOAD=/work/target/smoke-bind-loopback.so ./target/debug/rustdesk --server >/tmp/srv.log 2>&1 & SRV=$!
-  sleep 6
-  ./target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok read 2>&1 | grep "post-key"
-  kill -TERM $SRV 2>/dev/null
-' || true)
-echo "$out5"
-# The probe keys, engages the session cipher, reads the post-key flow, and finds the server's
-# whitelist refusal — proving default-deny (R-S9) is ENFORCED on a real keyed session, not merely
-# warned about at startup (CPace authenticated the peer, yet the empty whitelist still blocks it).
-echo "$out5" | grep -q 'Your ip is blocked by the peer' \
-  || { echo "  FAIL R-T15(d): a fully-keyed connection was NOT denied by the empty default-deny whitelist"; rc=1; }
-
-echo "== (6) FULL SESSION (R-S6/R-S2/R-S18 + R-D8/R-X8): a keyed credential-free LoginRequest is ADMITTED and the FULL-ACCESS policy denies NOTHING (whitelist=0.0.0.0/0) =="
+echo "== (6) FULL SESSION (R-S6/R-S2/R-S18 + R-D8/R-X8): a keyed credential-free LoginRequest is ADMITTED and the FULL-ACCESS policy denies NOTHING =="
 out6=$("${RUN[@]}" bash -c '
   export HOME=/tmp/rd6; mkdir -p "$HOME"
-  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" "0.0.0.0/0" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
+  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
   LD_PRELOAD=/work/target/smoke-bind-loopback.so ./target/debug/rustdesk --server >/tmp/srv.log 2>&1 & SRV=$!
   sleep 6
   ./target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok login 2>&1 | grep "post-key"
@@ -194,9 +175,9 @@ out6=$("${RUN[@]}" bash -c '
 echo "$out6"
 # R-S6/R-S18: the keyed edge IS the authorization — the credential-free LoginRequest (no second
 # credential; the password proof is collapsed into the PAKE) is ADMITTED because CPace already
-# authenticated and the whitelist permits. Proven POSITIVELY under the full-access policy: RustDesk
+# authenticated (there is no source-IP ACL). Proven POSITIVELY under the full-access policy: RustDesk
 # NOTIFIES the viewer only of DENIED permissions, so an authorized FULL-ACCESS session emits ZERO
-# `enabled: false` PermissionInfo — vs stage 5 (blocked -> a LoginResponse Error) and vs the OLD
+# `enabled: false` PermissionInfo — vs the OLD
 # least-privilege policy (which emitted Restart/Recording/BlockInput/PrivacyMode = false). So: the
 # host-proof verifies, NO capability is denied, and the request is NOT rejected. (A headless box sends
 # no PeerInfo either way, so denial-notifications were the OLD signal — wrong under full access.)
@@ -206,7 +187,7 @@ s6_ok=1
 echo "$out6" | grep -q 'R-S17 host-proof VERIFIED' \
   || { echo "  FAIL R-S17: the responder's HostIdentity host-proof did not verify"; rc=1; s6_ok=0; }
 if echo "$out6" | grep -qE 'blocked by the peer|Some\(Error'; then
-  echo "  FAIL R-S6/R-S18: the keyed credential-free LoginRequest was REJECTED (must be ADMITTED under whitelist=0.0.0.0/0)"; rc=1; s6_ok=0
+  echo "  FAIL R-S6/R-S18: the keyed credential-free LoginRequest was REJECTED (must be ADMITTED — CPace authenticated it)"; rc=1; s6_ok=0
 fi
 if echo "$out6" | grep -q 'enabled: false'; then
   echo "  FAIL R-D8/R-X8: a capability was DENIED (PermissionInfo enabled:false) — the full-access policy must deny nothing"; rc=1; s6_ok=0
@@ -216,7 +197,7 @@ fi
 echo "== (7) R-A8 / R-T7: an INJECTED (forged) frame on the keyed stream is rejected by the AEAD =="
 out7=$("${RUN[@]}" bash -c '
   export HOME=/tmp/rd7; mkdir -p "$HOME"
-  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" "0.0.0.0/0" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
+  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
   LD_PRELOAD=/work/target/smoke-bind-loopback.so ./target/debug/rustdesk --server >/tmp/srv.log 2>&1 & SRV=$!
   sleep 6
   # The probe keys, reaches the live session, then corrupts its cipher (distinct garbage keys) and
@@ -235,7 +216,7 @@ echo "$out7" | grep -q 'Connection closed: decryption error' \
 echo "== (8) R-A8.2 / R-S10: the per-source online-guess limiter is OWNER-SAFE (flood one source; a DIFFERENT source still keys) =="
 out8=$("${RUN[@]}" bash -c '
   export HOME=/tmp/rd8; mkdir -p "$HOME"
-  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" "0.0.0.0/0" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
+  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
   LD_PRELOAD=/work/target/smoke-bind-loopback.so ./target/debug/rustdesk --server >/tmp/srv.log 2>&1 & SRV=$!
   sleep 6
   # An attacker floods >10 WRONG guesses from 127.0.0.1 within the 60s window (MAX_GUESSES_PER_WINDOW=10).
@@ -260,7 +241,7 @@ out9=$("${RUN[@]}" bash -c '
   (apt-get update -q >/dev/null 2>&1; apt-get install -y -q tcpdump >/dev/null 2>&1) || true
   if ! command -v tcpdump >/dev/null; then echo "TCPDUMP_ABSENT"; exit 0; fi
   export HOME=/tmp/rd9; mkdir -p "$HOME"
-  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" "0.0.0.0/0" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
+  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
   LD_PRELOAD=/work/target/smoke-bind-loopback.so ./target/debug/rustdesk --server >/tmp/srv.log 2>&1 & SRV=$!
   sleep 6
   tcpdump -i lo -w /tmp/cap.pcap "tcp port 21118" >/dev/null 2>&1 & TCPD=$!
@@ -299,7 +280,7 @@ if [ "${SMOKE_DECAY:-0}" = 1 ]; then
 echo "== (10) R-A8 DECAY: a tripped per-source block DECAYS after the window (no PERMANENT lockout) =="
 out10=$("${RUN[@]}" bash -c '
   export HOME=/tmp/rd10; mkdir -p "$HOME"
-  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" "0.0.0.0/0" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
+  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
   LD_PRELOAD=/work/target/smoke-bind-loopback.so ./target/debug/rustdesk --server >/tmp/srv.log 2>&1 & SRV=$!
   sleep 6
   # Trip the per-source block: 11 WRONG guesses from 127.0.0.1 (> MAX_GUESSES_PER_WINDOW=10) in <60s.
@@ -320,7 +301,7 @@ DECAY_NOTE=" + R-A8 limiter-decay (tripped block self-heals after the 60s window
 fi
 
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 real --password IPC provisioning (clean set-and-exit) + R-T15(d) startup-warning AND session-enforcement + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
+  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 real --password IPC provisioning (clean set-and-exit) + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

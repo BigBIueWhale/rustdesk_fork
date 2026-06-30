@@ -106,7 +106,7 @@ echo "== (3b-iv) trust-anchor get_key ignores a stored override (R-A4/R-X4) =="
 # arms, rejecting: (a) the whole-config SyncConfig(Some) push (Config::set overwrites the ENTIRE config
 # with NO is_option_can_save/pin check); (b) the Data::Config STRUCT-FIELD writes that bypass
 # is_option_can_save — `id` (+ set_key_confirmed(false)) and `salt` (set_salt's hashed-pw guard is a
-# no-op under the fork's PRS-plaintext) — which have NO legit main-channel writer; (c) Data::Socks(Some)
+# no-op — the PRS is the host-key-salted Argon2id hash, not derived from this salt field) — which have NO legit main-channel writer; (c) Data::Socks(Some)
 # (set_socks, the proxy/local-MITM primitive an Options-key allowlist would miss). The legit operator
 # writes (permanent-password / unlock-pin / voice-call-input) + reads (value=None) pass. The cross-uid
 # sync uses the peer-uid-gated _service channel. Behavior-tested AND the loop routes through the
@@ -1364,22 +1364,17 @@ if [ -n "$r_t14_missing" ]; then
 else
   echo "  ok  R-T14 cross-backend cancellation-safety guarantee documented (mio/tokio cited at read site)"
 fi
-# R-S9 / R-T15(d) (§20): check_whitelist is inverted to DEFAULT-DENY — an unset or all-unparseable
-# whitelist BLOCKS (it does not pass), with an explicit 0.0.0.0/0 entry the auditable
-# connect-from-anywhere opt-out. The decision is factored into a pure `whitelist_admits` so
-# assert_startup_invariants (R-A4) asserts the "not default-open" invariant at runtime (an empty
-# whitelist MUST deny, else refuse to listen). The legacy default-ALLOW gate must be gone.
-r_t15d_missing=
-grep -q 'fn whitelist_admits' src/server/connection.rs    || r_t15d_missing="$r_t15d_missing admits-fn"
-grep -q 'Self::whitelist_admits' src/server/connection.rs || r_t15d_missing="$r_t15d_missing check-uses-admits"
-grep -q 'whitelist_admits(' src/direct_service.rs    || r_t15d_missing="$r_t15d_missing a4-selftest"
-if grep -q '!whitelist.is_empty()' src/server/connection.rs; then
-  r_t15d_missing="$r_t15d_missing legacy-default-allow!"
-fi
-if [ -n "$r_t15d_missing" ]; then
-  echo "  FAIL R-S9/R-T15(d): default-deny whitelist incomplete:$r_t15d_missing"; rc=1
+# R-S9 / R-D2 (§20): there is NO in-app source-IP ACL — CPace is the sole gate (the bar is SSH), and
+# source-IP scoping belongs at the firewall (which sheds in the kernel before the process). The
+# post-key check_whitelist/whitelist_admits filter and the `whitelist` option MUST be fully excised
+# (symbol-absent), not merely default-open.
+r_s9_present=
+grep -Eq 'fn whitelist_admits|check_whitelist' src/server/connection.rs src/direct_service.rs && r_s9_present="$r_s9_present whitelist-fn-present!"
+grep -q 'OPTION_WHITELIST' libs/hbb_common/src/config.rs && r_s9_present="$r_s9_present option-const-present!"
+if [ -n "$r_s9_present" ]; then
+  echo "  FAIL R-S9/R-D2: in-app source ACL not fully excised:$r_s9_present"; rc=1
 else
-  echo "  ok  R-S9/R-T15(d) whitelist default-deny + R-A4 not-default-open self-test present"
+  echo "  ok  R-S9/R-D2 no in-app source ACL (check_whitelist/whitelist_admits/OPTION_WHITELIST absent) — CPace is the sole gate"
 fi
 # R-S9 / BUG3 (flutter UI correctness): the whitelist SETTINGS UI must agree with the default-DENY backend.
 # Upstream shows the amber caution only when the whitelist is SET (so empty looks "off" = open); on the fork

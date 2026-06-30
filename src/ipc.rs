@@ -689,7 +689,8 @@ impl Drop for CheckIfRestart {
 /// Make this a POSITIVE allowlist over the config-mutating arms, not a one-arm denylist: only the
 /// legitimate UI/operator Data::Config writes pass; `id` and `salt` (which have NO legitimate
 /// main-channel writer — the UI READS id via value=None, and set_salt's hashed-password guard is a
-/// no-op in the fork's PRS-plaintext model, config.rs) are REJECTED, so a same-uid process cannot
+/// no-op in the fork's PRS model (the at-rest credential is the host-key-salted Argon2id
+/// hash, not a value re-derived from this legacy `salt` field — R-P1), config.rs) are REJECTED, so a same-uid process cannot
 /// rewrite the device identity or the password salt through the main channel. Data::Socks(Some) (the
 /// proxy / local-MITM primitive, already inert under the pinned proxy-url, R-D6(d)(iii)) is rejected
 /// at the channel too. (permanent-password = the UI password-set; unlock-pin = the --set-unlock-pin /
@@ -1936,7 +1937,7 @@ mod test {
         );
         assert!(
             !main_channel_admits_config_write(&cfg("salt", Some("evil-salt"))),
-            "R-S11: a Data::Config salt write (set_salt's guard is a no-op under PRS-plaintext) MUST be rejected"
+            "R-S11: a Data::Config salt write (set_salt's guard is a no-op — the PRS is the host-key-salted Argon2id hash, not derived from this salt field) MUST be rejected"
         );
         assert!(
             main_channel_admits_config_write(&cfg("permanent-password", Some("pw"))),

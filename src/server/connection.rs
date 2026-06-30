@@ -24,7 +24,6 @@ use crate::{
 };
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use crate::{common::DEVICE_NAME, flutter::connection_manager::start_channel};
-use cidr_utils::cidr::IpCidr;
 #[cfg(target_os = "android")]
 use hbb_common::protobuf::EnumOrUnknown;
 use hbb_common::{
@@ -994,46 +993,8 @@ impl Connection {
         }
     }
 
-    /// R-S9 / R-T15(d): the DEFAULT-DENY whitelist decision, factored pure (no `self`, no I/O) so
-    /// the R-A4 startup self-check can assert the default-deny invariant at runtime. On an exposed
-    /// host an unset or all-unparseable whitelist BLOCKS (returns `false`), it never passes; the
-    /// auditable connect-from-anywhere opt-out is an explicit `0.0.0.0` / `0.0.0.0/0` entry, else
-    /// the peer's IP MUST fall inside a configured CIDR. This is a fixed compile-time policy, not a
-    /// runtime toggle. CPace remains the real authentication gate (R-S1); the whitelist is the
-    /// IP-level conformance the keyed-path threat model wants (R-A4), never a substitute for it.
-    pub fn whitelist_admits(raw: &str, ip: std::net::IpAddr) -> bool {
-        // Trim each entry: a natural comma-space list ("a.b.c.0/24, d.e.f.0/8") must honor every
-        // entry — without the trim, `IpCidr::from_str(" d.e.f.0/8")` fails and that subnet is
-        // silently dropped, leaving the admin's whitelist quietly half-applied (fail-closed, but
-        // not what was configured). Trimming only ever lets an INTENDED entry parse; a malformed
-        // token still fails closed, so it cannot widen access.
-        let entries: Vec<&str> = raw
-            .split(',')
-            .map(|x| x.trim())
-            .filter(|x| !x.is_empty())
-            .collect();
-        entries.iter().any(|x| *x == "0.0.0.0" || *x == "0.0.0.0/0")
-            || entries
-                .iter()
-                .any(|x| IpCidr::from_str(x).map_or(false, |y| y.contains(ip)))
-    }
-
-    async fn check_whitelist(&mut self, addr: &SocketAddr) -> bool {
-        // R-S9 / R-T15(d): default-DENY — an unset or all-unparseable whitelist blocks (see
-        // `whitelist_admits`). The legacy behaviour passed an empty whitelist; that is inverted.
-        if !Self::whitelist_admits(&Config::get_option(keys::OPTION_WHITELIST), addr.ip()) {
-            self.send_login_error("Your ip is blocked by the peer")
-                .await;
-            return false;
-        }
-        true
-    }
-
     async fn on_open(&mut self, addr: SocketAddr) -> bool {
         log::debug!("#{} Connection opened from {}.", self.inner.id, addr);
-        if !self.check_whitelist(&addr).await {
-            return false;
-        }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         if crate::is_server() && Config::get_option("allow-only-conn-window-open") == "Y" {
             if !crate::check_process("", !crate::platform::is_root()) {
@@ -5267,55 +5228,5 @@ mod test {
         let pos = msg.cursor_position();
         assert_eq!(pos.x, 510);
         assert_eq!(pos.y, 510);
-    }
-}
-
-#[cfg(test)]
-mod whitelist_admits_tests {
-    use super::*;
-
-    fn ip(s: &str) -> std::net::IpAddr {
-        s.parse().unwrap()
-    }
-
-    #[test]
-    fn default_deny_unset_or_malformed() {
-        // R-S9/R-T15(d): empty / malformed / out-of-range => DENY (fail-closed).
-        assert!(!Connection::whitelist_admits("", ip("1.2.3.4")));
-        assert!(!Connection::whitelist_admits("garbage", ip("1.2.3.4")));
-        assert!(!Connection::whitelist_admits("10.0.0.0/8", ip("11.1.2.3")));
-    }
-
-    #[test]
-    fn explicit_opt_out_admits_any() {
-        assert!(Connection::whitelist_admits("0.0.0.0", ip("1.2.3.4")));
-        assert!(Connection::whitelist_admits("0.0.0.0/0", ip("203.0.113.9")));
-        // the explicit connect-from-anywhere opt-out admits IPv6 too
-        assert!(Connection::whitelist_admits("0.0.0.0/0", ip("2001:db8::1")));
-    }
-
-    #[test]
-    fn cidr_match_v4_and_v6() {
-        assert!(Connection::whitelist_admits("10.0.0.0/8", ip("10.1.2.3")));
-        assert!(!Connection::whitelist_admits("10.0.0.0/8", ip("11.1.2.3")));
-        assert!(Connection::whitelist_admits(
-            "2001:db8::/32",
-            ip("2001:db8::5")
-        ));
-    }
-
-    #[test]
-    fn entries_are_trimmed() {
-        // A natural "a, b" comma-space list MUST honor EVERY entry, not silently drop the
-        // whitespace-padded ones (which would leave the admin's whitelist quietly half-applied).
-        assert!(Connection::whitelist_admits(
-            "192.168.0.0/16, 10.0.0.0/8",
-            ip("10.1.2.3")
-        ));
-        assert!(Connection::whitelist_admits(
-            "1.0.0.0/8 , 2.0.0.0/8",
-            ip("2.3.4.5")
-        ));
-        assert!(Connection::whitelist_admits(" 0.0.0.0/0 ", ip("8.8.8.8")));
     }
 }

@@ -1,12 +1,12 @@
 //! TEST-ONLY seeder for the docker-loopback runtime tests. NOT shipped.
 //!
 //! Seeds the at-rest config a headless `rustdesk --server` reads, so a test container can get the
-//! server past the R-A4 fail-closed startup (it refuses without a permanent password) and, with an
-//! optional whitelist, past the R-S9 default-deny so a keyed session can be ADMITTED. It calls the
+//! server past the R-A4 fail-closed startup (it refuses without a permanent password), so a keyed session
+//! can be ADMITTED. It calls the
 //! library setters directly (the production `--password` CLI is install-privilege-gated and refuses
 //! in a container). Same `$HOME` + APP_NAME "RustDesk" => same config path as the server.
 //!
-//! Usage: `cargo run --example seed_password --features linux-pkg-config -- <password> [whitelist]`
+//! Usage: `cargo run --example seed_password --features linux-pkg-config -- <password>`
 //!
 //! R-P1 note: the permanent-password PRS is a memory-hard Argon2id hash SALTED with the box's own
 //! Ed25519 host PUBLIC key. set_permanent_password co-persists that key SYNCHRONOUSLY (the lazy
@@ -15,7 +15,7 @@
 fn main() {
     use hbb_common::config::Config;
     let a: Vec<String> = std::env::args().collect();
-    let pw = a.get(1).expect("usage: seed_password <password> [whitelist]");
+    let pw = a.get(1).expect("usage: seed_password <password>");
     let ok = Config::set_permanent_password(pw);
     let prs = Config::get_permanent_password_prs();
     let prs_empty = prs.is_empty();
@@ -26,11 +26,4 @@ fn main() {
         ok && !prs_empty && !prs_is_plaintext,
         "seed_password: the credential did not round-trip into at-rest storage as a non-plaintext PRS"
     );
-
-    if let Some(wl) = a.get(2) {
-        hbb_common::config::Config::set_option("whitelist".to_string(), wl.to_string());
-        let got = hbb_common::config::Config::get_option("whitelist");
-        println!("seed_password: set whitelist={wl:?} (read back {got:?})");
-        assert_eq!(&got, wl, "seed_password: whitelist did not round-trip");
-    }
 }

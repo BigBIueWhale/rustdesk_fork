@@ -1092,9 +1092,17 @@ grep -qE '^RestartSec=[0-9]+$'  res/rustdesk.service            || r_t1_missing=
 # fd/session blast-radius bound holds under supervisord / a bare container too, not only the cgroup.
 grep -q 'fn self_enforce_resource_limits' src/direct_service.rs              || r_t1_missing="$r_t1_missing self:rlimit-fn"
 grep -q 'setrlimit(libc::RLIMIT_NOFILE' src/direct_service.rs                || r_t1_missing="$r_t1_missing self:rlimit-nofile"
+# soft-only / hard-preserving: getrlimit reads the inherited hard ceiling, which we KEEP so the
+# owner's terminal child (R-F1) can `ulimit -n` back up — a resource bound, not a privilege confinement.
+grep -q 'getrlimit(libc::RLIMIT_NOFILE' src/direct_service.rs                || r_t1_missing="$r_t1_missing self:rlimit-hard-preserved"
 grep -q 'self_enforce_resource_limits();' src/direct_service.rs              || r_t1_missing="$r_t1_missing self:rlimit-called"
 grep -q 'const MAX_AUTHED_SESSIONS' src/server/connection.rs                 || r_t1_missing="$r_t1_missing self:session-cap-const"
 grep -q 'AUTHED_CONNS.lock().unwrap().len() >= MAX_AUTHED_SESSIONS' src/server/connection.rs || r_t1_missing="$r_t1_missing self:session-cap-check"
+# R-D3a: the unit MUST NOT actively set NoNewPrivileges — it would break the owner's sudo in the
+# pinned-ON full-access terminal (R-F1) and the --service sudo -u drop. The launcher provides the
+# privilege sandbox WITHOUT this owner-breaking knob; the binary never self-applies one. (A comment
+# documenting the omission is fine — only an active `^NoNewPrivileges=` directive is the regression.)
+grep -qE '^NoNewPrivileges=' res/rustdesk.service && r_t1_missing="$r_t1_missing service:NoNewPrivileges-set(breaks-owner-sudo)"
 if [ -n "$r_t1_missing" ]; then
   echo "  FAIL R-T1: connection-flood bound / flood-safe observability absent:$r_t1_missing"; rc=1
 else

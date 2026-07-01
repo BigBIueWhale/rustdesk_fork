@@ -196,7 +196,33 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   alongside #2b — already-validated pixels, no parser, viewer/desktop-only.
 - **R-V3 independent CPace audit** — the in-tree CPace implementation is
   vector/KAT-conformant and adversarially tested but **not yet independently
-  audited**; the §11 "not independently audited" disclosure stands.
+  audited by an external cryptographer**; the §11 "not independently audited"
+  disclosure stands. (An in-house adversarial **crypto-protocol-logic** audit was
+  performed 2026-07-01 — see below — but that does not substitute for R-V3's
+  external sign-off.)
+- **Crypto protocol-logic audit — ✅ PERFORMED 2026-07-01; VERDICT SOUND.** A
+  dedicated adversarial pass over the STATE-MACHINE / KEY-DISCIPLINE that KATs do
+  not cover (both endpoints' keying paths traced in source): confirm-before-key
+  fail-closed (`pake/lib.rs:486,612`; keys installed only after `Ok`, `is_secured()`
+  guard `server.rs:498`/`client.rs:306`); host-proof binding + no-TOFU pin
+  (`cpace.rs:361-370`, `client.rs:339-343,383-390`; PRS Argon2id-salted by the pinned
+  key); two-key nonce/key discipline (distinct c2s/s2c, mirrored+cross-checked,
+  `split_session_keys` asserts send≠recv `cpace.rs:494-497`, counters `checked_add`
+  can't-wrap `cpace.rs:416-420,459-463`, single-writer-per-direction); ristretto
+  canonical-decode + identity-reject; no-downgrade (`set_raw` panics on keyed);
+  replay/desync (monotonic recv counter, atomic decode, cross-session abort);
+  framing caps both sides; CT confirm/at-rest compares. **No exploitable flaw.**
+  Three DEFENSE-IN-DEPTH observations (all NON-exploitable, severity none): (DiD-1)
+  the no-TOFU-on-mismatch friction is caller-enforced (Dart re-pin dialog + `--pin-host`
+  CLI), not core-structural — now backstopped by a new `verify.sh` R-S17 gate that
+  confines `host_pin::set_pinned_pk` to those two friction callers so a future
+  non-Flutter UI can't silently add a no-friction adopt; (DiD-2) the online-guess
+  limiter is a tumbling (not sliding) window → ~2× guesses possible straddling a
+  boundary — DoS-defense only, each connection is still exactly one guess vs the
+  memory-hard PRS; (DiD-3) the host-proof signs `DSI‖sid‖CI‖Ya‖Yb` (not the literal
+  ISK) but is key-bound because it travels encrypted as the first post-key frame with
+  session-unique CPace-authenticated `sid/Ya/Yb` (test `r_s17_host_proof_binds_pk_to_the_session`).
+  The external R-V3 sign-off (above) is still the outstanding item.
 - **Protobuf parser attack-surface audit — ✅ PERFORMED 2026-06-29; parser
   SOUND for our threat model.** The `protobuf` crate (rust-protobuf) **v3.7.2**
   (crates.io, `Cargo.lock` checksum

@@ -366,6 +366,22 @@ if grep -A12 'Widget createDialogContent' flutter/lib/common.dart | grep -q 'ret
 else
   echo "  FAIL R-SV1: createDialogContent is no longer the plain-text renderer (unexpected)"; rc=1
 fi
+# R-S17 no-TOFU structural anti-regression (crypto-audit DiD-1, 2026-07-01): host_pin::set_pinned_pk is
+# the SOLE pin-adoption writer. The no-TOFU-on-mismatch property is enforced by its callers — the
+# --pin-host CLI (core_main.rs; out-of-band, requires --forget-host first) and the session_pin_host FFI
+# (ui_session_interface.rs) whose Dart re-pin dialog forces the operator to TYPE the new fingerprint
+# (matches ? submit : null); the Rust core NEVER auto-adopts (client.rs bails fail-closed on mismatch).
+# Confine the caller set structurally so a future (e.g. non-Flutter) UI cannot silently add a
+# no-friction adopt that would regress toward TOFU-on-mismatch. (host_pin.rs = the def; bridge_generated
+# = the gitignored FRB shim for session_pin_host; a client.rs comment mentions it without a call `(`.)
+pin_adopt_callers=$(grep -rn -F 'set_pinned_pk(' src libs --include='*.rs' 2>/dev/null \
+  | grep -vE 'host_pin\.rs|core_main\.rs|ui_session_interface\.rs' || true)  # || true: empty grep -v exits 1 under set -e
+if [ -n "$pin_adopt_callers" ]; then
+  echo "  FAIL R-S17: unexpected host_pin::set_pinned_pk caller (no-TOFU friction-bypass risk):"
+  echo "$pin_adopt_callers" | sed 's/^/      /'; rc=1
+else
+  echo "  ok  R-S17 set_pinned_pk confined to its 2 friction-enforced callers (--pin-host CLI + Dart re-pin FFI)"
+fi
 ra6_clean 'DEBUG_BOOT_COMPLETED'                                          'R-X6 fake-boot broadcast'  || rc=1
 # R-X6: the Linux D-Bus deep-link delivery transport (src/server/dbus.rs: session-bus name
 # org.rustdesk.rustdesk, method NewConnection) is EXCISED. It ignored the caller (any co-installed

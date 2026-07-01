@@ -759,7 +759,6 @@ pub async fn start_server(_is_server: bool) {
 /// * `is_server` - Whether the current client is definitely the server.
 /// If true, the server will be started.
 /// Otherwise, client will check if there's already a server and start one if not.
-/// * `no_server` - If `is_server` is false, whether to start a server if not found.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main]
 pub async fn start_server(is_server: bool) {

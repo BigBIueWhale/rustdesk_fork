@@ -240,6 +240,29 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 - **R-R3 dependency-advisory gates** — `cargo audit`/`cargo deny` (`scripts/audit.sh`)
   and `osv-scanner` (`scripts/dart-audit.sh`) are wired; the documented-accept
   ledger is maintained there.
+- **Peer-avatar remote-image egress — ✅ CLOSED 2026-07-01.** The 2026-07-01
+  completion review found the sole open gap: a CPace-authenticated peer's
+  `LoginRequest.avatar` (`connection.rs:1447` → CM `Client`) was rendered by
+  `buildAvatarWidget`, whose http(s) branch issued an unconditioned Flutter
+  `NetworkImage` GET to a peer-**named** host — a first-party, attacker-influenceable
+  outbound fetch at odds with "dial nobody / defensible with no firewall"
+  (deanonymization / SSRF-lite). Fixed at the sink (`common.dart:3941`): the network
+  branch is removed; only an inline `data:image/` (base64, no egress) renders,
+  non-inline avatars fall through to the initials fallback. New `verify.sh` gate pins
+  `NetworkImage` to **zero** across the whole flutter UI (R-SV1) plus a positive check
+  that inline-`data:` rendering is retained.
+- **Inert dead-code leftovers (optional hygiene, no reachable path).** The same
+  review enumerated confirmed-inert residue retained for now to avoid multi-file
+  regression risk at the completion boundary: orphaned uncompiled
+  `libs/scrap/src/wayland.rs` + `libs/scrap/src/common/wayland.rs` (the `mod` is
+  excised, the files linger beside cfg-gated `common/linux.rs` WAYLAND arms);
+  the neutered `--assign` arm in `core_main.rs` (assembles then discards a body —
+  dials nobody); dead `--quick_support` plumbing in `libs/portable`;
+  `enable_trusted_devices` viewer plumbing (wired login-response→handler but unused)
+  and the `Dialog2FaField`/`kUseTemporaryPassword` Dart stubs; dead
+  `"Click to upgrade"`/`"Auto update"` translation entries in `src/lang/*.rs`.
+  None affects behavior or opens a security path (reviewer + local re-confirm);
+  each is a candidate for a later focused excision carrying its own build re-prove.
 
 The requirements snapshot reviewed in this pass was:
 

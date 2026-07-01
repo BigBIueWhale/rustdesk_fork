@@ -3938,9 +3938,14 @@ Widget? buildAvatarWidget({
         imageProvider = MemoryImage(base64Decode(trimmed.substring(comma + 1)));
       } catch (_) {}
     }
-  } else if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    imageProvider = NetworkImage(trimmed);
   }
+  // Sovereignty (R-SV1 "dial nobody" / R-D6): a client avatar string is
+  // attacker-controlled (peer LoginRequest.avatar -> connection.rs -> CM Client).
+  // Render ONLY an inline `data:image/` (base64, no egress). We deliberately do
+  // NOT fetch remote http(s) avatars: a remote-image fetch here would let an
+  // authenticated peer make this sovereign box issue an outbound GET to an
+  // attacker-named host (deanonymization / SSRF-lite). Do NOT re-add a network
+  // branch — non-inline avatars fall through to [fallback].
 
   if (imageProvider == null) return fallback;
 

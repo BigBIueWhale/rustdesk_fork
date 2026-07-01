@@ -330,6 +330,24 @@ else
   echo "  ok  R-SV1 hbbs_http/downloader.rs module file absent"
 fi
 ra6_clean 'hbbs_http::downloader|mod downloader|fn do_download' 'R-SV1 downloader call-path/module/worker' || rc=1
+# R-SV1 / R-D6 / §18: peer-avatar remote-image egress is CLOSED. A CPace-authenticated peer's
+# LoginRequest.avatar (src/server/connection.rs -> CM Client) is rendered by buildAvatarWidget; its
+# former http(s) branch issued an unconditioned remote GET (Flutter NetworkImage) to a peer-NAMED
+# host — a first-party, attacker-influenceable outbound fetch at odds with "dial nobody / defensible
+# with no firewall" (deanonymization / SSRF-lite). The network branch is removed; only inline
+# `data:image/` (base64, no egress) renders. NetworkImage is the sole such sink, so we gate it to zero
+# across the whole flutter UI (not just common.dart) — any reintroduction anywhere is an egress vector.
+if grep -RIn 'NetworkImage' flutter/lib --include='*.dart' >/dev/null 2>&1; then
+  echo "  FAIL R-SV1: NetworkImage (peer-avatar / remote-image egress) present in flutter/lib:"
+  grep -RIn 'NetworkImage' flutter/lib --include='*.dart' | sed 's/^/      /'; rc=1
+else
+  echo "  ok  R-SV1 no NetworkImage egress in flutter UI (peer avatar renders inline data: only)"
+fi
+if grep -q "startsWith('data:image/')" flutter/lib/common.dart && grep -q 'Widget? buildAvatarWidget' flutter/lib/common.dart; then
+  echo "  ok  R-SV1 buildAvatarWidget still renders inline data:image/ avatars (not silently deleted)"
+else
+  echo "  FAIL R-SV1: buildAvatarWidget/data:image inline handling missing (unexpected regression)"; rc=1
+fi
 ra6_clean 'DEBUG_BOOT_COMPLETED'                                          'R-X6 fake-boot broadcast'  || rc=1
 # R-X6: the Linux D-Bus deep-link delivery transport (src/server/dbus.rs: session-bus name
 # org.rustdesk.rustdesk, method NewConnection) is EXCISED. It ignored the caller (any co-installed

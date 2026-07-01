@@ -73,8 +73,9 @@ class CachedPeerData {
   Map<String, dynamic> lastCursorId = {};
   Map<String, bool> permissions = {};
 
-  bool secure = false;
-  bool direct = false;
+  // R-G3: the `secure`/`direct` cache fields are removed — the fork's channel is always
+  // PAKE-keyed and direct (§10 / R-SV4-R-D4), so the badge is a fixed secure-direct indicator
+  // that reads neither. Only `streamType` (the "via TCP" suffix) is retained.
   String streamType = '';
 
   CachedPeerData();
@@ -87,8 +88,6 @@ class CachedPeerData {
       'cursorDataList': cursorDataList,
       'lastCursorId': lastCursorId,
       'permissions': permissions,
-      'secure': secure,
-      'direct': direct,
       'streamType': streamType,
     });
   }
@@ -106,8 +105,6 @@ class CachedPeerData {
       map['permissions'].forEach((key, value) {
         data.permissions[key] = value;
       });
-      data.secure = map['secure'];
-      data.direct = map['direct'];
       data.streamType = map['streamType'];
       return data;
     } catch (e) {
@@ -124,8 +121,9 @@ class FfiModel with ChangeNotifier {
 
   var _inputBlocked = false;
   final _permissions = <String, bool>{};
-  bool? _secure;
-  bool? _direct;
+  // R-G3: `_secure`/`_direct` badge state removed. `_connectionTypeReceived` is a UI-readiness
+  // flag (not a security-state field) gating whether the fixed secure-direct badge is shown yet.
+  bool _connectionTypeReceived = false;
   bool _touchMode = false;
   late VirtualMouseMode virtualMouseMode;
   Timer? _timer;
@@ -156,10 +154,6 @@ class FfiModel with ChangeNotifier {
     _permissions.clear();
     _permissions.addAll(permissions);
   }
-
-  bool? get secure => _secure;
-
-  bool? get direct => _direct;
 
   PeerInfo get pi => _pi;
 
@@ -255,8 +249,7 @@ class FfiModel with ChangeNotifier {
 
   clear() {
     _pi = PeerInfo();
-    _secure = null;
-    _direct = null;
+    _connectionTypeReceived = false;
     _inputBlocked = false;
     _timer?.cancel();
     _timer = null;
@@ -265,17 +258,11 @@ class FfiModel with ChangeNotifier {
     timerScreenshot?.cancel();
   }
 
-  setConnectionType(
-      String peerId, bool secure, bool direct, String streamType) {
-    cachedPeerData.secure = secure;
-    cachedPeerData.direct = direct;
+  setConnectionType(String peerId, String streamType) {
     cachedPeerData.streamType = streamType;
-    _secure = secure;
-    _direct = direct;
+    _connectionTypeReceived = true;
     try {
       var connectionType = ConnectionTypeState.find(peerId);
-      connectionType.setSecure(secure);
-      connectionType.setDirect(direct);
       connectionType.setStreamType(streamType);
     } catch (e) {
       //
@@ -283,7 +270,7 @@ class FfiModel with ChangeNotifier {
   }
 
   Widget? getConnectionImageText() {
-    if (secure == null || direct == null) {
+    if (!_connectionTypeReceived) {
       return null;
     } else {
       // R-G3: always the secure-direct badge. The insecure / secure_relay / insecure_relay
@@ -294,8 +281,7 @@ class FfiModel with ChangeNotifier {
       // which already collapse the four secure×direct branches to the one reachable state.
       final iconWidget =
           SvgPicture.asset('assets/secure.svg', width: 48, height: 48);
-      String connectionText =
-          getConnectionText(secure!, direct!, cachedPeerData.streamType);
+      String connectionText = getConnectionText(cachedPeerData.streamType);
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -324,7 +310,7 @@ class FfiModel with ChangeNotifier {
       'link': '',
     }, sessionId, peerId);
     updatePrivacyMode(data.updatePrivacyMode, sessionId, peerId);
-    setConnectionType(peerId, data.secure, data.direct, data.streamType);
+    setConnectionType(peerId, data.streamType);
     await handlePeerInfo(data.peerInfo, peerId, true);
     for (final element in data.cursorDataList) {
       updateLastCursorId(element);
@@ -353,8 +339,9 @@ class FfiModel with ChangeNotifier {
       } else if (name == 'sync_platform_additions') {
         handlePlatformAdditions(evt, sessionId, peerId);
       } else if (name == 'connection_ready') {
-        setConnectionType(peerId, evt['secure'] == 'true',
-            evt['direct'] == 'true', evt['stream_type'] ?? '');
+        // R-G3: the peer's secure/direct wire flags are ignored — the channel is always
+        // PAKE-keyed + direct, so only the stream type (badge suffix) is consumed.
+        setConnectionType(peerId, evt['stream_type'] ?? '');
       } else if (name == 'switch_display') {
         // switch display is kept for backward compatibility
         handleSwitchDisplay(evt, sessionId, peerId);

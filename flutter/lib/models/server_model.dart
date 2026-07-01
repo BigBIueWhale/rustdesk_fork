@@ -19,7 +19,8 @@ import 'model.dart';
 
 const kLoginDialogTag = "LOGIN";
 
-const kUseTemporaryPassword = "use-temporary-password";
+// R-X7/R-A6: the `use-temporary-password` token is excised (the OTP path is gone; the permanent
+// password is the box's sole credential). Only the permanent/both methods survive.
 const kUsePermanentPassword = "use-permanent-password";
 const kUseBothPasswords = "use-both-passwords";
 
@@ -68,7 +69,6 @@ class ServerModel with ChangeNotifier {
 
   String get verificationMethod {
     final index = [
-      kUseTemporaryPassword,
       kUsePermanentPassword,
       kUseBothPasswords
     ].indexOf(_verificationMethod);

@@ -3,12 +3,13 @@ use sodiumoxide::{base64, crypto::secretbox};
 
 // R-X7: the rotating one-time (temporary) password is EXCISED — the permanent password is the
 // fork's sole credential and sole CPace PRS (R-S9/R-P1). The TEMPORARY_PASSWORD store, its
-// generator, update/read, and the per-connection failure-rotation are removed. `verification_method`
-// keeps its enum for permanent-only resolution (the OTP variants are inert under the R-S16 pin).
+// generator, update/read, and the per-connection failure-rotation are removed. The
+// `OnlyUseTemporaryPassword` resolver variant and the `use-temporary-password` token are removed
+// too (R-A6 lists that token grep-zero), leaving `verification_method` as a funnel read (R-S16)
+// over only the two surviving, permanent-accepting methods.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VerificationMethod {
-    OnlyUseTemporaryPassword,
     OnlyUsePermanentPassword,
     UseBothPasswords,
 }
@@ -21,10 +22,10 @@ pub enum ApproveMode {
 }
 
 fn verification_method() -> VerificationMethod {
+    // Funnel read (R-S16); the R-S16 pin resolves this to `use-permanent-password`. The excised
+    // temporary-password branch and its `use-temporary-password` token are gone (R-X7/R-A6).
     let method = Config::get_option("verification-method");
-    if method == "use-temporary-password" {
-        VerificationMethod::OnlyUseTemporaryPassword
-    } else if method == "use-permanent-password" {
+    if method == "use-permanent-password" {
         VerificationMethod::OnlyUsePermanentPassword
     } else {
         VerificationMethod::UseBothPasswords // default
@@ -32,7 +33,12 @@ fn verification_method() -> VerificationMethod {
 }
 
 pub fn permanent_enabled() -> bool {
-    verification_method() != VerificationMethod::OnlyUseTemporaryPassword
+    // Every surviving verification method accepts the permanent password (the temporary path is
+    // excised, R-X7). Exhaustive match (no wildcard) so re-adding a method is a compile error, not
+    // a silent fail-open; retained as a funnel read (R-S16), never a bare constant.
+    match verification_method() {
+        VerificationMethod::OnlyUsePermanentPassword | VerificationMethod::UseBothPasswords => true,
+    }
 }
 
 pub fn has_valid_password() -> bool {

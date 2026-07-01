@@ -75,35 +75,21 @@ class CurrentDisplayState {
 }
 
 class ConnectionType {
-  final Rx<String> _secure = kInvalidValueStr.obs;
-  final Rx<String> _direct = kInvalidValueStr.obs;
+  // R-G3: the `_secure`/`_direct` badge-state fields — and the strSecure/strInsecure/strDirect/
+  // strIndirect mappings + setSecure/setDirect that fed them — are removed. The fork's channel is
+  // always PAKE-keyed and direct (§10 / R-SV4-R-D4), so a variable secure/relay badge is both dead
+  // and a security mislabel (misreporting channel security is worse than omitting it). Only the
+  // stream-type suffix survives.
   final Rx<String> _stream_type = kInvalidValueStr.obs;
 
-  Rx<String> get secure => _secure;
-  Rx<String> get direct => _direct;
   Rx<String> get stream_type => _stream_type;
-
-  static String get strSecure => 'secure';
-  static String get strInsecure => 'insecure';
-  static String get strDirect => '';
-  static String get strIndirect => '_relay';
-
-  void setSecure(bool v) {
-    _secure.value = v ? strSecure : strInsecure;
-  }
-
-  void setDirect(bool v) {
-    _direct.value = v ? strDirect : strIndirect;
-  }
 
   void setStreamType(String v) {
     _stream_type.value = v;
   }
 
   bool isValid() {
-    return _secure.value != kInvalidValueStr &&
-        _direct.value != kInvalidValueStr &&
-        _stream_type.value != kInvalidValueStr;
+    return _stream_type.value != kInvalidValueStr;
   }
 }
 

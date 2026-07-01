@@ -148,12 +148,9 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
               ],
             );
           } else {
-            bool secure =
-                connectionType.secure.value == ConnectionType.strSecure;
-            bool direct =
-                connectionType.direct.value == ConnectionType.strDirect;
-            String msgConn = getConnectionText(
-                secure, direct, connectionType.stream_type.value);
+            // R-G3: the channel is always PAKE-keyed + direct, so the badge no longer reads a
+            // secure/direct state (those fields are removed) — only the stream-type suffix.
+            String msgConn = getConnectionText(connectionType.stream_type.value);
             var msgFingerprint = '${translate('Fingerprint')}:\n';
             var fingerprint = FingerprintState.find(key).value;
             if (fingerprint.isEmpty) {

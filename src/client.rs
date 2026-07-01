@@ -2926,6 +2926,14 @@ pub fn handle_login_error(
             // unreachable!
             false
         }
+    } else if err.starts_with("No permission of") {
+        // R-G6: the peer has DISABLED this capability (its `enable-*` is off). On the direct-only
+        // fork our OWN controlled side grants every capability (R-S16/R-X8), so this only arises
+        // against a stock or differently-built peer — surface a SPECIFIC "disabled on the peer"
+        // message (the clarifying title) rather than the confusing generic "Login Error", keeping
+        // the raw refusal (which capability) as the translatable body.
+        interface.msgbox("error", "Capability disabled on the remote peer", err, "");
+        false
     } else {
         if err.contains(SCRAP_X11_REQUIRED) {
             interface.msgbox("error", "Login Error", err, SCRAP_X11_REF_URL);
@@ -3071,7 +3079,20 @@ pub trait Interface: Send + Clone + 'static + Sized {
         // wrong or :21118 is not port-forwarded, never "retry via relay".
         let errno = errno::errno().0;
         log::error!("Connection closed: {err}({errno})");
-        self.msgbox("error", title, &text, "");
+        // R-G6: a direct connect that fails is TERMINAL (no relay fallback). If the host was simply
+        // unreachable, replace the raw "Failed to connect …" with the actionable guidance the spec
+        // mandates — check the address and that the port is open/forwarded — instead of a bare error.
+        let unreachable = err.contains("Failed to connect")
+            || err.contains("Connection refused")
+            || err.contains("No route to host")
+            || err.contains("Network is unreachable")
+            || err.contains("timed out")
+            || err.contains("timeout");
+        if unreachable {
+            self.msgbox("error", title, "direct_unreachable_tip", "");
+        } else {
+            self.msgbox("error", title, &text, "");
+        }
     }
 }
 

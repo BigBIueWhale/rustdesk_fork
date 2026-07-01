@@ -435,6 +435,24 @@ else
 fi
 grep -A3 -F 'pub fn handle_relay_id(id: &str) -> &str {' src/ui_interface.rs | grep -qF '    id' \
   || { echo "  FAIL R-G6/R-SV4: handle_relay_id is no longer an identity compatibility shim"; rc=1; }
+# R-G6 ADDITIVE copy — the half the deletion-only greps never asserted (so it silently slipped): the
+# direct-only failure/status semantics MUST be REWRITTEN, not merely have the relay copy deleted. Two
+# MUST clauses: (a) a peer that DISABLED a capability surfaces a SPECIFIC "disabled on the peer"
+# message, not a confusing generic connect failure; (b) an unreachable host gets actionable "check the
+# address / port-forward" guidance (there is no relay fallback to suggest). Assert both lang keys exist
+# in en.rs AND are wired in client.rs (present + referenced, not orphaned) so the copy cannot regress.
+r_g6_add=""
+grep -qF '"Capability disabled on the remote peer"' src/lang/en.rs || r_g6_add="$r_g6_add en:cap-disabled-key"
+grep -qF '"direct_unreachable_tip"' src/lang/en.rs                  || r_g6_add="$r_g6_add en:unreachable-tip-key"
+grep -qF '"Capability disabled on the remote peer"' src/client.rs   || r_g6_add="$r_g6_add wire:cap-disabled-msgbox"
+grep -qF 'err.starts_with("No permission of")' src/client.rs        || r_g6_add="$r_g6_add wire:cap-refusal-detect"
+grep -qF '"direct_unreachable_tip"' src/client.rs                   || r_g6_add="$r_g6_add wire:unreachable-msgbox"
+grep -qF 'err.contains("Failed to connect")' src/client.rs          || r_g6_add="$r_g6_add wire:unreachable-detect"
+if [ -n "$r_g6_add" ]; then
+  echo "  FAIL R-G6: the direct-only ADDITIVE error/status copy is missing/unwired:$r_g6_add"; rc=1
+else
+  echo "  ok  R-G6 additive copy present+wired (capability-disabled-on-peer message + unreachable check-address/port-forward guidance)"
+fi
 # (2) The Rust core LoginConfigHandler::initialize (src/client.rs) MUST NOT adopt an embedded ?key= into
 # other_server, nor re-adopt a persisted/option-injected other-server-key.
 if grep -qE 'args_map\.remove\("key"\)' src/client.rs; then
@@ -2424,11 +2442,24 @@ fi
 # (connection.rs TEMPORARY_PASSWORD_FAILURES), and the dead option keys. `Config::get_auto_password`
 # STAYS (shared with the Hash challenge — R-T15(c) deferred — and salt generation). The FRB-generated
 # bridge is excluded (gitignored, regenerated from flutter_ffi.rs, so it tracks this automatically).
-rx7otp_hits=$(grep -rInE 'TEMPORARY_PASSWORD|TEMPORARY_PASSWD|temporary_password|temporary_enabled|get_auto_numeric_password' src libs --include='*.rs' 2>/dev/null | grep -vE 'bridge_generated' | grep -vE ':[0-9]+:[[:space:]]*//|R-X7' || true)
+# NOTE (gate-hole fix): R-A6 also lists the OPTION token `use-temporary-password` grep-zero, but the
+# underscore-only pattern below historically missed the hyphenated key AND the CamelCase resolver
+# variant `OnlyUseTemporaryPassword`, letting a dead OTP resolver branch survive. Both forms are now
+# covered here (Rust) and in the Dart check that follows.
+rx7otp_hits=$(grep -rInE 'TEMPORARY_PASSWORD|TEMPORARY_PASSWD|temporary_password|temporary_enabled|get_auto_numeric_password|use-temporary-password|OnlyUseTemporaryPassword' src libs --include='*.rs' 2>/dev/null | grep -vE 'bridge_generated' | grep -vE ':[0-9]+:[[:space:]]*//|R-X7' || true)
 if [ -n "$rx7otp_hits" ]; then
   echo "  FAIL R-X7: the temporary/one-time-password machinery must be absent from the Rust tree (the OTP half of R-X7 — permanent password is the sole credential):"; echo "$rx7otp_hits" | sed 's/^/      /'; rc=1
 else
-  echo "  ok  R-X7 temporary/one-time-password machinery excised (Rust: store/generator/FFI/IPC/rotation/dead-keys; get_auto_password kept for the Hash challenge + salt)"
+  echo "  ok  R-X7 temporary/one-time-password machinery excised (Rust: store/generator/FFI/IPC/rotation/dead-keys + the use-temporary-password token/OnlyUseTemporaryPassword variant; get_auto_password kept for salt)"
+fi
+# R-X7/R-A6 (Dart side of the same token): the `use-temporary-password` option key and its Dart const
+# `kUseTemporaryPassword` are excised from the flutter tree too (the OTP verification-method is gone;
+# the selector UI was removed by R-X7a/R-G4). Comment lines and the gitignored FRB bridge are excluded.
+rx7otp_dart=$(grep -rInE 'use-temporary-password|kUseTemporaryPassword' flutter/lib 2>/dev/null | grep -vE 'bridge_generated|generated_bridge' | grep -vE ':[0-9]+:[[:space:]]*//|R-X7' || true)
+if [ -n "$rx7otp_dart" ]; then
+  echo "  FAIL R-X7/R-A6: the use-temporary-password token must be absent from flutter/lib (OTP verification-method excised):"; echo "$rx7otp_dart" | sed 's/^/      /'; rc=1
+else
+  echo "  ok  R-X7/R-A6 Dart use-temporary-password token excised (no kUseTemporaryPassword const, no hyphen key)"
 fi
 # R-F4 (the direct port is a single PINNED compile-time constant, never a runtime knob): the listener
 # binds exactly one port, pinned to the literal 21118 (config::DIRECT_PORT) — NOT the inherited

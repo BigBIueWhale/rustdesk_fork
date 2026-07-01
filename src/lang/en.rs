@@ -10,6 +10,12 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Wrong Password", "Wrong password"),
         ("Connection Error", "Connection error"),
         ("Login Error", "Login error"),
+        // R-G6: direct-only error/status copy. A capability the peer disabled is surfaced with a
+        // SPECIFIC "disabled on the peer" title (not a generic/confusing connect failure); an
+        // unreachable host gets actionable guidance, since there is no relay fallback in this
+        // direct-only build (R-SV4/R-D4).
+        ("Capability disabled on the remote peer", "Capability disabled on the remote peer"),
+        ("direct_unreachable_tip", "Could not reach the host. Check that the address is correct and that its port is open or forwarded on the remote network."),
         ("Show Hidden Files", "Show hidden files"),
         ("Refresh File", "Refresh file"),
         ("Remote Computer", "Remote computer"),

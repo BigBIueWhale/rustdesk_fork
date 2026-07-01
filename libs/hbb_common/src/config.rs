@@ -1756,7 +1756,7 @@ impl PeerConfig {
                     decrypt_vec_or_original(&config.password_prs, PASSWORD_ENC_VERSION);
                 config.password_prs = password_prs;
                 store = store || store2;
-                for opt in ["rdp_password", "os-username", "os-password"] {
+                for opt in ["rdp_password"] {
                     if let Some(v) = config.options.get_mut(opt) {
                         let (encrypted, _, store2) =
                             decrypt_str_or_original(v, PASSWORD_ENC_VERSION);
@@ -1793,7 +1793,7 @@ impl PeerConfig {
         // R-S16 (viewer twin): the plaintext CPace PRS, encrypted at rest like `password`.
         config.password_prs =
             encrypt_vec_or_original(&config.password_prs, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
-        for opt in ["rdp_password", "os-username", "os-password"] {
+        for opt in ["rdp_password"] {
             if let Some(v) = config.options.get_mut(opt) {
                 *v = encrypt_str_or_original(v, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN)
             }

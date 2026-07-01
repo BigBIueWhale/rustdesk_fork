@@ -1133,47 +1133,17 @@ class CustomAlertDialog extends StatelessWidget {
 }
 
 Widget createDialogContent(String text) {
-  final RegExp linkRegExp = RegExp(r'(https?://[^\s]+)');
-  bool hasLink = linkRegExp.hasMatch(text);
-
-  // Early return: no link, use default theme color
-  if (!hasLink) {
-    return SelectableText(text, style: const TextStyle(fontSize: 15));
-  }
-
-  final List<TextSpan> spans = [];
-  int start = 0;
-
-  linkRegExp.allMatches(text).forEach((match) {
-    if (match.start > start) {
-      spans.add(TextSpan(text: text.substring(start, match.start)));
-    }
-    spans.add(TextSpan(
-      text: match.group(0) ?? '',
-      style: const TextStyle(
-        color: Colors.blue,
-        decoration: TextDecoration.underline,
-      ),
-      recognizer: TapGestureRecognizer()
-        ..onTap = () {
-          String linkText = match.group(0) ?? '';
-          linkText = linkText.replaceAll(RegExp(r'[.,;!?]+$'), '');
-          launchUrl(Uri.parse(linkText));
-        },
-    ));
-    start = match.end;
-  });
-
-  if (start < text.length) {
-    spans.add(TextSpan(text: text.substring(start)));
-  }
-
-  return SelectableText.rich(
-    TextSpan(
-      style: const TextStyle(fontSize: 15),
-      children: spans,
-    ),
-  );
+  // Sovereignty (R-SV1 "dial nobody" / R-D6): this renders msgbox text that can be
+  // PEER-controlled (MessageBox.text / LoginResponse.error -> src/client/io_loop.rs ->
+  // src/flutter.rs -> here). We must NOT auto-linkify it into a tappable launchUrl: a
+  // malicious peer (e.g. a server this box connects to as a viewer) could embed
+  // `http://attacker/leak` in the text and a single operator tap would make this
+  // sovereign box open an outbound GET to an attacker-NAMED host (deanonymization /
+  // phishing / drive-by) — the SAME egress class as the avatar bug, and a bypass of the
+  // HELPER_URL allowlist that already blanks MessageBox.link for exactly this reason.
+  // Render plain, selectable text only: a URL stays visible and copyable, but is never
+  // one-tap navigable. Do NOT re-add a linkifier / TapGestureRecognizer -> launchUrl here.
+  return SelectableText(text, style: const TextStyle(fontSize: 15));
 }
 
 void msgBox(SessionID sessionId, String type, String title, String text,

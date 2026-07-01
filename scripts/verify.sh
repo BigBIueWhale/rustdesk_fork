@@ -348,6 +348,24 @@ if grep -q "startsWith('data:image/')" flutter/lib/common.dart && grep -q 'Widge
 else
   echo "  FAIL R-SV1: buildAvatarWidget/data:image inline handling missing (unexpected regression)"; rc=1
 fi
+# R-SV1 / R-D6 / §18: peer-fed msgbox text must NOT be auto-linkified into a tappable launchUrl.
+# A peer's MessageBox.text / LoginResponse.error reaches createDialogContent (common.dart); its former
+# http(s) linkifier wrapped any URL in a TapGestureRecognizer -> launchUrl(peer_url) — a one-tap outbound
+# GET to a peer-NAMED host (deanonymization/phishing) that BYPASSED the HELPER_URL allowlist which
+# already blanks MessageBox.link for exactly this reason. Fixed: createDialogContent renders plain
+# SelectableText. (launchUrl itself has legit LOCAL uses — Uri.file folder-open, the gated JumpLink — so
+# we gate the DIALOG-TEXT URL-linkifier regex, not launchUrl globally.)
+if grep -RIn -F 'https?://[^' flutter/lib --include='*.dart' >/dev/null 2>&1; then
+  echo "  FAIL R-SV1: dialog-text URL linkifier (peer text -> tappable launchUrl) present in flutter/lib:"
+  grep -RIn -F 'https?://[^' flutter/lib --include='*.dart' | sed 's/^/      /'; rc=1
+else
+  echo "  ok  R-SV1 no dialog-text URL linkifier (peer msgbox text stays plain, never one-tap launchUrl)"
+fi
+if grep -A12 'Widget createDialogContent' flutter/lib/common.dart | grep -q 'return SelectableText(text'; then
+  echo "  ok  R-SV1 createDialogContent renders plain SelectableText (peer msgbox text not linkified)"
+else
+  echo "  FAIL R-SV1: createDialogContent is no longer the plain-text renderer (unexpected)"; rc=1
+fi
 ra6_clean 'DEBUG_BOOT_COMPLETED'                                          'R-X6 fake-boot broadcast'  || rc=1
 # R-X6: the Linux D-Bus deep-link delivery transport (src/server/dbus.rs: session-bus name
 # org.rustdesk.rustdesk, method NewConnection) is EXCISED. It ignored the caller (any co-installed

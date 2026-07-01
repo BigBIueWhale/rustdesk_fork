@@ -251,6 +251,25 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   non-inline avatars fall through to the initials fallback. New `verify.sh` gate pins
   `NetworkImage` to **zero** across the whole flutter UI (R-SV1) plus a positive check
   that inline-`data:` rendering is retained.
+- **Peer msgbox-text → tappable `launchUrl` egress — ✅ CLOSED 2026-07-01.** A
+  follow-up taint audit (looking for *siblings* of the avatar bug — any peer-controlled
+  wire field reaching a dangerous sink) found one: a peer's `MessageBox.text` /
+  `LoginResponse.error` (`src/client/io_loop.rs` → `src/flutter.rs`) reached
+  `createDialogContent` (`common.dart`), whose `RegExp(r'(https?://[^\s]+)')` linkifier
+  wrapped any URL in a `TapGestureRecognizer` → `launchUrl(peer_url)`. A malicious peer
+  (e.g. a server this box views — the fork is bidirectional) sends
+  `MessageBox{text:"…http://evil/leak", link:""}`; one operator tap opens the box's
+  browser to an attacker-named host (deanonymization / phishing). Same "dial nobody"
+  class as the avatar, and a **bypass of the fork's own defense** — it deliberately
+  blanks `MessageBox.link` unless it is in the (empty, gated) `HELPER_URL` allowlist, but
+  the text linkifier was an unguarded parallel path to the same `launchUrl` sink. Fixed:
+  `createDialogContent` renders plain `SelectableText` (URLs stay visible + copyable,
+  never one-tap navigable). New `verify.sh` gate pins the dialog-text URL-linkifier regex
+  to **zero** across flutter/lib (launchUrl is NOT globally gated — it has legit local
+  uses: `Uri.file` folder-opens + the HELPER_URL-gated JumpLink). The audit's broad
+  CHECKED-SAFE list (filesystem-receive traversal/symlink guards, alloc/deser/index
+  bounds, PortForward disabled, no live Rust HTTP client, chat renders plain `Text`,
+  pre-auth CPace bounded) confirmed this was the **only** sibling.
 - **Inert dead-code leftovers (optional hygiene, no reachable path).** The same
   review enumerated confirmed-inert residue retained for now to avoid multi-file
   regression risk at the completion boundary: orphaned uncompiled

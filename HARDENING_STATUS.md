@@ -264,10 +264,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   None affects behavior or opens a security path (reviewer + local re-confirm);
   each is a candidate for a later focused excision carrying its own build re-prove.
 
-The requirements snapshot reviewed in this pass was:
+The requirements snapshot reviewed in this pass (2026-07-01 completion review at
+HEAD 358a4b9; matches the `scripts/native-codec-watch.sh` pin) was:
 
 ```text
-d34aad84c44e8b919e72130eecb78e3f06e3f19a8d667a2219402e8225c90dc1  requirements.html
+67dbbba419110c51a7ec928b53884829c054a4474f20bca46f18b4536586f326  requirements.html
 ```
 
 `requirements.html` is intentionally not edited by implementation work.

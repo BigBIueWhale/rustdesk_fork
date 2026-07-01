@@ -223,6 +223,28 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   ISK) but is key-bound because it travels encrypted as the first post-key frame with
   session-unique CPace-authenticated `sid/Ya/Yb` (test `r_s17_host_proof_binds_pk_to_the_session`).
   The external R-V3 sign-off (above) is still the outstanding item.
+- **Local IPC/CM authorization audit — ✅ PERFORMED 2026-07-01; VERDICT SOUND.** A
+  dedicated adversarial pass over the LOCAL trust boundary (a hostile same-host
+  process — foreign-uid or same-uid) traced the accept→authz→dispatch on every one of
+  the 6 IPC listeners + the CM channel. **No reachable privilege crossing for a
+  non-owner process.** Load-bearing: owner-only channels are 0600 socket + 0700 per-uid
+  parent (`/tmp/<app>-<uid>/`) so a foreign uid is kernel-blocked; the sole
+  world-connectable `_service` (0666) is authorized AT ACCEPT by SO_PEERCRED
+  (`uid==0||active_uid` via a fresh, unspoofable logind seat0 lookup) + `/proc/<pid>/exe`
+  match, and allow-listed to `SyncConfig` only; R-S11/R-S11a parent hardening
+  (`O_NOFOLLOW|O_DIRECTORY`, reject-symlinked-parent, foreign-owned → PermissionDenied or
+  reject-and-recreate-on-fresh-inode never fchown-adopt, fd-relative `unlinkat`) read
+  and confirmed against its tests; the CM `Data::Authorize` auto-accept verdict is gated
+  UPSTREAM by CPace (`is_secured()` required before authorize) + the default-deny
+  whitelist, so a forged Authorize can only accept a peer that already passed CPace
+  (owner-equivalent by design); no secret sits on a world-readable path (config dump
+  behind the uid+exe gate, pid file 0600, password = Argon2id PRS). Two model-consistent
+  DEFENSE-IN-DEPTH observations (NOT foreign-uid crossings): (i) the main owner channel
+  is authenticated by filesystem perms (0600+0700), not SO_PEERCRED — a same-uid
+  non-rustdesk process is admitted, but that is within same-uid==owner authority (all
+  reachable via the owner's own config file); (ii) a local user can win a `/tmp` race to
+  plant a non-emptyable junk dir and make the root `_service` config-sync refuse to
+  start — fail-closed, no escalation, low severity, inherent to the never-adopt design.
 - **Protobuf parser attack-surface audit — ✅ PERFORMED 2026-06-29; parser
   SOUND for our threat model.** The `protobuf` crate (rust-protobuf) **v3.7.2**
   (crates.io, `Cargo.lock` checksum

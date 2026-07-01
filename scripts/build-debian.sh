@@ -156,6 +156,16 @@ CFG
             # each <plugin>/linux exists. (.flutter-plugins-dependencies carries a wall-clock date_created,
             # but it is git-ignored build-input metadata referenced by nothing in build/linux/.../bundle/,
             # so it never reaches the .deb payload -- R-B2 unaffected, enforced by the DOUBLE_BUILD A==B gate.)
+            # R-B9 idempotency: DELETE the stale ephemeral symlinks FIRST. `flutter pub get` does NOT
+            # overwrite an existing (dangling) symlink, so if a prior build (even from another session)
+            # left flutter/linux/flutter/ephemeral/.plugin_symlinks/* pointing at its own PUB_CACHE, the
+            # re-injection below is SKIPPED and `flutter build linux` CMake-aborts on every plugin
+            # ("<plugin>/linux is not an existing directory"). Removing them forces a clean re-inject
+            # against the current PUB_CACHE. Git-ignored build-input metadata (never in the .deb
+            # payload), regenerated identically by both double-build passes, so A==B is unaffected.
+            # This makes the build safe to re-run on a non-pristine tree (R-B9 "re-running is safe").
+            rm -rf flutter/linux/flutter/ephemeral/.plugin_symlinks \
+                   flutter/.flutter-plugins-dependencies flutter/.flutter-plugins
             ( cd flutter && "$REAL_FLUTTER" pub get --offline )
             pub_lock_after="$(sha256sum flutter/pubspec.lock | awk "{print \$1}")"
             [ "$pub_lock_before" = "$pub_lock_after" ] || {

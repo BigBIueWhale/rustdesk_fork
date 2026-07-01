@@ -70,7 +70,36 @@ compile under `linux-pkg-config,unix-file-copy-paste` + the R-A6 done-set
 greps). The full server binary builds and the loopback runtime smoke
 (`scripts/smoke-server.sh`) exercises the one-TCP/zero-UDP surface, fail-closed
 startup, graceful shutdown, and the no-plaintext wire-capture. The reproducible
-release builds hold. **R-B2 was re-proven on all three platforms at HEAD
+release builds hold.
+
+**R-B2 re-proven on all three platforms at HEAD `ede091e` (2026-07-01), after the
+completion-review fix batch (R-G6 additive error copy + R-X7/R-G3/R-S18 letter-of-spec
+closures).** That batch changed app source (client.rs error surfaces, en.rs keys, the
+flutter `_secure`/`_direct` badge-state removal, the `use-temporary-password`/os-cred
+dead-code excision), so the binaries change; **A==B at this HEAD is the proof, not a
+match to older hashes**. A latent **R-B9 idempotency** bug surfaced during the re-prove
+and was fixed in `build-debian.sh`: it now `rm`s the stale ephemeral plugin symlinks
+(`flutter/linux/flutter/ephemeral/.plugin_symlinks` + `.flutter-plugins{,-dependencies}`)
+before the flutter plugin re-injection — a prior build leaves them dangling at its own
+PUB_CACHE and `flutter pub get` does NOT overwrite them, so `flutter build linux`
+CMake-aborted on a non-pristine tree ("re-running is safe" now holds). It is a
+build-harness fix only — no artifact payload changes. New byte-identical (A==B)
+double-build SHA-256s:
+
+```
+4187b8e196047c1c1ab96610562806da396512282bcb8790f32918e49a3a396a  rustdesk-x86_64.deb
+4a9d7fad89547fdd58ef98eddbcfae8af0a1a9653d14b561e6348f578155c77e  rustdesk-arm64.apk
+d8a4417010d1a22a94826b9d3bde59e308aa08dd9911a650385abf5b85a7d15d  rustdesk-setup.exe
+dff1205c76308a6999e9e5a57790a29876d1e859be660cf487804211abb6cb65  rustdesk.msi
+```
+
+Debian = offline DOUBLE_BUILD `dist` vs `dist/_rebuild`; Android = two independent
+offline builds proven byte-identical (signed apksigner v2+v3, RSA-4096); Windows =
+§12.2 KVM golden-VM DOUBLE_BUILD A==B. This confirms the completion-review source
+changes compile cleanly end-to-end on **all three** targets — the full `flutter build`
+validation beyond `flutter analyze`.
+
+Prior re-prove (superseded): **R-B2 was re-proven on all three platforms at HEAD
 `6fbae50`** — after this session's two *source-changing* commits: the full-access
 pin reversal (`9a83b50`, one controlled-side mode for the authenticated owner)
 and the at-rest credential change (`6fbae50`, the CPace PRS now stored as a

@@ -72,6 +72,22 @@ greps). The full server binary builds and the loopback runtime smoke
 startup, graceful shutdown, and the no-plaintext wire-capture. The reproducible
 release builds hold.
 
+**R-S19 — capability-confinement class (CWE-863) — status.** requirements.html §7 R-S19 pins
+the class: every peer-triggerable capability MUST key on the session's `AuthConnType`, not on the
+upstream decoupled per-capability booleans / broad `self.authorized`. **The named instance
+CVE-2026-58056 (a FileTransfer session injecting input + capturing the screen — Appendix C #24) is
+FIXED and gated** (`0150cde`): an `AuthConnType` allowlist in `on_message` (input=Remote-only,
+desktop-capture=Remote|ViewCamera) + a FileTransfer capability-flag clear. **The full structural
+closure is IN PROGRESS** — deriving all capability booleans from `AuthConnType` at authorization
+time (before any peer login-option is applied), plus keying the remaining flag-gated sinks the
+message allowlist does not cover — host clipboard-*text* write (Remote-only; the FileTransfer
+*file*-clipboard stays), peer→host audio playback (Remote-or-active-voice-call), `block_input`,
+privacy toggle, remote-restart — on **every** platform (the sinks' cfg-gating differs:
+`block_input` is Windows-real / Linux-stub, virtual-display/privacy are Windows-cfg). A dedicated
+Opus sweep for any remaining instance of the shape is planned. Not a §2 exposure (all instances
+are moot for the trusted password-holder); it is least-privilege coherence the actually-secure
+fork carries as a MUST.
+
 **R-B2 re-proven on all three platforms at HEAD `5e03011` (2026-07-02) — OFFICIAL-RELEASE BUILD**,
 after the R-V3 crypto-audit commits (`4eb6912`/`a566bb5`/`5e03011`): the **independent CPace PAKE
 audit is published** (`docs/CRYPTO-AUDIT-2026-07-02.md`, VERDICT **SOUND** — a byte-level construction
@@ -422,14 +438,17 @@ rows #23–#24 for the two RustDesk items in the June-2026 "Exploitarium" public
 (#23 relay-downgrade = already REPLACED by construction; #24 CVE-2026-58056 FileTransfer
 scope-bypass = inherited but moot under §2, now **FIXED** in connection.rs — an AuthConnType
 allowlist in on_message (input=Remote-only, desktop-capture=Remote|ViewCamera) + a FileTransfer
-capability-flag clear (keyboard/block_input/privacy_mode), verify.sh-gated). The requirements.html
-edits are disclosure/inventory updates (no normative requirement changed) — the #24 confinement
-itself is a source change landed alongside — and the native-codec-watch ledger is re-confirmed
-valid against each.
+capability-flag clear (keyboard/block_input/privacy_mode), verify.sh-gated). A further 2026-07-03
+edit **added a normative requirement** — §7 **R-S19** (capability confinement by `AuthConnType`:
+the CWE-863 class of which CVE-2026-58056 is one instance; see the R-S19 status note above) — the
+first spec change in this run that is not disclosure-only; its structural closure is in progress.
+The other requirements.html edits are disclosure/inventory updates (no normative requirement
+changed) — the #24 confinement itself is a source change landed alongside — and the
+native-codec-watch ledger is re-confirmed valid against each.
 The current snapshot (matching the `scripts/native-codec-watch.sh` pin) is:
 
 ```text
-8633eb0aa1efa0b5ae02376e6424a200a3ded8737a18ff73e47f5c541fe17cd3  requirements.html
+de3bb8556c31a086693b426da15c9c831bc108e3ec8bfa92aeda908d910a47ed  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

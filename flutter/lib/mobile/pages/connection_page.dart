@@ -207,8 +207,8 @@ class _ConnectionPageState extends State<ConnectionPage> {
                           color: MyTheme.idColor,
                         ),
                         decoration: InputDecoration(
-                          labelText: translate('Remote ID'),
-                          // hintText: 'Enter your remote ID',
+                          labelText: translate('Direct address'),
+                          // R-G2: direct address only (IP or host:port); see id_input_tip helper.
                           border: InputBorder.none,
                           helperStyle: const TextStyle(
                             fontWeight: FontWeight.bold,

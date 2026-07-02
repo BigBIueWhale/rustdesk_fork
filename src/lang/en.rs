@@ -37,7 +37,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Remote Host", "Remote host"),
         ("Remote Port", "Remote port"),
         ("Local Port", "Local port"),
-        ("Enter Remote ID", "Enter remote ID"),
+        ("Direct address", "Direct address"),
         ("Change Path", "Change path"),
         ("Create Folder", "Create folder"),
         ("verification_tip", "A verification code has been sent to the registered email address, enter the verification code to continue logging in."),

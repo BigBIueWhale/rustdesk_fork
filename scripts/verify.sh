@@ -500,6 +500,21 @@ if grep -rn 'kSystemAlertWindow' flutter/lib/ | grep -vE ':[0-9]+:[[:space:]]*//
 else
   echo "  ok  R-X6 Android floating-window / SYSTEM_ALERT_WINDOW Dart UI excised (no live ref)"
 fi
+# R-G1/R-G2 (§19): the mobile QR scanner is EXCISED, not just neutered. Its config-QR import backend
+# was dead (R-X4/R-X6) and the fork generates no QR to scan (the ID-sharing QR generator is gone,
+# R-G2); the lone surviving path (rustdesk://<addr> -> direct connect) is redundant with the connect
+# box, so the whole scanner (camera + gallery-image + deep-link parser = untrusted-input surface) is
+# removed. Assert the page, the live refs, and the scanner-only deps are all absent. (The flutter/lib
+# grep filters `//` comment lines so the settings_page excision-rationale comment is not a false hit.)
+if [ -e flutter/lib/mobile/pages/scan_page.dart ]; then
+  echo "  FAIL R-G1/R-G2: scan_page.dart regrew (QR scanner page)"; rc=1
+elif grep -rn 'ScanButton\|ScanPage\|QRView\|qr_code_scanner' flutter/lib/ | grep -vE ':[0-9]+:[[:space:]]*//' | grep -q .; then
+  echo "  FAIL R-G1/R-G2: a live QR-scanner reference regrew in flutter/lib (ScanButton/ScanPage/QRView/qr_code_scanner)"; rc=1
+elif grep -qE '^[[:space:]]*(qr_code_scanner|zxing2|image_picker):' flutter/pubspec.yaml; then
+  echo "  FAIL R-G1/R-G2: a QR/image-scanner dep regrew in pubspec.yaml (qr_code_scanner/zxing2/image_picker)"; rc=1
+else
+  echo "  ok  R-G1/R-G2 mobile QR scanner fully excised (page + live refs + qr_code_scanner/zxing2/image_picker deps gone)"
+fi
 # R-X8/R-X6 terminal-admin (run-as-administrator) viewer mode -- EXCISED. It set IS_TERMINAL_ADMIN=Y, which
 # client.rs handle_hash short-circuited into a msgbox ("terminal-admin-login") the Flutter model has NO
 # handler for -> a guaranteed blank-dialog dead-end that then closes the connection (a 100%-failure

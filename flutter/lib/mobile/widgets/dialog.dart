@@ -12,8 +12,8 @@ import '../../models/platform_model.dart';
 // the trust-anchor `key`, plus config import/export) was the same trust-anchor-injection surface
 // as rustdesk://config — editable-but-inert under the R-S16 funnel pins + R-X4's get_key-ignores-
 // override, the exact R-S12 "defaulted-off-but-present" trap R-G1 forbids. It is REMOVED, not
-// greyed; its only entry point (the scan_page config-QR path) is excised with it, and the desktop
-// twin was already gone. See setting_widgets.ServerConfigImportExportWidgets / common.importConfig.
+// greyed; its only entry point (the QR scanner, scan_page.dart) is now removed entirely, and the
+// desktop twin was already gone. See setting_widgets.ServerConfigImportExportWidgets / common.importConfig.
 
 void setPrivacyModeDialog(
   OverlayDialogManager dialogManager,

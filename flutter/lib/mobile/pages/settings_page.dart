@@ -18,7 +18,6 @@ import '../../models/model.dart';
 import '../../models/platform_model.dart';
 import '../widgets/dialog.dart';
 import 'home_page.dart';
-import 'scan_page.dart';
 
 class SettingsPage extends StatefulWidget implements PageShape {
   @override
@@ -27,8 +26,12 @@ class SettingsPage extends StatefulWidget implements PageShape {
   @override
   final icon = Icon(Icons.settings);
 
+  // R-G1/R-G2/§19: the QR ScanButton is excised — its config-QR import backend is dead (R-X4/R-X6),
+  // the fork generates no QR to scan (the ID-sharing QR generator is removed, R-G2), and the lone
+  // surviving path (rustdesk://<addr> -> direct connect) is redundant with the connect box; the
+  // scanner (camera + gallery-image + deep-link parser) is removed, not left as untrusted-input surface.
   @override
-  final appBarActions = bind.isDisableSettings() ? [] : [ScanButton()];
+  final appBarActions = <Widget>[];
 
   @override
   State<SettingsPage> createState() => _SettingsState();
@@ -53,7 +56,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   var _fingerprint = "";
   var _buildDate = "";
   var _autoDisconnectTimeout = "";
-  var _isUsingPublicServer = false;
   var _preventSleepWhileConnected = true;
 
   _SettingsState() {
@@ -102,12 +104,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
       if (_buildDate != buildDate) {
         update = true;
         _buildDate = buildDate;
-      }
-
-      final isUsingPublicServer = await bind.mainIsUsingPublicServer();
-      if (_isUsingPublicServer != isUsingPublicServer) {
-        update = true;
-        _isUsingPublicServer = isUsingPublicServer;
       }
 
       if (update) {
@@ -582,23 +578,6 @@ void showAbout(OverlayDialogManager dialogManager) {
       actions: [],
     );
   }, clickMaskDismiss: true, backDismiss: true);
-}
-
-class ScanButton extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      icon: Icon(Icons.qr_code_scanner),
-      onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (BuildContext context) => ScanPage(),
-          ),
-        );
-      },
-    );
-  }
 }
 
 class _DisplayPage extends StatefulWidget {

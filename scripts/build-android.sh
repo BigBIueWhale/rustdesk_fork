@@ -21,7 +21,8 @@ OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
 # (build_android_builder_image) via Dockerfile.android-builder. The compile runs inside
 # it with --network=none; the rust/flutter/NDK toolchains come from ./online.
 IMAGE="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"
-export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$REPO_ROOT" show -s --format=%ct "$RUSTDESK_COMMIT" 2>/dev/null || echo 1700000000)}"
+# R-B2: fixed pinned reproducible epoch (pins.env SOURCE_DATE_EPOCH_PIN), not a commit date.
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$SOURCE_DATE_EPOCH_PIN}"
 
 # R-B2: the ONE stable RSA-4096 keystore (SHA256withRSA, validity >= 10000 days,
 # fixed alias) generated once and reused for every release — Android ties app

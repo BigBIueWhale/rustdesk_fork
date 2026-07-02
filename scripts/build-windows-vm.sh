@@ -23,7 +23,8 @@ OUTPUT_IMG="$STATE_DIR/win-build-output.img"
 OFFLINE_ISO="$STATE_DIR/win-build-offline.iso"   # UDF CD: offline cargo-vendor + its source map + the flutter pub-cache
 WIN_HELPER_IMAGE="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-helper"
 GL="docker run --rm --network=none --device /dev/kvm"   # the root-free, offline libguestfs-in-docker driver
-export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$REPO_ROOT" show -s --format=%ct "$RUSTDESK_COMMIT" 2>/dev/null || echo 1700000000)}"
+# R-B2: fixed pinned reproducible epoch (pins.env SOURCE_DATE_EPOCH_PIN), not a commit date.
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$SOURCE_DATE_EPOCH_PIN}"
 WINDOWS_BUILD_SOURCE="${WINDOWS_BUILD_SOURCE:-head}" # head = committed release source; worktree = tracked dirty tree for local validation
 
 preflight() {

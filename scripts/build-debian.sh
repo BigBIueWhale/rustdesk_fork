@@ -20,10 +20,10 @@ load_pins
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
 # The §3.2 x64-linux feature set minus hwcodec — CPU-only, software vpx/aom (R-R2b).
 FEATURES="--flutter --unix-file-copy-paste"
-# Determinism (R-B2): pin BUILD_DATE so two builds of identical source are
-# byte-identical. Use the release commit's author date; gen_version MUST honor
-# SOURCE_DATE_EPOCH (the hbb_common patch is tracked in HARDENING_STATUS as R-B2).
-export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$REPO_ROOT" show -s --format=%ct "$RUSTDESK_COMMIT" 2>/dev/null || echo 1700000000)}"
+# Determinism (R-B2): SOURCE_DATE_EPOCH is a FIXED pinned epoch (SOURCE_DATE_EPOCH_PIN in pins.env),
+# NOT a commit date — so the .deb depends only on the source tree; gen_version() honours it. (An
+# operator override, `export SOURCE_DATE_EPOCH=...`, still wins.)
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$SOURCE_DATE_EPOCH_PIN}"
 # The pinned .deb build image: the digest-pinned ubuntu:18.04 baseline + the system
 # build-deps, baked by online-fetch.sh (the ONE networked step) via Dockerfile.deb-builder.
 # The compile then runs inside it with --network=none.

@@ -1626,27 +1626,53 @@ if [ -z "$r_p12_ct" ]; then
 else
   echo "  FAIL R-P12: pake constant-time discipline weakened:$r_p12_ct"; rc=1
 fi
-# CVE-2026-58056 / CWE-863 (Appendix C #24): the controlled-side dispatcher MUST confine desktop
-# INPUT + display CAPTURE/CONTROL to the session's AuthConnType, not the broad `self.authorized`
-# state, so a peer authorized only for FileTransfer cannot inject input or capture the screen. The
-# fix has TWO parts, both asserted here: (1) the AuthConnType allowlist guard in on_message — input
-# is Remote-only, desktop capture/control is Remote-or-ViewCamera; (2) the FileTransfer login branch
-# clears the per-capability flags (keyboard/block_input/privacy_mode) that gate the flag-based sinks
-# (input, block_input console-DoS, the <1.2.4 turn_off_privacy compat), mirroring the terminal and
-# view-camera branches. Screen capture has no capability flag, so part (1) is load-bearing for it.
-cve_58056=
-grep -q 'is_remote_input' src/server/connection.rs    || cve_58056="$cve_58056 no-input-confine"
-grep -q 'is_desktop_capture' src/server/connection.rs || cve_58056="$cve_58056 no-capture-confine"
-grep -q 'is_remote_input && !self.is_authed_remote_conn()' src/server/connection.rs \
-  || cve_58056="$cve_58056 input-not-remote-gated"
-ft_branch=$(awk '/self\.file_transfer\.clone\(\)/,/else if self\.terminal/' src/server/connection.rs)
-echo "$ft_branch" | grep -q 'self.keyboard = false'     || cve_58056="$cve_58056 ft-keyboard-not-cleared"
-echo "$ft_branch" | grep -q 'self.block_input = false'  || cve_58056="$cve_58056 ft-block_input-not-cleared"
-echo "$ft_branch" | grep -q 'self.privacy_mode = false' || cve_58056="$cve_58056 ft-privacy-not-cleared"
-if [ -z "$cve_58056" ]; then
-  echo "  ok  CVE-2026-58056/CWE-863 FileTransfer scope-bypass confined (AuthConnType guard + FileTransfer flag-clear)"
+# R-S19 / CVE-2026-58056 / CWE-863 (Appendix C #24): every peer-triggerable capability MUST key on the
+# authorized AuthConnType, never a decoupled per-capability boolean or the broad `self.authorized`
+# state. Under the pinned access-mode=full (R-S16) every boolean resolves true, so AuthConnType is the
+# ONLY real session-type confinement. The structural fix, all asserted below:
+#  (a) confine_capabilities_to_conn_type derives the capability booleans from the AuthConnType and is
+#      called BEFORE update_options applies any peer login option — so no login-time option can
+#      transiently re-grant a cleared capability (the ordering window behind CVE-2026-58056);
+#  (b) the on_message dispatcher is a 3-way AuthConnType allowlist — INPUT + remote-CONTROL
+#      (reboot / privacy-toggle / virtual-display) Remote-only, desktop CAPTURE Remote-or-ViewCamera;
+#  (c) the flag-gated sinks the guard's message set does not cover key on AuthConnType / voice_calling:
+#      host clipboard-TEXT write (Remote-only), peer->host audio (voice-call only), cursor/window
+#      capture (Remote-only).
+rs19=
+conn=src/server/connection.rs
+grep -q 'fn confine_capabilities_to_conn_type' "$conn"                   || rs19="$rs19 no-derivation-fn"
+grep -q 'self.confine_capabilities_to_conn_type(auth_conn_type)' "$conn" || rs19="$rs19 derivation-not-called"
+# (a) ordering: the derivation MUST run before the peer login-option apply (R-S19(b))
+confine_ln=$(grep -n 'self.confine_capabilities_to_conn_type(auth_conn_type)' "$conn" | head -1 | cut -d: -f1 || true)
+optapply_ln=$(grep -n 'self.options_in_login.take()' "$conn" | head -1 | cut -d: -f1 || true)
+if [ -n "$confine_ln" ] && [ -n "$optapply_ln" ] && [ "$confine_ln" -lt "$optapply_ln" ]; then :; else rs19="$rs19 derivation-not-before-options"; fi
+# derivation body clears each control capability for the non-Remote types (all seven appear across arms)
+deriv=$(awk '/fn confine_capabilities_to_conn_type/,/^    }$/' "$conn")
+for cap in keyboard block_input privacy_mode restart audio clipboard file; do
+  echo "$deriv" | grep -qF "self.$cap = false" || rs19="$rs19 deriv-missing-$cap"
+done
+# the OLD ad-hoc per-branch clears MUST be gone (subsumed by the derivation, closing the ordering hole)
+lgn=$(awk '/Some\(\(dir, show_hidden\)\) = self\.file_transfer\.clone/,/} else if sub_service/' "$conn")
+if echo "$lgn" | grep -q 'self.keyboard = false'; then rs19="$rs19 stale-branch-clear-remains"; fi
+# (b) 3-way guard
+grep -q 'is_remote_input' "$conn"    || rs19="$rs19 no-input-set"
+grep -q 'is_remote_control' "$conn"  || rs19="$rs19 no-control-set"
+grep -q 'is_desktop_capture' "$conn" || rs19="$rs19 no-capture-set"
+grep -q '(is_remote_input || is_remote_control) && !self.is_authed_remote_conn()' "$conn" || rs19="$rs19 input-control-not-remote-gated"
+ctrl=$(awk '/let is_remote_control = match/,/_ => false,/' "$conn")
+echo "$ctrl" | grep -q 'RestartRemoteDevice' || rs19="$rs19 restart-not-remote-only"
+echo "$ctrl" | grep -q 'TogglePrivacyMode'   || rs19="$rs19 privacy-toggle-not-remote-only"
+capset=$(awk '/let is_desktop_capture = match/,/_ => false,/' "$conn")
+if echo "$capset" | grep -q 'RestartRemoteDevice'; then rs19="$rs19 restart-still-in-capture"; fi
+if echo "$capset" | grep -q 'TogglePrivacyMode';   then rs19="$rs19 privacy-still-in-capture"; fi
+# (c) flag-gated sinks key on AuthConnType / voice_calling
+grep -q 'self.clipboard && self.is_authed_remote_conn()' "$conn"       || rs19="$rs19 clipboard-text-not-remote-gated"
+grep -q '!self.disable_audio && self.voice_calling' "$conn"            || rs19="$rs19 audio-not-voice-gated"
+grep -q 'q == BoolOption::Yes && self.is_authed_remote_conn()' "$conn" || rs19="$rs19 cursor-window-not-remote-gated"
+if [ -z "$rs19" ]; then
+  echo "  ok  R-S19/CVE-2026-58056/CWE-863: capabilities confined by AuthConnType (derivation-before-options + 3-way guard + sink gates)"
 else
-  echo "  FAIL CVE-2026-58056: FileTransfer input/capture confinement weakened:$cve_58056"; rc=1
+  echo "  FAIL R-S19: capability confinement weakened:$rs19"; rc=1
 fi
 # R-T11 (§20): the PUBLIC listener (listen_any_v4) MUST bind WITHOUT SO_REUSEPORT — a single-
 # instance service needs no kernel load-balance group, and REUSEPORT lets another same-uid (root)

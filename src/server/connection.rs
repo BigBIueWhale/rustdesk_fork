@@ -1107,6 +1107,13 @@ impl Connection {
             self.tx_from_authed.clone(),
             self.lr.clone(),
         ));
+        // R-S19 (CWE-863): confine every peer-triggerable capability to the authorized AuthConnType
+        // NOW — at authorization time, before any peer LoginRequest option is applied
+        // (self.update_options below) — so no login-time option can transiently re-grant a capability
+        // the session type was not authorized for (the ordering window behind CVE-2026-58056). Under
+        // the pinned access-mode=full (R-S16) every capability boolean is seeded true, so this
+        // derivation is the ONLY real session-type confinement.
+        self.confine_capabilities_to_conn_type(auth_conn_type);
         #[allow(unused_mut)]
         let mut username = crate::platform::get_active_username();
         let mut res = LoginResponse::new();
@@ -1343,17 +1350,13 @@ impl Connection {
             self.update_options(&o).await;
         }
         if let Some((dir, show_hidden)) = self.file_transfer.clone() {
-            // CVE-2026-58056 / CWE-863 (Appendix C #24): a FileTransfer session must carry no
-            // desktop-control capability. Upstream cleared keyboard for terminal/view-camera but NOT
-            // for file transfer (the CVE's root cause), leaving the per-capability-flag-gated sinks —
-            // input, `block_input` (local-console input DoS), and the <1.2.4 `turn_off_privacy` compat
-            // path (all gated on `self.keyboard`) — reachable by a file-transfer peer. Clear them here,
-            // mirroring the terminal/view-camera branches. (Screen capture/screenshot has no flag and is
-            // confined separately by the AuthConnType guard in on_message.) `clipboard`/`file`/`audio`
-            // stay, so the file-clipboard and legitimate file-transfer paths keep working.
-            self.keyboard = false;
-            self.block_input = false;
-            self.privacy_mode = false;
+            // R-S19 (CVE-2026-58056 / CWE-863, Appendix C #24): capability confinement for FileTransfer
+            // (keyboard / block_input / privacy_mode / restart / audio cleared; clipboard + file kept
+            // for the file-clipboard / CLIPRDR + file transfer) is now done structurally in
+            // confine_capabilities_to_conn_type above — BEFORE update_options, which closes the
+            // login-time ordering window the old in-branch clears left open (a peer's
+            // LoginRequest.option{block_input:Yes} fired once before the clear landed). This branch
+            // keeps only its non-capability action: the initial directory read.
             let dir = if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
                 &dir
             } else {
@@ -1365,14 +1368,15 @@ impl Connection {
                 self.delayed_read_dir = Some((dir.to_owned(), show_hidden));
             }
         } else if self.terminal {
-            self.keyboard = false;
+            // keyboard/clipboard/file/audio confined in confine_capabilities_to_conn_type above (R-S19).
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             self.init_terminal_service().await;
         } else if self.view_camera {
             if !wait_session_id_confirm {
                 self.try_sub_camera_displays();
             }
-            self.keyboard = false;
+            // keyboard/clipboard/file confined in confine_capabilities_to_conn_type above (R-S19);
+            // audio is kept for voice calls. Still notify the peer so its UI reflects no keyboard.
             self.send_permission(Permission::Keyboard, false).await;
         } else if sub_service {
             if !wait_session_id_confirm {
@@ -2060,23 +2064,34 @@ impl Connection {
                         | Some(message::Union::PointerDeviceEvent(_))
                         | Some(message::Union::KeyEvent(_))
                 );
+                // Remote-only control actions that are NOT screen capture (R-S19): reboot the host,
+                // toggle its privacy-mode screen blanking, or plug/unplug a virtual display. ViewCamera
+                // drives its own camera displays but has no business rebooting the box, blanking the
+                // host screen (turn_off_privacy has no per-handler Remote gate), or attaching a virtual
+                // monitor — so these are Remote-only, unlike the capture set below which ViewCamera shares.
+                let is_remote_control = match &msg.union {
+                    Some(message::Union::Misc(m)) => matches!(
+                        &m.union,
+                        Some(misc::Union::RestartRemoteDevice(_))
+                            | Some(misc::Union::TogglePrivacyMode(_))
+                            | Some(misc::Union::ToggleVirtualDisplay(_))
+                    ),
+                    _ => false,
+                };
                 let is_desktop_capture = match &msg.union {
                     Some(message::Union::ScreenshotRequest(_)) => true,
                     Some(message::Union::Misc(m)) => matches!(
                         &m.union,
                         Some(misc::Union::SwitchDisplay(_))
                             | Some(misc::Union::CaptureDisplays(_))
-                            | Some(misc::Union::ToggleVirtualDisplay(_))
-                            | Some(misc::Union::TogglePrivacyMode(_))
                             | Some(misc::Union::RefreshVideo(_))
                             | Some(misc::Union::RefreshVideoDisplay(_))
                             | Some(misc::Union::ChangeResolution(_))
                             | Some(misc::Union::ChangeDisplayResolution(_))
-                            | Some(misc::Union::RestartRemoteDevice(_))
                     ),
                     _ => false,
                 };
-                if (is_remote_input && !self.is_authed_remote_conn())
+                if ((is_remote_input || is_remote_control) && !self.is_authed_remote_conn())
                     || (is_desktop_capture
                         && !self.is_authed_remote_conn()
                         && !self.is_authed_view_camera_conn())
@@ -2283,7 +2298,11 @@ impl Connection {
                     self.update_auto_disconnect_timer();
                 }
                 Some(message::Union::Clipboard(cb)) => {
-                    if self.clipboard {
+                    // R-S19: host clipboard-TEXT write is Remote-only. self.clipboard is kept for
+                    // FileTransfer (the file-clipboard/CLIPRDR is a separate arm gated on
+                    // can_sub_file_clipboard_service), so this AuthConnType check is what confines the
+                    // text sink without breaking the file-clipboard.
+                    if self.clipboard && self.is_authed_remote_conn() {
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]
                         update_clipboard(vec![cb], ClipboardSide::Host);
                         #[cfg(target_os = "android")]
@@ -2298,12 +2317,13 @@ impl Connection {
                     }
                 }
                 Some(message::Union::MultiClipboards(_mcb)) => {
+                    // R-S19: host clipboard-TEXT write is Remote-only (see the Clipboard arm above).
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                    if self.clipboard {
+                    if self.clipboard && self.is_authed_remote_conn() {
                         update_clipboard(_mcb.clipboards, ClipboardSide::Host);
                     }
                     #[cfg(target_os = "android")]
-                    if self.clipboard {
+                    if self.clipboard && self.is_authed_remote_conn() {
                         crate::clipboard::handle_msg_multi_clipboards(_mcb);
                     }
                     #[cfg(target_os = "ios")]
@@ -2827,7 +2847,12 @@ impl Connection {
                         }
                     }
                     Some(misc::Union::AudioFormat(format)) => {
-                        if !self.disable_audio {
+                        // R-S19: peer->host audio playback is voice-call only. self.voice_calling is
+                        // set (for Remote AND ViewCamera) exactly when the operator accepts a voice
+                        // call, and the honest client streams AudioFormat only after that accept — so
+                        // this gate admits both legitimate voice flows while refusing stray host-audio
+                        // playback from any session outside an accepted call.
+                        if !self.disable_audio && self.voice_calling {
                             if !native_opus_format_within_limit(format.sample_rate, format.channels)
                             {
                                 log::warn!(
@@ -2900,6 +2925,9 @@ impl Connection {
                                 && sessions.len() > 1
                                 && current_process_sid != sid
                                 && sessions.iter().any(|e| e.sid == sid)
+                                // R-S19: the RDP user-session switch is a Remote-only screen-control
+                                // action; a non-Remote peer falls through to its own type branch below.
+                                && self.is_authed_remote_conn()
                             {
                                 std::thread::spawn(move || {
                                     let _ = ipc::connect_to_user_session(Some(sid));
@@ -2935,7 +2963,9 @@ impl Connection {
                     _ => {}
                 },
                 Some(message::Union::AudioFrame(frame)) => {
-                    if !self.disable_audio {
+                    // R-S19: peer->host audio frames are voice-call only (close_voice_call clears
+                    // voice_calling but not audio_sender, so gate on voice_calling, not sender presence).
+                    if !self.disable_audio && self.voice_calling {
                         if let Some(sender) = &self.audio_sender {
                             if let Err(err) =
                                 sender.try_send(MediaData::AudioFrame(Box::new(frame)))
@@ -2953,6 +2983,12 @@ impl Connection {
                 }
                 Some(message::Union::VoiceCallRequest(request)) => {
                     if request.is_connect {
+                        // R-S19: voice calls are legit only for Remote/ViewCamera (the client refuses
+                        // to offer them for file-transfer/terminal/port-forward, io_loop.rs) — do not
+                        // even raise the operator's incoming-call prompt for other session types.
+                        if !self.is_authed_remote_conn() && !self.is_authed_view_camera_conn() {
+                            return true;
+                        }
                         self.voice_call_request_timestamp = Some(
                             NonZeroI64::new(request.req_timestamp)
                                 .unwrap_or(NonZeroI64::new(get_time()).unwrap()),
@@ -3656,7 +3692,10 @@ impl Connection {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         if let Ok(q) = o.show_remote_cursor.enum_value() {
             if q != BoolOption::NotSet {
-                self.show_remote_cursor = q == BoolOption::Yes;
+                // R-S19: cursor-position / window-focus capture is Remote-only screen metadata; force
+                // the peer-set overlay flag false for non-Remote so the NAME_CURSOR/NAME_POS subscribes
+                // below (and the disable_keyboard re-subscribe) never capture for FileTransfer/Terminal.
+                self.show_remote_cursor = q == BoolOption::Yes && self.is_authed_remote_conn();
                 if let Some(s) = self.server.upgrade() {
                     s.write().unwrap().subscribe(
                         NAME_CURSOR,
@@ -3679,7 +3718,8 @@ impl Connection {
         }
         if let Ok(q) = o.follow_remote_window.enum_value() {
             if q != BoolOption::NotSet {
-                self.follow_remote_window = q == BoolOption::Yes;
+                // R-S19: window-focus capture is Remote-only metadata (see show_remote_cursor above).
+                self.follow_remote_window = q == BoolOption::Yes && self.is_authed_remote_conn();
                 if let Some(s) = self.server.upgrade() {
                     s.write().unwrap().subscribe(
                         NAME_WINDOW_FOCUS,
@@ -3842,7 +3882,11 @@ impl Connection {
                 };
                 if q == BoolOption::Yes {
                     if not_support_msg.is_empty() {
-                        whiteboard::register_whiteboard(whiteboard::get_key_cursor(self.inner.id));
+                        // R-S19: the whiteboard cursor overlay is a Remote-only screen-interaction
+                        // feature; do not spawn the --whiteboard overlay process for other types.
+                        if self.is_authed_remote_conn() {
+                            whiteboard::register_whiteboard(whiteboard::get_key_cursor(self.inner.id));
+                        }
                     } else {
                         let mut msg_out = Message::new();
                         let res = MessageBox {
@@ -4533,6 +4577,64 @@ impl Connection {
             peer_id: self.lr.my_id.clone(),
             name: self.lr.my_name.clone(),
             session_id: self.lr.session_id,
+        }
+    }
+
+    // R-S19 (CWE-863): derive every peer-triggerable capability boolean from the authorized
+    // AuthConnType. Called once at authorization time, BEFORE any peer LoginRequest option is applied
+    // (update_options), so no login-time option can transiently re-grant a capability the session
+    // type was not authorized for (the shape of CVE-2026-58056). Under the pinned access-mode=full
+    // (R-S16) every boolean is seeded true, so this — not the per-capability flags — is the only real
+    // session-type confinement. Remote keeps full control; each narrower type keeps only what it
+    // legitimately needs. This is the single source of truth that replaces the ad-hoc, incomplete
+    // per-login-branch clears. Verified retained-capability set (all-platform research):
+    //   ViewCamera KEEPS audio  -> voice calls (handle_voice_call / is_authed_view_camera_conn sub).
+    //   FileTransfer KEEPS clipboard + file -> the file-clipboard (CLIPRDR) and file transfer itself.
+    // Clearing self.audio for FileTransfer/Terminal also closes the outbound host-audio-capture path,
+    // because the update_options audio_service subscribe reads audio_enabled() (= self.audio && ...).
+    fn confine_capabilities_to_conn_type(&mut self, conn_type: AuthConnType) {
+        match conn_type {
+            // The sovereign owner's single access-mode=full session (R-S16/§2): full control.
+            AuthConnType::Remote => {}
+            // File transfer: keeps clipboard (file-clipboard/CLIPRDR) + file; loses desktop input,
+            // block-input, privacy, restart, and host-audio capture.
+            AuthConnType::FileTransfer => {
+                self.keyboard = false;
+                self.block_input = false;
+                self.privacy_mode = false;
+                self.restart = false;
+                self.audio = false;
+            }
+            // View camera: keeps audio (voice calls); loses desktop input/control, clipboard, file.
+            AuthConnType::ViewCamera => {
+                self.keyboard = false;
+                self.block_input = false;
+                self.privacy_mode = false;
+                self.restart = false;
+                self.clipboard = false;
+                self.file = false;
+            }
+            // Terminal: keeps only its own PTY; loses every desktop/content capability.
+            AuthConnType::Terminal => {
+                self.keyboard = false;
+                self.block_input = false;
+                self.privacy_mode = false;
+                self.restart = false;
+                self.clipboard = false;
+                self.file = false;
+                self.audio = false;
+            }
+            // Port forward never reaches app-message dispatch (early-return in on_message); clear all
+            // for hygiene so no stale capability lingers on the tunnel connection.
+            AuthConnType::PortForward => {
+                self.keyboard = false;
+                self.block_input = false;
+                self.privacy_mode = false;
+                self.restart = false;
+                self.clipboard = false;
+                self.file = false;
+                self.audio = false;
+            }
         }
     }
 

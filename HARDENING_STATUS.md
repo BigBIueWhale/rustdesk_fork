@@ -245,12 +245,18 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 - **Desktop GPU texture-upload display** — #2b-adjacent native viewer surface
   (`texture_rgba_renderer`), restored 2026-06-28 (f0b9966 revert); accepted
   alongside #2b — already-validated pixels, no parser, viewer/desktop-only.
-- **R-V3 independent CPace audit** — the in-tree CPace implementation is
-  vector/KAT-conformant and adversarially tested but **not yet independently
-  audited by an external cryptographer**; the §11 "not independently audited"
-  disclosure stands. (An in-house adversarial **crypto-protocol-logic** audit was
-  performed 2026-07-01 — see below — but that does not substitute for R-V3's
-  external sign-off.)
+- **R-V3 independent CPace audit — ✅ PERFORMED 2026-07-02; VERDICT SOUND (findings
+  resolved @4eb6912).** An independent expert review (docs/CRYPTO-AUDIT-2026-07-02.md):
+  the §10.4 construction reproduced byte-for-byte by an INDEPENDENT implementation
+  (libsodium ristretto255 + from-scratch encoding/HKDF) against the published CFRG
+  draft-21 vector AND both fork anchors; first-principles analysis of the state machine,
+  two-key secretbox, constant-time paths, R-P3 MAC composition, R-S17 host-proof, and
+  Argon2id PRS. Three findings raised and RESOLVED: F-1 (viewer stored plaintext → now
+  the derived Argon2id PRS), F-2 (constant-time gate added to verify.sh + ignored dudect
+  probe), F-3 (deps already resolved in-tree). **HONEST CAVEAT:** this was an AI-conducted
+  (Claude Opus) SINGLE-reviewer review — rigorous, but not the multi-party/decades
+  third-party scrutiny SSH has; a traditional third-party human audit is still
+  recommended as defense-in-depth before exposed operation.
 - **Crypto protocol-logic audit — ✅ PERFORMED 2026-07-01; VERDICT SOUND.** A
   dedicated adversarial pass over the STATE-MACHINE / KEY-DISCIPLINE that KATs do
   not cover (both endpoints' keying paths traced in source): confirm-before-key
@@ -273,7 +279,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   memory-hard PRS; (DiD-3) the host-proof signs `DSI‖sid‖CI‖Ya‖Yb` (not the literal
   ISK) but is key-bound because it travels encrypted as the first post-key frame with
   session-unique CPace-authenticated `sid/Ya/Yb` (test `r_s17_host_proof_binds_pk_to_the_session`).
-  The external R-V3 sign-off (above) is still the outstanding item.
+  The R-V3 independent expert review (above) is now DONE (2026-07-02, docs/CRYPTO-AUDIT-2026-07-02.md);
+  a traditional third-party human audit remains recommended as defense-in-depth.
 - **Local IPC/CM authorization audit — ✅ PERFORMED 2026-07-01; VERDICT SOUND.** A
   dedicated adversarial pass over the LOCAL trust boundary (a hostile same-host
   process — foreign-uid or same-uid) traced the accept→authz→dispatch on every one of
@@ -382,11 +389,19 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   None affects behavior or opens a security path (reviewer + local re-confirm);
   each is a candidate for a later focused excision carrying its own build re-prove.
 
-The requirements snapshot reviewed in this pass (2026-07-01 completion review at
-HEAD 358a4b9; matches the `scripts/native-codec-watch.sh` pin) was:
+The requirements snapshot reviewed in prior passes (2026-07-01 completion review at
+HEAD 358a4b9) was `67dbbba4…`. On 2026-07-02 the spec was updated to reflect the R-V3
+independent expert review: the §11 caveat, the SSH-bar maturity row, acceptance #6, and
+the R-V3 body were flipped from "not independently audited" to "reviewed 2026-07-02,
+findings resolved — docs/CRYPTO-AUDIT-2026-07-02.md; a traditional third-party audit still
+recommended." This is an **audit-status disclosure update only** — no normative or security
+requirement changed, and the native-codec-watch ledger is re-confirmed valid against it.
+The current snapshot (matching the `scripts/native-codec-watch.sh` pin) is:
 
 ```text
-67dbbba419110c51a7ec928b53884829c054a4474f20bca46f18b4536586f326  requirements.html
+0b1eb5506f2a99acc9db1d53d50411e3a7d0342098768c8f904061a129cc50c9  requirements.html
 ```
 
-`requirements.html` is intentionally not edited by implementation work.
+`requirements.html` is not edited by routine implementation work; the only deliberate
+exception is an audit-status disclosure update like this one, which re-pins the hash here,
+in `scripts/native-codec-watch.sh`, and in `docs/NATIVE-CODEC-WATCH.md`.

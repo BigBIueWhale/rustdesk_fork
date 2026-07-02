@@ -109,6 +109,20 @@ pub(super) fn decrypt_permanent_password_str_or_original(storage: &str) -> (Stri
 /// different PRS, and (b) the viewer's PRS only matches when it derived against the
 /// box's PINNED key (R-S17) — weaving the host identity into the PAKE secret itself,
 /// so a substitute box with a different key cannot key even if it knows the password.
+///
+/// DETERMINISTIC, NON-SECRET SALT — BY DESIGN, NOT AN OVERSIGHT. This salt is a public,
+/// deterministic function of the box's (public) host key, not a random per-credential salt. A
+/// balanced, serverless PAKE has no channel to exchange a random salt, and both ends MUST derive
+/// the IDENTICAL PRS with no exchange (R-P1); the host key is the one value both sides already hold
+/// (the box owns it; the viewer pinned it out-of-band, R-S17). The accepted consequence: Argon2id
+/// here delivers memory-hardness (taxing a dictionary attack that would recover the *plaintext*
+/// password from a leaked at-rest PRS) but NOT precomputation-resistance against an attacker who
+/// already knows the target box's public key and precomputes for that single salt. This is
+/// acceptable under the §2 threat model — recovering the plaintext first requires reading the
+/// at-rest PRS, i.e. endpoint compromise (out of scope), at which point the PRS is already
+/// connect-equivalent (Appendix C #14); precomputation buys only plaintext recovery for reuse
+/// elsewhere, which the per-guess memory-hardness still taxes. A random exchanged salt would break
+/// the no-exchange, serverless design R-P1 mandates, so it is deliberately not used.
 const CPACE_PRS_SALT_DSI: &[u8] = b"rustdesk-cpace-prs-salt-v1";
 
 /// The libsodium Argon2id13 INTERACTIVE cost parameters (R-P1) — phone-safe

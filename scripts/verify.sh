@@ -1601,6 +1601,31 @@ if [ -n "$r_t15a_missing" ]; then
 else
   echo "  ok  R-T15(a) pake secret-zeroization present (isk Zeroizing + *AwaitConfirm Drop)"
 fi
+# R-P12: constant-time machine-check of the CPace tag verify + ephemeral-scalar sampling in
+# libs/pake. R-P12 requires the R-P3 tag compare to run in constant time via HMAC's verify_slice
+# (subtle-backed CtOutput) — never a `==`/`!=` byte compare that early-exits and leaks the tag
+# prefix — and the ephemeral scalar to be sampled by the wide reduction (from_bytes_mod_order_wide),
+# never the deprecated, non-reducing Scalar::from_bits (§10.4 trap #1). The KATs check derived
+# VALUES, not the comparison/sampling discipline, so this is a source-structure gate. (ra6_clean
+# deliberately excludes libs/pake, so this pake-scoped gate is separate.) A dudect-style statistical
+# timing test is deliberately NOT wired into this fast gate — the tag compare is dominated by the
+# full HMAC-SHA512 recompute, so it has near-zero detection power and is flaky; it lives #[ignore]d
+# in libs/pake (tests::tag_compare_constant_time_probe), runnable manually. The type-level
+# subtle/dalek guarantees + this deterministic gate are the machine-check R-P12 actually rests on.
+r_p12_ct=
+verify_tag_body=$(awk '/fn verify_tag/,/^}/' libs/pake/src/lib.rs)
+echo "$verify_tag_body" | grep -q 'verify_slice'                 || r_p12_ct="$r_p12_ct verify_tag-no-verify_slice"
+if echo "$verify_tag_body" | grep -qE '==|!='; then r_p12_ct="$r_p12_ct verify_tag-eq-compare"; fi
+sample_scalar_body=$(awk '/fn sample_scalar/,/^}/' libs/pake/src/lib.rs)
+echo "$sample_scalar_body" | grep -q 'from_bytes_mod_order_wide' || r_p12_ct="$r_p12_ct sample_scalar-no-wide-reduction"
+if grep -REn 'from_bits[[:space:]]*\(' libs/pake/src --include='*.rs' | grep -q .; then
+  r_p12_ct="$r_p12_ct from_bits-call-present"
+fi
+if [ -z "$r_p12_ct" ]; then
+  echo "  ok  R-P12 pake constant-time tag verify (verify_slice, no ==/!=) + wide scalar sampling (no Scalar::from_bits)"
+else
+  echo "  FAIL R-P12: pake constant-time discipline weakened:$r_p12_ct"; rc=1
+fi
 # R-T11 (§20): the PUBLIC listener (listen_any_v4) MUST bind WITHOUT SO_REUSEPORT — a single-
 # instance service needs no kernel load-balance group, and REUSEPORT lets another same-uid (root)
 # process silently join the group and steal inbound connections (invisible to R-A4's own-process

@@ -385,3 +385,72 @@ fn o_cat_order_independent() {
     assert_eq!(o_cat(a, b), o_cat(b, a));
     assert!(o_cat(a, b).starts_with(b"oc"));
 }
+
+/// R-P12 (letter-of-spec dudect-style probe) — a statistical timing check that the R-P3
+/// key-confirmation tag verification (`verify_tag`) does not leak the position of the first
+/// differing byte, i.e. does not early-exit the way a `==` byte compare would.
+///
+/// HONEST LIMITATION (why this is `#[ignore]`d and NOT the primary check): `verify_tag` recomputes
+/// the full HMAC-SHA512 (microseconds, input-independent) and only THEN compares via subtle-backed
+/// `verify_slice`. A hypothetical early-exit `==` leak is a handful of byte compares (nanoseconds)
+/// swamped by that HMAC, so this probe has near-zero detection power in practice and is noisy in CI.
+/// The load-bearing machine-check for R-P12 is the DETERMINISTIC source gate in scripts/verify.sh
+/// (asserts `verify_slice` is used, no `==`/`!=` in `verify_tag`, wide scalar sampling, no
+/// `Scalar::from_bits`) plus the type-level constant-time guarantees of subtle/curve25519-dalek/hmac.
+/// This probe exists to satisfy R-P12's literal "dudect-style statistical timing test" and to carry
+/// the methodology; run it manually:
+///     cargo test -p pake --release tag_compare_constant_time_probe -- --ignored --nocapture
+#[test]
+#[ignore = "statistical timing probe; near-zero power (HMAC dominates) + noisy in CI — run manually"]
+fn tag_compare_constant_time_probe() {
+    let mac_key = [0x5au8; 64];
+    let y = [0x11u8; 32];
+    let ad = AD_INITIATOR;
+    let good = compute_tag(&mac_key, &y, ad);
+    // Wrong tags differing at the FIRST vs the LAST byte — a leaky `==` would reject the
+    // first-byte-diff faster than the last-byte-diff.
+    let mut early = good;
+    early[0] ^= 0xff;
+    let mut late = good;
+    late[63] ^= 0xff;
+    assert!(!verify_tag(&mac_key, &y, ad, &early));
+    assert!(!verify_tag(&mac_key, &y, ad, &late));
+
+    const N: usize = 100_000;
+    // Warm up caches / branch predictor.
+    for _ in 0..10_000 {
+        std::hint::black_box(verify_tag(&mac_key, &y, ad, std::hint::black_box(&early)));
+        std::hint::black_box(verify_tag(&mac_key, &y, ad, std::hint::black_box(&late)));
+    }
+    let mut t_early = Vec::with_capacity(N);
+    let mut t_late = Vec::with_capacity(N);
+    // Interleave the two classes per iteration so clock drift / thermal effects cancel.
+    for _ in 0..N {
+        let s = std::time::Instant::now();
+        std::hint::black_box(verify_tag(&mac_key, &y, ad, std::hint::black_box(&early)));
+        t_early.push(s.elapsed().as_nanos() as u64);
+        let s = std::time::Instant::now();
+        std::hint::black_box(verify_tag(&mac_key, &y, ad, std::hint::black_box(&late)));
+        t_late.push(s.elapsed().as_nanos() as u64);
+    }
+    // Compare MEDIANS (robust to scheduler outliers).
+    t_early.sort_unstable();
+    t_late.sort_unstable();
+    let med_early = t_early[N / 2] as f64;
+    let med_late = t_late[N / 2] as f64;
+    let ratio = if med_early > med_late {
+        med_early / med_late
+    } else {
+        med_late / med_early
+    };
+    println!(
+        "median verify_tag: first-byte-diff={med_early}ns last-byte-diff={med_late}ns ratio={ratio:.4}"
+    );
+    // LENIENT threshold: a constant-time verify keeps the ratio ~1.0; only a gross early-exit leak
+    // would blow it past this. Deliberately loose so ordinary jitter never trips it (this probe is a
+    // methodology placeholder — see the doc comment; the deterministic gate is the real check).
+    assert!(
+        ratio < 1.5,
+        "verify_tag timing depends on the position of the first differing byte (ratio {ratio:.4}) — possible early-exit leak"
+    );
+}

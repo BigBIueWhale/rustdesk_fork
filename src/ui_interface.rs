@@ -274,13 +274,22 @@ pub fn set_kb_layout_type(kb_layout_type: String) {
 
 #[inline]
 pub fn peer_has_password(id: String) -> bool {
-    !PeerConfig::load(&id).password.is_empty()
+    // R-S16 (viewer twin): under the R-T15c collapse the remembered credential is the derived
+    // CPace PRS (`password_prs`), not the dead legacy salted-hash `password` — so a peer "has a
+    // saved password" if EITHER is set, else the forget affordance would never surface for a
+    // PRS-remembered peer.
+    let c = PeerConfig::load(&id);
+    !c.password.is_empty() || !c.password_prs.is_empty()
 }
 
 #[inline]
 pub fn forget_password(id: String) {
     let mut c = PeerConfig::load(&id);
     c.password.clear();
+    // R-S16 (viewer twin): also clear the derived CPace PRS — it is the connect-equivalent
+    // credential under the collapse, so "unremember password" MUST drop it too, not leave it at
+    // rest (else the peer stays connectable after the operator asked to forget it).
+    c.password_prs.clear();
     c.store(&id);
 }
 

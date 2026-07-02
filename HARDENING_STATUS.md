@@ -415,12 +415,18 @@ The requirements snapshot reviewed in prior passes (2026-07-01 completion review
 HEAD 358a4b9) was `67dbbba4…`. On 2026-07-02 the spec was updated to reflect the R-V3
 independent expert review: the §11 caveat, the SSH-bar maturity row, acceptance #6, and
 the R-V3 body were flipped from "not independently audited" to "reviewed 2026-07-02,
-findings resolved — docs/CRYPTO-AUDIT-2026-07-02.md." This is an **audit-status disclosure update only** — no normative or security
-requirement changed, and the native-codec-watch ledger is re-confirmed valid against it.
+findings resolved — docs/CRYPTO-AUDIT-2026-07-02.md." Two 2026-07-03 follow-ups: the
+recommendation-of-further-audit hedge was removed (maintainer decision — a funded firm is not
+a reachable gate for a solo fork; the factual limitations were kept), and Appendix C gained
+rows #23–#24 for the two RustDesk items in the June-2026 "Exploitarium" public zero-day dump
+(#23 relay-downgrade = already REPLACED by construction; #24 CVE-2026-58056 FileTransfer
+scope-bypass = inherited but moot under §2, SHOULD-harden). These are **documentation/disclosure
+updates only** — no normative or security requirement changed, and the native-codec-watch
+ledger is re-confirmed valid against each.
 The current snapshot (matching the `scripts/native-codec-watch.sh` pin) is:
 
 ```text
-311aa4f9dd6c7a825a10203417b81e096a5773eaacbe29d658ea957efff1820b  requirements.html
+e7a52062eaa6bf8d2d9f2362f80f3f721d93642dbbd17609cd074c27b17d8dfe  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

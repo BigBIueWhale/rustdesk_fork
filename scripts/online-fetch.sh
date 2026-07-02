@@ -107,9 +107,23 @@ fetch_windows_toolchains() {
     # (imports brotli) packs the portable installer. The golden installs it + `pip install brotli` networked.
     fetch_verify "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-amd64.exe" \
         "python-windows-${PYTHON_VERSION}.exe" "${SHA256_PYTHON_WIN_3_11_9}"
-    # NEXT windows-staging steps (each needs its own audited R-B12 pin before wiring here, or
-    # fetch_verify fails closed): WiX v4, and the git / rust-msvc / rustup-init installers already
-    # captured in online/win/ (pin them too).
+    # The golden's Rust compiler MSI + Git installer — publicly re-fetchable and DUAL-SOURCE-pinned
+    # (pins.env), so fetch + verify them here like the other windows toolchains instead of relying on
+    # an operator hand-stage. rustup-init has NO stable versioned URL (its 'latest' drifts), so it
+    # stays OPERATOR-CAPTURED in online/win/ and is SHA-verified at provision time (R-B12(c)); fail
+    # loud here with the exact stage-it command if it is missing so nothing silently proceeds.
+    mkdir -p "$ONLINE_DIR/win"
+    fetch_verify "https://static.rust-lang.org/dist/rust-${RUST_VERSION}.0-x86_64-pc-windows-msvc.msi" \
+        "win/rust-${RUST_VERSION}.0-x86_64-pc-windows-msvc.msi" "${SHA256_RUST_MSVC_1_75}"
+    fetch_verify "https://github.com/git-for-windows/git/releases/download/v2.45.2.windows.1/Git-2.45.2-64-bit.exe" \
+        "win/Git-2.45.2-64-bit.exe" "${SHA256_GIT_WIN_2_45_2}"
+    if [ -f "$ONLINE_DIR/win/rustup-init.exe" ]; then
+        verify_sha256 "$ONLINE_DIR/win/rustup-init.exe" "${SHA256_RUSTUP_INIT_WIN}"
+    else
+        die "online/win/rustup-init.exe missing — it is operator-captured (rustup-init has no stable versioned URL; R-B12(c)). Stage it, then it is SHA-verified against SHA256_RUSTUP_INIT_WIN:
+    curl -fsSL --proto '=https' --tlsv1.2 -o online/win/rustup-init.exe https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe
+  (if upstream rustup has moved on, its SHA will mismatch the pin — re-pin SHA256_RUSTUP_INIT_WIN deliberately in scripts/pins.env after review.)"
+    fi
 }
 
 # ── vcpkg registry snapshot + the digest-pinned build base images ─────────────

@@ -85,6 +85,34 @@ require_online_complete() {
     [ -d "$ONLINE_DIR" ] || die "./online cache is absent — run scripts/online-fetch.sh first (the ONLY networked step, R-B10)"
 }
 
+# verify_online_shas NAME1 SHA1 NAME2 SHA2 ...: re-verify each ./online artifact against its pinned
+# SHA-256 BEFORE an offline build extracts it (R-B10/§12.3 — "each script distrusts the outputs of
+# its sibling scripts and re-verifies them"). require_online_complete only proves the directory
+# EXISTS; this proves the bytes are the PINNED bytes, so a corrupt/truncated cache, or a
+# version-renamed tarball a glob would grab (e.g. a stray rust-1.90.tar.xz), is caught HERE and dies
+# loud — never silently compiled. Cheap (a few hashes) vs a full build; each build preflight calls it
+# for exactly the artifacts it consumes.
+verify_online_shas() {
+    [ $(( $# % 2 )) -eq 0 ] || die "verify_online_shas: odd argument count — every ./online NAME needs its SHA"
+    while [ "$#" -ge 2 ]; do
+        verify_sha256 "$ONLINE_DIR/$1" "$2"
+        shift 2
+    done
+    log "./online artifact SHAs re-verified against pins.env"
+}
+
+# assert_source_date_epoch: the reproducible-build timestamp MUST be a valid integer that actually
+# propagated. gen_version() (libs/hbb_common/src/lib.rs) and every mtime-stamping step depend on it;
+# if unset or non-numeric it silently bakes a wall-clock date and only a double-build catches it
+# (R-B2). Assert it is a plain integer and LOG the value so it is visible — a broken git-derived
+# fallback cannot pass unnoticed.
+assert_source_date_epoch() {
+    case "${SOURCE_DATE_EPOCH:-}" in
+        ''|*[!0-9]*) die "SOURCE_DATE_EPOCH is unset or not an integer ('${SOURCE_DATE_EPOCH:-}') — refusing to build with a non-deterministic timestamp (R-B2). It derives from the release commit's author date; check RUSTDESK_COMMIT (pins.env) resolves in this repo." ;;
+    esac
+    log "SOURCE_DATE_EPOCH = $SOURCE_DATE_EPOCH (deterministic build timestamp, R-B2)"
+}
+
 # assert_offline: assert no network is reachable from the compile container, so a
 # build that "works" could not have silently fetched (paired with the R-B10
 # canary build.rs in CI). Best-effort; the authoritative isolation is

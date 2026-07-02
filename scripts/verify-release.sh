@@ -42,6 +42,10 @@ printf '\n===== verify-release summary (HEAD %s) =====\n' "$(git rev-parse --sho
 printf '%s\n' "${results[@]}"
 if [ "$fail" = 0 ]; then
   echo "VERIFY-RELEASE: ALL GATES GREEN"
+  echo "NOTE: these are SOURCE gates (compile + flutter analyze + KATs + greps + advisories) — they do"
+  echo "      NOT build the shipped artifacts. A break in gradle / CMake / msbuild / an Android res-theme"
+  echo "      / a pubspec dep passes every gate here yet fails the platform build (analyze != build)."
+  echo "      For buildability + reproducible A==B artifacts + a SHA256SUMS manifest: scripts/build-release.sh"
 else
   echo "VERIFY-RELEASE: ONE OR MORE GATES FAILED"
   exit 1

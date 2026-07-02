@@ -54,10 +54,15 @@ preflight() {
     # flutter_tools resolve; without it `dart pub get --offline` fails "version solving failed" (the
     # SDK zip's bundled cache lacks flutter_tools' dev deps). Pinned by SHA (R-B12), not just existence.
     verify_sha256 "$ONLINE_DIR/flutter-pub-cache.tar.gz"               "${SHA256_FLUTTER_PUB_CACHE}"
-    for f in "win/Git-2.45.2-64-bit.exe" "win/rust-1.75.0-x86_64-pc-windows-msvc.msi" \
-             "win/rustup-init.exe" "vcpkg-${VCPKG_BASELINE}.tar.gz"; do
-        [ -f "$ONLINE_DIR/$f" ] || die "windows toolchain artifact missing in ./online: $f (stage it before provisioning)"
-    done
+    # R-B12 / §12.3 (trust nobody — distrust ./online, re-verify by SHA): these installers ARE the
+    # compiler + git + rustup that build the shipped Windows binary. A bare existence check let a
+    # poisoned/wrong re-stage seed the golden invisibly (the golden qcow2 SHA then just certifies
+    # whatever was seeded). Verify each against its pin, fail-closed — never provision from unverified
+    # bytes. (rust-msvc + git are dual-source-pinned; rustup-init is operator-captured evergreen.)
+    verify_sha256 "$ONLINE_DIR/win/rust-1.75.0-x86_64-pc-windows-msvc.msi" "${SHA256_RUST_MSVC_1_75}"
+    verify_sha256 "$ONLINE_DIR/win/Git-2.45.2-64-bit.exe"                  "${SHA256_GIT_WIN_2_45_2}"
+    verify_sha256 "$ONLINE_DIR/win/rustup-init.exe"                        "${SHA256_RUSTUP_INIT_WIN}"
+    verify_sha256 "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz"             "${SHA256_VCPKG_120DEAC3}"
     log "preflight OK — building the golden Win11 template (immutable, pinned)"
 }
 

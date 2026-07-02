@@ -32,7 +32,14 @@ IMAGE="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
 preflight() {
     require_cmd docker git
     assert_repo_state
+    assert_source_date_epoch
     require_online_complete
+    # §12.3 / R-B10 (trust nobody): re-verify the exact ./online tarballs this offline build extracts
+    # against their pins BEFORE building — a corrupt cache or a stray version-renamed tarball dies here.
+    verify_online_shas \
+        "rust-${RUST_VERSION}.tar.xz"       "${SHA256_RUST_1_75}" \
+        "flutter-${FLUTTER_VERSION}.tar.xz" "${SHA256_FLUTTER_3_24_5}" \
+        "llvm-${LLVM_VERSION}.tar.xz"       "${SHA256_LLVM_15_0_6}"
     case "$SHA256_BASEIMAGE_UBUNTU_1804" in *"${SHA_PENDING}"*) die "the ubuntu:18.04 base digest is the R-B12 sentinel — record it in pins.env first" ;; esac
     docker image inspect "$IMAGE" >/dev/null 2>&1 || die "build image '$IMAGE' not found — run scripts/online-fetch.sh first (it docker-builds it from the pinned ubuntu:18.04 + the system build-deps, Dockerfile.deb-builder)"
     log "preflight OK — building $FEATURES in $IMAGE, offline, SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"

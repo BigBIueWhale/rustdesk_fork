@@ -49,6 +49,16 @@ export HOME=/tmp/buildhome; mkdir -p "$HOME"
 git config --global --add safe.directory "*"
 export PUB_CACHE=/online/pub-cache CI=true
 
+# R-B9 idempotency ("re-running is safe"): DELETE the stale flutter build tree FIRST. flutter/build
+# holds the Android Gradle resource-merge intermediates; after a dependency change (e.g. a plugin
+# removed) a prior build's merged-resource state DANGLES and `flutter build apk` aborts mid-merge
+# ("Unable to locate resourceFile ... in source-sets"). `flutter build apk` does NOT clean it, so a
+# re-run on a non-pristine tree fails — this makes it safe on ANY tree state, in ANY order. It is
+# git-ignored build output regenerated identically by both double-build passes, so R-B2 A==B is
+# unaffected. Runs as root in the container, so it also clears any root-owned plugin intermediates a
+# prior build left. (Mirrors build-debian.sh's R-B9 ephemeral clean for the linux build.)
+rm -rf ./flutter/build
+
 # gradle cache: the only offline-vs-warm difference.
 if [ "$APK_MODE" = offline ]; then
     cp -a /online/gradle-home /tmp/gradle-home

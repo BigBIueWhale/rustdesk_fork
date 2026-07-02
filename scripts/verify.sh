@@ -2576,8 +2576,26 @@ grep -qF 'comp_guid = uuid.uuid5' res/msi/preprocess.py                 || r_b2m
 grep -qF 'sorted(path.glob' res/msi/preprocess.py                       || r_b2msi="$r_b2msi glob-not-sorted"
 grep -qF 'upgrade_id = uuid.uuid5' res/msi/preprocess.py                || r_b2msi="$r_b2msi upgradeid-not-uuid5"
 grep -qF 'ProductCode="$(var.ProductCode)"' res/msi/Package/Package.wxs || r_b2msi="$r_b2msi wxs-ProductCode-unpinned"
+# R-B2 (2026-07-03 InstallDate fix): NO wall-clock date may enter the .msi. The ARP InstallDate and the
+# MSI revision version MUST derive from SOURCE_DATE_EPOCH -- a wall-clock date is DATE-granular, so it
+# slips PAST the in-run double-build (both halves run the same calendar day) yet breaks the recorded-SHA
+# bar ACROSS days (proven: a Jul-2 vs Jul-3 rebuild of byte-identical source diverged in this ONE field).
+grep -qF 'installDate = _reproducible_utc_date' res/msi/preprocess.py         || r_b2msi="$r_b2msi InstallDate-not-SDE-derived"
+grep -qE 'installDate[[:space:]]*=[[:space:]]*datetime' res/msi/preprocess.py && r_b2msi="$r_b2msi InstallDate-wallclock-form-present"
+grep -qF 'os.environ.get("SOURCE_DATE_EPOCH")' res/msi/preprocess.py          || r_b2msi="$r_b2msi no-SOURCE_DATE_EPOCH-honored"
+# Behavioral proof: with a pinned SDE the date is a FIXED function of SDE, independent of today's clock.
+if command -v python3 >/dev/null 2>&1; then
+  SOURCE_DATE_EPOCH=1700000000 python3 - <<'PY' >/dev/null 2>&1 || r_b2msi="$r_b2msi InstallDate-behaviorally-nondeterministic"
+import sys; sys.path.insert(0, 'res/msi')
+import preprocess
+assert preprocess._reproducible_utc_date('%Y%m%d') == '20231114'   # SDE 1700000000 -> 2023-11-14 UTC (NOT today)
+assert preprocess.default_revision_version() == 28333333
+PY
+else
+  echo "  note R-B2 .msi date behavioral proof skipped (python3 absent on this host); token guards still enforced"
+fi
 if [ -n "$r_b2msi" ]; then echo "  FAIL R-B2 .msi-generator determinism:$r_b2msi"; rc=1; else
-  echo "  ok  R-B2 .msi generator -> deterministic GUIDs+order (ProductCode/component/upgrade uuid5, sorted glob, no uuid4 calls, Package.wxs pins ProductCode)"; fi
+  echo "  ok  R-B2 .msi generator -> deterministic GUIDs+order (ProductCode/component/upgrade uuid5, sorted glob, no uuid4 calls, Package.wxs pins ProductCode; InstallDate+revision from SOURCE_DATE_EPOCH, no wall-clock date)"; fi
 
 echo "== (6b) R-B2 post-process canonicalizers (.exe + .msi) =="
 # The host-side canonicalizers (run in build-windows-vm.sh extract()) MUST normalize the residual

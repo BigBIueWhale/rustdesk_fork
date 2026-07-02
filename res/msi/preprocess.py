@@ -16,7 +16,10 @@ import shutil
 
 g_indent_unit = "\t"
 g_version = ""
-g_build_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+# Placeholder only: init_global_vars() overwrites this with the built exe's deterministic --build-date
+# (SOURCE_DATE_EPOCH-derived) before any consumer reads it. Kept wall-clock-free so no build-day value
+# can ever reach the .msi bytes even on an unexpected code path (R-B2).
+g_build_date = ""
 
 # Replace the following links with your own in the custom arp properties.
 # https://learn.microsoft.com/en-us/windows/win32/msi/property-reference
@@ -40,12 +43,27 @@ g_arpsystemcomponent = {
     },
 }
 
+def _reproducible_epoch():
+    # R-B2: wall-clock time must NEVER enter the .msi bytes. Honor SOURCE_DATE_EPOCH (the same epoch the
+    # Debian + Android builds pin, exported by build-windows.ps1); fall back to now() only for a
+    # non-reproducible dev build (build-windows.ps1 warns when SDE is unset). Single source of truth for
+    # every date/revision the .msi embeds, so no ad-hoc datetime.now() can re-introduce a build-day leak.
+    sde = os.environ.get("SOURCE_DATE_EPOCH")
+    return int(sde) if sde else int(datetime.datetime.now().timestamp())
+
+
+def _reproducible_utc_date(fmt="%Y%m%d"):
+    # A calendar date derived from SOURCE_DATE_EPOCH in UTC -- timezone-INDEPENDENT, so two builders in
+    # different time zones produce the same .msi bytes. Used for MSI date fields that must be byte-stable.
+    return datetime.datetime.fromtimestamp(
+        _reproducible_epoch(), datetime.timezone.utc
+    ).strftime(fmt)
+
+
 def default_revision_version():
     # R-B2 reproducibility: honor SOURCE_DATE_EPOCH (epoch seconds) instead of the wall-clock now(), so the .msi's
     # revision version (and thus its bytes) is deterministic across builds. build-windows.ps1 sets SOURCE_DATE_EPOCH.
-    sde = os.environ.get("SOURCE_DATE_EPOCH")
-    ts = int(sde) if sde else datetime.datetime.now().timestamp()
-    return int(ts / 60)
+    return int(_reproducible_epoch() / 60)
 
 def make_parser():
     parser = argparse.ArgumentParser(description="Msi preprocess script.")
@@ -346,7 +364,13 @@ def gen_custom_ARPSYSTEMCOMPONENT_True(args, dist_dir):
         lines_new.append(
             f'{indent}<RegistryValue Type="string" Name="Publisher" Value="{args.manufacturer}" />\n'
         )
-        installDate = datetime.datetime.now().strftime("%Y%m%d")
+        # R-B2: InstallDate must be deterministic, NOT the wall-clock build day. A wall-clock date is a
+        # DATE-granular non-determinism that PASSES an in-run double-build (both halves run the same
+        # calendar day) yet breaks the recorded-SHA bar ACROSS days -- proven when a Jul-2 vs Jul-3
+        # rebuild of byte-identical source diverged here, and here alone. Derive it from
+        # SOURCE_DATE_EPOCH like the revision version. (Windows Installer still records the REAL install
+        # date into the ARP key when the user installs; this static value is only the build stamp.)
+        installDate = _reproducible_utc_date("%Y%m%d")
         lines_new.append(
             f'{indent}<RegistryValue Type="string" Name="InstallDate" Value="{installDate}" />\n'
         )

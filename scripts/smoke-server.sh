@@ -44,7 +44,7 @@ PORT_HEX='527E' # 21118
 LOOPBACK_LISTEN='0100007F:527E' # 127.0.0.1:21118
 
 echo "== (0) build the server binary + the test seeder + the CPace probe client (R-B4 build smoke) =="
-"${RUN[@]}" bash -euo pipefail -c 'cargo build --features linux-pkg-config --bin rustdesk --example seed_password --example probe_client --example flood_probe --example mdwe_codec_probe --color never 2>&1 | tee /tmp/rd-smoke-build.log | grep -E "^error|Finished" | tail -2; grep -q "^error" /tmp/rd-smoke-build.log && exit 1; grep -q "Finished" /tmp/rd-smoke-build.log; cc -shared -fPIC -O2 -Wall -Wextra -o target/smoke-bind-loopback.so scripts/smoke-bind-loopback.c -ldl'
+"${RUN[@]}" bash -euo pipefail -c 'cargo build --features linux-pkg-config --bin rustdesk --example seed_password --example probe_client --example pf_echo --example flood_probe --example mdwe_codec_probe --color never 2>&1 | tee /tmp/rd-smoke-build.log | grep -E "^error|Finished" | tail -2; grep -q "^error" /tmp/rd-smoke-build.log && exit 1; grep -q "Finished" /tmp/rd-smoke-build.log; cc -shared -fPIC -O2 -Wall -Wextra -o target/smoke-bind-loopback.so scripts/smoke-bind-loopback.c -ldl'
 
 rc=0
 
@@ -236,6 +236,40 @@ if echo "$out6" | grep -q 'enabled: false'; then
 fi
 [ "$s6_ok" = 1 ] && echo "  ok  R-S6/R-S18 credential-free LoginRequest ADMITTED + R-D8/R-X8 full access (host-proof verified; zero denied-permission notifications; not rejected)"
 
+echo "== (6b) PORT-FORWARD/RDP TUNNEL (R-F1/R-D6/R-S5/R-A9): a real tunnel RELAYS bytes END-TO-END inside the sealed session =="
+# R-F1 makes port-forward (incl. RDP) a MUST; R-D6 pins enable-tunnel ON and requires the forward to
+# ride the sealed encrypted channel; R-A9 requires the bytes indistinguishable from random. The
+# cpace_it wire-ciphertext test + stage (9) prove the SEAL (the wire bytes are ciphertext); this stage
+# proves the RELAY is FUNCTIONAL end-to-end — a seal-only test cannot. A port-forward viewer keys,
+# sends a PortForward login naming a LOCAL target, and sends a canary THROUGH the tunnel; the box dials
+# the target, switches to try_port_forward_loop (the sealed relay), and shuttles the canary both ways.
+out6b=$("${RUN[@]}" bash -c '
+  export HOME=/tmp/rd6b; mkdir -p "$HOME"
+  ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
+  # Start the box FIRST: its ONE-TIME R-A4 socket-surface audit (post-listen) must see ONLY :21118. A
+  # local tunnel target is itself a listener, so it is brought up AFTER the audit has passed.
+  LD_PRELOAD=/work/target/smoke-bind-loopback.so ./target/debug/rustdesk --server >/tmp/srv.log 2>&1 & SRV=$!
+  sleep 6
+  # The LOCAL service the box dials for the tunnel (an RDP/web-server stand-in that echoes bytes back).
+  ./target/debug/examples/pf_echo 5555 >/tmp/pf_echo.log 2>&1 & ECHO=$!
+  sleep 1
+  PF_TARGET=127.0.0.1:5555 ./target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok portforward 2>&1 | grep "post-key"
+  kill -TERM $SRV $ECHO 2>/dev/null
+' || true)
+echo "$out6b"
+# R-S17: the port-forward viewer verifies the box's host-proof before tunnelling (same defence as a
+# normal session — the tunnel rides the SAME keyed+pinned channel).
+echo "$out6b" | grep -q 'R-S17 host-proof VERIFIED' \
+  || { echo "  FAIL R-F1/R-S17: the port-forward viewer did not verify the host-proof"; rc=1; }
+# R-F1/R-D6/R-S5/R-A9: the canary made a full round trip THROUGH the box (viewer -> sealed -> box ->
+# local target -> echo -> box -> sealed -> viewer), proving the relay is restored AND functional AND
+# inside the secretbox (the box never set_raw'd — tcp.rs R-A3 would have panicked otherwise).
+if echo "$out6b" | grep -q 'PF-RELAY-ECHO-OK'; then
+  echo "  ok  R-F1/R-D6/R-S5/R-A9 port-forward/RDP tunnel RELAYS end-to-end inside the sealed session (canary round-tripped through the box's dial + sealed relay)"
+else
+  echo "  FAIL R-F1/R-D6/R-S5: the port-forward tunnel did NOT relay the canary end-to-end (the sealed relay is broken)"; rc=1
+fi
+
 echo "== (7) R-A8 / R-T7: an INJECTED (forged) frame on the keyed stream is rejected by the AEAD =="
 out7=$("${RUN[@]}" bash -c '
   export HOME=/tmp/rd7; mkdir -p "$HOME"
@@ -343,7 +377,7 @@ DECAY_NOTE=" + R-A8 limiter-decay (tripped block self-heals after the 60s window
 fi
 
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 real --password IPC provisioning (clean set-and-exit; root + A2 non-root same-uid) + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
+  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 real --password IPC provisioning (clean set-and-exit; root + A2 non-root same-uid) + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) + R-F1/R-D6/R-S5 port-forward/RDP tunnel relays end-to-end inside the seal + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

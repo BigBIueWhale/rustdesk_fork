@@ -29,14 +29,17 @@ use hbb_common::protobuf::EnumOrUnknown;
 use hbb_common::{
     config::{self, keys, Config},
     fs::{self, can_enable_overwrite_detection, JobType},
+    futures::{SinkExt, StreamExt},
     get_time, get_version_number,
     message_proto::{option_message::BoolOption, permission_info::Permission},
     password_security::{self as password, ApproveMode},
     sleep, timeout,
     tokio::{
+        net::TcpStream,
         sync::mpsc,
         time::{self, Duration, Instant},
     },
+    tokio_util::codec::{BytesCodec, Framed},
 };
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use scrap::android::{call_main_service_key_event, call_main_service_pointer_input};
@@ -60,8 +63,13 @@ use windows::Win32::Foundation::{CloseHandle, HANDLE};
 #[cfg(windows)]
 use crate::virtual_display_manager;
 pub type Sender = mpsc::UnboundedSender<(Instant, Arc<Message>)>;
-const TUNNEL_DISABLED_MESSAGE: &str =
-    "Port forwarding/RDP tunnel is unavailable in this direct-IP hardened build";
+// R-F1/R-D6/R-S5/R-A9: port-forward/RDP relay tuning. The R-T3 writer-task refactor removed the old
+// SEND_TIMEOUT_*/H1 consts, so the sealed tunnel loop carries its own. SEND bounds a write to the
+// LOCAL target socket (a stuck local service must not stall the relay); IDLE tears down a silent
+// tunnel (mirrors upstream H1 = 1 h). The relay rides the KEYED session stream — send_bytes SEALS,
+// next() decrypts — and NEVER set_raw's (R-A3), so every byte on the wire is ciphertext (R-A9).
+const PORT_FORWARD_SEND_TIMEOUT: u64 = 120_000;
+const PORT_FORWARD_IDLE_TIMEOUT: Duration = Duration::from_secs(3600);
 const MAX_PEER_DISPLAY_DIMENSION: i32 = 16_384;
 const MAX_PEER_CAPTURE_DISPLAY_ENTRIES: usize = 32;
 const DISPLAY_CONTROL_LOG_INTERVAL: Duration = Duration::from_secs(5);
@@ -219,6 +227,12 @@ pub struct Connection {
     file_transfer: Option<(String, bool)>,
     view_camera: bool,
     terminal: bool,
+    // R-F1/R-S5: the dialed LOCAL target socket of a port-forward/RDP tunnel — a PLAINTEXT loopback/
+    // LAN connection to the actual service (e.g. localhost:3389). The peer side of the relay is
+    // self.stream, the KEYED session, so the tunnel is SEALED on the wire (R-A9); only the last hop
+    // to the local target is raw. `port_forward_address` is surfaced to the CM for display.
+    port_forward_socket: Option<Framed<TcpStream, BytesCodec>>,
+    port_forward_address: String,
     tx_to_cm: mpsc::UnboundedSender<ipc::Data>,
     authorized: bool,
     keyboard: bool,
@@ -392,6 +406,8 @@ impl Connection {
             file_transfer: None,
             view_camera: false,
             terminal: false,
+            port_forward_socket: None,
+            port_forward_address: "".to_owned(),
             tx_to_cm,
             authorized: false,
             keyboard: Self::permission(keys::OPTION_ENABLE_KEYBOARD, &control_permissions),
@@ -557,6 +573,12 @@ impl Connection {
                             if !conn.send_logon_response_and_keep_alive().await {
                                 break;
                             }
+                            // R-F1/R-S5: a port-forward/RDP session does not run the video/input
+                            // service loop — once authorized, break out to the sealed relay
+                            // (try_port_forward_loop) that runs after this loop.
+                            if conn.port_forward_socket.is_some() {
+                                break;
+                            }
                         }
                         ipc::Data::Close => {
                             conn.chat_unanswered = false; // seen
@@ -718,6 +740,19 @@ impl Connection {
                                     }
                                 };
                                 if !conn.on_message(msg_in).await {
+                                    break;
+                                }
+                                // R-F1/R-D6/R-S5: the headless AUTO-approve login path authorizes
+                                // INSIDE on_message (send_logon_response_and_keep_alive dials the
+                                // target + sets port_forward_socket). Unlike the attended UI flow it
+                                // gets NO CM Data::Authorize echo (authorize() is the accept-click
+                                // only), so break to the sealed relay (try_port_forward_loop) HERE the
+                                // moment a tunnel is authorized. Unconditional (no last_test_delay
+                                // guard): the port-forward viewer never replies to TestDelay
+                                // (connect_and_login), so no latency-probe frame can be injected into
+                                // the forwarded stream — and a TestDelay is only ever emitted BEFORE
+                                // this login iteration, so it precedes PeerInfo on the wire.
+                                if conn.port_forward_socket.is_some() && conn.authorized {
                                     break;
                                 }
                             }
@@ -882,6 +917,14 @@ impl Connection {
             }
         }
 
+        // R-F1/R-D6/R-S5/R-A9: run the SEALED port-forward/RDP relay. A no-op unless this is a tunnel
+        // session (port_forward_socket is Some); then it relays the local target socket <-> the KEYED
+        // self.stream until either side closes — every wire-bound byte sealed by send_bytes, every
+        // inbound byte decrypted by next(), never a set_raw plaintext downgrade (R-A3/R-A9).
+        if let Err(err) = conn.try_port_forward_loop(&mut rx_from_cm).await {
+            conn.on_close(&err.to_string(), false).await;
+        }
+
         #[cfg(feature = "unix-file-copy-paste")]
         {
             conn.try_empty_file_clipboard();
@@ -1038,9 +1081,18 @@ impl Connection {
         if let Some(keep_alive) = self.prepare_terminal_session_user_for_authorization().await {
             return keep_alive;
         }
+        // R-F1/R-D6/R-S5: dial the peer-named LOCAL target of a port-forward/RDP tunnel NOW (the
+        // funnel gate in the PortForward login arm already passed — enable-tunnel is pinned Y). A
+        // dial failure fails the login CLOSED; on success self.port_forward_socket is Some and the
+        // sealed relay (try_port_forward_loop) runs after the main loop. No-op for non-tunnel logins.
+        if !self.connect_port_forward_if_needed().await {
+            return false;
+        }
         self.authorized = true;
         let auth_conn_type = if self.file_transfer.is_some() {
             AuthConnType::FileTransfer
+        } else if self.port_forward_socket.is_some() {
+            AuthConnType::PortForward
         } else if self.view_camera {
             AuthConnType::ViewCamera
         } else if self.terminal {
@@ -1205,6 +1257,18 @@ impl Connection {
         if !self.terminal {
             self.handle_windows_specific_session(&mut pi, &mut wait_session_id_confirm);
         }
+        // R-F1/R-D6/R-S5: a port-forward/RDP tunnel needs no screen / encoding / display enumeration.
+        // Send the minimal PeerInfo (the viewer's connect_and_login only waits for it before it starts
+        // relaying) and RETURN, skipping the remote-desktop branch below (which enumerates displays +
+        // negotiates a video encoder — wrong for a tunnel and failure-prone on a headless box). The
+        // sealed relay then runs in try_port_forward_loop once the main loop breaks.
+        if self.port_forward_socket.is_some() {
+            res.set_peer_info(pi);
+            let mut msg_out = Message::new();
+            msg_out.set_login_response(res);
+            self.send(msg_out).await;
+            return true;
+        }
         if self.file_transfer.is_some() || self.terminal {
             res.set_peer_info(pi);
         } else if self.view_camera {
@@ -1318,7 +1382,14 @@ impl Connection {
 
     #[inline]
     fn is_remote(&self) -> bool {
-        self.file_transfer.is_none() && !self.view_camera && !self.terminal
+        // R-F1/R-S5: a port-forward/RDP tunnel is NOT a remote-desktop session — exclude it so the
+        // login display-check, the monitor/video sub-services, and remote-only clipboard paths never
+        // fire for a tunnel (they would enumerate/capture a screen the tunnel does not use — wrong,
+        // and failure-prone on a headless box).
+        self.file_transfer.is_none()
+            && self.port_forward_socket.is_none()
+            && !self.view_camera
+            && !self.terminal
     }
 
     fn try_sub_monitor_services(&mut self) {
@@ -1441,7 +1512,7 @@ impl Connection {
             is_file_transfer: self.file_transfer.is_some(),
             is_view_camera: self.view_camera,
             is_terminal: self.terminal,
-            port_forward: String::new(),
+            port_forward: self.port_forward_address.clone(),
             peer_id,
             name,
             avatar: self.lr.avatar.clone(),
@@ -1553,6 +1624,127 @@ impl Connection {
             enable_prefix_option,
             &Config::get_option(enable_prefix_option),
         )
+    }
+
+    // R-F1/R-D6/R-S5: resolve the peer-requested port-forward target to a concrete `host:port` for
+    // the LOCAL dial, and flag the RDP shortcut. "RDP"/port 0 and an empty host both resolve to the
+    // box's own RDP/loopback service, so a bare RDP request lands on localhost:3389.
+    fn normalize_port_forward_target(pf: &mut PortForward) -> (String, bool) {
+        let mut is_rdp = false;
+        if pf.host == "RDP" && pf.port == 0 {
+            pf.host = "localhost".to_owned();
+            pf.port = 3389;
+            is_rdp = true;
+        }
+        if pf.host.is_empty() {
+            pf.host = "localhost".to_owned();
+        }
+        (format!("{}:{}", pf.host, pf.port), is_rdp)
+    }
+
+    // R-F1/R-D6/R-S5: dial the LOCAL target of a port-forward/RDP tunnel (idempotent; a no-op for a
+    // non-tunnel login, which returns true). The dialed socket is PLAINTEXT to the local service —
+    // the wire-facing half of the relay is the KEYED self.stream, so the tunnel is sealed on the
+    // wire (R-A9). A connect failure/timeout reports a login error and fails CLOSED (returns false).
+    async fn connect_port_forward_if_needed(&mut self) -> bool {
+        if self.port_forward_socket.is_some() {
+            return true;
+        }
+        let Some(login_request::Union::PortForward(pf)) = self.lr.union.as_ref() else {
+            return true;
+        };
+        let mut pf = pf.clone();
+        let (mut addr, is_rdp) = Self::normalize_port_forward_target(&mut pf);
+        self.port_forward_address = addr.clone();
+        match timeout(3000, TcpStream::connect(&addr)).await {
+            Ok(Ok(sock)) => {
+                self.port_forward_socket = Some(Framed::new(sock, BytesCodec::new()));
+                true
+            }
+            Ok(Err(e)) => {
+                log::warn!("Port forward connect failed for {}: {}", addr, e);
+                if is_rdp {
+                    addr = "RDP".to_owned();
+                }
+                self.send_login_error(format!(
+                    "Failed to access remote {}. Please make sure it is reachable/open.",
+                    addr
+                ))
+                .await;
+                false
+            }
+            Err(e) => {
+                log::warn!("Port forward connect timed out for {}: {}", addr, e);
+                if is_rdp {
+                    addr = "RDP".to_owned();
+                }
+                self.send_login_error(format!(
+                    "Failed to access remote {}. Please make sure it is reachable/open.",
+                    addr
+                ))
+                .await;
+                false
+            }
+        }
+    }
+
+    // R-F1/R-D6/R-S5/R-A9: the SEALED port-forward/RDP relay. Runs after the main loop for a tunnel
+    // session (no-op otherwise). It shuttles bytes between the LOCAL target socket (`forward`,
+    // plaintext to the service) and the KEYED session stream (`self.stream`, encrypted to the peer):
+    //   local target --forward.next()-->  self.stream.send_bytes(..)  [SEALS -> ciphertext on wire]
+    //   peer         --self.stream.next()--> forward.send(..)         [next() already DECRYPTED it]
+    // Critically it does NOT call self.stream.set_raw() (upstream did, dropping the secretbox to pass
+    // raw plaintext — the R-S5 "plaintext tunnel" escape). On a keyed stream set_raw would panic
+    // (tcp.rs R-A3) anyway; here it is simply absent so every relayed byte stays inside the seal.
+    async fn try_port_forward_loop(
+        &mut self,
+        rx_from_cm: &mut mpsc::UnboundedReceiver<ipc::Data>,
+    ) -> ResultType<()> {
+        if let Some(mut forward) = self.port_forward_socket.take() {
+            log::info!("Running port forwarding loop");
+            let mut last_recv_time = Instant::now();
+            let mut idle_timer = crate::rustdesk_interval(time::interval(Duration::from_secs(1)));
+            loop {
+                tokio::select! {
+                    Some(data) = rx_from_cm.recv() => {
+                        match data {
+                            ipc::Data::Close => {
+                                bail!("Close requested from connection manager");
+                            }
+                            ipc::Data::CmErr(e) => {
+                                log::error!("Connection manager error: {e}");
+                                bail!("{e}");
+                            }
+                            _ => {}
+                        }
+                    }
+                    res = forward.next() => {
+                        if let Some(res) = res {
+                            last_recv_time = Instant::now();
+                            // local target -> SEAL (send_bytes on the keyed stream) -> peer.
+                            self.stream.send_bytes(res?.into()).await?;
+                        } else {
+                            bail!("Forward reset by the peer");
+                        }
+                    },
+                    res = self.stream.next() => {
+                        if let Some(res) = res {
+                            last_recv_time = Instant::now();
+                            // peer -> next() already DECRYPTED the frame -> write to the local target.
+                            timeout(PORT_FORWARD_SEND_TIMEOUT, forward.send(res?)).await??;
+                        } else {
+                            bail!("Stream reset by the peer");
+                        }
+                    },
+                    _ = idle_timer.tick() => {
+                        if last_recv_time.elapsed() >= PORT_FORWARD_IDLE_TIMEOUT {
+                            bail!("Timeout");
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     fn permission(
@@ -1692,10 +1884,21 @@ impl Connection {
                     }
                     self.terminal_service_id = terminal.service_id;
                 }
-                Some(login_request::Union::PortForward(_)) => {
-                    self.send_login_error(TUNNEL_DISABLED_MESSAGE).await;
-                    sleep(1.).await;
-                    return false;
+                // R-F1/R-D6/R-S5: the port-forward/RDP tunnel is GRANTED, not refused. enable-tunnel
+                // is pinned Y (R-S16, UNCONDITIONAL), so this funnel gate resolves true — the fork
+                // does NOT deny the forward (that is R-S5's "or refuse" fallback, OVERRIDDEN here by
+                // R-F1/R-D6/R-A9). Instead it relays the tunnel INSIDE the sealed session stream
+                // (R-S5 option 1: the bytes stay in the secretbox; see try_port_forward_loop, which
+                // never set_raw's — R-A3). Here we only FIX the target address; the dial happens at
+                // authorize (connect_port_forward_if_needed). normalize resolves "RDP" -> localhost:3389.
+                Some(login_request::Union::PortForward(mut pf)) => {
+                    if !Self::permission(keys::OPTION_ENABLE_TUNNEL, &self.control_permissions) {
+                        self.send_login_error("No permission of IP tunneling").await;
+                        sleep(1.).await;
+                        return false;
+                    }
+                    let (addr, _is_rdp) = Self::normalize_port_forward_target(&mut pf);
+                    self.port_forward_address = addr;
                 }
                 _ => {
                     if !self.check_privacy_mode_on().await {
@@ -1820,6 +2023,14 @@ impl Connection {
                 }
             }
         } else if self.authorized {
+            // R-F1/R-S5: an authorized port-forward/RDP tunnel does NOT process application messages
+            // (mouse/keyboard/clipboard/…) — its bytes are raw relay traffic handled by
+            // try_port_forward_loop, not on_message. The main loop breaks to that relay the instant
+            // the tunnel is authorized, so this is a defensive guard: ignore any stray app message on
+            // a tunnel connection rather than mis-dispatch it as input.
+            if self.port_forward_socket.is_some() {
+                return true;
+            }
             match msg.union {
                 #[allow(unused_mut)]
                 Some(message::Union::MouseEvent(mut me)) => {
@@ -3766,6 +3977,9 @@ impl Connection {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         let data = ipc::Data::Close;
         self.tx_to_cm.send(data).ok();
+        // R-F1/R-S5: drop the dialed LOCAL target socket promptly on close (try_port_forward_loop
+        // already took it for a running tunnel; this covers a tunnel that closed BEFORE relaying).
+        self.port_forward_socket.take();
     }
 
     // The `reason` should be consistent with `check_if_retry` if not empty

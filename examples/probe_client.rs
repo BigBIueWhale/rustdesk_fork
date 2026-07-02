@@ -34,7 +34,7 @@ fn main() {
     let pw = a.get(2).cloned().expect("password");
     let expect = a.get(3).map(String::as_str).unwrap_or("ok").to_string();
     let mode = a.get(4).map(String::as_str).unwrap_or("").to_string();
-    let do_read = mode == "read" || mode == "login" || mode == "inject";
+    let do_read = mode == "read" || mode == "login" || mode == "inject" || mode == "portforward";
     // Optional local source address (6th arg) — e.g. 127.0.0.2:0 to connect as a DIFFERENT source,
     // for the R-A8.2 owner-safe limiter test (a flood from one source must not block another).
     let local = a.get(5).and_then(|s| s.parse::<std::net::SocketAddr>().ok());
@@ -72,6 +72,87 @@ fn main() {
                         },
                         _ => pk.push_str("[R-S17 no host-proof] "),
                     }
+                    if mode == "portforward" {
+                        // R-F1/R-D6/R-S5/R-A9 END-TO-END: drive a REAL port-forward tunnel against the
+                        // live server. Send a PortForward LoginRequest naming the LOCAL target the box
+                        // will dial (PF_TARGET = the pf_echo server), wait for PeerInfo (the box
+                        // authorized + dialed the target + switched to try_port_forward_loop), then send
+                        // a canary THROUGH the tunnel and expect it echoed back — proving the restored
+                        // relay shuttles sealed bytes both ways (login-grant + dial + break + relay).
+                        use hbb_common::message_proto::{login_response, message, LoginRequest, PortForward};
+                        let target = std::env::var("PF_TARGET").unwrap_or_default();
+                        let (thost, tport) = target
+                            .rsplit_once(':')
+                            .map(|(h, p)| (h.to_string(), p.parse::<i32>().unwrap_or(0)))
+                            .unwrap_or_default();
+                        let mut lr = LoginRequest::new();
+                        // The box's own id, so the responder's username guard admits the login.
+                        lr.username = hbb_common::config::Config::get_id();
+                        lr.my_id = "pf-probe".to_string();
+                        lr.my_name = "pf-probe".to_string();
+                        lr.version = "1.4.0".to_string();
+                        lr.my_platform = "Linux".to_string();
+                        lr.set_port_forward(PortForward {
+                            host: thost,
+                            port: tport,
+                            ..Default::default()
+                        });
+                        let mut msg = Message::new();
+                        msg.set_login_request(lr);
+                        let _ = stream.send_raw(msg.write_to_bytes().unwrap_or_default()).await;
+                        // Wait for PeerInfo (a latency-probe TestDelay is skipped, never replied to —
+                        // exactly as the real port-forward viewer does, so no reply is injected).
+                        let mut authed = false;
+                        for _ in 0..8 {
+                            match stream.next_timeout(4000).await {
+                                Some(Ok(bytes)) => {
+                                    match Message::parse_from_bytes(&bytes).map(|m| m.union) {
+                                        Ok(Some(message::Union::LoginResponse(r))) => match r.union {
+                                            Some(login_response::Union::PeerInfo(_)) => {
+                                                authed = true;
+                                                break;
+                                            }
+                                            Some(login_response::Union::Error(e)) => {
+                                                pk.push_str(&format!("[PF-LOGIN-ERROR {e}] "));
+                                                break;
+                                            }
+                                            _ => {}
+                                        },
+                                        Ok(Some(message::Union::TestDelay(_))) => {} // ignore, no reply
+                                        _ => {}
+                                    }
+                                }
+                                _ => {
+                                    pk.push_str("[PF-NO-PEERINFO] ");
+                                    break;
+                                }
+                            }
+                        }
+                        if authed {
+                            const CANARY: &[u8] =
+                                b"PF-RELAY-CANARY-abcdef-0123456789-through-the-sealed-tunnel";
+                            let _ = stream.send_raw(CANARY.to_vec()).await;
+                            // Reassemble until the full canary echoes back (localhost won't fragment
+                            // ~58 bytes, but be robust to a split read).
+                            let mut got = Vec::new();
+                            for _ in 0..4 {
+                                match stream.next_timeout(4000).await {
+                                    Some(Ok(b)) => {
+                                        got.extend_from_slice(&b);
+                                        if got == CANARY {
+                                            break;
+                                        }
+                                    }
+                                    _ => break,
+                                }
+                            }
+                            if got == CANARY {
+                                pk.push_str("[PF-RELAY-ECHO-OK] ");
+                            } else {
+                                pk.push_str(&format!("[PF-RELAY-ECHO-FAIL got={}B] ", got.len()));
+                            }
+                        }
+                    }
                     if mode == "login" {
                         use hbb_common::message_proto::LoginRequest;
                         let mut lr = LoginRequest::new();
@@ -85,7 +166,13 @@ fn main() {
                         msg.set_login_request(lr);
                         let _ = stream.send_raw(msg.write_to_bytes().unwrap_or_default()).await;
                     }
+                    // The generic post-key frame dump is for read/login/inject only; a port-forward
+                    // tunnel already did its round-trip above, and its post-PeerInfo bytes are RAW
+                    // relay data (not Messages), so skip the dump there.
                     for i in 0..6 {
+                        if mode == "portforward" {
+                            break;
+                        }
                         match stream.next_timeout(3000).await {
                             Some(Ok(bytes)) => {
                                 let u = match Message::parse_from_bytes(&bytes) {

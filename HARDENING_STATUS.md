@@ -72,7 +72,29 @@ greps). The full server binary builds and the loopback runtime smoke
 startup, graceful shutdown, and the no-plaintext wire-capture. The reproducible
 release builds hold.
 
-**R-B2 re-proven on all three platforms at HEAD `ede091e` (2026-07-01), after the
+**R-B2 re-proven on all three platforms at HEAD `a5bd577` (2026-07-02)**, after the
+autonomous-session change batch: the mobile **QR-scanner excision** (R-G1/R-G2 — page + button +
+the `qr_code_scanner`/`zxing2`/`image_picker` deps), the **encrypted port-forward/RDP tunnel
+RESTORATION** (R-S5 option 1 / R-F1 / R-D6 / R-A9 — the relay was wrongly refused; it now rides the
+sealed session stream, proven ciphertext by the R-A9 wire-capture test), and the **AppCompat-theme
+build fix** (R-B2 — the QR-plugin excision dropped the transitive `androidx.appcompat` the
+permission activity's theme referenced; reparented to the platform translucent theme). The binaries
+change; **A==B at this HEAD is the proof, not a match to older hashes.** New byte-identical (A==B)
+double-build SHA-256s:
+
+```
+ad70b491597a5dbd59c8bdbbd3596999bfe95c6fe156da7954ea3d88df03d30e  rustdesk-x86_64.deb
+eee3cad7f4837ce2537facd29409c11cd831e2f16ed83bf22be66a114dc71db1  rustdesk-arm64.apk
+c68fb11ea3d25945a014c15ced26f534ba9f8ceb2f871b02a6623ba8d4a46932  rustdesk-setup.exe
+8795007d56006038448026b35bf3d08b85c30e2bd04b77f64a74b136bde3b739  rustdesk.msi
+```
+
+Debian = offline `DOUBLE_BUILD` `dist` vs `dist/_rebuild`; Android = two independent offline CLEAN
+builds proven byte-identical (signed apksigner v2, RSA-4096, cert `10:91:32:2B:A0:42:5A:FA:…`);
+Windows = §12.2 KVM golden-VM `DOUBLE_BUILD` A==B (exe + msi). `verify-release.sh` ALL 7 source gates
+GREEN at this HEAD (incl. the port-forward runtime smoke + the R-A9 wire-ciphertext test).
+
+Prior re-prove (superseded): **R-B2 re-proven on all three platforms at HEAD `ede091e` (2026-07-01), after the
 completion-review fix batch (R-G6 additive error copy + R-X7/R-G3/R-S18 letter-of-spec
 closures).** That batch changed app source (client.rs error surfaces, en.rs keys, the
 flutter `_secure`/`_direct` badge-state removal, the `use-temporary-password`/os-cred

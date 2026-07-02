@@ -36,6 +36,7 @@ KEY_ALIAS="${ANDROID_KEY_ALIAS:-rustdesk-fork}"
 preflight() {
     require_cmd docker git
     assert_repo_state
+    assert_clean_worktree
     assert_source_date_epoch
     require_online_complete
     # §12.3 / R-B10 (trust nobody): re-verify the exact ./online tarballs this offline build extracts

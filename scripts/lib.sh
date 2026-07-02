@@ -176,3 +176,25 @@ assert_repo_state() {
     [ -f "$REPO_ROOT/Cargo.lock" ] || die "Cargo.lock missing — the build is lockfile-pinned (R-R1, --locked)"
     [ -f "$REPO_ROOT/rust-toolchain.toml" ] || die "rust-toolchain.toml missing — the toolchain pin upstream omits (R-R1)"
 }
+
+# assert_clean_worktree: a RELEASE build MUST compile committed HEAD, not a dirty / stale /
+# concurrently-edited worktree — else the artifact matches no commit and its recorded SHA (R-B2) is
+# meaningless. The deb/apk builds mount the LIVE tree (-v $REPO_ROOT:/src), so assert it is clean and
+# fail LOUD on any uncommitted tracked change or untracked non-ignored file (gitignored build output —
+# dist/, target/, flutter/build, the regenerated FRB bridges — is NOT flagged; git status --porcelain
+# excludes it). Set ALLOW_DIRTY_TREE=1 for a deliberate LOCAL (non-release) build of the working tree.
+# (The Windows build already has this immunity structurally via WINDOWS_BUILD_SOURCE=head — a clean
+# `git archive HEAD` snapshot; giving deb/apk the same snapshot is the stronger follow-up, immune even
+# to a mid-build edit. This assert + the double-build A==B are the current backstop for that race.)
+assert_clean_worktree() {
+    if [ "${ALLOW_DIRTY_TREE:-0}" = "1" ]; then
+        log "ALLOW_DIRTY_TREE=1 — building the WORKING TREE, not committed HEAD (NOT a reproducible release build)"
+        return 0
+    fi
+    local dirt
+    dirt="$(cd "$REPO_ROOT" && git status --porcelain 2>/dev/null)" \
+        || die "assert_clean_worktree: '$REPO_ROOT' is not a git repo (cannot verify the build traces to a commit)"
+    [ -z "$dirt" ] || die "release build requires a CLEAN worktree traceable to HEAD ($(cd "$REPO_ROOT" && git rev-parse --short HEAD 2>/dev/null)); uncommitted changes present:
+$dirt
+Commit or stash them, or set ALLOW_DIRTY_TREE=1 for a deliberate local (non-release) build."
+}

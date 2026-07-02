@@ -15,7 +15,13 @@
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
-    <style name="Transparent" parent="Theme.AppCompat.NoActionBar">
+    <!-- R-G1/R-B2: reparented off Theme.AppCompat.NoActionBar to the platform translucent theme.
+         androidx.appcompat was only ever pulled in TRANSITIVELY by the image_picker/qr_code_scanner
+         plugins (excised with the QR scanner, R-G1). Nothing here uses AppCompat — every item below is
+         an android:* platform attribute and PermissionRequestTransparentActivity extends plain Activity
+         — so the platform Theme.Translucent.NoTitleBar is the correct AppCompat-free base and avoids
+         re-adding a whole library for one vestigial theme reference. -->
+    <style name="Transparent" parent="@android:style/Theme.Translucent.NoTitleBar">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowContentOverlay">@null</item>

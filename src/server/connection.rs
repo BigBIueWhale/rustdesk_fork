@@ -4597,12 +4597,13 @@ impl Connection {
             // The sovereign owner's single access-mode=full session (R-S16/§2): full control.
             AuthConnType::Remote => {}
             // File transfer: keeps clipboard (file-clipboard/CLIPRDR) + file; loses desktop input,
-            // block-input, privacy, restart, and host-audio capture.
+            // block-input, privacy, restart, session-recording, and host-audio capture.
             AuthConnType::FileTransfer => {
                 self.keyboard = false;
                 self.block_input = false;
                 self.privacy_mode = false;
                 self.restart = false;
+                self.recording = false;
                 self.audio = false;
             }
             // View camera: keeps audio (voice calls); loses desktop input/control, clipboard, file.
@@ -4620,6 +4621,7 @@ impl Connection {
                 self.block_input = false;
                 self.privacy_mode = false;
                 self.restart = false;
+                self.recording = false;
                 self.clipboard = false;
                 self.file = false;
                 self.audio = false;
@@ -4631,6 +4633,7 @@ impl Connection {
                 self.block_input = false;
                 self.privacy_mode = false;
                 self.restart = false;
+                self.recording = false;
                 self.clipboard = false;
                 self.file = false;
                 self.audio = false;

@@ -1648,7 +1648,7 @@ optapply_ln=$(grep -n 'self.options_in_login.take()' "$conn" | head -1 | cut -d:
 if [ -n "$confine_ln" ] && [ -n "$optapply_ln" ] && [ "$confine_ln" -lt "$optapply_ln" ]; then :; else rs19="$rs19 derivation-not-before-options"; fi
 # derivation body clears each control capability for the non-Remote types (all seven appear across arms)
 deriv=$(awk '/fn confine_capabilities_to_conn_type/,/^    }$/' "$conn")
-for cap in keyboard block_input privacy_mode restart audio clipboard file; do
+for cap in keyboard block_input privacy_mode restart recording audio clipboard file; do
   echo "$deriv" | grep -qF "self.$cap = false" || rs19="$rs19 deriv-missing-$cap"
 done
 # the OLD ad-hoc per-branch clears MUST be gone (subsumed by the derivation, closing the ordering hole)

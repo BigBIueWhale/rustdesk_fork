@@ -72,7 +72,30 @@ greps). The full server binary builds and the loopback runtime smoke
 startup, graceful shutdown, and the no-plaintext wire-capture. The reproducible
 release builds hold.
 
-**R-B2 re-proven on all three platforms at HEAD `a5bd577` (2026-07-02)**, after the
+**R-B2 re-proven on all three platforms at HEAD `5e03011` (2026-07-02) — OFFICIAL-RELEASE BUILD**,
+after the R-V3 crypto-audit commits (`4eb6912`/`a566bb5`/`5e03011`): the **independent CPace PAKE
+audit is published** (`docs/CRYPTO-AUDIT-2026-07-02.md`, VERDICT **SOUND** — a byte-level construction
+reproduction via a *separate* libsodium stack + first-principles protocol analysis), its findings
+**resolved** (F-1 viewer-plaintext in `client.rs`, F-2 CT gate), the "not independently audited"
+disclosure flipped, and new PAKE tests + verify.sh gates added. All four artifacts were **rebuilt COLD
+from scratch** (host `target/` + `flutter/build` wiped before the builds; deb 591-crate cold compile,
+apk 256-crate arm64 cold, Windows `C:\src` wiped each build) and are byte-identical **double-build
+A==B**. `verify-release.sh` **ALL 7 source gates GREEN** at this HEAD (incl. the new R-V3 PAKE tests,
+the port-forward runtime smoke, the R-A9 wire-ciphertext test). The binaries change vs prior heads;
+**A==B at this HEAD is the proof.** Release SHA-256s:
+
+```
+d15c6ed5e0db7f33b73aecfa6fa22cf30df390a9d593e8a1d9da88a5c9143181  rustdesk-x86_64.deb
+6d06a547138a9685530363f8688032d58cae7bd75789d3d45b1aa6faae893864  rustdesk-arm64.apk
+beed598cd59fb8fe58e4c03bfc3d5b037e57962a91d0efffc4cc25bd5750d2fa  rustdesk-setup.exe
+2d8b8aed16cb0e5dc2c0184a4b60929e20966b07cf36518269b5d2652b61b9da  rustdesk.msi
+```
+
+Debian = offline `DOUBLE_BUILD` `dist` vs `dist/_rebuild`; Android = two independent offline CLEAN
+builds byte-identical (signed apksigner v1+v2+v3, RSA-4096, cert `10:91:32:2B:A0:42:5A:FA:…`);
+Windows = §12.2 KVM golden-VM `DOUBLE_BUILD` A==B (exe + msi, `C:\src` cold each build).
+
+Prior re-prove (superseded): **R-B2 re-proven on all three platforms at HEAD `a5bd577` (2026-07-02)**, after the
 autonomous-session change batch: the mobile **QR-scanner excision** (R-G1/R-G2 — page + button +
 the `qr_code_scanner`/`zxing2`/`image_picker` deps), the **encrypted port-forward/RDP tunnel
 RESTORATION** (R-S5 option 1 / R-F1 / R-D6 / R-A9 — the relay was wrongly refused; it now rides the

@@ -420,13 +420,16 @@ recommendation-of-further-audit hedge was removed (maintainer decision — a fun
 a reachable gate for a solo fork; the factual limitations were kept), and Appendix C gained
 rows #23–#24 for the two RustDesk items in the June-2026 "Exploitarium" public zero-day dump
 (#23 relay-downgrade = already REPLACED by construction; #24 CVE-2026-58056 FileTransfer
-scope-bypass = inherited but moot under §2, SHOULD-harden). These are **documentation/disclosure
-updates only** — no normative or security requirement changed, and the native-codec-watch
-ledger is re-confirmed valid against each.
+scope-bypass = inherited but moot under §2, now **FIXED** in connection.rs — an AuthConnType
+allowlist in on_message (input=Remote-only, desktop-capture=Remote|ViewCamera) + a FileTransfer
+capability-flag clear (keyboard/block_input/privacy_mode), verify.sh-gated). The requirements.html
+edits are disclosure/inventory updates (no normative requirement changed) — the #24 confinement
+itself is a source change landed alongside — and the native-codec-watch ledger is re-confirmed
+valid against each.
 The current snapshot (matching the `scripts/native-codec-watch.sh` pin) is:
 
 ```text
-e7a52062eaa6bf8d2d9f2362f80f3f721d93642dbbd17609cd074c27b17d8dfe  requirements.html
+8633eb0aa1efa0b5ae02376e6424a200a3ded8737a18ff73e47f5c541fe17cd3  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

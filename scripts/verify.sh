@@ -1626,6 +1626,28 @@ if [ -z "$r_p12_ct" ]; then
 else
   echo "  FAIL R-P12: pake constant-time discipline weakened:$r_p12_ct"; rc=1
 fi
+# CVE-2026-58056 / CWE-863 (Appendix C #24): the controlled-side dispatcher MUST confine desktop
+# INPUT + display CAPTURE/CONTROL to the session's AuthConnType, not the broad `self.authorized`
+# state, so a peer authorized only for FileTransfer cannot inject input or capture the screen. The
+# fix has TWO parts, both asserted here: (1) the AuthConnType allowlist guard in on_message — input
+# is Remote-only, desktop capture/control is Remote-or-ViewCamera; (2) the FileTransfer login branch
+# clears the per-capability flags (keyboard/block_input/privacy_mode) that gate the flag-based sinks
+# (input, block_input console-DoS, the <1.2.4 turn_off_privacy compat), mirroring the terminal and
+# view-camera branches. Screen capture has no capability flag, so part (1) is load-bearing for it.
+cve_58056=
+grep -q 'is_remote_input' src/server/connection.rs    || cve_58056="$cve_58056 no-input-confine"
+grep -q 'is_desktop_capture' src/server/connection.rs || cve_58056="$cve_58056 no-capture-confine"
+grep -q 'is_remote_input && !self.is_authed_remote_conn()' src/server/connection.rs \
+  || cve_58056="$cve_58056 input-not-remote-gated"
+ft_branch=$(awk '/self\.file_transfer\.clone\(\)/,/else if self\.terminal/' src/server/connection.rs)
+echo "$ft_branch" | grep -q 'self.keyboard = false'     || cve_58056="$cve_58056 ft-keyboard-not-cleared"
+echo "$ft_branch" | grep -q 'self.block_input = false'  || cve_58056="$cve_58056 ft-block_input-not-cleared"
+echo "$ft_branch" | grep -q 'self.privacy_mode = false' || cve_58056="$cve_58056 ft-privacy-not-cleared"
+if [ -z "$cve_58056" ]; then
+  echo "  ok  CVE-2026-58056/CWE-863 FileTransfer scope-bypass confined (AuthConnType guard + FileTransfer flag-clear)"
+else
+  echo "  FAIL CVE-2026-58056: FileTransfer input/capture confinement weakened:$cve_58056"; rc=1
+fi
 # R-T11 (§20): the PUBLIC listener (listen_any_v4) MUST bind WITHOUT SO_REUSEPORT — a single-
 # instance service needs no kernel load-balance group, and REUSEPORT lets another same-uid (root)
 # process silently join the group and steal inbound connections (invisible to R-A4's own-process

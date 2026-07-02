@@ -1343,6 +1343,17 @@ impl Connection {
             self.update_options(&o).await;
         }
         if let Some((dir, show_hidden)) = self.file_transfer.clone() {
+            // CVE-2026-58056 / CWE-863 (Appendix C #24): a FileTransfer session must carry no
+            // desktop-control capability. Upstream cleared keyboard for terminal/view-camera but NOT
+            // for file transfer (the CVE's root cause), leaving the per-capability-flag-gated sinks —
+            // input, `block_input` (local-console input DoS), and the <1.2.4 `turn_off_privacy` compat
+            // path (all gated on `self.keyboard`) — reachable by a file-transfer peer. Clear them here,
+            // mirroring the terminal/view-camera branches. (Screen capture/screenshot has no flag and is
+            // confined separately by the AuthConnType guard in on_message.) `clipboard`/`file`/`audio`
+            // stay, so the file-clipboard and legitimate file-transfer paths keep working.
+            self.keyboard = false;
+            self.block_input = false;
+            self.privacy_mode = false;
             let dir = if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
                 &dir
             } else {
@@ -2030,6 +2041,48 @@ impl Connection {
             // a tunnel connection rather than mis-dispatch it as input.
             if self.port_forward_socket.is_some() {
                 return true;
+            }
+            // CVE-2026-58056 / CWE-863 (Appendix C #24): confine desktop INPUT and DISPLAY
+            // capture/control to the session's AuthConnType, not the broad `self.authorized` state.
+            // Upstream gates these on per-capability flags, and a FileTransfer login (unlike
+            // terminal/view-camera) never cleared them — so a peer authorized only for FileTransfer
+            // could inject input and capture the screen. Here input is Remote-only, and desktop
+            // capture/control is Remote-or-ViewCamera (view-camera legitimately drives its own camera
+            // displays — handle_switch_display/capture_displays have `view_camera` branches). All other
+            // message families (file transfer, clipboard, chat, options, audio, …) are unaffected, so a
+            // real FileTransfer session keeps working. This is the allowlist-keyed-by-AuthConnType the
+            // finding's own fix direction calls for; the per-handler view-camera guards below stay as
+            // secondary defense.
+            {
+                let is_remote_input = matches!(
+                    &msg.union,
+                    Some(message::Union::MouseEvent(_))
+                        | Some(message::Union::PointerDeviceEvent(_))
+                        | Some(message::Union::KeyEvent(_))
+                );
+                let is_desktop_capture = match &msg.union {
+                    Some(message::Union::ScreenshotRequest(_)) => true,
+                    Some(message::Union::Misc(m)) => matches!(
+                        &m.union,
+                        Some(misc::Union::SwitchDisplay(_))
+                            | Some(misc::Union::CaptureDisplays(_))
+                            | Some(misc::Union::ToggleVirtualDisplay(_))
+                            | Some(misc::Union::TogglePrivacyMode(_))
+                            | Some(misc::Union::RefreshVideo(_))
+                            | Some(misc::Union::RefreshVideoDisplay(_))
+                            | Some(misc::Union::ChangeResolution(_))
+                            | Some(misc::Union::ChangeDisplayResolution(_))
+                            | Some(misc::Union::RestartRemoteDevice(_))
+                    ),
+                    _ => false,
+                };
+                if (is_remote_input && !self.is_authed_remote_conn())
+                    || (is_desktop_capture
+                        && !self.is_authed_remote_conn()
+                        && !self.is_authed_view_camera_conn())
+                {
+                    return true;
+                }
             }
             match msg.union {
                 #[allow(unused_mut)]

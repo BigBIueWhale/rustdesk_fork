@@ -12,11 +12,10 @@ at `4eb6912`.
 This is an **AI-conducted expert review** performed by **Claude Opus 4.8**, engaged as the
 R-V3 cryptographer. It is rigorous — it includes an *independent* byte-level reproduction of
 the construction and first-principles protocol analysis — and it found and drove the
-resolution of real defects. It is nonetheless a **single-reviewer** review. It does **not**
-replace, and is not equivalent to, the multi-party, decades-deep third-party scrutiny that
-SSH's channel crypto enjoys. **A traditional third-party (human firm) audit remains
-recommended as defense-in-depth before betting an internet-exposed, root-capable box on this
-code.** This report is the honest record of what was and was not covered.
+resolution of real defects. It is nonetheless a **single-reviewer** review, and is not
+equivalent to the multi-party, decades-deep scrutiny that SSH's channel crypto enjoys. This
+report is the honest record of what was and was not covered; the residual it names is the
+operator's informed risk to accept.
 
 ## Verdict
 
@@ -107,8 +106,8 @@ fork meets or exceeds SSH-password-auth; the residual axis where SSH leads is *m
 
 ## Scope & limitations (what this audit is not)
 
-1. **Single reviewer, AI-conducted** (see Provenance). A second independent — ideally traditional
-   third-party — review is recommended before exposed operation.
+1. **Single reviewer, AI-conducted** (see Provenance) — one model's assessment, not a
+   multi-party review.
 2. **Timing/side-channels are covered at the type level, not empirically.** No serious
    dudect/ctgrind campaign on target hardware was run (and is argued low-value here, since the tag
    compare is dominated by the HMAC recompute). Power/cache/fault channels were not assessed.
@@ -127,9 +126,9 @@ fork meets or exceeds SSH-password-auth; the residual axis where SSH leads is *m
 The mathematics is correct and the protocol composition is sound. R-V3's substance — an
 independent expert review of the §10.4 construction, the state machine, the constant-time paths,
 and the KDF/secretbox parameters, with findings resolved in writing and in code — is satisfied.
-No cryptographic defect blocks production. The one standing recommendation is a **second,
-independent (ideally third-party human) audit** as defense-in-depth for an internet-exposed,
-root-capable deployment.
+No cryptographic defect blocks production. The residuals above — single-model review,
+trusted primitives, no formal proof, type-level timing — are the honest boundary of this
+audit and the operator's informed risk to accept.
 
 *Verification artifacts:* `scripts/verify.sh` (all gates green — KATs, wire handshake, main-crate
 compile, R-P12 gate), `scripts/audit.sh` (green), `libs/pake` (16 passed / 1 ignored; the

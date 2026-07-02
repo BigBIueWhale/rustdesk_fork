@@ -255,8 +255,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   the derived Argon2id PRS), F-2 (constant-time gate added to verify.sh + ignored dudect
   probe), F-3 (deps already resolved in-tree). **HONEST CAVEAT:** this was an AI-conducted
   (Claude Opus) SINGLE-reviewer review — rigorous, but not the multi-party/decades
-  third-party scrutiny SSH has; a traditional third-party human audit is still
-  recommended as defense-in-depth before exposed operation.
+  third-party scrutiny SSH has (the honest boundary of this audit; scope + limitations in
+  the report).
 - **Crypto protocol-logic audit — ✅ PERFORMED 2026-07-01; VERDICT SOUND.** A
   dedicated adversarial pass over the STATE-MACHINE / KEY-DISCIPLINE that KATs do
   not cover (both endpoints' keying paths traced in source): confirm-before-key
@@ -279,8 +279,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   memory-hard PRS; (DiD-3) the host-proof signs `DSI‖sid‖CI‖Ya‖Yb` (not the literal
   ISK) but is key-bound because it travels encrypted as the first post-key frame with
   session-unique CPace-authenticated `sid/Ya/Yb` (test `r_s17_host_proof_binds_pk_to_the_session`).
-  The R-V3 independent expert review (above) is now DONE (2026-07-02, docs/CRYPTO-AUDIT-2026-07-02.md);
-  a traditional third-party human audit remains recommended as defense-in-depth.
+  The R-V3 independent expert review (above) is now DONE (2026-07-02, docs/CRYPTO-AUDIT-2026-07-02.md).
 - **Local IPC/CM authorization audit — ✅ PERFORMED 2026-07-01; VERDICT SOUND.** A
   dedicated adversarial pass over the LOCAL trust boundary (a hostile same-host
   process — foreign-uid or same-uid) traced the accept→authz→dispatch on every one of
@@ -393,13 +392,12 @@ The requirements snapshot reviewed in prior passes (2026-07-01 completion review
 HEAD 358a4b9) was `67dbbba4…`. On 2026-07-02 the spec was updated to reflect the R-V3
 independent expert review: the §11 caveat, the SSH-bar maturity row, acceptance #6, and
 the R-V3 body were flipped from "not independently audited" to "reviewed 2026-07-02,
-findings resolved — docs/CRYPTO-AUDIT-2026-07-02.md; a traditional third-party audit still
-recommended." This is an **audit-status disclosure update only** — no normative or security
+findings resolved — docs/CRYPTO-AUDIT-2026-07-02.md." This is an **audit-status disclosure update only** — no normative or security
 requirement changed, and the native-codec-watch ledger is re-confirmed valid against it.
 The current snapshot (matching the `scripts/native-codec-watch.sh` pin) is:
 
 ```text
-0b1eb5506f2a99acc9db1d53d50411e3a7d0342098768c8f904061a129cc50c9  requirements.html
+311aa4f9dd6c7a825a10203417b81e096a5773eaacbe29d658ea957efff1820b  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

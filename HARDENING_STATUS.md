@@ -78,15 +78,26 @@ upstream decoupled per-capability booleans / broad `self.authorized`. **The name
 CVE-2026-58056 (a FileTransfer session injecting input + capturing the screen — Appendix C #24) is
 FIXED and gated** (`0150cde`): an `AuthConnType` allowlist in `on_message` (input=Remote-only,
 desktop-capture=Remote|ViewCamera) + a FileTransfer capability-flag clear. **The full structural
-closure is IN PROGRESS** — deriving all capability booleans from `AuthConnType` at authorization
-time (before any peer login-option is applied), plus keying the remaining flag-gated sinks the
-message allowlist does not cover — host clipboard-*text* write (Remote-only; the FileTransfer
-*file*-clipboard stays), peer→host audio playback (Remote-or-active-voice-call), `block_input`,
-privacy toggle, remote-restart — on **every** platform (the sinks' cfg-gating differs:
-`block_input` is Windows-real / Linux-stub, virtual-display/privacy are Windows-cfg). A dedicated
-Opus sweep for any remaining instance of the shape is planned. Not a §2 exposure (all instances
-are moot for the trusted password-holder); it is least-privilege coherence the actually-secure
-fork carries as a MUST.
+closure is DONE and gated** (`3afc51b`, after a four-agent all-platform research pass): a
+`confine_capabilities_to_conn_type` derivation keys every capability boolean off the `AuthConnType`
+at authorization time — *before* any peer login-option is applied, closing a real login-time ordering
+window (a FileTransfer peer's `LoginRequest.option{block_input:Yes}` fired a Windows console-freeze
+once before the old in-branch clear landed); the `on_message` guard is a 3-way allowlist (input +
+remote-*control* reboot/privacy/virtual-display = Remote-only; desktop *capture* = Remote|ViewCamera);
+and the flag-gated sinks the guard's message set misses now key on `AuthConnType`/`voice_calling` —
+host clipboard-*text* write (Remote-only; the FileTransfer *file*-clipboard stays), peer→host audio
+(voice-call only), cursor/window capture + whiteboard spawn + the Windows RDP session-switch
+(Remote-only). The research surfaced **two instances beyond the known set**, both closed: a **HIGH**
+outbound host-audio-*capture* by FileTransfer/Terminal (the audio analog of the CVE's screen capture —
+closed by deriving `self.audio` from `AuthConnType`, since the `audio_service` subscribe reads
+`audio_enabled()`), and cursor-position/window-focus capture. Validated: docker `cargo check` (both
+feature sets), `verify.sh` all-green incl. the generalized R-S19 gate (asserts derivation-before-options
++ the 3-way guard + the sink gates), `apple-conform-check` PASS (iOS/macOS source-conformant). The
+Windows-cfg `SelectedSid` edit is type-trivial (the R-B2 Windows build re-prove confirms it). Deliberately
+left: `MessageQuery` display-topology metadata (accepted low-severity, no host action). Not a §2 exposure
+(all instances moot for the trusted password-holder); least-privilege coherence the actually-secure fork
+carries as a MUST. **A final dedicated Opus sweep of the whole post-fix tree for any remaining instance
+of the shape is the closing step.**
 
 **R-B2 re-proven on all three platforms at HEAD `5e03011` (2026-07-02) — OFFICIAL-RELEASE BUILD**,
 after the R-V3 crypto-audit commits (`4eb6912`/`a566bb5`/`5e03011`): the **independent CPace PAKE

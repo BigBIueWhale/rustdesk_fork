@@ -448,7 +448,7 @@ native-codec-watch ledger is re-confirmed valid against each.
 The current snapshot (matching the `scripts/native-codec-watch.sh` pin) is:
 
 ```text
-de3bb8556c31a086693b426da15c9c831bc108e3ec8bfa92aeda908d910a47ed  requirements.html
+7e9ec1d49a7e38cf9953f87afe8b22636e5ac4466f0ad5ba6daa5bca837f150b  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

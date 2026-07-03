@@ -41,6 +41,16 @@ wrap, and the descriptor serializer truncates an over-long name with no
 build is reproducible for Debian/Android/Windows (R-B2), and the Apple
 SDK-free source-conformance gate covers the macOS/iOS code paths (R-R2).
 
+**INCOMPLETE (2026-07-03) — the safety verdict above stands, but the GUI/coherence layer is
+NOT finished.** A full six-audit sweep found the cryptographic/transport core clean (0 security
+hazards) yet the surrounding GUI and plumbing structurally incomplete: **~80 orphaned-scaffolding
+sites left by the excisions, 7 user-visible correctness defects, and 1 live latent race.** Most
+damaging: the box's own R-S17 fingerprint renders BLANK on every GUI screen, and the first-contact
+pin dialog HANGS (so a fresh Android/iOS install can connect to nothing). This is R-G1
+"remove-don't-grey" debt, not a safety gap — the full itemized backlog is the
+`## Incomplete — the excision-vestige backlog` section below and is owed work before this tree can
+honestly be called complete.
+
 **§20 TCP active-router audit (2026-06-29).** The full TCP transport — both the
 controlled (responder) and viewer (initiator) sides — was audited under the
 *strongest* network-adversary model: both peers connected through a fully
@@ -465,6 +475,237 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `"Click to upgrade"`/`"Auto update"` translation entries in `src/lang/*.rs`.
   None affects behavior or opens a security path (reviewer + local re-confirm);
   each is a candidate for a later focused excision carrying its own build re-prove.
+  **⤷ NOTE: this bullet sampled ~5 items; it is SUPERSEDED by the `## Incomplete`
+  section immediately below (2026-07-03 full sweep = ~80 sites, incl. 7 user-visible
+  defects + 1 live race this earlier note missed).**
+
+## Incomplete — the excision-vestige backlog + the R-S17 pin-GUI defects (owed work, NOT "make-it-work")
+
+**This is the fork's single largest open correctness debt.** On 2026-07-03, six independent
+Opus-1M code audits swept the entire auth / identity / online-status / connection-manager /
+server-config / viewer-peer-list surface, and every load-bearing claim was re-verified against
+source by hand. The verdict is blunt: **the excisions are behaviorally sound but structurally
+incomplete.** Every user-visible control and every security path was correctly neutralized and
+fails closed — the sweep found **zero security hazards and zero peer-reachable bugs**, so the
+Current Verdict above stands on *safety*. But the excisions ripped out backends and buttons while
+leaving a large stratum of **orphaned plumbing**: dialogs that can never open, FFI shims with no
+caller, IPC enum variants nothing sends, state flags stuck forever in one branch, and helpers that
+return the semantic opposite of their name. **~80 distinct dead-or-wrong sites remain, collapsing to
+~15 root excisions** (rendezvous/`register_pk`, relay, 2FA/OTP, TOFU→R-P1 salt-is-the-pin,
+account/address-book, QR, numeric-ID→direct-address, socks/proxy, attended-accept, permission-widener).
+
+**None of this is negotiable under the fork's own doctrine.** "Excise, don't disable," **R-G1
+"remove, don't grey,"** and **R-S12 "no defaulted-off-but-present"** are the whole point of this
+project — and they apply one level down, to plumbing, exactly as they apply to visible toggles. A
+codebase that advertises itself as secure-by-assertion and "correct as if written correctly from the
+first place" is **not finished** while it carries a rendezvous signed-id verifier nothing calls, a
+two-factor-auth pipe wired end-to-end behind a trigger that never fires, and a "Password Required"
+dialog whose OK button authenticates nothing. Dead code that *looks alive* is worse than a stale
+comment: it makes the next auditor reason about a data flow that does not exist. **Treat the four
+tiers below as the authoritative to-do list.** Nothing here is reachable by a user or a peer as a
+hazard, so none is a regression — but every one is work owed before this tree can honestly be called
+complete.
+
+### Tier 1 — user-visible correctness defects (a user SEES these; fix first)
+
+- **[I-1] The box's own R-S17 fingerprint renders BLANK on every GUI screen — the worst item in
+  this document.** `ui_interface::get_fingerprint` gates the value on `Config::get_key_confirmed()`
+  (desktop via `src/ipc.rs:847`, mobile via `src/ui_interface.rs:1090`), but
+  `Config::set_key_confirmed(true)` is called **nowhere in the entire tree** — the only thing that
+  ever flipped it true was the *excised* rendezvous `register_pk` acknowledgement (only
+  `set_key_confirmed(false)` survives: `ipc.rs:870`, `ipc.rs:1519`, `ui_interface.rs:1299`; `= true`
+  appears solely in a config-parser unit test). The flag is therefore permanently false and the
+  fingerprint shows **empty** on the desktop home board
+  (`flutter/lib/desktop/pages/desktop_home_page.dart:214`), the mobile server page
+  (`flutter/lib/mobile/pages/server_page.dart:357`), and mobile settings
+  (`flutter/lib/mobile/pages/settings_page.dart:459`). This guts the trust model in the one place it
+  matters most: R-S17 is "the operator reads the box's fingerprint out-of-band and the viewer pins
+  it," and the screen meant to *show* that fingerprint shows nothing. Only the headless
+  `--get-fingerprint` still works (it computes the fp directly, ungated) — which is exactly why the
+  deployed `--server` box appears fine while every GUI is broken. **FIX (opinionated):** DELETE the
+  gate; do NOT "set the flag true." A direct-IP fork with no rendezvous has nothing to confirm, and
+  the self-generated Ed25519 key is *always* present (`Config::get_key_pair()` generates it on first
+  read). Return `pk_to_fingerprint(get_key_pair().1)` unconditionally at both sites, and excise the
+  whole `key_confirmed`/`keys_confirmed` concept (also `OnlineStatus.confirmed`/`ConfirmedKey`, Tier 4).
+
+- **[I-2] The first-contact pin dialog HANGS; on mobile it means the app connects to NOTHING, ever.**
+  Because the CPace password (PRS) is Argon2id-salted with the pinned host key (R-P1), the viewer
+  bails *before keying* when there is no pin (`src/client.rs:347`) — the host key is never received,
+  so `pending_host_pk` stays `None`. The shared Flutter first-contact dialog `hostNotPinnedDialog`
+  (`flutter/lib/common/widgets/dialog.dart:586`, desktop+mobile) then shows a **"Trust"** button
+  whose `bind.sessionPinHost` → `set_pin_host_and_reconnect` (`src/ui_session_interface.rs:1319`)
+  finds `pending_host_pk == None`, logs "refusing," and returns **without reconnecting** — while the
+  dialog has already thrown up a `showLoading("Connecting…")` spinner. Net: the spinner hangs forever,
+  no fingerprint is shown, and there is no field to type one into. The dialog is a vestige of the
+  pre-R-P1 trust-on-first-use design; its own comment ("the box keyed… show the fingerprint")
+  describes a flow that can no longer happen. Desktop users can escape via the `--pin-host` CLI;
+  **Android/iOS have no CLI and no deep-link/QR/import pin channel, so a fresh mobile install
+  literally cannot connect to any host.** **FIX:** replace the dead "Trust" with a fingerprint-ENTRY
+  dialog (paste the out-of-band fingerprint → a new FFI `session_pin_host_by_fingerprint(session_id,
+  hex)` → `host_pin::set_pinned_pk` → reconnect), mirroring the working `hostMismatchDialog`
+  text-field pattern (`dialog.dart:641`). That is the only honest UI for a no-TOFU design.
+
+- **[I-3] A legitimately re-keyed host dead-ends the viewer in an eternal "Password Required" loop.**
+  If the box is wiped and re-provisioned (new Ed25519 key, password re-set → `password_prs`
+  re-derived under the new key, read at `src/server.rs:426`), a viewer still pinned to the OLD key
+  derives a PRS under the old key → the salts differ → **CPace fails first** (`src/client.rs:370`),
+  and that failure is routed to the pre-keying password prompt (`src/client.rs:3074`, "Password
+  Required"). Re-typing the correct password re-derives the same non-matching PRS → identical failure
+  → infinite loop, with **no hint** the real cause is a changed host key. The elaborate
+  `hostMismatchDialog` re-pin UI is **unreachable** here (it requires CPace to *succeed* yet the proof
+  key to differ — a contrived stale-PRS corruption, never a normal re-key), and even when reached it
+  does **not** restore connectivity (re-pinning rewrites known_hosts but does not re-derive the host's
+  PRS — only a host-side `--password` heals it). **FIX:** route "CPace handshake failed" to a message
+  naming BOTH causes ("wrong password OR the box's host key changed — re-verify the fingerprint
+  out-of-band and re-pin"), and delete the near-dead mismatch machinery (`client.rs:400` branch +
+  `hostMismatchDialog`) or make a key change genuinely distinguishable.
+
+- **[I-4] A dead "Sort by → Status" option in the peer menu.** `PeerSortType.status = 'Status'`
+  (`flutter/lib/common/widgets/peers_view.dart:28`) is offered in the Favorites sort menu; its
+  comparator `peers.sort((p1, p2) => p1.online ? -1 : 1)` (`peers_view.dart:389`) reads `peer.online`,
+  which is **always false** (the rendezvous online query is a no-egress stub, Tier 4), so the sort is
+  a visible no-op. **FIX:** remove `status` from `PeerSortType.values`.
+
+- **[I-5] Stale numeric-ID-era labels "Remote ID" / "Search ID" render literally.**
+  `PeerSortType.remoteId = 'Remote ID'` (`peers_view.dart:25`) and the "Search ID" hint
+  (`flutter/lib/desktop/pages/peer_tab_page.dart:727`) are absent from `src/lang/en.rs`, so they
+  display verbatim — numeric-rendezvous-ID wording in a fork whose identity is a direct address.
+  **FIX:** relabel to "Remote address" / "Search address."
+
+- **[I-6] There is NO saved-credential indicator anywhere, and the one that exists is misdesigned.**
+  The peer-card key/lock badge `_shouldBuildPasswordIcon` (`flutter/lib/common/widgets/peer_card.dart:163`)
+  is gated on `currentTab == PeerTabIndex.ab.index` — the address-book tab, structurally disabled
+  (`isEnabled = [true,true,false,false]`) — so it **never renders**, and it reads the old shared-AB
+  `peer.password` field rather than the per-address PRS the fork actually stores. **FIX:** re-gate on
+  `mainPeerHasPassword(peer.id)` for the recent/favorite tabs so the lock reflects the real PRS.
+
+- **[I-7] iOS advertises camera + photo-library access "to scan QR codes" for a scanner that was
+  excised.** `flutter/ios/Runner/Info.plist:73-76` still declares `NSCameraUsageDescription`
+  ("…to scan QR codes") and `NSPhotoLibraryUsageDescription` ("…to get QR codes from image"), but the
+  QR scanner (`scan_page.dart`) and its `rustdesk://config` import backend are gone. A straight R-G1
+  "defaulted-off-but-present" trap and an **App-Store-review privacy red flag** — permissions
+  requested for a capability that does not exist. **FIX:** delete both plist keys.
+
+### Tier 2 — a LIVE latent bug (not merely dead code)
+
+- **[I-8] `--get-fingerprint` on a keyless box can make the operator pin a PHANTOM key.**
+  `Config::get_key_pair()` persists a freshly-generated key via a **detached** background thread
+  (`libs/hbb_common/src/config.rs:1160`); `--get-fingerprint` (`src/core_main.rs:390`) prints the
+  fingerprint and immediately exits — potentially **before** that store commits. The next process then
+  generates a *different* key and the box uses it, while the operator has pinned the printed
+  (never-persisted) key → CPace fails forever. `set_permanent_password` is immune (it force-commits
+  the key synchronously, `config.rs:1357-1370`); `--get-fingerprint` is not. The window is narrow
+  (only on a brand-new box, before `--service`/a password exists — the deployed haggai box is
+  unaffected because the server comes up first), but the documented onboarding order is exactly "read
+  the fingerprint, then pin it," so this is a real footgun. **FIX:** have `--get-fingerprint`
+  synchronously commit the key if it just generated one (or refuse on a keyless box with an actionable
+  "set the password / start the service first" error).
+
+### Tier 3 — "live-looking dead" code (delete on sight — it actively lies to the next auditor)
+
+- **[I-9] `enterPasswordDialog` is a normal-looking "Password Required" dialog that authenticates
+  NOTHING.** Its submit calls `gFFI.login()`, which sends a passwordless `LoginRequest` the host
+  authorizes purely by CPace (`src/server/connection.rs:2000`). It is unreachable — the host never
+  sends `LOGIN_MSG_PASSWORD_EMPTY`, and the only `LOGIN_MSG_PASSWORD_WRONG` send sits behind
+  `if !self.stream.is_secured()` (`connection.rs:2007`), a branch that cannot execute because login is
+  only reached on a keyed stream (R-A1). But it *looks* completely live
+  (`flutter/lib/common/widgets/dialog.dart:556`) — that is the danger. Do NOT confuse it with the LIVE
+  pre-keying `enterConnectPasswordDialog`. **FIX:** delete `enterPasswordDialog` and the non-`preKeying`
+  branch of `_connectDialog`; delete the dead `input-password`/`re-input-password` msgbox arms
+  (`client.rs:2923-2929`) and their `src/cli.rs` handlers.
+
+- **[I-10] A connection-manager `SwitchPermission` receiver whose comment asserts a data flow that
+  does not exist.** `src/ui_cm_interface.rs:591` handles a "privacy-mode rollback"
+  `Data::SwitchPermission` from the connection, and its comment states "the backend currently sends
+  SwitchPermission back to CM…" — but **nothing in `connection.rs`/`libs` ever constructs that
+  message**; the only senders are the CM→connection direction, and `connection.rs` has no
+  `SwitchPermission` arm (it falls to `_ => {}`). **FIX:** delete the receiver arm and the false comment.
+
+- **[I-11] The `enable_trusted_devices` two-factor pipe is wired end-to-end behind a trigger that
+  never fires.** Wire field (`libs/hbb_common/protos/message.proto:152`) → `REQUIRE_2FA` reader
+  (`src/client/io_loop.rs:1590`) → `LoginConfigHandler` field (`src/client.rs:1362`) → getter
+  (`src/ui_session_interface.rs:1382`, **zero native callers**): a fully intact, fully disconnected
+  pipe — the host never sets the flag and never sends `REQUIRE_2FA` (the responder 2FA gate is
+  excised, `connection.rs:1073`). Same cluster: `LOGIN_MSG_2FA_WRONG`/`REQUIRE_2FA` consts
+  (`client.rs:114`); the `input-2fa` msgbox emitter that **survives on the Rust side though Dart has
+  no handler** (`client.rs:2938` — a half-excision); `trust-this-device` (read `client.rs:2932`, never
+  set to "Y"); and the never-instantiated Dart widgets `Dialog2FaField`/`DialogEmailCodeField`/
+  `DialogVerificationCodeField` (`dialog.dart:204/278/342`). **FIX:** excise the whole
+  2FA/trusted-devices cluster on both sides and drop the proto field.
+
+- **[I-12] `IdPk` + `decode_id_pk` — dead rendezvous crypto.** `message IdPk { id; pk }`
+  (`libs/hbb_common/protos/message.proto:38`) and `decode_id_pk` (`src/common.rs:1121`), which verified
+  a rendezvous server's signature over an id→public-key binding, have **zero callers** and `IdPk` is
+  never constructed (the one `server.rs` reference is a comment). **FIX:** delete both.
+
+### Tier 4 — inert dead scaffolding (~65 sites; excise by root cause, each with its own build re-prove)
+
+Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never contain:
+
+- **Rendezvous online-status cluster (always-0 / always-offline):** the `ONLINE` latency map +
+  `get_online_state()` are permanently 0 because `update_latency`/`reset_online` are never called
+  (`config.rs:995/999`); `status_num` and the mobile `_connectStatus` getter feed off it and are dead;
+  the whole viewer peer-online pipeline — `peer.online`, `_updateOnlineState`, `_cbQueryOnlines`, and a
+  **300 ms poll loop with a deleted payload** (`peers_view.dart:312`, `peer_model.dart`) — spins
+  forever behind an already-invisible dot (`getOnline()` → `SizedBox.shrink()`). Excise the map, the
+  loop, and the pipeline.
+- **`using_public_server()` returns the semantic OPPOSITE of its name** —
+  `get_custom_rendezvous_server(...).is_empty()` (`src/common.rs:1133`) is always `true` in a fork
+  with no rendezvous, so it reports "using the public server" when there is no server at all; its
+  callers (a quality cap, a peer-loop cadence) are inert. Delete the function + FFI.
+- **Viewer `direct`/relay residue:** `direct` is hardcoded `Some(true)` and
+  `direct_failures`/`set_direct_failure` are dead (`client.rs:314`); the `allow_more` quality cap, the
+  `retry_for_relay` misnomer, and the `getConnectionText` "Relay"→"TCP" branch are unreachable;
+  `set_connection_type`'s `is_secured`/`direct` args are sent always-true and ignored by Dart.
+  Simplify to unconditionally-direct.
+- **Dead FFI exports (zero Dart callers):** `main_test_if_valid_server`, `main_get_proxy_status`,
+  `main_handle_relay_id`, `main_resolve_avatar_url` (`src/flutter_ffi.rs`). Drop the exports.
+- **Dead Rust backends:** the socks/proxy module (`set_socks`/`get_socks`/`get_proxy_status`, not
+  flutter-exported, no actuator), `change_id`/`change_id_shared`, the ipc `rendezvous_server(s)` query
+  answer (`ipc.rs:838`), and the `resolve_avatar_url`/`get_api_server` builder (resolves empty). Excise.
+- **Dead Dart option constants:** `kOptionHideServerSetting`, `kOptionHideProxySetting`,
+  `kOptionDisableChangeId`, `kOptionAllowDeepLinkServerSettings` (`flutter/lib/consts.dart:171-187`) —
+  zero consumers. Delete.
+- **The attended-accept IPC pipeline (8 sites, A1–A8):** because `approve-mode` is pinned to
+  `"password"` (`config.rs:3176`), every connection is authorized before the CM sees it, so
+  `buildUnAuthorized`, `showLoginDialog`, the `cmLoginRes`/`authorize()` accept path, and the
+  `Data::Authorize` IPC variant are all dead. Excise the pipeline.
+- **The runtime permission-widener IPC pipeline (5 sites, B1–B5):** the CM permission chips are
+  read-only (`canModifyPermission=false`) and `connection.rs` has no `SwitchPermission` handler (dead
+  sink), so `cm_switch_permission`/`switch_permission`/`switch_permission_all` and the
+  `Data::SwitchPermission` variant are dead. Excise.
+- **Misc:** the unshown my-numeric-ID machinery (`server_model.dart` `_serverId`/`fetchID`, fetched
+  and never rendered); the serialized-but-unread `forceAlwaysRelay`/`sameServer`/`recording`/
+  `block_input`/`restart` fields; `reconnect(_forceRelay)`; the `formatID` numeric-grouping
+  passthrough; the `switch_sides()` empty stub; `logOut(apiServer)`; and the `--get-id` CLI (a
+  meaningless numeric ID in the direct-IP model). Delete.
+
+### Verified CLEAN — do NOT re-open these (keeps the backlog honest)
+
+The security-critical excisions were done correctly and must not be re-litigated: the `LoginRequest`
+proto is stripped to session metadata (password/os_login/hwid fields reserved+deleted,
+`connection.rs:2000`); the top-level auth message types (`SignedId`, `PublicKey`, `Auth2FA`,
+`SwitchSides`, `OSLogin`, `Hash`) are absent; **elevation/OS-login proto fields are retired, nothing
+dangles on the wire** (`elevation_request`/`_response`/`portable_service_running`, `message.proto:853`
+— this closes the old "R-X9 Windows-deferred" worry: there is no dangling handler); `get_key` is
+pinned to `RS_PUB_KEY` ignoring any `option("key")` override (regression-tested, `common.rs:1500`);
+the deep-link `config`/`password` write authorities return `null` (`common.dart:2352`); the settings
+surface carries no id/relay/key/proxy/whitelist row; voice-call accept gates host audio (R-S19); the
+status dot was correctly rewired to a service-listening indicator ("Listening on :21118"); and
+"Remember/Forget password" are PRS-coherent (both check/clear `password` and `password_prs`).
+(Corrected stale note: `maxTabCount` is **4**, not the "5→3" in an earlier record; all parallel tab
+arrays are consistent at 4, no out-of-bounds risk.)
+
+### Discipline for closing this
+
+Excise by root cause, not by scattered line; each removal carries its own **R-B2 reproducible-build
+re-prove** (Debian/Android/Windows double-build A==B) and re-runs `verify.sh` plus the out-of-loop
+gates (`audit.sh`, `dart-audit.sh`, `apple-conform-check.sh`, the smoke harness). Any code-audit help
+uses **Opus-1M subagents told to research extensively** — the recurring failure mode in this very
+sweep was agents trusting a stale comment (e.g. "the dialog shows the fingerprint" — it does not), so
+every claim must be verified against source. Tiers 1–2 are the priority (a user sees them / a box can
+mis-pin); Tiers 3–4 are the coherence work that lets this tree finally read as
+correct-from-the-first-place. This section supersedes the "Inert dead-code leftovers" sample above.
 
 The requirements snapshot reviewed in prior passes (2026-07-01 completion review at
 HEAD 358a4b9) was `67dbbba4…`. On 2026-07-02 the spec was updated to reflect the R-V3

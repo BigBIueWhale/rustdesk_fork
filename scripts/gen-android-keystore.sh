@@ -17,9 +17,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
-OUT_JKS="${1:?usage: gen-android-keystore.sh <out.jks> <pass-file> [alias]}"
-PASS_FILE="${2:?usage: gen-android-keystore.sh <out.jks> <pass-file> [alias]}"
+# Default to the standard location build-android.sh / build-release.sh read (lib.sh); pass explicit
+# paths only to keep the key elsewhere. So the one-time setup is simply: scripts/gen-android-keystore.sh
+OUT_JKS="${1:-$DEFAULT_ANDROID_KEYSTORE}"
+PASS_FILE="${2:-$DEFAULT_ANDROID_KEYSTORE_PASS_FILE}"
 ALIAS="${3:-rustdesk-fork}"
+mkdir -p "$(dirname "$OUT_JKS")" "$(dirname "$PASS_FILE")"
 IMAGE="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"   # ships the JDK/keytool
 
 require_cmd docker
@@ -61,7 +64,12 @@ docker run --rm --network=none \
     '
 
 log "OK — keystore written + verified: $OUT_JKS (alias '$ALIAS')"
-log "Now build the signed APK with:"
-log "  export ANDROID_KEYSTORE='$OUT_JKS' ANDROID_KEYSTORE_PASS_FILE='$PASS_FILE'${3:+ ANDROID_KEY_ALIAS='$ALIAS'}"
-log "  scripts/build-android.sh    # (or scripts/build-release.sh for all platforms)"
+if [ "$OUT_JKS" = "$DEFAULT_ANDROID_KEYSTORE" ] && [ "$PASS_FILE" = "$DEFAULT_ANDROID_KEYSTORE_PASS_FILE" ]; then
+    log "It is at the DEFAULT location — just build, NO env vars needed:"
+    log "  scripts/build-release.sh          # all platforms  (or scripts/build-android.sh for the apk only)"
+else
+    log "It is at a NON-default location — point the build at it:"
+    log "  export ANDROID_KEYSTORE='$OUT_JKS' ANDROID_KEYSTORE_PASS_FILE='$PASS_FILE'${3:+ ANDROID_KEY_ALIAS='$ALIAS'}"
+    log "  scripts/build-release.sh"
+fi
 log "KEEP $OUT_JKS AND $PASS_FILE SAFE + BACKED UP — they are the permanent app identity (R-B2)."

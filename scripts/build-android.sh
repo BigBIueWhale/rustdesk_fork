@@ -29,8 +29,8 @@ export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$SOURCE_DATE_EPOCH_PIN}"
 # identity to the signing key, so a stable key gives clean in-place upgrades. It is
 # a SECRET: kept out of the repo and the build image, fed in only at sign time,
 # mounted read-only, password via FILE (never env/argv — both leak via /proc).
-KEYSTORE="${ANDROID_KEYSTORE:-}"          # path to the .jks, supplied by the operator
-KEYSTORE_PASS_FILE="${ANDROID_KEYSTORE_PASS_FILE:-}"
+KEYSTORE="${ANDROID_KEYSTORE:-$DEFAULT_ANDROID_KEYSTORE}"                   # defaults to .harness-state/android-keystore/ (lib.sh); no env var needed
+KEYSTORE_PASS_FILE="${ANDROID_KEYSTORE_PASS_FILE:-$DEFAULT_ANDROID_KEYSTORE_PASS_FILE}"
 KEY_ALIAS="${ANDROID_KEY_ALIAS:-rustdesk-fork}"
 
 preflight() {

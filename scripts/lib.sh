@@ -25,6 +25,13 @@ REPO_ROOT="$(cd "$LIB_DIR/.." && pwd)"
 ONLINE_DIR="${ONLINE_DIR:-$REPO_ROOT/online}"
 PINS_FILE="$LIB_DIR/pins.env"
 
+# The stable R-B2 Android signing key lives here by DEFAULT (a gitignored secret under .harness-state,
+# generated ONCE by gen-android-keystore.sh, reused for every release). build-android.sh + build-release.sh
+# read these paths by default, so a bare `bash scripts/build-release.sh` needs NO env vars. Override with
+# ANDROID_KEYSTORE / ANDROID_KEYSTORE_PASS_FILE only to point at a key kept somewhere else.
+DEFAULT_ANDROID_KEYSTORE="$REPO_ROOT/.harness-state/android-keystore/rustdesk-fork.jks"
+DEFAULT_ANDROID_KEYSTORE_PASS_FILE="$REPO_ROOT/.harness-state/android-keystore/pass"
+
 # ── Logging / failure ─────────────────────────────────────────────────────────
 log()  { printf '\033[0;36m[harness]\033[0m %s\n' "$*" >&2; }
 warn() { printf '\033[0;33m[harness:warn]\033[0m %s\n' "$*" >&2; }

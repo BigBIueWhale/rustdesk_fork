@@ -57,10 +57,12 @@ release_preflight() {
         [ -f "$SCRIPT_DIR/$s" ] || die "scripts/$s missing (corrupt checkout?)"
     done
     # Operator-supplied secrets: surface EVERYTHING missing here, not one failure three hours in.
-    [ -n "${ANDROID_KEYSTORE:-}" ] && [ -f "${ANDROID_KEYSTORE:-/nonexistent}" ] \
-        || die "ANDROID_KEYSTORE unset or not found — the signed APK needs the stable R-B2 key. Generate it ONCE with: scripts/gen-android-keystore.sh <out.jks> <pass-file>  then: export ANDROID_KEYSTORE=<out.jks> ANDROID_KEYSTORE_PASS_FILE=<pass-file>"
-    [ -n "${ANDROID_KEYSTORE_PASS_FILE:-}" ] && [ -f "${ANDROID_KEYSTORE_PASS_FILE:-/nonexistent}" ] \
-        || die "ANDROID_KEYSTORE_PASS_FILE unset or not found (the keystore password, supplied via file — never argv/env, R-B2)"
+    # The signed APK needs the stable R-B2 key; it DEFAULTS to .harness-state/android-keystore/ (lib.sh),
+    # the SAME default build-android.sh reads — so no env var is needed once the key is generated ONCE.
+    local ks="${ANDROID_KEYSTORE:-$DEFAULT_ANDROID_KEYSTORE}"
+    local ksp="${ANDROID_KEYSTORE_PASS_FILE:-$DEFAULT_ANDROID_KEYSTORE_PASS_FILE}"
+    [ -f "$ks" ]  || die "Android signing key not found at $ks — generate it ONCE (no args, writes the default): scripts/gen-android-keystore.sh"
+    [ -f "$ksp" ] || die "Android keystore password not found at $ksp — (re)generate the key: scripts/gen-android-keystore.sh"
     if [ "$DO_WINDOWS" = 1 ]; then
         [ -f "$SCRIPT_DIR/build-windows-vm.sh" ] || die "scripts/build-windows-vm.sh missing"
         [ -f "$REPO_ROOT/.harness-state/win11-golden.qcow2" ] \

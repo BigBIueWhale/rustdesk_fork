@@ -96,8 +96,22 @@ feature sets), `verify.sh` all-green incl. the generalized R-S19 gate (asserts d
 Windows-cfg `SelectedSid` edit is type-trivial (the R-B2 Windows build re-prove confirms it). Deliberately
 left: `MessageQuery` display-topology metadata (accepted low-severity, no host action). Not a §2 exposure
 (all instances moot for the trusted password-holder); least-privilege coherence the actually-secure fork
-carries as a MUST. **A final dedicated Opus sweep of the whole post-fix tree for any remaining instance
-of the shape is the closing step.**
+carries as a MUST. **The final dedicated all-platform Opus sweep is DONE** (`60f8904`): PART 1 confirmed
+the connection.rs fix is sound / not bypassable (cross-confirmed by multiple independent passes — SAS is
+Remote-gated, peer-elevation is proto-excised, the headless `--service` trust model holds); PART 2 found
+**four more edge instances of the same shape** the on_message dispatch didn't reach, all now closed with a
+`verify.sh` "R-S19 edge residuals" gate: (1) a **screenshot** cross-source leak — SCREENSHOTS was keyed by
+display index alone, so a concurrent Remote monitor loop could serve a ViewCamera peer a desktop frame
+(now keyed by `(VideoSource, idx)`); (2) the **viewer-side clipboard reciprocal** — a hostile peer in a
+non-default session the viewer opened could write the viewer's OS clipboard (now `is_default()`-gated,
+the viewer analog of `AuthConnType::Remote`); (3) the **Windows CLIPRDR→CM** forward was unconditional
+(now gated on the confined `self.clipboard && self.file`, removing a latent approve-mode-pin dependence);
+(4) **Android MediaProjection** fired for view-camera/terminal (now excluded in both the Dart and Kotlin
+gates). All moot under §2; validated via docker cargo check + verify.sh + apple-conform + dart-verify.
+Accepted low-severity residual (no host action/capability): `MessageQuery` display-topology metadata and
+the video-QoS metadata arms (`ClientRecordStatus`/`AutoAdjustFps`). Remaining: R-B2 all-3-platform build
+re-prove at this HEAD (a background build loop is handling it; the connection.rs/video_service.rs changes
+are in all builds, and the Windows/Kotlin edges are validated by the win-exe/apk builds).
 
 **R-B2 re-proven on all three platforms at HEAD `5e03011` (2026-07-02) — OFFICIAL-RELEASE BUILD**,
 after the R-V3 crypto-audit commits (`4eb6912`/`a566bb5`/`5e03011`): the **independent CPace PAKE

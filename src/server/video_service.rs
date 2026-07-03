@@ -81,7 +81,10 @@ lazy_static::lazy_static! {
     pub static ref VIDEO_QOS: Arc<Mutex<VideoQoS>> = Default::default();
     pub static ref IS_UAC_RUNNING: Arc<Mutex<bool>> = Default::default();
     pub static ref IS_FOREGROUND_WINDOW_ELEVATED: Arc<Mutex<bool>> = Default::default();
-    static ref SCREENSHOTS: Mutex<HashMap<usize, Screenshot>> = Default::default();
+    // R-S19: keyed by (video source, display index) — see set_take_screenshot. Keying by index
+    // alone let a concurrent Remote(monitor) capture loop fulfill a ViewCamera peer's screenshot
+    // request at the same index, leaking a desktop frame to a camera-only session.
+    static ref SCREENSHOTS: Mutex<HashMap<(VideoSource, usize), Screenshot>> = Default::default();
 }
 
 struct Screenshot {
@@ -196,7 +199,7 @@ impl VideoFrameController {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum VideoSource {
     Monitor,
     Camera,
@@ -537,8 +540,9 @@ fn run(vs: VideoService) -> ResultType<()> {
     };
 
     let display_idx = vs.idx;
+    let source = vs.source; // R-S19: screenshot requests are keyed by (source, display_idx)
     let sp = vs.sp;
-    let mut c = get_capturer(vs.source, display_idx)?;
+    let mut c = get_capturer(source, display_idx)?;
     #[cfg(windows)]
     if !scrap::codec::enable_directx_capture() && !c.is_gdi() {
         log::info!("disable dxgi with option, fall back to gdi");
@@ -694,7 +698,7 @@ fn run(vs: VideoService) -> ResultType<()> {
             Ok(frame) => {
                 repeat_encode_counter = 0;
                 if frame.valid() {
-                    let screenshot = SCREENSHOTS.lock().unwrap().remove(&display_idx);
+                    let screenshot = SCREENSHOTS.lock().unwrap().remove(&(source, display_idx));
                     if let Some(mut screenshot) = screenshot {
                         let restore_vram = screenshot.restore_vram;
                         let (msg, w, h, data) = match &frame {
@@ -723,7 +727,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                                     #[cfg(all(windows, feature = "vram"))]
                                     VRamEncoder::set_not_use(sp.name(), true);
                                     screenshot.restore_vram = true;
-                                    SCREENSHOTS.lock().unwrap().insert(display_idx, screenshot);
+                                    SCREENSHOTS.lock().unwrap().insert((source, display_idx), screenshot);
                                     _raii.try_vram = false;
                                     bail!("SWITCH");
                                 }
@@ -1316,9 +1320,13 @@ fn check_qos(
     Ok(())
 }
 
-pub fn set_take_screenshot(display_idx: usize, sid: String, tx: Sender) {
+// R-S19: key the screenshot request by (video source, display index), not the index alone, so a
+// ViewCamera peer's request is fulfilled ONLY by the camera capture loop and a Remote peer's only by
+// the monitor loop — a concurrent Remote(monitor) session can no longer serve a ViewCamera requester
+// a desktop screenshot at the same integer index.
+pub fn set_take_screenshot(source: VideoSource, display_idx: usize, sid: String, tx: Sender) {
     SCREENSHOTS.lock().unwrap().insert(
-        display_idx,
+        (source, display_idx),
         Screenshot {
             sid,
             tx,

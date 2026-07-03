@@ -1682,7 +1682,13 @@ impl<T: InvokeUiSession> Remote<T> {
                     self.handler.set_cursor_position(cp);
                 }
                 Some(message::Union::Clipboard(cb)) => {
-                    if !self.handler.lc.read().unwrap().disable_clipboard.v {
+                    // R-S19 (viewer side): only a default (Remote-control) session syncs the peer's
+                    // clipboard into the viewer's OS clipboard — mirrors the is_default() gate on the
+                    // clipboard-thread start above. A hostile peer in a FileTransfer/ViewCamera/Terminal
+                    // session the viewer opened cannot write the viewer's clipboard.
+                    if self.handler.is_default()
+                        && !self.handler.lc.read().unwrap().disable_clipboard.v
+                    {
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]
                         update_clipboard(vec![cb], ClipboardSide::Client);
                         #[cfg(target_os = "android")]
@@ -1697,7 +1703,10 @@ impl<T: InvokeUiSession> Remote<T> {
                     }
                 }
                 Some(message::Union::MultiClipboards(_mcb)) => {
-                    if !self.handler.lc.read().unwrap().disable_clipboard.v {
+                    // R-S19 (viewer side): default (Remote-control) session only, as the Clipboard arm.
+                    if self.handler.is_default()
+                        && !self.handler.lc.read().unwrap().disable_clipboard.v
+                    {
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]
                         update_clipboard(_mcb.clipboards, ClipboardSide::Client);
                         #[cfg(target_os = "android")]

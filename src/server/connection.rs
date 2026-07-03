@@ -2340,8 +2340,17 @@ impl Connection {
                         // Files announcement: consumed without forwarding (upstream
                         // intercepted it here to audit-only); the egress is removed.
                     } else if let Some(clip) = msg_2_clip(clip) {
+                        // R-S19: gate the Windows file-clipboard->CM forward on the confined file
+                        // capability (self.clipboard && self.file), mirroring the unix
+                        // can_sub_file_clipboard_service sibling below. Both are cleared by
+                        // confine_capabilities_to_conn_type for ViewCamera/Terminal, so a non-Remote/
+                        // non-FileTransfer peer can no longer drive the host CLIPRDR handshake. Do NOT
+                        // add file_transfer_enabled here (that toggle can lag the first handshake
+                        // message); self.file is the AuthConnType discriminator, and the CM applies
+                        // file_transfer_enabled to non-beginning messages. This also removes the prior
+                        // latent dependence on approve-mode-pin ordering (CM-seeded file_transfer_enabled).
                         #[cfg(target_os = "windows")]
-                        {
+                        if self.clipboard && self.file {
                             self.send_to_cm(ipc::Data::ClipboardFile(clip));
                         }
                         // R-A2 / R-S16 policy parity: gate inbound clipboard-FILE processing on the SAME
@@ -3009,7 +3018,14 @@ impl Connection {
                         else {
                             return true;
                         };
-                        crate::video_service::set_take_screenshot(display, request.sid.clone(), tx);
+                        // R-S19: pass the session's video source so a ViewCamera screenshot can only
+                        // be fulfilled by the camera loop, never a concurrent Remote monitor loop.
+                        crate::video_service::set_take_screenshot(
+                            self.video_source(),
+                            display,
+                            request.sid.clone(),
+                            tx,
+                        );
                         self.refresh_video_display(Some(display));
                     }
                 }

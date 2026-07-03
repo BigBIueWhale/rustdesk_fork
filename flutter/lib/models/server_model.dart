@@ -647,7 +647,10 @@ class ServerModel with ChangeNotifier {
   void sendLoginResponse(Client client, bool res) async {
     if (res) {
       bind.cmLoginRes(connId: client.id, res: res);
-      if (!client.isFileTransfer && !client.isTerminal) {
+      // R-S19: only a default Remote screen-control session starts desktop capture. View-camera
+      // (and file-transfer/terminal) must not turn on MediaProjection — a spurious screencast
+      // indicator + audio recorder for a session type that captures no desktop frames.
+      if (!client.isFileTransfer && !client.isTerminal && !client.isViewCamera) {
         parent.target?.invokeMethod("start_capture");
       }
       parent.target?.invokeMethod("cancel_notification", client.id);

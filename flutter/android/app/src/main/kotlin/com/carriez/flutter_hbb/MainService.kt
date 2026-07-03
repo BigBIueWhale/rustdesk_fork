@@ -117,13 +117,18 @@ class MainService : Service() {
                     val peerId = jsonObject["peer_id"] as String
                     val authorized = jsonObject["authorized"] as Boolean
                     val isFileTransfer = jsonObject["is_file_transfer"] as Boolean
+                    // R-S19: view-camera and terminal must not start desktop MediaProjection capture,
+                    // matching the Dart CM gate (server_model.dart). The add_connection JSON is the
+                    // full serialized Client struct, so these keys are always present.
+                    val isViewCamera = jsonObject["is_view_camera"] as Boolean
+                    val isTerminal = jsonObject["is_terminal"] as Boolean
                     val type = if (isFileTransfer) {
                         translate("Transfer file")
                     } else {
                         translate("Share screen")
                     }
                     if (authorized) {
-                        if (!isFileTransfer && !isStart) {
+                        if (!isFileTransfer && !isViewCamera && !isTerminal && !isStart) {
                             startCapture()
                         }
                         onClientAuthorizedNotification(id, type, username, peerId)

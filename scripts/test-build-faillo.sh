@@ -53,6 +53,7 @@ run_script_die "build-release.sh rejects a bad arg"    bash scripts/build-releas
 run_script_die "build-release.sh --doctor rejects a dirty tree" \
   bash -c 'touch scripts/.faillo_dirt_probe; o="$(bash scripts/build-release.sh --doctor 2>&1)"; r=$?; rm -f scripts/.faillo_dirt_probe; printf "%s" "$o"; exit $r'
 run_script_die "gen-android-keystore refuses to overwrite" bash scripts/gen-android-keystore.sh scripts/lib.sh /tmp/faillo-nonexistent-pass
+run_script_die "publish-github-release rejects a bad flag"  bash scripts/publish-github-release.sh --nonsense
 
 echo
 echo "RESULT: $P passed, $F failed"

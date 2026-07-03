@@ -45,7 +45,7 @@ run_die "verify_sha256 missing file"       'verify_sha256 /online/DOES-NOT-EXIST
 run_die "verify_online_shas wrong SHA"     "verify_online_shas rust-${RV}.tar.xz 0000000000000000000000000000000000000000000000000000000000000000"
 run_die "verify_online_shas odd arg count" 'verify_online_shas loneName'
 run_die "require_cmd missing tool"         'require_cmd this_tool_does_not_exist_xyz'
-run_die "clean-worktree guard dies dirty"  'touch scripts/.faillo_ct_probe; ( assert_clean_worktree ); r=$?; rm -f scripts/.faillo_ct_probe; exit $r'
+run_die "clean-worktree guard dies dirty"  'touch scripts/.faillo_ct_probe; trap "rm -f scripts/.faillo_ct_probe" EXIT; assert_clean_worktree'
 run_ok  "clean-worktree yields ALLOW_DIRTY" 'export ALLOW_DIRTY_TREE=1; assert_clean_worktree'
 
 echo "== build-harness fail-loud proofs (script level) =="

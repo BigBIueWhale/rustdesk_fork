@@ -26,6 +26,11 @@ GL="docker run --rm --network=none --device /dev/kvm"   # the root-free, offline
 # R-B2: fixed pinned reproducible epoch (pins.env SOURCE_DATE_EPOCH_PIN), not a commit date.
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$SOURCE_DATE_EPOCH_PIN}"
 WINDOWS_BUILD_SOURCE="${WINDOWS_BUILD_SOURCE:-head}" # head = committed release source; worktree = tracked dirty tree for local validation
+# R-B2 double-build integrity: PIN the release commit ONCE at load, so BOTH double-build passes archive
+# the SAME source even if HEAD advances mid-build (a concurrent committer). Without this the two passes
+# each re-resolve HEAD, and a commit landing between them fails A==B for a NON-determinism reason (an
+# observed race). The orchestrator may export RELEASE_SRC_COMMIT to pin every platform to one commit.
+RELEASE_SRC_COMMIT="${RELEASE_SRC_COMMIT:-$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo HEAD)}"
 
 preflight() {
     require_cmd qemu-img virt-install virsh xorriso mkfs.vfat docker git
@@ -50,8 +55,8 @@ build_media() {
     local snap="$STATE_DIR/build-snap"; rm -rf "$snap"; mkdir -p "$snap"
     case "$WINDOWS_BUILD_SOURCE" in
         head)
-            log "building the BUILD CD (committed HEAD + run-build.ps1 + SOURCE_DATE_EPOCH)"
-            git -C "$REPO_ROOT" archive --format=tar HEAD | tar -x -C "$snap"
+            log "building the BUILD CD (pinned commit $RELEASE_SRC_COMMIT + run-build.ps1 + SOURCE_DATE_EPOCH)"
+            git -C "$REPO_ROOT" archive --format=tar "$RELEASE_SRC_COMMIT" | tar -x -C "$snap"
             ;;
         worktree)
             log "building the BUILD CD (tracked + untracked non-ignored worktree + run-build.ps1 + SOURCE_DATE_EPOCH)"

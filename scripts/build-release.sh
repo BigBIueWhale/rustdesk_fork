@@ -37,6 +37,11 @@ done
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$SOURCE_DATE_EPOCH_PIN}"
 HEAD="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
 HEAD_SHORT="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+# Pin every per-target build to THIS commit: build-windows-vm.sh archives RELEASE_SRC_COMMIT for BOTH
+# its double-build passes (immune to HEAD advancing mid-build); the post-build coherence assert catches
+# deb/apk live-worktree drift. So the whole set is ONE commit, or the build fails loud — never a
+# mislabeled mixed-commit SHA256SUMS.
+[ "$HEAD" = unknown ] || export RELEASE_SRC_COMMIT="$HEAD"
 
 # ── Preflight: assert EVERYTHING before building anything (fail loud, all at once) ─────────────────
 release_preflight() {
@@ -115,6 +120,14 @@ main() {
     else
         warn "[3/3] Windows SKIPPED (--skip-windows) — this is NOT a complete release set"
     fi
+
+    # R-B2 coherence: deb/apk build the LIVE worktree, so a commit landing DURING the build would make
+    # the set span two commits while SHA256SUMS claims one. (Windows is pinned to $HEAD via
+    # RELEASE_SRC_COMMIT.) Assert HEAD did not move + the tree stayed clean across the whole build — a
+    # concurrent committer fails LOUD here instead of stamping an incoherent, mislabeled manifest.
+    local now_head; now_head="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
+    { [ "$now_head" = "$HEAD" ] && [ -z "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null)" ]; } \
+        || die "the repo CHANGED during the release build (HEAD $HEAD_SHORT -> $(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo ?), or the tree went dirty) — deb/apk built a moving worktree, so the set is INCOHERENT and SHA256SUMS would mislabel it. Re-run on a STABLE repo (no concurrent commits)."
 
     # SHA256SUMS: the live source->hash manifest, stamped with the exact HEAD it was built from. This
     # REPLACES the hand-written stale manifest (R-B2 integrity = the pinned SHA verified over the

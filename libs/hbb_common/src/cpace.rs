@@ -36,6 +36,17 @@ use std::sync::{
 /// that opens the connection and then stalls (the codec returns no error on a
 /// dribbled frame).
 const HANDSHAKE_STEP_TIMEOUT_MS: u64 = 18_000;
+/// R1(a) DoS hardening — a SHORTER deadline for the responder's FIRST inbound step
+/// (WAIT_1) ONLY. A legitimate viewer sends CPace step ① as the very first frame on
+/// the wire, immediately after the TCP connect completes, so 5 s never rejects a real
+/// first step even over a high-latency/lossy link (worst realistic case ~1–3 s incl.
+/// TCP retransmits). But it slashes the pre-key silent-hold: an attacker who opens a
+/// connection and then sends nothing pins its R-T1 handshake permit for 5 s, not 18 s
+/// (~3.6× less capacity consumed per slot → ~3.6× the flood rate to saturate). Every
+/// LATER step keeps the full 18 s — post-step-① progress legitimately involves crypto
+/// plus a network round-trip, so it must not be rushed. Responder WAIT_1 is the only
+/// recv an UNAUTHENTICATED internet attacker drives, so it is the only one shortened.
+const HANDSHAKE_FIRST_STEP_TIMEOUT_MS: u64 = 5_000;
 /// The pre-key frame cap (R-S7 / R-P14b). Each CPace step is ≤ ~120 B; this bounds
 /// the only attacker-reachable parser before keying.
 const MAX_CPACE_PACKET: usize = 4096;
@@ -216,8 +227,8 @@ async fn send_cpace(stream: &mut FramedStream, msg: Cpace) -> HResult<()> {
 /// Read exactly one `Cpace` frame under the bounded-read deadline (R-P14b). A
 /// timeout, peer EOF, or oversize frame is [`HandshakeError::Io`]; a parse
 /// failure is [`HandshakeError::Protocol`] (a decode abort, not a guess, R-P14c).
-async fn recv_cpace(stream: &mut FramedStream) -> HResult<Cpace> {
-    match stream.next_timeout(HANDSHAKE_STEP_TIMEOUT_MS).await {
+async fn recv_cpace(stream: &mut FramedStream, timeout_ms: u64) -> HResult<Cpace> {
+    match stream.next_timeout(timeout_ms).await {
         Some(Ok(bytes)) => Cpace::parse_from_bytes(&bytes).map_err(|_| HandshakeError::Protocol),
         Some(Err(_)) => Err(HandshakeError::Io), // oversize / I/O error
         None => Err(HandshakeError::Io),         // timeout / EOF
@@ -246,16 +257,17 @@ pub async fn run_responder_with_transcript(
     stream.set_max_packet_length(MAX_CPACE_PACKET); // R-S7, before the first byte
     let responder = Responder::new(password, CI_PORT)?;
 
-    // WAIT_1: accept ONLY step ① (R-P14a).
-    let step1 = match recv_cpace(stream).await?.union {
+    // WAIT_1: accept ONLY step ① (R-P14a). Shorter deadline (R1(a)) — this is the only
+    // recv an unauthenticated internet attacker drives; a real viewer's step ① is immediate.
+    let step1 = match recv_cpace(stream, HANDSHAKE_FIRST_STEP_TIMEOUT_MS).await?.union {
         Some(CpaceUnion::Step1(s)) => to_step1(&s)?,
         _ => return Err(HandshakeError::Protocol),
     };
     let (responder, step2) = responder.recv_step1(&step1)?;
     send_cpace(stream, from_step2(&step2)).await?;
 
-    // WAIT_3: accept ONLY step ③.
-    let step3 = match recv_cpace(stream).await?.union {
+    // WAIT_3: accept ONLY step ③. Full deadline — the initiator did crypto + a round-trip.
+    let step3 = match recv_cpace(stream, HANDSHAKE_STEP_TIMEOUT_MS).await?.union {
         Some(CpaceUnion::Step3(s)) => to_step3(&s)?,
         _ => return Err(HandshakeError::Protocol),
     };
@@ -289,16 +301,16 @@ pub async fn run_initiator_with_transcript(
     let (initiator, step1) = Initiator::new(password, CI_PORT)?;
     send_cpace(stream, from_step1(&step1)).await?;
 
-    // WAIT_2: accept ONLY step ②.
-    let step2 = match recv_cpace(stream).await?.union {
+    // WAIT_2: accept ONLY step ②. Initiator side (viewer, not the exposed server) — full 18 s.
+    let step2 = match recv_cpace(stream, HANDSHAKE_STEP_TIMEOUT_MS).await?.union {
         Some(CpaceUnion::Step2(s)) => to_step2(&s)?,
         _ => return Err(HandshakeError::Protocol),
     };
     let (initiator, step3) = initiator.recv_step2(&step2)?;
     send_cpace(stream, from_step3(&step3)).await?;
 
-    // WAIT_4: accept ONLY step ④; verify the responder's tag (R-P3).
-    let step4 = match recv_cpace(stream).await?.union {
+    // WAIT_4: accept ONLY step ④; verify the responder's tag (R-P3). Initiator side — full 18 s.
+    let step4 = match recv_cpace(stream, HANDSHAKE_STEP_TIMEOUT_MS).await?.union {
         Some(CpaceUnion::Step4(s)) => to_step4(&s)?,
         _ => return Err(HandshakeError::Protocol),
     };

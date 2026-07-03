@@ -251,6 +251,17 @@ ra6_clean() { # token, human label
 }
 
 rc=0
+
+# R1(a) DoS hardening (regression gate): the responder's FIRST pre-key step (WAIT_1) — the ONLY recv an
+# unauthenticated internet attacker drives — MUST use a SHORTER deadline (5s) than the 18s of later steps,
+# so a silent-hold flood costs ~3.6x less per R-T1 handshake permit. A real viewer's step ① is immediate,
+# so 5s never rejects it. Guards against a silent revert to the full 18s.
+r1a=
+grep -qF 'const HANDSHAKE_FIRST_STEP_TIMEOUT_MS: u64 = 5_000;' libs/hbb_common/src/cpace.rs || r1a="$r1a no-5s-const"
+grep -qF 'recv_cpace(stream, HANDSHAKE_FIRST_STEP_TIMEOUT_MS)' libs/hbb_common/src/cpace.rs   || r1a="$r1a WAIT_1-not-short"
+if [ -n "$r1a" ]; then echo "  FAIL R1(a) pre-key first-step short deadline:$r1a"; rc=1; else
+  echo "  ok  R1(a) responder WAIT_1 uses the 5s first-step deadline (vs 18s later) — pre-key silent-hold DoS hardening"; fi
+
 # Completed excisions — these MUST stay at zero (hard gate).
 ra6_clean 'crate::updater|mod updater|"download-new-version"|"update-me"' 'R-X1 auto-updater RCE'    || rc=1
 # R-X1 / R-SV2 / R-A6 — the self-updater FUNCTION surface the string-key gate above missed: the

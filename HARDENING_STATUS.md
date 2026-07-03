@@ -113,36 +113,37 @@ the video-QoS metadata arms (`ClientRecordStatus`/`AutoAdjustFps`). Remaining: R
 re-prove at this HEAD (a background build loop is handling it; the connection.rs/video_service.rs changes
 are in all builds, and the Windows/Kotlin edges are validated by the win-exe/apk builds).
 
-**R-B2 re-proven on all three platforms at HEAD `1405369` (2026-07-03) — OFFICIAL-RELEASE BUILD**, the
-first cut that is BOTH `.msi`-reproducible across calendar days AND coherent under concurrent commits.
-This HEAD folds in the R-S19 structural closure of CWE-863 / CVE-2026-58056 (every peer-triggerable
-capability derived from `AuthConnType` by construction) plus three build-integrity fixes this re-cut
-required:
-- **`.msi` cross-day reproducibility (`c47bca8`)** — the prior 5e03011 `.msi` `2d8b8aed` passed
-  WITHIN-run A==B but was NOT reproducible across days: `res/msi/preprocess.py` stamped the wall-clock
-  build date into an ARP `InstallDate` (DATE-granular, so a same-day double-build cannot catch it). It
-  now derives from `SOURCE_DATE_EPOCH` (UTC, timezone-independent); verify.sh §(6) gates it.
-- **clean-worktree assertion (`99fcadd`)** — deb/apk refuse a dirty/stale tree (the artifact must trace
-  to a commit; `ALLOW_DIRTY_TREE=1` for a deliberate local build).
-- **concurrent-commit coherence (`1405369`)** — the Windows double-build pins the release commit for
-  BOTH passes, and build-release.sh rejects the set if HEAD moves mid-build, so the manifest can never
-  mislabel a mixed-commit set. (Two concurrent-commit races during this session's cuts surfaced these;
-  each was caught fail-loud, not shipped.)
-All four artifacts were **rebuilt COLD from scratch**, are byte-identical **double-build A==B**, the
-build-release coherence assert held (HEAD unmoved across the whole build), and `verify-release.sh` is
-**ALL 8 gates GREEN** at this HEAD. The binaries change vs prior heads (the R-S19 refactor + the fixes);
-**A==B + the coherence assert are the proof.** Release SHA-256s:
+**R-B2 — the reproducible release is produced + published by DEFAULT script runs, no manual step.** The
+whole flow is opinionated + self-validating end to end, so an operator (not an AI agent) produces AND
+uploads an official GitHub release with bare commands and NO env vars:
 
 ```
-afa7af08285f60db7766e4c6d51778d65791fbaf6b3308544ab13da527a781fd  rustdesk-x86_64.deb
-54b6a1d8c0256bdcda871a21adc853c2a55acefb801662affb41a99b0b6d07a3  rustdesk-arm64.apk
-62668076b6f6c6589aedfce3c62d6d5249e05d2519e786199534db6715a7f10a  rustdesk-setup.exe
-a4b62dac02a0d7ea45db601dc5ef19d969cb17de16bd7b6a689f106b174d9a81  rustdesk.msi
+scripts/online-fetch.sh            # once: fetch + stage the digest-pinned toolchains / caches / VM helper
+scripts/gen-android-keystore.sh    # once: mint the stable R-B2 signing key at its default location
+scripts/provision-windows-vm.sh    # once: build the §12.2 Windows golden VM
+scripts/build-release.sh           # each release: cold, all 3 platforms, double-build A==B -> dist/ + SHA256SUMS
+scripts/publish-github-release.sh  # each release: upload dist/ as a GitHub release (draft; --publish to go live)
 ```
 
-Debian = offline `DOUBLE_BUILD` `dist` vs `dist/_rebuild`; Android = two independent offline CLEAN
-builds byte-identical (signed apksigner v1+v2+v3, RSA-4096, cert `10:91:32:2B:A0:42:5A:FA:…`);
-Windows = §12.2 KVM golden-VM `DOUBLE_BUILD` A==B (exe + msi, commit-pinned, `C:\src` cold each build).
+`build-release.sh` cleans from scratch and builds Debian/Android/Windows each **byte-identical
+double-build A==B**, pins the release commit so the set is **coherent** (it rejects itself if HEAD moves
+mid-build), and writes the authoritative manifest `dist/SHA256SUMS` (HEAD + `SOURCE_DATE_EPOCH` + the
+four SHAs) — so the per-release SHAs live THERE and in the published GitHub release, never hand-copied
+into this ledger. `publish-github-release.sh` refuses to publish anything not matching a clean
+committed+pushed HEAD and its recorded SHAs. Three build-integrity fixes make that trust sound (each
+was caught fail-loud during development, not shipped):
+- **`.msi` cross-day reproducibility (`c47bca8`)** — `res/msi/preprocess.py` had stamped the wall-clock
+  build date into an ARP `InstallDate` (DATE-granular: it passed a same-day double-build but differed
+  across calendar days). Now `SOURCE_DATE_EPOCH`-derived (UTC, timezone-independent); verify.sh §(6) gates it.
+- **clean-worktree assertion (`99fcadd`)** — deb/apk refuse a dirty/stale tree (`ALLOW_DIRTY_TREE=1` for a
+  deliberate local build); the keystore + every other input default correctly, so no env var is required.
+- **concurrent-commit coherence (`1405369`)** — Windows pins the commit for both double-build passes, and
+  build-release.sh rejects the set if HEAD moves mid-build, so the manifest can never mislabel a
+  mixed-commit set.
+`verify-release.sh` (8 source gates: compile + PAKE KATs + runtime smoke + flutter analyze + Rust/Dart
+advisories + the R-B2 determinism guards + the build-harness fail-loud suite) is the source-side
+confirmation. The reproducible set folds in the R-S19 structural closure of CWE-863 / CVE-2026-58056
+(every peer-triggerable capability derived from `AuthConnType` by construction).
 
 Prior re-prove (superseded; its `.msi` `2d8b8aed` was later found NOT cross-day reproducible — fixed
 `c47bca8` above; exe/deb/apk WERE reproducible): **R-B2 at HEAD `5e03011` (2026-07-02)** after the R-V3

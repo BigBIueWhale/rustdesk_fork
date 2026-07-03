@@ -78,45 +78,32 @@ fi
 git -C "$REPO_ROOT" branch -r --contains "$HEAD_FULL" 2>/dev/null | grep -q . \
     || die "HEAD $HEAD_FULL is not on any remote branch — GitHub cannot tag a commit it does not have. Push it first: git push origin master   (or re-run with --push)"
 
-# 8) Opinionated, generated release notes.
+# 8) Release notes = the human-maintained README section (single source) + an auto verify/SHA footer.
+README_MD="$REPO_ROOT/README.md"
+NOTES_BODY="$(awk '/<!-- RELEASE_NOTES:START -->/{f=1;next} /<!-- RELEASE_NOTES:END -->/{f=0} f' "$README_MD")"
+[ -n "$NOTES_BODY" ] \
+    || die "no release notes found in README.md — add a section between the markers <!-- RELEASE_NOTES:START --> and <!-- RELEASE_NOTES:END -->"
 BUILT_AT="$(git -C "$REPO_ROOT" show -s --format=%cI "$HEAD_FULL" 2>/dev/null || echo '?')"
 NOTES_FILE="$(mktemp)"; trap 'rm -f "$NOTES_FILE"' EXIT
 {
+printf '%s\n\n' "$NOTES_BODY"
 cat <<MD
-## RustDesk — Hardened Fork \`$TAG\`
+### Verify
 
-A security-hardened, **direct-IP-only** fork of RustDesk $VERSION. Independent project; not affiliated
-with or endorsed by upstream RustDesk.
-
-### What makes it different
-- **Mandatory balanced PAKE (CPace over ristretto255 + SHA-512).** Every connection authenticates with a
-  single CPace handshake at the transport choke point before any application message — no password hash
-  on the wire, no legacy fallback. Independently audited — **VERDICT: SOUND** (\`docs/CRYPTO-AUDIT-2026-07-02.md\`).
-- **Sovereign / dial-nobody.** The rendezvous mediator, relay, KCP, NAT traversal and LAN discovery are
-  **compiled out** — the server binds exactly one v4 TCP port and zero UDP. No cloud, no telemetry, no
-  auto-updater. You connect by IP, like SSH.
-- **Excise, don't disable.** The auto-update RCE surface, plugin loader, 2FA/OTP cluster, trust-anchor
-  overrides and the OS-login second-credential path are removed from the source, not merely gated
-  (asserted absent in CI).
-- **Least-privilege capability confinement** (CWE-863 / CVE-2026-58056 fixed): every peer-triggerable
-  capability is keyed to the session's authorized connection type by construction.
-
-### Reproducible builds — verify before you trust
-Each artifact is produced by an offline, digest-pinned toolchain and is **byte-identical across
-independent double-builds** (\`SOURCE_DATE_EPOCH\` pinned). Built from commit \`${HEAD_FULL:0:12}\` ($BUILT_AT).
+Every artifact is byte-identical across independent double-builds (\`SOURCE_DATE_EPOCH\` pinned) — rebuild
+this commit (\`${HEAD_FULL:0:12}\`, $BUILT_AT) yourself to confirm, or check the published checksums:
 \`\`\`
 sha256sum -c SHA256SUMS
 \`\`\`
 
-### Artifacts
 | Platform | File |
 |---|---|
 | Debian / Ubuntu x86_64 | \`rustdesk-x86_64.deb\` |
 | Android arm64 | \`rustdesk-arm64.apk\` |
-| Windows x86_64 (portable installer) | \`rustdesk-setup.exe\` |
+| Windows x86_64 (installer) | \`rustdesk-setup.exe\` |
 | Windows x86_64 (MSI) | \`rustdesk.msi\` |
 
-### SHA-256
+#### SHA-256
 \`\`\`
 MD
 grep -vE '^#' "$OUT_DIR/SHA256SUMS"

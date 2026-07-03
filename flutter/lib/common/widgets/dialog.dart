@@ -194,247 +194,6 @@ class DialogTextField extends StatelessWidget {
   }
 }
 
-abstract class ValidationField extends StatelessWidget {
-  ValidationField({Key? key}) : super(key: key);
-
-  String? validate();
-  bool get isReady;
-}
-
-class Dialog2FaField extends ValidationField {
-  Dialog2FaField({
-    Key? key,
-    required this.controller,
-    this.autoFocus = true,
-    this.reRequestFocus = false,
-    this.title,
-    this.hintText,
-    this.errorText,
-    this.readyCallback,
-    this.onChanged,
-  }) : super(key: key);
-
-  final TextEditingController controller;
-  final bool autoFocus;
-  final bool reRequestFocus;
-  final String? title;
-  final String? hintText;
-  final String? errorText;
-  final VoidCallback? readyCallback;
-  final VoidCallback? onChanged;
-  final errMsg = translate('2FA code must be 6 digits.');
-
-  @override
-  Widget build(BuildContext context) {
-    return DialogVerificationCodeField(
-      title: title ?? translate('2FA code'),
-      controller: controller,
-      errorText: errorText,
-      autoFocus: autoFocus,
-      reRequestFocus: reRequestFocus,
-      hintText: hintText,
-      readyCallback: readyCallback,
-      onChanged: _onChanged,
-      keyboardType: TextInputType.number,
-      inputFormatters: [
-        FilteringTextInputFormatter.allow(RegExp(r'[0-9]')),
-      ],
-    );
-  }
-
-  String get text => controller.text;
-  bool get isAllDigits => text.codeUnits.every((e) => e >= 48 && e <= 57);
-
-  @override
-  bool get isReady => text.length == 6 && isAllDigits;
-
-  @override
-  String? validate() => isReady ? null : errMsg;
-
-  _onChanged(StateSetter setState, SimpleWrapper<String?> errText) {
-    onChanged?.call();
-
-    if (text.length > 6) {
-      setState(() => errText.value = errMsg);
-      return;
-    }
-
-    if (!isAllDigits) {
-      setState(() => errText.value = errMsg);
-      return;
-    }
-
-    if (isReady) {
-      readyCallback?.call();
-      return;
-    }
-
-    if (errText.value != null) {
-      setState(() => errText.value = null);
-    }
-  }
-}
-
-class DialogEmailCodeField extends ValidationField {
-  DialogEmailCodeField({
-    Key? key,
-    required this.controller,
-    this.autoFocus = true,
-    this.reRequestFocus = false,
-    this.hintText,
-    this.errorText,
-    this.readyCallback,
-    this.onChanged,
-  }) : super(key: key);
-
-  final TextEditingController controller;
-  final bool autoFocus;
-  final bool reRequestFocus;
-  final String? hintText;
-  final String? errorText;
-  final VoidCallback? readyCallback;
-  final VoidCallback? onChanged;
-  final errMsg = translate('Email verification code must be 6 characters.');
-
-  @override
-  Widget build(BuildContext context) {
-    return DialogVerificationCodeField(
-      title: translate('Verification code'),
-      controller: controller,
-      errorText: errorText,
-      autoFocus: autoFocus,
-      reRequestFocus: reRequestFocus,
-      hintText: hintText,
-      readyCallback: readyCallback,
-      helperText: translate('verification_tip'),
-      onChanged: _onChanged,
-      keyboardType: TextInputType.visiblePassword,
-    );
-  }
-
-  String get text => controller.text;
-
-  @override
-  bool get isReady => text.length == 6;
-
-  @override
-  String? validate() => isReady ? null : errMsg;
-
-  _onChanged(StateSetter setState, SimpleWrapper<String?> errText) {
-    onChanged?.call();
-
-    if (text.length > 6) {
-      setState(() => errText.value = errMsg);
-      return;
-    }
-
-    if (isReady) {
-      readyCallback?.call();
-      return;
-    }
-
-    if (errText.value != null) {
-      setState(() => errText.value = null);
-    }
-  }
-}
-
-class DialogVerificationCodeField extends StatefulWidget {
-  DialogVerificationCodeField({
-    Key? key,
-    required this.controller,
-    required this.title,
-    this.autoFocus = true,
-    this.reRequestFocus = false,
-    this.helperText,
-    this.hintText,
-    this.errorText,
-    this.textLength,
-    this.readyCallback,
-    this.onChanged,
-    this.keyboardType,
-    this.inputFormatters,
-  }) : super(key: key);
-
-  final TextEditingController controller;
-  final bool autoFocus;
-  final bool reRequestFocus;
-  final String title;
-  final String? helperText;
-  final String? hintText;
-  final String? errorText;
-  final int? textLength;
-  final VoidCallback? readyCallback;
-  final Function(StateSetter setState, SimpleWrapper<String?> errText)?
-      onChanged;
-  final TextInputType? keyboardType;
-  final List<TextInputFormatter>? inputFormatters;
-
-  @override
-  State<DialogVerificationCodeField> createState() =>
-      _DialogVerificationCodeField();
-}
-
-class _DialogVerificationCodeField extends State<DialogVerificationCodeField> {
-  final _focusNode = FocusNode();
-  Timer? _timer;
-  Timer? _timerReRequestFocus;
-  SimpleWrapper<String?> errorText = SimpleWrapper(null);
-  String _preText = '';
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.autoFocus) {
-      _timer =
-          Timer(Duration(milliseconds: 50), () => _focusNode.requestFocus());
-
-      if (widget.onChanged != null) {
-        widget.controller.addListener(() {
-          final text = widget.controller.text.trim();
-          if (text == _preText) return;
-          widget.onChanged!(setState, errorText);
-          _preText = text;
-        });
-      }
-    }
-
-    // software secure keyboard will take the focus since flutter 3.13
-    // request focus again when android account password obtain focus
-    if (isAndroid && widget.reRequestFocus) {
-      _focusNode.addListener(() {
-        if (_focusNode.hasFocus) {
-          _timerReRequestFocus?.cancel();
-          _timerReRequestFocus = Timer(
-              Duration(milliseconds: 100), () => _focusNode.requestFocus());
-        }
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _timerReRequestFocus?.cancel();
-    _focusNode.unfocus();
-    _focusNode.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return DialogTextField(
-      title: widget.title,
-      controller: widget.controller,
-      errorText: widget.errorText ?? errorText.value,
-      focusNode: _focusNode,
-      helperText: widget.helperText,
-      keyboardType: widget.keyboardType,
-      inputFormatters: widget.inputFormatters,
-    );
-  }
-}
-
 class PasswordWidget extends StatefulWidget {
   PasswordWidget({
     Key? key,
@@ -521,80 +280,54 @@ class _PasswordWidgetState extends State<PasswordWidget> {
   }
 }
 
-void wrongPasswordDialog(SessionID sessionId,
-    OverlayDialogManager dialogManager, type, title, text) {
-  dialogManager.dismissAll();
-  dialogManager.show((setState, close, context) {
-    cancel() {
-      close();
-      closeConnection();
-    }
-
-    submit() {
-      enterPasswordDialog(sessionId, dialogManager);
-    }
-
-    return CustomAlertDialog(
-        title: null,
-        content: msgboxContent(type, title, text),
-        onSubmit: submit,
-        onCancel: cancel,
-        actions: [
-          dialogButton(
-            'Cancel',
-            onPressed: cancel,
-            isOutline: true,
-          ),
-          dialogButton(
-            'Retry',
-            onPressed: submit,
-          ),
-        ]);
-  });
-}
-
-void enterPasswordDialog(
-    SessionID sessionId, OverlayDialogManager dialogManager) async {
-  await _connectDialog(
-    sessionId,
-    dialogManager,
-    passwordController: TextEditingController(),
-  );
-}
-
-// R-S13/A3 (prompt-before-keying): the CPace handshake needs the box's password BEFORE
-// keying, but a bare-ID first connect has none remembered. The keying then fails closed and
-// surfaces `connect-password-prompt`; this dialog takes the password and, via
-// `sessionSetConnectPassword`, stores it as the connect-password and RECONNECTS — the
-// reconnect keys with it. Distinct from `enterPasswordDialog` (which logs in over an
-// already-keyed connection); here there is no keyed connection yet.
+// R-S13/A3 (prompt-before-keying): the CPace handshake needs the box's password BEFORE keying, but
+// a bare-ID first connect has none remembered. The keying then fails closed and surfaces
+// `connect-password-prompt`; this dialog takes the password and, via `sessionSetConnectPassword`,
+// stores it as the connect-password and RECONNECTS — the reconnect keys with it. There is NO
+// post-keying login re-prompt (`enterPasswordDialog`/`wrongPasswordDialog` are excised): CPace is
+// the sole authenticator (R-A1), so the responder never re-asks for a login password over a keyed
+// stream. `reason` (I-3) is the keying-failure text shown above the field — it names BOTH a wrong
+// password AND a changed host key, so a legitimately re-keyed box is not dead-ended in an eternal
+// "Password Required" loop with no hint of the real cause.
 void enterConnectPasswordDialog(
-    SessionID sessionId, OverlayDialogManager dialogManager) async {
+    SessionID sessionId, OverlayDialogManager dialogManager,
+    [String reason = '']) async {
   await _connectDialog(
     sessionId,
     dialogManager,
     passwordController: TextEditingController(),
-    preKeying: true,
+    reason: reason,
   );
 }
 
-// R-S17/R-G5 (first-connect pin seed): the box keyed (so it DOES hold the host key), but the
-// operator has not pinned it yet. Show the fingerprint to confirm OUT-OF-BAND against the box's
-// `--get-fingerprint`, then pin THIS key + reconnect on accept (SSH's "type yes to the
-// fingerprint", done deliberately). NOT shown for a pin MISMATCH — that stays a loud error with
-// no easy bypass (the operator must `--forget-host` to re-pin a legitimately re-keyed box).
+// R-S17/R-G5/I-2 (first-CONTACT pin seed): a no-TOFU direct-IP fork cannot key with an UNPINNED box
+// — the CPace PRS is Argon2id-salted by the pinned key, so keying bails BEFORE the box's key is ever
+// received, and there is nothing stashed to "trust". So the operator learns the box's fingerprint
+// OUT-OF-BAND (via `--get-fingerprint` on the box, over the trusted channel it was deployed through)
+// and TYPES it here; on "Pin" we pin THAT key for the address and reconnect (SSH's "type the
+// fingerprint", done deliberately). Friction-bearing — the "Pin" button stays disabled until the
+// typed input is a valid 64-hex key, and it never adopts a peer-supplied key. A pin MISMATCH is a
+// separate, louder dialog (hostMismatchDialog). This replaces the old dead "Trust" button, whose
+// `sessionPinHost` found nothing staged (pending_host_pk == null) and never reconnected.
 void hostNotPinnedDialog(
     SessionID sessionId, OverlayDialogManager dialogManager, String text) async {
   dialogManager.dismissAll();
+  final controller = TextEditingController();
+  // hex-only, case-insensitive normalization so any fingerprint format the operator types matches.
+  String norm(String s) => s.replaceAll(RegExp(r'[^0-9a-fA-F]'), '').toLowerCase();
   dialogManager.show((setState, close, context) {
     cancel() {
       close();
       closeConnection();
     }
 
+    // Enable "Pin" only once the typed input normalizes to a valid 64-hex-char (32-byte) Ed25519 key
+    // (Rust re-validates + decodes it before pinning).
+    final valid = norm(controller.text).length == 64;
     submit() {
-      // Pin the host key the keying stashed, then reconnect (keys against the new pin).
-      bind.sessionPinHost(sessionId: sessionId);
+      if (!valid) return;
+      bind.sessionPinHostByFingerprint(
+          sessionId: sessionId, fingerprint: controller.text);
       close();
       dialogManager.showLoading(translate('Connecting...'),
           onCancel: closeConnection);
@@ -608,9 +341,23 @@ void hostNotPinnedDialog(
           Text(translate('Unknown host')).paddingOnly(left: 10),
         ],
       ),
-      content: Align(
-        alignment: Alignment.centerLeft,
-        child: SelectableText(text, style: TextStyle(fontSize: 14)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectableText(text, style: TextStyle(fontSize: 14)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: controller,
+            autofocus: false,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              border: const OutlineInputBorder(),
+              labelText: translate(
+                  'Type the box fingerprint to pin it (verified out-of-band)'),
+            ),
+          ),
+        ],
       ),
       actions: [
         dialogButton(
@@ -620,9 +367,9 @@ void hostNotPinnedDialog(
           isOutline: true,
         ),
         dialogButton(
-          'Trust',
+          'Pin',
           icon: Icon(Icons.verified_user_outlined),
-          onPressed: submit,
+          onPressed: valid ? submit : null,
         ),
       ],
       onCancel: cancel,
@@ -804,7 +551,7 @@ _connectDialog(
   SessionID sessionId,
   OverlayDialogManager dialogManager, {
   required TextEditingController passwordController,
-  bool preKeying = false,
+  String reason = '',
 }) async {
   var rememberPassword =
       await bind.sessionGetRemember(sessionId: sessionId) ?? false;
@@ -819,19 +566,13 @@ _connectDialog(
     submit() {
       final password = passwordController.text.trim();
       if (password.isEmpty) return;
-      if (preKeying) {
-        // R-S13/A3: store the connect-time password + reconnect so the CPace handshake keys
-        // with it (no keyed connection exists yet, so we cannot `login`).
-        bind.sessionSetConnectPassword(
-            sessionId: sessionId, password: password, remember: rememberPassword);
-        close();
-        dialogManager.showLoading(translate('Connecting...'),
-            onCancel: closeConnection);
-        return;
-      }
-      gFFI.login(sessionId, password, rememberPassword);
+      // R-S13/A3: store the connect-time password + reconnect so the CPace handshake keys with it
+      // (no keyed connection exists yet, so we cannot `login`). CPace is the sole authenticator,
+      // so there is no post-keying `login` path here.
+      bind.sessionSetConnectPassword(
+          sessionId: sessionId, password: password, remember: rememberPassword);
       close();
-      dialogManager.showLoading(translate('Logging in...'),
+      dialogManager.showLoading(translate('Connecting...'),
           onCancel: closeConnection);
     }
 
@@ -872,8 +613,20 @@ _connectDialog(
 
     passwdWidget() {
       return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          descWidget(translate('verify_rustdesk_password_tip')),
+          // I-3: on a keying FAILURE show the reason (it names BOTH a wrong password AND a changed
+          // host key + the re-pin remedy), so a legitimately re-keyed box is not dead-ended in a
+          // silent "Password Required" loop. On a fresh first-connect prompt (empty reason) show
+          // the generic tip instead.
+          if (reason.isNotEmpty) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SelectableText(reason, style: TextStyle(fontSize: 14)),
+            ),
+            const SizedBox(height: 10),
+          ] else
+            descWidget(translate('verify_rustdesk_password_tip')),
           PasswordWidget(
             controller: passwordController,
             autoFocus: true,
@@ -917,25 +670,6 @@ _connectDialog(
       ],
       onSubmit: submit,
       onCancel: cancel,
-    );
-  });
-}
-
-void showWaitAcceptDialog(SessionID sessionId, String type, String title,
-    String text, OverlayDialogManager dialogManager) {
-  dialogManager.dismissAll();
-  dialogManager.show((setState, close, context) {
-    onCancel() {
-      closeConnection();
-    }
-
-    return CustomAlertDialog(
-      title: null,
-      content: msgboxContent(type, title, text),
-      actions: [
-        dialogButton('Cancel', onPressed: onCancel, isOutline: true),
-      ],
-      onCancel: onCancel,
     );
   });
 }

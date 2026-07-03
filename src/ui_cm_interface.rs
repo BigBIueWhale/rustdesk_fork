@@ -12,10 +12,7 @@ use hbb_common::fs::serialize_transfer_job;
 use hbb_common::tokio::sync::mpsc::unbounded_channel;
 use hbb_common::{
     allow_err, bail,
-    config::{
-        keys::{OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW, OPTION_FILE_TRANSFER_MAX_FILES},
-        option2bool, Config,
-    },
+    config::{keys::OPTION_FILE_TRANSFER_MAX_FILES, Config},
     fs::{self, get_string, is_write_need_confirmation, new_send_confirm, DigestCheckResult},
     log,
     message_proto::*,
@@ -386,15 +383,6 @@ pub fn get_click_time() -> i64 {
 
 #[inline]
 #[cfg(not(any(target_os = "ios")))]
-pub fn authorize(id: i32) {
-    if let Some(client) = CLIENTS.write().unwrap().get_mut(&id) {
-        client.authorized = true;
-        allow_err!(client.tx.send(Data::Authorize));
-    };
-}
-
-#[inline]
-#[cfg(not(any(target_os = "ios")))]
 pub fn close(id: i32) {
     if let Some(client) = CLIENTS.read().unwrap().get(&id) {
         allow_err!(client.tx.send(Data::Close));
@@ -413,55 +401,6 @@ pub fn send_chat(id: i32, text: String) {
     let clients = CLIENTS.read().unwrap();
     if let Some(client) = clients.get(&id) {
         allow_err!(client.tx.send(Data::ChatMessage { text }));
-    }
-}
-
-#[inline]
-#[cfg(not(any(target_os = "ios")))]
-pub fn switch_permission(id: i32, name: String, enabled: bool) {
-    #[cfg(target_os = "android")]
-    let is_keyboard_permission = name == "keyboard";
-    #[cfg(not(target_os = "android"))]
-    let is_keyboard_permission = false;
-    if !option2bool(
-        OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW,
-        &crate::get_builtin_option(OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW),
-    ) && !is_keyboard_permission
-    {
-        log::info!(
-            "blocked cm switch_permission by policy, conn_id={}, permission={}, enabled={}",
-            id,
-            name,
-            enabled
-        );
-        return;
-    }
-    if let Some(client) = CLIENTS.read().unwrap().get(&id) {
-        allow_err!(client.tx.send(Data::SwitchPermission { name, enabled }));
-    };
-}
-
-#[inline]
-#[cfg(target_os = "android")]
-pub fn switch_permission_all(name: String, enabled: bool) {
-    if name != "keyboard"
-        && !option2bool(
-            OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW,
-            &crate::get_builtin_option(OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW),
-        )
-    {
-        log::info!(
-            "blocked cm switch_permission_all by policy, permission={}, enabled={}",
-            name,
-            enabled
-        );
-        return;
-    }
-    for (_, client) in CLIENTS.read().unwrap().iter() {
-        allow_err!(client.tx.send(Data::SwitchPermission {
-            name: name.clone(),
-            enabled
-        }));
     }
 }
 
@@ -587,26 +526,6 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                 }
                                 Data::ChatMessage { text } => {
                                     self.cm.new_message(self.conn_id, text);
-                                }
-                                Data::SwitchPermission { name, enabled } => {
-                                    // Keep this branch scoped to privacy mode rollback.
-                                    // Other CM permission toggles are updated optimistically by the UI itself.
-                                    // The backend currently sends SwitchPermission back to CM only when
-                                    // privacy-mode turn-off fails and the UI state must be restored.
-                                    if name == "privacy_mode" {
-                                        let client = {
-                                            let mut clients = CLIENTS.write().unwrap();
-                                            clients.get_mut(&self.conn_id).map(|c| {
-                                                c.privacy_mode = enabled;
-                                                c.clone()
-                                            })
-                                        };
-                                        if let Some(client) = client {
-                                            // This reuses add_connection(), and cm.tis only selectively updates
-                                            // existing rows (authorized/privacy_mode) for this fallback path.
-                                            self.cm.ui_handler.add_connection(&client);
-                                        }
-                                    }
                                 }
                                 Data::FS(mut fs) => {
                                     if let ipc::FS::WriteBlock { id, file_num, conn_id, data: _, compressed } = fs {
@@ -750,20 +669,6 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                     if let Err(e) = self.stream.send(&data).await {
                         log::error!("error encountered in IPC task, quitting: {}", e);
                         break;
-                    }
-                    match &data {
-                        Data::SwitchPermission{name: _name, enabled: _enabled} => {
-                            #[cfg(target_os = "windows")]
-                            if _name == "file" {
-                                self.file_transfer_enabled = *_enabled;
-                            }
-                        }
-                        Data::Authorize => {
-                            self.running = true;
-                            break;
-                        }
-                        _ => {
-                        }
                     }
                 },
                 clip_file = rx_clip.recv() => match clip_file {

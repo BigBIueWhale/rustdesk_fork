@@ -27,11 +27,12 @@ use crate::ipc;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub type Children = Arc<Mutex<(bool, HashMap<(String, String), Child>)>>;
 
+// I-1 / R-G2: `status_num` (the rendezvous connecting/ready state, always 0 here — the mediator is
+// excised) and `key_confirmed` (the rendezvous register_pk ACK, never flips true) are removed. The
+// service-listening indicator is driven by the `stop-service` flag, not this status. `video_conn_count`
+// (live remote-session count) is the sole per-tick payload on flutter.
 #[derive(Clone, Debug, Serialize)]
 pub struct UiStatus {
-    pub status_num: i32,
-    #[cfg(not(feature = "flutter"))]
-    pub key_confirmed: bool,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub mouse_time: i64,
     #[cfg(not(feature = "flutter"))]
@@ -49,9 +50,6 @@ pub struct LoginDeviceInfo {
 
 lazy_static::lazy_static! {
     static ref UI_STATUS : Arc<Mutex<UiStatus>> = Arc::new(Mutex::new(UiStatus{
-        status_num: 0,
-        #[cfg(not(feature = "flutter"))]
-        key_confirmed: false,
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         mouse_time: 0,
         #[cfg(not(feature = "flutter"))]
@@ -59,7 +57,6 @@ lazy_static::lazy_static! {
         #[cfg(feature = "flutter")]
         video_conn_count: 0,
     }));
-    static ref ASYNC_JOB_STATUS : Arc<Mutex<String>> = Default::default();
     static ref IS_REMOTE_MODIFY_ENABLED_BY_CONTROL_PERMISSIONS : Arc<Mutex<Option<bool>>> = Arc::new(Mutex::new(None));
 }
 
@@ -75,8 +72,6 @@ lazy_static::lazy_static! {
 lazy_static::lazy_static! {
     pub static ref IS_FILE_TRANSFER_ENABLED: Arc<Mutex<Option<bool>>> = Arc::new(Mutex::new(None));
 }
-
-const INIT_ASYNC_JOB_STATUS: &str = " ";
 
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
 #[inline]
@@ -348,10 +343,6 @@ pub fn get_options() -> String {
     serde_json::to_string(&m).unwrap_or_default()
 }
 
-#[inline]
-pub fn test_if_valid_server(host: String, test_with_proxy: bool) -> String {
-    hbb_common::socket_client::test_if_valid_server(&host, test_with_proxy)
-}
 
 #[inline]
 #[cfg(feature = "flutter")]
@@ -460,54 +451,10 @@ pub fn install_options() -> String {
     return "{}".to_owned();
 }
 
-#[inline]
-pub fn get_socks() -> Vec<String> {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    let s = ipc::get_socks();
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    let s = Config::get_socks();
-    match s {
-        None => Vec::new(),
-        Some(s) => {
-            let mut v = Vec::new();
-            v.push(s.proxy);
-            v.push(s.username);
-            v.push(s.password);
-            v
-        }
-    }
-}
-
-#[inline]
-pub fn set_socks(proxy: String, username: String, password: String) {
-    let socks = config::Socks5Server {
-        proxy,
-        username,
-        password,
-    };
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    ipc::set_socks(socks).ok();
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    {
-        if socks.proxy.is_empty() {
-            Config::set_socks(None);
-        } else {
-            Config::set_socks(Some(socks));
-        }
-        log::info!("socks updated");
-    }
-}
-
-#[inline]
-#[cfg(feature = "flutter")]
-pub fn get_proxy_status() -> bool {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    return ipc::get_proxy_status();
-
-    // Currently, only the desktop version has proxy settings.
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    return false;
-}
+// R-D6 (Tier-4): the app-layer socks/proxy get/set wrappers (+ their `ipc::*socks*` query shims and
+// the `main_get_proxy_status` FFI) are excised — there is no proxy-settings UI to drive them (the
+// proxy URL is lockdown-pinned inert). The `Config::get_socks` storage + the connect-path actuator
+// (socket_client) + the R-S11 `Data::Socks` main-channel-write rejection stay as a tested boundary.
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[inline]
@@ -753,30 +700,10 @@ pub fn get_uuid() -> String {
     crate::encode64(hbb_common::get_uuid())
 }
 
-#[inline]
-pub fn get_init_async_job_status() -> String {
-    INIT_ASYNC_JOB_STATUS.to_string()
-}
-
-#[inline]
-pub fn reset_async_job_status() {
-    *ASYNC_JOB_STATUS.lock().unwrap() = get_init_async_job_status();
-}
-
-#[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
-#[inline]
-pub fn change_id(id: String) {
-    reset_async_job_status();
-    let old_id = get_id();
-    std::thread::spawn(move || {
-        change_id_shared(id, old_id);
-    });
-}
-
-#[inline]
-pub fn get_async_job_status() -> String {
-    ASYNC_JOB_STATUS.lock().unwrap().clone()
-}
+// R-SV5 / R-G4: the numeric-RustDesk-ID change flow (`change_id` + the `async_job_status`
+// progress mechanism it was the sole user of) is excised — the fork connects by direct address,
+// not by a mutable numeric ID (there is no rendezvous to register a new ID with), and the Sciter
+// Change-ID UI + the `main_change_id`/`main_get_async_status` FFIs are gone.
 
 #[inline]
 pub fn get_langs() -> String {
@@ -1086,12 +1013,11 @@ pub fn get_user_default_option(key: String) -> String {
 }
 
 pub fn get_fingerprint() -> String {
+    // R-S17 / I-1: the box's self-generated Ed25519 host key ALWAYS exists (get_key_pair generates
+    // it on first read) and a direct-IP fork has no rendezvous register_pk step to "confirm" — so
+    // the fingerprint is unconditional (never blank on the mobile server/settings pages).
     #[cfg(any(target_os = "android", target_os = "ios"))]
-    if Config::get_key_confirmed() {
-        return crate::common::pk_to_fingerprint(Config::get_key_pair().1);
-    } else {
-        return "".to_owned();
-    }
+    return crate::common::pk_to_fingerprint(Config::get_key_pair().1);
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     return ipc::get_fingerprint();
 }
@@ -1116,8 +1042,6 @@ pub fn get_login_device_info_json() -> String {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
 async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc::Data>) {
-    #[cfg(not(feature = "flutter"))]
-    let mut key_confirmed = false;
     let mut rx = rx;
     let mut mouse_time = 0;
     #[cfg(feature = "flutter")]
@@ -1162,27 +1086,16 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                                 #[cfg(feature = "flutter")]
                                 let _ = value;
                             }
+                            // I-1 / R-G2: the dead `OnlineStatus` tick (rendezvous latency, always 0,
+                            // plus the never-set `key_confirmed`) is removed. It used to be the SOLE
+                            // per-tick writer of UI_STATUS, so the LIVE `video_conn_count` refresh
+                            // moves into this arm (its poll request already fires below).
                             #[cfg(feature = "flutter")]
                             Ok(Some(ipc::Data::VideoConnCount(Some(n)))) => {
                                 video_conn_count = n;
-                            }
-                            Ok(Some(ipc::Data::OnlineStatus(Some((mut x, _c))))) => {
-                                if x > 0 {
-                                    x = 1
-                                }
-                                #[cfg(not(feature = "flutter"))]
-                                {
-                                    key_confirmed = _c;
-                                }
                                 *UI_STATUS.lock().unwrap() = UiStatus {
-                                    status_num: x as _,
-                                    #[cfg(not(feature = "flutter"))]
-                                    key_confirmed: _c,
                                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
                                     mouse_time,
-                                    #[cfg(not(feature = "flutter"))]
-                                    id: id.clone(),
-                                    #[cfg(feature = "flutter")]
                                     video_conn_count,
                                 };
                             }
@@ -1206,7 +1119,6 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                         allow_err!(c.send(&data).await);
                     }
                     _ = timer.tick() => {
-                        c.send(&ipc::Data::OnlineStatus(None)).await.ok();
                         c.send(&ipc::Data::Options(None)).await.ok();
                         c.send(&ipc::Data::Config(("id".to_owned(), None))).await.ok();
                         #[cfg(feature = "flutter")]
@@ -1226,9 +1138,6 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
             break;
         }
         *UI_STATUS.lock().unwrap() = UiStatus {
-            status_num: -1,
-            #[cfg(not(feature = "flutter"))]
-            key_confirmed,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             mouse_time,
             #[cfg(not(feature = "flutter"))]
@@ -1261,70 +1170,9 @@ pub(crate) async fn send_to_cm(data: &ipc::Data) {
     }
 }
 
-const INVALID_FORMAT: &'static str = "Invalid format";
-const UNKNOWN_ERROR: &'static str = "Unknown error";
-
-#[inline]
-#[tokio::main(flavor = "current_thread")]
-pub async fn change_id_shared(id: String, old_id: String) -> String {
-    let res = change_id_shared_(id, old_id).await.to_owned();
-    *ASYNC_JOB_STATUS.lock().unwrap() = res.clone();
-    res
-}
-
-pub async fn change_id_shared_(id: String, old_id: String) -> &'static str {
-    if !hbb_common::is_valid_custom_id(&id) {
-        log::debug!(
-            "debugging invalid id: \"{id}\", len: {}, base64: \"{}\"",
-            id.len(),
-            crate::encode64(&id)
-        );
-        let bom = id.trim_start_matches('\u{FEFF}');
-        log::debug!("bom: {}", hbb_common::is_valid_custom_id(&bom));
-        return INVALID_FORMAT;
-    }
-
-    // R-SV4/R-SV5/R-SV10: direct-only — there is NO rendezvous server to verify the new ID against
-    // or to register the device pk with. The inherited flow connect_tcp'd to the rendezvous
-    // (RENDEZVOUS_PORT) and sent RegisterPk — a sovereignty/egress leak (R-D6 "dial nobody"; the
-    // `register_pk` R-SV10 greps absent). Excised (with the `check_id` helper, deleted below): the
-    // RustDesk ID is a vestigial LOCAL-ONLY label (R-SV5 connects by IP, never by ID), so a changed
-    // ID is just stored locally — no uuid, no rendezvous round-trip, no register_pk. Validity is
-    // still enforced above.
-    let _ = old_id;
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    crate::ipc::set_config_async("id", id.to_owned()).await.ok();
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    {
-        Config::set_key_confirmed(false);
-        Config::set_id(&id);
-    }
-    ""
-}
-
-// R-SV4/R-SV10: `check_id` — the rendezvous-dialing `register_pk` sender the Change-ID flow used —
-// is EXCISED (see change_id_shared_). The fork dials no rendezvous and registers no device pk.
-
-// R-G6/R-SV4: relay-route suffixes (`/r`, `/r@server`) are forbidden on this
-// direct-only fork. Keep this compatibility function as an identity transform
-// so stale generated bridge callers cannot silently strip a rejected route.
-pub fn handle_relay_id(id: &str) -> &str {
-    id
-}
-
-#[cfg(test)]
-mod relay_route_tests {
-    use super::handle_relay_id;
-
-    #[test]
-    fn relay_suffix_is_never_stripped() {
-        assert_eq!(handle_relay_id("123456789/r"), "123456789/r");
-        assert_eq!(
-            handle_relay_id("192.168.1.10/r@relay.example.com"),
-            "192.168.1.10/r@relay.example.com"
-        );
-    }
-}
+// R-G6/R-SV4: relay-route suffixes (`/r`, `/r@server`) are dead on this direct-only fork (no relay).
+// The `handle_relay_id` identity shim + its `main_handle_relay_id` FFI are excised — there is no
+// Change-ID / relay-address UI left to feed them.
 
 pub fn support_remove_wallpaper() -> bool {
     #[cfg(any(target_os = "windows", target_os = "linux"))]

@@ -66,7 +66,6 @@ lazy_static::lazy_static! {
     static ref CONFIG2: RwLock<Config2> = RwLock::new(Config2::load());
     static ref LOCAL_CONFIG: RwLock<LocalConfig> = RwLock::new(LocalConfig::load());
     static ref STATUS: RwLock<Status> = RwLock::new(Status::load());
-    static ref ONLINE: Mutex<HashMap<String, i64>> = Default::default();
     pub static ref PROD_RENDEZVOUS_SERVER: RwLock<String> = RwLock::new("".to_owned());
     // R-X4: EXE_RENDEZVOUS_SERVER (the exe-name license rendezvous server) removed.
     pub static ref APP_NAME: RwLock<String> = RwLock::new("RustDesk".to_owned());
@@ -237,10 +236,6 @@ pub struct Config {
     salt: String,
     #[serde(default, deserialize_with = "deserialize_keypair")]
     key_pair: KeyPair, // sk, pk
-    #[serde(default, deserialize_with = "deserialize_bool")]
-    key_confirmed: bool,
-    #[serde(default, deserialize_with = "deserialize_hashmap_string_bool")]
-    keys_confirmed: HashMap<String, bool>,
 }
 
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize, Clone)]
@@ -339,8 +334,6 @@ pub struct PeerConfig {
     pub allow_swap_key: AllowSwapKey,
     #[serde(default, deserialize_with = "deserialize_vec_i32_string_i32")]
     pub port_forwards: Vec<(i32, String, i32)>,
-    #[serde(default, deserialize_with = "deserialize_i32")]
-    pub direct_failures: i32,
     #[serde(flatten)]
     pub disable_audio: DisableAudio,
     #[serde(flatten)]
@@ -433,7 +426,6 @@ impl Default for PeerConfig {
             privacy_mode: Default::default(),
             allow_swap_key: Default::default(),
             port_forwards: Default::default(),
-            direct_failures: Default::default(),
             disable_audio: Default::default(),
             disable_clipboard: Default::default(),
             enable_file_copy_paste: Default::default(),
@@ -489,11 +481,6 @@ pub struct TransferSerde {
     pub write_jobs: Vec<String>,
     #[serde(default, deserialize_with = "deserialize_vec_string")]
     pub read_jobs: Vec<String>,
-}
-
-#[inline]
-pub fn get_online_state() -> i64 {
-    *ONLINE.lock().unwrap().values().max().unwrap_or(&0)
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -992,31 +979,6 @@ impl Config {
         return RENDEZVOUS_SERVERS.iter().map(|x| x.to_string()).collect();
     }
 
-    pub fn reset_online() {
-        *ONLINE.lock().unwrap() = Default::default();
-    }
-
-    pub fn update_latency(host: &str, latency: i64) {
-        ONLINE.lock().unwrap().insert(host.to_owned(), latency);
-        let mut host = "".to_owned();
-        let mut delay = i64::MAX;
-        for (tmp_host, tmp_delay) in ONLINE.lock().unwrap().iter() {
-            if tmp_delay > &0 && tmp_delay < &delay {
-                delay = *tmp_delay;
-                host = tmp_host.to_string();
-            }
-        }
-        if !host.is_empty() {
-            let mut config = CONFIG2.write().unwrap();
-            if host != config.rendezvous_server {
-                log::debug!("Update rendezvous_server in config to {}", host);
-                log::debug!("{:?}", *ONLINE.lock().unwrap());
-                config.rendezvous_server = host;
-                config.store();
-            }
-        }
-    }
-
     pub fn set_id(id: &str) {
         let mut config = CONFIG.write().unwrap();
         if id == config.id {
@@ -1115,35 +1077,6 @@ impl Config {
             .collect()
     }
 
-    pub fn get_key_confirmed() -> bool {
-        CONFIG.read().unwrap().key_confirmed
-    }
-
-    pub fn set_key_confirmed(v: bool) {
-        let mut config = CONFIG.write().unwrap();
-        if config.key_confirmed == v {
-            return;
-        }
-        config.key_confirmed = v;
-        if !v {
-            config.keys_confirmed = Default::default();
-        }
-        config.store();
-    }
-
-    pub fn get_host_key_confirmed(host: &str) -> bool {
-        matches!(CONFIG.read().unwrap().keys_confirmed.get(host), Some(true))
-    }
-
-    pub fn set_host_key_confirmed(host: &str, v: bool) {
-        if Self::get_host_key_confirmed(host) == v {
-            return;
-        }
-        let mut config = CONFIG.write().unwrap();
-        config.keys_confirmed.insert(host.to_owned(), v);
-        config.store();
-    }
-
     pub fn get_key_pair() -> KeyPair {
         // lock here to make sure no gen_keypair more than once
         // no use of CONFIG directly here to ensure no recursive calling in Config::load because of password dec which calling this function
@@ -1165,6 +1098,29 @@ impl Config {
         }
         *lock = Some(config.key_pair.clone());
         config.key_pair
+    }
+
+    /// R-P1 / R-S17: force the (possibly just-generated) key pair onto disk SYNCHRONOUSLY,
+    /// returning it. `get_key_pair()` persists a freshly generated key via a DETACHED
+    /// background thread (so it neither blocks nor re-enters the CONFIG lock), which can lag
+    /// a short-lived process — e.g. `--get-fingerprint`, which prints the fingerprint and
+    /// immediately exits. If that store never lands, the next process generates a DIFFERENT
+    /// key and the operator has pinned a phantom key that never authenticates. Read-only /
+    /// provisioning paths that must not print or pin a not-yet-persisted key call this to
+    /// commit it in the same one-synchronous-store idiom as `set_permanent_password`. No-op
+    /// once the key is already on disk.
+    pub fn commit_key_pair() -> KeyPair {
+        // get_key_pair() returns (releasing the KEY_PAIR lock) with the pair cached in
+        // memory and — if it just generated one — a detached store in flight; take CONFIG
+        // only AFTER it returns, honoring the "never hold CONFIG while taking KEY_PAIR"
+        // ordering (see Config::set / set_permanent_password).
+        let kp = Self::get_key_pair();
+        let mut config = CONFIG.write().unwrap();
+        if config.key_pair.0.is_empty() {
+            config.key_pair = kp.clone();
+            config.store();
+        }
+        kp
     }
 
     pub fn get_cached_pk() -> Option<Vec<u8>> {
@@ -2717,7 +2673,6 @@ deserialize_default!(deserialize_vec_devicegroup, Vec<DeviceGroup>);
 deserialize_default!(deserialize_keypair, KeyPair);
 deserialize_default!(deserialize_size, Size);
 deserialize_default!(deserialize_hashmap_string_string, HashMap<String, String>);
-deserialize_default!(deserialize_hashmap_string_bool,  HashMap<String, bool>);
 deserialize_default!(deserialize_hashmap_resolutions, HashMap<String, Resolution>);
 
 #[inline]
@@ -3943,8 +3898,6 @@ mod tests {
         password = 1
         salt = "123456"
         key_pair = {}
-        key_confirmed = "1"
-        keys_confirmed = 1
         "#;
         let cfg = toml::from_str::<Config>(wrong_type_str);
         assert_eq!(
@@ -3957,13 +3910,13 @@ mod tests {
 
         let wrong_field_str = r#"
         hello = "world"
-        key_confirmed = true
+        salt = "abc"
         "#;
         let cfg = toml::from_str::<Config>(wrong_field_str);
         assert_eq!(
             cfg,
             Ok(Config {
-                key_confirmed: true,
+                salt: "abc".to_string(),
                 ..Default::default()
             })
         );

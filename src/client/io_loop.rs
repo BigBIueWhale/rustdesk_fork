@@ -410,7 +410,7 @@ impl<T: InvokeUiSession> Remote<T> {
                     .unwrap()
                     .set_connected();
                 self.handler
-                    .set_connection_type(peer.is_secured(), direct, stream_type); // flutter -> connection_ready
+                    .set_connection_type(stream_type); // flutter -> connection_ready
                 self.handler.update_direct(Some(direct));
                 if conn_type == ConnType::DEFAULT_CONN || conn_type == ConnType::VIEW_CAMERA {
                     self.handler
@@ -1587,10 +1587,6 @@ impl<T: InvokeUiSession> Remote<T> {
                 Some(message::Union::LoginResponse(lr)) => match lr.union {
                     Some(login_response::Union::Error(err)) => {
                         let err = crate::peer_text::bound_peer_login_error(err);
-                        if err == client::REQUIRE_2FA {
-                            self.handler.lc.write().unwrap().enable_trusted_devices =
-                                lr.enable_trusted_devices;
-                        }
                         if !self.handler.handle_login_error(&err) {
                             return false;
                         }

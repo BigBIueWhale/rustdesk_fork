@@ -752,12 +752,6 @@ class RustdeskImpl {
     return Future(() => js.context.callMethod('setByName', ['options', json]));
   }
 
-  Future<String> mainTestIfValidServer(
-      {required String server, required bool testWithProxy, dynamic hint}) {
-    // TODO: implement
-    return Future.value('');
-  }
-
   Future<String> mainGetAppName({dynamic hint}) {
     return Future.value(mainGetAppNameSync(hint: hint));
   }
@@ -811,15 +805,6 @@ class RustdeskImpl {
     throw UnimplementedError("mainCheckConnectStatus");
   }
 
-  Future<bool> mainIsUsingPublicServer({dynamic hint}) {
-    return Future(() =>
-        js.context.callMethod('getByName', ["is_using_public_server"]) ==
-        'true');
-  }
-
-  Future<bool> mainGetProxyStatus({dynamic hint}) {
-    return Future(() => false);
-  }
 
   String mainGetLocalOption({required String key, dynamic hint}) {
     return js.context.callMethod('getByName', ['option:local', key]);
@@ -863,10 +848,6 @@ class RustdeskImpl {
           'option:local',
           jsonEncode({'name': 'input-source', 'value': value})
         ]));
-  }
-
-  Future<String> mainGetMyId({dynamic hint}) {
-    return Future(() => js.context.callMethod('getByName', ['my_id']));
   }
 
   Future<String> mainGetUuid({dynamic hint}) {
@@ -991,13 +972,6 @@ class RustdeskImpl {
     return js.context.callMethod('getByName', ['option:user:default', key]);
   }
 
-  Future<String> mainHandleRelayId({required String id, dynamic hint}) {
-    var newId = id;
-    if (id.endsWith("\\r") || id.endsWith("/r")) {
-      newId = id.substring(0, id.length - 2);
-    }
-    return Future.value(newId);
-  }
 
   String mainGetMainDisplay({dynamic hint}) {
     return js.context.callMethod('getByName', ['main_display']);
@@ -1264,11 +1238,6 @@ class RustdeskImpl {
     throw UnimplementedError("cmSendChat");
   }
 
-  Future<void> cmLoginRes(
-      {required int connId, required bool res, dynamic hint}) {
-    throw UnimplementedError("cmLoginRes");
-  }
-
   Future<void> cmCloseConnection({required int connId, dynamic hint}) {
     throw UnimplementedError("cmCloseConnection");
   }
@@ -1284,14 +1253,6 @@ class RustdeskImpl {
 
   Future<double> cmGetClickTime({dynamic hint}) {
     throw UnimplementedError("cmGetClickTime");
-  }
-
-  Future<void> cmSwitchPermission(
-      {required int connId,
-      required String name,
-      required bool enabled,
-      dynamic hint}) {
-    throw UnimplementedError("cmSwitchPermission");
   }
 
   Future<String> cmGetConfig({required String name, dynamic hint}) {
@@ -1329,11 +1290,6 @@ class RustdeskImpl {
       required int display,
       required int ptr,
       dynamic hint}) {}
-
-  Future<void> queryOnlines({required List<String> ids, dynamic hint}) {
-    return Future(() =>
-        js.context.callMethod('setByName', ['query_onlines', jsonEncode(ids)]));
-  }
 
   // Dup to the function in hbb_common, lib.rs
   // Maybe we need to move this function to js part.
@@ -1630,12 +1586,6 @@ class RustdeskImpl {
     throw UnimplementedError("mainSetUnlockPin");
   }
 
-  bool sessionGetEnableTrustedDevices(
-      {required UuidValue sessionId, dynamic hint}) {
-    return js.context.callMethod('getByName', ['enable_trusted_devices']) ==
-        'Y';
-  }
-
   Future<String> mainGetTrustedDevices({dynamic hint}) {
     throw UnimplementedError("mainGetTrustedDevices");
   }
@@ -1859,11 +1809,6 @@ class RustdeskImpl {
     return false;
   }
 
-  String mainResolveAvatarUrl({required String avatar, dynamic hint}) {
-    return js.context.callMethod(
-            'getByName', ['resolve_avatar_url', avatar])?.toString() ??
-        avatar;
-  }
 
   Future<String> mainDeployDevice(
       {required String token, required String id, dynamic hint}) {

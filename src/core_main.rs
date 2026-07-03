@@ -386,10 +386,17 @@ pub fn core_main() -> Option<Vec<String>> {
             // pair (Config::get_key_pair().1 — stable, the same key the host-proof
             // signature uses), so it needs no running daemon and no network and
             // works headless on the --server box, where no GUI/FFI is shown to
-            // reach get_fingerprint (R-R2b). Read-only, like --get-id.
+            // reach get_fingerprint (R-R2b).
+            //
+            // I-8/R-S17: on a brand-new (keyless) box, get_key_pair() GENERATES the key
+            // but persists it via a DETACHED thread that can lose the race with this
+            // short-lived process exiting — the next process would then generate a
+            // DIFFERENT key, and the operator would have pinned a phantom. commit_key_pair()
+            // force-commits the just-generated key SYNCHRONOUSLY before we print it, so the
+            // printed fingerprint is always the one the box will actually key with.
             println!(
                 "{}",
-                crate::common::pk_to_fingerprint(config::Config::get_key_pair().1)
+                crate::common::pk_to_fingerprint(config::Config::commit_key_pair().1)
             );
             return None;
         } else if args[0] == "--pin-host" {

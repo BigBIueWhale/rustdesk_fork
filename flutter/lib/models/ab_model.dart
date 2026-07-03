@@ -1137,7 +1137,6 @@ class LegacyAb extends BaseAb {
 
   _deserialize(dynamic data) {
     if (data == null) return;
-    final oldOnlineIDs = peers.where((e) => e.online).map((e) => e.id).toList();
     tags.clear();
     tagColors.clear();
     peers.clear();
@@ -1152,11 +1151,6 @@ class LegacyAb extends BaseAb {
     if (isFull()) {
       peers.removeRange(licensedDevices, peers.length);
     }
-    // restore online
-    peers
-        .where((e) => oldOnlineIDs.contains(e.id))
-        .map((e) => e.online = true)
-        .toList();
     if (data['tag_colors'] is String) {
       Map<String, dynamic> map = jsonDecode(data['tag_colors']);
       tagColors.value = Map<String, int>.from(map);

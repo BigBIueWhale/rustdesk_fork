@@ -49,7 +49,7 @@ import 'package:flutter_hbb/native/custom_cursor.dart'
     if (dart.library.html) 'package:flutter_hbb/web/custom_cursor.dart';
 
 typedef HandleMsgBox = Function(Map<String, dynamic> evt, String id);
-typedef ReconnectHandle = Function(OverlayDialogManager, SessionID, bool);
+typedef ReconnectHandle = Function(OverlayDialogManager, SessionID);
 final _constSessionId = Uuid().v4obj();
 
 const int kMaxRemoteCursorPixels = 1024 * 1024;
@@ -873,16 +873,14 @@ class FfiModel with ChangeNotifier {
       parent.target?.inputModel.setRelativeMouseMode(false);
     }
 
-    if (type == 're-input-password') {
-      wrongPasswordDialog(sessionId, dialogManager, type, title, text);
-      // R-X7 / §18: the 'input-2fa' branch is removed — 2FA is excised (pinned-off-dead).
-    } else if (type == 'input-password') {
-      enterPasswordDialog(sessionId, dialogManager);
-    } else if (type == 'connect-password-prompt') {
+    if (type == 'connect-password-prompt') {
       // R-S13/A3 (prompt-before-keying): the CPace keying needs the box's password up front;
       // a bare-ID first connect has none, so the keying fails and routes here. Enter it →
-      // store + reconnect → key with it. (vs `input-password`, which logs in once keyed.)
-      enterConnectPasswordDialog(sessionId, dialogManager);
+      // store + reconnect → key with it. `text` carries the reason and (I-3) names BOTH a wrong
+      // password AND a changed host key, so a legitimately re-keyed box does not dead-end here.
+      // (There is no post-keying `input-password`/`re-input-password` re-prompt: CPace is the sole
+      // authenticator — R-A1 — so the responder never asks to re-enter a login password.)
+      enterConnectPasswordDialog(sessionId, dialogManager, text);
     } else if (type == 'host-not-pinned-prompt') {
       // R-S17/R-G5 (first-connect pin seed): the box keyed but is not pinned yet. Show its
       // fingerprint to confirm out-of-band, then pin + reconnect on accept.
@@ -896,8 +894,6 @@ class FfiModel with ChangeNotifier {
     } else if (type == 'restarting') {
       showMsgBox(sessionId, type, title, text, link, false, dialogManager,
           hasCancel: false);
-    } else if (type == 'wait-remote-accept-nook') {
-      showWaitAcceptDialog(sessionId, type, title, text, dialogManager);
     } else if (text == kMsgboxTextWaitingForImage) {
       showConnectedWaitingForImage(dialogManager, sessionId, type, title, text);
     } else if (title == 'Privacy mode') {
@@ -989,7 +985,7 @@ class FfiModel with ChangeNotifier {
     _timer?.cancel();
     if (hasRetry) {
       _timer = Timer(Duration(seconds: _reconnects), () {
-        reconnect(dialogManager, sessionId, false);
+        reconnect(dialogManager, sessionId);
       });
       _reconnects *= 2;
     } else {
@@ -998,8 +994,9 @@ class FfiModel with ChangeNotifier {
     }
   }
 
-  void reconnect(OverlayDialogManager dialogManager, SessionID sessionId,
-      bool _forceRelay) {
+  void reconnect(OverlayDialogManager dialogManager, SessionID sessionId) {
+    // R-SV4 (Tier-4): the relay-force reconnect param is dropped — there is no relay to force onto
+    // (every connection is direct), and all callers passed it false.
     // Disable relative mouse mode before reconnecting to ensure cursor is released.
     parent.target?.inputModel.setRelativeMouseMode(false);
     bind.sessionReconnect(sessionId: sessionId, forceRelay: false);

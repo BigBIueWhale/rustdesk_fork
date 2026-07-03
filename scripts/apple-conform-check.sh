@@ -237,8 +237,6 @@ IOS_INFO_KEYS = {
     "CFBundleVersion",
     "ITSAppUsesNonExemptEncryption",
     "LSRequiresIPhoneOS",
-    "NSCameraUsageDescription",
-    "NSPhotoLibraryUsageDescription",
     "UIApplicationSupportsIndirectInputEvents",
     "UIFileSharingEnabled",
     "UILaunchStoryboardName",

@@ -46,7 +46,6 @@ lazy_static::lazy_static! {
 }
 
 fn initialize(app_dir: &str, custom_client_config: &str) {
-    flutter::async_tasks::start_flutter_async_runner();
     // `APP_DIR` is set in `main_get_data_dir_ios()` on iOS.
     #[cfg(not(target_os = "ios"))]
     {
@@ -312,6 +311,17 @@ pub fn session_set_connect_password(session_id: SessionID, password: String, rem
 pub fn session_pin_host(session_id: SessionID) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         session.set_pin_host_and_reconnect();
+    }
+    session_on_waiting_for_image_dialog_show(session_id);
+}
+
+// R-S17/R-G5/I-2 (first-contact pin seed): the `host-not-pinned-prompt` dialog's "Pin" button lands
+// here with the fingerprint the operator TYPED (learned out-of-band via `--get-fingerprint` on the
+// box). Validate 64-hex, pin THAT key, and reconnect. Distinct from `session_pin_host` above (the
+// MISMATCH re-pin, which adopts the key the keying already stashed). Both are friction-bearing.
+pub fn session_pin_host_by_fingerprint(session_id: SessionID, fingerprint: String) {
+    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
+        session.pin_host_by_fingerprint(fingerprint);
     }
     session_on_waiting_for_image_dialog_show(session_id);
 }
@@ -922,14 +932,9 @@ pub fn main_get_login_device_info() -> SyncReturn<String> {
     SyncReturn(get_login_device_info_json())
 }
 
-// R-G4 / R-SV5 (§19): the Flutter `main_change_id` export is removed — the Change-ID UI
-// (dialog.dart changeIdDialog) is excised because the numeric RustDesk ID is dead under the
-// direct-IP model (R-SV5). The Sciter `change_id`/`change_id_shared` path (ui.rs/ui_interface.rs)
-// is a separate, kept (R-B6) surface and is untouched.
-
-pub fn main_get_async_status() -> String {
-    get_async_job_status()
-}
+// R-G4 / R-SV5 (§19): the Flutter `main_change_id` export and the `main_get_async_status` progress
+// FFI are removed with the Change-ID flow — the numeric RustDesk ID is dead under the direct-IP
+// model (R-SV5), and the Sciter Change-ID UI it fed is gone (`mod ui` is deleted, src/lib.rs).
 
 pub fn main_get_option(key: String) -> String {
     get_option(key)
@@ -973,20 +978,10 @@ pub fn main_set_option(key: String, value: String) {
             return;
         }
     }
-    #[cfg(target_os = "android")]
-    if key.eq(config::keys::OPTION_ENABLE_KEYBOARD) {
-        crate::ui_cm_interface::switch_permission_all(
-            "keyboard".to_owned(),
-            config::option2bool(&key, &value),
-        );
-    }
-    #[cfg(target_os = "android")]
-    if key.eq(config::keys::OPTION_ENABLE_CLIPBOARD) {
-        crate::ui_cm_interface::switch_permission_all(
-            "clipboard".to_owned(),
-            config::option2bool(&key, &value),
-        );
-    }
+    // R-S19: the Android `switch_permission_all` push on ENABLE_KEYBOARD / ENABLE_CLIPBOARD toggle
+    // is removed with the rest of the runtime permission-widener (`Data::SwitchPermission` is
+    // excised). The toggle still persists below and new sessions read it at authorization time,
+    // where capabilities are derived from AuthConnType — mid-session widening had no live effect.
 
     // R-D4/R-G1/R-D5/R-SV6: the mediator-restart-on-network-option-change is REMOVED. Every option it
     // watched is excised or inert — custom-rendezvous-server/api-server are lockdown-pinned, the
@@ -1032,14 +1027,6 @@ pub fn main_set_options(json: String) {
     }
 }
 
-pub fn main_test_if_valid_server(server: String, test_with_proxy: bool) -> String {
-    test_if_valid_server(server, test_with_proxy)
-}
-
-pub fn main_get_proxy_status() -> bool {
-    get_proxy_status()
-}
-
 pub fn main_get_app_name() -> String {
     get_app_name()
 }
@@ -1080,21 +1067,15 @@ pub fn main_get_connect_status() -> String {
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        let mut state = hbb_common::config::get_online_state();
-        if state > 0 {
-            state = 1;
-        }
-        serde_json::json!({ "status_num": state }).to_string()
+        // I-1 / R-G2: the rendezvous online-status (`status_num`) is dead — the mediator is excised
+        // and mobile has no video-conn-count board, so there is no live per-tick status payload.
+        "{}".to_string()
     }
 }
 
 pub fn main_check_connect_status() {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     start_option_status_sync(); // avoid multi calls
-}
-
-pub fn main_is_using_public_server() -> bool {
-    crate::using_public_server()
 }
 
 pub fn main_deploy_device(token: String, id: String) -> String {
@@ -1111,10 +1092,6 @@ pub fn main_deploy_device(token: String, id: String) -> String {
         let _ = (token, id);
         "Deployment is not supported on this platform.".to_owned()
     }
-}
-
-pub fn main_resolve_avatar_url(avatar: String) -> SyncReturn<String> {
-    SyncReturn(resolve_avatar_url(avatar))
 }
 
 pub fn main_get_local_option(key: String) -> SyncReturn<String> {
@@ -1287,9 +1264,9 @@ pub fn main_clip_cursor(
     }
 }
 
-pub fn main_get_my_id() -> String {
-    get_id()
-}
+// R-SV5 (Tier-4): `main_get_my_id` (the fetched-but-never-rendered numeric RustDesk ID) is excised
+// with the `_serverId`/`fetchID` server-model machinery. The vestigial LOCAL id label survives via
+// `Config::get_id()` (there is nothing to display it, and it is not a rendezvous handle).
 
 pub fn main_get_uuid() -> String {
     get_uuid()
@@ -1495,10 +1472,6 @@ pub fn main_set_user_default_option(key: String, value: String) {
 
 pub fn main_get_user_default_option(key: String) -> SyncReturn<String> {
     SyncReturn(get_user_default_option(key))
-}
-
-pub fn main_handle_relay_id(id: String) -> String {
-    id
 }
 
 pub fn main_is_option_fixed(key: String) -> SyncReturn<bool> {
@@ -2044,15 +2017,6 @@ pub fn cm_send_chat(conn_id: i32, msg: String) {
     crate::ui_cm_interface::send_chat(conn_id, msg);
 }
 
-pub fn cm_login_res(conn_id: i32, res: bool) {
-    #[cfg(not(any(target_os = "ios")))]
-    if res {
-        crate::ui_cm_interface::authorize(conn_id);
-    } else {
-        crate::ui_cm_interface::close(conn_id);
-    }
-}
-
 pub fn cm_close_connection(conn_id: i32) {
     #[cfg(not(any(target_os = "ios")))]
     crate::ui_cm_interface::close(conn_id);
@@ -2073,11 +2037,6 @@ pub fn cm_get_click_time() -> f64 {
     return crate::ui_cm_interface::get_click_time() as _;
     #[cfg(any(target_os = "ios"))]
     return 0 as _;
-}
-
-pub fn cm_switch_permission(conn_id: i32, name: String, enabled: bool) {
-    #[cfg(not(any(target_os = "ios")))]
-    crate::ui_cm_interface::switch_permission(conn_id, name, enabled)
 }
 
 pub fn cm_get_config(name: String) -> String {
@@ -2129,10 +2088,6 @@ pub fn session_register_gpu_texture(
     SyncReturn(super::flutter::session_register_gpu_texture(
         session_id, display, ptr,
     ))
-}
-
-pub fn query_onlines(ids: Vec<String>) {
-    let _ = flutter::async_tasks::query_onlines(ids);
 }
 
 pub fn version_to_number(v: String) -> SyncReturn<i64> {

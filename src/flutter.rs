@@ -744,14 +744,12 @@ impl InvokeUiSession for FlutterHandler {
         );
     }
 
-    fn set_connection_type(&self, is_secured: bool, direct: bool, stream_type: &str) {
+    fn set_connection_type(&self, stream_type: &str) {
+        // R-G3 (Tier-4): the peer's secure/direct wire flags are dropped — the channel is ALWAYS
+        // PAKE-keyed + direct, so the viewer consumes only the stream-type badge suffix.
         self.push_event(
             "connection_ready",
-            &[
-                ("secure", &is_secured.to_string()),
-                ("direct", &direct.to_string()),
-                ("stream_type", &stream_type.to_string()),
-            ],
+            &[("stream_type", &stream_type.to_string())],
             &[],
         );
     }
@@ -2293,69 +2291,8 @@ pub mod sessions {
     }
 }
 
-pub(super) mod async_tasks {
-    use hbb_common::{bail, tokio, ResultType};
-    use std::{
-        collections::HashMap,
-        sync::{
-            mpsc::{sync_channel, SyncSender},
-            Arc, Mutex,
-        },
-    };
-
-    type TxQueryOnlines = SyncSender<Vec<String>>;
-    lazy_static::lazy_static! {
-        static ref TX_QUERY_ONLINES: Arc<Mutex<Option<TxQueryOnlines>>> = Default::default();
-    }
-
-    #[inline]
-    pub fn start_flutter_async_runner() {
-        std::thread::spawn(start_flutter_async_runner_);
-    }
-
-    #[allow(dead_code)]
-    pub fn stop_flutter_async_runner() {
-        let _ = TX_QUERY_ONLINES.lock().unwrap().take();
-    }
-
-    #[tokio::main(flavor = "current_thread")]
-    async fn start_flutter_async_runner_() {
-        // Only one task is allowed to run at the same time.
-        let (tx_onlines, rx_onlines) = sync_channel::<Vec<String>>(1);
-        TX_QUERY_ONLINES.lock().unwrap().replace(tx_onlines);
-
-        loop {
-            match rx_onlines.recv() {
-                Ok(ids) => {
-                    crate::client::peer_online::query_online_states(ids, handle_query_onlines).await
-                }
-                _ => {
-                    // unreachable!
-                    break;
-                }
-            }
-        }
-    }
-
-    pub fn query_onlines(ids: Vec<String>) -> ResultType<()> {
-        if let Some(tx) = TX_QUERY_ONLINES.lock().unwrap().as_ref() {
-            // Ignore if the channel is full.
-            let _ = tx.try_send(ids)?;
-        } else {
-            bail!("No tx_query_onlines");
-        }
-        Ok(())
-    }
-
-    fn handle_query_onlines(onlines: Vec<String>, offlines: Vec<String>) {
-        let data = HashMap::from([
-            ("name", "callback_query_onlines".to_owned()),
-            ("onlines", onlines.join(",")),
-            ("offlines", offlines.join(",")),
-        ]);
-        let _res = super::push_global_event(
-            super::APP_TYPE_MAIN,
-            serde_json::ser::to_string(&data).unwrap_or("".to_owned()),
-        );
-    }
-}
+// I-1 / R-G2 / §18: the `async_tasks` module (a single-worker runner whose ONLY job was
+// `query_online_states` — the rendezvous peer-online query) is removed with the peer-online
+// pipeline. It dialed nobody in the fork (the query is a no-egress stub) and its `callback_query_onlines`
+// event never fired, so the runner thread blocked idle forever. The Flutter side no longer calls
+// `queryOnlines`.

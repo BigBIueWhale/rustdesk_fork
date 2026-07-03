@@ -57,25 +57,12 @@ impl Interface for Session {
         return self.lc.clone();
     }
 
-    fn msgbox(&self, msgtype: &str, title: &str, text: &str, link: &str) {
+    fn msgbox(&self, msgtype: &str, title: &str, text: &str, _link: &str) {
+        // R-A1/R-S18: CPace is the sole authenticator — the responder never asks the CLI to
+        // (re-)enter a login password over a keyed stream, so the `input-password` /
+        // `re-input-password` prompt arms are excised. The pre-keying password (if any) is read
+        // once in `Session::new`. Remaining message types are logged.
         match msgtype {
-            "input-password" => {
-                self.sender
-                    .send(Data::Login((self.password.clone(), true)))
-                    .ok();
-            }
-            "re-input-password" => {
-                log::error!("{}: {}", title, text);
-                match rpassword::prompt_password("Enter password: ") {
-                    Ok(password) => {
-                        let login_data = Data::Login((password, true));
-                        self.sender.send(login_data).ok();
-                    }
-                    Err(e) => {
-                        log::error!("reinput password failed, {:?}", e);
-                    }
-                }
-            }
             msg if msg.contains("error") => {
                 log::error!("{}: {}: {}", msgtype, title, text);
             }
@@ -86,7 +73,7 @@ impl Interface for Session {
     }
 
     fn handle_login_error(&self, err: &str) -> bool {
-        handle_login_error(self.lc.clone(), err, self)
+        handle_login_error(err, self)
     }
 
     fn handle_peer_info(&self, pi: PeerInfo) {

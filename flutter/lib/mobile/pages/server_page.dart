@@ -70,21 +70,10 @@ class _DropDownAction extends StatelessWidget {
 }
 
 class _ServerPageState extends State<ServerPage> {
-  Timer? _updateTimer;
-
   @override
   void initState() {
     super.initState();
-    _updateTimer = periodic_immediate(const Duration(seconds: 3), () async {
-      await gFFI.serverModel.fetchID();
-    });
     gFFI.serverModel.checkAndroidPermission();
-  }
-
-  @override
-  void dispose() {
-    _updateTimer?.cancel();
-    super.dispose();
   }
 
   @override
@@ -557,7 +546,7 @@ class ConnectionManager extends StatelessWidget {
                       Expanded(child: ClientInfo(client)),
                       Expanded(
                           flex: -1,
-                          child: client.isFileTransfer || !client.authorized
+                          child: client.isFileTransfer
                               ? const SizedBox.shrink()
                               : IconButton(
                                   onPressed: () {
@@ -573,15 +562,9 @@ class ConnectionManager extends StatelessWidget {
                                       client.unreadChatMessageCount)))
                     ],
                   ),
-                  client.authorized
-                      ? const SizedBox.shrink()
-                      : Text(
-                          translate("android_new_connection_tip"),
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ).marginOnly(bottom: 5),
-                  client.authorized
-                      ? _buildDisconnectButton(client)
-                      : _buildNewConnectionHint(serverModel, client),
+                  // R-A2/R-G7: clients arrive authorized (approve-mode pinned "password"), so the
+                  // "new connection" accept hint is gone — only the disconnect control remains.
+                  _buildDisconnectButton(client),
                   if (client.incomingVoiceCall && !client.inVoiceCall)
                     ..._buildNewVoiceCallHint(context, serverModel, client),
                 ])))
@@ -626,18 +609,6 @@ class ConnectionManager extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
       );
     }
-  }
-
-  Widget _buildNewConnectionHint(ServerModel serverModel, Client client) {
-    // R-G7 / R-S9 (§19): the click-to-accept "Accept" button is removed — approve-mode is pinned
-    // 'password', so acceptance is automatic; only "Dismiss" (reject) survives.
-    return Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-      TextButton(
-          child: Text(translate("Dismiss")),
-          onPressed: () {
-            serverModel.sendLoginResponse(client, false);
-          }).marginOnly(right: 15),
-    ]);
   }
 
   List<Widget> _buildNewVoiceCallHint(

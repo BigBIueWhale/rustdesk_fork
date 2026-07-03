@@ -14,10 +14,8 @@ class Peer {
   String platform;
   String alias;
   List<dynamic> tags;
-  bool forceAlwaysRelay = false;
   String rdpPort;
   String rdpUsername;
-  bool online = false;
   String loginName; //login username
   String device_group_name;
   String note;
@@ -39,7 +37,6 @@ class Peer {
         platform = json['platform'] ?? '',
         alias = json['alias'] ?? '',
         tags = json['tags'] ?? [],
-        forceAlwaysRelay = json['forceAlwaysRelay'] == 'true',
         rdpPort = json['rdpPort'] ?? '',
         rdpUsername = json['rdpUsername'] ?? '',
         loginName = json['loginName'] ?? '',
@@ -57,7 +54,6 @@ class Peer {
       "platform": platform,
       "alias": alias,
       "tags": tags,
-      "forceAlwaysRelay": forceAlwaysRelay.toString(),
       "rdpPort": rdpPort,
       "rdpUsername": rdpUsername,
       'loginName': loginName,
@@ -102,7 +98,6 @@ class Peer {
     required this.platform,
     required this.alias,
     required this.tags,
-    required this.forceAlwaysRelay,
     required this.rdpPort,
     required this.rdpUsername,
     required this.loginName,
@@ -121,7 +116,6 @@ class Peer {
           platform: '...',
           alias: '',
           tags: [],
-          forceAlwaysRelay: false,
           rdpPort: '',
           rdpUsername: '',
           loginName: '',
@@ -137,7 +131,6 @@ class Peer {
         platform == other.platform &&
         alias == other.alias &&
         tags.equals(other.tags) &&
-        forceAlwaysRelay == other.forceAlwaysRelay &&
         rdpPort == other.rdpPort &&
         rdpUsername == other.rdpUsername &&
         device_group_name == other.device_group_name &&
@@ -155,7 +148,6 @@ class Peer {
             platform: other.platform,
             alias: other.alias,
             tags: other.tags.toList(),
-            forceAlwaysRelay: other.forceAlwaysRelay,
             rdpPort: other.rdpPort,
             rdpUsername: other.rdpUsername,
             loginName: other.loginName,
@@ -163,8 +155,6 @@ class Peer {
             note: other.note,
             sameServer: other.sameServer);
 }
-
-enum UpdateEvent { online, load }
 
 typedef GetInitPeers = RxList<Peer> Function();
 
@@ -178,17 +168,11 @@ class Peers extends ChangeNotifier {
   // And then load all peers later.
   List<String> restPeerIds = List.empty(growable: true);
   final GetInitPeers? getInitPeers;
-  UpdateEvent event = UpdateEvent.load;
-  static const _cbQueryOnlines = 'callback_query_onlines';
-
   Peers(
       {required this.name,
       required this.getInitPeers,
       required this.loadEvent}) {
     peers = getInitPeers?.call() ?? [];
-    platformFFI.registerEventHandler(_cbQueryOnlines, name, (evt) async {
-      _updateOnlineState(evt);
-    });
     platformFFI.registerEventHandler(loadEvent, name, (evt) async {
       _updatePeers(evt);
     });
@@ -196,7 +180,6 @@ class Peers extends ChangeNotifier {
 
   @override
   void dispose() {
-    platformFFI.unregisterEventHandler(_cbQueryOnlines, name);
     platformFFI.unregisterEventHandler(loadEvent, name);
     super.dispose();
   }
@@ -213,38 +196,10 @@ class Peers extends ChangeNotifier {
     return peers.length;
   }
 
-  void _updateOnlineState(Map<String, dynamic> evt) {
-    int changedCount = 0;
-    evt['onlines'].split(',').forEach((online) {
-      for (var i = 0; i < peers.length; i++) {
-        if (peers[i].id == online) {
-          if (!peers[i].online) {
-            changedCount += 1;
-            peers[i].online = true;
-          }
-        }
-      }
-    });
-
-    evt['offlines'].split(',').forEach((offline) {
-      for (var i = 0; i < peers.length; i++) {
-        if (peers[i].id == offline) {
-          if (peers[i].online) {
-            changedCount += 1;
-            peers[i].online = false;
-          }
-        }
-      }
-    });
-
-    if (changedCount > 0) {
-      event = UpdateEvent.online;
-      notifyListeners();
-    }
-  }
-
+  // I-1 / R-G2 / §18: the rendezvous peer-online pipeline is excised. `_updateOnlineState` (fed by
+  // the `callback_query_onlines` event that never fires) and `_getOnlineStates` (which preserved the
+  // always-false online flag across reloads) are gone; `_updatePeers` just decodes the peer list.
   void _updatePeers(Map<String, dynamic> evt) {
-    final onlineStates = _getOnlineStates();
     if (getInitPeers != null) {
       peers = getInitPeers?.call() ?? [];
     } else {
@@ -256,20 +211,7 @@ class Peers extends ChangeNotifier {
       restPeerIds = (evt['ids'] as String).split(',');
     }
 
-    for (var peer in peers) {
-      final state = onlineStates[peer.id];
-      peer.online = state != null && state != false;
-    }
-    event = UpdateEvent.load;
     notifyListeners();
-  }
-
-  Map<String, bool> _getOnlineStates() {
-    var onlineStates = <String, bool>{};
-    for (var peer in peers) {
-      onlineStates[peer.id] = peer.online;
-    }
-    return onlineStates;
   }
 
   List<Peer> _decodePeers(String peersStr) {

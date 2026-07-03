@@ -130,18 +130,20 @@ if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel config-write allowlist:
   echo "  ok  R-S11 main-channel config-write POSITIVE allowlist (SyncConfig+id+salt+Socks rejected; legit operator writes pass; gate binds Linux/macOS AND the Windows main pipe)"; fi
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() — set_socks / set_permanent_password /
-# set_id / set_salt / set_key_confirmed / set_unlock_pin / the whole-config Config::set+Config2::set —
+# set_id / set_salt / set_unlock_pin / the whole-config Config::set+Config2::set —
 # MUST each sit in a Data arm that main_channel_admits_config_write DENIES (Socks(Some) / the non-
 # whitelisted Config struct-fields / SyncConfig(Some)). The `_ => true` catch-all would let a NEW
 # bypassing write (a new Data arm) reach Config unguarded on the main channel — the exact regression.
 # set_options is EXCLUDED (it self-filters via is_option_can_save, R-S16); HwCodecConfig::set is a
 # separate hwcodec store (compiled out, R-R2b), excluded by the \b before Config. Pin the count: a new
 # bypassing write trips this, forcing the author to deny its Data variant in main_channel_admits.
-hb_cfg_writes=$(awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -cE '\bConfig::set_socks|\bConfig::set_permanent_password|\bConfig::set_id|\bConfig::set_salt|\bConfig::set_key_confirmed|\bConfig::set_unlock_pin|\bConfig::set\(|\bConfig2::set\(')
-if [ "$hb_cfg_writes" != "9" ]; then
-  echo "  FAIL R-S11/R-A6: handle() now has $hb_cfg_writes is_option_can_save-bypassing config-writes (expected 9). A config-write was added/removed — ensure any NEW one's Data variant is DENIED by main_channel_admits_config_write (never the _ => true default), then update this count."; rc=1
+hb_cfg_writes=$(awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -cE '\bConfig::set_socks|\bConfig::set_permanent_password|\bConfig::set_id|\bConfig::set_salt|\bConfig::set_unlock_pin|\bConfig::set\(|\bConfig2::set\(')
+# I-1 (2026-07-03): was 9; the id-write arm's set_key_confirmed(false) was excised with the dead
+# rendezvous key_confirmed cluster (the setter no longer exists), so the bypassing-write count is 8.
+if [ "$hb_cfg_writes" != "8" ]; then
+  echo "  FAIL R-S11/R-A6: handle() now has $hb_cfg_writes is_option_can_save-bypassing config-writes (expected 8). A config-write was added/removed — ensure any NEW one's Data variant is DENIED by main_channel_admits_config_write (never the _ => true default), then update this count."; rc=1
 else
-  echo "  ok  R-S11/R-A6 the 9 is_option_can_save-bypassing config-writes in handle() are all reached via main_channel_admits-denied arms (Socks/Config-nonwhitelist/SyncConfig) — no new bypassing write"
+  echo "  ok  R-S11/R-A6 the 8 is_option_can_save-bypassing config-writes in handle() are all reached via main_channel_admits-denied arms (Socks/Config-nonwhitelist/SyncConfig) — no new bypassing write"
 fi
 
 # A2/R-D8: the --password provisioning arm MUST stay install-gated but NOT root-gated. An unprivileged
@@ -379,19 +381,21 @@ else
 fi
 # R-S17 no-TOFU structural anti-regression (crypto-audit DiD-1, 2026-07-01): host_pin::set_pinned_pk is
 # the SOLE pin-adoption writer. The no-TOFU-on-mismatch property is enforced by its callers — the
-# --pin-host CLI (core_main.rs; out-of-band, requires --forget-host first) and the session_pin_host FFI
-# (ui_session_interface.rs) whose Dart re-pin dialog forces the operator to TYPE the new fingerprint
-# (matches ? submit : null); the Rust core NEVER auto-adopts (client.rs bails fail-closed on mismatch).
-# Confine the caller set structurally so a future (e.g. non-Flutter) UI cannot silently add a
-# no-friction adopt that would regress toward TOFU-on-mismatch. (host_pin.rs = the def; bridge_generated
-# = the gitignored FRB shim for session_pin_host; a client.rs comment mentions it without a call `(`.)
+# --pin-host CLI (core_main.rs; out-of-band, requires --forget-host first) and the session_pin_host /
+# session_pin_host_by_fingerprint FFIs (ui_session_interface.rs) whose Dart dialogs force the operator
+# to TYPE the fingerprint (the button stays disabled — `... ? submit : null` — until the typed input is
+# a valid key: the mismatch dialog matches the verified new fp, the first-contact dialog requires a
+# 64-hex key); the Rust core NEVER auto-adopts (client.rs bails fail-closed on mismatch, and refuses to
+# key an unpinned host). Confine the caller set structurally (by file) so a future (e.g. non-Flutter) UI
+# cannot silently add a no-friction adopt that would regress toward TOFU. (host_pin.rs = the def;
+# bridge_generated = the gitignored FRB shim; a client.rs comment mentions it without a call `(`.)
 pin_adopt_callers=$(grep -rn -F 'set_pinned_pk(' src libs --include='*.rs' 2>/dev/null \
   | grep -vE 'host_pin\.rs|core_main\.rs|ui_session_interface\.rs' || true)  # || true: empty grep -v exits 1 under set -e
 if [ -n "$pin_adopt_callers" ]; then
   echo "  FAIL R-S17: unexpected host_pin::set_pinned_pk caller (no-TOFU friction-bypass risk):"
   echo "$pin_adopt_callers" | sed 's/^/      /'; rc=1
 else
-  echo "  ok  R-S17 set_pinned_pk confined to its 2 friction-enforced callers (--pin-host CLI + Dart re-pin FFI)"
+  echo "  ok  R-S17 set_pinned_pk confined to its friction-enforced callers (--pin-host CLI + Dart re-pin + Dart first-contact fingerprint-entry FFIs)"
 fi
 ra6_clean 'DEBUG_BOOT_COMPLETED'                                          'R-X6 fake-boot broadcast'  || rc=1
 # R-X6: the Linux D-Bus deep-link delivery transport (src/server/dbus.rs: session-bus name
@@ -444,8 +448,12 @@ if grep -RInE 'force-always-relay' src libs --include='*.rs' 2>/dev/null \
 else
   echo "  ok  R-G6/R-SV4 force-always-relay live Rust token absent"
 fi
-grep -A3 -F 'pub fn handle_relay_id(id: &str) -> &str {' src/ui_interface.rs | grep -qF '    id' \
-  || { echo "  FAIL R-G6/R-SV4: handle_relay_id is no longer an identity compatibility shim"; rc=1; }
+# I-2/Tier-4 (2026-07-03): handle_relay_id (the dead identity shim) + its main_handle_relay_id FFI are
+# EXCISED — no relay/Change-ID UI feeds them, and Client::_start rejects a `/r` route as a non-direct
+# address. This flipped from an identity-PRESENCE gate to an ABSENCE gate (the fn must be gone).
+grep -qE 'fn handle_relay_id' src/ui_interface.rs \
+  && { echo "  FAIL R-G6/R-SV4: handle_relay_id must be EXCISED (dead relay-route shim) — found a residual fn"; rc=1; } \
+  || echo "  ok  R-G6/R-SV4 handle_relay_id excised (direct-only _start rejects /r; client.rs never strips)"
 # R-G6 ADDITIVE copy — the half the deletion-only greps never asserted (so it silently slipped): the
 # direct-only failure/status semantics MUST be REWRITTEN, not merely have the relay copy deleted. Two
 # MUST clauses: (a) a peer that DISABLED a capability surfaces a SPECIFIC "disabled on the peer"
@@ -870,7 +878,7 @@ ra6_clean 'ipc::Data::SwitchPermission'                                  'R-S16(
 #    so the switch flag cannot diverge from the enforced config (BUG4(b)).
 r_s16d_ui=""
 grep -qF 'PINNED_SETTINGS.iter().any' src/ui_interface.rs || r_s16d_ui="$r_s16d_ui is_option_fixed-pinned"
-grep -qF 'final canModifyPermission = false' flutter/lib/desktop/pages/server_page.dart || r_s16d_ui="$r_s16d_ui cm-perms-noninteractive"
+! grep -qE 'cmSwitchPermission|canModifyPermission' flutter/lib/desktop/pages/server_page.dart || r_s16d_ui="$r_s16d_ui cm-perms-runtime-switchable"
 grep -qF 'isOptionFixed(kOptionStopService)' flutter/lib/desktop/pages/desktop_setting_page.dart || r_s16d_ui="$r_s16d_ui stop-service-hide"
 [ "$(grep -cF 'R-S16(d): re-sync the flag to the STORED value' flutter/lib/models/server_model.dart)" -ge 3 ] || r_s16d_ui="$r_s16d_ui mobile-toggle-resync"
 if [ -n "$r_s16d_ui" ]; then
@@ -2466,8 +2474,9 @@ fi
 # R-G5 / R-S17 (the host-key-pin DIALOGS — the one new MITM defense the fork ADDS): the viewer's
 # host-proof verify + pin-compare (R-S17, gated above on the client.rs side) is only USABLE if the GUI
 # lets the operator SEED a pin on first contact (and re-pin on a mismatch). The flutter dialogs MUST
-# exist: hostNotPinnedDialog (first-contact fingerprint seed) -> bind.sessionPinHost, dispatched from
-# the `host-not-pinned-prompt` model event. A regression that dropped them would silently revert the
+# exist: hostNotPinnedDialog (first-contact fingerprint seed — the operator TYPES the fingerprint ->
+# bind.sessionPinHostByFingerprint), dispatched from the `host-not-pinned-prompt` model event; the
+# mismatch dialog still uses bind.sessionPinHost. A regression that dropped them would silently revert the
 # viewer to blind trust-on-first-use (the absence IS the security regression — a presence gate).
 r_g5_missing=
 grep -q 'void hostNotPinnedDialog' flutter/lib/common/widgets/dialog.dart 2>/dev/null || r_g5_missing="$r_g5_missing seed-dialog"
@@ -2494,17 +2503,18 @@ else
 fi
 # R-S17 / §19 closing-gate POSITIVE assertion: the headless box must be able to disclose its OWN Ed25519
 # fingerprint out-of-band so the operator can verify the viewer's first-connect seed — `--get-fingerprint`
-# in core_main.rs printing pk_to_fingerprint(get_key_pair().1). The §19 closing box names this as a
+# in core_main.rs printing pk_to_fingerprint(commit_key_pair().1) — commit_key_pair force-persists a
+# just-generated key SYNCHRONOUSLY (I-8), so the printed seed is never a phantom. The §19 closing box names this as a
 # REQUIRED positive CI check (alongside the seed dialog + bare-ID rejection, both already gated); it was
 # the one missing one. Without --get-fingerprint the R-S17 substitution defense is un-bootstrappable on
 # the very headless box it protects.
 r_getfp=
 grep -q '"--get-fingerprint"' src/core_main.rs                                        || r_getfp="$r_getfp arm-missing"
-grep -q 'pk_to_fingerprint(config::Config::get_key_pair().1)' src/core_main.rs        || r_getfp="$r_getfp wrong-key-source"
+grep -q 'pk_to_fingerprint(config::Config::commit_key_pair().1)' src/core_main.rs     || r_getfp="$r_getfp wrong-key-source"
 if [ -n "$r_getfp" ]; then
   echo "  FAIL R-S17 --get-fingerprint bootstrap CLI:$r_getfp (the host's substitution-defense seed is un-readable headless)"; rc=1
 else
-  echo "  ok  R-S17 --get-fingerprint present in core_main.rs (prints pk_to_fingerprint(get_key_pair().1) — the headless seed-disclosure the §19 closing-gate mandates)"
+  echo "  ok  R-S17 --get-fingerprint present in core_main.rs (prints pk_to_fingerprint(commit_key_pair().1) — the headless seed-disclosure the §19 closing-gate mandates, force-committed I-8)"
 fi
 # R-X7a / R-G1 (no inert pinned-policy SELECTOR survives — removed, not greyed): verification-method +
 # approve-mode are R-S16-pinned (use-permanent-password / password), so a UI that PRESENTS+WRITES them

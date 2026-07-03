@@ -557,40 +557,11 @@ audio_rechannel!(audio_rechannel_8_7, 8, 7);
 // excised. The fork keys at the choke point and ships direct-only (R-D4); there is
 // no rendezvous probe and no probe-reply config adoption.
 
-pub async fn get_rendezvous_server(ms_timeout: u64) -> (String, Vec<String>, bool) {
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    let (mut a, mut b) = get_rendezvous_server_(ms_timeout);
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    let (mut a, mut b) = get_rendezvous_server_(ms_timeout).await;
-    // R-X4: exe-name license rendezvous-server override removed (direct-IP only).
-    let mut b: Vec<String> = b
-        .drain(..)
-        .map(|x| socket_client::check_port(x, config::RENDEZVOUS_PORT))
-        .collect();
-    let c = if b.contains(&a) {
-        b = b.drain(..).filter(|x| x != &a).collect();
-        true
-    } else {
-        a = b.pop().unwrap_or(a);
-        false
-    };
-    (a, b, c)
-}
-
-#[inline]
-#[cfg(any(target_os = "android", target_os = "ios"))]
-fn get_rendezvous_server_(_ms_timeout: u64) -> (String, Vec<String>) {
-    (
-        Config::get_rendezvous_server(),
-        Config::get_rendezvous_servers(),
-    )
-}
-
-#[inline]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-async fn get_rendezvous_server_(ms_timeout: u64) -> (String, Vec<String>) {
-    crate::ipc::get_rendezvous_server(ms_timeout).await
-}
+// R-SV4 / §18 (dial nobody): the `get_rendezvous_server[_]` resolver chain (which port-checked and
+// ranked the rendezvous server list) is excised — it had ZERO callers (the direct-IP fork keys at the
+// choke point and never dials a mediator, R-D4/R-SV4). The live LOCAL accessors
+// `Config::get_rendezvous_server[s]` (the vestigial stored value) stay; only the async resolver +
+// its IPC query hop are gone.
 
 #[inline]
 #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -1118,21 +1089,6 @@ pub fn get_rs_pk(str_base64: &str) -> Option<sign::PublicKey> {
     }
 }
 
-pub fn decode_id_pk(signed: &[u8], key: &sign::PublicKey) -> ResultType<(String, [u8; 32])> {
-    let res = IdPk::parse_from_bytes(
-        &sign::verify(signed, key).map_err(|_| anyhow!("Signature mismatch"))?,
-    )?;
-    if let Some(pk) = get_pk(&res.pk) {
-        Ok((res.id, pk))
-    } else {
-        bail!("Wrong their public length");
-    }
-}
-
-#[inline]
-pub fn using_public_server() -> bool {
-    crate::get_custom_rendezvous_server(get_option("custom-rendezvous-server")).is_empty()
-}
 
 pub struct ThrottledInterval {
     interval: Interval,

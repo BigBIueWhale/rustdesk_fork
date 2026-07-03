@@ -50,6 +50,23 @@ class _PeerCardState extends State<_PeerCard>
   final double _cardRadius = 16;
   final double _tileRadius = 5;
   final double _borderWidth = 2;
+  // I-6: whether the fork has a saved per-address CPace credential (PRS) for this peer. Fetched
+  // async once (only on the recent/favorite tabs — the address-book tab is structurally disabled) so
+  // the key/lock badge reflects the REAL stored PRS, not the dead shared-address-book `password` field.
+  bool _hasPassword = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.tab == PeerTabIndex.recent || widget.tab == PeerTabIndex.fav) {
+      () async {
+        final has = await bind.mainPeerHasPassword(id: widget.peer.id);
+        if (mounted && has != _hasPassword) {
+          setState(() => _hasPassword = has);
+        }
+      }();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -183,7 +200,6 @@ class _PeerCardState extends State<_PeerCard>
                   child: Column(
                     children: [
                       Row(children: [
-                        getOnline(isPortrait ? 4 : 8, peer.online),
                         Expanded(
                             child: Text(
                           peer.alias.isEmpty ? formatID(peer.id) : peer.alias,
@@ -365,7 +381,6 @@ class _PeerCardState extends State<_PeerCard>
                     children: [
                       Expanded(
                           child: Row(children: [
-                        getOnline(8, peer.online),
                         Expanded(
                             child: Text(
                           peer.alias.isEmpty ? formatID(peer.id) : peer.alias,
@@ -483,9 +498,13 @@ class _PeerCardState extends State<_PeerCard>
       child: build_more(context));
 
   bool _shouldBuildPasswordIcon(Peer peer) {
-    if (gFFI.peerTabModel.currentTab != PeerTabIndex.ab.index) return false;
-    if (gFFI.abModel.current.isPersonal()) return false;
-    return peer.password.isNotEmpty;
+    // I-6: show the saved-credential lock on the recent/favorite tabs — where the fork stores a
+    // per-address CPace PRS (`mainPeerHasPassword`) — not on the structurally-disabled
+    // address-book tab, and never from the dead shared-AB `peer.password` field.
+    if (widget.tab != PeerTabIndex.recent && widget.tab != PeerTabIndex.fav) {
+      return false;
+    }
+    return _hasPassword;
   }
 
   /// Show the peer menu and handle user's choice.
@@ -1317,14 +1336,6 @@ void _rdpDialog(String id) async {
       onCancel: close,
     );
   });
-}
-
-// R-G / R-D / §18 (correctness — dial nobody): a direct-IP fork has NO rendezvous server to ask
-// which peers are online, so an "Online/Offline" dot would assert a status it cannot actually know
-// (the online-status query is a no-egress stub — cebfdf2). Render nothing rather than imply a
-// (always-"Offline") status. The callers keep passing `online` so the signature is stable.
-Widget getOnline(double rightPadding, bool online) {
-  return const SizedBox.shrink();
 }
 
 Widget build_more(BuildContext context, {bool invert = false}) {

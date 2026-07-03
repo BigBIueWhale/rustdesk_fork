@@ -1219,7 +1219,7 @@ void msgBox(SessionID sessionId, String type, String title, String text,
               ? () {
                   // Disable the button
                   enabled.value = false;
-                  reconnect(dialogManager, sessionId, false);
+                  reconnect(dialogManager, sessionId);
                 }
               : null,
         ));
@@ -1261,7 +1261,7 @@ Widget msgboxIcon(String type) {
   if (type.contains("success")) {
     iconData = Icons.check_circle;
   }
-  if (type == "wait-uac" || type == "wait-remote-accept-nook") {
+  if (type == "wait-uac") {
     iconData = Icons.hourglass_top;
   }
   if (type == 'on-uac' || type == 'on-foreground-elevated') {
@@ -3854,9 +3854,8 @@ String getConnectionText(String streamType) {
   // secure×direct branches collapse to the one reachable state, and the now-unused `secure`/
   // `direct` args (and the `_secure`/`_direct` state that fed them) are removed entirely.
   final String connectionText = translate("Direct and encrypted connection");
-  if (streamType == 'Relay') {
-    streamType = 'TCP';
-  }
+  // R-SV4 (Tier-4): the stream type is ALWAYS "TCP" (there is no relay), so the dead
+  // "Relay"->"TCP" remap is removed.
   if (streamType.isEmpty) {
     return connectionText;
   } else {

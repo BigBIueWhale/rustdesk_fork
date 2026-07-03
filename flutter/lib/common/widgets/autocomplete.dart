@@ -150,8 +150,6 @@ class AutocompletePeerTileState extends State<AutocompletePeerTile> {
                                                   margin:
                                                       EdgeInsets.only(top: 2),
                                                   child: Row(children: [
-                                                    getOnline(
-                                                        8, widget.peer.online),
                                                     Expanded(
                                                         child: Text(
                                                       widget.peer.alias.isEmpty

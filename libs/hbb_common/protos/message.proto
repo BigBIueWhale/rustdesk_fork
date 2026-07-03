@@ -35,11 +35,6 @@ message VideoFrame {
   int32 display = 14;
 }
 
-message IdPk {
-  string id = 1;
-  bytes pk = 2;
-}
-
 message DisplayInfo {
   sint32 x = 1;
   sint32 y = 2;
@@ -149,7 +144,11 @@ message LoginResponse {
     string error = 1;
     PeerInfo peer_info = 2;
   }
-  bool enable_trusted_devices = 3;
+  // R-X7 / §18: the 2FA / trusted-devices cluster is excised. The responder's 2FA gate is removed,
+  // so it never sets `enable_trusted_devices` and never sends REQUIRE_2FA; the viewer had a fully
+  // wired-but-never-triggered handler. The `enable_trusted_devices` field (3) is DELETED and its tag
+  // reserved (not reused) so no future field silently re-reads a stale trusted-devices bit.
+  reserved 3;
 }
 
 message TouchScaleUpdate {

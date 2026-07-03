@@ -32,7 +32,6 @@ class ServerModel with ChangeNotifier {
   bool _fileOk = false;
   bool _clipboardOk = false;
   bool hideCm = false;
-  int _connectStatus = 0; // Rendezvous Server status
   String _verificationMethod = "";
   // R-X7/R-G4: the rotating OTP credential is excised (no temporary-password backend) — its
   // length / numeric-mode state and the OTP-refresh sync are removed from this model; the
@@ -40,8 +39,6 @@ class ServerModel with ChangeNotifier {
   String _approveMode = "";
   int _zeroClientLengthCounter = 0;
 
-  late String _emptyIdShow;
-  late final IDTextEditingController _serverId;
   final _serverPasswd =
       TextEditingController(text: translate("Generating ..."));
 
@@ -65,8 +62,6 @@ class ServerModel with ChangeNotifier {
 
   bool get clipboardOk => _clipboardOk;
 
-  int get connectStatus => _connectStatus;
-
   String get verificationMethod {
     final index = [
       kUsePermanentPassword,
@@ -80,8 +75,6 @@ class ServerModel with ChangeNotifier {
 
   String get approveMode => _approveMode;
 
-  TextEditingController get serverId => _serverId;
-
   TextEditingController get serverPasswd => _serverPasswd;
 
   List<Client> get clients => _clients;
@@ -91,9 +84,6 @@ class ServerModel with ChangeNotifier {
   WeakReference<FFI> parent;
 
   ServerModel(this.parent) {
-    _emptyIdShow = translate("Generating ...");
-    _serverId = IDTextEditingController(text: _emptyIdShow);
-
     /*
     // initital _hideCm at startup
     final verificationMethod =
@@ -108,14 +98,9 @@ class ServerModel with ChangeNotifier {
     */
 
     timerCallback() async {
-      final connectionStatus =
-          jsonDecode(await bind.mainGetConnectStatus()) as Map<String, dynamic>;
-      final statusNum = connectionStatus['status_num'] as int;
-      if (statusNum != _connectStatus) {
-        _connectStatus = statusNum;
-        notifyListeners();
-      }
-
+      // I-1 / R-G2: the rendezvous `status_num` poll is removed (the mediator is excised; the
+      // service-listening indicator is driven by the `stop-service` flag). Only the live CM-window
+      // bookkeeping + password model refresh remain.
       if (desktopType == DesktopType.cm) {
         final res = await bind.cmCheckClientsLength(length: _clients.length);
         if (res != null) {
@@ -413,13 +398,6 @@ class ServerModel with ChangeNotifier {
     WakelockManager.disable(_wakelockKey);
   }
 
-  fetchID() async {
-    final id = await bind.mainGetMyId();
-    if (id != _serverId.id) {
-      _serverId.id = id;
-      notifyListeners();
-    }
-  }
 
   changeStatue(String name, bool value) {
     debugPrint("changeStatue value $value");
@@ -485,28 +463,20 @@ class ServerModel with ChangeNotifier {
   void addConnection(Map<String, dynamic> evt) {
     try {
       final client = Client.fromJson(jsonDecode(evt["client"]));
-      if (client.authorized) {
-        parent.target?.dialogManager.dismissByTag(getLoginDialogTag(client.id));
-        final index = _clients.indexWhere((c) => c.id == client.id);
-        if (index < 0) {
-          _clients.add(client);
-        } else {
-          if (_clients[index].authorized) {
-            _clients[index].privacyMode = client.privacyMode;
-            notifyListeners();
-            return;
-          }
-          _clients[index].authorized = true;
-          _clients[index].privacyMode = client.privacyMode;
-        }
+      // R-A2/R-G7: approve-mode is pinned "password", so every incoming client arrives already
+      // authorized (post-PAKE). There is no unauthorized / click-to-accept state to render.
+      parent.target?.dialogManager.dismissByTag(getLoginDialogTag(client.id));
+      final index = _clients.indexWhere((c) => c.id == client.id);
+      if (index < 0) {
+        _clients.add(client);
       } else {
-        final index = _clients.indexWhere((c) => c.id == client.id);
-        if (index >= 0) {
+        if (_clients[index].authorized) {
           _clients[index].privacyMode = client.privacyMode;
           notifyListeners();
           return;
         }
-        _clients.add(client);
+        _clients[index].authorized = true;
+        _clients[index].privacyMode = client.privacyMode;
       }
       _addTab(client);
       // remove disconnected
@@ -521,7 +491,6 @@ class ServerModel with ChangeNotifier {
       }
       scrollToBottom();
       notifyListeners();
-      if (isAndroid && !client.authorized) showLoginDialog(client);
       if (isAndroid) androidUpdatekeepScreenOn();
     } catch (e) {
       debugPrint("Failed to call loginRequest,error:$e");
@@ -547,27 +516,6 @@ class ServerModel with ChangeNotifier {
     }
     parent.target?.chatModel
         .updateConnIdOfKey(MessageKey(client.peerId, client.id));
-  }
-
-  void showLoginDialog(Client client) {
-    showClientDialog(
-      client,
-      client.isFileTransfer
-          ? "Transfer file"
-          : client.isViewCamera
-              ? "View camera"
-              : client.isTerminal
-                  ? "Terminal"
-                  : "Share screen",
-      'Do you accept?',
-      'android_new_connection_tip',
-      () => sendLoginResponse(client, false),
-      // R-G7/R-S9 (§19): the incoming-connection click-to-accept path is dropped
-      // entirely — approve-mode is pinned 'password', so acceptance is automatic
-      // post-PAKE. A null accept callback makes this dialog reject-only (Dismiss):
-      // no Accept button AND no Enter→accept binding (see showClientDialog).
-      null,
-    );
   }
 
   handleVoiceCall(Client client, bool accept) {
@@ -642,28 +590,6 @@ class ServerModel with ChangeNotifier {
           duration: Duration(milliseconds: 200),
           curve: Curves.fastLinearToSlowEaseIn);
     });
-  }
-
-  void sendLoginResponse(Client client, bool res) async {
-    if (res) {
-      bind.cmLoginRes(connId: client.id, res: res);
-      // R-S19: only a default Remote screen-control session starts desktop capture. View-camera
-      // (and file-transfer/terminal) must not turn on MediaProjection — a spurious screencast
-      // indicator + audio recorder for a session type that captures no desktop frames.
-      if (!client.isFileTransfer && !client.isTerminal && !client.isViewCamera) {
-        parent.target?.invokeMethod("start_capture");
-      }
-      parent.target?.invokeMethod("cancel_notification", client.id);
-      client.authorized = true;
-      notifyListeners();
-    } else {
-      bind.cmLoginRes(connId: client.id, res: res);
-      parent.target?.invokeMethod("cancel_notification", client.id);
-      final index = _clients.indexOf(client);
-      tabController.remove(index);
-      _clients.remove(client);
-      if (isAndroid) androidUpdatekeepScreenOn();
-    }
   }
 
   void onClientRemove(Map<String, dynamic> evt) {
@@ -766,9 +692,6 @@ class Client {
   bool clipboard = false;
   bool audio = false;
   bool file = false;
-  bool restart = false;
-  bool recording = false;
-  bool blockInput = false;
   bool privacyMode = false;
   bool disconnected = false;
   bool fromSwitch = false;
@@ -795,9 +718,6 @@ class Client {
     clipboard = json['clipboard'];
     audio = json['audio'];
     file = json['file'];
-    restart = json['restart'];
-    recording = json['recording'];
-    blockInput = json['block_input'];
     privacyMode = json['privacy_mode'] ?? privacyMode;
     disconnected = json['disconnected'];
     fromSwitch = json['from_switch'];
@@ -820,9 +740,6 @@ class Client {
     data['clipboard'] = clipboard;
     data['audio'] = audio;
     data['file'] = file;
-    data['restart'] = restart;
-    data['recording'] = recording;
-    data['block_input'] = blockInput;
     data['privacy_mode'] = privacyMode;
     data['disconnected'] = disconnected;
     data['from_switch'] = fromSwitch;

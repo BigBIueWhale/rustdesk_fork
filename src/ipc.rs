@@ -299,24 +299,17 @@ pub enum Data {
     ChatMessage {
         text: String,
     },
-    SwitchPermission {
-        name: String,
-        enabled: bool,
-    },
     SystemInfo(Option<String>),
     ClickTime(i64),
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     MouseMoveTime(i64),
-    Authorize,
     Close,
     #[cfg(windows)]
     SAS,
     UserSid(Option<u32>),
-    OnlineStatus(Option<(i64, bool)>),
     Config((String, Option<String>)),
     Options(Option<HashMap<String, String>>),
     NatType(Option<i32>),
-    ConfirmedKey(Option<(Vec<u8>, Vec<u8>)>),
     RawMessage(Vec<u8>),
     Socks(Option<config::Socks5Server>),
     FS(FS),
@@ -683,8 +676,8 @@ impl Drop for CheckIfRestart {
 /// `--server` reads config via it). Reject the whole-config write so the unguarded Config::set is
 /// unreachable from the main-channel handler.
 ///
-/// R-S11 also names the Data::Config STRUCT-FIELD sub-keys (salt / id + set_key_confirmed(false) /
-/// unlock-pin) and Data::Socks -> set_socks: these bypass is_option_can_save (R-S16) ENTIRELY — they
+/// R-S11 also names the Data::Config STRUCT-FIELD sub-keys (salt / id / unlock-pin) and
+/// Data::Socks -> set_socks: these bypass is_option_can_save (R-S16) ENTIRELY — they
 /// are identity/credential struct fields + the proxy, NOT options — so the R-S16 pin never covers them.
 /// Make this a POSITIVE allowlist over the config-mutating arms, not a one-arm denylist: only the
 /// legitimate UI/operator Data::Config writes pass; `id` and `salt` (which have NO legitimate
@@ -773,19 +766,6 @@ async fn handle(data: Data, stream: &mut Connection) {
                 std::process::exit(-1); // to make sure --server luauchagent process can restart because SuccessfulExit used
             }
         }
-        Data::OnlineStatus(_) => {
-            let x = config::get_online_state();
-            let confirmed = Config::get_key_confirmed();
-            allow_err!(stream.send(&Data::OnlineStatus(Some((x, confirmed)))).await);
-        }
-        Data::ConfirmedKey(None) => {
-            let out = if Config::get_key_confirmed() {
-                Some(Config::get_key_pair())
-            } else {
-                None
-            };
-            allow_err!(stream.send(&Data::ConfirmedKey(out)).await);
-        }
         Data::Socks(s) => match s {
             None => {
                 allow_err!(stream.send(&Data::Socks(Config::get_socks())).await);
@@ -835,20 +815,13 @@ async fn handle(data: Data, stream: &mut Connection) {
                     });
                 } else if name == "salt" {
                     value = Some(Config::get_salt());
-                } else if name == "rendezvous_server" {
-                    value = Some(format!(
-                        "{},{}",
-                        Config::get_rendezvous_server(),
-                        Config::get_rendezvous_servers().join(",")
-                    ));
-                } else if name == "rendezvous_servers" {
-                    value = Some(Config::get_rendezvous_servers().join(","));
                 } else if name == "fingerprint" {
-                    value = if Config::get_key_confirmed() {
-                        Some(crate::common::pk_to_fingerprint(Config::get_key_pair().1))
-                    } else {
-                        None
-                    };
+                    // R-S17 / I-1: the box's self-generated Ed25519 host key ALWAYS exists
+                    // (get_key_pair generates it on first read) and a direct-IP fork has no
+                    // rendezvous register_pk step to "confirm" — so the fingerprint is
+                    // unconditional (never blank on the GUI boards). The old key_confirmed gate
+                    // could only ever flip true via the excised register_pk ACK.
+                    value = Some(crate::common::pk_to_fingerprint(Config::get_key_pair().1));
                 } else if name == "hide_cm" {
                     value = if crate::common::is_custom_client() {
                         Some(hbb_common::password_security::hide_cm().to_string())
@@ -867,7 +840,6 @@ async fn handle(data: Data, stream: &mut Connection) {
             Some(value) => {
                 let mut updated = true;
                 if name == "id" {
-                    Config::set_key_confirmed(false);
                     Config::set_id(&value);
                 } else if name == "permanent-password" {
                     if Config::is_disable_change_permanent_password() {
@@ -1516,26 +1488,11 @@ pub fn get_id() -> String {
             Config::set_salt(&v2);
         }
         if v != Config::get_id() {
-            Config::set_key_confirmed(false);
             Config::set_id(&v);
         }
         v
     } else {
         Config::get_id()
-    }
-}
-
-pub async fn get_rendezvous_server(ms_timeout: u64) -> (String, Vec<String>) {
-    if let Ok(Some(v)) = get_config_async("rendezvous_server", ms_timeout).await {
-        let mut urls = v.split(",");
-        let a = urls.next().unwrap_or_default().to_owned();
-        let b: Vec<String> = urls.map(|x| x.to_owned()).collect();
-        (a, b)
-    } else {
-        (
-            Config::get_rendezvous_server(),
-            Config::get_rendezvous_servers(),
-        )
     }
 }
 
@@ -1606,51 +1563,12 @@ pub async fn get_nat_type(ms_timeout: u64) -> i32 {
         .unwrap_or(Config::get_nat_type())
 }
 
-pub async fn get_rendezvous_servers(ms_timeout: u64) -> Vec<String> {
-    if let Ok(Some(v)) = get_config_async("rendezvous_servers", ms_timeout).await {
-        return v.split(',').map(|x| x.to_owned()).collect();
-    }
-    return Config::get_rendezvous_servers();
-}
 
-#[inline]
-async fn get_socks_(ms_timeout: u64) -> ResultType<Option<config::Socks5Server>> {
-    let mut c = connect(ms_timeout, "").await?;
-    c.send(&Data::Socks(None)).await?;
-    if let Some(Data::Socks(value)) = c.next_timeout(ms_timeout).await? {
-        Config::set_socks(value.clone());
-        Ok(value)
-    } else {
-        Ok(Config::get_socks())
-    }
-}
+// R-D6 (Tier-4): the IPC socks CLIENT query wrappers (get_socks_/get_socks_async/get_socks/set_socks
+// — which sent `Data::Socks` to the service and read it back) are excised with the proxy-settings UI.
+// The service-side `Data::Socks` HANDLER arm + the R-S11 main-channel-write rejection guard + the
+// `Config` storage stay (the tested proxy-write security boundary).
 
-pub async fn get_socks_async(ms_timeout: u64) -> Option<config::Socks5Server> {
-    get_socks_(ms_timeout).await.unwrap_or(Config::get_socks())
-}
-
-#[tokio::main(flavor = "current_thread")]
-pub async fn get_socks() -> Option<config::Socks5Server> {
-    get_socks_async(1_000).await
-}
-
-#[tokio::main(flavor = "current_thread")]
-pub async fn set_socks(value: config::Socks5Server) -> ResultType<()> {
-    Config::set_socks(if value.proxy.is_empty() {
-        None
-    } else {
-        Some(value.clone())
-    });
-    connect(1_000, "")
-        .await?
-        .send(&Data::Socks(Some(value)))
-        .await?;
-    Ok(())
-}
-
-pub fn get_proxy_status() -> bool {
-    Config::get_socks().is_some()
-}
 
 // R-SV6(c)/R-D4: `notify_deployed()` (sent `Data::Deployed`) is removed with the deploy excision —
 // device deployment is gone (deploy_device is a refuse-stub), so there was no caller and no arm to
@@ -1933,7 +1851,7 @@ mod test {
         let cfg = |n: &str, v: Option<&str>| Data::Config((n.to_owned(), v.map(|s| s.to_owned())));
         assert!(
             !main_channel_admits_config_write(&cfg("id", Some("evil-id"))),
-            "R-S11: a Data::Config id write (rewrites device identity + set_key_confirmed(false)) MUST be rejected"
+            "R-S11: a Data::Config id write (rewrites device identity) MUST be rejected"
         );
         assert!(
             !main_channel_admits_config_write(&cfg("salt", Some("evil-salt"))),

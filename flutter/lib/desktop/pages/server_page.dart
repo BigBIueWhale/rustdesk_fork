@@ -609,36 +609,31 @@ class _PrivilegeBoard extends StatefulWidget {
 
 class _PrivilegeBoardState extends State<_PrivilegeBoard> {
   late final client = widget.client;
-  Widget buildPermissionIcon(bool enabled, IconData iconData,
-      Function(bool)? onTap, String tooltipText,
-      {required bool canModify}) {
+  // R-S16(d)(ii)/R-S19: the CM permission chips are READ-ONLY status indicators. Connect-time
+  // capabilities are pinned + derived from AuthConnType and immutable mid-session (the runtime
+  // SwitchPermission widener is excised), so the chips only DISPLAY the granted state — a tap
+  // would have been a silent no-op (the icon flips but the peer keeps the capability), so there is
+  // no tap actuator at all.
+  Widget buildPermissionIcon(bool enabled, IconData iconData, String tooltipText) {
     return Tooltip(
       message: "$tooltipText: ${enabled ? "ON" : "OFF"}",
       waitDuration: Duration.zero,
       child: Container(
         decoration: BoxDecoration(
-          color: enabled
-              ? (canModify ? MyTheme.accent : MyTheme.accent.withOpacity(0.6))
-              : Colors.grey[700],
+          color: enabled ? MyTheme.accent.withOpacity(0.6) : Colors.grey[700],
           borderRadius: BorderRadius.circular(10.0),
         ),
         padding: EdgeInsets.all(8.0),
-        child: InkWell(
-          onTap: canModify
-              ? () =>
-                  checkClickTime(widget.client.id, () => onTap?.call(!enabled))
-              : null,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              Expanded(
-                child: Icon(
-                  iconData,
-                  color: Colors.white,
-                ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            Expanded(
+              child: Icon(
+                iconData,
+                color: Colors.white,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -648,11 +643,6 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
   Widget build(BuildContext context) {
     final crossAxisCount = 4;
     final spacing = 10.0;
-    // R-S16(d)(ii): mid-session permission change (Data::SwitchPermission) is EXCISED -- the IPC arm is
-    // deleted (connection.rs falls to `_ => {}`), so a tap on a CM permission icon was a SILENT NO-OP: the
-    // icon flipped (optimistic setState) but the peer KEPT the capability -- a security action the UI falsely
-    // affirmed as done. Connect-time permissions are pinned + immutable, so render the icons non-interactive.
-    final canModifyPermission = false;
     return Container(
       width: double.infinity,
       height: 160.0,
@@ -686,86 +676,21 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
               crossAxisSpacing: spacing,
               children: client.type_() == ClientType.camera
                   ? [
-                      buildPermissionIcon(
-                        client.audio,
-                        Icons.volume_up_rounded,
-                        (enabled) {
-                          bind.cmSwitchPermission(
-                              connId: client.id,
-                              name: "audio",
-                              enabled: enabled);
-                          setState(() {
-                            client.audio = enabled;
-                          });
-                        },
-                        translate('Enable audio'),
-                        canModify: canModifyPermission,
-                      ),
+                      buildPermissionIcon(client.audio, Icons.volume_up_rounded,
+                          translate('Enable audio')),
                       // R-G7 (§19): the camera-view 'recording' chip is removed — recording is an
                       // N-pinned capability (see the non-camera branch below); only the audio
                       // content-capability chip remains here.
                     ]
                   : [
-                      buildPermissionIcon(
-                        client.keyboard,
-                        Icons.keyboard,
-                        (enabled) {
-                          bind.cmSwitchPermission(
-                              connId: client.id,
-                              name: "keyboard",
-                              enabled: enabled);
-                          setState(() {
-                            client.keyboard = enabled;
-                          });
-                        },
-                        translate('Enable keyboard/mouse'),
-                        canModify: canModifyPermission,
-                      ),
-                      buildPermissionIcon(
-                        client.clipboard,
-                        Icons.assignment_rounded,
-                        (enabled) {
-                          bind.cmSwitchPermission(
-                              connId: client.id,
-                              name: "clipboard",
-                              enabled: enabled);
-                          setState(() {
-                            client.clipboard = enabled;
-                          });
-                        },
-                        translate('Enable clipboard'),
-                        canModify: canModifyPermission,
-                      ),
-                      buildPermissionIcon(
-                        client.audio,
-                        Icons.volume_up_rounded,
-                        (enabled) {
-                          bind.cmSwitchPermission(
-                              connId: client.id,
-                              name: "audio",
-                              enabled: enabled);
-                          setState(() {
-                            client.audio = enabled;
-                          });
-                        },
-                        translate('Enable audio'),
-                        canModify: canModifyPermission,
-                      ),
-                      buildPermissionIcon(
-                        client.file,
-                        Icons.upload_file_rounded,
-                        (enabled) {
-                          bind.cmSwitchPermission(
-                              connId: client.id,
-                              name: "file",
-                              enabled: enabled);
-                          setState(() {
-                            client.file = enabled;
-                          });
-                        },
-                        translate('Enable file copy and paste'),
-                        canModify: canModifyPermission,
-                      ),
+                      buildPermissionIcon(client.keyboard, Icons.keyboard,
+                          translate('Enable keyboard/mouse')),
+                      buildPermissionIcon(client.clipboard,
+                          Icons.assignment_rounded, translate('Enable clipboard')),
+                      buildPermissionIcon(client.audio, Icons.volume_up_rounded,
+                          translate('Enable audio')),
+                      buildPermissionIcon(client.file, Icons.upload_file_rounded,
+                          translate('Enable file copy and paste')),
                       // R-G7 / R-S16(d)(ii) (§19): the per-connection permission chips for the
                       // N-PINNED capabilities (restart / recording / block-input / privacy-mode —
                       // also terminal/printer, which never had chips here) are REMOVED. Those
@@ -791,11 +716,11 @@ class _CmControlPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return client.authorized
-        ? client.disconnected
-            ? buildDisconnected(context)
-            : buildAuthorized(context)
-        : buildUnAuthorized(context);
+    // R-A2/R-G7: approve-mode is pinned "password", so every client arrives already authorized —
+    // there is no unauthorized / click-to-accept panel.
+    return client.disconnected
+        ? buildDisconnected(context)
+        : buildAuthorized(context);
   }
 
   buildAuthorized(BuildContext context) {
@@ -951,33 +876,6 @@ class _CmControlPanel extends StatelessWidget {
                 onClick: handleClose,
                 text: 'Close',
                 textColor: Colors.white)),
-      ],
-    ).marginOnly(bottom: buttonBottomMargin);
-  }
-
-  buildUnAuthorized(BuildContext context) {
-    // R-G7 / R-S9 / R-S16 (§19): the click-to-accept path is REMOVED. approve-mode is pinned
-    // 'password' (R-S9), so the accept is automatic — the manual "Accept" button (the dead
-    // `approveMode != 'password'` branch) cannot be reached and is gone; only "Cancel"
-    // (disconnect) survives for the operator.
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Expanded(
-              child: buildButton(
-                context,
-                color: Colors.transparent,
-                border: Border.all(color: Colors.grey),
-                onClick: handleDisconnect,
-                text: 'Cancel',
-                textColor: null,
-              ),
-            ),
-          ],
-        ),
       ],
     ).marginOnly(bottom: buttonBottomMargin);
   }

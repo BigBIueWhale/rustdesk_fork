@@ -109,11 +109,7 @@ pub const LOGIN_MSG_DESKTOP_SESSION_NOT_READY_PASSWORD_EMPTY: &str =
     "Desktop session not ready, password empty";
 pub const LOGIN_MSG_DESKTOP_SESSION_NOT_READY_PASSWORD_WRONG: &str =
     "Desktop session not ready, password wrong";
-pub const LOGIN_MSG_PASSWORD_EMPTY: &str = "Empty Password";
 pub const LOGIN_MSG_PASSWORD_WRONG: &str = "Wrong Password";
-pub const LOGIN_MSG_2FA_WRONG: &str = "Wrong 2FA Code";
-pub const REQUIRE_2FA: &'static str = "2FA Required";
-pub const LOGIN_MSG_NO_PASSWORD_ACCESS: &str = "No Password Access";
 pub const LOGIN_MSG_OFFLINE: &str = "Offline";
 pub const LOGIN_SCREEN_WAYLAND: &str = "Wayland login screen is not supported";
 #[cfg(target_os = "linux")]
@@ -204,16 +200,10 @@ impl Client {
                 }
             }
             Ok(mut x) => {
-                // Set x.2 to true only in the connect() function to indicate that direct_failures needs to be updated; everywhere else it should be set to false.
-                if x.2 {
-                    let direct_failures = interface.get_lch().read().unwrap().direct_failures;
-                    let direct = x.0 .1;
-                    if !interface.is_force_relay() && (direct_failures == 0) != direct {
-                        let n = if direct { 0 } else { 1 };
-                        log::info!("direct_failures updated to {}", n);
-                        interface.get_lch().write().unwrap().set_direct_failure(n);
-                    }
-                }
+                // R-SV4 (Tier-4): the `direct_failures` retry-heuristic update is excised. The
+                // success return's update flag (`x.2`) is always false (there is no relay to fail
+                // over to — every connection is direct), so this block was dead; `direct_failures`
+                // is no longer stored.
                 // R-A1 (initiator analog): `_start` must already have keyed the direct TCP stream
                 // and attached the verified host key. This handoff assert keeps the message loop from
                 // becoming a fallback keying site again.
@@ -371,9 +361,12 @@ impl Client {
                 Ok(v) => v,
                 // A confirmation mismatch here = wrong password, a substitute box whose host
                 // key differs from the pin (so its PRS differs), or a non-fork peer. The viewer
-                // cannot tell which, by design; fail closed either way.
+                // cannot tell which, by design; fail closed either way. I-3: name BOTH the
+                // wrong-password AND the host-key-changed cause + the re-pin remedy, so a
+                // legitimately re-keyed box (whose PRS differs) is not dead-ended in an eternal
+                // "Password Required" loop — re-typing the password can only fix a wrong password.
                 Err(_) => bail!(
-                    "CPace handshake failed — wrong password, the box's host key does not match your pin, or the peer is not a fork box (fail-closed)"
+                    "CPace handshake failed — either the password is wrong, OR the box's host key CHANGED (it was re-provisioned) so it no longer matches your pin (it could also be a non-fork peer). Re-typing the password fixes a wrong password; a CHANGED key does NOT — re-verify the new fingerprint out-of-band (`--get-fingerprint` on the box) and re-pin it (CLI: `--forget-host <address>` then reconnect; the box's own `--password` is what re-derives its credential). Fail-closed."
                 ),
             }
         };
@@ -1359,7 +1352,6 @@ pub struct LoginConfigHandler {
     pub peer_info: Option<PeerInfo>,
     password_source: PasswordSource, // where the sent password comes from
     shared_password: Option<String>, // Store the shared password
-    pub enable_trusted_devices: bool,
     pub record_state: bool,
     pub record_permission: bool,
 }
@@ -1586,11 +1578,6 @@ impl LoginConfigHandler {
         self.save_config(config);
     }
 
-    pub fn set_direct_failure(&mut self, value: i32) {
-        let mut config = self.load_config();
-        config.direct_failures = value;
-        self.save_config(config);
-    }
 
     /// Get a ui config of flutter for handler's [`PeerConfig`].
     /// Return String if the option is found, otherwise return "".
@@ -1796,7 +1783,9 @@ impl LoginConfigHandler {
             msg.image_quality = q.into();
         } else if q == "custom" {
             let config = self.load_config();
-            let allow_more = !crate::using_public_server() || self.direct == Some(true);
+            // R-SV5 / I(Tier-4): `using_public_server()` was always true (no rendezvous), so the
+            // `!using_public_server() || …` term was dead — this fork is always direct.
+            let allow_more = self.direct == Some(true);
             let quality = if config.custom_image_quality.is_empty() {
                 50
             } else {
@@ -2902,12 +2891,6 @@ lazy_static::lazy_static! {
             text: "",
             link: "",
             try_again: true,
-        }), (LOGIN_MSG_NO_PASSWORD_ACCESS, LoginErrorMsgBox{
-            msgtype: "wait-remote-accept-nook",
-            title: "Prompt",
-            text: "Please wait for the remote side to accept your session request...",
-            link: "",
-            try_again: true,
         })]);
         Arc::new(map)
     };
@@ -2915,29 +2898,13 @@ lazy_static::lazy_static! {
 
 /// Handle login error.
 /// Return true if the password is wrong, return false if there's an actual error.
-pub fn handle_login_error(
-    lc: Arc<RwLock<LoginConfigHandler>>,
-    err: &str,
-    interface: &impl Interface,
-) -> bool {
-    if err == LOGIN_MSG_PASSWORD_EMPTY {
-        lc.write().unwrap().password = Default::default();
-        interface.msgbox("input-password", "Password Required", "", "");
-        true
-    } else if err == LOGIN_MSG_PASSWORD_WRONG {
-        lc.write().unwrap().password = Default::default();
-        interface.msgbox("re-input-password", err, "Do you want to enter again?", "");
-        true
-    } else if err == LOGIN_MSG_2FA_WRONG || err == REQUIRE_2FA {
-        let enabled = lc.read().unwrap().get_option("trust-this-device") == "Y";
-        if enabled {
-            lc.write()
-                .unwrap()
-                .set_option("trust-this-device".to_string(), "".to_string());
-        }
-        interface.msgbox("input-2fa", err, "", "");
-        true
-    } else if LOGIN_ERROR_MAP.contains_key(err) {
+pub fn handle_login_error(err: &str, interface: &impl Interface) -> bool {
+    // R-A1/R-S18: CPace at keying is the SOLE authenticator, so the responder never sends a
+    // password-empty/password-wrong/2FA login-error to re-prompt over an already-keyed stream
+    // (the `input-password`/`re-input-password`/`input-2fa` re-prompt dialogs and the 2FA cluster
+    // are excised). A pre-keying credential/pin problem surfaces earlier via
+    // on_establish_connection_error (`connect-password-prompt` / `host-*-prompt`), not here.
+    if LOGIN_ERROR_MAP.contains_key(err) {
         if let Some(msgbox_info) = LOGIN_ERROR_MAP.get(err) {
             interface.msgbox(
                 msgbox_info.msgtype,
@@ -3321,19 +3288,11 @@ pub fn check_if_retry(msgtype: &str, title: &str, text: &str, retry_for_relay: b
 // rendezvous server to keep a connection alive to (the entry point was already guarded dead
 // whenever `rendezvous_server` is empty, which is always) — gone, not merely disabled.
 
-pub mod peer_online {
-    // R-SV / R-D / §18 (dial nobody): the peer-list ONLINE-STATUS query is REMOVED. Upstream
-    // asked the rendezvous server which peers are online — `query_online_states_` ->
-    // `create_online_stream` connected to `get_rendezvous_server()` (which DEFAULTS to the built-in
-    // `rs-ny.rustdesk.com`) and sent an `OnlineRequest` carrying `Config::get_id()` + the peer ids:
-    // a box-id + peer-list LEAK to upstream on every peer-list refresh (the deleted test even
-    // hard-coded real upstream IDs). The fork is direct-IP only with no rendezvous (R-SV4), so there
-    // is no server to ask and nothing to leak — report every peer offline WITHOUT any network
-    // call. (The flutter peer-list online dots are a §19/R-G follow-on; with this they never light.)
-    pub async fn query_online_states<F: FnOnce(Vec<String>, Vec<String>)>(ids: Vec<String>, f: F) {
-        f(Vec::new(), ids);
-    }
-}
+// R-SV / R-D / §18 (dial nobody): the peer-list ONLINE-STATUS query (`peer_online::query_online_states`)
+// is REMOVED with the rest of the online-status pipeline. Upstream asked the rendezvous server which
+// peers are online — a box-id + peer-list LEAK to upstream on every peer-list refresh; the fork is
+// direct-IP only with no rendezvous (R-SV4), so there was nothing to ask and its no-egress stub had
+// no caller left once the Flutter peer-online pipeline was excised.
 
 #[cfg(test)]
 mod tests {

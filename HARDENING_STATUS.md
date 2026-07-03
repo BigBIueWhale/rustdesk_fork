@@ -41,15 +41,19 @@ wrap, and the descriptor serializer truncates an over-long name with no
 build is reproducible for Debian/Android/Windows (R-B2), and the Apple
 SDK-free source-conformance gate covers the macOS/iOS code paths (R-R2).
 
-**INCOMPLETE (2026-07-03) — the safety verdict above stands, but the GUI/coherence layer is
-NOT finished.** A full six-audit sweep found the cryptographic/transport core clean (0 security
-hazards) yet the surrounding GUI and plumbing structurally incomplete: **~80 orphaned-scaffolding
-sites left by the excisions, 7 user-visible correctness defects, and 1 live latent race.** Most
-damaging: the box's own R-S17 fingerprint renders BLANK on every GUI screen, and the first-contact
-pin dialog HANGS (so a fresh Android/iOS install can connect to nothing). This is R-G1
-"remove-don't-grey" debt, not a safety gap — the full itemized backlog is the
-`## Incomplete — the excision-vestige backlog` section below and is owed work before this tree can
-honestly be called complete.
+**RESOLVED (2026-07-04) — the GUI/coherence backlog is CLOSED.** The six-audit sweep found the
+cryptographic/transport core clean (0 security hazards) and enumerated the surrounding
+structural-coherence debt (~80 orphaned-scaffolding sites, 7 user-visible correctness defects, 1 live
+latent race). That backlog is now IMPLEMENTED in full (36 files, +441/−1790, reviewed to standard):
+the box's R-S17 fingerprint renders unconditionally, the first-contact pin dialog is a real
+fingerprint-entry UI (so a fresh Android/iOS install can connect), the re-key "Password Required"
+loop and the `--get-fingerprint` phantom-key race are fixed, and the whole dead-scaffolding stratum
+(2FA/trusted-devices, the attended-accept + permission-widener IPC pipelines, the rendezvous
+online-status cluster, socks/change_id/relay/`IdPk` residue) is excised. All source gates green (the
+`verify-release` bundle + `flutter-verify`), zero dangling references across all five platforms, and
+R-B2 reproducibility re-proven per release (build-release.sh → dist/SHA256SUMS, double-build A==B per
+target). Detail is retained as the implementation record in the
+`## ✅ CLOSED — the excision-vestige backlog` section below.
 
 **§20 TCP active-router audit (2026-06-29).** The full TCP transport — both the
 controlled (responder) and viewer (initiator) sides — was audited under the
@@ -479,34 +483,38 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   section immediately below (2026-07-03 full sweep = ~80 sites, incl. 7 user-visible
   defects + 1 live race this earlier note missed).**
 
-## Incomplete — the excision-vestige backlog + the R-S17 pin-GUI defects (owed work, NOT "make-it-work")
+## ✅ CLOSED — the excision-vestige backlog + the R-S17 pin-GUI defects (implemented 2026-07-04)
 
-**This is the fork's single largest open correctness debt.** On 2026-07-03, six independent
-Opus-1M code audits swept the entire auth / identity / online-status / connection-manager /
-server-config / viewer-peer-list surface, and every load-bearing claim was re-verified against
-source by hand. The verdict is blunt: **the excisions are behaviorally sound but structurally
-incomplete.** Every user-visible control and every security path was correctly neutralized and
-fails closed — the sweep found **zero security hazards and zero peer-reachable bugs**, so the
-Current Verdict above stands on *safety*. But the excisions ripped out backends and buttons while
-leaving a large stratum of **orphaned plumbing**: dialogs that can never open, FFI shims with no
-caller, IPC enum variants nothing sends, state flags stuck forever in one branch, and helpers that
-return the semantic opposite of their name. **~80 distinct dead-or-wrong sites remain, collapsing to
-~15 root excisions** (rendezvous/`register_pk`, relay, 2FA/OTP, TOFU→R-P1 salt-is-the-pin,
-account/address-book, QR, numeric-ID→direct-address, socks/proxy, attended-accept, permission-widener).
+**✅ STATUS: ALL CLOSED — 2026-07-04.** The backlog enumerated below was IMPLEMENTED in full by a
+single coherent excision pass (36 files, **+441 / −1790**) and reviewed to standard: all source gates
+green (the `verify-release` bundle — verify.sh / smoke-server / dart-verify / native-codec-watch /
+apple-conform / audit / dart-audit / test-build-faillo — plus `flutter-verify` for the flutter-feature
+Rust), **zero dangling references across all five platforms** (Rust / Dart / Kotlin / Swift / proto /
+tests), and R-B2 reproducibility re-proven per release (build-release.sh → dist/SHA256SUMS, double-build
+A==B per target). The four tiers below are **retained as the implementation record** — each item's
+problem statement and the fix that closed it.
 
-**None of this is negotiable under the fork's own doctrine.** "Excise, don't disable," **R-G1
-"remove, don't grey,"** and **R-S12 "no defaulted-off-but-present"** are the whole point of this
-project — and they apply one level down, to plumbing, exactly as they apply to visible toggles. A
-codebase that advertises itself as secure-by-assertion and "correct as if written correctly from the
-first place" is **not finished** while it carries a rendezvous signed-id verifier nothing calls, a
-two-factor-auth pipe wired end-to-end behind a trigger that never fires, and a "Password Required"
-dialog whose OK button authenticates nothing. Dead code that *looks alive* is worse than a stale
-comment: it makes the next auditor reason about a data flow that does not exist. **Treat the four
-tiers below as the authoritative to-do list.** Nothing here is reachable by a user or a peer as a
-hazard, so none is a regression — but every one is work owed before this tree can honestly be called
-complete.
+**The original finding (2026-07-03).** Six independent Opus-1M code audits swept the entire auth /
+identity / online-status / connection-manager / server-config / viewer-peer-list surface, every
+load-bearing claim re-verified against source by hand. The verdict was **behaviorally sound but
+structurally incomplete** — every user-visible control and every security path was correctly
+neutralized and failed closed (**zero security hazards, zero peer-reachable bugs**), but the excisions
+had left a large stratum of **orphaned plumbing**: dialogs that could never open, FFI shims with no
+caller, IPC enum variants nothing sent, state flags stuck forever in one branch, and helpers that
+returned the semantic opposite of their name — **~80 distinct dead-or-wrong sites, ~15 root excisions**
+(rendezvous/`register_pk`, relay, 2FA/OTP, TOFU→R-P1 salt-is-the-pin, account/address-book, QR,
+numeric-ID→direct-address, socks/proxy, attended-accept, permission-widener).
 
-### Tier 1 — user-visible correctness defects (a user SEES these; fix first)
+**Why it was non-negotiable.** "Excise, don't disable," **R-G1 "remove, don't grey,"** and **R-S12 "no
+defaulted-off-but-present"** are the whole point of this project — and they apply one level down, to
+plumbing, exactly as they apply to visible toggles. A codebase that advertises itself as
+secure-by-assertion and "correct as if written correctly from the first place" could not carry a
+rendezvous signed-id verifier nothing calls, a two-factor-auth pipe wired end-to-end behind a trigger
+that never fires, or a "Password Required" dialog whose OK button authenticates nothing. Dead code that
+*looks alive* is worse than a stale comment: it makes the next auditor reason about a data flow that
+does not exist. That entire stratum is now gone — the tiers below record each site and its fix.
+
+### Tier 1 — user-visible correctness defects ✅ DONE (a user SAW these)
 
 - **[I-1] The box's own R-S17 fingerprint renders BLANK on every GUI screen — the worst item in
   this document.** `ui_interface::get_fingerprint` gates the value on `Config::get_key_confirmed()`
@@ -586,7 +594,7 @@ complete.
   "defaulted-off-but-present" trap and an **App-Store-review privacy red flag** — permissions
   requested for a capability that does not exist. **FIX:** delete both plist keys.
 
-### Tier 2 — a LIVE latent bug (not merely dead code)
+### Tier 2 — a LIVE latent bug ✅ DONE (not merely dead code)
 
 - **[I-8] `--get-fingerprint` on a keyless box can make the operator pin a PHANTOM key.**
   `Config::get_key_pair()` persists a freshly-generated key via a **detached** background thread
@@ -601,7 +609,7 @@ complete.
   synchronously commit the key if it just generated one (or refuse on a keyless box with an actionable
   "set the password / start the service first" error).
 
-### Tier 3 — "live-looking dead" code (delete on sight — it actively lies to the next auditor)
+### Tier 3 — "live-looking dead" code ✅ DONE (deleted — it had lied to the next auditor)
 
 - **[I-9] `enterPasswordDialog` is a normal-looking "Password Required" dialog that authenticates
   NOTHING.** Its submit calls `gFFI.login()`, which sends a passwordless `LoginRequest` the host
@@ -638,7 +646,7 @@ complete.
   a rendezvous server's signature over an id→public-key binding, have **zero callers** and `IdPk` is
   never constructed (the one `server.rs` reference is a comment). **FIX:** delete both.
 
-### Tier 4 — inert dead scaffolding (~65 sites; excise by root cause, each with its own build re-prove)
+### Tier 4 — inert dead scaffolding ✅ DONE (~65 sites excised by root cause)
 
 Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never contain:
 

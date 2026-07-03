@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:collection';
 
 import 'package:dynamic_layouts/dynamic_layouts.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/ab_model.dart';
@@ -10,8 +9,6 @@ import 'package:flutter_hbb/models/peer_tab_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
-import 'package:visibility_detector/visibility_detector.dart';
-import 'package:window_manager/window_manager.dart';
 
 import '../../common.dart';
 import '../../models/peer_model.dart';
@@ -22,16 +19,17 @@ typedef PeerFilter = bool Function(Peer peer);
 typedef PeerCardBuilder = Widget Function(Peer peer);
 
 class PeerSortType {
-  static const String remoteId = 'Remote ID';
+  // I-5: the identity is a direct address, not a numeric rendezvous ID — label it "Remote address".
+  static const String remoteId = 'Remote address';
   static const String remoteHost = 'Remote Host';
   static const String username = 'Username';
-  static const String status = 'Status';
+  // I-4: the "Status" sort is removed — `peer.online` is always false (the rendezvous online query
+  // is excised), so sorting by it was a visible no-op.
 
   static List<String> values = [
     PeerSortType.remoteId,
     PeerSortType.remoteHost,
     PeerSortType.username,
-    PeerSortType.status
   ];
 }
 
@@ -84,95 +82,19 @@ class _PeersView extends StatefulWidget {
 }
 
 /// State for the peer widget.
-class _PeersViewState extends State<_PeersView>
-    with WindowListener, WidgetsBindingObserver {
-  static const int _maxQueryCount = 3;
+class _PeersViewState extends State<_PeersView> {
+  // I-1 / R-G2 / §18: the rendezvous peer-online pipeline is excised — the 300ms poll loop, its
+  // throttle state, and the window/lifecycle listeners that only gated it are gone. A direct-IP fork
+  // has no rendezvous to ask which peers are online (`bind.queryOnlines` was a no-egress stub) and
+  // the online dot already renders nothing, so the peer cards no longer need visibility tracking.
   final HashMap<String, String> _emptyMessages = HashMap.from({
     LoadEvent.recent: 'empty_recent_tip',
     LoadEvent.favorite: 'empty_favorite_tip',
     LoadEvent.addressBook: 'empty_address_book_tip',
   });
   final space = (isDesktop || isWebDesktop) ? 12.0 : 8.0;
-  final _curPeers = <String>{};
-  var _lastChangeTime = DateTime.now();
-  var _lastQueryPeers = <String>{};
-  var _lastQueryTime = DateTime.now();
-  var _lastWindowRestoreTime = DateTime.now();
-  var _queryCount = 0;
-  var _exit = false;
-  bool _isActive = true;
 
   final _scrollController = ScrollController();
-
-  _PeersViewState() {
-    _startCheckOnlines();
-  }
-
-  @override
-  void initState() {
-    windowManager.addListener(this);
-    WidgetsBinding.instance.addObserver(this);
-    super.initState();
-  }
-
-  @override
-  void dispose() {
-    windowManager.removeListener(this);
-    WidgetsBinding.instance.removeObserver(this);
-    _exit = true;
-    super.dispose();
-  }
-
-  @override
-  void onWindowFocus() {
-    _queryCount = 0;
-    _isActive = true;
-  }
-
-  @override
-  void onWindowBlur() {
-    // We need this comparison because window restore (on Windows) also triggers `onWindowBlur()`.
-    // Maybe it's a bug of the window manager, but the source code seems to be correct.
-    //
-    // Although `onWindowRestore()` is called after `onWindowBlur()` in my test,
-    // we need the following comparison to ensure that `_isActive` is true in the end.
-    if (isWindows &&
-        DateTime.now().difference(_lastWindowRestoreTime) <
-            const Duration(milliseconds: 300)) {
-      return;
-    }
-    _queryCount = _maxQueryCount;
-    _isActive = false;
-  }
-
-  @override
-  void onWindowRestore() {
-    // Window restore (on MacOS and Linux) also triggers `onWindowFocus()`.
-    // But on Windows, it triggers `onWindowBlur()`, mybe it's a bug of the window manager.
-    if (!isWindows) return;
-    _queryCount = 0;
-    _isActive = true;
-    _lastWindowRestoreTime = DateTime.now();
-  }
-
-  @override
-  void onWindowMinimize() {
-    // Window minimize also triggers `onWindowBlur()`.
-  }
-
-  // This function is required for mobile.
-  // `onWindowFocus` works fine for desktop.
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    if (isDesktop || isWebDesktop) return;
-    if (state == AppLifecycleState.resumed) {
-      _isActive = true;
-      _queryCount = 0;
-    } else if (state == AppLifecycleState.inactive) {
-      _isActive = false;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -212,21 +134,7 @@ class _PeersViewState extends State<_PeersView>
     );
   }
 
-  onVisibilityChanged(VisibilityInfo info) {
-    final peerId = _peerId((info.key as ValueKey).value);
-    if (info.visibleFraction > 0.00001) {
-      _curPeers.add(peerId);
-    } else {
-      _curPeers.remove(peerId);
-    }
-    _lastChangeTime = DateTime.now();
-  }
-
-  String _cardId(String id) => widget.peers.name + id;
-  String _peerId(String cardId) => cardId.replaceAll(widget.peers.name, '');
-
   Widget _buildPeersView(Peers peers) {
-    final updateEvent = peers.event;
     final body = ObxValue<RxList>((filters) {
       return FutureBuilder<List<Peer>>(
         builder: (context, snapshot) {
@@ -235,11 +143,7 @@ class _PeersViewState extends State<_PeersView>
             if (peers.length > 1000) peers = peers.sublist(0, 1000);
             gFFI.peerTabModel.setCurrentTabCachedPeers(peers);
             buildOnePeer(Peer peer, bool isPortrait) {
-              final visibilityChild = VisibilityDetector(
-                key: ValueKey(_cardId(peer.id)),
-                onVisibilityChanged: onVisibilityChanged,
-                child: widget.peerCardBuilder(peer),
-              );
+              final visibilityChild = widget.peerCardBuilder(peer);
               // `Provider.of<PeerTabModel>(context)` will causes infinete loop.
               // Because `gFFI.peerTabModel.setCurrentTabCachedPeers(peers)` will trigger `notifyListeners()`.
               //
@@ -288,11 +192,6 @@ class _PeersViewState extends State<_PeersView>
                           return buildOnePeer(peers[index], false);
                         }));
 
-            if (updateEvent == UpdateEvent.load) {
-              _curPeers.clear();
-              _curPeers.addAll(peers.map((e) => e.id));
-              _queryOnlines(true);
-            }
             return child;
           } else {
             return const Center(
@@ -305,56 +204,6 @@ class _PeersViewState extends State<_PeersView>
     }, obslist);
 
     return body;
-  }
-
-  var _queryInterval = const Duration(seconds: 20);
-
-  void _startCheckOnlines() {
-    () async {
-      final p = await bind.mainIsUsingPublicServer();
-      if (!p) {
-        _queryInterval = const Duration(seconds: 6);
-      }
-      while (!_exit) {
-        final now = DateTime.now();
-        if (!setEquals(_curPeers, _lastQueryPeers)) {
-          if (now.difference(_lastChangeTime) > const Duration(seconds: 1)) {
-            _queryOnlines(false);
-          }
-        } else {
-          final skipIfIsWeb =
-              isWeb && !(stateGlobal.isWebVisible && stateGlobal.isInMainPage);
-          final skipIfMobile =
-              (isAndroid || isIOS) && !stateGlobal.isInMainPage;
-          final skipIfNotActive = skipIfIsWeb || skipIfMobile || !_isActive;
-          if (!skipIfNotActive && (_queryCount < _maxQueryCount || !p)) {
-            if (now.difference(_lastQueryTime) >= _queryInterval) {
-              if (_curPeers.isNotEmpty) {
-                // R-G / R-D (dial nobody): no online-status query — a direct-IP fork has no
-                // rendezvous server to ask (bind.queryOnlines is a no-egress stub, cebfdf2).
-                _lastQueryTime = DateTime.now();
-                _queryCount += 1;
-              }
-            }
-          }
-        }
-        await Future.delayed(const Duration(milliseconds: 300));
-      }
-    }();
-  }
-
-  _queryOnlines(bool isLoadEvent) {
-    if (_curPeers.isNotEmpty) {
-      // R-G / R-D (dial nobody): no online-status query (bind.queryOnlines is a no-egress
-      // stub, cebfdf2) — a direct-IP fork has no rendezvous server to ask.
-      _queryCount = 0;
-    }
-    _lastQueryPeers = {..._curPeers};
-    if (isLoadEvent) {
-      _lastChangeTime = DateTime.now();
-    } else {
-      _lastQueryTime = DateTime.now().subtract(_queryInterval);
-    }
   }
 
   Future<List<Peer>>? matchPeers(
@@ -384,9 +233,6 @@ class _PeersViewState extends State<_PeersView>
         case PeerSortType.username:
           peers.sort((p1, p2) =>
               p1.username.toLowerCase().compareTo(p2.username.toLowerCase()));
-          break;
-        case PeerSortType.status:
-          peers.sort((p1, p2) => p1.online ? -1 : 1);
           break;
       }
     }

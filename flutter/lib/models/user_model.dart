@@ -66,7 +66,4 @@ class UserModel {
     ]);
   }
 
-  Future<void> logOut({String? apiServer}) async {
-    await reset(resetOther: true);
-  }
 }

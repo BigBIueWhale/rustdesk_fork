@@ -32,7 +32,6 @@ use hbb_common::{
     futures::{SinkExt, StreamExt},
     get_time, get_version_number,
     message_proto::{option_message::BoolOption, permission_info::Permission},
-    password_security::{self as password, ApproveMode},
     sleep, timeout,
     tokio::{
         net::TcpStream,
@@ -569,17 +568,6 @@ impl Connection {
 
                 Some(data) = rx_from_cm.recv() => {
                     match data {
-                        ipc::Data::Authorize => {
-                            if !conn.send_logon_response_and_keep_alive().await {
-                                break;
-                            }
-                            // R-F1/R-S5: a port-forward/RDP session does not run the video/input
-                            // service loop — once authorized, break out to the sealed relay
-                            // (try_port_forward_loop) that runs after this loop.
-                            if conn.port_forward_socket.is_some() {
-                                break;
-                            }
-                        }
                         ipc::Data::Close => {
                             conn.chat_unanswered = false; // seen
                             conn.file_transferred = false; //seen
@@ -605,22 +593,18 @@ impl Connection {
                             conn.send(msg_out).await;
                             conn.chat_unanswered = false;
                         }
-                        // R-S16(d)(ii): the runtime `SwitchPermission` widener is REMOVED.
-                        // Inherited, this CM-driven IPC arm reassigned conn.keyboard /
-                        // clipboard / audio / file / restart / recording / block_input /
-                        // privacy_mode at runtime, BYPASSING `permission()` (and thus the
-                        // pinned policy). Once the policy is fixed at the config funnel
-                        // (PINNED_SETTINGS, UNCONDITIONAL — R-S16/R-R2b) a mid-session
-                        // re-widener has no place: it could re-grant a capability the pin
-                        // resolved off. The arm is deleted structurally (not merely covered
-                        // by R-S11's allowlist), so a CM-sent `Data::SwitchPermission` now
-                        // falls through to the catch-all `_ => {}` and is IGNORED — and the
-                        // headless `--service` has no CM to send it anyway. R-A6 asserts the
-                        // widener is absent. (The peer's inbound `disable_*` overlays only
-                        // ever RESTRICT the cached booleans, so they are unaffected — R-S16(d)(ii).
-                        // The CM-side senders / permission chips that drove this are the
-                        // attended-UI surface R-G7 removes in the §19 GUI sweep; on the box
-                        // they are moot.)
+                        // R-S16(d)(ii) / R-S19: there is NO runtime `SwitchPermission` widener.
+                        // Inherited, a CM-driven IPC message reassigned conn.keyboard / clipboard /
+                        // audio / file / restart / recording / block_input / privacy_mode at runtime,
+                        // BYPASSING `permission()` (and thus the pinned policy). With the policy fixed
+                        // at the config funnel (PINNED_SETTINGS, UNCONDITIONAL — R-S16/R-R2b) and every
+                        // capability derived from AuthConnType (R-S19), a mid-session re-widener has no
+                        // place: it could re-grant a capability the pin resolved off. The WHOLE pipeline
+                        // — the CM-side senders, the FFI shim, and the `Data::SwitchPermission` IPC
+                        // variant itself — is excised (not merely covered by R-S11's allowlist), and the
+                        // headless `--service` has no CM to send one anyway. R-A6 asserts the widener is
+                        // absent. (The peer's inbound `disable_*` overlays only ever RESTRICT the cached
+                        // booleans, so they are unaffected — R-S16(d)(ii).)
                         ipc::Data::RawMessage(bytes) => {
                             allow_err!(conn.stream.send_raw(bytes).await);
                         }
@@ -742,12 +726,12 @@ impl Connection {
                                 if !conn.on_message(msg_in).await {
                                     break;
                                 }
-                                // R-F1/R-D6/R-S5: the headless AUTO-approve login path authorizes
-                                // INSIDE on_message (send_logon_response_and_keep_alive dials the
-                                // target + sets port_forward_socket). Unlike the attended UI flow it
-                                // gets NO CM Data::Authorize echo (authorize() is the accept-click
-                                // only), so break to the sealed relay (try_port_forward_loop) HERE the
-                                // moment a tunnel is authorized. Unconditional (no last_test_delay
+                                // R-F1/R-D6/R-S5: the login path authorizes INSIDE on_message
+                                // (send_logon_response_and_keep_alive dials the target + sets
+                                // port_forward_socket). This fork has no attended CM accept step
+                                // (approve-mode is pinned to "password"; the Data::Authorize echo is
+                                // excised), so break to the sealed relay (try_port_forward_loop) HERE
+                                // the moment a tunnel is authorized. Unconditional (no last_test_delay
                                 // guard): the port-forward viewer never replies to TestDelay
                                 // (connect_and_login), so no latency-probe frame can be injected into
                                 // the forwarded stream — and a TestDelay is only ever emitted BEFORE
@@ -1960,66 +1944,36 @@ impl Connection {
                 return true;
             }
 
-            // https://github.com/rustdesk/rustdesk-server-pro/discussions/646
-            // `is_logon` is used to check login with `OPTION_ALLOW_LOGON_SCREEN_PASSWORD` == "Y".
-            // `is_logon_ui()` is a fallback for logon UI detection on Windows.
-            #[cfg(target_os = "windows")]
-            let is_logon = || {
-                crate::platform::is_prelogin() || crate::platform::is_locked() || {
-                    match crate::platform::is_logon_ui() {
-                        Ok(result) => result,
-                        Err(e) => {
-                            log::error!("Failed to detect logon UI: {:?}", e);
-                            false
-                        }
-                    }
-                }
-            };
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
-            let is_logon = || crate::platform::is_prelogin() || crate::platform::is_locked();
-            #[cfg(any(target_os = "android", target_os = "ios"))]
-            let is_logon = || crate::platform::is_prelogin();
-
-            let allow_logon_screen_password =
-                crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
-                    && is_logon();
-
-            if (password::approve_mode() == ApproveMode::Click && !allow_logon_screen_password)
-                || password::approve_mode() == ApproveMode::Both && !password::has_valid_password()
-            {
-                // R-X8: OS-login terminal-prep block removed (SessionUser is prepped post-auth).
-                self.try_start_cm(lr.my_id, lr.my_name, false);
-                if hbb_common::get_version_number(&lr.version)
-                    >= hbb_common::get_version_number("1.2.0")
-                {
-                    self.send_login_error(crate::client::LOGIN_MSG_NO_PASSWORD_ACCESS)
-                        .await;
-                }
+            // R-A2/R-S2: approve-mode is pinned to "password" (the config funnel's PINNED_SETTINGS),
+            // so CPace at the choke point is the SOLE authorizer and every connection reaches login
+            // already authorized. The inherited attended "click-to-accept" branch — Click/Both
+            // approve-mode gated by is_logon()/allow-logon-screen-password, the
+            // try_start_cm(authorized=false) + the LOGIN_MSG_NO_PASSWORD_ACCESS "wait for the remote
+            // side to accept" prompt — is UNREACHABLE (both approve_mode() comparisons are always
+            // false) and is excised.
+            //
+            // R-S18 / R-S2 / R-S6: LoginRequest is now session metadata only. CPace at the choke
+            // point is the sole authenticator, so no legacy salted-hash password field is parsed
+            // or re-validated here.
+            debug_assert!(
+                self.stream.is_secured(),
+                "R-A1: login reached on an unkeyed stream"
+            );
+            if !self.stream.is_secured() {
+                self.send_login_error(crate::client::LOGIN_MSG_PASSWORD_WRONG)
+                    .await;
                 return true;
-            } else {
-                // R-S18 / R-S2 / R-S6: LoginRequest is now session metadata only. CPace
-                // at the choke point is the sole authenticator, so no legacy salted-hash
-                // password field is parsed or re-validated here.
-                debug_assert!(
-                    self.stream.is_secured(),
-                    "R-A1: login reached on an unkeyed stream"
-                );
-                if !self.stream.is_secured() {
-                    self.send_login_error(crate::client::LOGIN_MSG_PASSWORD_WRONG)
-                        .await;
-                    return true;
-                }
+            }
 
-                if err_msg.is_empty() {
-                    #[cfg(target_os = "linux")]
-                    self.linux_headless_handle.wait_desktop_cm_ready().await;
-                    if !self.send_logon_response_and_keep_alive().await {
-                        return false;
-                    }
-                    self.try_start_cm(lr.my_id, lr.my_name, self.authorized);
-                } else {
-                    self.send_login_error(err_msg).await;
+            if err_msg.is_empty() {
+                #[cfg(target_os = "linux")]
+                self.linux_headless_handle.wait_desktop_cm_ready().await;
+                if !self.send_logon_response_and_keep_alive().await {
+                    return false;
                 }
+                self.try_start_cm(lr.my_id, lr.my_name, self.authorized);
+            } else {
+                self.send_login_error(err_msg).await;
             }
         } else if let Some(message::Union::TestDelay(t)) = msg.union {
             if t.from_client {

@@ -179,15 +179,15 @@ echo "== (3c) file-transfer no-follow write + path-traversal tests (R-S8/R-A5) =
 echo "== (3c-i) IPC _service path-sharing across uids (R-S11a/R-X13) =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_service_ipc_path_is_shared_across_uids --color never
 
-# (3c-i-b) Permanent-password PRS credential durability (Finding B / R-S9): config.password (the storage
+# (3c-i-b) Permanent-password PRS credential durability (R-S9): config.password (the storage
 # envelope) and config.password_prs (the live CPace PRS) BOTH encode the same 32 PRS bytes, so the
-# service->user config sync — which carries only `storage` — rebuilds password_prs from it. Without that a
-# synced set/rotate left password_prs stale/empty and the headless --server refused to listen (R-S9) or
-# authed the OLD password on restart. This pins the reconstruction: base64(decode(storage)) ==
-# derive_cpace_prs(password), and the rebuilt at-rest PRS decrypts back to it.
-echo "== (3c-i-b) permanent-password PRS credential durability (Finding B/R-S9) =="
-"${RUN[@]}" cargo test -p hbb_common --lib config::permanent_password::tests::finding_b_prs_storage_reconstructs_from_password_storage --color never
-"${RUN[@]}" cargo test -p hbb_common --lib config::tests::finding_b_sync_rebuilds_password_prs_from_storage --color never
+# service->user config sync — which carries only `storage` — rebuilds password_prs from it. This keeps a
+# synced set/rotate durable: password_prs stays in step with `storage`, so the headless --server reads a
+# live PRS and listens (R-S9) with the current password on restart. This pins the reconstruction:
+# base64(decode(storage)) == derive_cpace_prs(password), and the rebuilt at-rest PRS decrypts back to it.
+echo "== (3c-i-b) permanent-password PRS credential durability (R-S9) =="
+"${RUN[@]}" cargo test -p hbb_common --lib config::permanent_password::tests::prs_storage_reconstructs_from_password_storage --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::sync_rebuilds_password_prs_from_storage --color never
 
 # (3c-ii-a) Viewer peer media admission bounds (Appendix C #2b/R-T0): a
 # hostile peer controls VideoFrame.display and keyframe/audio cadence, so the
@@ -296,8 +296,8 @@ grep -qF 'RUSTDESK_FORK_VERSION' build.rs           || ver_gate="$ver_gate build
 grep -qF 'RUSTDESK_FORK_VERSION' src/core_main.rs   || ver_gate="$ver_gate --fork-version-not-wired"
 # res/msi/preprocess.py runs `rustdesk --version` and needs a NUMERIC version embedded in the binary
 # (it becomes the WiX ProductVersion); so --version MUST print crate::VERSION verbatim (the app
-# version), never the fork string. (Guards the regression that broke the MSI build on the first
-# 1.4.7-hardened.1 build attempt — the fork identity lives on the separate `--fork-version`.)
+# version), never the fork string. The MSI packaging depends on this numeric --version; the fork
+# identity lives on the separate `--fork-version` so the two never collide.
 grep -qF 'println!("{}", crate::VERSION);' src/core_main.rs || ver_gate="$ver_gate --version-not-numeric"
 [ -f docs/VERSIONING.md ]                           || ver_gate="$ver_gate docs/VERSIONING.md-missing"
 if [ -n "$ver_gate" ]; then
@@ -306,22 +306,22 @@ else
   echo "  ok  fork versioning: FORK_VERSION=$fork_ver (base==Cargo, CHANGELOG names it, --fork-version wired, --version numeric, docs present)"
 fi
 
-# listener-audit regression gates (2026-07-04 3-agent audit; see CHANGELOG.md). These fixes lacked a
-# dedicated gate — assert they stay structurally in place so a future edit cannot silently revert them
-# (the Finding A process-scoped surface has the R-A4 gate; Finding B has a config.rs behavioral test).
+# Direct-listener invariant gates: assert the bind-retry + runtime-password-recheck invariants stay
+# structurally in place so a future edit cannot silently revert them (the process-scoped socket surface
+# has the R-A4 gate above; the PRS sync durability has a config.rs behavioral test).
 la_gate=
-# Finding C: the direct-listener bind-error arm RETRIES with a bounded backoff (the old
-# `while port != get_direct_port()` loop that spun forever and never rebound is gone).
-grep -qF 'bind_err_streak' src/direct_service.rs || la_gate="$la_gate FindingC-no-bind-retry-counter"
-grep -qF 'retrying in' src/direct_service.rs      || la_gate="$la_gate FindingC-no-bounded-bind-retry"
-# Finding E: the accept loop re-checks the permanent password at RUNTIME and drops the listener if it
+# The direct-listener bind-error arm RETRIES with a bounded backoff, and the pinned-port
+# constant means it always rebinds the same v4 address after a transient failure.
+grep -qF 'bind_err_streak' src/direct_service.rs || la_gate="$la_gate no-bind-retry-counter"
+grep -qF 'retrying in' src/direct_service.rs      || la_gate="$la_gate no-bounded-bind-retry"
+# The accept loop re-checks the permanent password at RUNTIME and drops the listener if it
 # was cleared — so "listen on 0.0.0.0 iff a password is set" holds at runtime, not only at startup.
 grep -qF 'permanent password cleared at runtime — dropping the direct listener' src/direct_service.rs \
-  || la_gate="$la_gate FindingE-no-runtime-password-recheck"
+  || la_gate="$la_gate no-runtime-password-recheck"
 if [ -n "$la_gate" ]; then
   echo "  FAIL listener-audit regression:$la_gate"; rc=1
 else
-  echo "  ok  listener-audit regression gates present (Finding C bounded bind-retry + Finding E runtime password re-check)"
+  echo "  ok  direct-listener invariant gates present (bounded bind-retry + runtime password re-check)"
 fi
 
 # Completed excisions — these MUST stay at zero (hard gate).
@@ -1827,7 +1827,7 @@ fi
 # listener needs a live socket-surface assertion for exactly one v4 TCP listener
 # and zero UDP sockets, scoped to THIS PROCESS. The box is NOT guaranteed its own
 # network namespace (docs/DEPLOYMENT.md runs it alongside SSH + systemd-resolved),
-# so a namespace-wide read would false-refuse to listen — Finding A. Linux and
+# so the read is scoped to this process's own sockets, not the whole netns. Linux and
 # Android both map /proc/self/fd socket:[inode] links back to /proc/self/net rows
 # (read_proc_self_net_owned); Windows filters the IP Helper owner-PID TCP/UDP
 # tables to this process. This is intentionally a source-structure gate here;
@@ -1848,10 +1848,10 @@ for marker in \
 do
   grep -q "$marker" "$r_a4_surface" || r_a4_platform="$r_a4_platform socket_surface:$marker"
 done
-# Finding A: the Linux surface read is PROCESS-SCOPED too now (not the old netns-wide
-# read_proc_self_net), so a co-resident SSH/systemd-resolved socket no longer false-refuses to
-# listen. Assert the owned read is compiled for Linux (not android-only), and that the netns-wide
-# unfiltered reader is GONE.
+# The Linux surface read is PROCESS-SCOPED (owned-inode filtered), so a co-resident
+# SSH/systemd-resolved socket is correctly ignored rather than counted. Assert the owned read is
+# compiled for Linux (not android-only), and that no netns-wide unfiltered reader
+# (fn read_proc_self_net) is present.
 grep -q 'cfg(any(target_os = "linux", target_os = "android"))' "$r_a4_surface" || r_a4_platform="$r_a4_platform socket_surface:linux-process-scoped-cfg"
 if grep -qE 'fn read_proc_self_net\(' "$r_a4_surface"; then r_a4_platform="$r_a4_platform socket_surface:netns-wide-read-still-present"; fi
 for feature in '"iphlpapi"' '"iprtrmib"' '"tcpmib"' '"udpmib"' '"winerror"' '"ws2def"'; do

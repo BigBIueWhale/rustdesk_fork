@@ -733,7 +733,7 @@ impl Config {
                 log::error!(
                     "Clearing invalid permanent password storage before storing config: {err}"
                 );
-                // Clear ALL THREE credential forms together (Finding B sibling): dropping password/salt
+                // Clear ALL THREE credential forms together: dropping password/salt
                 // but leaving config.password_prs would leave the CPace handshake authenticating with a
                 // credential the box now reports as unset — a split-brain. Fail closed + consistent.
                 config.password.clear();
@@ -1353,7 +1353,7 @@ impl Config {
         if storage.is_empty() {
             // A cleared credential must clear BOTH at-rest forms. Leaving config.password_prs set after
             // the storage is cleared would keep the CPace handshake authenticating with the just-cleared
-            // password (get_permanent_password_prs reads password_prs, not password) — Finding B / R-S9.
+            // password (get_permanent_password_prs reads password_prs, not password) — R-S9.
             if config.password.is_empty()
                 && config.password_prs.is_empty()
                 && (salt.is_empty() || config.salt == salt)
@@ -1379,11 +1379,11 @@ impl Config {
             log::error!("Rejecting non-current permanent password storage sync payload");
             return Err(anyhow!("Invalid permanent password storage sync payload"));
         };
-        // Finding B: the service->user sync carries ONLY `storage` (config.password) + salt, never
-        // config.password_prs. But config.password and config.password_prs encode the SAME 32 PRS bytes,
-        // so rebuild password_prs from the decoded bytes here. Without this, a synced set/rotate wrote a
-        // fresh `password` but left password_prs stale/empty — so on the next --server restart the box
-        // read an empty PRS and refused to listen (R-S9), or authenticated the OLD password. Rebuilding it
+        // R-S9: the service->user sync carries ONLY `storage` (config.password) + salt, never
+        // config.password_prs. config.password and config.password_prs encode the SAME 32 PRS bytes,
+        // so rebuild password_prs from the decoded bytes here. This keeps the two at-rest forms in step:
+        // a synced set/rotate writes a fresh `password` and the matching password_prs together, so the
+        // next --server restart reads a live PRS and listens (R-S9) with the current password. Rebuilding it
         // is what makes a set/rotate durable across restarts on the headless/root box (which has no
         // whole-config root<->user repair path).
         let prs_string = base64::encode(raw, base64::Variant::Original);
@@ -3257,11 +3257,11 @@ mod tests {
     };
 
     #[test]
-    fn finding_b_sync_rebuilds_password_prs_from_storage() {
-        // Finding B (listener audit): a service->user config sync carries only (storage, salt), never
-        // password_prs, so the sync MUST rebuild password_prs from the storage envelope (both encode
-        // the SAME 32 PRS bytes). A regression that drops the rebuild leaves the box refusing to listen
-        // (empty PRS, R-S9) or authenticating the OLD password after a restart. This exercises the
+    fn sync_rebuilds_password_prs_from_storage() {
+        // R-S9: a service->user config sync carries only (storage, salt), never
+        // password_prs, so the sync rebuilds password_prs from the storage envelope (both encode
+        // the SAME 32 PRS bytes). This keeps the box listening with a live PRS (R-S9) and
+        // authenticating the current password after a restart. This exercises the
         // private sync-apply on a LOCAL Config (no global state), so it is hermetic and parallel-safe.
         let (storage, prs_storage) =
             derive_permanent_password_storages("correct horse battery staple").unwrap();
@@ -3275,7 +3275,7 @@ mod tests {
         assert!(changed, "a new credential is a change");
         assert!(
             !config.password_prs.is_empty(),
-            "Finding B: the sync MUST rebuild password_prs from the storage, not leave it empty"
+            "the sync MUST rebuild password_prs from the storage, not leave it empty"
         );
         assert_eq!(
             decrypt_permanent_password_prs_storage(&config.password_prs),

@@ -1,49 +1,40 @@
 # Changelog — RustDesk Hardened Fork
 
-All notable changes to the hardened fork, newest first. Versions follow
-[`docs/VERSIONING.md`](docs/VERSIONING.md): **`<upstream-base>-hardened.<N>`** — the fork's own
-release counter (`N`) on top of the upstream RustDesk base version it derives from (currently
-`1.4.7`). The upstream base doubles as the wire/protocol version and the package version; the
-`-hardened.<N>` part is the fork's release identity. The single source of truth is the repo-root
-`FORK_VERSION` file.
+All notable changes to the hardened fork, newest first. Each entry's heading is the fork release name
+(`<upstream-base>-hardened.<N>` — see [`docs/VERSIONING.md`](docs/VERSIONING.md)). The single source of
+truth for the exact code a release contains is the **commit** it was built from, linked in the GitHub
+release notes.
 
-## 1.4.7-hardened.1 — 2026-07-04
+## 1.4.7-hardened.1 — 2026-07-05
 
-The first release under the fork's own versioning. It supersedes the earlier **unnumbered**
-`v1.4.7-hardened` prereleases (dev iterations that were re-cut in place); from here each release gets
-a distinct `-hardened.<N>` and prior releases are never clobbered.
+A hardened, **direct-IP-only** RustDesk, built on upstream RustDesk 1.4.7.
 
-### The fork, in one line
-A hardened, **direct-IP-only** RustDesk: no rendezvous/relay/UDP/auto-update; one CPace-PAKE-gated TCP
-listener on 21118; a sealed two-key AEAD channel; the shared **permanent password is the sole
-authenticator** — there is no host-key/fingerprint pin, because the balanced PAKE defeats an active
-MITM by construction (a party that does not know the password cannot key). Reproducible builds (R-B2)
-for Debian/Android/Windows, plus Apple source-conformance.
+### Connectivity
+- **Direct-IP only** — no rendezvous server, relay, UDP, or auto-updater. The box is reachable by one
+  deliberate, CPace-PAKE-gated TCP connection on `0.0.0.0:21118`.
+- The listener binds **only while a permanent password is set** (fail-closed, R-S9) and re-checks that at
+  runtime, so "listen iff a password is set" holds continuously; a transient bind failure backs off and
+  retries.
 
-### Fixed — direct-IP listener audit (3-agent adversarial review)
-- **Bare-metal deployment no longer self-DoSes (HIGH).** The R-A4 live socket-surface self-check read
-  the whole network namespace, so on a host that also runs SSH / `systemd-resolved` it counted those
-  foreign sockets and `exit(1)`-looped — refusing to listen despite a password being set. It is now
-  scoped to *this process's own* sockets on Linux (matching the existing Android/Windows behaviour),
-  so a co-resident service is correctly ignored.
-- **Permanent-password set/rotate is now durable across restarts.** The service→user config sync
-  rebuilt the stored `password` but left the live CPace PRS stale/empty, so a headless `--server`
-  could refuse to listen (or authenticate the *old* password) after a restart. The sync now rebuilds
-  the PRS from the stored credential; a matching regression test is gated.
-- **Bind failures now retry.** A transient `EADDRINUSE` on restart previously spun forever on a dead
-  break-condition and never rebound; it now backs off and re-binds.
-- **`listen iff password` holds at runtime.** Clearing the permanent password at runtime now drops the
-  listener (previously the socket lingered, though the per-connection gate still refused every peer).
+### Authentication
+- **The permanent password is the sole authenticator.** A balanced CPace PAKE over the password keys a
+  sealed two-key AEAD channel and defeats an active MITM by construction — a party that does not know the
+  password cannot key. There is no host-key or fingerprint to pin: a viewer connects with just an address
+  and the password.
+- The password derives a memory-hard Argon2id PRS (fixed domain-separation salt); it is machine-bound at
+  rest, and setting or rotating it is durable across restarts.
 
-### Changed
-- **Versioning.** Introduced this changelog + [`docs/VERSIONING.md`](docs/VERSIONING.md) + the
-  `FORK_VERSION` single source of truth. Each release now carries a distinct `-hardened.<N>` identity
-  across the git tag, the GitHub release, the `SHA256SUMS` header, and `rustdesk --fork-version`, without
-  clobbering prior releases. The wire/protocol version and the `.deb`/`.apk`/`.exe`/`.msi` package
-  version stay `1.4.7`.
+### Surface
+- The box asserts its own reachable network surface is **exactly one v4 listener and zero UDP sockets**,
+  scoped to its own process — so it runs correctly alongside SSH / `systemd-resolved` on the same host
+  (R-A4).
+- The rendezvous / relay / KCP / LAN-discovery / auto-updater / plugin-loader / host-key subsystems are
+  compiled out, and CI greps assert their tokens stay absent (R-A6). Egress is silent by construction (§18).
 
-### Removed
-- **Host-key / fingerprint documentation vestiges.** Deleted `docs/HOST-KEY-PIN.md` and every remaining
-  reference to the retired host-key/fingerprint pin across the docs and the `pake`/transport-security
-  prose, plus ~51 stale translation-table entries (`"Copy Fingerprint"` / `"no fingerprints"`). The
-  subsystem itself was excised in the pre-scheme prereleases; this closes the paper trail.
+### Build + release
+- **Reproducible (R-B2).** Debian, Android, and Windows each cold double-build byte-for-byte identically
+  (`SOURCE_DATE_EPOCH` pinned); `dist/SHA256SUMS` records the exact commit. Apple targets are
+  source-conformance-checked (macOS/iOS are not built here).
+- **The commit is the source of truth.** A release is identified by the commit it was built from (linked
+  in its notes); the fork version is the human-readable name. `rustdesk --version` reports the app version
+  (`1.4.7`); `rustdesk --fork-version` reports the fork release.

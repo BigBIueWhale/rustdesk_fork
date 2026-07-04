@@ -284,10 +284,10 @@ async fn direct_server(server: ServerPtr) {
     // R-T12: the consecutive accept()-error streak, driving the escalating bounded back-off in the
     // error arm below; reset on any successful accept or the benign 1s poll-timeout.
     let mut accept_err_streak: u32 = 0;
-    // Finding C (listener-audit): the consecutive bind()-error streak, driving an escalating bounded
-    // back-off before RE-attempting the bind. The pinned-port constant made the old
-    // `while port != get_direct_port()` guard a dead break-condition that spun forever and never
-    // rebound after a transient failure; reset on a successful bind.
+    // The consecutive bind()-error streak, driving the escalating bounded back-off in the bind arm
+    // below before RE-attempting the bind. The port is a pinned compile-time constant (R-F4
+    // get_direct_port), so the listener always rebinds the same v4 address; a transient bind failure
+    // backs off and retries the identical bind, and the streak resets on a successful bind.
     let mut bind_err_streak: u32 = 0;
     loop {
         // R-T9 (§20): on graceful shutdown, stop accepting and drop the listener (returning here
@@ -309,7 +309,7 @@ async fn direct_server(server: ServerPtr) {
                 continue;
             }
         }
-        // Finding E (listener-audit) / R-S9 defense-in-depth: the "listen on 0.0.0.0 IFF a permanent
+        // R-S9 defense-in-depth: the "listen on 0.0.0.0 IFF a permanent
         // password is set" invariant must hold at RUNTIME, not only at the startup gate
         // (assert_startup_invariants). If the permanent password is CLEARED while the service runs
         // (set_permanent_password("") from the UI), drop the listener so no bound-but-dead 0.0.0.0 socket
@@ -338,7 +338,7 @@ async fn direct_server(server: ServerPtr) {
             match hbb_common::tcp::listen_any_v4(port as _).await {
                 Ok(l) => {
                     listener = Some(l);
-                    bind_err_streak = 0; // Finding C: a successful bind resets the retry back-off
+                    bind_err_streak = 0; // a successful bind resets the retry back-off
                     log::info!(
                         "Direct server listening on: {:?}",
                         listener.as_ref().map(|l| l.local_addr())
@@ -349,15 +349,14 @@ async fn direct_server(server: ServerPtr) {
                     assert_socket_surface(port as u16);
                 }
                 Err(err) => {
-                    // Finding C (listener-audit): a bind failure (e.g. a transient EADDRINUSE while a
-                    // just-exited --server's socket lingers in TIME_WAIT on a fast restart) MUST be
-                    // retried — it is not terminal. The old `while port != get_direct_port()` guard was a
-                    // DEAD break-condition (the port is a pinned constant, so it never differs), so the
-                    // service spun here forever and never rebound. Instead: back off a bounded, escalating
+                    // A bind failure (e.g. a transient EADDRINUSE while a
+                    // just-exited --server's socket lingers in TIME_WAIT on a fast restart) is
+                    // retried — it is not terminal. The port is a pinned constant (R-F4), so the listener
+                    // always rebinds the same v4 address: back off a bounded, escalating
                     // amount (100ms·2^streak, capped at 5s), then fall back to the top of the accept loop —
                     // `listener` is still None, so the next iteration re-enters this bind path, while the
                     // loop top honors shutdown (R-T9), the Android rebuild epoch (R-T13), and the runtime
-                    // password check (Finding E).
+                    // password check (R-S9).
                     bind_err_streak = bind_err_streak.saturating_add(1);
                     let backoff_ms = (100u64 << bind_err_streak.min(6)).min(5000);
                     log::error!(
@@ -372,8 +371,6 @@ async fn direct_server(server: ServerPtr) {
             }
         }
         if let Some(l) = listener.as_mut() {
-            // (The upstream `if port != get_direct_port()` "exit listen" guard here was the dead sibling
-            // of the bind-retry break-condition — the port is a pinned constant, so it never fired. Gone.)
             match hbb_common::timeout(1000, l.accept()).await {
                 Ok(Ok((stream, addr))) => {
                     accept_err_streak = 0; // R-T12: a successful accept resets the error back-off

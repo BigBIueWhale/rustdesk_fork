@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
-# scripts/publish-github-release.sh — publish the built dist/ artifacts as an official GitHub release,
+# scripts/publish-github-release.sh — publish the built dist/ artifacts as a GitHub prerelease,
 # self-validating and fail-loud. It does NOT build (run scripts/build-release.sh first) and it REFUSES to
-# publish anything stale, tampered, or not traceable to a clean committed+pushed HEAD. Opinionated: it
-# generates the tag, title, and release notes for you. A DRAFT is created by default so a human reviews
-# the assets + notes before it goes public (promote it in the GitHub UI, or re-run with --publish).
+# publish anything stale, tampered, or not traceable to a clean committed+pushed HEAD.
 #
-# Usage:  scripts/publish-github-release.sh [--publish] [--push] [<tag>]
-#   <tag>       release tag  (default: v<FORK_VERSION>, e.g. v1.4.7-hardened.1). Must not already exist.
-#   --publish   publish immediately instead of creating a draft.
-#   --push      git push HEAD to origin/master first (the release commit must be on the remote).
+# ONE SOURCE OF TRUTH — THE COMMIT. A release IS the commit it was built from. GitHub requires a tag, so
+# the tag is the commit itself (`commit-<short-sha>`, a bare pointer — never a maintained "version" that
+# could drift from the code), and the notes link that exact commit at the top. The fork version (from the
+# FORK_VERSION file + the CHANGELOG.md top entry) is the human-readable TITLE + notes only, not an
+# identity that has to be kept in sync. Published as a PRERELEASE by default (the fork's honest maturity —
+# pre-1.0, single-reviewer crypto audit). Pass --final only for a matured, externally-audited cut. There
+# are no drafts and no manual follow-up: one run produces the finished, marked release.
+#
+# Usage:  scripts/publish-github-release.sh [--final] [--push]
+#   --final   publish a FULL (non-prerelease) release instead of a prerelease. Use only when matured.
+#   --push    git push HEAD to origin/master first (the release commit must be on the remote).
 #
 # Prerequisites (asserted, fail-loud): gh installed + authenticated; origin is a GitHub repo; dist/ holds
 # the full artifact set + SHA256SUMS built from the CURRENT clean HEAD; every artifact matches its SHA-256.
@@ -20,14 +25,13 @@ source "$SCRIPT_DIR/lib.sh"
 source "$SCRIPT_DIR/fork-version.sh"
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
 
-DRAFT=1; PUSH=0; TAG=""
+PRERELEASE=1; PUSH=0
 for a in "$@"; do
     case "$a" in
-        --publish) DRAFT=0 ;;
+        --final)   PRERELEASE=0 ;;
         --push)    PUSH=1 ;;
-        -h|--help) sed -n '2,13p' "${BASH_SOURCE[0]}"; exit 0 ;;
-        --*)       die "unknown flag '$a' — usage: publish-github-release.sh [--publish] [--push] [<tag>]" ;;
-        *)         [ -z "$TAG" ] || die "more than one tag given ('$TAG' and '$a')"; TAG="$a" ;;
+        -h|--help) sed -n '2,19p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        *)         die "unknown argument '$a' — usage: publish-github-release.sh [--final] [--push]" ;;
     esac
 done
 
@@ -53,6 +57,7 @@ done
 [ -z "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null)" ] \
     || die "working tree is DIRTY — a release must correspond to a clean committed HEAD. Commit/stash, then rebuild: scripts/build-release.sh"
 HEAD_FULL="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+HEAD_SHORT="$(git -C "$REPO_ROOT" rev-parse --short=12 HEAD)"
 SUMS_HEAD="$(awk '/^# HEAD /{print $3; exit}' "$OUT_DIR/SHA256SUMS")"
 [ -n "$SUMS_HEAD" ] || die "$OUT_DIR/SHA256SUMS has no '# HEAD <sha>' provenance line — rebuild with scripts/build-release.sh"
 [ "$SUMS_HEAD" = "$HEAD_FULL" ] \
@@ -62,27 +67,27 @@ SUMS_HEAD="$(awk '/^# HEAD /{print $3; exit}' "$OUT_DIR/SHA256SUMS")"
 ( cd "$OUT_DIR" && sha256sum -c --strict --status <(grep -vE '^#' SHA256SUMS) ) \
     || die "an artifact in $OUT_DIR does NOT match its SHA-256 in SHA256SUMS — the dist is stale or tampered. Rebuild: scripts/build-release.sh"
 
-# 6) Tag — the fork RELEASE version (docs/VERSIONING.md; single source of truth = the FORK_VERSION
-# file), never clobber an existing release/tag. Each release has a distinct v<FORK_VERSION> tag.
+# 6) Identity — the release IS the commit. The tag names the commit (`commit-<short-sha>`, not a version),
+# and the human-readable name comes from the fork version (FORK_VERSION + the CHANGELOG.md top heading).
 FORK_VER="$(fork_version)" || die "FORK_VERSION is missing or malformed (see docs/VERSIONING.md)"
-TAG="${TAG:-v${FORK_VER}}"
+TAG="commit-${HEAD_SHORT}"
+COMMIT_URL="https://github.com/${REPO_SLUG}/commit/${HEAD_FULL}"
 if gh release view "$TAG" >/dev/null 2>&1; then
-    die "a GitHub release for tag '$TAG' already EXISTS on $REPO_SLUG — pass a NEW tag: scripts/publish-github-release.sh [--publish] <tag>  (or delete the old release first)"
+    die "commit ${HEAD_SHORT} is already released on $REPO_SLUG (tag $TAG) — a commit is released once; build a new commit"
 fi
 git -C "$REPO_ROOT" rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1 \
-    && die "git tag '$TAG' already exists locally — choose a different tag"
+    && die "git tag '$TAG' already exists locally — remove it before re-releasing this commit: git tag -d $TAG"
 
-# 7) The release commit must be on the remote (gh creates the tag there). Push if asked, else fail loud.
+# 7) The release commit must be on the remote (GitHub can only reference a commit it has). Push if asked.
 if [ "$PUSH" = 1 ]; then
-    log "pushing HEAD ($HEAD_FULL) to origin/master (--push)"
+    log "pushing HEAD ($HEAD_SHORT) to origin/master (--push)"
     git -C "$REPO_ROOT" push origin "HEAD:master" || die "git push failed (see above)"
 fi
 git -C "$REPO_ROOT" branch -r --contains "$HEAD_FULL" 2>/dev/null | grep -q . \
-    || die "HEAD $HEAD_FULL is not on any remote branch — GitHub cannot tag a commit it does not have. Push it first: git push origin master   (or re-run with --push)"
+    || die "HEAD $HEAD_FULL is not on any remote branch — GitHub cannot reference a commit it does not have. Push it first: git push origin master   (or re-run with --push)"
 
-# 8) Release notes = the top (current-release) section of CHANGELOG.md — the single per-release source
-# (docs/VERSIONING.md) — plus an auto verify/SHA footer. The section heading MUST name this release's
-# version, so the published notes always match the tag.
+# 8) Notes = the commit link (the source of truth) FIRST, then the CHANGELOG.md top section, then a
+# verify/SHA footer. The CHANGELOG heading must name the fork version, so the notes always match the build.
 CHANGELOG_MD="$REPO_ROOT/CHANGELOG.md"
 [ -s "$CHANGELOG_MD" ] || die "CHANGELOG.md is missing — add a '## <version>' top entry (docs/VERSIONING.md)"
 NOTES_BODY="$(awk '/^## /{n++} n==1{print} n>=2{exit}' "$CHANGELOG_MD")"
@@ -93,12 +98,15 @@ printf '%s\n' "$NOTES_BODY" | head -1 | grep -qF "$FORK_VER" \
 BUILT_AT="$(git -C "$REPO_ROOT" show -s --format=%cI "$HEAD_FULL" 2>/dev/null || echo '?')"
 NOTES_FILE="$(mktemp)"; trap 'rm -f "$NOTES_FILE"' EXIT
 {
+printf '**Built from commit [`%s`](%s)** — the single source of truth for this release (%s).\n\n' \
+    "$HEAD_FULL" "$COMMIT_URL" "$BUILT_AT"
 printf '%s\n\n' "$NOTES_BODY"
 cat <<MD
 ### Verify
 
-Every artifact is byte-identical across independent double-builds (\`SOURCE_DATE_EPOCH\` pinned) — rebuild
-this commit (\`${HEAD_FULL:0:12}\`, $BUILT_AT) yourself to confirm, or check the published checksums:
+Every artifact is byte-identical across independent double-builds (\`SOURCE_DATE_EPOCH\` pinned). Check out
+the commit above and rebuild with \`scripts/build-release.sh\` to reproduce them bit-for-bit, or verify the
+published checksums:
 \`\`\`
 sha256sum -c SHA256SUMS
 \`\`\`
@@ -117,16 +125,23 @@ grep -vE '^#' "$OUT_DIR/SHA256SUMS"
 echo '```'
 } > "$NOTES_FILE"
 
-# 9) Create the release (draft by default; assets = the 4 binaries + the checksum manifest).
-mode="DRAFT"; [ "$DRAFT" = 1 ] || mode="PUBLISHED"
-log "creating $mode GitHub release '$TAG' on $REPO_SLUG (5 assets) at commit ${HEAD_FULL:0:12}"
+# 9) Publish. Annotate the commit's tag (records the tagger/date + is sign-able), push it, then create the
+# release on it — a PRERELEASE by default, --final for a matured cut. Never a draft.
+mode="PRERELEASE"; [ "$PRERELEASE" = 1 ] || mode="FINAL release"
+TITLE="RustDesk Hardened Fork ${FORK_VER}"
+log "publishing $mode '$TITLE' at commit ${HEAD_SHORT} (tag $TAG, 5 assets) on $REPO_SLUG"
+git -C "$REPO_ROOT" tag -a "$TAG" -m "$TITLE — commit $HEAD_FULL" "$HEAD_FULL" \
+    || die "failed to create the tag $TAG"
+git -C "$REPO_ROOT" push origin "refs/tags/$TAG" \
+    || die "failed to push the tag $TAG (the LOCAL tag exists — remove it before retrying: git tag -d $TAG)"
 create_args=( "$TAG"
     "$OUT_DIR/rustdesk-x86_64.deb" "$OUT_DIR/rustdesk-arm64.apk"
     "$OUT_DIR/rustdesk-setup.exe" "$OUT_DIR/rustdesk.msi" "$OUT_DIR/SHA256SUMS"
-    --title "RustDesk Hardened Fork $TAG" --notes-file "$NOTES_FILE" --target "$HEAD_FULL" )
-[ "$DRAFT" = 1 ] && create_args+=( --draft )
-gh release create "${create_args[@]}" || die "gh release create failed (see above)"
+    --title "$TITLE" --notes-file "$NOTES_FILE" )
+[ "$PRERELEASE" = 1 ] && create_args+=( --prerelease )
+gh release create "${create_args[@]}" \
+    || die "gh release create failed — the tag $TAG was already pushed; to retry cleanly, first delete it: git push origin :refs/tags/$TAG && git tag -d $TAG"
 
 URL="$(gh release view "$TAG" --json url -q .url 2>/dev/null || echo "$REPO_SLUG releases")"
-log "OK — $mode release '$TAG' created: $URL"
-[ "$DRAFT" = 1 ] && log "It is a DRAFT — review the assets + notes there, then click Publish (or re-run with --publish)."
+log "OK — $mode '$TITLE' published: $URL"
+[ "$PRERELEASE" = 1 ] && log "  (PRERELEASE — the fork's honest maturity; use --final only for a matured, audited cut)"

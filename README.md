@@ -65,7 +65,7 @@ SHA-256 — the hash, not a URL, is the reproducibility anchor (Microsoft re-iss
 
 ```sh
 scripts/build-release.sh           # cold, all 3 platforms, each byte-identical double-build (A==B)
-scripts/publish-github-release.sh  # upload dist/ as a GitHub release (draft; --publish to go live)
+scripts/publish-github-release.sh  # publish dist/ as a GitHub prerelease (--final for a full release)
 ```
 
 `build-release.sh` cleans from scratch, refuses a dirty/stale tree, pins the release commit so the whole
@@ -80,9 +80,10 @@ set is **coherent** (it rejects itself if `HEAD` moves mid-build), and writes th
 | Windows x86_64 (MSI) | `rustdesk.msi` |
 
 `publish-github-release.sh` **refuses to publish** anything that is not a clean, committed, pushed `HEAD`
-whose artifacts match their recorded SHA-256s. It generates the tag (`v1.4.7-hardened`), title, and
-release notes (from the section below), and creates a **draft** you review before it goes public
-(`--publish` to publish immediately, `--push` to push `HEAD:master` first). It needs the
+whose artifacts match their recorded SHA-256s. The release IS the commit it was built from: the tag is the
+commit (`commit-<short-sha>`, not a version) and the notes link that exact commit — one source of truth.
+It publishes a **prerelease** by default (`--final` for a matured, audited cut; `--push` to push
+`HEAD:master` first), with the title + notes from `CHANGELOG.md`. It needs the
 [GitHub CLI](https://cli.github.com) authenticated (`gh auth login`).
 
 ### Verify a download
@@ -91,22 +92,12 @@ release notes (from the section below), and creates a **draft** you review befor
 sha256sum -c SHA256SUMS
 ```
 
-## Release notes
+## Releases
 
-<!-- RELEASE_NOTES:START -->
-### v1.4.7-hardened
-
-First hardened-fork release. A sovereign, direct-IP-only RustDesk you connect to by address.
-
-- **Mandatory CPace PAKE** as the sole transport authenticator — independently audited **SOUND**.
-- **Sovereign posture**: rendezvous / relay / NAT-traversal / LAN-discovery / auto-update compiled out;
-  the server binds one TCP port, zero UDP, and makes zero outbound connections.
-- **Attack surface excised** (not disabled): auto-update, plugin loader, 2FA/OTP, trust-anchor overrides,
-  OS-login second credential.
-- **Capability confinement** by `AuthConnType` (CWE-863 / CVE-2026-58056 closed).
-- **Reproducible builds** for Debian (`.deb`), Android (`.apk`), and Windows (`.exe` + `.msi`) —
-  byte-identical across independent double-builds; verify with `SHA256SUMS`.
-<!-- RELEASE_NOTES:END -->
+Each release **is** the commit it was built from — the single source of truth. Browse the
+[GitHub releases](https://github.com/BigBIueWhale/rustdesk_fork/releases) for the built artifacts
+(`.deb` / `.apk` / `.exe` / `.msi` + `SHA256SUMS`); every release links the exact commit it came from.
+See [`CHANGELOG.md`](CHANGELOG.md) for what changed in each fork release.
 
 ## Attribution & license
 

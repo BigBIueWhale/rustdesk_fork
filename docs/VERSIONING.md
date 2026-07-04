@@ -5,7 +5,7 @@ The hardened fork carries **two** version identities, deliberately kept separate
 | Identity | Value | Lives in | Purpose |
 |---|---|---|---|
 | **App / wire / package version** | `1.4.7` | `Cargo.toml` `version` (→ generated `src/version.rs` `VERSION`; `flutter/pubspec.yaml`; the `.deb`/`.apk`/`.exe`/`.msi` package version) | The upstream RustDesk base the fork derives from. It is the **wire/protocol version** peers exchange for feature-negotiation (`hbb_common::get_version_number`), so it must track the upstream base. **Do not** change it to encode fork releases. |
-| **Fork release** | `1.4.7-hardened.N` | `FORK_VERSION` (repo root — the single source of truth) | The fork's own release identity, distinguishing successive releases built on the same upstream base. Carried by the git tag, the GitHub release, the `dist/SHA256SUMS` header, and `rustdesk --fork-version` (embedded at build time via `build.rs` → `RUSTDESK_FORK_VERSION`). Note `rustdesk --version` prints the **app** version (`1.4.7`) — the machine/tooling contract (e.g. the MSI build). |
+| **Fork release** | `1.4.7-hardened.N` | `FORK_VERSION` (repo root — the single source of truth) | The fork's own release identity, distinguishing successive releases built on the same upstream base. It is the human-readable NAME of a release: the release title, the `CHANGELOG.md` heading, the `dist/SHA256SUMS` header, and `rustdesk --fork-version` (embedded via `build.rs` → `RUSTDESK_FORK_VERSION`). It is **not** a git tag. A release is identified by the **commit** it was built from — the GitHub tag is `commit-<short-sha>` (a bare pointer, not a version) and the release notes link that commit, so there is one source of truth. `rustdesk --version` prints the **app** version (`1.4.7`) — the machine/tooling contract (e.g. the MSI build). |
 
 ## The fork-release string
 
@@ -34,9 +34,10 @@ indistinguishable — so they are separate, and `FORK_VERSION` is the one you bu
    base-matches-`Cargo.toml` invariant, and that `CHANGELOG.md`'s top heading matches `FORK_VERSION`.
 3. `bash scripts/build-release.sh` — builds the reproducible artifact set into `dist/`, stamping the
    fork version into `dist/SHA256SUMS`.
-4. `bash scripts/publish-github-release.sh --publish --push` — creates the GitHub release at tag
-   `v<FORK_VERSION>`. It **refuses if that tag already exists**, so releases never clobber; prior
-   releases stay in place.
+4. `bash scripts/publish-github-release.sh --push` — publishes a GitHub **prerelease** whose tag is the
+   commit (`commit-<short-sha>`) and whose notes link that exact commit (the one source of truth). The
+   title + notes come from `CHANGELOG.md`. Pass `--final` for a matured, non-prerelease cut. It refuses
+   to re-release a commit that is already released.
 
 Everything downstream derives from `FORK_VERSION` — read it once via `scripts/fork-version.sh`
 (`fork_version`), never re-hardcode the string.

@@ -367,10 +367,10 @@ mod tests {
     }
 
     #[test]
-    fn finding_b_prs_storage_reconstructs_from_password_storage() {
-        // Finding B: config.password (the storage envelope) and config.password_prs both encode the
-        // SAME 32 PRS bytes, so the service->user config sync — which carries ONLY `storage` — can
-        // rebuild the live PRS from it instead of leaving it stale/empty. Prove the reconstruction is
+    fn prs_storage_reconstructs_from_password_storage() {
+        // config.password (the storage envelope) and config.password_prs both encode the
+        // SAME 32 PRS bytes, so the service->user config sync — which carries ONLY `storage` —
+        // rebuilds the live PRS from it. Prove the reconstruction is
         // byte-identical to deriving the PRS straight from the original password.
         let password = "correct horse battery staple";
         let (storage, _prs_storage) = derive_permanent_password_storages(password).unwrap();

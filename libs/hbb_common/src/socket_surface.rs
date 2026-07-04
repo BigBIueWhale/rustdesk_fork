@@ -13,9 +13,9 @@
 //! owner-PID tables. Process-scoping is REQUIRED, not merely convenient: the box
 //! is **not** guaranteed its own network namespace — `docs/DEPLOYMENT.md` runs
 //! the fork on a host that also serves SSH (and Ubuntu's `systemd-resolved` holds
-//! a UDP `:53`), so a netns-wide read would count those co-resident, unrelated
-//! sockets and false-refuse to listen — a self-inflicted DoS on the *documented*
-//! deployment. Scoping to this process's own inodes still catches the real threat
+//! a UDP `:53`), so the assertion counts only THIS process's inodes rather than
+//! a netns-wide read that would sweep in those co-resident, unrelated host
+//! sockets. Scoping to this process's own inodes still catches the real threat
 //! this assertion exists for — a rogue listener or an egress UDP socket opened by
 //! rustdesk or one of its dependencies — while ignoring the host's other services.
 //!

@@ -187,6 +187,7 @@ echo "== (3c-i) IPC _service path-sharing across uids (R-S11a/R-X13) =="
 # derive_cpace_prs(password), and the rebuilt at-rest PRS decrypts back to it.
 echo "== (3c-i-b) permanent-password PRS credential durability (Finding B/R-S9) =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::permanent_password::tests::finding_b_prs_storage_reconstructs_from_password_storage --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::finding_b_sync_rebuilds_password_prs_from_storage --color never
 
 # (3c-ii-a) Viewer peer media admission bounds (Appendix C #2b/R-T0): a
 # hostile peer controls VideoFrame.display and keyframe/audio cadence, so the
@@ -302,7 +303,25 @@ grep -qF 'println!("{}", crate::VERSION);' src/core_main.rs || ver_gate="$ver_ga
 if [ -n "$ver_gate" ]; then
   echo "  FAIL fork-versioning (docs/VERSIONING.md):$ver_gate"; rc=1
 else
-  echo "  ok  fork versioning: FORK_VERSION=$fork_ver (base==Cargo, CHANGELOG top names it, --version wired, docs present)"
+  echo "  ok  fork versioning: FORK_VERSION=$fork_ver (base==Cargo, CHANGELOG names it, --fork-version wired, --version numeric, docs present)"
+fi
+
+# listener-audit regression gates (2026-07-04 3-agent audit; see CHANGELOG.md). These fixes lacked a
+# dedicated gate — assert they stay structurally in place so a future edit cannot silently revert them
+# (the Finding A process-scoped surface has the R-A4 gate; Finding B has a config.rs behavioral test).
+la_gate=
+# Finding C: the direct-listener bind-error arm RETRIES with a bounded backoff (the old
+# `while port != get_direct_port()` loop that spun forever and never rebound is gone).
+grep -qF 'bind_err_streak' src/direct_service.rs || la_gate="$la_gate FindingC-no-bind-retry-counter"
+grep -qF 'retrying in' src/direct_service.rs      || la_gate="$la_gate FindingC-no-bounded-bind-retry"
+# Finding E: the accept loop re-checks the permanent password at RUNTIME and drops the listener if it
+# was cleared — so "listen on 0.0.0.0 iff a password is set" holds at runtime, not only at startup.
+grep -qF 'permanent password cleared at runtime — dropping the direct listener' src/direct_service.rs \
+  || la_gate="$la_gate FindingE-no-runtime-password-recheck"
+if [ -n "$la_gate" ]; then
+  echo "  FAIL listener-audit regression:$la_gate"; rc=1
+else
+  echo "  ok  listener-audit regression gates present (Finding C bounded bind-retry + Finding E runtime password re-check)"
 fi
 
 # Completed excisions — these MUST stay at zero (hard gate).

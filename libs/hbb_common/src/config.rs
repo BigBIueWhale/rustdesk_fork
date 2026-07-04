@@ -3256,6 +3256,44 @@ mod tests {
         *,
     };
 
+    #[test]
+    fn finding_b_sync_rebuilds_password_prs_from_storage() {
+        // Finding B (listener audit): a service->user config sync carries only (storage, salt), never
+        // password_prs, so the sync MUST rebuild password_prs from the storage envelope (both encode
+        // the SAME 32 PRS bytes). A regression that drops the rebuild leaves the box refusing to listen
+        // (empty PRS, R-S9) or authenticating the OLD password after a restart. This exercises the
+        // private sync-apply on a LOCAL Config (no global state), so it is hermetic and parallel-safe.
+        let (storage, prs_storage) =
+            derive_permanent_password_storages("correct horse battery staple").unwrap();
+        let salt = "sync-salt"; // the sync requires a non-empty salt
+        let mut config = Config::default();
+        assert!(config.password_prs.is_empty(), "a fresh config has no PRS");
+
+        // apply the payload the daemon actually sends over the sync (storage + salt only):
+        let changed =
+            Config::apply_permanent_password_storage_for_sync(&mut config, &storage, salt).unwrap();
+        assert!(changed, "a new credential is a change");
+        assert!(
+            !config.password_prs.is_empty(),
+            "Finding B: the sync MUST rebuild password_prs from the storage, not leave it empty"
+        );
+        assert_eq!(
+            decrypt_permanent_password_prs_storage(&config.password_prs),
+            decrypt_permanent_password_prs_storage(&prs_storage),
+            "the rebuilt PRS must equal the credential's real live PRS"
+        );
+
+        // the sibling fix: clearing (empty storage) must clear password_prs too, else the box keeps
+        // authenticating the just-cleared credential.
+        let cleared =
+            Config::apply_permanent_password_storage_for_sync(&mut config, "", salt).unwrap();
+        assert!(cleared);
+        assert!(
+            config.password_prs.is_empty(),
+            "clearing the credential must clear password_prs (not leave it live)"
+        );
+    }
+
     static CONFIG_STATE_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     struct ConfigStateTestGuard {

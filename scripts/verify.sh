@@ -40,6 +40,9 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+# The fork-version reader/validator (defines fork_version; see docs/VERSIONING.md).
+# shellcheck source=scripts/fork-version.sh
+source scripts/fork-version.sh
 IMG=rd-devcheck
 RUN=(docker run --rm
   -v "$PWD:/work:rw"
@@ -176,6 +179,15 @@ echo "== (3c) file-transfer no-follow write + path-traversal tests (R-S8/R-A5) =
 echo "== (3c-i) IPC _service path-sharing across uids (R-S11a/R-X13) =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_service_ipc_path_is_shared_across_uids --color never
 
+# (3c-i-b) Permanent-password PRS credential durability (Finding B / R-S9): config.password (the storage
+# envelope) and config.password_prs (the live CPace PRS) BOTH encode the same 32 PRS bytes, so the
+# service->user config sync — which carries only `storage` — rebuilds password_prs from it. Without that a
+# synced set/rotate left password_prs stale/empty and the headless --server refused to listen (R-S9) or
+# authed the OLD password on restart. This pins the reconstruction: base64(decode(storage)) ==
+# derive_cpace_prs(password), and the rebuilt at-rest PRS decrypts back to it.
+echo "== (3c-i-b) permanent-password PRS credential durability (Finding B/R-S9) =="
+"${RUN[@]}" cargo test -p hbb_common --lib config::permanent_password::tests::finding_b_prs_storage_reconstructs_from_password_storage --color never
+
 # (3c-ii-a) Viewer peer media admission bounds (Appendix C #2b/R-T0): a
 # hostile peer controls VideoFrame.display and keyframe/audio cadence, so the
 # viewer must cap display-thread creation and use bounded media queues.
@@ -263,6 +275,30 @@ grep -qF 'const HANDSHAKE_FIRST_STEP_TIMEOUT_MS: u64 = 5_000;' libs/hbb_common/s
 grep -qF 'recv_cpace(stream, HANDSHAKE_FIRST_STEP_TIMEOUT_MS)' libs/hbb_common/src/cpace.rs   || r1a="$r1a WAIT_1-not-short"
 if [ -n "$r1a" ]; then echo "  FAIL R1(a) pre-key first-step short deadline:$r1a"; rc=1; else
   echo "  ok  R1(a) responder WAIT_1 uses the 5s first-step deadline (vs 18s later) — pre-key silent-hold DoS hardening"; fi
+
+# fork versioning (release identity) gate — docs/VERSIONING.md. The single source of truth is the
+# FORK_VERSION file; assert (a) it exists + is well-formed + its base equals Cargo.toml's version (no
+# drift between the fork release string and the app/wire/package version), (b) CHANGELOG.md's top
+# '## <version>' entry names it, (c) the binary can report it (build.rs emits RUSTDESK_FORK_VERSION and
+# --version prints it), and (d) the scheme doc exists.
+ver_gate=
+fork_ver="$(fork_version 2>/dev/null)" || ver_gate="$ver_gate FORK_VERSION-missing-or-malformed"
+[ -f CHANGELOG.md ] || ver_gate="$ver_gate CHANGELOG.md-missing"
+if [ -n "$fork_ver" ] && [ -f CHANGELOG.md ]; then
+  changelog_top="$(awk '/^## /{print; exit}' CHANGELOG.md 2>/dev/null)"
+  case "$changelog_top" in
+    *"$fork_ver"*) : ;;
+    *) ver_gate="$ver_gate CHANGELOG-top-entry-does-not-name-$fork_ver" ;;
+  esac
+fi
+grep -qF 'RUSTDESK_FORK_VERSION' build.rs           || ver_gate="$ver_gate build.rs-no-fork-version-env"
+grep -qF 'RUSTDESK_FORK_VERSION' src/core_main.rs   || ver_gate="$ver_gate --version-not-wired"
+[ -f docs/VERSIONING.md ]                           || ver_gate="$ver_gate docs/VERSIONING.md-missing"
+if [ -n "$ver_gate" ]; then
+  echo "  FAIL fork-versioning (docs/VERSIONING.md):$ver_gate"; rc=1
+else
+  echo "  ok  fork versioning: FORK_VERSION=$fork_ver (base==Cargo, CHANGELOG top names it, --version wired, docs present)"
+fi
 
 # Completed excisions — these MUST stay at zero (hard gate).
 ra6_clean 'crate::updater|mod updater|"download-new-version"|"update-me"' 'R-X1 auto-updater RCE'    || rc=1
@@ -1765,12 +1801,13 @@ else
 fi
 # R-A4 (§9 / §14): every shipped platform that exposes a controlled inbound
 # listener needs a live socket-surface assertion for exactly one v4 TCP listener
-# and zero UDP sockets. Linux uses the confined namespace table; Windows and
-# Android must NOT inherit that proof by comment. Windows filters IP Helper
-# owner-PID TCP/UDP tables to this process; Android maps /proc/self/fd
-# socket:[inode] links back to /proc/self/net rows. This is intentionally a
-# source-structure gate here; platform artifact/runtime jobs provide the native
-# execution evidence.
+# and zero UDP sockets, scoped to THIS PROCESS. The box is NOT guaranteed its own
+# network namespace (docs/DEPLOYMENT.md runs it alongside SSH + systemd-resolved),
+# so a namespace-wide read would false-refuse to listen — Finding A. Linux and
+# Android both map /proc/self/fd socket:[inode] links back to /proc/self/net rows
+# (read_proc_self_net_owned); Windows filters the IP Helper owner-PID TCP/UDP
+# tables to this process. This is intentionally a source-structure gate here;
+# platform artifact/runtime jobs provide the native execution evidence.
 r_a4_platform=
 r_a4_surface=libs/hbb_common/src/socket_surface.rs
 for marker in \
@@ -1778,7 +1815,7 @@ for marker in \
   'count_udp_sockets_for_inodes' \
   'parse_proc_fd_socket_inode' \
   'read_proc_self_socket_inodes' \
-  'read_android_proc_self_net' \
+  'read_proc_self_net_owned' \
   'read_windows_process_tables' \
   'GetExtendedTcpTable' \
   'GetExtendedUdpTable' \
@@ -1787,6 +1824,12 @@ for marker in \
 do
   grep -q "$marker" "$r_a4_surface" || r_a4_platform="$r_a4_platform socket_surface:$marker"
 done
+# Finding A: the Linux surface read is PROCESS-SCOPED too now (not the old netns-wide
+# read_proc_self_net), so a co-resident SSH/systemd-resolved socket no longer false-refuses to
+# listen. Assert the owned read is compiled for Linux (not android-only), and that the netns-wide
+# unfiltered reader is GONE.
+grep -q 'cfg(any(target_os = "linux", target_os = "android"))' "$r_a4_surface" || r_a4_platform="$r_a4_platform socket_surface:linux-process-scoped-cfg"
+if grep -qE 'fn read_proc_self_net\(' "$r_a4_surface"; then r_a4_platform="$r_a4_platform socket_surface:netns-wide-read-still-present"; fi
 for feature in '"iphlpapi"' '"iprtrmib"' '"tcpmib"' '"udpmib"' '"winerror"' '"ws2def"'; do
   grep -q "$feature" libs/hbb_common/Cargo.toml || r_a4_platform="$r_a4_platform hbb_common-winapi:$feature"
 done

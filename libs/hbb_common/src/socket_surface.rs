@@ -5,15 +5,19 @@
 //! R-F4) and **zero UDP sockets of any kind** — not merely "no UDP listener" but
 //! no UDP socket at all, so an ephemeral OS-assigned-port egress UDP socket (a
 //! STUN probe — R-S11 — or a dependency phoning home) cannot slip past a
-//! listener-only check (§4.1). This reads the kernel's per-netns socket tables
-//! at `/proc/self/net/{tcp,tcp6,udp,udp6}`. On the hardened Linux appliance the box is
-//! the sole network service in its namespace, so the netns surface *is* the
-//! process surface (§14 / R-D3 confinement); if other network services share the
-//! namespace they must be accounted for, or the box must run in its own netns.
-//! Windows and Android do not get that netns guarantee, so their runtime checks
-//! filter to sockets owned by this process: Windows uses IP Helper owner-PID
-//! tables, while Android maps `/proc/self/fd` `socket:[inode]` links back to
-//! `/proc/self/net/*` rows.
+//! listener-only check (§4.1). Every platform scopes the check to the sockets
+//! **owned by this process** — the assertion is about *this rustdesk --server
+//! process's* reachable surface, never the whole host: Linux and Android map the
+//! `/proc/self/fd` `socket:[inode]` links back to the
+//! `/proc/self/net/{tcp,tcp6,udp,udp6}` rows, and Windows uses the IP Helper
+//! owner-PID tables. Process-scoping is REQUIRED, not merely convenient: the box
+//! is **not** guaranteed its own network namespace — `docs/DEPLOYMENT.md` runs
+//! the fork on a host that also serves SSH (and Ubuntu's `systemd-resolved` holds
+//! a UDP `:53`), so a netns-wide read would count those co-resident, unrelated
+//! sockets and false-refuse to listen — a self-inflicted DoS on the *documented*
+//! deployment. Scoping to this process's own inodes still catches the real threat
+//! this assertion exists for — a rogue listener or an egress UDP socket opened by
+//! rustdesk or one of its dependencies — while ignoring the host's other services.
 //!
 //! It is a **bind/listener-surface check only**: an outbound TCP `connect` has no
 //! listener row, so TCP-egress silence rests on the compile-time removal (R-D6)
@@ -23,7 +27,7 @@
 //! macOS/iOS still report [`SurfaceCheck::Unavailable`]: iOS binds no inbound
 //! socket, and macOS artifact parity remains a separate Apple-toolchain path.
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 use std::collections::HashSet;
 
 /// TCP socket state from the kernel's `net/tcp_states.h`. `TCP_LISTEN == 0x0A`;
@@ -212,25 +216,33 @@ pub fn check_controlled_surface(s: &SocketSurface, expected_tcp_port: u16) -> Re
     Ok(())
 }
 
-/// Read and parse `/proc/self/net/{tcp,tcp6,udp,udp6}` (the caller's network
-/// namespace). The v6 tables may be absent when the kernel has IPv6 disabled —
-/// a missing v6 table means "no v6 sockets", not an error. The v4 tables are
-/// always present on Linux; their absence is propagated as an error (and the
-/// caller treats it fail-closed).
-#[cfg(target_os = "linux")]
-pub fn read_proc_self_net() -> std::io::Result<SocketSurface> {
+/// Read `/proc/self/net/{tcp,tcp6,udp,udp6}` and filter to the sockets **owned by
+/// this process** (matched by inode against the `/proc/self/fd` `socket:[inode]`
+/// links) — used on **both Linux and Android** so the R-A4 assertion is about
+/// this --server process's surface, not every socket that merely shares the
+/// network namespace (see the module header: the box is not guaranteed its own
+/// netns). The v6 tables may be absent (IPv6 disabled) → "no v6 sockets"; the v4
+/// tables always exist on Linux/Android, so a read failure is propagated and the
+/// caller treats it fail-closed.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+pub fn read_proc_self_net_owned() -> std::io::Result<SocketSurface> {
+    let socket_inodes = read_proc_self_socket_inodes()?;
     let tcp4 = std::fs::read_to_string("/proc/self/net/tcp")?;
     let tcp6 = std::fs::read_to_string("/proc/self/net/tcp6").unwrap_or_default();
     let udp = std::fs::read_to_string("/proc/self/net/udp")?;
     let udp6 = std::fs::read_to_string("/proc/self/net/udp6").unwrap_or_default();
     Ok(SocketSurface {
-        tcp4_listen_ports: parse_tcp_listen_ports(&tcp4),
-        tcp6_listen_ports: parse_tcp_listen_ports(&tcp6),
-        udp_sockets: count_udp_sockets(&udp) + count_udp_sockets(&udp6),
+        tcp4_listen_ports: parse_tcp_listen_ports_for_inodes(&tcp4, &socket_inodes),
+        tcp6_listen_ports: parse_tcp_listen_ports_for_inodes(&tcp6, &socket_inodes),
+        udp_sockets: count_udp_sockets_for_inodes(&udp, &socket_inodes)
+            + count_udp_sockets_for_inodes(&udp6, &socket_inodes),
     })
 }
 
-#[cfg(target_os = "android")]
+/// This process's own socket inodes, read from the `socket:[inode]` symlinks in
+/// `/proc/self/fd`. Used by `read_proc_self_net_owned` (Linux + Android) to scope
+/// the surface check to sockets this process actually opened.
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn read_proc_self_socket_inodes() -> std::io::Result<HashSet<u64>> {
     let mut inodes = HashSet::new();
     for entry in std::fs::read_dir("/proc/self/fd")? {
@@ -247,21 +259,6 @@ fn read_proc_self_socket_inodes() -> std::io::Result<HashSet<u64>> {
         }
     }
     Ok(inodes)
-}
-
-#[cfg(target_os = "android")]
-pub fn read_android_proc_self_net() -> std::io::Result<SocketSurface> {
-    let socket_inodes = read_proc_self_socket_inodes()?;
-    let tcp4 = std::fs::read_to_string("/proc/self/net/tcp")?;
-    let tcp6 = std::fs::read_to_string("/proc/self/net/tcp6").unwrap_or_default();
-    let udp = std::fs::read_to_string("/proc/self/net/udp")?;
-    let udp6 = std::fs::read_to_string("/proc/self/net/udp6").unwrap_or_default();
-    Ok(SocketSurface {
-        tcp4_listen_ports: parse_tcp_listen_ports_for_inodes(&tcp4, &socket_inodes),
-        tcp6_listen_ports: parse_tcp_listen_ports_for_inodes(&tcp6, &socket_inodes),
-        udp_sockets: count_udp_sockets_for_inodes(&udp, &socket_inodes)
-            + count_udp_sockets_for_inodes(&udp6, &socket_inodes),
-    })
 }
 
 #[cfg(target_os = "windows")]
@@ -419,34 +416,21 @@ pub fn read_windows_process_tables() -> std::io::Result<SocketSurface> {
     }
 }
 
-/// R-A4 post-listen socket-surface assertion. On Linux, read the live namespace
-/// socket tables and check them against the audited surface; a read failure is
-/// fail-closed (we cannot confirm the surface, so we refuse).
-#[cfg(target_os = "linux")]
+/// R-A4 post-listen socket-surface assertion (Linux + Android). Read the live
+/// socket tables **scoped to this process** and check them against the audited
+/// surface; a read failure is fail-closed (we cannot confirm the surface, so we
+/// refuse). Both platforms map the `/proc/self/fd` socket inodes to the
+/// `/proc/self/net` rows (`read_proc_self_net_owned`), so a co-resident
+/// SSH/DNS/desktop socket in a shared network namespace is correctly ignored.
+#[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn check_surface(expected_tcp_port: u16) -> SurfaceCheck {
-    let surface = match read_proc_self_net() {
+    let surface = match read_proc_self_net_owned() {
         Ok(s) => s,
-        // Fail-closed: on Linux the v4 tables always exist; if we cannot read
-        // them we cannot confirm the audited surface, so refuse to listen.
+        // Fail-closed: /proc/self always exists for the running process; if we
+        // cannot read it we cannot confirm the audited surface, so refuse.
         Err(e) => {
             return SurfaceCheck::Violation(format!(
-                "cannot read /proc/self/net to confirm the surface: {e}"
-            ))
-        }
-    };
-    match check_controlled_surface(&surface, expected_tcp_port) {
-        Ok(()) => SurfaceCheck::Ok,
-        Err(why) => SurfaceCheck::Violation(why),
-    }
-}
-
-#[cfg(target_os = "android")]
-pub fn check_surface(expected_tcp_port: u16) -> SurfaceCheck {
-    let surface = match read_android_proc_self_net() {
-        Ok(s) => s,
-        Err(e) => {
-            return SurfaceCheck::Violation(format!(
-                "cannot read Android /proc self socket tables to confirm this process's surface: {e}"
+                "cannot read /proc/self to confirm this process's socket surface: {e}"
             ))
         }
     };

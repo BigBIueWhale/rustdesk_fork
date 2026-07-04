@@ -1,9 +1,10 @@
 //! R-A4 socket-surface parser + policy (hbb_common::socket_surface).
 //!
-//! The live runtime checks are platform-specific: Linux reads the confined
-//! `/proc/self/net/{tcp,tcp6,udp,udp6}` namespace tables, Android filters those
-//! tables to `/proc/self/fd` socket inodes, and Windows reads IP Helper owner-PID
-//! tables. What is unit-testable here — and where a silent bug would be
+//! The live runtime checks are platform-specific but all PROCESS-SCOPED: Linux
+//! and Android both filter the `/proc/self/net/{tcp,tcp6,udp,udp6}` tables to this
+//! process's own `/proc/self/fd` socket inodes (so a co-resident SSH/DNS/desktop
+//! socket sharing the network namespace is ignored), and Windows reads IP Helper
+//! owner-PID tables. What is unit-testable here — and where a silent bug would be
 //! fail-OPEN — is the proc-table PARSER and the shared surface POLICY. These
 //! fixtures match the real kernel format (whitespace columns, HEXIP:HEXPORT
 //! local_address, hex `st` state) so the parser is pinned, and every policy branch
@@ -82,10 +83,10 @@ fn udp_counter_counts_every_socket() {
 
 #[test]
 fn process_inode_filter_counts_only_this_process_sockets() {
-    // Android cannot rely on a namespace-wide table: the process must map
-    // /proc/self/fd socket:[inode] links back to /proc/self/net rows. The first
-    // TCP row and first UDP row belong to this process; the CUPS/DNS-looking
-    // rows are other-process noise and must not count.
+    // Linux and Android both scope to this process: they map /proc/self/fd
+    // socket:[inode] links back to /proc/self/net rows. The first TCP row and
+    // first UDP row belong to this process; the CUPS/DNS-looking rows are
+    // other-process noise (e.g. a co-resident SSH/DNS service) and must not count.
     let inodes = HashSet::from([12345_u64, 45678_u64]);
 
     assert_eq!(

@@ -122,7 +122,13 @@ pub fn core_main() -> Option<Vec<String>> {
     }
     if args.len() > 0 {
         if args[0] == "--version" {
-            println!("{}", crate::VERSION);
+            // The FORK release identity (docs/VERSIONING.md); crate::VERSION stays the upstream/wire
+            // base. Both are printed so a human sees the release AND a parser can still find the base.
+            println!(
+                "RustDesk Hardened Fork {} (app/protocol {})",
+                option_env!("RUSTDESK_FORK_VERSION").unwrap_or(crate::VERSION),
+                crate::VERSION
+            );
             return None;
         } else if args[0] == "--build-date" {
             println!("{}", crate::BUILD_DATE);

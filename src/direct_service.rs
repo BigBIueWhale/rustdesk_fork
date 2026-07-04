@@ -108,17 +108,19 @@ fn assert_startup_invariants() {
 }
 
 /// R-A4 (§9) post-listen socket-surface assertion. Once the direct listener is
-/// bound, the controlled box's reachable surface MUST equal exactly one TCP
+/// bound, THIS --server process's reachable surface MUST equal exactly one TCP
 /// listener on the pinned v4 port and ZERO UDP sockets of any kind (ephemeral
 /// egress UDP included — a STUN probe or a dependency phoning home would slip
-/// past a listener-only check). A violation is fail-closed (refuse to serve); a
-/// Linux checks the confined network namespace through `/proc/self/net`; Windows
-/// and Android check sockets owned by this process through platform-native
-/// owner tables / process socket inodes. Targets without a platform assertion
-/// are recorded as unavailable and rest on the §18 compile-out + build smoke
-/// tests.
-/// This is a bind/listener-surface check only — it does NOT catch TCP egress
-/// (an outbound connect has no listener row), which rests on R-D6 + firewall.
+/// past a listener-only check). A violation is fail-closed (refuse to serve).
+/// Every platform scopes the check to THIS process's own sockets: Linux and
+/// Android map `/proc/self/fd` socket inodes to the `/proc/self/net` rows, and
+/// Windows uses the IP Helper owner-PID tables — so a co-resident SSH/DNS/desktop
+/// socket sharing the box's network namespace is correctly ignored (the box is
+/// NOT guaranteed its own netns; docs/DEPLOYMENT.md runs it alongside SSH).
+/// Targets without a platform assertion are recorded as unavailable and rest on
+/// the §18 compile-out + build smoke tests. This is a bind/listener-surface check
+/// only — it does NOT catch TCP egress (an outbound connect has no listener row),
+/// which rests on R-D6 + firewall.
 fn assert_socket_surface(port: u16) {
     use hbb_common::socket_surface::{check_surface, SurfaceCheck};
     match check_surface(port) {
@@ -282,6 +284,11 @@ async fn direct_server(server: ServerPtr) {
     // R-T12: the consecutive accept()-error streak, driving the escalating bounded back-off in the
     // error arm below; reset on any successful accept or the benign 1s poll-timeout.
     let mut accept_err_streak: u32 = 0;
+    // Finding C (listener-audit): the consecutive bind()-error streak, driving an escalating bounded
+    // back-off before RE-attempting the bind. The pinned-port constant made the old
+    // `while port != get_direct_port()` guard a dead break-condition that spun forever and never
+    // rebound after a transient failure; reset on a successful bind.
+    let mut bind_err_streak: u32 = 0;
     loop {
         // R-T9 (§20): on graceful shutdown, stop accepting and drop the listener (returning here
         // drops the `listener` local, so the listening socket closes and new SYNs get an RST), then
@@ -302,6 +309,24 @@ async fn direct_server(server: ServerPtr) {
                 continue;
             }
         }
+        // Finding E (listener-audit) / R-S9 defense-in-depth: the "listen on 0.0.0.0 IFF a permanent
+        // password is set" invariant must hold at RUNTIME, not only at the startup gate
+        // (assert_startup_invariants). If the permanent password is CLEARED while the service runs
+        // (set_permanent_password("") from the UI), drop the listener so no bound-but-dead 0.0.0.0 socket
+        // lingers, and park until a password is set again — the bind block below then re-binds and re-runs
+        // assert_socket_surface. The per-connection gate (server.rs, R-S9) already refuses every
+        // connection in this window, so the socket is never an access path; this just makes the socket
+        // itself track the credential (defense in depth over an already-safe state).
+        if Config::get_permanent_password_prs().is_empty() {
+            if listener.is_some() {
+                log::warn!(
+                    "R-S9: permanent password cleared at runtime — dropping the direct listener until one is set again"
+                );
+                listener = None;
+            }
+            sleep(1.).await;
+            continue;
+        }
         // R-D4 / R-F4 / R-X9: the direct listener is UNCONDITIONAL — it is the box's only
         // inbound path (§17), so it has no enable-toggle at all. Upstream's `direct-server`
         // option (which gated the listener) was REMOVED from the tree entirely (R-G4 / R-SV1),
@@ -313,6 +338,7 @@ async fn direct_server(server: ServerPtr) {
             match hbb_common::tcp::listen_any_v4(port as _).await {
                 Ok(l) => {
                     listener = Some(l);
+                    bind_err_streak = 0; // Finding C: a successful bind resets the retry back-off
                     log::info!(
                         "Direct server listening on: {:?}",
                         listener.as_ref().map(|l| l.local_addr())
@@ -323,27 +349,31 @@ async fn direct_server(server: ServerPtr) {
                     assert_socket_surface(port as u16);
                 }
                 Err(err) => {
-                    // to-do: pass to ui
+                    // Finding C (listener-audit): a bind failure (e.g. a transient EADDRINUSE while a
+                    // just-exited --server's socket lingers in TIME_WAIT on a fast restart) MUST be
+                    // retried — it is not terminal. The old `while port != get_direct_port()` guard was a
+                    // DEAD break-condition (the port is a pinned constant, so it never differs), so the
+                    // service spun here forever and never rebound. Instead: back off a bounded, escalating
+                    // amount (100ms·2^streak, capped at 5s), then fall back to the top of the accept loop —
+                    // `listener` is still None, so the next iteration re-enters this bind path, while the
+                    // loop top honors shutdown (R-T9), the Android rebuild epoch (R-T13), and the runtime
+                    // password check (Finding E).
+                    bind_err_streak = bind_err_streak.saturating_add(1);
+                    let backoff_ms = (100u64 << bind_err_streak.min(6)).min(5000);
                     log::error!(
-                        "Failed to start direct server on port: {}, error: {}",
+                        "Failed to bind direct server on port {}: {} — retrying in {}ms",
                         port,
-                        err
+                        err,
+                        backoff_ms
                     );
-                    loop {
-                        if port != get_direct_port() {
-                            break;
-                        }
-                        sleep(1.).await;
-                    }
+                    sleep(backoff_ms as f32 / 1000.0).await;
+                    continue;
                 }
             }
         }
         if let Some(l) = listener.as_mut() {
-            if port != get_direct_port() {
-                log::info!("Exit direct access listen");
-                listener = None;
-                continue;
-            }
+            // (The upstream `if port != get_direct_port()` "exit listen" guard here was the dead sibling
+            // of the bind-retry break-condition — the port is a pinned constant, so it never fired. Gone.)
             match hbb_common::timeout(1000, l.accept()).await {
                 Ok(Ok((stream, addr))) => {
                     accept_err_streak = 0; // R-T12: a successful accept resets the error back-off

@@ -367,6 +367,25 @@ mod tests {
     }
 
     #[test]
+    fn finding_b_prs_storage_reconstructs_from_password_storage() {
+        // Finding B: config.password (the storage envelope) and config.password_prs both encode the
+        // SAME 32 PRS bytes, so the service->user config sync — which carries ONLY `storage` — can
+        // rebuild the live PRS from it instead of leaving it stale/empty. Prove the reconstruction is
+        // byte-identical to deriving the PRS straight from the original password.
+        let password = "correct horse battery staple";
+        let (storage, _prs_storage) = derive_permanent_password_storages(password).unwrap();
+        let raw = decode_permanent_password_h1_from_storage(&storage).unwrap();
+        let reconstructed_prs = base64::encode(raw, base64::Variant::Original);
+        assert_eq!(reconstructed_prs, derive_cpace_prs(password).unwrap());
+        // …and the rebuilt at-rest PRS storage decrypts back to that same PRS string.
+        let prs_storage = encrypt_permanent_password_prs_storage(&reconstructed_prs).unwrap();
+        assert_eq!(
+            decrypt_permanent_password_prs_storage(&prs_storage).as_deref(),
+            Some(reconstructed_prs.as_str())
+        );
+    }
+
+    #[test]
     fn test_encrypted_hashed_password_storage_matches_plain_with_salt() {
         let salt = "salt123";
         let h1 = compute_permanent_password_h1("p@ssw0rd", salt);

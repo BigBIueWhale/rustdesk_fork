@@ -6,7 +6,7 @@
 # the assets + notes before it goes public (promote it in the GitHub UI, or re-run with --publish).
 #
 # Usage:  scripts/publish-github-release.sh [--publish] [--push] [<tag>]
-#   <tag>       release tag  (default: v<Cargo-version>-hardened). Must not already exist.
+#   <tag>       release tag  (default: v<FORK_VERSION>, e.g. v1.4.7-hardened.1). Must not already exist.
 #   --publish   publish immediately instead of creating a draft.
 #   --push      git push HEAD to origin/master first (the release commit must be on the remote).
 #
@@ -16,6 +16,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
+# shellcheck source=scripts/fork-version.sh
+source "$SCRIPT_DIR/fork-version.sh"
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
 
 DRAFT=1; PUSH=0; TAG=""
@@ -60,10 +62,10 @@ SUMS_HEAD="$(awk '/^# HEAD /{print $3; exit}' "$OUT_DIR/SHA256SUMS")"
 ( cd "$OUT_DIR" && sha256sum -c --strict --status <(grep -vE '^#' SHA256SUMS) ) \
     || die "an artifact in $OUT_DIR does NOT match its SHA-256 in SHA256SUMS — the dist is stale or tampered. Rebuild: scripts/build-release.sh"
 
-# 6) Tag — opinionated default, never clobber an existing release/tag.
-VERSION="$(grep -m1 '^version' "$REPO_ROOT/Cargo.toml" | sed 's/.*=[[:space:]]*"\(.*\)".*/\1/')"
-[ -n "$VERSION" ] || die "could not read the fork version from Cargo.toml"
-TAG="${TAG:-v${VERSION}-hardened}"
+# 6) Tag — the fork RELEASE version (docs/VERSIONING.md; single source of truth = the FORK_VERSION
+# file), never clobber an existing release/tag. Each release has a distinct v<FORK_VERSION> tag.
+FORK_VER="$(fork_version)" || die "FORK_VERSION is missing or malformed (see docs/VERSIONING.md)"
+TAG="${TAG:-v${FORK_VER}}"
 if gh release view "$TAG" >/dev/null 2>&1; then
     die "a GitHub release for tag '$TAG' already EXISTS on $REPO_SLUG — pass a NEW tag: scripts/publish-github-release.sh [--publish] <tag>  (or delete the old release first)"
 fi
@@ -78,11 +80,16 @@ fi
 git -C "$REPO_ROOT" branch -r --contains "$HEAD_FULL" 2>/dev/null | grep -q . \
     || die "HEAD $HEAD_FULL is not on any remote branch — GitHub cannot tag a commit it does not have. Push it first: git push origin master   (or re-run with --push)"
 
-# 8) Release notes = the human-maintained README section (single source) + an auto verify/SHA footer.
-README_MD="$REPO_ROOT/README.md"
-NOTES_BODY="$(awk '/<!-- RELEASE_NOTES:START -->/{f=1;next} /<!-- RELEASE_NOTES:END -->/{f=0} f' "$README_MD")"
+# 8) Release notes = the top (current-release) section of CHANGELOG.md — the single per-release source
+# (docs/VERSIONING.md) — plus an auto verify/SHA footer. The section heading MUST name this release's
+# version, so the published notes always match the tag.
+CHANGELOG_MD="$REPO_ROOT/CHANGELOG.md"
+[ -s "$CHANGELOG_MD" ] || die "CHANGELOG.md is missing — add a '## <version>' top entry (docs/VERSIONING.md)"
+NOTES_BODY="$(awk '/^## /{n++} n==1{print} n>=2{exit}' "$CHANGELOG_MD")"
 [ -n "$NOTES_BODY" ] \
-    || die "no release notes found in README.md — add a section between the markers <!-- RELEASE_NOTES:START --> and <!-- RELEASE_NOTES:END -->"
+    || die "no top '## <version>' section found in CHANGELOG.md — add this release's entry (docs/VERSIONING.md)"
+printf '%s\n' "$NOTES_BODY" | head -1 | grep -qF "$FORK_VER" \
+    || die "CHANGELOG.md's top section heading does not name $FORK_VER — update CHANGELOG.md before releasing (docs/VERSIONING.md)"
 BUILT_AT="$(git -C "$REPO_ROOT" show -s --format=%cI "$HEAD_FULL" 2>/dev/null || echo '?')"
 NOTES_FILE="$(mktemp)"; trap 'rm -f "$NOTES_FILE"' EXIT
 {

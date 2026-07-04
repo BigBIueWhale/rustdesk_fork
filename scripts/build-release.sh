@@ -19,6 +19,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
+# shellcheck source=scripts/fork-version.sh
+source "$SCRIPT_DIR/fork-version.sh"
 load_pins
 
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
@@ -42,6 +44,10 @@ HEAD_SHORT="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo unk
 # deb/apk live-worktree drift. So the whole set is ONE commit, or the build fails loud — never a
 # mislabeled mixed-commit SHA256SUMS.
 [ "$HEAD" = unknown ] || export RELEASE_SRC_COMMIT="$HEAD"
+# The fork RELEASE version (docs/VERSIONING.md; single source of truth = the FORK_VERSION file) —
+# validated ONCE here (fail loud), stamped into dist/SHA256SUMS below so every published set records
+# exactly which fork release built it.
+FORK_VER="$(fork_version)" || die "FORK_VERSION is missing or malformed — fix it before a release (docs/VERSIONING.md)"
 
 # ── Preflight: assert EVERYTHING before building anything (fail loud, all at once) ─────────────────
 release_preflight() {
@@ -136,6 +142,7 @@ main() {
     # operator's trusted channel; there is no code-signing, R-P5).
     {
         printf '# rustdesk-fork release artifacts — R-B2 reproducible (double-build A==B per target)\n'
+        printf '# fork-version %s   (see CHANGELOG.md / docs/VERSIONING.md)\n' "$FORK_VER"
         printf '# HEAD %s   SOURCE_DATE_EPOCH %s   built %s\n' "$HEAD" "$SOURCE_DATE_EPOCH" \
             "$(git -C "$REPO_ROOT" show -s --format=%cI "$HEAD" 2>/dev/null || echo '?')"
         [ "$DO_WINDOWS" = 1 ] || printf '# WARNING: --skip-windows — .exe/.msi absent, NOT a full release set\n'

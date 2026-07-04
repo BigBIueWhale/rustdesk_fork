@@ -29,8 +29,8 @@ pub use permanent_password::{
 use permanent_password::{
     decode_permanent_password_h1_from_hashed_storage, decrypt_permanent_password_prs_storage,
     decrypt_permanent_password_str_or_original, derive_permanent_password_storages,
-    password_is_empty_or_not_hashed, preset_permanent_password_storage_matches_plain,
-    DEFAULT_SALT_LEN, PASSWORD_ENC_VERSION,
+    encrypt_permanent_password_prs_storage, password_is_empty_or_not_hashed,
+    preset_permanent_password_storage_matches_plain, DEFAULT_SALT_LEN, PASSWORD_ENC_VERSION,
 };
 
 use crate::{
@@ -733,7 +733,11 @@ impl Config {
                 log::error!(
                     "Clearing invalid permanent password storage before storing config: {err}"
                 );
+                // Clear ALL THREE credential forms together (Finding B sibling): dropping password/salt
+                // but leaving config.password_prs would leave the CPace handshake authenticating with a
+                // credential the box now reports as unset — a split-brain. Fail closed + consistent.
                 config.password.clear();
+                config.password_prs.clear();
                 config.salt.clear();
             }
         }
@@ -1347,10 +1351,17 @@ impl Config {
         salt: &str,
     ) -> Result<bool> {
         if storage.is_empty() {
-            if config.password.is_empty() && (salt.is_empty() || config.salt == salt) {
+            // A cleared credential must clear BOTH at-rest forms. Leaving config.password_prs set after
+            // the storage is cleared would keep the CPace handshake authenticating with the just-cleared
+            // password (get_permanent_password_prs reads password_prs, not password) — Finding B / R-S9.
+            if config.password.is_empty()
+                && config.password_prs.is_empty()
+                && (salt.is_empty() || config.salt == salt)
+            {
                 return Ok(false);
             }
             config.password.clear();
+            config.password_prs.clear();
             if !salt.is_empty() {
                 config.salt = salt.to_owned();
             }
@@ -1361,16 +1372,39 @@ impl Config {
                 "Refusing to persist permanent password storage without salt"
             ));
         }
-        if decode_permanent_password_h1_from_storage(storage).is_none() {
+        // Decode the raw 32 PRS bytes out of the (machine-UUID-encrypted) storage envelope. This both
+        // validates the payload is a current-format credential THIS machine can decrypt AND yields the
+        // bytes to rebuild the live PRS below.
+        let Some(raw) = decode_permanent_password_h1_from_storage(storage) else {
             log::error!("Rejecting non-current permanent password storage sync payload");
             return Err(anyhow!("Invalid permanent password storage sync payload"));
-        }
-        if config.password == storage && config.salt == salt {
+        };
+        // Finding B: the service->user sync carries ONLY `storage` (config.password) + salt, never
+        // config.password_prs. But config.password and config.password_prs encode the SAME 32 PRS bytes,
+        // so rebuild password_prs from the decoded bytes here. Without this, a synced set/rotate wrote a
+        // fresh `password` but left password_prs stale/empty — so on the next --server restart the box
+        // read an empty PRS and refused to listen (R-S9), or authenticated the OLD password. Rebuilding it
+        // is what makes a set/rotate durable across restarts on the headless/root box (which has no
+        // whole-config root<->user repair path).
+        let prs_string = base64::encode(raw, base64::Variant::Original);
+        let Some(prs_storage) = encrypt_permanent_password_prs_storage(&prs_string) else {
+            return Err(anyhow!(
+                "Failed to rebuild the CPace PRS storage from the synced permanent password"
+            ));
+        };
+        // Idempotent only when password + salt already match AND password_prs already decrypts to the
+        // same PRS (the at-rest ciphertext uses a random nonce, so compare the decrypted PRS, not bytes).
+        if config.password == storage
+            && config.salt == salt
+            && decrypt_permanent_password_prs_storage(&config.password_prs).as_deref()
+                == Some(prs_string.as_str())
+        {
             return Ok(false);
         }
 
         config.password = storage.to_owned();
         config.salt = salt.to_owned();
+        config.password_prs = prs_storage;
         Ok(true)
     }
 

@@ -113,8 +113,26 @@ fn r_b10_offline_canary() {
     println!("cargo:warning=R-B10 canary: build confirmed network-isolated (offline compile stage).");
 }
 
+// The FORK RELEASE identity for `rustdesk --version` / the About dialog (docs/VERSIONING.md). It is
+// DISTINCT from crate::VERSION, which stays the upstream base (the wire/protocol version peers exchange
+// for feature-negotiation, hbb_common::get_version_number). Single source of truth is the repo-root
+// FORK_VERSION file; emit it as a compile-time env so the binary reads it with option_env!. Reading a
+// committed, fixed file keeps it deterministic (R-B2); rerun-if-changed rebuilds when the file is
+// bumped. Falls back to the upstream base if the file is somehow absent (a verify.sh gate enforces
+// its presence + format).
+fn emit_fork_version() {
+    println!("cargo:rerun-if-changed=FORK_VERSION");
+    let fork_version = std::fs::read_to_string("FORK_VERSION")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| std::env::var("CARGO_PKG_VERSION").unwrap_or_default());
+    println!("cargo:rustc-env=RUSTDESK_FORK_VERSION={fork_version}");
+}
+
 fn main() {
     r_b10_offline_canary();
+    emit_fork_version();
     hbb_common::gen_version();
     install_android_deps();
     #[cfg(all(windows, feature = "inline"))]

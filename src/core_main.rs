@@ -122,12 +122,20 @@ pub fn core_main() -> Option<Vec<String>> {
     }
     if args.len() > 0 {
         if args[0] == "--version" {
-            // The FORK release identity (docs/VERSIONING.md); crate::VERSION stays the upstream/wire
-            // base. Both are printed so a human sees the release AND a parser can still find the base.
+            // Upstream/machine contract: print ONLY the app/wire/package version (numeric), verbatim.
+            // res/msi/preprocess.py runs `rustdesk --version`, requires the output to be a numeric
+            // version EMBEDDED in the binary (it becomes the WiX ProductVersion), and other tooling
+            // parses it too — so the FORK RELEASE identity is a SEPARATE `--fork-version` (below),
+            // never mixed in here. (Mixing them broke the MSI build in this release's first attempt.)
+            println!("{}", crate::VERSION);
+            return None;
+        } else if args[0] == "--fork-version" {
+            // The fork RELEASE identity (docs/VERSIONING.md): <app-version>-hardened.<N>, embedded at
+            // build time from the repo-root FORK_VERSION file (build.rs -> RUSTDESK_FORK_VERSION).
+            // crate::VERSION (--version, above) stays the upstream base for tooling + wire negotiation.
             println!(
-                "RustDesk Hardened Fork {} (app/protocol {})",
-                option_env!("RUSTDESK_FORK_VERSION").unwrap_or(crate::VERSION),
-                crate::VERSION
+                "{}",
+                option_env!("RUSTDESK_FORK_VERSION").unwrap_or(crate::VERSION)
             );
             return None;
         } else if args[0] == "--build-date" {

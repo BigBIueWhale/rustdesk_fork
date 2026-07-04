@@ -38,7 +38,7 @@ for Debian/Android/Windows, plus Apple source-conformance.
 ### Changed
 - **Versioning.** Introduced this changelog + [`docs/VERSIONING.md`](docs/VERSIONING.md) + the
   `FORK_VERSION` single source of truth. Each release now carries a distinct `-hardened.<N>` identity
-  across the git tag, the GitHub release, the `SHA256SUMS` header, and `rustdesk --version`, without
+  across the git tag, the GitHub release, the `SHA256SUMS` header, and `rustdesk --fork-version`, without
   clobbering prior releases. The wire/protocol version and the `.deb`/`.apk`/`.exe`/`.msi` package
   version stay `1.4.7`.
 

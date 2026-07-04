@@ -5,7 +5,7 @@ The hardened fork carries **two** version identities, deliberately kept separate
 | Identity | Value | Lives in | Purpose |
 |---|---|---|---|
 | **App / wire / package version** | `1.4.7` | `Cargo.toml` `version` (→ generated `src/version.rs` `VERSION`; `flutter/pubspec.yaml`; the `.deb`/`.apk`/`.exe`/`.msi` package version) | The upstream RustDesk base the fork derives from. It is the **wire/protocol version** peers exchange for feature-negotiation (`hbb_common::get_version_number`), so it must track the upstream base. **Do not** change it to encode fork releases. |
-| **Fork release** | `1.4.7-hardened.N` | `FORK_VERSION` (repo root — the single source of truth) | The fork's own release identity, distinguishing successive releases built on the same upstream base. Carried by the git tag, the GitHub release, the `dist/SHA256SUMS` header, and `rustdesk --version` (generated const `FORK_VERSION` in `src/version.rs`). |
+| **Fork release** | `1.4.7-hardened.N` | `FORK_VERSION` (repo root — the single source of truth) | The fork's own release identity, distinguishing successive releases built on the same upstream base. Carried by the git tag, the GitHub release, the `dist/SHA256SUMS` header, and `rustdesk --fork-version` (embedded at build time via `build.rs` → `RUSTDESK_FORK_VERSION`). Note `rustdesk --version` prints the **app** version (`1.4.7`) — the machine/tooling contract (e.g. the MSI build). |
 
 ## The fork-release string
 

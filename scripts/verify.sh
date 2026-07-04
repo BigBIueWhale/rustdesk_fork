@@ -280,7 +280,7 @@ if [ -n "$r1a" ]; then echo "  FAIL R1(a) pre-key first-step short deadline:$r1a
 # FORK_VERSION file; assert (a) it exists + is well-formed + its base equals Cargo.toml's version (no
 # drift between the fork release string and the app/wire/package version), (b) CHANGELOG.md's top
 # '## <version>' entry names it, (c) the binary can report it (build.rs emits RUSTDESK_FORK_VERSION and
-# --version prints it), and (d) the scheme doc exists.
+# --fork-version prints it; --version stays the numeric app version), and (d) the scheme doc exists.
 ver_gate=
 fork_ver="$(fork_version 2>/dev/null)" || ver_gate="$ver_gate FORK_VERSION-missing-or-malformed"
 [ -f CHANGELOG.md ] || ver_gate="$ver_gate CHANGELOG.md-missing"
@@ -292,7 +292,12 @@ if [ -n "$fork_ver" ] && [ -f CHANGELOG.md ]; then
   esac
 fi
 grep -qF 'RUSTDESK_FORK_VERSION' build.rs           || ver_gate="$ver_gate build.rs-no-fork-version-env"
-grep -qF 'RUSTDESK_FORK_VERSION' src/core_main.rs   || ver_gate="$ver_gate --version-not-wired"
+grep -qF 'RUSTDESK_FORK_VERSION' src/core_main.rs   || ver_gate="$ver_gate --fork-version-not-wired"
+# res/msi/preprocess.py runs `rustdesk --version` and needs a NUMERIC version embedded in the binary
+# (it becomes the WiX ProductVersion); so --version MUST print crate::VERSION verbatim (the app
+# version), never the fork string. (Guards the regression that broke the MSI build on the first
+# 1.4.7-hardened.1 build attempt — the fork identity lives on the separate `--fork-version`.)
+grep -qF 'println!("{}", crate::VERSION);' src/core_main.rs || ver_gate="$ver_gate --version-not-numeric"
 [ -f docs/VERSIONING.md ]                           || ver_gate="$ver_gate docs/VERSIONING.md-missing"
 if [ -n "$ver_gate" ]; then
   echo "  FAIL fork-versioning (docs/VERSIONING.md):$ver_gate"; rc=1

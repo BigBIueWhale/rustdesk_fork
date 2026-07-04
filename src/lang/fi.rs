@@ -436,8 +436,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Default", "Oletus"),
         ("New RDP", "Uusi RDP yhteys"),
         ("Fingerprint", "Sormenjälki"),
-        ("Copy Fingerprint", "Kopioi sormenjälki"),
-        ("no fingerprints", "Ei sormenjälkiä"),
         ("Select a peer", "Valitse vastapää"),
         ("Select peers", "Valitse useita vastapään laitteita"),
         ("Plugins", "Laajennukset"),

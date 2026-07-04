@@ -436,8 +436,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Default", "Varsayılan"),
         ("New RDP", "Yeni RDP"),
         ("Fingerprint", "Parmak İzi"),
-        ("Copy Fingerprint", "Parmak İzini Kopyala"),
-        ("no fingerprints", "parmak izi yok"),
         ("Select a peer", "Bir cihaz seçin"),
         ("Select peers", "Cihazları seçin"),
         ("Plugins", "Eklentiler"),

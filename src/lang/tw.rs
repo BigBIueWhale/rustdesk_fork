@@ -436,8 +436,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Default", "預設"),
         ("New RDP", "新的 RDP"),
         ("Fingerprint", "指紋"),
-        ("Copy Fingerprint", "複製指紋"),
-        ("no fingerprints", "沒有指紋"),
         ("Select a peer", "選擇夥伴"),
         ("Select peers", "選擇夥伴"),
         ("Plugins", "外掛程式"),

@@ -436,8 +436,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Default", "Типово"),
         ("New RDP", "Нове RDP"),
         ("Fingerprint", "Відбитки пальців"),
-        ("Copy Fingerprint", "Копіювати відбитки пальців"),
-        ("no fingerprints", "немає відбитків пальців"),
         ("Select a peer", "Оберіть віддалений пристрій"),
         ("Select peers", "Оберіть віддалені пристрої"),
         ("Plugins", "Плагіни"),

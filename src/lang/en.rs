@@ -131,8 +131,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("no_desktop_title_tip", "No desktop environment is available"),
         ("no_desktop_text_tip", "Please install GNOME desktop"),
         ("System Sound", "System sound"),
-        ("Copy Fingerprint", "Copy fingerprint"),
-        ("no fingerprints", "No fingerprints"),
         ("resolution_original_tip", "Original resolution"),
         ("resolution_fit_local_tip", "Fit local resolution"),
         ("resolution_custom_tip", "Custom resolution"),

@@ -436,8 +436,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Default", "Domyślne"),
         ("New RDP", "Nowe RDP"),
         ("Fingerprint", "Sygnatura"),
-        ("Copy Fingerprint", "Skopiuj sygnaturę"),
-        ("no fingerprints", "brak sygnatur"),
         ("Select a peer", "Wybierz zdalne urządzenie"),
         ("Select peers", "Wybierz zdalne urządzenia"),
         ("Plugins", "Wtyczki"),

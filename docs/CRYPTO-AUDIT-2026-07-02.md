@@ -7,6 +7,16 @@
 at `4eb6912`.
 **Requirement fulfilled:** R-V3 (the independent expert review §11 requires before exposed operation).
 
+> ⚠️ **PARTIALLY SUPERSEDED (2026-07-04).** After this audit, the **host-key / host-proof
+> identity layer** it covers (R-S17 — the Ed25519 host-proof + the no-TOFU pin) was **retired
+> entirely** (`16b67a2` spec, `8fbdecb` code): the fork is now a **pure balanced password-PAKE**
+> with **no per-box identity key**. As part of that, the CPace PRS salt changed from the
+> host-key-bound `SHA256(DSI‖host_pubkey)` to a **fixed** domain-separation constant
+> `SHA256("rustdesk-cpace-prs-salt-v1")`. This report is left intact as the truthful record of the
+> construction **as audited on 2026-07-02**; for the current design see `requirements.html`
+> (§10/§11). The CPace core, the two-key AEAD channel, and the Argon2id memory-hardness reviewed
+> here are unchanged — only the host-identity layer and the salt source were removed/changed.
+
 ## Provenance & nature of this review (read first)
 
 This is an **AI-conducted expert review** performed by **Claude Opus 4.8**, engaged as the

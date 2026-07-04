@@ -436,8 +436,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Default", "I parazgjedhur"),
         ("New RDP", "RDP i ri"),
         ("Fingerprint", "Gjurma e gishtit"),
-        ("Copy Fingerprint", "Kopjo gjurmën e gishtit"),
-        ("no fingerprints", "Nuk ka gjurmë gishtash"),
         ("Select a peer", "Zgjidh një peer"),
         ("Select peers", "Zgjidh peer-at"),
         ("Plugins", "Shtojcat"),

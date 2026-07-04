@@ -436,8 +436,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Default", "Alapértelmezett"),
         ("New RDP", "Új RDP"),
         ("Fingerprint", "Ujjlenyomat"),
-        ("Copy Fingerprint", "Ujjlenyomat másolása"),
-        ("no fingerprints", "nincsenek ujjlenyomatok"),
         ("Select a peer", "Egy távoli állomás kiválasztása"),
         ("Select peers", "Távoli állomások kiválasztása"),
         ("Plugins", "Beépülő modulok"),

@@ -436,8 +436,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Default", "Προκαθορισμένο"),
         ("New RDP", "Νέα RDP"),
         ("Fingerprint", "Δακτυλικό αποτύπωμα"),
-        ("Copy Fingerprint", "Αντιγραφή δακτυλικού αποτυπώματος"),
-        ("no fingerprints", "χωρίς δακτυλικά αποτυπώματα"),
         ("Select a peer", "Επιλέξτε έναν σταθμό"),
         ("Select peers", "Επιλέξτε σταθμούς"),
         ("Plugins", "Επεκτάσεις"),

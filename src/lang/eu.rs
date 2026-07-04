@@ -436,8 +436,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Default", "Lehenetsia"),
         ("New RDP", "RDP berria"),
         ("Fingerprint", "Hatz-marka"),
-        ("Copy Fingerprint", "Kopiatu hatz-marka"),
-        ("no fingerprints", "hatz-markarik ez"),
         ("Select a peer", "Hautatu parekidea"),
         ("Select peers", "Hautatu parekideak"),
         ("Plugins", "Pluginak"),

@@ -436,8 +436,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Default", "per defecte"),
         ("New RDP", "Connexió RDP nova"),
         ("Fingerprint", "Empremta"),
-        ("Copy Fingerprint", "Copia l'empremta"),
-        ("no fingerprints", "Cap empremta"),
         ("Select a peer", "Seleccioneu un client"),
         ("Select peers", "Seleccioneu els clients"),
         ("Plugins", "Complements"),

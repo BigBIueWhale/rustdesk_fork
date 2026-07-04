@@ -3,16 +3,18 @@
 This guide covers installing and operating the fork as an **unattended remote-access
 host** on a Debian/Ubuntu machine. It reflects the fork's hardened, direct-IP-only
 model — there is **no rendezvous server, no relay, no UDP, and no auto-update**. A
-viewer dials the host's IP directly, authenticates with a CPace PAKE over a sealed
-two-key channel, and pins the host's Ed25519 identity.
+viewer dials the host's IP directly and authenticates with a **balanced CPace PAKE**
+over a sealed two-key channel — the shared permanent password is the **sole**
+authenticator. There is no host-key/fingerprint to pin: the mutual PAKE defeats an
+active MITM by construction (a party that does not know the password cannot key), so
+nothing per-box needs to be verified out-of-band.
 
 The steps below were validated by installing the built `.deb` in a clean
-`ubuntu:22.04` container (clean install, binary + systemd unit placement, headless
-`--get-fingerprint`), and the runtime behaviour by `scripts/smoke-server.sh`
-(one v4 TCP listener on 21118, zero UDP, fail-closed startup).
+`ubuntu:22.04` container (clean install, binary + systemd unit placement), and the
+runtime behaviour by `scripts/smoke-server.sh` (one v4 TCP listener on 21118, zero
+UDP, fail-closed startup).
 
-Related: [`HOST-KEY-PIN.md`](./HOST-KEY-PIN.md) (identity pinning),
-[`TRANSPORT-SECURITY.md`](./TRANSPORT-SECURITY.md) (the wire protocol),
+Related: [`TRANSPORT-SECURITY.md`](./TRANSPORT-SECURITY.md) (the wire protocol),
 [`SECURITY.md`](./SECURITY.md).
 
 ---
@@ -95,28 +97,7 @@ No UDP rule is needed.
 
 ---
 
-## 4. Pin the host identity (do this once, out-of-band)
-
-The host has a long-term Ed25519 key. Read its fingerprint **on the box**:
-
-```sh
-sudo rustdesk --get-fingerprint
-# e.g. b008 45ec e2df e9ea 83ca 5f42 e645 0a3b 2ee9 1883 d019 720a 7ced e29d 44d5 cd0c
-```
-
-Transfer that fingerprint to the operator through a trusted channel (not over the
-remote-desktop connection itself). On the **viewer**, pin it before connecting:
-
-```sh
-rustdesk --pin-host <host-ip>:21118 <fingerprint-from-the-box>
-```
-
-The viewer fail-closes on a fingerprint mismatch — there is no trust-on-first-use and
-no "accept anyway". See [`HOST-KEY-PIN.md`](./HOST-KEY-PIN.md).
-
----
-
-## 5. Connect (viewer)
+## 4. Connect (viewer)
 
 Enter `<host-ip>:21118` as the destination (a bare numeric ID is rejected — this is a
 direct-IP build), supply the password from step 2a, and connect. The session runs over
@@ -124,7 +105,7 @@ the CPace-keyed, per-direction-keyed, AEAD-sealed channel.
 
 ---
 
-## 6. Harden the host itself
+## 5. Harden the host itself
 
 The fork's own surface is minimal (one authenticated TCP port, fail-closed). On a
 real internet-facing/DMZ box the **larger residual exposure is the host OS**, not
@@ -136,7 +117,7 @@ RustDesk — in particular password-based SSH on port 22:
 
 ---
 
-## 7. Verify the deployment
+## 6. Verify the deployment
 
 ```sh
 # exactly one v4 TCP listener on 21118, zero UDP:
@@ -150,7 +131,7 @@ bash scripts/verify.sh         # KATs + handshake + two-key cipher + compile + R
 bash scripts/smoke-server.sh   # runtime: one-TCP/zero-UDP, fail-closed, no-plaintext wire
 ```
 
-A correctly-deployed host shows a single `127-or-host:21118` TCP LISTEN line and no UDP.
+A correctly-deployed host shows a single `0.0.0.0:21118` TCP LISTEN line and no UDP.
 
 ---
 
@@ -162,5 +143,9 @@ A correctly-deployed host shows a single `127-or-host:21118` TCP LISTEN line and
   the unit on package removal.
 - **Logs:** `journalctl -u rustdesk`. The fail-closed refusals (no password /
   managed-override) are logged at error level with their R-ID.
+- **Do not clone/migrate the box to different hardware:** the permanent-password credential is
+  encrypted at rest under the machine's UUID, so a disk clone / VM migration / hardware swap makes it
+  unreadable and the host fail-closes (refuses to listen) until you re-run `sudo rustdesk --password ...`
+  on the new hardware. This is intentional — the at-rest credential is bound to the box.
 - **Android/Windows clients** connect to the same `<host-ip>:21118` with the same
-  password + pinned fingerprint.
+  password (no fingerprint to pin).

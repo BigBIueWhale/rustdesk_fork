@@ -436,8 +436,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Default", "Numatytasis"),
         ("New RDP", "Naujas RDP"),
         ("Fingerprint", "Kontrolinis kodas"),
-        ("Copy Fingerprint", "Kopijuoti kontrolinį kodą"),
-        ("no fingerprints", "Nėra kontrolinių kodų"),
         ("Select a peer", "Pasirinkite įrenginį"),
         ("Select peers", "Pasirinkite įrenginius"),
         ("Plugins", "Papildiniai"),

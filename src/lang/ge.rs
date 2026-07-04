@@ -436,8 +436,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Default", "ნაგულისხმევი"),
         ("New RDP", "ახალი RDP"),
         ("Fingerprint", "ანაბეჭდი"),
-        ("Copy Fingerprint", "ანაბეჭდის კოპირება"),
-        ("no fingerprints", "ანაბეჭდები არ არის"),
         ("Select a peer", "აირჩიეთ დისტანციური კვანძი"),
         ("Select peers", "აირჩიეთ დისტანციური კვანძები"),
         ("Plugins", "დანამატები"),

@@ -43,9 +43,6 @@ All line references are to `src/lib.rs` unless noted; the test vectors live in
     companion audit-scope half in
     [`docs/TRANSPORT-SECURITY.md`](../../docs/TRANSPORT-SECURITY.md).
   * The online-guess limiter that `PakeError::Confirmation` feeds (R-S10).
-  * The host-key pin / host-proof that binds the responder's long-term identity
-    on top of this PAKE (R-S17, `src/client.rs`). Documented in
-    [`docs/HOST-KEY-PIN.md`](../../docs/HOST-KEY-PIN.md).
 
 ---
 
@@ -203,7 +200,7 @@ returns and timeouts:
 These run inside `cargo test -p pake` and are gated by `scripts/verify.sh`
 (the KAT block), so a construction regression fails CI. The broader
 adversarial suite — replay/reorder/duplicate first frame, oversize pre-PAKE
-frame, wrong-password refusal, identical-key refusal, host-proof binding — lives
+frame, wrong-password refusal, identical-key refusal — lives
 in the integration `cpace_it` tests and is likewise gated.
 
 ---

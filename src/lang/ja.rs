@@ -436,8 +436,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Default", "既定"),
         ("New RDP", "新しい RDP"),
         ("Fingerprint", "フィンガープリント"),
-        ("Copy Fingerprint", "フィンガープリントをコピー"),
-        ("no fingerprints", "フィンガープリントがありません"),
         ("Select a peer", "リモートコンピューターを選択"),
         ("Select peers", "複数のリモートコンピューターを選択"),
         ("Plugins", "プラグイン"),

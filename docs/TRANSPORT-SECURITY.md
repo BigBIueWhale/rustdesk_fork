@@ -148,7 +148,7 @@ authentication never degrade:
 | Inject / modify a **post-key** frame | Fails the Poly1305 tag (§3, R-T7 — no ≤1-byte bypass) → stream poisoned → fail-closed |
 | Reorder / replay / drop frames | Desyncs the per-direction monotonic nonce (§2, R-A5) → tag fails → abort |
 | MITM first contact | Cannot complete the mutual CPace PAKE without the password (R-S1) |
-| Substitute its own endpoint (even one that knows the password) | Fails the R-S17 Ed25519 host-proof signed over this session's transcript (`sid‖CI‖Ya‖Yb`) — a substitute lacks the pinned private key |
+| Substitute its own endpoint | Without the password, cannot complete the mutual CPace PAKE (same as first-contact MITM). A substitute that *knows* the password is out of scope by §2 (password secrecy is assumed) — the balanced PAKE authenticates whoever holds the shared secret, with no separate long-term device identity to forge |
 | Replay a whole captured session | A fresh responder `sid_b`/`Yb` diverges the ISK → key-confirmation fails (R-P14c) |
 | Inject malformed **pre-key** bytes | The only pre-key parsers — the frame codec, `protobuf` 3.7.2 (recursion/alloc/varint bounded, R-A7), and the CPace fixed-length fields (`exact::<N>`) — are panic-free, so injected garbage is a clean error, never a `panic='abort'` process crash |
 | RST / SYN flood / drop the connection | A pure availability attack, inherent to TCP and unpreventable at this layer; no confidentiality/integrity impact |

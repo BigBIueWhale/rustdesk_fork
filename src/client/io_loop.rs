@@ -403,7 +403,7 @@ impl<T: InvokeUiSession> Remote<T> {
         )
         .await
         {
-            Ok(((mut peer, direct, pk, stream_type), _)) => {
+            Ok(((mut peer, direct, stream_type), _)) => {
                 self.handler
                     .connection_round_state
                     .lock()
@@ -412,10 +412,6 @@ impl<T: InvokeUiSession> Remote<T> {
                 self.handler
                     .set_connection_type(stream_type); // flutter -> connection_ready
                 self.handler.update_direct(Some(direct));
-                if conn_type == ConnType::DEFAULT_CONN || conn_type == ConnType::VIEW_CAMERA {
-                    self.handler
-                        .set_fingerprint(crate::common::pk_to_fingerprint(pk.unwrap_or_default()));
-                }
 
                 // just build for now
                 #[cfg(not(any(target_os = "windows", feature = "unix-file-copy-paste")))]

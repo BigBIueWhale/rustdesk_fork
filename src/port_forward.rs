@@ -116,7 +116,7 @@ pub async fn listen(
 
 // Establish a PAKE-keyed session to the box and drive it to a successful login, then hand back the
 // KEYED stream for the raw relay. The fork's `Client::start` already runs the single mandatory CPace
-// handshake (keying the stream + verifying/pinning the box's Ed25519 host key) and sends the login
+// handshake (keying the stream) and sends the login
 // PROACTIVELY (empty-password, CPace-authenticated), so there is NO legacy `Hash` challenge to answer
 // here (R-T15c). `_password` is consumed at keying time via the interface (Session::get_connect_password
 // folds it into the PRS), not in this function — it stays only for signature parity with the caller.
@@ -135,7 +135,7 @@ async fn connect_and_login(
     } else {
         ConnType::PORT_FORWARD
     };
-    let ((mut stream, direct, _pk, _stream_type), (_feedback, _rendezvous_server)) =
+    let ((mut stream, direct, _stream_type), (_feedback, _rendezvous_server)) =
         Client::start(id, key, token, conn_type, interface.clone()).await?;
     interface.update_direct(Some(direct));
 

@@ -682,7 +682,7 @@ impl Drop for CheckIfRestart {
 /// Make this a POSITIVE allowlist over the config-mutating arms, not a one-arm denylist: only the
 /// legitimate UI/operator Data::Config writes pass; `id` and `salt` (which have NO legitimate
 /// main-channel writer — the UI READS id via value=None, and set_salt's hashed-password guard is a
-/// no-op in the fork's PRS model (the at-rest credential is the host-key-salted Argon2id
+/// no-op in the fork's PRS model (the at-rest credential is the memory-hard Argon2id
 /// hash, not a value re-derived from this legacy `salt` field — R-P1), config.rs) are REJECTED, so a same-uid process cannot
 /// rewrite the device identity or the password salt through the main channel. Data::Socks(Some) (the
 /// proxy / local-MITM primitive, already inert under the pinned proxy-url, R-D6(d)(iii)) is rejected
@@ -815,13 +815,6 @@ async fn handle(data: Data, stream: &mut Connection) {
                     });
                 } else if name == "salt" {
                     value = Some(Config::get_salt());
-                } else if name == "fingerprint" {
-                    // R-S17 / I-1: the box's self-generated Ed25519 host key ALWAYS exists
-                    // (get_key_pair generates it on first read) and a direct-IP fork has no
-                    // rendezvous register_pk step to "confirm" — so the fingerprint is
-                    // unconditional (never blank on the GUI boards). The old key_confirmed gate
-                    // could only ever flip true via the excised register_pk ACK.
-                    value = Some(crate::common::pk_to_fingerprint(Config::get_key_pair().1));
                 } else if name == "hide_cm" {
                     value = if crate::common::is_custom_client() {
                         Some(hbb_common::password_security::hide_cm().to_string())
@@ -1399,12 +1392,6 @@ pub fn is_permanent_password_preset() -> bool {
     false
 }
 
-pub fn get_fingerprint() -> String {
-    get_config("fingerprint")
-        .unwrap_or_default()
-        .unwrap_or_default()
-}
-
 pub fn set_permanent_password(v: String) -> ResultType<()> {
     if Config::is_disable_change_permanent_password() {
         bail!("Changing permanent password is disabled");
@@ -1855,7 +1842,7 @@ mod test {
         );
         assert!(
             !main_channel_admits_config_write(&cfg("salt", Some("evil-salt"))),
-            "R-S11: a Data::Config salt write (set_salt's guard is a no-op — the PRS is the host-key-salted Argon2id hash, not derived from this salt field) MUST be rejected"
+            "R-S11: a Data::Config salt write (set_salt's guard is a no-op — the PRS is the memory-hard Argon2id hash, not derived from this salt field) MUST be rejected"
         );
         assert!(
             main_channel_admits_config_write(&cfg("permanent-password", Some("pw"))),

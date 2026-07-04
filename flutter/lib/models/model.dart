@@ -417,8 +417,6 @@ class FfiModel with ChangeNotifier {
         parent.target?.chatModel.onVoiceCallIncoming();
       } else if (name == 'update_voice_call_state') {
         parent.target?.serverModel.updateVoiceCallState(evt);
-      } else if (name == 'fingerprint') {
-        FingerprintState.find(peerId).value = evt['fingerprint'] ?? '';
       } else if (name == "cm_file_transfer_log") {
         if (isDesktop) {
           gFFI.cmFileModel.onFileTransferLog(evt);
@@ -876,21 +874,11 @@ class FfiModel with ChangeNotifier {
     if (type == 'connect-password-prompt') {
       // R-S13/A3 (prompt-before-keying): the CPace keying needs the box's password up front;
       // a bare-ID first connect has none, so the keying fails and routes here. Enter it →
-      // store + reconnect → key with it. `text` carries the reason and (I-3) names BOTH a wrong
-      // password AND a changed host key, so a legitimately re-keyed box does not dead-end here.
+      // store + reconnect → key with it. `text` carries the reason (a wrong password, or a box
+      // re-provisioned with a new password), so a legitimately re-provisioned box does not dead-end.
       // (There is no post-keying `input-password`/`re-input-password` re-prompt: CPace is the sole
       // authenticator — R-A1 — so the responder never asks to re-enter a login password.)
       enterConnectPasswordDialog(sessionId, dialogManager, text);
-    } else if (type == 'host-not-pinned-prompt') {
-      // R-S17/R-G5 (first-connect pin seed): the box keyed but is not pinned yet. Show its
-      // fingerprint to confirm out-of-band, then pin + reconnect on accept.
-      hostNotPinnedDialog(sessionId, dialogManager, text);
-    } else if (type == 'host-mismatch-prompt') {
-      // R-S17/R-G5: the box presented a DIFFERENT host key than the one pinned (possible
-      // substitution / MITM). Show the known_hosts-style warning (old vs new fingerprint, in
-      // `text`) with a FRICTION-BEARING re-pin — the operator must type the new fingerprint
-      // (carried in `link`) to enable it. Fail-closed until then.
-      hostMismatchDialog(sessionId, dialogManager, text, link);
     } else if (type == 'restarting') {
       showMsgBox(sessionId, type, title, text, link, false, dialogManager,
           hasCancel: false);

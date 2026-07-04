@@ -1,10 +1,10 @@
-//! R-S17 / R-SV5 address normalization — the single pinned, KAT-frozen function
-//! that maps a connect target to its canonical `<ip|domain>:port` identity.
+//! R-SV5 address normalization — the single pinned, KAT-frozen function that maps
+//! a connect target to its canonical `<ip|domain>:port` identity.
 //!
-//! The R-S17 host-key pin store and the R-SV5 direct-IP peer list MUST key on the
-//! SAME normalized address: a normalization mismatch silently re-seeds a fresh
-//! host (a substitution blind spot), so this function is pinned here and its
-//! behavior frozen by the KAT in `libs/address_it` (R-A6). Rules: lowercase;
+//! The R-SV5 direct-IP peer list keys on this normalized address: a normalization
+//! mismatch would split one host into two peer-list entries (a non-deterministic
+//! re-key of the list feeding `Client::_start`), so this function is pinned here and
+//! its behavior frozen by the KAT in `libs/address_it` (R-A6). Rules: lowercase;
 //! IDNA `to_ascii` for domains; the port filled to the pinned direct port (21118,
 //! R-F4) when absent; IPv4 canonicalized. So `1.2.3.4` ≡ `1.2.3.4:21118` and
 //! `EXAMPLE.com:21118` ≡ `example.com:21118`.
@@ -14,8 +14,8 @@ use std::net::Ipv4Addr;
 
 /// Normalize a connect target to its canonical `<host>:<port>` identity, or
 /// `None` if it is not a usable IPv4/domain address. Pure + deterministic — the
-/// frozen KAT (R-SV5/R-S17) depends on this exact behavior, so a refactor that
-/// changes it is a substitution blind spot, not a cosmetic edit.
+/// frozen KAT (R-SV5) depends on this exact behavior, so a refactor that changes
+/// it silently re-keys the peer list, not a cosmetic edit.
 pub fn normalize_address(input: &str) -> Option<String> {
     let input = input.trim();
     if input.is_empty() {

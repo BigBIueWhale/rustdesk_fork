@@ -754,10 +754,6 @@ impl InvokeUiSession for FlutterHandler {
         );
     }
 
-    fn set_fingerprint(&self, fingerprint: String) {
-        self.push_event("fingerprint", &[("fingerprint", &fingerprint)], &[]);
-    }
-
     fn job_error(&self, id: i32, err: String, file_num: i32) {
         self.push_event(
             "job_error",

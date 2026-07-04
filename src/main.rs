@@ -17,7 +17,7 @@ fn main() {
 // R-B6/R-R2: the non-flutter, non-cli desktop build is now HEADLESS. The legacy Sciter GUI
 // (`ui::start`) is deleted; Flutter is the sole shipped front-end (§19). This build target exists
 // only as the docker compile/verify proxy and the `--server` runtime — `core_main()` fully handles
-// the controlled-side argv (`--server`/`--service`/`--password`/`--get-fingerprint`, …) and returns
+// the controlled-side argv (`--server`/`--service`/`--password`, …) and returns
 // `Some(args)` only when a GUI would have been launched, which this build cannot do. So when the GUI
 // is requested there is nothing to start; the headless build simply finishes. (No shipped artifact
 // takes this path: every shipped target builds `--flutter`.)

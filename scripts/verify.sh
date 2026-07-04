@@ -57,7 +57,7 @@ docker volume create rd-verify-target >/dev/null
 docker build -q -t "$IMG" -f scripts/Dockerfile.devcheck scripts >/dev/null
 
 echo "== (1-3) KAT + handshake + policy funnel + R-A4 surface + R-S7 frame/decompress (pinned 1.75) =="
-"${RUN[@]}" cargo test -p pake -p cpace_it -p config_it -p surface_it -p compress_it -p address_it -p host_pin_it --color never
+"${RUN[@]}" cargo test -p pake -p cpace_it -p config_it -p surface_it -p compress_it -p address_it --color never
 
 # (3b) IPC parent-dir hardening BEHAVIOR (R-S11a / R-S11a(b)): the docker test-runner is root, so these
 # unit tests actually exercise the root-only branches — symlink-parent reject, and the R-S11a(b)
@@ -379,23 +379,29 @@ if grep -A12 'Widget createDialogContent' flutter/lib/common.dart | grep -q 'ret
 else
   echo "  FAIL R-SV1: createDialogContent is no longer the plain-text renderer (unexpected)"; rc=1
 fi
-# R-S17 no-TOFU structural anti-regression (crypto-audit DiD-1, 2026-07-01): host_pin::set_pinned_pk is
-# the SOLE pin-adoption writer. The no-TOFU-on-mismatch property is enforced by its callers — the
-# --pin-host CLI (core_main.rs; out-of-band, requires --forget-host first) and the session_pin_host /
-# session_pin_host_by_fingerprint FFIs (ui_session_interface.rs) whose Dart dialogs force the operator
-# to TYPE the fingerprint (the button stays disabled — `... ? submit : null` — until the typed input is
-# a valid key: the mismatch dialog matches the verified new fp, the first-contact dialog requires a
-# 64-hex key); the Rust core NEVER auto-adopts (client.rs bails fail-closed on mismatch, and refuses to
-# key an unpinned host). Confine the caller set structurally (by file) so a future (e.g. non-Flutter) UI
-# cannot silently add a no-friction adopt that would regress toward TOFU. (host_pin.rs = the def;
-# bridge_generated = the gitignored FRB shim; a client.rs comment mentions it without a call `(`.)
-pin_adopt_callers=$(grep -rn -F 'set_pinned_pk(' src libs --include='*.rs' 2>/dev/null \
-  | grep -vE 'host_pin\.rs|core_main\.rs|ui_session_interface\.rs' || true)  # || true: empty grep -v exits 1 under set -e
-if [ -n "$pin_adopt_callers" ]; then
-  echo "  FAIL R-S17: unexpected host_pin::set_pinned_pk caller (no-TOFU friction-bypass risk):"
-  echo "$pin_adopt_callers" | sed 's/^/      /'; rc=1
+# R-A6 / R-P5 (host-identity removal, ex-R-S17): the host-key pin subsystem is RETIRED. The spec now
+# derives the CPace PRS from the password alone (fixed salt, R-P1), so there is no long-term per-box
+# identity key, no host-proof, and no local pin of any kind (R-P5). These ABSENCE greps REPLACE the old
+# R-S17 presence-gates (the set_pinned_pk-confinement gate here, the viewer host-proof-verify gate, the
+# host-pin-dialog gate, and the --get-fingerprint bootstrap gate — all now deletions). Each token MUST
+# return zero non-comment hits in the shipped Rust tree (ra6_clean skips //-comments, libs/pake,
+# libs/cpace_it, and the gitignored bridge_generated FRB shim).
+ra6_clean 'HostIdentity|build_host_identity|verify_host_identity'                       'R-A6/R-P5 HostIdentity host-proof (frame + build/verify)' || rc=1
+ra6_clean 'HOST_PROOF_DSI|rustdesk-fork/host-proof|fn host_proof_message'               'R-A6/R-P5 host-proof DSI + signable message' || rc=1
+ra6_clean '"--get-fingerprint"|"--pin-host"|"--forget-host"|"--list-known-hosts"'       'R-A6/R-P5 host-key bootstrap/pin CLI arms' || rc=1
+ra6_clean 'mod host_pin|host_pin::|set_pinned_pk|get_pinned_pk|remove_pinned|list_pinned' 'R-A6/R-P5 host_pin pin store + API' || rc=1
+ra6_clean 'session_pin_host|pin_host_by_fingerprint|set_pin_host_and_reconnect|pending_host_pk' 'R-A6/R-P5 viewer pin FFI + pending-key stash' || rc=1
+ra6_clean 'main_get_fingerprint|main_list_pinned_hosts|main_forget_pinned_host|fn get_fingerprint|fn set_fingerprint' 'R-A6/R-P5 fingerprint/pin main-FFI + surfacing' || rc=1
+ra6_clean 'known_hosts|commit_key_pair'                                                  'R-A6/R-P5 known_hosts store + dead commit_key_pair' || rc=1
+# R-A6 / R-P5 (Dart side): the host-identity / fingerprint / known-hosts UI is fully excised from
+# flutter/lib. generated_bridge.dart is the gitignored FRB shim (regenerated from flutter_ffi.rs), so
+# it is excluded exactly as ra6_clean excludes the Rust bridge_generated.
+ra6_dart_tok='FingerprintState|hostNotPinnedDialog|hostMismatchDialog|host-not-pinned-prompt|host-mismatch-prompt|KnownHostsManager|_KnownHostsPage|onCopyFingerprint|sessionPinHost|mainGetFingerprint|mainListPinnedHosts|mainForgetPinnedHost'
+ra6_dart_hits=$(grep -RInE "$ra6_dart_tok" flutter/lib --include='*.dart' 2>/dev/null | grep -v 'generated_bridge.dart' || true)
+if [ -n "$ra6_dart_hits" ]; then
+  echo "  FAIL R-A6/R-P5: host-identity/fingerprint/known-hosts Dart UI must be absent but is present:"; echo "$ra6_dart_hits" | sed 's/^/      /'; rc=1
 else
-  echo "  ok  R-S17 set_pinned_pk confined to its friction-enforced callers (--pin-host CLI + Dart re-pin + Dart first-contact fingerprint-entry FFIs)"
+  echo "  ok  R-A6/R-P5 host-identity/fingerprint/known-hosts Dart UI excised (flutter/lib, generated_bridge excluded)"
 fi
 ra6_clean 'DEBUG_BOOT_COMPLETED'                                          'R-X6 fake-boot broadcast'  || rc=1
 # R-X6: the Linux D-Bus deep-link delivery transport (src/server/dbus.rs: session-bus name
@@ -939,7 +945,7 @@ ra6_clean 'validate_password|verify_h1|is_recent_session'               'R-S2 po
 # R-T15c: the legacy Hash challenge/response is collapsed end-to-end. The server emits no Hash (no
 # set_hash), there is no handle_hash responder or reactive Union::Hash arm, and the proto Hash message +
 # its field 9 are gone (9 reserved). The viewer sends its login PROACTIVELY in Client::start once the
-# stream is CPace-keyed + host-proof-verified. (be052d9 PRS-hoist + a68618a server/proactive-login + the
+# stream is CPace-keyed. (be052d9 PRS-hoist + a68618a server/proactive-login + the
 # dead-code/proto cleanup; client::tests pin the PRS-persistence the collapse depends on.)
 r_t15c=
 grep -rqE 'set_hash\(|fn handle_hash|\.handle_hash\(|Union::Hash' src/ --include=*.rs && r_t15c="$r_t15c rust-Hash-FSM-present"
@@ -1084,7 +1090,7 @@ ra6_clean 'api/heartbeat|api/sysinfo|heartbeat_url|handle_config_options|start_h
 # R-S18 / Appendix C #22: the viewer's auto-sent OS-credential leak is removed — upstream
 # built `os_login: Some(OSLogin {os-username, os-password})` + the hwid device fingerprint
 # into the LoginRequest on EVERY connect (client.rs create_login_msg), so a substituted
-# peer (R-S17) harvested the operator's stored OS creds with no interaction. The responder
+# peer (answering at the same address) harvested the operator's stored OS creds with no interaction. The responder
 # already ignores os_login (0685c28); deleting the sender completes the symmetric removal.
 ra6_clean 'Some\(OSLogin|\.set_logon\(|ElevateWithLogon|elevate_with_logon' 'R-S18 viewer os_login + elevation-with-logon senders' || rc=1
 ra6_clean '\bget_hwid\b' 'R-S18 stable hardware-fingerprint helper' || rc=1
@@ -1739,7 +1745,7 @@ else
 fi
 # R-S1/R-A1: the direct TCP path must not carry a legacy plaintext staging knob. The responder has
 # no `secure: bool` selector, direct_service cannot pass a false "unsecured" argument, and the viewer
-# `_start` returns only after CPace keying and host-proof attachment. The message-loop handoff remains
+# `_start` returns only after CPace keying. The message-loop handoff remains
 # an assert, not a fallback keying site.
 r_s1_stage=
 grep -q 'secure: bool' src/server.rs && r_s1_stage="$r_s1_stage server-secure-bool"
@@ -1751,7 +1757,7 @@ echo "$viewer_start_body" | grep -q 'key_initiator' && r_s1_stage="$r_s1_stage s
 viewer_direct_body=$(awk '/async fn _start\(/,/async fn key_initiator/' src/client.rs)
 echo "$viewer_direct_body" | grep -q 'return Ok' && r_s1_stage="$r_s1_stage unkeyed-early-return"
 echo "$viewer_direct_body" | grep -q 'Self::key_initiator' || r_s1_stage="$r_s1_stage no-direct-keying"
-echo "$viewer_direct_body" | grep -q 'Some(pk_b)' || r_s1_stage="$r_s1_stage no-host-key-attach"
+# (the ex-R-S17 host-key attach in the staging tuple is retired — the R-A6 absence-gates prove it gone)
 if [ -z "$r_s1_stage" ]; then
   echo "  ok  R-S1/R-A1 direct TCP has no plaintext staging selector and _start returns keyed streams"
 else
@@ -1844,19 +1850,6 @@ if [ "${r_secrets_n:-0}" -lt 1 ]; then
 else
   echo "  ok  secrets-at-rest config files written mode 0o600 (owner-only; permanent-password PRS + peer creds)"
 fi
-# R-S17/R-S13 (viewer-side MITM gate): the viewer MUST verify the responder's HostIdentity host-proof
-# AND pin-compare it before trusting the keyed session. `key_initiator` (client.rs) reads the proof,
-# `verify_host_identity` checks the Ed25519 signature over the session transcript, then
-# `host_pin::get_pinned_pk` does the SSH-known_hosts fail-closed compare: a MISMATCH refuses
-# (substitution/MITM), and FIRST-CONTACT refuses too — NO trust-on-first-use. The smoke's probe
-# verifies the SIGNATURE but does NOT pin, so this gate is the only guard that the pin-compare (the
-# actual MITM gate) is not silently dropped. Assert both calls survive in client.rs.
-r_s17v_n=$(grep -cE 'verify_host_identity|get_pinned_pk' src/client.rs 2>/dev/null || true)
-if [ "${r_s17v_n:-0}" -lt 2 ]; then
-  echo "  FAIL R-S17: viewer host-proof verify + pin-compare (verify_host_identity + get_pinned_pk) missing in client.rs — MITM gate regressed"; rc=1
-else
-  echo "  ok  R-S17 viewer verifies host-proof + pin-compares (fail-closed, no trust-on-first-use)"
-fi
 # R-SV4(b)/R-S13(d)/R-SV10 (no rendezvous path in either role): the initiator-side
 # rendezvous/relay/NAT-punch cluster (Client::_start_inner / secure_connection /
 # udp_nat_connect) AND the responder-side relay-dialer (create_relay_connection — which dialed
@@ -1891,8 +1884,7 @@ ra6_clean 'rs-[a-z]+\.rustdesk\.com' 'R-SV4/§18 hardwired rs-*.rustdesk.com ren
 # obfuscated with a hand-rolled AES: the S-box TABLE + expand_key/gf_mul/add_round_key) that upstream
 # used to identify devices to the rendezvous -- is REMOVED. The fork excised the rendezvous
 # registration that consumed it, orphaning the module (declared `pub mod fingerprint` but ZERO callers
-# tree-wide; the live get_fingerprint/pk_to_fingerprint/--get-fingerprint paths are the UNRELATED
-# Ed25519 PUBLIC-KEY fingerprint for R-S17 host pinning). Gone not disabled: no dead privacy-hostile
+# tree-wide). Gone not disabled: no dead privacy-hostile
 # device-fingerprinting machinery (or hand-rolled crypto) left compiled into the binary.
 if [ -f libs/hbb_common/src/fingerprint.rs ]; then
   echo "  FAIL R-SV1/§8: the device-fingerprint module (hbb_common/fingerprint.rs) is back"; rc=1
@@ -2470,51 +2462,6 @@ if grep -q 'START_NOT_STICKY' "$r_s14_kt" 2>/dev/null && ! grep -qE 'return[[:sp
   echo "  ok  R-S14 Android capture service is START_NOT_STICKY (an auto-restart never re-enters capture outside a fresh PAKE session; desktop capture is per-Connection via R-A2 + R-T4)"
 else
   echo "  FAIL R-S14: MainService.onStartCommand must return START_NOT_STICKY (not START_STICKY) so an auto-restart cannot resume capture outside a PAKE session"; rc=1
-fi
-# R-G5 / R-S17 (the host-key-pin DIALOGS — the one new MITM defense the fork ADDS): the viewer's
-# host-proof verify + pin-compare (R-S17, gated above on the client.rs side) is only USABLE if the GUI
-# lets the operator SEED a pin on first contact (and re-pin on a mismatch). The flutter dialogs MUST
-# exist: hostNotPinnedDialog (first-contact fingerprint seed — the operator TYPES the fingerprint ->
-# bind.sessionPinHostByFingerprint), dispatched from the `host-not-pinned-prompt` model event; the
-# mismatch dialog still uses bind.sessionPinHost. A regression that dropped them would silently revert the
-# viewer to blind trust-on-first-use (the absence IS the security regression — a presence gate).
-r_g5_missing=
-grep -q 'void hostNotPinnedDialog' flutter/lib/common/widgets/dialog.dart 2>/dev/null || r_g5_missing="$r_g5_missing seed-dialog"
-grep -q 'bind.sessionPinHost' flutter/lib/common/widgets/dialog.dart 2>/dev/null       || r_g5_missing="$r_g5_missing pin-action"
-grep -q 'host-not-pinned-prompt' flutter/lib/models/model.dart 2>/dev/null             || r_g5_missing="$r_g5_missing prompt-dispatch"
-# R-S17/R-G5: the MISMATCH warning dialog (the known_hosts "HOST IDENTIFICATION CHANGED" analog)
-# MUST also exist — a friction-bearing re-pin (type the new fingerprint, no default-OK), routed from
-# the Rust pin-compare (client.rs emits host-mismatch-prompt with the new fp as the msgbox link).
-grep -q 'void hostMismatchDialog' flutter/lib/common/widgets/dialog.dart 2>/dev/null   || r_g5_missing="$r_g5_missing mismatch-dialog"
-grep -q 'host-mismatch-prompt' flutter/lib/models/model.dart 2>/dev/null               || r_g5_missing="$r_g5_missing mismatch-dispatch"
-grep -q '"host-mismatch-prompt"' src/client.rs 2>/dev/null                             || r_g5_missing="$r_g5_missing mismatch-rust-route"
-# R-S17/R-G5: the manage/forget-host VIEW (the GUI twin of --list-known-hosts/--forget-host) MUST
-# exist on every viewer front-end — the KnownHostsManager widget + its FFI (main_list_pinned_hosts /
-# main_forget_pinned_host), embedded in the desktop Safety tab AND the mobile settings.
-grep -q 'class KnownHostsManager' flutter/lib/common/widgets/dialog.dart 2>/dev/null        || r_g5_missing="$r_g5_missing manage-widget"
-grep -q 'fn main_list_pinned_hosts' src/flutter_ffi.rs 2>/dev/null                          || r_g5_missing="$r_g5_missing manage-ffi-list"
-grep -q 'fn main_forget_pinned_host' src/flutter_ffi.rs 2>/dev/null                         || r_g5_missing="$r_g5_missing manage-ffi-forget"
-grep -q 'KnownHostsManager' flutter/lib/desktop/pages/desktop_setting_page.dart 2>/dev/null || r_g5_missing="$r_g5_missing manage-desktop"
-grep -q 'KnownHostsManager' flutter/lib/mobile/pages/settings_page.dart 2>/dev/null         || r_g5_missing="$r_g5_missing manage-mobile"
-if [ -n "$r_g5_missing" ]; then
-  echo "  FAIL R-G5/R-S17: a host-key-pin GUI surface is missing (the MITM-defense UI must stay; absence reverts to trust-on-first-use or drops manage/forget):$r_g5_missing"; rc=1
-else
-  echo "  ok  R-G5/R-S17 ALL host-key-pin GUI surfaces present (seed dialog + mismatch friction-re-pin dialog + manage/forget-host view on desktop & mobile; no silent trust-on-first-use)"
-fi
-# R-S17 / §19 closing-gate POSITIVE assertion: the headless box must be able to disclose its OWN Ed25519
-# fingerprint out-of-band so the operator can verify the viewer's first-connect seed — `--get-fingerprint`
-# in core_main.rs printing pk_to_fingerprint(commit_key_pair().1) — commit_key_pair force-persists a
-# just-generated key SYNCHRONOUSLY (I-8), so the printed seed is never a phantom. The §19 closing box names this as a
-# REQUIRED positive CI check (alongside the seed dialog + bare-ID rejection, both already gated); it was
-# the one missing one. Without --get-fingerprint the R-S17 substitution defense is un-bootstrappable on
-# the very headless box it protects.
-r_getfp=
-grep -q '"--get-fingerprint"' src/core_main.rs                                        || r_getfp="$r_getfp arm-missing"
-grep -q 'pk_to_fingerprint(config::Config::commit_key_pair().1)' src/core_main.rs     || r_getfp="$r_getfp wrong-key-source"
-if [ -n "$r_getfp" ]; then
-  echo "  FAIL R-S17 --get-fingerprint bootstrap CLI:$r_getfp (the host's substitution-defense seed is un-readable headless)"; rc=1
-else
-  echo "  ok  R-S17 --get-fingerprint present in core_main.rs (prints pk_to_fingerprint(commit_key_pair().1) — the headless seed-disclosure the §19 closing-gate mandates, force-committed I-8)"
 fi
 # R-X7a / R-G1 (no inert pinned-policy SELECTOR survives — removed, not greyed): verification-method +
 # approve-mode are R-S16-pinned (use-permanent-password / password), so a UI that PRESENTS+WRITES them

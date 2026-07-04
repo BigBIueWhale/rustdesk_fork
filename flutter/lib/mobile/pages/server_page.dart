@@ -341,9 +341,6 @@ class ScamWarningDialogState extends State<ScamWarningDialog> {
 
 class ServerInfo extends StatelessWidget {
   final emptyController = TextEditingController(text: "-");
-  // R-G2: surface the box's Ed25519 fingerprint (its R-S17 identity a viewer pins), not a numeric
-  // ID. Static so it is fetched once for the app's lifetime (the fingerprint never changes).
-  static final Future<String> _fingerprintFuture = bind.mainGetFingerprint();
 
   ServerInfo({Key? key}) : super(key: key);
 
@@ -355,15 +352,8 @@ class ServerInfo extends StatelessWidget {
     const Color colorNegative = Colors.red;
     const double iconMarginRight = 15;
     const double iconSize = 24;
-    const TextStyle textStyleHeading = TextStyle(
-        fontSize: 16.0, fontWeight: FontWeight.bold, color: Colors.grey);
     const TextStyle textStyleValue =
         TextStyle(fontSize: 25.0, fontWeight: FontWeight.bold);
-
-    void copyToClipboard(String value) {
-      Clipboard.setData(ClipboardData(text: value));
-      showToast(translate('Copied'));
-    }
 
     Widget ConnectionStateNotification() {
       // R-G2/R-G8: direct-IP — the controlled side listens on the pinned direct port
@@ -378,41 +368,7 @@ class ServerInfo extends StatelessWidget {
     return PaddingCard(
         title: translate('Your Device'),
         child: Column(
-          // ID
           children: [
-            Row(children: [
-              const Icon(Icons.fingerprint,
-                      color: Colors.grey, size: iconSize)
-                  .marginOnly(right: iconMarginRight),
-              Text(
-                translate('Fingerprint'),
-                style: textStyleHeading,
-              )
-            ]),
-            FutureBuilder<String>(
-              future: _fingerprintFuture,
-              builder: (context, snapshot) {
-                final fp = snapshot.data ?? '';
-                return Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          fp,
-                          style: const TextStyle(
-                              fontSize: 16.0, fontWeight: FontWeight.bold),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      IconButton(
-                          visualDensity: VisualDensity.compact,
-                          icon: Icon(Icons.copy_outlined),
-                          onPressed: () {
-                            copyToClipboard(fp.trim());
-                          })
-                    ]).marginOnly(left: 39, bottom: 10);
-              },
-            ),
             // R-G4/R-X7/R-G1: the rotating OTP display/refresh row is removed — that credential is
             // excised (R-X7), so under the pinned use-permanent-password policy (R-S16) this row
             // showed only a dead "-"; the permanent password (the fork's sole credential) is set via

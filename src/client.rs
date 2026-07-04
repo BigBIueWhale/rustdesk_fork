@@ -186,7 +186,7 @@ impl Client {
         token: &str,
         conn_type: ConnType,
         interface: impl Interface,
-    ) -> ResultType<((Stream, bool, Option<Vec<u8>>, &'static str), (i32, String))> {
+    ) -> ResultType<((Stream, bool, &'static str), (i32, String))> {
         debug_assert!(peer == interface.get_id());
         interface.update_direct(None);
         interface.update_received(false);
@@ -204,9 +204,8 @@ impl Client {
                 // success return's update flag (`x.2`) is always false (there is no relay to fail
                 // over to — every connection is direct), so this block was dead; `direct_failures`
                 // is no longer stored.
-                // R-A1 (initiator analog): `_start` must already have keyed the direct TCP stream
-                // and attached the verified host key. This handoff assert keeps the message loop from
-                // becoming a fallback keying site again.
+                // R-A1 (initiator analog): `_start` must already have keyed the direct TCP stream.
+                // This handoff assert keeps the message loop from becoming a fallback keying site again.
                 if !x.0 .0.is_secured() {
                     bail!(
                         "R-A1: refusing to proceed on an unkeyed stream (initiator, fail-closed)"
@@ -214,9 +213,9 @@ impl Client {
                 }
                 // R-T15c: CPace has authenticated the password (the keying choke-point above), so the
                 // legacy server `Hash` challenge that used to REACTIVELY trigger the viewer's login
-                // (handle_hash) is gone. Send the login PROACTIVELY now that the stream is keyed +
-                // host-proof-verified, with no password field (no salted-hash second credential). The
-                // `probe_client login` smoke mode proves the server authorizes this keyed empty-pw login.
+                // (handle_hash) is gone. Send the login PROACTIVELY now that the stream is keyed, with
+                // no password field (no salted-hash second credential). The `probe_client login` smoke
+                // mode proves the server authorizes this keyed empty-pw login.
                 send_login(interface.get_lch(), &mut x.0 .0).await;
                 Ok((x.0, x.1))
             }
@@ -231,7 +230,7 @@ impl Client {
         conn_type: ConnType,
         interface: impl Interface,
     ) -> ResultType<(
-        (Stream, bool, Option<Vec<u8>>, &'static str),
+        (Stream, bool, &'static str),
         (i32, String),
         bool,
     )> {
@@ -259,8 +258,8 @@ impl Client {
 
         // R-S13 / R-P14 (initiator): key the connection with the single mandatory CPace handshake
         // BEFORE `_start` returns it. The message-loop handoff is no longer a second-phase keying
-        // promise; it receives only a keyed stream with the verified+pinned host key attached. The
-        // PRS is the live R-S16 viewer twin (`PeerConfig.password_prs`).
+        // promise; it receives only a keyed stream. The PRS is the live R-S16 viewer twin
+        // (`PeerConfig.password_prs`).
         let (credential, credential_is_derived, onboarding) = {
             // Computed before the lch lock (no re-entrancy): the connect-time password the operator
             // supplied this session (URI/dialog/card).
@@ -268,16 +267,16 @@ impl Client {
             let lch = interface.get_lch();
             let g = lch.read().unwrap();
             // R-S9/R-P1/R-S16: the credential for the balanced PAKE, from PRE-keying sources only.
-            // The persisted per-peer twin (`config.password_prs`) is now the DERIVED Argon2id PRS
-            // (bound to the pinned host key), never the plaintext — so it is fed to the PAKE VERBATIM,
-            // never re-derived (re-Argon2id-ing an already-derived PRS would silently fail every
-            // reconnect). A freshly-TYPED connect password is the pre-derivation plaintext, derived
-            // inside `key_initiator`. Precedence (load-bearing, R-S9 re-provision): a non-empty
-            // `connect_password` — set ONLY by a deliberate re-entry / first-connect onboarding, and
-            // empty on an ordinary saved-peer reconnect — takes precedence over the stored twin, so a
-            // box password change or a host-key re-pin (either INVALIDATES the cached derived PRS)
-            // can be recovered by re-typing the password; otherwise the stale twin would shadow the
-            // re-entry in an endless prompt loop. Empty everywhere fails closed in key_initiator (R-S9).
+            // The persisted per-peer twin (`config.password_prs`) is now the DERIVED Argon2id PRS,
+            // never the plaintext — so it is fed to the PAKE VERBATIM, never re-derived (re-Argon2id-ing
+            // an already-derived PRS would silently fail every reconnect). A freshly-TYPED connect
+            // password is the pre-derivation plaintext, derived inside `key_initiator`. Precedence
+            // (load-bearing, R-S9 re-provision): a non-empty `connect_password` — set ONLY by a
+            // deliberate re-entry / first-connect onboarding, and empty on an ordinary saved-peer
+            // reconnect — takes precedence over the stored twin, so a box password change (which
+            // INVALIDATES the cached derived PRS) can be recovered by re-typing the password;
+            // otherwise the stale twin would shadow the re-entry in an endless prompt loop. Empty
+            // everywhere fails closed in key_initiator (R-S9).
             let from_prs = String::from_utf8(g.config.password_prs.clone()).unwrap_or_default();
             if !connect_pw.is_empty() {
                 (connect_pw, false, true) // re-entry / onboarding: plaintext to derive + stage
@@ -288,10 +287,8 @@ impl Client {
                 // shared-ab plaintext: derived per connect, not persisted per-peer
             }
         };
-        let lch_for_key = interface.get_lch();
-        let (pk_b, derived_prs) =
-            Self::key_initiator(peer, &credential, credential_is_derived, &mut stream, &lch_for_key)
-                .await?;
+        let derived_prs =
+            Self::key_initiator(&credential, credential_is_derived, &mut stream).await?;
         if onboarding {
             // R-S9/R-P1/R-S16: stage the DERIVED Argon2id PRS (never the plaintext) so the peer-info
             // save path persists the memory-hard viewer twin — and a fresh re-entry OVERWRITES a stale
@@ -301,106 +298,61 @@ impl Client {
         if !stream.is_secured() {
             bail!("R-A1: _start produced an unkeyed direct stream (initiator, fail-closed)");
         }
-        Ok(((stream, true, Some(pk_b), "TCP"), (0, "".to_owned()), false))
+        Ok(((stream, true, "TCP"), (0, "".to_owned()), false))
     }
 
-    /// R-S13 / R-P14 / R-S17 / R-P1 — the viewer (initiator) keying choke point: the mirror
-    /// of the responder's `run_responder` block (server.rs). The fork keys EVERY connection
-    /// with the single mandatory CPace handshake, run over the direct TCP stream BEFORE any
-    /// application message, fail-closed. On success it returns the responder's verified
-    /// Ed25519 host key (`pk_B`) — surfaced as the connection's pk so the UI fingerprint is
-    /// the pinned host's — PLUS the DERIVED PRS the caller stages as the R-S16 viewer twin.
-    /// `credential` is either a freshly-typed plaintext password (`credential_is_derived ==
-    /// false` — derived here) or the stored, already-derived Argon2id PRS (`== true` — fed to
-    /// the PAKE verbatim, since re-Argon2id-ing it would break keying). `peer_addr` keys the
-    /// R-S17 pin lookup. When derived here (R-P1) the PRS is the memory-hard Argon2id hash
-    /// salted with the box's PINNED host key — so a box's identity is woven into the PAKE
-    /// secret and this choke point is the SOLE derivation site for a viewer connection.
+    /// R-S13 / R-P14 / R-P1 — the viewer (initiator) keying choke point: the mirror of the
+    /// responder's `run_responder` block (server.rs). The fork keys EVERY connection with the
+    /// single mandatory CPace handshake, run over the direct TCP stream BEFORE any application
+    /// message, fail-closed. On success it returns the DERIVED PRS the caller stages as the
+    /// R-S16 viewer twin. `credential` is either a freshly-typed plaintext password
+    /// (`credential_is_derived == false` — derived here) or the stored, already-derived Argon2id
+    /// PRS (`== true` — fed to the PAKE verbatim, since re-Argon2id-ing it would break keying).
+    /// When derived here (R-P1) the PRS is the memory-hard Argon2id hash over the password alone
+    /// (fixed salt) — identical to the box's stored PRS — so this choke point is the SOLE
+    /// derivation site for a viewer connection.
     async fn key_initiator(
-        peer_addr: &str,
         credential: &str,
         credential_is_derived: bool,
         conn: &mut Stream,
-        lch: &Arc<RwLock<LoginConfigHandler>>,
-    ) -> ResultType<(Vec<u8>, String)> {
+    ) -> ResultType<String> {
         // R-S9: an empty credential has no shared secret — fail closed (never key in the open).
         if credential.is_empty() {
             bail!("No remembered password for this peer — cannot run the CPace handshake (R-S9, fail-closed). Connect once with the box's password remembered so the viewer can key.");
         }
-        // R-S17 / R-P1: the CPace PRS is bound to the box's PINNED Ed25519 host key (the PRS
-        // salt IS that key), so the pin MUST exist BEFORE keying — with no pin (R-S17 no
-        // trust-on-first-use) the viewer cannot derive the matching PRS and MUST NOT connect.
-        // The operator pins the box's key out-of-band first (`--get-fingerprint` on the box,
-        // whose output IS the full key, then `--pin-host`). This is strictly stronger than the
-        // old learn-the-key-on-first-connect: a substitute box with a different key now fails
-        // at CPace key-confirmation, not merely at the post-key host-proof.
-        let Some(pinned) = hbb_common::host_pin::get_pinned_pk(peer_addr) else {
-            bail!(
-                "R-S17: host {peer_addr} is not pinned (first contact) — the CPace credential is bound to the box's host key, so the viewer cannot derive it until you pin the key. Get it out-of-band (`--get-fingerprint` on the box), then pin it (GUI: pin dialog; CLI: `--pin-host {peer_addr} <fingerprint>`) and reconnect. Refusing (fail-closed; no trust-on-first-use)."
-            );
-        };
         // R-S9/R-P1: a stored viewer twin is ALREADY the derived Argon2id PRS — feed it to the PAKE
         // VERBATIM (exactly as the responder uses its at-rest PRS, server.rs), never re-derive. Only a
         // freshly-typed plaintext credential (re-entry / onboarding) is run through derive_cpace_prs:
-        // base64(Argon2id(NFC(password), salt(pinned key))). Double-deriving an already-derived PRS
-        // would silently fail CPace key-confirmation on every reconnect.
+        // base64(Argon2id(NFC(password), fixed salt)). Double-deriving an already-derived PRS would
+        // silently fail CPace key-confirmation on every reconnect.
         let prs = if credential_is_derived {
             credential.to_string()
         } else {
-            let Some(p) = hbb_common::config::derive_cpace_prs(credential, &pinned) else {
-                bail!("R-S9: could not derive the CPace PRS (empty password or host key) — fail-closed.");
+            let Some(p) = hbb_common::config::derive_cpace_prs(credential) else {
+                bail!("R-S9: could not derive the CPace PRS (empty password) — fail-closed.");
             };
             p
         };
         // The balanced PAKE runs over the direct TCP stream (the flagship path is always TCP).
-        let (keys, transcript) = {
+        let keys = {
             let Some(fs) = conn.as_framed_tcp_mut() else {
                 bail!("CPace handshake requires a direct TCP stream");
             };
-            match hbb_common::cpace::run_initiator_with_transcript(fs, &prs).await {
+            match hbb_common::cpace::run_initiator(fs, &prs).await {
                 Ok(v) => v,
-                // A confirmation mismatch here = wrong password, a substitute box whose host
-                // key differs from the pin (so its PRS differs), or a non-fork peer. The viewer
-                // cannot tell which, by design; fail closed either way. I-3: name BOTH the
-                // wrong-password AND the host-key-changed cause + the re-pin remedy, so a
-                // legitimately re-keyed box (whose PRS differs) is not dead-ended in an eternal
-                // "Password Required" loop — re-typing the password can only fix a wrong password.
+                // A confirmation mismatch here = wrong password or a non-fork peer. The viewer
+                // cannot tell which, by design; fail closed either way. Re-typing the password
+                // recovers a wrong password or a box re-provisioned with a new password (its PRS
+                // changed) — so a legitimately re-keyed box is not dead-ended.
                 Err(_) => bail!(
-                    "CPace handshake failed — either the password is wrong, OR the box's host key CHANGED (it was re-provisioned) so it no longer matches your pin (it could also be a non-fork peer). Re-typing the password fixes a wrong password; a CHANGED key does NOT — re-verify the new fingerprint out-of-band (`--get-fingerprint` on the box) and re-pin it (CLI: `--forget-host <address>` then reconnect; the box's own `--password` is what re-derives its credential). Fail-closed."
+                    "CPace handshake failed — the box's password is wrong, or it was re-provisioned with a new password (it could also be a non-fork peer). Re-type the box's current password and reconnect. Fail-closed."
                 ),
             }
         };
         conn.set_session_keys(keys);
-        // R-S17: the responder emits its HostIdentity host-proof as the FIRST post-key frame
-        // (server.rs, encrypted by the session key). Read + verify it BEFORE anything else.
-        let bytes = match timeout(READ_TIMEOUT, conn.next()).await {
-            Ok(Some(Ok(b))) => b,
-            _ => bail!("R-S17: no HostIdentity host-proof from the responder (fail-closed)"),
-        };
-        let pk_b = match hbb_common::cpace::verify_host_identity(&transcript, &bytes) {
-            Ok(pk) => pk,
-            Err(_) => {
-                bail!("R-S17: the responder's HostIdentity host-proof did not verify (fail-closed)")
-            }
-        };
-        // R-S17 pin compare against the SAME pin the PRS was keyed against. With the host key
-        // woven into the PRS, a successful handshake already implies the box presented the
-        // pinned key; this confirms it holds the matching PRIVATE key (belt-and-suspenders). A
-        // mismatch is near-unreachable (a different key would have failed CPace), but if it
-        // ever surfaces, refuse fail-closed and stash the VERIFIED key so the GUI's
-        // friction-bearing re-pin (the operator TYPES the new fingerprint) can adopt it — never
-        // a default-OK click-through; CLI changes the pin only via `--forget-host` + reconnect.
-        if pinned != pk_b {
-            let old_fp = crate::common::pk_to_fingerprint(pinned);
-            let new_fp = crate::common::pk_to_fingerprint(pk_b.clone());
-            lch.write().unwrap().pending_host_pk = Some(pk_b.clone());
-            bail!(
-                "R-S17: HOST KEY MISMATCH for {peer_addr} — the box presented a DIFFERENT host key than the one pinned (possible substitution / MITM).\n    pinned (old):    {old_fp}\n    presented (new): {new_fp}\nVerify the new fingerprint out-of-band (`--get-fingerprint` on the box) BEFORE re-pinning. Refusing until you re-pin (GUI: type the new fingerprint to confirm; CLI: `--forget-host {peer_addr}` then reconnect)."
-            );
-        }
-        // Return the DERIVED PRS alongside the verified host key so the caller can stage it as the
-        // R-S16 viewer twin (the memory-hard Argon2id hash, never the plaintext — R-S9/R-P1).
-        Ok((pk_b, prs))
+        // Return the DERIVED PRS so the caller can stage it as the R-S16 viewer twin (the
+        // memory-hard Argon2id hash, never the plaintext — R-S9/R-P1).
+        Ok(prs)
     }
 
     #[inline]
@@ -1307,9 +1259,9 @@ pub struct LoginConfigHandler {
     id: String,
     pub conn_type: ConnType,
     password: Vec<u8>, // remember password for reconnect
-    // R-S16 (viewer twin) / R-S9 / R-P1: the DERIVED Argon2id CPace PRS (base64), bound to the box's
-    // pinned Ed25519 host key — the memory-hard hash the balanced PAKE keys from, NEVER the plaintext
-    // password (a config read yields the hash, not the reusable password — Appendix C #14). Staged
+    // R-S16 (viewer twin) / R-S9 / R-P1: the DERIVED Argon2id CPace PRS (base64) — the memory-hard
+    // hash the balanced PAKE keys from, NEVER the plaintext password (a config read yields the hash,
+    // not the reusable password — Appendix C #14). Staged
     // here by the keying path (`key_initiator` returns the derived PRS; `_start` stages it on
     // onboarding) and by `handle_login_from_ui` (which derives before staging); persisted to
     // `PeerConfig.password_prs` when `remember`, and read back VERBATIM by the initiator at the next
@@ -1322,14 +1274,6 @@ pub struct LoginConfigHandler {
     // dialog's submit can set it and `reconnect`, and `get_connect_password` reads it to feed
     // `key_initiator`. Never persisted directly; the onboarding-PRS path persists it (A2).
     pub connect_password: String,
-    // R-S17/R-G5 (re-pin seed): on a HOST-KEY MISMATCH — the box presented a host-proof-VERIFIED key
-    // that differs from the existing pin — `key_initiator` stashes that just-verified key here so the
-    // GUI's friction-bearing re-pin dialog can adopt it (`host_pin::set_pinned_pk`) after the operator
-    // confirms the new fingerprint out-of-band. (A true no-pin FIRST contact bails BEFORE keying: the
-    // PRS salt IS the pin, so with no pin there is nothing to key or stash — the first pin is seeded
-    // only by the out-of-band `--pin-host`, no trust-on-first-use.) Never seeded from a peer message
-    // (R-S15); set only by the keying path after the host-proof verified.
-    pub pending_host_pk: Option<Vec<u8>>,
     pub remember: bool,
     config: PeerConfig,
     pub port_forward: (String, i32),
@@ -1392,7 +1336,7 @@ impl LoginConfigHandler {
                 .next()
                 .unwrap_or_default();
             // R-X6: NEVER adopt an embedded `?key=` trust anchor from a rustdesk:// deep-link URI.
-            // The direct-IP fork keys solely via CPace from the password PRS (the R-S17 host-key pin is
+            // The direct-IP fork keys solely via CPace from the password PRS (the shared password is
             // the sole trust anchor), so an attacker-supplied `?key=` must not become other_server's key,
             // and the persisted `other-server-key` must never be URI-settable. (The `<id>@server` connect
             // form is itself already dead — Client::_start bails on any non-direct address — but R-X6
@@ -2259,7 +2203,7 @@ impl LoginConfigHandler {
             // R-S18 / Appendix C #22: the viewer NO LONGER sends os_login (peer-supplied
             // OS credentials) or hwid (a stable device fingerprint). Upstream auto-sent
             // BOTH on every connect, so a malicious or substituted peer (a different box
-            // answering at a pinned address — R-S17) harvested the operator's stored OS
+            // answering at the same address) harvested the operator's stored OS
             // creds + fingerprint with no interaction — a client-side leak the
             // responder-only audit could not see. The responder already ignored os_login
             // (0685c28, R-X14); the authored UI/FFI senders and persisted OS-credential options
@@ -2966,16 +2910,12 @@ pub async fn handle_login_from_ui(
     // the proactive login in Client::start. self.password stays empty, so the peer-info save path
     // persists ONLY the twin (the legacy salted-hash `password` field is dead under the collapse).
     if !password.is_empty() {
-        // R-S9/R-P1: stage the DERIVED Argon2id PRS (bound to the box's pinned host key), NEVER the
+        // R-S9/R-P1: stage the DERIVED Argon2id PRS (over the password alone, fixed salt), NEVER the
         // plaintext, so the persisted twin is the memory-hard hash, not the reusable password
-        // (Appendix C #14). Mirrors key_initiator's connect-time derivation; `id` is the pin address
-        // (== the connect peer, R-S17). If the box is unpinned (should not happen for an established
-        // session) or derivation fails, stage NOTHING rather than fall back to plaintext (fail-closed)
-        // -- the credential is simply not remembered and the next connect prompts for it.
-        let id = lc.read().unwrap().id.clone();
-        let prs = hbb_common::host_pin::get_pinned_pk(&id)
-            .and_then(|pk| hbb_common::config::derive_cpace_prs(&password, &pk))
-            .unwrap_or_default();
+        // (Appendix C #14). Mirrors key_initiator's connect-time derivation. If derivation fails
+        // (a password empty after NFC normalization), stage NOTHING rather than fall back to plaintext
+        // (fail-closed) -- the credential is simply not remembered and the next connect prompts for it.
+        let prs = hbb_common::config::derive_cpace_prs(&password).unwrap_or_default();
         let mut w = lc.write().unwrap();
         w.password_source = Default::default();
         w.password_prs = prs.into_bytes();
@@ -3035,41 +2975,11 @@ pub trait Interface: Send + Clone + 'static + Sized {
         // R-S13/A3 (prompt-before-keying): a CPace keying failure for want of a password
         // (R-S9, the bare-ID first connect) or a wrong password is RECOVERABLE — prompt for
         // the box's password and reconnect, rather than dead-ending on an error. The reconnect
-        // keys via `get_connect_password` -> `key_initiator`. Scoped to these two keying
-        // failures: the R-S17 pin mismatch / not-pinned errors deliberately fall through to
-        // the normal error (they need `--pin-host`, not a password). flutter-only (the dialog).
+        // keys via `get_connect_password` -> `key_initiator`. flutter-only (the dialog).
         if cfg!(feature = "flutter")
             && (err.contains("(R-S9") || err.contains("CPace handshake failed"))
         {
             self.msgbox("connect-password-prompt", "Password Required", &text, "");
-            return;
-        }
-        // R-S17/R-G5: first contact with an unpinned host — the keyed handshake proved the box
-        // holds the host key, but the operator has not pinned it. Offer to pin (after confirming
-        // the fingerprint out-of-band) and reconnect, rather than dead-ending. A pin MISMATCH
-        // (a different key than pinned) deliberately does NOT route here — it falls through to
-        // the loud error (no easy bypass; the operator must `--forget-host` to re-pin).
-        if cfg!(feature = "flutter") && err.contains("is not pinned") {
-            self.msgbox("host-not-pinned-prompt", "Unknown host", &text, "");
-            return;
-        }
-        // R-S17/R-G5: a HOST KEY MISMATCH (the box presented a different key than pinned —
-        // possible substitution/MITM). The keying stashed the VERIFIED new key (pending_host_pk);
-        // show a stark known_hosts-style warning dialog (old vs new fingerprints, in `text`) with
-        // a FRICTION-BEARING re-pin: the dialog requires the operator to type the new fingerprint,
-        // which it matches against `link` (the new fp) — no default-focused OK. Headless/CLI has
-        // no dialog, so the bail above stands (fail-closed). This is the GUI form of R-S17's
-        // "abort unless the user explicitly re-pins"; the re-pin overwrites the old pin.
-        if cfg!(feature = "flutter") && err.contains("HOST KEY MISMATCH") {
-            let new_fp = self
-                .get_lch()
-                .read()
-                .unwrap()
-                .pending_host_pk
-                .clone()
-                .map(crate::common::pk_to_fingerprint)
-                .unwrap_or_default();
-            self.msgbox("host-mismatch-prompt", "Host key changed", &text, &new_fp);
             return;
         }
         // R-G6/R-SV4: a direct connection that fails is TERMINAL — there is no relay to

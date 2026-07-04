@@ -7,8 +7,7 @@
 //! (CPace keying is the sole gate; there is no source-IP ACL — the probe keys on the correct password.)
 //!
 //! 4th arg modes (after keying):
-//!   - `read`   : engage the session keys and read the post-key flow (the host-proof and the
-//!                normal keyed session);
+//!   - `read`   : engage the session keys and read the post-key keyed session flow;
 //!   - `login`  : also send a minimal `LoginRequest` (CPace already authenticated, so the password
 //!                proof is collapsed — empty `password`) to drive the post-key login flow. Its
 //!                `my_id` is the ASCII canary `PLAINTEXT-CANARY-DEADBEEF` so the R-A9 wire-capture
@@ -20,7 +19,7 @@
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
 //!
 //! Usage: `probe_client <addr> <password> <ok|fail> [read|login|inject] [local_addr]`  (exit 0 = matched)
-use hbb_common::cpace::{run_initiator_with_transcript, verify_host_identity};
+use hbb_common::cpace::run_initiator;
 use hbb_common::message_proto::Message;
 use hbb_common::protobuf::Message as _; // parse_from_bytes / write_to_bytes
 use hbb_common::tcp::FramedStream;
@@ -39,14 +38,12 @@ fn main() {
     // for the R-A8.2 owner-safe limiter test (a flood from one source must not block another).
     let local = a.get(5).and_then(|s| s.parse::<std::net::SocketAddr>().ok());
 
-    // R-P1: the CPace PRS is base64(Argon2id(NFC(pw), salt(host_pubkey))) — a faithful viewer derives
-    // it from the box's PINNED host key. This loopback probe shares the server's config dir ($HOME),
-    // so it reads the box's own Ed25519 host public key directly (equivalent to having pinned it via
-    // `--pin-host`) and derives the SAME PRS the server stored at provisioning. A WRONG password
+    // R-P1: the CPace PRS is base64(Argon2id(NFC(pw), fixed salt)) — a faithful viewer derives it
+    // from the password alone (nothing per-box in the salt). This loopback probe shares the server's
+    // config dir ($HOME) and derives the SAME PRS the server stored at provisioning. A WRONG password
     // derives a DIFFERENT PRS ⇒ CPace key-confirmation fails (the `fail` path) — exactly as for a real
     // viewer. This is the decisive two-process keying proof: viewer-derived PRS == server-stored PRS.
-    let host_pubkey = hbb_common::config::Config::get_key_pair().1;
-    let prs = hbb_common::config::derive_cpace_prs(&pw, &host_pubkey).unwrap_or_default();
+    let prs = hbb_common::config::derive_cpace_prs(&pw).unwrap_or_default();
 
     let rt = hbb_common::tokio::runtime::Runtime::new().expect("tokio runtime");
     let (keyed, postkey) = rt.block_on(async {
@@ -57,21 +54,11 @@ fn main() {
                 std::process::exit(2);
             }
         };
-        match run_initiator_with_transcript(&mut stream, &prs).await {
-            Ok((keys, transcript)) => {
+        match run_initiator(&mut stream, &prs).await {
+            Ok(keys) => {
                 let mut pk = String::new();
                 if do_read {
                     stream.set_session_keys(keys); // engage the two-key cipher
-                    // R-S17: the responder's FIRST post-key frame is its HostIdentity host-proof;
-                    // a faithful viewer reads + verifies it (the SSH-known_hosts-style host pin
-                    // against substitution) BEFORE anything else.
-                    match stream.next_timeout(3000).await {
-                        Some(Ok(proof)) => match verify_host_identity(&transcript, &proof) {
-                            Ok(_) => pk.push_str("[R-S17 host-proof VERIFIED] "),
-                            Err(_) => pk.push_str("[R-S17 host-proof FAILED] "),
-                        },
-                        _ => pk.push_str("[R-S17 no host-proof] "),
-                    }
                     if mode == "portforward" {
                         // R-F1/R-D6/R-S5/R-A9 END-TO-END: drive a REAL port-forward tunnel against the
                         // live server. Send a PortForward LoginRequest naming the LOCAL target the box

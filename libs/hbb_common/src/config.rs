@@ -1100,29 +1100,6 @@ impl Config {
         config.key_pair
     }
 
-    /// R-P1 / R-S17: force the (possibly just-generated) key pair onto disk SYNCHRONOUSLY,
-    /// returning it. `get_key_pair()` persists a freshly generated key via a DETACHED
-    /// background thread (so it neither blocks nor re-enters the CONFIG lock), which can lag
-    /// a short-lived process — e.g. `--get-fingerprint`, which prints the fingerprint and
-    /// immediately exits. If that store never lands, the next process generates a DIFFERENT
-    /// key and the operator has pinned a phantom key that never authenticates. Read-only /
-    /// provisioning paths that must not print or pin a not-yet-persisted key call this to
-    /// commit it in the same one-synchronous-store idiom as `set_permanent_password`. No-op
-    /// once the key is already on disk.
-    pub fn commit_key_pair() -> KeyPair {
-        // get_key_pair() returns (releasing the KEY_PAIR lock) with the pair cached in
-        // memory and — if it just generated one — a detached store in flight; take CONFIG
-        // only AFTER it returns, honoring the "never hold CONFIG while taking KEY_PAIR"
-        // ordering (see Config::set / set_permanent_password).
-        let kp = Self::get_key_pair();
-        let mut config = CONFIG.write().unwrap();
-        if config.key_pair.0.is_empty() {
-            config.key_pair = kp.clone();
-            config.store();
-        }
-        kp
-    }
-
     pub fn get_cached_pk() -> Option<Vec<u8>> {
         KEY_PAIR.lock().unwrap().clone().map(|k| k.1)
     }
@@ -1295,35 +1272,7 @@ impl Config {
             }
         }
 
-        // R-P1: the CPace PRS is a memory-hard Argon2id hash SALTED with the box's own
-        // Ed25519 host public key. Fetch the FULL key pair BEFORE taking the CONFIG write
-        // lock: get_key_pair() locks KEY_PAIR (and lazily generates the key on first use,
-        // so it exists at provisioning), and the codebase's lock discipline is "never hold
-        // CONFIG while taking KEY_PAIR" (see Config::set) — reading it here honors that
-        // ordering. Skipped on an empty (clearing) password.
-        let key_pair = if password.is_empty() {
-            None
-        } else {
-            Some(Self::get_key_pair())
-        };
-        let host_pubkey = key_pair.as_ref().map(|k| k.1.clone()).unwrap_or_default();
-
         let mut config = CONFIG.write().unwrap();
-
-        // R-P1: the PRS salt IS the box's host public key, so that key MUST be persisted
-        // ALONGSIDE the credential — get_key_pair() persists it lazily via a background
-        // thread that can lag a short-lived provisioning process, leaving the PRS bound to
-        // a key not yet on disk. set_permanent_password is the provisioning point, so pin
-        // the key into the stored config HERE (when not already present) so this one
-        // synchronous store() commits the host key + the PRS together; the separate
-        // viewer/server processes then read the SAME key the PRS binds to.
-        let key_committed = match key_pair {
-            Some(kp) if config.key_pair.0.is_empty() => {
-                config.key_pair = kp;
-                true
-            }
-            _ => false,
-        };
 
         // R-P1: BOTH at-rest forms are the memory-hard PRS (Argon2id), never the
         // plaintext and never a fast SHA256 — `config.password` holds the PRS's raw 32
@@ -1335,11 +1284,11 @@ impl Config {
             (String::new(), String::new())
         } else {
             // Keep config.salt non-empty so the hashed-storage envelope reads as
-            // "salt-bound, usable for auth" (R-S9). The Argon2id salt itself is bound to
-            // the host key (above), NOT to config.salt — config.salt is now only the
-            // hash-shaped-storage marker.
+            // "salt-bound, usable for auth" (R-S9). The Argon2id salt itself is the fixed
+            // domain-separation constant (R-P1), NOT config.salt — config.salt is now only
+            // the hash-shaped-storage marker.
             Self::ensure_permanent_password_salt(&mut config);
-            match derive_permanent_password_storages(password, &host_pubkey) {
+            match derive_permanent_password_storages(password) {
                 Some(pair) => pair,
                 None => {
                     log::error!("Failed to derive the CPace PRS; refusing permanent password update");
@@ -1347,9 +1296,8 @@ impl Config {
                 }
             }
         };
-        // Idempotent steady-state re-set: nothing to persist UNLESS we just committed the
-        // host key (which MUST reach disk for the PRS to be usable by the other process).
-        if !key_committed && stored == config.password && prs == config.password_prs {
+        // Idempotent steady-state re-set: nothing to persist when unchanged.
+        if stored == config.password && prs == config.password_prs {
             return true;
         }
         config.password = stored;
@@ -1358,7 +1306,7 @@ impl Config {
         true
     }
 
-    /// R-P1: the live CPace PRS — the memory-hard, host-key-salted Argon2id hash
+    /// R-P1: the live CPace PRS — the memory-hard Argon2id hash (fixed salt)
     /// (base64), NOT the plaintext. Empty when no credential is stored — the handshake
     /// then has no shared secret and fails closed. Read fresh on every connection (no
     /// caching), so a `--password` change (R-D2) takes effect on the next handshake.

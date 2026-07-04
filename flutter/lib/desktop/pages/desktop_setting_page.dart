@@ -774,20 +774,10 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
                 // R-G4 / R-SV5 (§19): the 'ID' card (Change-ID) is removed — the numeric ID is
                 // dead under the direct-IP model (R-SV5); the box is reached by <ip|domain>:port.
                 more(context),
-                // R-S17/R-G5: the known_hosts manage/forget view (the SSH known_hosts twin).
-                knownHosts(context),
               ]),
             ),
           ],
         )).marginOnly(bottom: _kListViewBottomMargin);
-  }
-
-  // R-S17/R-G5: the known_hosts manage/forget view (the GUI twin of --list-known-hosts /
-  // --forget-host). Lists the pinned hosts (address + fingerprint) and lets the operator forget
-  // a legitimately re-keyed or decommissioned box; the next connect re-seeds (TOFU). The host
-  // pin is the viewer's substitution defense (R-S17), so managing it is a first-class GUI surface.
-  Widget knownHosts(BuildContext context) {
-    return _Card(title: 'Known hosts', children: [const KnownHostsManager()]);
   }
 
   Widget permissions(context) {
@@ -1566,18 +1556,15 @@ class _AboutState extends State<_About> {
       final license = await bind.mainGetLicense();
       final version = await bind.mainGetVersion();
       final buildDate = await bind.mainGetBuildDate();
-      final fingerprint = await bind.mainGetFingerprint();
       return {
         'license': license,
         'version': version,
-        'buildDate': buildDate,
-        'fingerprint': fingerprint
+        'buildDate': buildDate
       };
     }(), hasData: (data) {
       final license = data['license'].toString();
       final version = data['version'].toString();
       final buildDate = data['buildDate'].toString();
-      final fingerprint = data['fingerprint'].toString();
       const linkStyle = TextStyle(decoration: TextDecoration.underline);
       final scrollController = ScrollController();
       return SingleChildScrollView(
@@ -1595,10 +1582,6 @@ class _AboutState extends State<_About> {
               SelectionArea(
                   child: Text('${translate('Build Date')}: $buildDate')
                       .marginSymmetric(vertical: 4.0)),
-              if (!isWeb)
-                SelectionArea(
-                    child: Text('${translate('Fingerprint')}: $fingerprint')
-                        .marginSymmetric(vertical: 4.0)),
               // R-G8 / §19 (de-brand): the "Privacy Statement" + "Website" links to
               // rustdesk.com are removed — this is a sovereign fork, not rustdesk.com; it
               // advertises no upstream website or privacy policy.

@@ -286,9 +286,9 @@ class _PasswordWidgetState extends State<PasswordWidget> {
 // stores it as the connect-password and RECONNECTS — the reconnect keys with it. There is NO
 // post-keying login re-prompt (`enterPasswordDialog`/`wrongPasswordDialog` are excised): CPace is
 // the sole authenticator (R-A1), so the responder never re-asks for a login password over a keyed
-// stream. `reason` (I-3) is the keying-failure text shown above the field — it names BOTH a wrong
-// password AND a changed host key, so a legitimately re-keyed box is not dead-ended in an eternal
-// "Password Required" loop with no hint of the real cause.
+// stream. `reason` is the keying-failure text shown above the field — it names a wrong password or
+// a box re-provisioned with a new password, so a legitimately re-provisioned box is not dead-ended
+// in an eternal "Password Required" loop with no hint of the real cause.
 void enterConnectPasswordDialog(
     SessionID sessionId, OverlayDialogManager dialogManager,
     [String reason = '']) async {
@@ -298,249 +298,6 @@ void enterConnectPasswordDialog(
     passwordController: TextEditingController(),
     reason: reason,
   );
-}
-
-// R-S17/R-G5/I-2 (first-CONTACT pin seed): a no-TOFU direct-IP fork cannot key with an UNPINNED box
-// — the CPace PRS is Argon2id-salted by the pinned key, so keying bails BEFORE the box's key is ever
-// received, and there is nothing stashed to "trust". So the operator learns the box's fingerprint
-// OUT-OF-BAND (via `--get-fingerprint` on the box, over the trusted channel it was deployed through)
-// and TYPES it here; on "Pin" we pin THAT key for the address and reconnect (SSH's "type the
-// fingerprint", done deliberately). Friction-bearing — the "Pin" button stays disabled until the
-// typed input is a valid 64-hex key, and it never adopts a peer-supplied key. A pin MISMATCH is a
-// separate, louder dialog (hostMismatchDialog). This replaces the old dead "Trust" button, whose
-// `sessionPinHost` found nothing staged (pending_host_pk == null) and never reconnected.
-void hostNotPinnedDialog(
-    SessionID sessionId, OverlayDialogManager dialogManager, String text) async {
-  dialogManager.dismissAll();
-  final controller = TextEditingController();
-  // hex-only, case-insensitive normalization so any fingerprint format the operator types matches.
-  String norm(String s) => s.replaceAll(RegExp(r'[^0-9a-fA-F]'), '').toLowerCase();
-  dialogManager.show((setState, close, context) {
-    cancel() {
-      close();
-      closeConnection();
-    }
-
-    // Enable "Pin" only once the typed input normalizes to a valid 64-hex-char (32-byte) Ed25519 key
-    // (Rust re-validates + decodes it before pinning).
-    final valid = norm(controller.text).length == 64;
-    submit() {
-      if (!valid) return;
-      bind.sessionPinHostByFingerprint(
-          sessionId: sessionId, fingerprint: controller.text);
-      close();
-      dialogManager.showLoading(translate('Connecting...'),
-          onCancel: closeConnection);
-    }
-
-    return CustomAlertDialog(
-      title: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.warning_amber_rounded, color: Colors.orange),
-          Text(translate('Unknown host')).paddingOnly(left: 10),
-        ],
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SelectableText(text, style: TextStyle(fontSize: 14)),
-          const SizedBox(height: 12),
-          TextField(
-            controller: controller,
-            autofocus: false,
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              border: const OutlineInputBorder(),
-              labelText: translate(
-                  'Type the box fingerprint to pin it (verified out-of-band)'),
-            ),
-          ),
-        ],
-      ),
-      actions: [
-        dialogButton(
-          'Cancel',
-          icon: Icon(Icons.close_rounded),
-          onPressed: cancel,
-          isOutline: true,
-        ),
-        dialogButton(
-          'Pin',
-          icon: Icon(Icons.verified_user_outlined),
-          onPressed: valid ? submit : null,
-        ),
-      ],
-      onCancel: cancel,
-    );
-  });
-}
-
-// R-S17/R-G5: the host-key MISMATCH warning dialog — the `known_hosts` "WARNING: REMOTE HOST
-// IDENTIFICATION HAS CHANGED" analog. Unlike the seed (a trust-on-first-use accept), re-pinning a
-// MISMATCHED host is FRICTION-BEARING (R-S17): the operator must TYPE the new fingerprint exactly
-// (after verifying it out-of-band), there is no default-focused OK (the Re-pin button stays
-// disabled until the typed fingerprint matches), and the destructive action is styled as a risk.
-// `newFingerprint` is the verified new fp (the msgbox `link`) the typed input must match; `text`
-// carries the human-readable old-vs-new warning. On cancel the connection is closed (fail-closed);
-// the keying already stashed the verified new key, so Re-pin overwrites the old pin and reconnects.
-void hostMismatchDialog(SessionID sessionId, OverlayDialogManager dialogManager,
-    String text, String newFingerprint) async {
-  dialogManager.dismissAll();
-  final controller = TextEditingController();
-  // hex-only, case-insensitive compare so any fingerprint format the operator types matches.
-  String norm(String s) => s.replaceAll(RegExp(r'[^0-9a-fA-F]'), '').toLowerCase();
-  final wantHex = norm(newFingerprint);
-  dialogManager.show((setState, close, context) {
-    cancel() {
-      close();
-      closeConnection();
-    }
-
-    final matches = wantHex.isNotEmpty && norm(controller.text) == wantHex;
-    submit() {
-      if (!matches) return;
-      // Overwrites the old pin with the verified new key (set_pinned_pk), then reconnects.
-      bind.sessionPinHost(sessionId: sessionId);
-      close();
-      dialogManager.showLoading(translate('Connecting...'),
-          onCancel: closeConnection);
-    }
-
-    return CustomAlertDialog(
-      title: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.gpp_bad, color: Colors.red),
-          Text(translate('Host key changed')).paddingOnly(left: 10),
-        ],
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SelectableText(text, style: TextStyle(fontSize: 14)),
-          const SizedBox(height: 12),
-          TextField(
-            controller: controller,
-            autofocus: false,
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              border: const OutlineInputBorder(),
-              labelText: translate(
-                  'Type the new fingerprint to re-pin (substitution risk)'),
-            ),
-          ),
-        ],
-      ),
-      actions: [
-        dialogButton(
-          'Cancel',
-          icon: Icon(Icons.close_rounded),
-          onPressed: cancel,
-          isOutline: true,
-        ),
-        dialogButton(
-          'Re-pin',
-          icon: Icon(Icons.warning_amber_rounded),
-          onPressed: matches ? submit : null,
-        ),
-      ],
-      onCancel: cancel,
-    );
-  });
-}
-
-// R-S17/R-G5: the known_hosts MANAGE view — lists the pinned hosts (address + fingerprint) and
-// forgets one (the GUI twin of --list-known-hosts / --forget-host). Forget is deliberate (a
-// confirmation); the next connection re-seeds via the TOFU prompt (R-S17). Reads ONLY the local
-// pin store via the main FFI — never a peer message (R-S15). Shared by the desktop Safety tab and
-// the mobile settings, so the manage/forget-host view exists on every viewer front-end (R-G5).
-class KnownHostsManager extends StatefulWidget {
-  const KnownHostsManager({Key? key}) : super(key: key);
-
-  @override
-  State<KnownHostsManager> createState() => _KnownHostsManagerState();
-}
-
-class _KnownHostsManagerState extends State<KnownHostsManager> {
-  List<dynamic> _hosts = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    try {
-      final raw = await bind.mainListPinnedHosts();
-      if (!mounted) return;
-      setState(() => _hosts = jsonDecode(raw) as List);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _hosts = []);
-    }
-  }
-
-  Future<void> _forget(String address) async {
-    final res = await gFFI.dialogManager.show((setState, close, context) {
-      return CustomAlertDialog(
-        title: Text(translate('Forget')),
-        content: Text(
-            '${translate('Forget the pinned host key for')} "$address"?\n\n${translate('The next connection will prompt to pin it again (trust-on-first-use).')}'),
-        actions: [
-          dialogButton('Cancel', onPressed: () => close(false), isOutline: true),
-          dialogButton('Forget', onPressed: () => close(true)),
-        ],
-        onCancel: () => close(false),
-      );
-    });
-    if (res != true) return;
-    await bind.mainForgetPinnedHost(address: address);
-    await _load();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_hosts.isEmpty) {
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: Text(translate('No pinned hosts yet.'),
-            style: TextStyle(color: Theme.of(context).hintColor)),
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: _hosts.map((h) {
-        final address = (h['address'] ?? '').toString();
-        final fp = (h['fingerprint'] ?? '').toString();
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(address,
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
-                    SelectableText(fp, style: const TextStyle(fontSize: 12)),
-                  ],
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline),
-                tooltip: translate('Forget'),
-                onPressed: () => _forget(address),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
 }
 
 // R-S18/R-X8: the connect-time password dialog (rd-password only). The os-username/os-password
@@ -615,10 +372,10 @@ _connectDialog(
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // I-3: on a keying FAILURE show the reason (it names BOTH a wrong password AND a changed
-          // host key + the re-pin remedy), so a legitimately re-keyed box is not dead-ended in a
-          // silent "Password Required" loop. On a fresh first-connect prompt (empty reason) show
-          // the generic tip instead.
+          // On a keying FAILURE show the reason (a wrong password, or a box re-provisioned with a
+          // new password), so a legitimately re-provisioned box is not dead-ended in a silent
+          // "Password Required" loop. On a fresh first-connect prompt (empty reason) show the
+          // generic tip instead.
           if (reason.isNotEmpty) ...[
             Align(
               alignment: Alignment.centerLeft,

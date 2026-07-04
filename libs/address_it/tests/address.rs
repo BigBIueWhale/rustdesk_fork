@@ -1,10 +1,10 @@
-//! R-S17/R-SV5 address-normalization KAT (hbb_common::address::normalize_address).
+//! R-SV5 address-normalization KAT (hbb_common::address::normalize_address).
 //!
-//! The host-key pin store (R-S17) and the direct-IP peer list (R-SV5) key on the
-//! SAME normalized address; a mismatch silently re-seeds a fresh host — a
-//! substitution blind spot. So this KAT freezes the function's exact behavior:
-//! the spec's two equivalences plus port-fill, case-fold, IPv4 canonicalization,
-//! and rejection of non-addresses.
+//! The direct-IP peer list (R-SV5) keys on this normalized address; a mismatch
+//! would split one host into two peer-list entries — a non-deterministic re-key of
+//! the list feeding `Client::_start`. So this KAT freezes the function's exact
+//! behavior: the spec's two equivalences plus port-fill, case-fold, IPv4
+//! canonicalization, and rejection of non-addresses.
 
 use hbb_common::address::normalize_address;
 use hbb_common::config::DIRECT_PORT;

@@ -275,13 +275,6 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
       ));
     }
   }
-  // fingerprint
-  if (!(isDesktop || isWebDesktop)) {
-    v.add(TTextMenu(
-      child: Text(translate('Copy Fingerprint')),
-      onPressed: () => onCopyFingerprint(FingerprintState.find(id).value),
-    ));
-  }
   return v;
 }
 

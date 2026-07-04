@@ -104,25 +104,24 @@ pub(super) fn decrypt_permanent_password_str_or_original(storage: &str) -> (Stri
 // leaks. Both ends — the controlled side at provisioning and the viewer at keying —
 // MUST compute IDENTICAL bytes, so EVERY parameter here is FIXED FOREVER.
 
-/// R-P1 Argon2id salt domain separator. The PRS salt is bound to the box's own
-/// Ed25519 host PUBLIC key, so (a) the same password on two different boxes yields a
-/// different PRS, and (b) the viewer's PRS only matches when it derived against the
-/// box's PINNED key (R-S17) — weaving the host identity into the PAKE secret itself,
-/// so a substitute box with a different key cannot key even if it knows the password.
+/// R-P1 Argon2id salt domain separator. The PRS salt is a FIXED domain-separation
+/// constant — `SHA256(CPACE_PRS_SALT_DSI)[..16]`, the same 16 bytes compiled into every
+/// build, bound to no per-box value — so both ends (the box at `--password` time and the
+/// viewer at connect time, from the typed password) reach an IDENTICAL PRS from the
+/// password alone, with nothing per-box to distribute, pin, or agree (R-P1/R-P5).
 ///
 /// DETERMINISTIC, NON-SECRET SALT — BY DESIGN, NOT AN OVERSIGHT. This salt is a public,
-/// deterministic function of the box's (public) host key, not a random per-credential salt. A
-/// balanced, serverless PAKE has no channel to exchange a random salt, and both ends MUST derive
-/// the IDENTICAL PRS with no exchange (R-P1); the host key is the one value both sides already hold
-/// (the box owns it; the viewer pinned it out-of-band, R-S17). The accepted consequence: Argon2id
-/// here delivers memory-hardness (taxing a dictionary attack that would recover the *plaintext*
-/// password from a leaked at-rest PRS) but NOT precomputation-resistance against an attacker who
-/// already knows the target box's public key and precomputes for that single salt. This is
-/// acceptable under the §2 threat model — recovering the plaintext first requires reading the
-/// at-rest PRS, i.e. endpoint compromise (out of scope), at which point the PRS is already
-/// connect-equivalent (Appendix C #14); precomputation buys only plaintext recovery for reuse
-/// elsewhere, which the per-guess memory-hardness still taxes. A random exchanged salt would break
-/// the no-exchange, serverless design R-P1 mandates, so it is deliberately not used.
+/// deterministic constant, not a random per-credential salt. A balanced, serverless PAKE has no
+/// channel to exchange a random salt, and both ends MUST derive the IDENTICAL PRS with no exchange
+/// (R-P1). The accepted consequence: Argon2id here delivers memory-hardness (taxing a dictionary
+/// attack that would recover the *plaintext* password from a leaked at-rest PRS) but NOT cross-box
+/// precomputation-separation — a single Argon2id dictionary now applies to every fork box under a
+/// given password. That bears only on offline guessing across many endpoints, which the §2 threat
+/// model places out of scope (endpoint at-rest read and password secrecy are assumed): recovering
+/// the plaintext first requires reading the at-rest PRS, i.e. endpoint compromise, at which point
+/// the PRS is already connect-equivalent (Appendix C #14), and the per-guess memory-hardness still
+/// taxes any guessing. A random exchanged salt would break the no-exchange, serverless design R-P1
+/// mandates, so it is deliberately not used.
 const CPACE_PRS_SALT_DSI: &[u8] = b"rustdesk-cpace-prs-salt-v1";
 
 /// The libsodium Argon2id13 INTERACTIVE cost parameters (R-P1) — phone-safe
@@ -134,20 +133,13 @@ const CPACE_PRS_OPSLIMIT: usize = 2;
 const CPACE_PRS_MEMLIMIT: usize = 64 * 1024 * 1024;
 
 /// Derive the raw 32 bytes of the CPace PRS:
-///   `Argon2id( NFC(password), salt = SHA256(DSI ++ host_pubkey)[..16] )`.
-/// `None` when the password is empty after NFC normalization or the host public key
-/// is empty (no shared secret ⇒ the handshake fails closed, R-S9), or on the
-/// practically-impossible Argon2id failure. This is the SINGLE source of truth for
-/// the PRS bytes — both the base64 PRS string and the at-rest storage are built from
-/// it.
-fn derive_cpace_prs_raw(
-    password: &str,
-    host_pubkey: &[u8],
-) -> Option<[u8; PERMANENT_PASSWORD_H1_LEN]> {
+///   `Argon2id( NFC(password), salt = SHA256(CPACE_PRS_SALT_DSI)[..16] )`.
+/// `None` when the password is empty after NFC normalization (no shared secret ⇒ the
+/// handshake fails closed, R-S9), or on the practically-impossible Argon2id failure.
+/// This is the SINGLE source of truth for the PRS bytes — both the base64 PRS string
+/// and the at-rest storage are built from it.
+fn derive_cpace_prs_raw(password: &str) -> Option<[u8; PERMANENT_PASSWORD_H1_LEN]> {
     use sodiumoxide::crypto::pwhash::argon2id13::{derive_key, MemLimit, OpsLimit, Salt, SALTBYTES};
-    if host_pubkey.is_empty() {
-        return None;
-    }
     // R-P1: the IDENTICAL NFC (no case-fold) normalization the CPace path applies to
     // the password before the PAKE — so the Argon2id input and the PAKE input are the
     // same bytes. Empty after normalization ⇒ no credential (R-S9).
@@ -155,10 +147,11 @@ fn derive_cpace_prs_raw(
     if nfc_pwd.is_empty() {
         return None;
     }
-    // salt = SHA256(DSI ++ host_pubkey)[..16]  (16 == crypto_pwhash_argon2id_SALTBYTES).
+    // salt = SHA256(CPACE_PRS_SALT_DSI)[..16]  (16 == crypto_pwhash_argon2id_SALTBYTES) —
+    // a FIXED global constant, identical in every build (R-P1), so both ends agree with no
+    // salt exchange and nothing per-box enters the derivation.
     let mut hasher = Sha256::new();
     hasher.update(CPACE_PRS_SALT_DSI);
-    hasher.update(host_pubkey);
     let digest = hasher.finalize();
     let mut salt = Salt([0u8; SALTBYTES]);
     salt.0.copy_from_slice(&digest[..SALTBYTES]);
@@ -176,13 +169,13 @@ fn derive_cpace_prs_raw(
 
 /// R-P1: the CPace PRS as the fixed ASCII string both ends feed to the balanced PAKE
 /// as the shared secret:
-///   `base64_Original( Argon2id( NFC(password), SHA256(DSI ++ host_pubkey)[..16] ) )`.
-/// The controlled side derives it from its own host key (`Config::get_key_pair().1`)
-/// at provisioning; the viewer derives it from the box's PINNED key
-/// (`host_pin::get_pinned_pk`) at keying. `None` on an empty password or empty pubkey
-/// (the handshake then has no shared secret and fails closed, R-S9).
-pub fn derive_cpace_prs(password: &str, host_pubkey: &[u8]) -> Option<String> {
-    let raw = derive_cpace_prs_raw(password, host_pubkey)?;
+///   `base64_Original( Argon2id( NFC(password), SHA256(CPACE_PRS_SALT_DSI)[..16] ) )`.
+/// The controlled side derives it at provisioning (`--password`); the viewer derives it
+/// from the typed password at connect time — both reach the IDENTICAL PRS from the
+/// password alone (R-P1), with nothing per-box to distribute or pin. `None` on an empty
+/// password (the handshake then has no shared secret and fails closed, R-S9).
+pub fn derive_cpace_prs(password: &str) -> Option<String> {
+    let raw = derive_cpace_prs_raw(password)?;
     Some(base64::encode(raw, base64::Variant::Original))
 }
 
@@ -197,12 +190,9 @@ pub fn derive_cpace_prs(password: &str, host_pubkey: &[u8]) -> Option<String> {
 ///            hash, never the plaintext.
 ///   - `.1` → `config.password_prs`: the base64 PRS string the CPace handshake reads
 ///            live (`get_permanent_password_prs`), machine-UUID-encrypted.
-/// `None` on an empty password / pubkey or a derivation/encoding failure.
-pub(super) fn derive_permanent_password_storages(
-    password: &str,
-    host_pubkey: &[u8],
-) -> Option<(String, String)> {
-    let raw = derive_cpace_prs_raw(password, host_pubkey)?;
+/// `None` on an empty password or a derivation/encoding failure.
+pub(super) fn derive_permanent_password_storages(password: &str) -> Option<(String, String)> {
+    let raw = derive_cpace_prs_raw(password)?;
     let password_storage = encode_permanent_password_encrypted_storage_from_h1(&raw)?;
     let prs_string = base64::encode(raw, base64::Variant::Original);
     let prs_storage = encrypt_permanent_password_prs_storage(&prs_string)?;

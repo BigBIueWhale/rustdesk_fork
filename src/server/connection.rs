@@ -1043,7 +1043,7 @@ impl Connection {
         }
         self.ip = addr.ip().to_string();
         // R-T15c: the server no longer sends a `Hash` challenge here -- under CPace the viewer sends its
-        // login proactively (Client::start) the moment the keyed stream + host-proof are verified.
+        // login proactively (Client::start) the moment the stream is keyed.
         true
     }
 

@@ -1012,16 +1012,6 @@ pub fn get_user_default_option(key: String) -> String {
     UserDefaultConfig::load().get(&key)
 }
 
-pub fn get_fingerprint() -> String {
-    // R-S17 / I-1: the box's self-generated Ed25519 host key ALWAYS exists (get_key_pair generates
-    // it on first read) and a direct-IP fork has no rendezvous register_pk step to "confirm" — so
-    // the fingerprint is unconditional (never blank on the mobile server/settings pages).
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    return crate::common::pk_to_fingerprint(Config::get_key_pair().1);
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    return ipc::get_fingerprint();
-}
-
 #[inline]
 pub fn get_login_device_info() -> LoginDeviceInfo {
     LoginDeviceInfo {

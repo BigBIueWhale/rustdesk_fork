@@ -53,7 +53,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   var _autoRecordIncomingSession = false;
   var _autoRecordOutgoingSession = false;
   var _allowAutoDisconnect = false;
-  var _fingerprint = "";
   var _buildDate = "";
   var _autoDisconnectTimeout = "";
   var _preventSleepWhileConnected = true;
@@ -93,12 +92,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
 
       // R-G7 (§19): the "Start on boot" toggle is removed; boot-start is re-homed in the
       // native BootReceiver (RECEIVE_BOOT_COMPLETED alone), so there is no opt to read here.
-
-      final fingerprint = await bind.mainGetFingerprint();
-      if (_fingerprint != fingerprint) {
-        update = true;
-        _fingerprint = fingerprint;
-      }
 
       final buildDate = await bind.mainGetBuildDate();
       if (_buildDate != buildDate) {
@@ -350,18 +343,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                 });
               },
             ),
-          // R-S17/R-G5: the known_hosts manage/forget view (the SSH known_hosts twin) — list
-          // pinned hosts + forget a re-keyed/decommissioned box (next connect re-seeds, TOFU).
-          SettingsTile(
-            title: Text(translate('Known hosts')),
-            leading: Icon(Icons.verified_user_outlined),
-            trailing: Icon(Icons.arrow_forward_ios),
-            onPressed: (context) {
-              Navigator.push(context, MaterialPageRoute(builder: (context) {
-                return _KnownHostsPage();
-              }));
-            },
-          ),
         ]),
         // R-R2b / R-G1 (§19): no "Hardware Codec" section — hwcodec/vram AND mediacodec (Android's
         // hardware codec) are compiled out of every build (software vpx/aom only), so the toggle was
@@ -450,15 +431,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                   child: Text(_buildDate),
                 ),
                 leading: Icon(Icons.query_builder)),
-            if (isAndroid)
-              SettingsTile(
-                  onPressed: (context) => onCopyFingerprint(_fingerprint),
-                  title: Text(translate("Fingerprint")),
-                  value: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text(_fingerprint),
-                  ),
-                  leading: Icon(Icons.fingerprint)),
             // R-G8 / §19 (de-brand): no "Privacy Statement" link to rustdesk.com — a sovereign
             // fork advertises no upstream privacy policy.
           ],
@@ -482,21 +454,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
               }));
             })
       ],
-    );
-  }
-}
-
-// R-S17/R-G5: the mobile known_hosts manage/forget page (the GUI twin of --list-known-hosts /
-// --forget-host) — the substitution-defense pin store (R-S17) is managed as a first-class surface.
-class _KnownHostsPage extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(translate('Known hosts'))),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: const KnownHostsManager(),
-      ),
     );
   }
 }

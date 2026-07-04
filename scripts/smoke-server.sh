@@ -220,21 +220,17 @@ echo "$out6"
 # authenticated (there is no source-IP ACL). Proven POSITIVELY under the full-access policy: RustDesk
 # NOTIFIES the viewer only of DENIED permissions, so an authorized FULL-ACCESS session emits ZERO
 # `enabled: false` PermissionInfo — vs the OLD
-# least-privilege policy (which emitted Restart/Recording/BlockInput/PrivacyMode = false). So: the
-# host-proof verifies, NO capability is denied, and the request is NOT rejected. (A headless box sends
+# least-privilege policy (which emitted Restart/Recording/BlockInput/PrivacyMode = false). So: NO
+# capability is denied, and the request is NOT rejected. (A headless box sends
 # no PeerInfo either way, so denial-notifications were the OLD signal — wrong under full access.)
 s6_ok=1
-# R-S17: the probe (a faithful viewer) verified the responder's HostIdentity host-proof as the FIRST
-# post-key frame — the SSH-known_hosts-style defence against a substituted/MITM host.
-echo "$out6" | grep -q 'R-S17 host-proof VERIFIED' \
-  || { echo "  FAIL R-S17: the responder's HostIdentity host-proof did not verify"; rc=1; s6_ok=0; }
 if echo "$out6" | grep -qE 'blocked by the peer|Some\(Error'; then
   echo "  FAIL R-S6/R-S18: the keyed credential-free LoginRequest was REJECTED (must be ADMITTED — CPace authenticated it)"; rc=1; s6_ok=0
 fi
 if echo "$out6" | grep -q 'enabled: false'; then
   echo "  FAIL R-D8/R-X8: a capability was DENIED (PermissionInfo enabled:false) — the full-access policy must deny nothing"; rc=1; s6_ok=0
 fi
-[ "$s6_ok" = 1 ] && echo "  ok  R-S6/R-S18 credential-free LoginRequest ADMITTED + R-D8/R-X8 full access (host-proof verified; zero denied-permission notifications; not rejected)"
+[ "$s6_ok" = 1 ] && echo "  ok  R-S6/R-S18 credential-free LoginRequest ADMITTED + R-D8/R-X8 full access (zero denied-permission notifications; not rejected)"
 
 echo "== (6b) PORT-FORWARD/RDP TUNNEL (R-F1/R-D6/R-S5/R-A9): a real tunnel RELAYS bytes END-TO-END inside the sealed session =="
 # R-F1 makes port-forward (incl. RDP) a MUST; R-D6 pins enable-tunnel ON and requires the forward to
@@ -257,10 +253,6 @@ out6b=$("${RUN[@]}" bash -c '
   kill -TERM $SRV $ECHO 2>/dev/null
 ' || true)
 echo "$out6b"
-# R-S17: the port-forward viewer verifies the box's host-proof before tunnelling (same defence as a
-# normal session — the tunnel rides the SAME keyed+pinned channel).
-echo "$out6b" | grep -q 'R-S17 host-proof VERIFIED' \
-  || { echo "  FAIL R-F1/R-S17: the port-forward viewer did not verify the host-proof"; rc=1; }
 # R-F1/R-D6/R-S5/R-A9: the canary made a full round trip THROUGH the box (viewer -> sealed -> box ->
 # local target -> echo -> box -> sealed -> viewer), proving the relay is restored AND functional AND
 # inside the secretbox (the box never set_raw'd — tcp.rs R-A3 would have panicked otherwise).
@@ -377,7 +369,7 @@ DECAY_NOTE=" + R-A8 limiter-decay (tripped block self-heals after the 60s window
 fi
 
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 real --password IPC provisioning (clean set-and-exit; root + A2 non-root same-uid) + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S17 host-proof verify + R-S6 keyed-edge authorization (full session) + R-F1/R-D6/R-S5 port-forward/RDP tunnel relays end-to-end inside the seal + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
+  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 real --password IPC provisioning (clean set-and-exit; root + A2 non-root same-uid) + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S6 keyed-edge authorization (full session) + R-F1/R-D6/R-S5 port-forward/RDP tunnel relays end-to-end inside the seal + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

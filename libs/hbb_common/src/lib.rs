@@ -18,7 +18,6 @@ pub use tokio;
 pub use tokio_util;
 pub mod address;
 pub mod cpace;
-pub mod host_pin;
 pub mod proxy;
 pub mod socket_client;
 pub mod socket_surface;

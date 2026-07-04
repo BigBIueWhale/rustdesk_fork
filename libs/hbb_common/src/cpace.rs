@@ -16,16 +16,14 @@
 use crate::{
     message_proto::{
         cpace::Union as CpaceUnion, Cpace, CpaceStep1, CpaceStep2, CpaceStep3, CpaceStep4,
-        HostIdentity,
     },
     tcp::FramedStream,
 };
 use bytes::Bytes;
 pub use pake::DirectionalKeys;
-use pake::{channel_identifier, Initiator, PakeError, Responder, Step1, Step2, Step3, Step4, CI_PORT};
+use pake::{Initiator, PakeError, Responder, Step1, Step2, Step3, Step4, CI_PORT};
 use protobuf::Message as _;
 use sodiumoxide::crypto::secretbox::{self, Key, Nonce};
-use sodiumoxide::crypto::sign;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
@@ -75,10 +73,6 @@ pub enum HandshakeError {
     /// Bounded-read failure: per-step timeout, peer EOF, or an oversize frame
     /// (R-P14b). Does not feed the limiter.
     Io,
-    /// R-S17 host-key proof failure: the post-keyed `HostIdentity` frame is
-    /// malformed, or its Ed25519 signature does not verify against the carried
-    /// public key over this session's transcript. Fail-closed; not a guess.
-    HostProof,
 }
 
 impl HandshakeError {
@@ -102,9 +96,8 @@ impl From<PakeError> for HandshakeError {
 
 type HResult<T> = Result<T, HandshakeError>;
 
-/// The handshake transcript the R-S17 host-proof signature binds: the full
-/// 32-byte `sid` (`sid_a ‖ sid_b`) and both ephemeral public elements `Ya`, `Yb`.
-/// `CI` is recomputed from the pinned port. Reconstructed from the `Step`
+/// The completed handshake's transcript: the full 32-byte `sid` (`sid_a ‖ sid_b`)
+/// and both ephemeral public elements `Ya`, `Yb`. Reconstructed from the `Step`
 /// messages the driver already exchanged — the pake state machine needs no extra
 /// fields, and the 16 KATs are untouched.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -238,7 +231,7 @@ async fn recv_cpace(stream: &mut FramedStream, timeout_ms: u64) -> HResult<Cpace
 // ── the two drivers ──────────────────────────────────────────────────────────
 
 /// Drive the responder handshake and return only the keys — a convenience over
-/// [`run_responder_with_transcript`] for callers that need no host-proof.
+/// [`run_responder_with_transcript`] for callers that need no transcript.
 pub async fn run_responder(stream: &mut FramedStream, password: &str) -> HResult<DirectionalKeys> {
     run_responder_with_transcript(stream, password)
         .await
@@ -247,7 +240,7 @@ pub async fn run_responder(stream: &mut FramedStream, password: &str) -> HResult
 
 /// Drive the responder (controlled side) handshake to completion and return the
 /// two role-oriented keys (controlled seals with `k_s2c`, opens with `k_c2s`)
-/// PLUS the [`Transcript`] (`sid`/`Ya`/`Yb`) the R-S17 host-proof binds. Caller
+/// PLUS the [`Transcript`] (`sid`/`Ya`/`Yb`) that binds this PAKE session. Caller
 /// installs the keys and, on [`HandshakeError::Confirmation`], increments the
 /// per-source limiter (R-P14c) — never on any other abort.
 pub async fn run_responder_with_transcript(
@@ -282,7 +275,7 @@ pub async fn run_responder_with_transcript(
 }
 
 /// Drive the initiator handshake and return only the keys — a convenience over
-/// [`run_initiator_with_transcript`] for callers that need no host-proof.
+/// [`run_initiator_with_transcript`] for callers that need no transcript.
 pub async fn run_initiator(stream: &mut FramedStream, password: &str) -> HResult<DirectionalKeys> {
     run_initiator_with_transcript(stream, password)
         .await
@@ -291,8 +284,7 @@ pub async fn run_initiator(stream: &mut FramedStream, password: &str) -> HResult
 
 /// Drive the initiator (viewer) handshake to completion and return the two
 /// role-oriented keys (viewer seals with `k_c2s`, opens with `k_s2c`) PLUS the
-/// [`Transcript`] — the viewer needs it to verify the responder's R-S17
-/// `HostIdentity` host-proof against its local pin.
+/// [`Transcript`] (`sid`/`Ya`/`Yb`) that binds this PAKE session.
 pub async fn run_initiator_with_transcript(
     stream: &mut FramedStream,
     password: &str,
@@ -320,65 +312,6 @@ pub async fn run_initiator_with_transcript(
     stream.set_max_packet_length(MAX_SESSION_PACKET);
     let transcript = Transcript::from_steps(&step1, &step2, &step3);
     Ok((keys, transcript))
-}
-
-// ── R-S17 host-key proof (the HostIdentity frame) ────────────────────────────
-
-/// R-S17 host-proof domain separator — folded into the signed value so this
-/// Ed25519 signature can serve no other purpose (it cannot be confused with, or
-/// relayed into, any other signing context).
-const HOST_PROOF_DSI: &[u8] = b"rustdesk-fork/host-proof/v1";
-
-/// The host-proof signable message: `DSI ‖ sid ‖ CI ‖ Ya ‖ Yb` (R-S17). Folding
-/// `sid` and BOTH ephemerals welds the proof to THIS PAKE session — a different
-/// session has different `sid`/ephemerals, so a signature cannot be relayed,
-/// spliced, or replayed into another (this is what forecloses the
-/// tunneled-/compound-authentication MITM class).
-fn host_proof_message(t: &Transcript) -> Vec<u8> {
-    let ci = channel_identifier(CI_PORT);
-    let mut m = Vec::with_capacity(HOST_PROOF_DSI.len() + 32 + ci.len() + 32 + 32);
-    m.extend_from_slice(HOST_PROOF_DSI);
-    m.extend_from_slice(&t.sid);
-    m.extend_from_slice(&ci);
-    m.extend_from_slice(&t.ya);
-    m.extend_from_slice(&t.yb);
-    m
-}
-
-/// Build the controlled box's [`HostIdentity`] frame (R-S17): sign the
-/// session-bound host-proof message with the box's Ed25519 secret key and
-/// package it with the public key. Returns the serialized proto bytes to send
-/// (encrypted) as the first post-keyed frame. `pk`/`sk` are passed in (not read
-/// from global `Config`) so this is unit-testable; the choke point supplies
-/// `Config::get_key_pair()` — `.1` is the public key, `.0` the secret.
-pub fn build_host_identity(t: &Transcript, pk: &[u8], sk: &[u8]) -> HResult<Vec<u8>> {
-    let sk = sign::SecretKey::from_slice(sk).ok_or(HandshakeError::HostProof)?;
-    let sig = sign::sign_detached(&host_proof_message(t), &sk);
-    let hi = HostIdentity {
-        pk: Bytes::copy_from_slice(pk),
-        sig: Bytes::copy_from_slice(sig.as_ref()),
-        ..Default::default()
-    };
-    hi.write_to_bytes().map_err(|_| HandshakeError::HostProof)
-}
-
-/// Verify a received [`HostIdentity`] frame against the local transcript (R-S17):
-/// parse it, verify the Ed25519 signature over the reconstructed host-proof
-/// message against the carried `pk`, and on success return `pk` for the caller's
-/// pin compare. A forged signature, a mutated `pk` (a substitute that merely saw
-/// the key), or a signature from a different session all fail — the proof is
-/// welded to THIS session, so a present-only or MAC-bound check could not catch
-/// what this does. (The pin compare itself — `pk` vs the pinned key — is the
-/// caller's; this proves the signer holds the matching private key.)
-pub fn verify_host_identity(t: &Transcript, bytes: &[u8]) -> HResult<Vec<u8>> {
-    let hi = HostIdentity::parse_from_bytes(bytes).map_err(|_| HandshakeError::HostProof)?;
-    let pk = sign::PublicKey::from_slice(&hi.pk).ok_or(HandshakeError::HostProof)?;
-    let sig = sign::Signature::from_bytes(&hi.sig).map_err(|_| HandshakeError::HostProof)?;
-    if sign::verify_detached(&sig, &host_proof_message(t), &pk) {
-        Ok(hi.pk.to_vec())
-    } else {
-        Err(HandshakeError::HostProof)
-    }
 }
 
 // ── two-key directional cipher (R-P2/R-P10) ──────────────────────────────────

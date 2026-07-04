@@ -146,25 +146,13 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
             // R-G3: the channel is always PAKE-keyed + direct, so the badge no longer reads a
             // secure/direct state (those fields are removed) — only the stream-type suffix.
             String msgConn = getConnectionText(connectionType.stream_type.value);
-            var msgFingerprint = '${translate('Fingerprint')}:\n';
-            var fingerprint = FingerprintState.find(key).value;
-            if (fingerprint.isEmpty) {
-              fingerprint = 'N/A';
-            }
-            if (fingerprint.length > 5 * 8) {
-              var first = fingerprint.substring(0, 39);
-              var second = fingerprint.substring(40);
-              msgFingerprint += '$first\n$second';
-            } else {
-              msgFingerprint += fingerprint;
-            }
 
             final tab = Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 icon,
                 Tooltip(
-                  message: '$msgConn\n$msgFingerprint',
+                  message: msgConn,
                   child: SvgPicture.asset(
                     // R-G3: always the secure-direct badge (see remote_tab_page) — the
                     // insecure/relay states are impossible (§10 PAKE + R-SV4/R-D4).
@@ -273,16 +261,6 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
 
     menu.addAll([
       MenuEntryDivider<String>(),
-      MenuEntryButton<String>(
-        childBuilder: (TextStyle? style) => Text(
-          translate('Copy Fingerprint'),
-          style: style,
-        ),
-        proc: () => onCopyFingerprint(FingerprintState.find(key).value),
-        padding: padding,
-        dismissOnClicked: true,
-        dismissCallback: cancelFunc,
-      ),
       MenuEntryButton<String>(
         childBuilder: (TextStyle? style) => Text(
           translate('Close'),

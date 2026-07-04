@@ -45,11 +45,14 @@ SDK-free source-conformance gate covers the macOS/iOS code paths (R-R2).
 cryptographic/transport core clean (0 security hazards) and enumerated the surrounding
 structural-coherence debt (~80 orphaned-scaffolding sites, 7 user-visible correctness defects, 1 live
 latent race). That backlog is now IMPLEMENTED in full (36 files, +441/−1790, reviewed to standard):
-the box's R-S17 fingerprint renders unconditionally, the first-contact pin dialog is a real
-fingerprint-entry UI (so a fresh Android/iOS install can connect), the re-key "Password Required"
-loop and the `--get-fingerprint` phantom-key race are fixed, and the whole dead-scaffolding stratum
+the re-key "Password Required" loop is fixed, and the whole dead-scaffolding stratum
 (2FA/trusted-devices, the attended-accept + permission-widener IPC pipelines, the rendezvous
-online-status cluster, socks/change_id/relay/`IdPk` residue) is excised. All source gates green (the
+online-status cluster, socks/change_id/relay/`IdPk` residue) is excised. **Superseded (host-key
+retirement):** the R-S17 fingerprint/first-contact-pin/`--get-fingerprint` GUI items in that sweep
+were subsequently RETIRED with the whole host-key subsystem — the CPace PRS is now derived from the
+password alone (fixed salt, R-P1) and there is no host identity, host-proof, or local pin (R-P5), so
+the fingerprint boards, the pin/known-hosts dialogs, and the `--get-fingerprint`/`--pin-host` CLI are
+removed, not fixed. All source gates green (the
 `verify-release` bundle + `flutter-verify`), zero dangling references across all five platforms, and
 R-B2 reproducibility re-proven per release (build-release.sh → dist/SHA256SUMS, double-build A==B per
 target). Detail is retained as the implementation record in the
@@ -63,8 +66,9 @@ segment / coalesce / flow-control-manipulate the connection at will. The
 cryptographic construction reduces this attacker to (at most) a DoS: post-key
 manipulation fails the Poly1305 tag (R-T7, no ≤1-byte bypass) → poison →
 fail-closed; reorder/replay/drop desync the per-direction monotonic nonce
-(R-A5); first-contact MITM fails the mutual PAKE; substitution fails the R-S17
-Ed25519 host-proof bound to the session transcript; and the pre-key parsers
+(R-A5); first-contact MITM fails the mutual PAKE; a substitute that does not know
+the password fails the PAKE (one that does is out of scope per §2 — peer identity
+rests on the shared password alone, with no host-key pin, R-P5); and the pre-key parsers
 (frame codec, protobuf 3.7.2, CPace fixed-length fields) are panic-free, so
 injected garbage cannot crash the `panic='abort'` process. One genuine DoS lever
 the model surfaced was **fixed** (`f1ecfb0`): the pre-key handshake *sends* had
@@ -217,7 +221,7 @@ Prior re-prove (superseded): **R-B2 was re-proven on all three platforms at HEAD
 `6fbae50`** — after this session's two *source-changing* commits: the full-access
 pin reversal (`9a83b50`, one controlled-side mode for the authenticated owner)
 and the at-rest credential change (`6fbae50`, the CPace PRS now stored as a
-memory-hard Argon2id hash salted by the host key, never the plaintext — R-P1).
+memory-hard Argon2id hash, never the plaintext — R-P1).
 Those genuinely change the binaries, so the new hashes differ from the prior
 doc-only-stable `313f776` set — **A==B at this HEAD is the proof, not a match to
 the old hashes**. The new byte-identical (A==B) double-build SHA-256s:
@@ -372,6 +376,13 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   ISK) but is key-bound because it travels encrypted as the first post-key frame with
   session-unique CPace-authenticated `sid/Ya/Yb` (test `r_s17_host_proof_binds_pk_to_the_session`).
   The R-V3 independent expert review (above) is now DONE (2026-07-02, docs/CRYPTO-AUDIT-2026-07-02.md).
+  **Superseded (2026-07-04, host-key retirement):** the host-proof / no-TOFU host-key-pin elements
+  these two audits reviewed (the `HostIdentity` Ed25519 proof, the viewer pin-compare, the DiD-1
+  `set_pinned_pk` confinement gate, DiD-3's host-proof signing, and the host-key-derived PRS salt) are
+  now RETIRED — the CPace PRS is derived from the password alone (fixed salt, R-P1) with no host
+  identity, host-proof, or local pin (R-P5), so those specific items are moot. The audits' core
+  findings on the PAKE state machine, two-key cipher, constant-time paths, R-P3 MAC, and Argon2id
+  memory-hardness are UNAFFECTED and stand.
 - **Local IPC/CM authorization audit — ✅ PERFORMED 2026-07-01; VERDICT SOUND.** A
   dedicated adversarial pass over the LOCAL trust boundary (a hostile same-host
   process — foreign-uid or same-uid) traced the accept→authz→dispatch on every one of
@@ -484,6 +495,16 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   defects + 1 live race this earlier note missed).**
 
 ## ✅ CLOSED — the excision-vestige backlog + the R-S17 pin-GUI defects (implemented 2026-07-04)
+
+> **⤷ SUPERSEDED (2026-07-04, host-key retirement).** The R-S17 pin-GUI items in this record — I-1
+> (fingerprint boards render), I-2 (first-contact fingerprint-entry pin dialog), I-3 (host-key-mismatch
+> re-key loop), and I-8 (`--get-fingerprint` phantom-key race) — described fixes to the host-key /
+> fingerprint / known-hosts subsystem, which has since been **RETIRED in full** (spec `16b67a2`). The
+> CPace PRS is now derived from the password alone (fixed salt, R-P1); there is no host identity,
+> host-proof, or local pin (R-P5). So the fingerprint boards, the pin/known-hosts dialogs, the
+> `HostIdentity` frame, and the `--get-fingerprint`/`--pin-host`/`--forget-host` CLI are **removed, not
+> fixed** — those I-items are retained below only as the historical record. The non-pin items in this
+> backlog (the dead-scaffolding excisions) stand.
 
 **✅ STATUS: ALL CLOSED — 2026-07-04.** The backlog enumerated below was IMPLEMENTED in full by a
 single coherent excision pass (36 files, **+441 / −1790**) and reviewed to standard: all source gates

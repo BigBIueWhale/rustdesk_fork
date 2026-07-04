@@ -1301,67 +1301,6 @@ impl<T: InvokeUiSession> Session<T> {
         self.reconnect(false);
     }
 
-    /// R-S17/R-G5 (MISMATCH re-pin): the box keyed but presented a DIFFERENT key than the pin (the
-    /// contrived stale-PRS case), so keying stashed the VERIFIED new key in `pending_host_pk`. After
-    /// the operator confirms the new fingerprint out-of-band (via the friction-bearing re-pin dialog),
-    /// adopt that stashed key and reconnect. No-op if nothing is staged (the keyed abort always stages
-    /// a VERIFIED key first), so a peer message can never drive a pin (R-S15).
-    pub fn set_pin_host_and_reconnect(&self) {
-        let id = self.get_id();
-        let pk = self.lc.read().unwrap().pending_host_pk.clone();
-        match pk {
-            Some(pk) => {
-                if let Err(e) = hbb_common::host_pin::set_pinned_pk(&id, &pk) {
-                    log::error!("R-S17: failed to pin host {id}: {e}");
-                    return;
-                }
-            }
-            None => {
-                log::warn!("R-S17: no pending host key to pin for {id} — refusing to pin");
-                return;
-            }
-        }
-        self.reconnect(false);
-    }
-
-    /// R-S17/R-G5/I-2 (first-CONTACT pin seed): a no-TOFU direct-IP fork cannot key with an UNPINNED
-    /// host — the CPace PRS is Argon2id-salted by the pinned key, so keying bails BEFORE the box's key
-    /// is ever received (`pending_host_pk` stays None), which is why `set_pin_host_and_reconnect` above
-    /// cannot seed a first contact. Instead the operator TYPES the box's fingerprint (learned
-    /// out-of-band via `--get-fingerprint` on the box) into the unknown-host dialog; this pins THAT
-    /// key for the address and reconnects. Friction-bearing (the operator must type the exact 64-hex
-    /// key), so it never trust-on-first-uses a peer-supplied key (R-S15) — the honest first-contact UI
-    /// for a no-TOFU design. Mirrors the headless `--pin-host` CLI decode.
-    pub fn pin_host_by_fingerprint(&self, fingerprint: String) {
-        let id = self.get_id();
-        // Accept any whitespace-grouped format `--get-fingerprint` prints; require exactly 64 hex
-        // chars = the 32-byte Ed25519 public key.
-        let hex: String = fingerprint.chars().filter(|c| !c.is_whitespace()).collect();
-        let pk: Option<Vec<u8>> = if hex.len() == 64 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
-            (0..64)
-                .step_by(2)
-                .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
-                .collect()
-        } else {
-            None
-        };
-        match pk {
-            Some(pk) => {
-                if let Err(e) = hbb_common::host_pin::set_pinned_pk(&id, &pk) {
-                    log::error!("R-S17: failed to pin host {id}: {e}");
-                    return;
-                }
-            }
-            None => {
-                log::warn!(
-                    "R-S17: invalid host-key fingerprint for {id} (need 64 hex chars) — refusing to pin"
-                );
-                return;
-            }
-        }
-        self.reconnect(false);
-    }
-
     #[cfg(not(feature = "flutter"))]
     pub fn get_icon_path(&self, file_type: i32, ext: String) -> String {
         let mut path = Config::icon_path();
@@ -1658,7 +1597,6 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn close_success(&self);
     fn update_quality_status(&self, qs: QualityStatus);
     fn set_connection_type(&self, stream_type: &str);
-    fn set_fingerprint(&self, fingerprint: String);
     fn job_error(&self, id: i32, err: String, file_num: i32);
     fn job_done(&self, id: i32, file_num: i32);
     fn clear_all_jobs(&self);

@@ -93,7 +93,7 @@ fn pinned_policy_is_the_single_source_of_truth() {
 }
 
 /// R-P1/R-S16: the permanent password is held at rest ONLY as the memory-hard,
-/// host-key-salted Argon2id CPace PRS — NEVER the plaintext and NEVER a fast
+/// fixed-salt Argon2id CPace PRS — NEVER the plaintext and NEVER a fast
 /// (SHA256) hash. Read live on every connection, so a change takes effect on the
 /// next handshake.
 #[test]
@@ -106,18 +106,17 @@ fn permanent_password_prs_is_memory_hard_hash() {
     assert_ne!(prs, pw, "the PRS must not be the plaintext password");
     assert!(!prs.is_empty(), "a set password yields a non-empty PRS");
 
-    // It is EXACTLY base64(Argon2id(NFC(pw), salt(host_pubkey))): deriving against the
-    // box's own host public key reproduces the stored PRS, so both ends agree (the
-    // viewer derives the identical value from the box's PINNED key).
-    let host_pubkey = Config::get_key_pair().1;
+    // It is EXACTLY base64(Argon2id(NFC(pw), fixed salt)): deriving from the password
+    // alone reproduces the stored PRS, so both ends agree (the viewer derives the
+    // identical value from the typed password, with nothing per-box in the salt).
     assert_eq!(
         prs,
-        hbb_common::config::derive_cpace_prs(pw, &host_pubkey).expect("derive PRS"),
+        hbb_common::config::derive_cpace_prs(pw).expect("derive PRS"),
         "the stored PRS must equal the documented Argon2id derivation"
     );
 
-    // Stable for the same password + key: re-setting the SAME password is idempotent
-    // and yields the SAME PRS (no per-set randomness — the salt is the host key).
+    // Stable for the same password: re-setting the SAME password is idempotent
+    // and yields the SAME PRS (no per-set randomness — the salt is a fixed constant).
     assert!(Config::set_permanent_password(pw));
     assert_eq!(Config::get_permanent_password_prs(), prs);
 

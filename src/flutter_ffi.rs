@@ -305,27 +305,6 @@ pub fn session_set_connect_password(session_id: SessionID, password: String, rem
     session_on_waiting_for_image_dialog_show(session_id);
 }
 
-// R-S17/R-G5 (first-connect pin seed): the `host-not-pinned-prompt` dialog's accept lands here
-// after the operator confirmed the fingerprint out-of-band. Pins the host key the keying stashed
-// and reconnects (the reconnect's pin compare then matches). Never seeds from a peer message.
-pub fn session_pin_host(session_id: SessionID) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.set_pin_host_and_reconnect();
-    }
-    session_on_waiting_for_image_dialog_show(session_id);
-}
-
-// R-S17/R-G5/I-2 (first-contact pin seed): the `host-not-pinned-prompt` dialog's "Pin" button lands
-// here with the fingerprint the operator TYPED (learned out-of-band via `--get-fingerprint` on the
-// box). Validate 64-hex, pin THAT key, and reconnect. Distinct from `session_pin_host` above (the
-// MISMATCH re-pin, which adopts the key the keying already stashed). Both are friction-bearing.
-pub fn session_pin_host_by_fingerprint(session_id: SessionID, fingerprint: String) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.pin_host_by_fingerprint(fingerprint);
-    }
-    session_on_waiting_for_image_dialog_show(session_id);
-}
-
 pub fn session_toggle_option(session_id: SessionID, value: String) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         log::warn!("toggle option {}", &value);
@@ -1625,36 +1604,6 @@ pub fn main_get_langs() -> String {
 
 pub fn main_set_permanent_password_with_result(password: String) -> bool {
     ui_interface::set_permanent_password_with_result(password)
-}
-
-pub fn main_get_fingerprint() -> String {
-    get_fingerprint()
-}
-
-// R-S17/R-G5: the known_hosts MANAGE view's data — the pinned hosts as
-// [{"address":..,"fingerprint":..}, ...]. The GUI twin of the `--list-known-hosts` CLI;
-// the pin store keeps the raw pk as hex, so convert to the displayed fingerprint here
-// (mirroring core_main's --list-known-hosts decode).
-pub fn main_list_pinned_hosts() -> String {
-    let v: Vec<serde_json::Value> = hbb_common::host_pin::list_pinned()
-        .into_iter()
-        .map(|(addr, hex)| {
-            let bytes: Option<Vec<u8>> = (0..hex.len())
-                .step_by(2)
-                .map(|i| u8::from_str_radix(hex.get(i..i + 2).unwrap_or(""), 16).ok())
-                .collect();
-            let fp = bytes.map(crate::common::pk_to_fingerprint).unwrap_or(hex);
-            serde_json::json!({ "address": addr, "fingerprint": fp })
-        })
-        .collect();
-    serde_json::to_string(&v).unwrap_or_default()
-}
-
-// R-S17/R-G5: forget a pin (the GUI twin of `--forget-host`) — a legitimately re-keyed or
-// decommissioned box. The next connect re-seeds via the TOFU prompt (R-S17). A deliberate
-// settings action; it is NOT reachable from any peer message (R-S15), only the manage view.
-pub fn main_forget_pinned_host(address: String) -> bool {
-    hbb_common::host_pin::remove_pinned(&address).is_ok()
 }
 
 pub fn cm_get_clients_state() -> String {

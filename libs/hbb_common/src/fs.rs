@@ -752,6 +752,24 @@ fn validate_fs_path_argument(path: &str, arg_name: &str) -> ResultType<()> {
     Ok(())
 }
 
+/// True if `meta` is a symlink (all platforms) or — on Windows — any reparse point. `is_symlink()`
+/// on Windows is true only for `IO_REPARSE_TAG_SYMLINK` and MISSES NTFS **junctions**
+/// (`IO_REPARSE_TAG_MOUNT_POINT`), so this also tests `file_attributes() &
+/// FILE_ATTRIBUTE_REPARSE_POINT` — the same junction-inclusive primitive used by
+/// `src/platform/windows/acl.rs::is_reparse_point`. This is defense-in-depth atop the handle-
+/// relative no-follow walk (that walk is the real R-S8 fix; a stat like this is a separate syscall
+/// from the open and so TOCTOU-prone on its own — hence not the sole guard).
+fn is_symlink_or_reparse_point(meta: &std::fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        if meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return true;
+        }
+    }
+    meta.file_type().is_symlink()
+}
+
 fn validate_no_symlink_components(base: &PathBuf, name: &str) -> ResultType<()> {
     if name.is_empty() {
         return Ok(());
@@ -763,8 +781,10 @@ fn validate_no_symlink_components(base: &PathBuf, name: &str) -> ResultType<()> 
                 current.push(seg);
                 match std::fs::symlink_metadata(&current) {
                     Ok(meta) => {
-                        if meta.file_type().is_symlink() {
-                            bail!("symlink path component is not allowed");
+                        if is_symlink_or_reparse_point(&meta) {
+                            bail!(
+                                "symlink or reparse-point (junction) path component is not allowed"
+                            );
                         }
                     }
                     Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
@@ -967,15 +987,422 @@ fn open_existing_regular_no_follow(path: &Path) -> std::io::Result<std::fs::File
     open_regular_child_no_follow(parent.as_raw_fd(), &name, flags, 0)
 }
 
+/// R-S8 / R-A5 — the WINDOWS equivalent of the Unix `openat(O_NOFOLLOW)` receive-write walk.
+///
+/// Win32 `CreateFileW` re-resolves the whole path from its string on every call, so a per-component
+/// `CreateFileW(FILE_FLAG_OPEN_REPARSE_POINT)` still *follows* a junction / mount-point / symlink
+/// planted on a **parent** directory between validation and write — the intermediate-directory
+/// TOCTOU. The only user-mode primitive that opens a child *relative to a parent directory handle*
+/// (the real `openat` analogue) is the NT layer: `NtCreateFile` with
+/// `OBJECT_ATTRIBUTES{ RootDirectory = parent_handle, ObjectName = <bare component> }`. This module
+/// opens the volume root once (Win32, backup-semantics + open-reparse-point — the analogue of the
+/// Unix walk's `/` anchor), then walks each `Normal` component with `NtCreateFile` no-follow
+/// (`FILE_OPEN_REPARSE_POINT | FILE_DIRECTORY_FILE`), fail-closed **rejecting** any component whose
+/// handle reports `FILE_ATTRIBUTE_REPARSE_POINT` (catches NTFS **junctions**, `IO_REPARSE_TAG_
+/// MOUNT_POINT`, *and* symlinks — the junctions that a plain `is_symlink()` misses). The final
+/// target is opened relative to the walked parent handle and finalized handle-relative
+/// (`NtSetInformationFile(FileRenameInformation, RootDirectory = parent)`), so no step ever
+/// re-resolves a parent by path. This mirrors the Unix `open_parent_dir_no_follow` walk exactly and
+/// closes the same intermediate-directory race on Windows; it is behavior-tested against a planted
+/// NTFS junction in the `#[cfg(windows)]` tests below (validated in the §12.2 Windows build VM).
+#[cfg(windows)]
+mod nt_nofollow {
+    use std::ffi::OsStr;
+    use std::io;
+    use std::mem::{size_of, zeroed};
+    use std::os::windows::ffi::OsStrExt;
+    use std::os::windows::fs::OpenOptionsExt;
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use std::path::{Component, Path, Prefix};
+    use std::ptr::{copy_nonoverlapping, null_mut};
+
+    use ntapi::ntioapi::{
+        FileAttributeTagInformation, FileDispositionInformation, FileRenameInformation,
+        NtCreateFile, NtQueryInformationFile, NtSetInformationFile, FILE_ATTRIBUTE_TAG_INFORMATION,
+        FILE_DIRECTORY_FILE, FILE_DISPOSITION_INFORMATION, FILE_NON_DIRECTORY_FILE, FILE_OPEN,
+        FILE_OPEN_FOR_BACKUP_INTENT, FILE_OPEN_IF, FILE_OPEN_REPARSE_POINT,
+        FILE_RENAME_INFORMATION, FILE_SYNCHRONOUS_IO_NONALERT, IO_STATUS_BLOCK,
+    };
+    use winapi::shared::ntdef::{
+        HANDLE, NTSTATUS, NT_SUCCESS, OBJECT_ATTRIBUTES, OBJ_CASE_INSENSITIVE, UNICODE_STRING,
+    };
+    use winapi::um::winbase::{FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT};
+    use winapi::um::winnt::{
+        DELETE, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT, FILE_GENERIC_READ,
+        FILE_GENERIC_WRITE, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
+        FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE, FILE_WRITE_ATTRIBUTES, SYNCHRONIZE,
+    };
+
+    const SHARE_ALL: u32 = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+    // STATUS codes mapped to io::ErrorKind::NotFound so a missing artifact is a no-op (ENOENT twin).
+    const STATUS_OBJECT_NAME_NOT_FOUND: NTSTATUS = 0xC000_0034u32 as NTSTATUS;
+    const STATUS_OBJECT_PATH_NOT_FOUND: NTSTATUS = 0xC000_003Au32 as NTSTATUS;
+
+    fn invalid(msg: &'static str) -> io::Error {
+        io::Error::new(io::ErrorKind::InvalidInput, msg)
+    }
+
+    fn nt_err(status: NTSTATUS) -> io::Error {
+        if status == STATUS_OBJECT_NAME_NOT_FOUND || status == STATUS_OBJECT_PATH_NOT_FOUND {
+            io::Error::from(io::ErrorKind::NotFound)
+        } else {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("NTSTATUS 0x{:08x}", status as u32),
+            )
+        }
+    }
+
+    /// A `Normal` path component -> UTF-16, rejecting NUL / separators / drive-colon (defense in
+    /// depth; `Path::components()` never yields these in a `Normal`, but the receive path is peer-
+    /// influenced so we validate anyway).
+    fn component_wide(os: &OsStr) -> io::Result<Vec<u16>> {
+        let w: Vec<u16> = os.encode_wide().collect();
+        if w.is_empty() {
+            return Err(invalid("empty path component"));
+        }
+        if w.iter()
+            .any(|&c| c == 0 || c == b'\\' as u16 || c == b'/' as u16 || c == b':' as u16)
+        {
+            return Err(invalid("illegal character in path component"));
+        }
+        Ok(w)
+    }
+
+    fn file_name_wide(path: &Path) -> io::Result<Vec<u16>> {
+        component_wide(
+            path.file_name()
+                .ok_or_else(|| invalid("receive path has no file name"))?,
+        )
+    }
+
+    fn parent_dir(path: &Path) -> io::Result<&Path> {
+        path.parent()
+            .ok_or_else(|| invalid("receive path has no parent directory"))
+    }
+
+    /// The core reparse-safe, handle-relative open — the `openat(O_NOFOLLOW)` analogue. `parent` is
+    /// a directory HANDLE; `name` a bare component (UTF-16, not NUL-terminated). ALWAYS no-follow
+    /// (`FILE_OPEN_REPARSE_POINT`) + synchronous, and ALWAYS fail-closed if the opened object is a
+    /// reparse point (junction or symlink) — verified on the exact handle just opened, so there is
+    /// no re-open and no window.
+    unsafe fn nt_open_at(
+        parent: HANDLE,
+        name: &[u16],
+        desired_access: u32,
+        disposition: u32,
+        create_options: u32,
+    ) -> io::Result<OwnedHandle> {
+        let nbytes = name
+            .len()
+            .checked_mul(2)
+            .filter(|n| *n <= u16::MAX as usize)
+            .ok_or_else(|| invalid("path component too long"))?;
+        // `ustr`, `oa` (and the `name` slice) must all outlive the NtCreateFile call.
+        let mut ustr = UNICODE_STRING {
+            Length: nbytes as u16,        // bytes, not chars; no NUL counted
+            MaximumLength: nbytes as u16, // bytes
+            Buffer: name.as_ptr() as *mut u16,
+        };
+        let mut oa: OBJECT_ATTRIBUTES = zeroed();
+        oa.Length = size_of::<OBJECT_ATTRIBUTES>() as u32;
+        oa.RootDirectory = parent; // the openat anchor: resolve relative to this handle
+        oa.ObjectName = &mut ustr;
+        oa.Attributes = OBJ_CASE_INSENSITIVE; // Windows-native case handling
+
+        let mut handle: HANDLE = null_mut();
+        let mut iosb: IO_STATUS_BLOCK = zeroed();
+        let status = NtCreateFile(
+            &mut handle,
+            // SYNCHRONIZE is mandatory with FILE_SYNCHRONOUS_IO_NONALERT; FILE_READ_ATTRIBUTES is
+            // needed for the reparse query below (matches the cap-std reference).
+            desired_access | SYNCHRONIZE | FILE_READ_ATTRIBUTES,
+            &mut oa,
+            &mut iosb,
+            null_mut(),
+            FILE_ATTRIBUTE_NORMAL,
+            SHARE_ALL,
+            disposition,
+            create_options | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
+            null_mut(),
+            0,
+        );
+        if !NT_SUCCESS(status) {
+            return Err(nt_err(status));
+        }
+        // Own the handle immediately so every error path closes it (no leak, no double-close).
+        let owned = OwnedHandle::from_raw_handle(handle as _);
+
+        let mut tag: FILE_ATTRIBUTE_TAG_INFORMATION = zeroed();
+        let mut iosb2: IO_STATUS_BLOCK = zeroed();
+        let st = NtQueryInformationFile(
+            handle,
+            &mut iosb2,
+            (&mut tag as *mut FILE_ATTRIBUTE_TAG_INFORMATION).cast(),
+            size_of::<FILE_ATTRIBUTE_TAG_INFORMATION>() as u32,
+            FileAttributeTagInformation,
+        );
+        if !NT_SUCCESS(st) {
+            // Fail closed: if we cannot prove it is NOT a reparse point, refuse.
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "R-S8: could not verify reparse status of receive-path component; refusing",
+            ));
+        }
+        if tag.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "R-S8: reparse-point (NTFS junction or symlink) receive-path component is not allowed",
+            ));
+        }
+        Ok(owned)
+    }
+
+    /// Open one intermediate directory component no-follow. Directories forbid generic rights — use
+    /// list/traverse (+ read-attributes/SYNCHRONIZE added by `nt_open_at`). `create` mirrors the
+    /// Unix walk's `mkdirat` (FILE_OPEN_IF creates the dir if absent).
+    fn open_dir_at(parent: HANDLE, name: &[u16], create: bool) -> io::Result<OwnedHandle> {
+        unsafe {
+            nt_open_at(
+                parent,
+                name,
+                FILE_LIST_DIRECTORY | FILE_TRAVERSE,
+                if create { FILE_OPEN_IF } else { FILE_OPEN },
+                FILE_DIRECTORY_FILE | FILE_OPEN_FOR_BACKUP_INTENT,
+            )
+        }
+    }
+
+    /// Open the volume root (`\\?\C:\`) as the walk anchor — the Windows analogue of the Unix walk's
+    /// `/` root. Backup-semantics opens the directory; open-reparse-point keeps it no-follow.
+    fn open_root_anchor(drive: u8) -> io::Result<OwnedHandle> {
+        let root = format!(r"\\?\{}:\", drive as char);
+        let f = std::fs::OpenOptions::new()
+            .access_mode(FILE_LIST_DIRECTORY | FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE)
+            .share_mode(SHARE_ALL)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(&root)?;
+        Ok(OwnedHandle::from(f))
+    }
+
+    /// Split an ABSOLUTE local path into (drive-letter, [Normal components]); reject `..`, non-disk
+    /// prefixes (UNC / device namespace), and relative paths — fail-closed, since the receive base
+    /// is always a local absolute drive path.
+    fn decompose(path: &Path) -> io::Result<(u8, Vec<Vec<u16>>)> {
+        let mut it = path.components();
+        let drive = match it.next() {
+            Some(Component::Prefix(p)) => match p.kind() {
+                Prefix::Disk(d) | Prefix::VerbatimDisk(d) => d,
+                _ => return Err(invalid("unsupported path prefix in receive path")),
+            },
+            _ => return Err(invalid("receive path is not an absolute drive path")),
+        };
+        match it.next() {
+            Some(Component::RootDir) => {}
+            _ => return Err(invalid("receive path is not rooted")),
+        }
+        let mut comps = Vec::new();
+        for c in it {
+            match c {
+                Component::Normal(os) => comps.push(component_wide(os)?),
+                Component::CurDir => {}
+                Component::ParentDir => {
+                    return Err(invalid("parent traversal is not allowed in receive path"))
+                }
+                Component::RootDir => {}
+                Component::Prefix(_) => {
+                    return Err(invalid("unexpected path prefix in receive path"))
+                }
+            }
+        }
+        Ok((drive, comps))
+    }
+
+    /// Walk to the parent directory handle reparse-safely (mirrors `open_parent_dir_no_follow`).
+    /// Each reassignment keeps the previous handle alive across the `NtCreateFile` that consumes it.
+    fn walk_to_parent(parent_path: &Path, create_missing: bool) -> io::Result<OwnedHandle> {
+        let (drive, comps) = decompose(parent_path)?;
+        let mut cur = open_root_anchor(drive)?;
+        for name in &comps {
+            cur = open_dir_at(cur.as_raw_handle() as HANDLE, name, create_missing)?;
+        }
+        Ok(cur)
+    }
+
+    unsafe fn nt_set_dispose_delete(handle: HANDLE) -> io::Result<()> {
+        // ntapi 0.4 spells the field `DeleteFileA` (a naming artifact); it is the BOOLEAN DeleteFile.
+        let mut info = FILE_DISPOSITION_INFORMATION { DeleteFileA: 1 };
+        let mut iosb: IO_STATUS_BLOCK = zeroed();
+        let st = NtSetInformationFile(
+            handle,
+            &mut iosb,
+            (&mut info as *mut FILE_DISPOSITION_INFORMATION).cast(),
+            size_of::<FILE_DISPOSITION_INFORMATION>() as u32,
+            FileDispositionInformation,
+        );
+        if NT_SUCCESS(st) {
+            Ok(())
+        } else {
+            Err(nt_err(st))
+        }
+    }
+
+    /// Handle-relative rename via `NtSetInformationFile(FileRenameInformation)` — the `renameat`
+    /// analogue. `target` is the source file handle (needs DELETE); `new_parent` the directory the
+    /// new name is relative to; `new_name` a bare component. Replaces the destination *name* (never
+    /// follows a symlink at the destination), matching Unix `renameat`.
+    unsafe fn nt_rename_at(
+        target: HANDLE,
+        new_parent: HANDLE,
+        new_name: &[u16],
+        replace: bool,
+    ) -> io::Result<()> {
+        let name_bytes = new_name.len() * 2;
+        let total = size_of::<FILE_RENAME_INFORMATION>() + name_bytes;
+        // Vec<u64> guarantees the 8-byte alignment the embedded HANDLE requires.
+        let mut buf = vec![0u64; (total + 7) / 8];
+        let p = buf.as_mut_ptr() as *mut FILE_RENAME_INFORMATION;
+        (*p).ReplaceIfExists = u8::from(replace);
+        (*p).RootDirectory = new_parent;
+        (*p).FileNameLength = name_bytes as u32;
+        copy_nonoverlapping(
+            new_name.as_ptr(),
+            (*p).FileName.as_mut_ptr(),
+            new_name.len(),
+        );
+        // Length = offset_of(FileName) + name bytes (the true header size; avoids trailing padding).
+        let name_off = ((*p).FileName.as_ptr() as usize) - (p as usize);
+        let length = (name_off + name_bytes) as u32;
+        let mut iosb: IO_STATUS_BLOCK = zeroed();
+        let st = NtSetInformationFile(target, &mut iosb, p.cast(), length, FileRenameInformation);
+        if NT_SUCCESS(st) {
+            Ok(())
+        } else {
+            Err(nt_err(st))
+        }
+    }
+
+    /// Delete a child by bare name, handle-relative + no-follow. A reparse-point child is refused by
+    /// `nt_open_at` (never followed, never deleted); a missing child is a no-op (ENOENT twin).
+    fn delete_child(parent: HANDLE, name: &[u16]) -> io::Result<()> {
+        let h =
+            match unsafe { nt_open_at(parent, name, DELETE, FILE_OPEN, FILE_NON_DIRECTORY_FILE) } {
+                Ok(h) => h,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+                Err(e) => return Err(e),
+            };
+        unsafe { nt_set_dispose_delete(h.as_raw_handle() as HANDLE) }
+    }
+
+    // ---- crate-facing entry points (called by the `#[cfg(windows)]` branches of the receive path) ----
+
+    /// R-S8/R-A5: open a receive-WRITE target reparse-safely (parent walk + no-follow child open).
+    /// Uses FILE_OPEN_IF (never OVERWRITE_IF), so a reparse-point final component is rejected BEFORE
+    /// any truncation; the (verified-regular) file is then truncated explicitly — the exact parity
+    /// of the Unix `openat(O_CREAT|O_NOFOLLOW|O_TRUNC)`.
+    pub(super) fn open_recv_write(path: &Path, truncate: bool) -> io::Result<std::fs::File> {
+        let parent = walk_to_parent(parent_dir(path)?, true)?;
+        let name = file_name_wide(path)?;
+        let owned = unsafe {
+            nt_open_at(
+                parent.as_raw_handle() as HANDLE,
+                &name,
+                FILE_GENERIC_WRITE,
+                FILE_OPEN_IF,
+                FILE_NON_DIRECTORY_FILE,
+            )?
+        };
+        let file = std::fs::File::from(owned);
+        if truncate {
+            file.set_len(0)?;
+        }
+        Ok(file)
+    }
+
+    /// R-S8/R-A5: remove the `.download`/`.digest` artifacts handle-relative (best-effort cleanup).
+    pub(super) fn remove_recv_artifacts(download_path: &Path, digest_path: &Path) {
+        let Ok(parent_path) = parent_dir(download_path) else {
+            return;
+        };
+        let Ok(parent) = walk_to_parent(parent_path, false) else {
+            return;
+        };
+        let ph = parent.as_raw_handle() as HANDLE;
+        for p in [download_path, digest_path] {
+            if let Ok(name) = file_name_wide(p) {
+                let _ = delete_child(ph, &name);
+            }
+        }
+    }
+
+    /// R-S8/R-A5: finalize the receive write handle-relative — drop the digest, rename `.download`
+    /// onto the final name via `NtSetInformationFile(FileRenameInformation, RootDirectory=parent)`,
+    /// and set the mtime on the SAME handle (no re-open, no path re-resolution). Mirrors the Unix
+    /// `renameat` finalize.
+    pub(super) fn finish_recv_write(
+        final_path: &Path,
+        download_path: &Path,
+        digest_path: &Path,
+        mtime: filetime::FileTime,
+    ) -> io::Result<()> {
+        let parent = walk_to_parent(parent_dir(final_path)?, false)?;
+        let ph = parent.as_raw_handle() as HANDLE;
+        let final_name = file_name_wide(final_path)?;
+        let download_name = file_name_wide(download_path)?;
+        if let Ok(digest_name) = file_name_wide(digest_path) {
+            let _ = delete_child(ph, &digest_name);
+        }
+        // Open `.download` (must exist) with DELETE (for the rename) + FILE_WRITE_ATTRIBUTES (for the
+        // mtime), no-follow. Rename it onto `final_name` relative to the parent handle, then set the
+        // mtime on the same (now-renamed) handle.
+        let src = unsafe {
+            nt_open_at(
+                ph,
+                &download_name,
+                DELETE | FILE_WRITE_ATTRIBUTES,
+                FILE_OPEN,
+                FILE_NON_DIRECTORY_FILE,
+            )?
+        };
+        unsafe { nt_rename_at(src.as_raw_handle() as HANDLE, ph, &final_name, true)? };
+        let file = std::fs::File::from(src);
+        filetime::set_file_handle_times(&file, None, Some(mtime))?;
+        Ok(())
+    }
+
+    /// R-S8/R-A5: read a receive sidecar (resume digest) handle-relative + no-follow, size-bounded.
+    pub(super) fn read_recv_sidecar(path: &Path, max_bytes: u64) -> io::Result<String> {
+        use std::io::Read;
+        let parent = walk_to_parent(parent_dir(path)?, false)?;
+        let name = file_name_wide(path)?;
+        let owned = unsafe {
+            nt_open_at(
+                parent.as_raw_handle() as HANDLE,
+                &name,
+                FILE_GENERIC_READ,
+                FILE_OPEN,
+                FILE_NON_DIRECTORY_FILE,
+            )?
+        };
+        let file = std::fs::File::from(owned);
+        let mut reader = file.take(max_bytes.saturating_add(1));
+        let mut content = String::new();
+        reader.read_to_string(&mut content)?;
+        if content.len() as u64 > max_bytes {
+            return Err(invalid("receive sidecar is too large"));
+        }
+        Ok(content)
+    }
+}
+
 /// R-S8 / R-A5: open a file-transfer RECEIVE-write target with NO-FOLLOW semantics across the
 /// whole parent path, not just the final component. The Unix path creates/opens every parent
 /// directory via `mkdirat`/`openat(O_DIRECTORY|O_NOFOLLOW)` and then opens the target with
-/// `openat(O_NOFOLLOW)`, rejecting symlinks, FIFOs, devices, and other non-regular targets. This
-/// closes the intermediate-directory race documented in HARDENING_STATUS: a local user cannot swap a
-/// parent directory for a symlink between validation and root's write.
-///
-/// Windows keeps the standard reparse-point no-follow flag; the Windows artifact path is validated
-/// by its own build VM, while the Unix handle-walk is behavior-tested in this repository.
+/// `openat(O_NOFOLLOW)`, rejecting symlinks, FIFOs, devices, and other non-regular targets; the
+/// Windows path performs the identical walk with `NtCreateFile` + `OBJECT_ATTRIBUTES.RootDirectory`
+/// (see the `nt_nofollow` module above), rejecting NTFS junctions and symlinks on every component.
+/// Both close the intermediate-directory race documented in HARDENING_STATUS: a local user cannot
+/// swap a parent directory for a reparse point between validation and the peer's write.
 fn open_recv_write_no_follow_std(path: &Path, truncate: bool) -> std::io::Result<std::fs::File> {
     #[cfg(unix)]
     {
@@ -996,16 +1423,15 @@ fn open_recv_write_no_follow_std(path: &Path, truncate: bool) -> std::io::Result
         open_regular_child_no_follow(parent.as_raw_fd(), &name, flags, 0o666)
     }
 
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        nt_nofollow::open_recv_write(path, truncate)
+    }
+
+    #[cfg(all(not(unix), not(windows)))]
     {
         let mut opts = std::fs::OpenOptions::new();
         opts.write(true).create(true).truncate(truncate);
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::OpenOptionsExt;
-            const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
-            opts.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
-        }
         opts.open(path)
     }
 }
@@ -1049,7 +1475,11 @@ fn remove_recv_write_artifacts_no_follow(path: &Path) {
             let _ = unlink_recv_child_no_follow(parent.as_raw_fd(), &digest_name);
         }
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        nt_nofollow::remove_recv_artifacts(&download_path, &digest_path);
+    }
+    #[cfg(all(not(unix), not(windows)))]
     {
         std::fs::remove_file(download_path).ok();
         std::fs::remove_file(digest_path).ok();
@@ -1084,7 +1514,14 @@ fn finish_recv_write_no_follow(path: &Path, modified_time: u64) -> std::io::Resu
         return Ok(());
     }
 
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        let download_path = recv_sidecar_path(path, ".download");
+        let digest_path = recv_sidecar_path(path, ".digest");
+        nt_nofollow::finish_recv_write(path, &download_path, &digest_path, mtime)
+    }
+
+    #[cfg(all(not(unix), not(windows)))]
     {
         let download_path = recv_sidecar_path(path, ".download");
         let digest_path = recv_sidecar_path(path, ".digest");
@@ -1109,8 +1546,14 @@ fn read_recv_sidecar_to_string_no_follow(path: &Path, max_bytes: u64) -> std::io
         return Ok(content);
     }
 
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
+        nt_nofollow::read_recv_sidecar(path, max_bytes)
+    }
+
+    #[cfg(all(not(unix), not(windows)))]
+    {
+        let _ = max_bytes;
         std::fs::read_to_string(path)
     }
 }
@@ -2279,6 +2722,200 @@ mod tests {
         );
     }
 
+    // ---- R-S8/R-A5 Windows junction (IO_REPARSE_TAG_MOUNT_POINT) tests ----
+    // These mirror the Unix `recv_write_no_follow_refuses_symlink_{parent_component,target}` tests
+    // but plant an NTFS **junction** (which `is_symlink()` misses and which — unlike a symlink —
+    // needs NO privilege to create, so it is the realistic local-attacker primitive on Windows).
+    // They prove the NT `openat`-equivalent handle-relative walk closes the same parent/target
+    // TOCTOU on Windows. Run in the §12.2 Windows build VM.
+
+    // Create an NTFS junction (mount point) link -> target via `mklink /J` (needs no privilege).
+    #[cfg(windows)]
+    fn make_junction(link: &Path, target: &Path) -> bool {
+        std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    // (mandate #1) A junction planted as an INTERMEDIATE component must be REFUSED, and must not
+    // redirect the write outside the destination tree.
+    #[cfg(windows)]
+    #[test]
+    fn recv_write_no_follow_refuses_junction_parent_component() {
+        let tmp = TestTempDir::new("rustdesk_nofollow_junction_parent");
+        let downloads = tmp.join("downloads");
+        let outside = tmp.join("outside");
+        std::fs::create_dir_all(&downloads).expect("create downloads");
+        std::fs::create_dir_all(&outside).expect("create outside");
+
+        let link = downloads.join("link");
+        assert!(
+            make_junction(&link, &outside),
+            "mklink /J must succeed (unprivileged junction creation)"
+        );
+        let target = link.join("incoming.download");
+
+        let res = open_recv_write_no_follow_std(&target, true);
+        assert!(
+            res.is_err(),
+            "the NT no-follow parent walk must refuse a junction intermediate component"
+        );
+        assert!(
+            !outside.join("incoming.download").exists(),
+            "a junction parent must not redirect the receive write outside the destination tree"
+        );
+    }
+
+    // (mandate #3) A junction planted as the FINAL component (the received-file name) must be
+    // REFUSED, and the junction's target directory must be left untouched.
+    #[cfg(windows)]
+    #[test]
+    fn recv_write_no_follow_refuses_junction_final_component() {
+        let tmp = TestTempDir::new("rustdesk_nofollow_junction_final");
+        let downloads = tmp.join("downloads");
+        let secret_dir = tmp.join("secret_dir");
+        std::fs::create_dir_all(&downloads).expect("create downloads");
+        std::fs::create_dir_all(&secret_dir).expect("create secret_dir");
+        let sentinel = secret_dir.join("sentinel.txt");
+        std::fs::write(&sentinel, b"DO-NOT-TOUCH").expect("write sentinel");
+
+        let target = downloads.join("incoming.download");
+        assert!(
+            make_junction(&target, &secret_dir),
+            "mklink /J must succeed (unprivileged junction creation)"
+        );
+
+        let res = open_recv_write_no_follow_std(&target, true);
+        assert!(
+            res.is_err(),
+            "the NT no-follow open must refuse a junction final component"
+        );
+        assert_eq!(
+            std::fs::read(&sentinel).expect("read sentinel"),
+            b"DO-NOT-TOUCH",
+            "a junction final component must not let the write reach the junction target"
+        );
+        assert!(
+            !secret_dir.join("incoming.download").exists(),
+            "no file must be created inside the junction's target directory"
+        );
+    }
+
+    // (mandate #2) A legitimate non-junction nested path must SUCCEED — the walk must create the
+    // real intermediate directories and open the target (the hardening never breaks a real
+    // transfer), and re-opening an existing regular target must also succeed.
+    #[cfg(windows)]
+    #[test]
+    fn recv_write_no_follow_allows_regular_nested_target_windows() {
+        let tmp = TestTempDir::new("rustdesk_nofollow_ok_win");
+        let downloads = tmp.join("downloads");
+        std::fs::create_dir_all(&downloads).expect("create downloads");
+        let target = downloads
+            .join("sub")
+            .join("deeper")
+            .join("incoming.download");
+
+        let opened = open_recv_write_no_follow_std(&target, true);
+        assert!(
+            opened.is_ok(),
+            "the NT no-follow walk must allow a legit nested non-junction target: {:?}",
+            opened.err()
+        );
+        assert!(target.exists());
+        assert!(
+            open_recv_write_no_follow_std(&target, true).is_ok(),
+            "re-opening an existing regular target (re-download) must not be blocked"
+        );
+    }
+
+    // Defense-in-depth: the cross-platform stat-based `validate_no_symlink_components` must reject a
+    // junction component on Windows (`is_symlink()` alone would miss `IO_REPARSE_TAG_MOUNT_POINT`).
+    #[cfg(windows)]
+    #[test]
+    fn validate_no_symlink_components_rejects_junction_windows() {
+        let tmp = TestTempDir::new("rustdesk_validate_junction");
+        let base = tmp.join("base");
+        let outside = tmp.join("outside");
+        std::fs::create_dir_all(&base).expect("create base");
+        std::fs::create_dir_all(&outside).expect("create outside");
+
+        let link = base.join("j");
+        assert!(
+            make_junction(&link, &outside),
+            "mklink /J must succeed (unprivileged junction creation)"
+        );
+
+        let err = validate_no_symlink_components(&base, "j/payload.txt")
+            .expect_err("a junction path component must be rejected on Windows");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("reparse-point") || msg.contains("junction") || msg.contains("symlink"),
+            "the rejection must name the reparse-point/junction cause: {}",
+            msg
+        );
+    }
+
+    // The NT handle-relative finalize (rename `.download` -> final via
+    // `NtSetInformationFile(FileRenameInformation, RootDirectory=parent)` + handle-set mtime) must
+    // work end-to-end on a legitimate path.
+    #[cfg(windows)]
+    #[test]
+    fn recv_finish_rename_windows_happy_path() {
+        let tmp = TestTempDir::new("rustdesk_finish_win");
+        let downloads = tmp.join("downloads");
+        std::fs::create_dir_all(&downloads).expect("create downloads");
+        let final_path = downloads.join("incoming.txt");
+        let download_path = recv_sidecar_path(&final_path, ".download");
+        let digest_path = recv_sidecar_path(&final_path, ".digest");
+        std::fs::write(&download_path, b"payload").expect("write download");
+        std::fs::write(&digest_path, b"{}").expect("write digest");
+
+        finish_recv_write_no_follow(&final_path, 1_600_000_000).expect("finish receive write");
+
+        assert_eq!(
+            std::fs::read(&final_path).expect("read final"),
+            b"payload",
+            "the NT handle-relative rename must move .download onto the final name"
+        );
+        assert!(!download_path.exists(), ".download must be renamed away");
+        assert!(!digest_path.exists(), ".digest must be removed");
+    }
+
+    // The finalize path shares the parent walk, so a junction PARENT must be refused there too —
+    // even when the `.download` is reachable through the junction, finalization must not proceed.
+    #[cfg(windows)]
+    #[test]
+    fn recv_finish_refuses_junction_parent_windows() {
+        let tmp = TestTempDir::new("rustdesk_finish_junction_parent");
+        let downloads = tmp.join("downloads");
+        let outside = tmp.join("outside");
+        std::fs::create_dir_all(&downloads).expect("create downloads");
+        std::fs::create_dir_all(&outside).expect("create outside");
+        // stage the .download inside `outside` so it is reachable through the junction
+        std::fs::write(outside.join("incoming.txt.download"), b"payload").expect("write download");
+
+        let link = downloads.join("link");
+        assert!(
+            make_junction(&link, &outside),
+            "mklink /J must succeed (unprivileged junction creation)"
+        );
+        let final_path = link.join("incoming.txt");
+
+        let res = finish_recv_write_no_follow(&final_path, 1);
+        assert!(
+            res.is_err(),
+            "finalize must refuse a junction parent component (no rename through the junction)"
+        );
+        assert!(
+            !outside.join("incoming.txt").exists(),
+            "the rename must not have completed through the junction parent"
+        );
+    }
+
     fn new_validation_job(id: i32) -> TransferJob {
         TransferJob::new_write(
             id,
@@ -2328,11 +2965,9 @@ mod tests {
         let mut r = FileTransferSendConfirmRequest::default();
         r.file_num = 0;
         r.union = Some(file_transfer_send_confirm_request::Union::OffsetBlk(1));
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(async {
-                let _ = job.confirm(&r).await;
-            });
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let _ = job.confirm(&r).await;
+        });
     }
 
     fn assert_err_contains(err: anyhow::Error, expected: &str) {

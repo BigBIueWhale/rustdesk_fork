@@ -3321,6 +3321,7 @@ dependencies = [
  "log",
  "mac_address",
  "machine-uid",
+ "ntapi",
  "osascript",
  "pake",
  "protobuf",

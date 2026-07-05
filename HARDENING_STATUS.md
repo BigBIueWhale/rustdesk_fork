@@ -571,76 +571,74 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `recv_write_no_follow_refuses_symlink_{target,parent_component}` +
   `recv_finish_renameat_replaces_symlink_final_...`, `#[cfg(unix)]`) and gated by `verify.sh` (3c) /
   the R-S8/R-A5 grep gate.
-- **Windows file-transfer parent-junction TOCTOU — precise Windows-VM-gated residual (LOW).** The
-  Windows receive-write branch (`fs.rs` `open_recv_write_no_follow_std` ~999–1010, `#[cfg(not(unix))]`)
-  opens only the **final** component reparse-safe (`FILE_FLAG_OPEN_REPARSE_POINT` = `0x0020_0000`, line
-  ~1006) but does **no reparse-safe parent walk** — the OS resolves every intermediate directory by
-  path, *following* any junction / mount-point / symlink on the parent, so the intermediate-directory
-  TOCTOU that the Unix `openat(O_NOFOLLOW)` walk closes stays open on Windows. The Windows
-  finalize/cleanup branches share the gap: `finish_recv_write_no_follow` uses path-based
-  `std::fs::rename` (~1092), `remove_recv_write_artifacts_no_follow` uses `std::fs::remove_file`
-  (~1054), `read_recv_sidecar_to_string_no_follow` uses `std::fs::read_to_string` (~1114) — all resolve
-  parents by path, not relative to a walked handle. Separately (cross-platform code, Windows behavior):
-  `validate_no_symlink_components` (`fs.rs` 755–789) rejects components via
-  `symlink_metadata().file_type().is_symlink()`, but on Windows `is_symlink()` is true only for
-  `IO_REPARSE_TAG_SYMLINK` and **misses NTFS junctions** (`IO_REPARSE_TAG_MOUNT_POINT`) — a junction
-  component passes path-validation outright (the junction-inclusive test is
-  `file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT (0x400)`, already used by
-  `src/platform/windows/acl.rs::is_reparse_point`); being a separate syscall from the open it is a
-  TOCTOU regardless, which is why the *handle-relative walk* — not merely a better attribute test — is
-  the real fix.
-  **Severity LOW, Windows-server only** (the deployed box is Ubuntu/Xorg — unaffected). Exploitation
-  needs a co-located **local** attacker who can plant/swap a reparse point on an intermediate directory
-  that is **on** the receive path *and* writable by them; the redirected write then runs at the service
-  privilege (SYSTEM / the service account). Nuance: creating an NTFS **junction** needs **no** privilege
-  (unprivileged `mklink /J` / `FSCTL_SET_REPARSE_POINT`), a **symlink** needs
-  `SeCreateSymbolicLinkPrivilege`/Developer-Mode — but either way the attacker still needs write access
-  to that specific intermediate dir, which for the default per-user download dir (ACL'd to the owner) a
-  lower-privileged local user lacks; the practical exposure is a **non-default** receive path traversing
-  a directory writable by a lower-privileged principal. Hence LOW.
-  **Exact fix (mirrors the Unix O_NOFOLLOW walk).** Win32 `CreateFileW` **cannot** do it — it has no
-  `openat`/relative-to-handle form and re-resolves parents from the full path each call, so
-  per-component `CreateFileW(FILE_FLAG_OPEN_REPARSE_POINT)` would *not* close the parent race. Use the
-  NT layer: (1) consume the drive `Prefix`/`RootDir` as a start handle — open the volume root (e.g.
-  `\??\C:\`) with `FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT` — the Windows analog of the
-  Unix walk's `/` anchor; (2) for each `Normal` component (reject `..`), `NtOpenFile`/`NtCreateFile`
-  with `OBJECT_ATTRIBUTES{ RootDirectory = parent_handle, ObjectName = &UNICODE_STRING(component) }` +
-  `FILE_OPEN_REPARSE_POINT|FILE_DIRECTORY_FILE` (the real `openat` equivalent — resolves relative to the
-  parent handle and opens the reparse point itself instead of traversing it), then
-  `GetFileInformationByHandle` and **reject** if `dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT`
-  (catches junctions *and* symlinks); (3) open the final target relative to the walked parent handle
-  (`FILE_OPEN_REPARSE_POINT|FILE_NON_DIRECTORY_FILE`, create/open disposition, `FILE_GENERIC_WRITE`),
-  verify it is not a reparse point; (4) finalize relative to that handle — rename via
-  `NtSetInformationFile(FileRenameInformation, RootDirectory=parent)` /
-  `SetFileInformationByHandle(FileRenameInfo)`, sidecar read/remove handle-relative; (5) make
-  `validate_no_symlink_components` junction-inclusive on Windows
-  (`file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT`) as defense-in-depth atop the walk.
-  **Decision: DOCUMENTED, not applied** — the fork's rule is *never ship a Windows security change that
-  cannot be verified here; an unverified patch is worse than a precise documented residual.*
-  Verification boundary, probed empirically (2026-07-05): `cargo check -p hbb_common --target
-  x86_64-pc-windows-msvc` **fails** during the native-C-dep build — `zstd-sys v2.0.11` →
-  `cc-rs: Failed to find tool. Is lib.exe installed?` (no MSVC archiver/toolchain on this Linux host;
-  `sodiumoxide`/`ring` would hit the same wall); the `x86_64-pc-windows-gnu` target is not installed
-  and `x86_64-w64-mingw32-gcc` is absent — so the **integrated** cfg(windows) `fs.rs` change cannot be
-  type-checked in `hbb_common` context here. A standalone `winapi 0.3.9 + ntapi 0.4.1` FFI sketch of the
-  walk's surface (NtOpenFile / NtCreateFile / OBJECT_ATTRIBUTES / UNICODE_STRING /
-  FILE_OPEN_REPARSE_POINT / GetFileInformationByHandle / FILE_ATTRIBUTE_REPARSE_POINT) **does**
-  `cargo check --target x86_64-pc-windows-msvc` GREEN under the pinned 1.75 toolchain — the FFI symbols
-  are real and resolve — but that isolated check does not exercise the integrated change: the
-  `&Path`→per-component `UNICODE_STRING` conversion (Length in **bytes**, not chars), the
-  variable-length `FILE_RENAME_INFORMATION` alloc, the disposition logic, the `crate::ResultType`/
-  async-`File` integration, and the required `Cargo.toml` dependency addition (`ntapi` + winapi
-  `fileapi`/`ntdef`/`ntstatus` features) composing with hbb_common's deps for windows-msvc — none
-  checkable without the blocked in-context Windows check. Applying would ship raw NT syscalls in a
-  SYSTEM-privileged write path that only compiled as an isolated sketch and were never run (a
-  mis-shaped `OBJECT_ATTRIBUTES`/`UNICODE_STRING`/`FILE_RENAME_INFORMATION` = memory corruption).
-  **Must be implemented AND validated in the §12.2 Windows-VM build:** cfg(windows) mirror-tests of
-  `recv_write_no_follow_refuses_symlink_{parent_component,target}` using a **junction**
-  (`FSCTL_SET_REPARSE_POINT`/`mklink /J`) as the intermediate/final component, plus a Windows
-  `verify.sh` gate over the new helper tokens. **Both roles** on Windows (server-receive +
-  viewer-download) share the gap and the fix — same `fs.rs` path. (The `fs.rs` doc comment at ~977
-  already notes the Windows artifact path is "validated by its own build VM"; this residual is that
-  validation's precise to-do.)
+- **Windows file-transfer parent-junction TOCTOU — ✅ CLOSED (applied 2026-07-05, Windows-VM-validated).**
+  The Windows receive-write path now performs the same reparse-safe, handle-relative walk as the POSIX
+  side — the "Windows equivalent" of `openat(O_NOFOLLOW)` that R-S8 mandates. Previously the Windows
+  branch opened only the **final** component reparse-safe and let the OS resolve every intermediate
+  directory *by path*, so a junction / mount-point / symlink planted on a parent between validation and
+  write was followed (the intermediate-directory TOCTOU the Unix walk closes). That path-based resolve
+  is replaced by the NT layer (`fs.rs` module `nt_nofollow`, `#[cfg(windows)]`): open the volume root
+  once via Win32 (`FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT` — the analogue of the Unix
+  `/` anchor), then walk each `Normal` component with `NtCreateFile` +
+  `OBJECT_ATTRIBUTES{ RootDirectory = parent_handle, ObjectName = <bare component> }` +
+  `FILE_OPEN_REPARSE_POINT | FILE_DIRECTORY_FILE` (the real `openat` equivalent — resolves relative to
+  the parent HANDLE and opens the reparse point itself instead of traversing it), fail-closed
+  **rejecting** any component whose handle reports `FILE_ATTRIBUTE_REPARSE_POINT` (catches NTFS
+  **junctions**, `IO_REPARSE_TAG_MOUNT_POINT`, *and* symlinks — the junctions `is_symlink()` misses).
+  The final target is opened relative to the walked handle, and the finalize/cleanup steps that also
+  shared the old gap are now handle-relative too: rename via
+  `NtSetInformationFile(FileRenameInformation, RootDirectory=parent)`, and digest/sidecar read+delete
+  relative to the walked parent — so no step re-resolves a parent by path.
+  `validate_no_symlink_components` is made junction-inclusive on Windows
+  (`file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT (0x400)` — the primitive
+  `src/platform/windows/acl.rs::is_reparse_point` uses) as defense-in-depth atop the walk (being a
+  separate syscall from the open, that stat is TOCTOU-prone on its own, so it complements rather than
+  replaces the handle walk). **Both roles** on Windows — server-receive (upload; the `--cm` process's
+  `ui_cm_interface.rs handle_fs` → `TransferJob::new_write`) and viewer-download (`io_loop.rs`) — ride
+  the same `fs.rs` path, so R-A5's per-write no-follow guarantee now binds the viewer path on Windows too.
+  **Severity was LOW, Windows-only** (the deployed box is Ubuntu/Xorg — unaffected). **Privilege reality
+  (corrected — the earlier "SYSTEM / service account" wording overstated it):** the redirected write
+  would have run at the **interactive logged-in user's** privilege, **not** SYSTEM. On Windows the
+  SYSTEM `--server` does not write received files itself — it forwards the file bytes over IPC to the
+  `--cm` connection-manager, which runs in the *active user's* session (an explorer /
+  `CreateProcessAsUserW` token via `run_as_user`) and performs the actual `open_recv_write`; the
+  viewer/download side likewise writes as the user running the client. So the (now-closed) exposure was
+  a **local cross-user write-redirection**, capped at the interactive user's privilege, not a
+  SYSTEM-LPE. Exploitation still needed a co-located **local** principal able to plant/swap a reparse
+  point on an intermediate directory **on** the receive path *and* writable by them: creating an NTFS
+  **junction** needs **no** privilege (`mklink /J` / `FSCTL_SET_REPARSE_POINT`), a **symlink** needs
+  `SeCreateSymbolicLinkPrivilege`/Developer-Mode — but either way write access to that specific dir,
+  which the default per-user download dir (ACL'd to the owner) denies a lower-privileged user; the
+  practical exposure was a **non-default** receive path traversing a directory writable by a
+  lower-privileged principal. Hence LOW — and now closed regardless.
+  **Validated in the §12.2 Windows VM (2026-07-05).** The fork's rule is *never ship a raw-NT-syscall
+  Windows security change that cannot be run here* (a mis-shaped
+  `OBJECT_ATTRIBUTES`/`UNICODE_STRING`/`FILE_RENAME_INFORMATION` = memory corruption), so the walk was
+  built correct-by-construction from primary sources (the `cap-std` Windows resolver, the `ntapi 0.4.1`
+  + `winapi 0.3.9` struct/fn shapes, and the ntifs docs) **and then type-checked + run on real Windows**:
+  `cargo test -p hbb_common --target x86_64-pc-windows-msvc --lib fs::tests` under the pinned Rust 1.75
+  (MSVC) **compiled and passed 25/25** (1 privileged-symlink e2e `ignore`d), including the new
+  `#[cfg(windows)]` junction tests that plant an NTFS junction (`mklink /J`, unprivileged) as the
+  intermediate/final component and assert: a junction **parent** is REFUSED and does not redirect the
+  write out of tree (`recv_write_no_follow_refuses_junction_parent_component`); a junction **final**
+  component is REFUSED and its target directory is untouched (`..._refuses_junction_final_component`);
+  a legit nested non-junction path SUCCEEDS (`..._allows_regular_nested_target_windows`); the
+  junction-inclusive validate rejects (`validate_no_symlink_components_rejects_junction_windows`); and
+  the handle-relative finalize renames on a clean path yet refuses a junction parent
+  (`recv_finish_rename_windows_happy_path` / `recv_finish_refuses_junction_parent_windows`).
+  (The earlier boundary — `cargo check --target x86_64-pc-windows-msvc` fails on *this Linux host* at the
+  native-C-dep build, `zstd-sys`/`sodiumoxide`/`ring` needing MSVC `lib.exe` — is why the change is
+  validated in the VM, not on the host; the VM has Rust 1.75-msvc + VS Build Tools + the Win11 SDK.)
+  **Gated:** `verify.sh` now asserts the Windows walk tokens (`mod nt_nofollow`, `NtCreateFile`,
+  `OBJECT_ATTRIBUTES`, `oa.RootDirectory = parent`, `FILE_OPEN_REPARSE_POINT`, `FILE_DIRECTORY_FILE`,
+  `FILE_ATTRIBUTE_REPARSE_POINT`, `FileRenameInformation`, the `nt_nofollow::*` wiring, the
+  junction-inclusive `is_symlink_or_reparse_point`, the junction tests, and the `ntapi` dep) alongside
+  the Unix `openat`/`O_NOFOLLOW` tokens — closing the gate's prior **Windows false-green** (it grepped
+  only the always-present `#[cfg(unix)]` tokens, so the `cfg(not(unix))` receive-write branch went
+  entirely unasserted on a Windows build). **New dependency:** `ntapi = "0.4"` (already resolved in the
+  lock, built on the same `winapi 0.3` hbb_common already uses — no new external crate lineage) plus the
+  winapi `ntdef`/`fileapi` features. (The `fs.rs` module doc-comment describes the walk in full; the
+  code + the VM-run tests are the record.)
 
 ## ✅ CLOSED — the excision-vestige backlog + the R-S17 pin-GUI defects (implemented 2026-07-04)
 
@@ -863,7 +861,7 @@ The security-critical excisions were done correctly and must not be re-litigated
 proto is stripped to session metadata (password/os_login/hwid fields reserved+deleted,
 `connection.rs:2000`); the top-level auth message types (`SignedId`, `PublicKey`, `Auth2FA`,
 `SwitchSides`, `OSLogin`, `Hash`) are absent; **elevation/OS-login proto fields are retired, nothing
-dangles on the wire** (`elevation_request`/`_response`/`portable_service_running`, `message.proto:853`
+dangles on the wire** (`elevation_request`/`_response`/`portable_service_running`, `message.proto:839-842`
 — this closes the old "R-X9 Windows-deferred" worry: there is no dangling handler); `get_key` is
 pinned to `RS_PUB_KEY` ignoring any `option("key")` override (regression-tested, `common.rs:1500`);
 the deep-link `config`/`password` write authorities return `null` (`common.dart:2352`); the settings

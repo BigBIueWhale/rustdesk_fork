@@ -112,7 +112,18 @@ winapi = { version = "0.3", features = [
     "udpmib",
     "winerror",
     "ws2def",
+    # R-S8/R-A5: NT object/string types (OBJECT_ATTRIBUTES, UNICODE_STRING, NT_SUCCESS) for the
+    # reparse-safe, handle-relative file-transfer receive-write walk (fs.rs `nt_nofollow`) — the
+    # Windows equivalent of the Unix `openat(O_NOFOLLOW)` parent walk.
+    "ntdef",
+    "fileapi",
 ] }
+# R-S8/R-A5: the ntdll NT-layer bindings (NtCreateFile / NtSetInformationFile with
+# OBJECT_ATTRIBUTES.RootDirectory = parent-handle) — the only user-mode primitive that opens a
+# child relative to a directory HANDLE (the real `openat` analogue; Win32 CreateFileW re-resolves
+# the whole path each call and cannot close the intermediate-directory junction TOCTOU). ntapi
+# builds on the winapi 0.3 already in the lock, so this adds no new external crate lineage.
+ntapi = "0.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 osascript = "0.3"

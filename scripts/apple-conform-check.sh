@@ -97,6 +97,7 @@ APPLE_RS=(
 )
 APPLE_OTHER=(
   src/platform/macos.mm
+  flutter/ios/Runner/AppDelegate.swift
   flutter/ios/Runner/Info.plist
   flutter/ios/Runner/Runner.entitlements
   flutter/ios/Podfile.lock
@@ -248,8 +249,10 @@ IOS_INFO_KEYS = {
     "UISupportedInterfaceOrientations~ipad",
     # UIFileSharingEnabled / UISupportsDocumentBrowser are DROPPED: the iOS config (the connect-
     # equivalent Argon2id PRS, R-P1/R-S9) lives in Documents (getApplicationDocumentsDirectory ->
-    # APP_DIR -> Config::path), which they expose to the Files app + iTunes/Finder — the same local
-    # PRS-exfiltration Android's allowBackup="false" closed (R-X6). Absent == disabled.
+    # APP_DIR -> Config::path). Dropping them closes the Files-app / iTunes file-sharing BROWSE
+    # exposure of that directory. The BACKUP channel — the true analog of Android's allowBackup="false"
+    # (R-X6) — is closed separately by the NSURLIsExcludedFromBackupKey exclusion in AppDelegate.swift
+    # (asserted by the (2e) check). Absent == disabled.
     "UIViewControllerBasedStatusBarAppearance",
     "io.flutter.embedded_views_preview",
 }
@@ -481,6 +484,19 @@ if FAIL:
     sys.exit(1)
 print("  ok  metadata allow-lists: plist keys, entitlements, pods, checksums, and Xcode shell phases")
 PY
+
+echo "== (2e) R-X6 iOS twin: config-store backup exclusion wired in AppDelegate.swift =="
+# The iOS analog of Android's allowBackup="false": the config store (the Documents dir holding the
+# per-peer connect-equivalent Argon2id PRS and the machine-UUID wrapper key) must be excluded from
+# iCloud/iTunes device backups via NSURLIsExcludedFromBackupKey. This is a source-presence assertion —
+# the Swift is not built on this Linux host (no Xcode), like the fork's other Apple source-conformance
+# items — so it proves the exclusion stays WIRED, not that it runs.
+if grep -q 'isExcludedFromBackup' "$REPO/flutter/ios/Runner/AppDelegate.swift"; then
+  note "ok  R-X6 iOS: AppDelegate sets NSURLIsExcludedFromBackupKey on the config store (source-layer; Swift not built here)"
+else
+  echo "  FAIL R-X6 iOS: AppDelegate.swift no longer excludes the config store from backup (isExcludedFromBackup absent)"
+  rc=1
+fi
 
 echo "== (3) rustfmt parse-check of Rust Apple sources (SDK-free syntax gate) =="
 docker run --rm -i -v "$REPO:/work:ro" -w /work "$IMG" bash -s -- "${APPLE_RS[@]}" <<'SH' || rc=1

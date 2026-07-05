@@ -2036,7 +2036,7 @@ impl LoginConfigHandler {
                 config.password = password.clone();
                 log::debug!("remember password of {}", self.id);
             }
-            // R-S16 (viewer twin) / R-T15c: persist the captured plaintext CPace PRS whenever the user
+            // R-S16 (viewer twin) / R-T15c: persist the captured DERIVED CPace PRS whenever the user
             // chose to remember -- HOISTED out of the legacy salted-hash (`password`) gate above. Under
             // the Hash-challenge collapse the proactive login carries an EMPTY `password` (CPace already
             // authenticated this session), so that gate never runs and the freshly-onboarded PRS (staged

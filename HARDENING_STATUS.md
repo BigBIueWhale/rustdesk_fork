@@ -373,9 +373,22 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   connect-equivalent hash. A proper fix rebinds the iOS at-rest key to Keychain/Secure-Enclave, but
   that is untestable on this Linux host (no iOS build), it touches the wrapper the CPace PRS derives
   from, and it MUST NOT change `derive_cpace_prs` output bytes — so it is recorded as a known,
-  scoped-out residual rather than a partial, unverifiable change. The APPLE-6 plist fix (dropping
-  `UIFileSharingEnabled`/`UISupportsDocumentBrowser`) independently removes the Files-app/iTunes
-  exposure of the Documents directory this wrapper sits in, closing the local-exfiltration channel.
+  scoped-out residual rather than a partial, unverifiable change. The Documents directory this wrapper
+  sits in had **two** local-exfiltration channels, now closed by two separate fixes: (a) the **Files-app /
+  iTunes file-sharing BROWSE** channel was closed by the APPLE-6 plist fix (dropping
+  `UIFileSharingEnabled`/`UISupportsDocumentBrowser`, so the directory is no longer user-browsable); and
+  (b) the **device-BACKUP** channel — iCloud and unencrypted local iTunes/Finder backups copy the
+  Documents directory *regardless* of the file-sharing keys — is closed by setting
+  `NSURLIsExcludedFromBackupKey` on the config directory at startup
+  (`flutter/ios/Runner/AppDelegate.swift`), the iOS twin of Android's `allowBackup="false"` (R-X6).
+  APPLE-6 alone did **not** close the backup vector — dropping the file-sharing keys stops browsing, not
+  backup. (Source-layer fix, presence-asserted by `apple-conform-check.sh` `(2e)`; the Swift is not
+  runtime-built on this Linux host, like the fork's other Apple source-conformance items. Raising the
+  config's iOS data-protection class to `NSFileProtectionComplete` was assessed and declined: the default
+  `CompleteUntilFirstUserAuthentication` already protects a not-yet-unlocked device, `Complete` makes the
+  file unreadable whenever the device is locked — breaking backgrounded/locked config writes and
+  reconnect — and it addresses only physical seizure of an unlocked-since-boot device, which §2 scopes
+  out as endpoint compromise.)
 - **R-V3 independent CPace audit — ✅ PERFORMED 2026-07-02; VERDICT SOUND (findings
   resolved @4eb6912).** An independent expert review (docs/CRYPTO-AUDIT-2026-07-02.md):
   the §10.4 construction reproduced byte-for-byte by an INDEPENDENT implementation

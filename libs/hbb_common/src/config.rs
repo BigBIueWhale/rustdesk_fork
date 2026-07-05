@@ -225,11 +225,13 @@ pub struct Config {
     enc_id: String, // store
     #[serde(default, deserialize_with = "deserialize_string")]
     password: String,
-    // R-P1/R-S16: the permanent password held as PRS-usable material at rest — the
-    // NFC-derivable plaintext, encrypted under the same machine-UUID wrapper as
-    // `password`, NOT a one-way salted hash. The balanced CPace handshake reads it
-    // live on every connection (no cached PRS). Set alongside the legacy h1
-    // `password` by set_permanent_password until the salted-hash auth is deleted.
+    // R-P1/R-S16: the permanent password's DERIVED CPace PRS at rest — the base64 of
+    // Argon2id(NFC(password), fixed R-P1 salt): a memory-hard salted hash, NEVER the
+    // plaintext — encrypted under the same machine-UUID wrapper as `password`. The
+    // balanced CPace handshake reads it live on every connection (no cached PRS) and
+    // feeds it to the PAKE verbatim. set_permanent_password writes it together with
+    // `password`, which holds the SAME PRS's raw 32 bytes in the legacy hashed-storage
+    // envelope; an empty password clears both, so the handshake fails closed (R-S9).
     #[serde(default, deserialize_with = "deserialize_string")]
     password_prs: String,
     #[serde(default, deserialize_with = "deserialize_string")]
@@ -278,12 +280,14 @@ pub struct Resolution {
 pub struct PeerConfig {
     #[serde(default, deserialize_with = "deserialize_vec_u8")]
     pub password: Vec<u8>,
-    // R-S16 (viewer twin): the remote box's permanent password held as PRS-usable
-    // PLAINTEXT (encrypted at rest exactly like `password`), so the viewer can drive
-    // the CPace INITIATOR — a balanced PAKE needs the raw shared secret, not the
-    // salted SHA-256 hash that `password` stores. Empty until captured from the
-    // user-entered password; the initiator fails closed (R-S9) on an empty PRS. Old
-    // peer configs without this field deserialize to empty (`#[serde(default)]`).
+    // R-S16 (viewer twin): the remote box's DERIVED CPace PRS — the base64 Argon2id
+    // hash from `derive_cpace_prs`, a memory-hard salted hash, NEVER the plaintext —
+    // encrypted at rest exactly like `password`. The viewer feeds it to the CPace
+    // INITIATOR verbatim (never re-derived); it is the identical shared secret both
+    // ends derive from the password, distinct from the fast SHA-256 h1 that `password`
+    // caches. Empty until derived from the user-entered password at connect time; the
+    // initiator fails closed (R-S9) on an empty PRS. Old peer configs without this
+    // field deserialize to empty (`#[serde(default)]`).
     #[serde(default, deserialize_with = "deserialize_vec_u8")]
     pub password_prs: Vec<u8>,
     #[serde(default, deserialize_with = "deserialize_size")]
@@ -1689,7 +1693,7 @@ impl PeerConfig {
                     decrypt_vec_or_original(&config.password, PASSWORD_ENC_VERSION);
                 config.password = password;
                 store = store || store2;
-                // R-S16 (viewer twin): the plaintext CPace PRS, encrypted at rest like `password`.
+                // R-S16 (viewer twin): the DERIVED Argon2id CPace PRS, encrypted at rest like `password`.
                 let (password_prs, _, store2) =
                     decrypt_vec_or_original(&config.password_prs, PASSWORD_ENC_VERSION);
                 config.password_prs = password_prs;
@@ -1728,7 +1732,7 @@ impl PeerConfig {
         let mut config = self.clone();
         config.password =
             encrypt_vec_or_original(&config.password, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
-        // R-S16 (viewer twin): the plaintext CPace PRS, encrypted at rest like `password`.
+        // R-S16 (viewer twin): the DERIVED Argon2id CPace PRS, encrypted at rest like `password`.
         config.password_prs =
             encrypt_vec_or_original(&config.password_prs, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
         for opt in ["rdp_password"] {

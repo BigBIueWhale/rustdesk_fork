@@ -239,4 +239,25 @@ dg_clean 'connecting_status|not_ready_status' 'R-G2/R-G8 rendezvous status-row s
 # authored Dart; the `bind.`/`.`-access patterns match CALLERS, not those definitions.)
 dg_clean 'bind\.mainUpdateTemporaryPassword|\.temporaryPasswordLength|\.allowNumericOneTimePassword' 'R-X7/R-G4 one-time-password UI + OTP-state (refresh FFI caller + length/numeric getters)'
 
+# R-G1 / §19 (terminal legibility — all platforms, client/viewer render): the Terminal (Beta) is a
+# PRESERVED session type (R-X8), so unlike the surfaces above it is KEPT — but its xterm TerminalView
+# MUST render on an OPAQUE background. Upstream shipped `backgroundOpacity: 0.7`, compositing xterm's
+# dark default theme (bg #1E1E1E / fg #CCCCCC — no `theme:` is passed) over the app Scaffold; on a
+# light theme that dropped terminal text contrast to ~3.8:1, below WCAG AA (4.5:1). The terminal owns
+# the whole surface, so translucency has no function; it MUST stay opaque so legibility is independent
+# of the app theme by construction. Both render sites are gated — mobile (Android + iOS) and desktop
+# (Windows/Linux/macOS) — so the translucent value cannot creep back on any platform.
+for tp in flutter/lib/mobile/pages/terminal_page.dart flutter/lib/desktop/pages/terminal_page.dart; do
+  # a translucent value (0.x, or a bare .x) must never return to the terminal surface
+  if grep -nE 'backgroundOpacity:[[:space:]]*[0.]' "$tp" >/dev/null 2>&1; then
+    echo "  FAIL §19 terminal: translucent TerminalView backgroundOpacity in $tp (MUST be opaque 1.0 — WCAG contrast):"
+    grep -nE 'backgroundOpacity:[[:space:]]*[0.]' "$tp" | sed 's/^/      /'
+    exit 1
+  fi
+  # …and the opaque value MUST be asserted explicitly (not silently dropped to a library default)
+  grep -qE 'backgroundOpacity:[[:space:]]*1' "$tp" \
+    || { echo "  FAIL §19 terminal: $tp lost its explicit opaque backgroundOpacity (expected 1.0)"; exit 1; }
+done
+echo "  ok  §19 terminal TerminalView backgroundOpacity opaque (1.0) — desktop + mobile (WCAG contrast)"
+
 echo "DART-VERIFY: flutter analyze lib/ is GREEN (zero errors) + §19 Dart-layer greps clean"

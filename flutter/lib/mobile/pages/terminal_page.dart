@@ -167,7 +167,9 @@ class _TerminalPageState extends State<TerminalPage>
                     controller: _terminalModel.terminalController,
                     autofocus: true,
                     textStyle: _getTerminalStyle(),
-                    backgroundOpacity: 0.7,
+                    // Opaque background: this terminal owns the full surface, so translucency only
+                    // bleeds the app theme through and drops text contrast below WCAG AA on light themes.
+                    backgroundOpacity: 1.0,
                     // The following comment is from xterm.dart source code:
                     // Workaround to detect delete key for platforms and IMEs that do not
                     // emit a hardware delete event. Preferred on mobile platforms. [false] by

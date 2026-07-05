@@ -193,6 +193,46 @@ echo "== (3c-i-b) permanent-password PRS credential durability (R-S9) =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::sync_rebuilds_password_prs_from_storage --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_permanent_password_sync_treats_same_encrypted_hash_as_unchanged --color never
 
+# (3c-i-c) At-rest config-load robustness (R-S9/R-P1 residuals — data-loss + coherence, all
+# fail-closed at the CPace boundary). Four defensive invariants on the shared at-rest state
+# machine (config.rs), each secure-by-assertion:
+#   F1  a PRESENT-but-corrupt/empty config file is PRESERVED for recovery, never silently reset
+#       and overwritten by a fresh default that would discard the key_pair/permanent credential
+#       (load_path distinguishes NotFound=first-run from unparseable=corruption; Config::load
+#       refuses to store over a present file it read as default);
+#   F2  the "a permanent password is set" signal (has_permanent_password -> is_permanent_password_set,
+#       the IPC status, peer_has_password) keys on the LIVE PRS the auth boundary actually consumes,
+#       so a password-set/prs-empty half-state or an undecryptable 01 blob no longer reports "set"
+#       on a box that refuses every connection;
+#   F3  a coincident store() during a TRANSIENT machine-UUID read failure preserves a well-formed
+#       legacy 00 credential (clears only a definitively-malformed one), never wiping a
+#       possibly-valid password on an environment blip;
+#   F4  a current-format 01 credential is stored verbatim, never spuriously re-wrapped in a 00 envelope.
+# Count-asserted (exactly 9) so a renamed/removed regression test fails the gate instead of
+# passing silently on a zero-match cargo filter.
+echo "== (3c-i-c) at-rest config-load robustness (F1 preserve-corrupt / F2 prs-coherent set-signal / F3 transient-safe / F4 no double-wrap) =="
+atrest_out=$("${RUN[@]}" cargo test -p hbb_common --lib --color never -- \
+  config::tests::test_load_path_first_run_returns_default_without_creating_file \
+  config::tests::test_load_path_valid_file_loads_unchanged \
+  config::tests::test_load_path_present_but_corrupt_is_preserved_not_overwritten \
+  config::tests::test_has_permanent_password_reflects_live_prs_not_stale_storage \
+  config::tests::test_validate_or_decrypt_preserves_undecryptable_wellformed_00_storage \
+  config::tests::test_validate_or_decrypt_clears_malformed_00_storage \
+  config::tests::test_prepare_config_for_store_preserves_transient_00_credential \
+  config::tests::test_prepare_config_for_store_clears_malformed_00_credential \
+  config::tests::test_store_does_not_double_wrap_current_format_credential 2>&1) || true
+echo "$atrest_out" | grep -E 'test result:' || true
+# This gate runs in the pre-`rc=0` phase (line ~308 resets rc), so it enforces by aborting
+# under `set -e` on failure — exactly like the (3c-i-b) direct cargo-test gate above — rather
+# than via the rc accumulator that only the later static-grep gates use.
+if echo "$atrest_out" | grep -qE 'test result: ok\. 9 passed; 0 failed'; then
+  echo "  ok  F1/F2/F3/F4 at-rest robustness (9 regression tests: preserve-corrupt+not-overwrite, prs-coherent set-signal, transient-safe/malformed-clear, no 01 double-wrap)"
+else
+  echo "  FAIL F1/F2/F3/F4 at-rest robustness: expected exactly 9 passed / 0 failed (a regression test was renamed/removed or a fix regressed)"
+  echo "$atrest_out" | tail -20
+  exit 1
+fi
+
 # (3c-ii-a) Viewer peer media admission bounds (Appendix C #2b/R-T0): a
 # hostile peer controls VideoFrame.display and keyframe/audio cadence, so the
 # viewer must cap display-thread creation and use bounded media queues.

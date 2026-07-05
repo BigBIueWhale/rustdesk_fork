@@ -583,22 +583,82 @@ fn keep_encrypted_storage_if_plaintext_unchanged(plain: &str, stored: &str) -> S
     encrypt_str_or_original(plain, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN)
 }
 
+// F1: preserve a present-but-corrupt config for operator recovery instead of letting a
+// fresh default overwrite it. Rename it aside to a timestamped `<name>.corrupt.<nanos>`
+// SIBLING (same dir) so the exact bytes survive, then callers may write a fresh default at
+// the now-vacated path (a create, never an overwrite of the corrupt file). The timestamp
+// makes repeated corruption events never clobber an earlier backup, so nothing is ever lost.
+fn preserve_corrupt_config(file: &Path) {
+    let ts = SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let name = file
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("config");
+    let mut backup = file.to_path_buf();
+    backup.set_file_name(format!("{name}.corrupt.{ts}"));
+    match fs::rename(file, &backup) {
+        Ok(()) => log::error!(
+            "Preserved corrupt config '{}' as '{}' for recovery (original not overwritten)",
+            file.display(),
+            backup.display()
+        ),
+        Err(e) => log::error!(
+            "Could not preserve corrupt config '{}' ({e}); leaving it in place — \
+             Config::load refuses to overwrite a present config it read as default",
+            file.display()
+        ),
+    }
+}
+
 pub fn load_path<T: serde::Serialize + serde::de::DeserializeOwned + Default + std::fmt::Debug>(
     file: PathBuf,
 ) -> T {
-    let cfg = match confy::load_path(&file) {
+    // A HIGH-blast-radius path: EVERY config load. Distinguish a genuine first run (no file)
+    // from a PRESENT-but-corrupt file, and never silently reset+overwrite the latter — a
+    // regenerated default stored back over it would discard the key_pair/permanent credential
+    // (F1). confy stores via an atomic rename, so a present file is never a partial
+    // application write; one that will not parse is a power-loss torn write or bit-rot.
+    match confy::load_path(&file) {
         Ok(config) => config,
-        Err(err) => {
-            if let confy::ConfyError::GeneralLoadError(err) = &err {
-                if err.kind() == std::io::ErrorKind::NotFound {
-                    return T::default();
-                }
+        Err(err) => match &err {
+            // Genuine first run: `File::open` returned NotFound — no file exists yet.
+            confy::ConfyError::GeneralLoadError(e)
+                if e.kind() == std::io::ErrorKind::NotFound =>
+            {
+                T::default()
             }
-            log::error!("Failed to load config '{}': {}", file.display(), err);
-            T::default()
-        }
-    };
-    cfg
+            // Read succeeded but the bytes will not parse: DEFINITE corruption (a valid
+            // stored config always parses). Preserve the exact bytes for recovery so no
+            // default+store can discard them, log loudly, and hand back a default so the
+            // process comes up fail-closed. The vacated path lets Config::load regenerate a
+            // clean identity (self-heal) without touching the preserved corrupt bytes.
+            confy::ConfyError::BadTomlData(_) => {
+                log::error!(
+                    "Config '{}' is present but unparseable (corruption): {err} — preserving \
+                     it and starting from defaults (not overwriting)",
+                    file.display()
+                );
+                preserve_corrupt_config(&file);
+                T::default()
+            }
+            // Present but could not be read/opened THIS time (I/O or permission): this may be
+            // a transient fault over intact bytes, so DO NOT move or destroy the file. Return
+            // a default; the identity-bearing Config::load refuses to overwrite a present file
+            // it read as default (below), so the loss is never finalized and it recovers on
+            // the next successful load.
+            _ => {
+                log::error!(
+                    "Config '{}' is present but could not be read: {err} — leaving it \
+                     untouched and starting from defaults (not overwriting)",
+                    file.display()
+                );
+                T::default()
+            }
+        },
+    }
 }
 
 #[inline]
@@ -638,7 +698,40 @@ impl Config {
     }
 
     fn load() -> Config {
+        let file = Self::file_("");
         let mut config = Config::load_::<Config>("");
+        // F1: a stored Config ALWAYS carries a key_pair (and an id/enc_id). So a STILL-PRESENT
+        // file that loads as an all-default Config is never a genuine first run (that has no
+        // file) and never a parse corruption (load_path already renamed those aside, vacating
+        // the path) — it is an empty power-loss torn write or a transient read failure. Never
+        // regenerate an identity and store() it OVER such a file while it still holds bytes (a
+        // possibly-recoverable credential): only a genuinely-empty file (nothing to lose)
+        // self-heals by regenerating below.
+        let mut preserve_present_file = false;
+        if config.key_pair.0.is_empty()
+            && config.id.is_empty()
+            && config.enc_id.is_empty()
+            && file.exists()
+        {
+            let len = fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
+            if len == 0 {
+                log::error!(
+                    "Config '{}' is present but empty (power-loss torn write); the prior \
+                     key_pair/credential is unrecoverable. Regenerating a clean identity — the \
+                     box is fail-closed until you re-provision with --password",
+                    file.display()
+                );
+                // fall through: regenerate + store to self-heal over the empty file
+            } else {
+                log::error!(
+                    "Config '{}' is present ({len} bytes) but read as default (transient read \
+                     failure); refusing to overwrite it. Coming up fail-closed on an \
+                     unpersisted default — it recovers automatically once the file loads",
+                    file.display()
+                );
+                preserve_present_file = true;
+            }
+        }
         let mut store = false;
         if let Err(err) = Self::validate_or_decrypt_permanent_password_storage(&mut config) {
             log::error!("Failed to validate or decrypt permanent password storage: {err}");
@@ -675,7 +768,7 @@ impl Config {
                 }
             }
         }
-        if store {
+        if store && !preserve_present_file {
             config.store();
         }
         config
@@ -687,15 +780,26 @@ impl Config {
         }
 
         if config.password.starts_with(PASSWORD_ENC_VERSION) {
-            let (plain, decrypted, should_store) =
+            let (plain, decrypted, not_well_formed) =
                 decrypt_str_or_original(&config.password, PASSWORD_ENC_VERSION);
             if decrypted {
                 config.password = plain;
                 return Ok(());
             }
-            if !should_store {
-                return Err(anyhow!("Invalid permanent password encrypted hash storage"));
+            // Undecryptable "00" storage. F3: `not_well_formed` (decrypt_str_or_original's 3rd
+            // return, which on a non-empty value is `!is_encrypted`) is true exactly when the
+            // value is NOT a well-formed `00` secretbox envelope (invalid base64 / shorter than
+            // a MAC) — a definitively-MALFORMED payload that cannot decrypt under ANY
+            // machine-UUID, so it is corruption, not a transient environment blip → clear
+            // (unrecoverable, fail closed).
+            if not_well_formed {
+                return Err(anyhow!("Malformed legacy permanent password storage"));
             }
+            // Otherwise it IS a well-formed `00` secretbox that merely failed to open — the
+            // signature of a TRANSIENT machine-UUID read failure (macOS login window / Windows
+            // shutdown — get_uuid, lib.rs). PRESERVE it: a coincident store() must not wipe a
+            // possibly-valid credential on a blip. It fails closed at the CPace boundary
+            // (get_permanent_password_prs is empty) until the UUID reads again.
             return Ok(());
         }
 
@@ -752,6 +856,16 @@ impl Config {
         Self::prepare_config_for_store(&mut config);
         if !config.password.is_empty()
             && decode_permanent_password_h1_from_storage(&config.password).is_none()
+            // F4: never re-wrap a well-formed current-format `01…` credential in the legacy
+            // `00` envelope. An UNDECRYPTABLE `01…` blob (a transient machine-UUID failure)
+            // decodes to no h1 above, so without this guard it would fall into
+            // keep_encrypted_storage_if_plaintext_unchanged and be spuriously double-wrapped as
+            // `00(enc("01…"))` — cosmetic (it self-corrects on the next decryptable load, and
+            // the credential fails closed regardless), but avoidable: a `01…`-shaped value is
+            // already the current at-rest form and must be stored verbatim.
+            && !config
+                .password
+                .starts_with(permanent_password::PERMANENT_PASSWORD_ENC_VERSION)
         {
             let stored = Config::load_::<Config>("");
             config.password =
@@ -1413,12 +1527,15 @@ impl Config {
     }
 
     pub fn has_permanent_password() -> bool {
-        let (local_storage, local_salt) = Self::get_local_permanent_password_storage_and_salt();
+        let (local_storage, _local_salt) = Self::get_local_permanent_password_storage_and_salt();
         if !local_storage.is_empty() {
-            return local_permanent_password_storage_is_usable_for_auth(
-                &local_storage,
-                &local_salt,
-            );
+            // F2 (coherence): CPace keys from the LIVE PRS (get_permanent_password_prs →
+            // config.password_prs), which is what the auth boundary actually consumes. Report a
+            // LOCAL permanent password as "set" only when that PRS is present and decryptable,
+            // so an undecryptable `01…` blob (e.g. a transient machine-UUID read failure) or a
+            // password-set/prs-empty half-state — both of which refuse EVERY connection — do
+            // NOT read as set. (Heal the SIGNAL, not the store: config.password is untouched.)
+            return !Self::get_permanent_password_prs().is_empty();
         }
         Self::has_usable_preset_password()
     }
@@ -3492,22 +3609,226 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_or_decrypt_rejects_corrupted_00_permanent_password_storage() {
+    fn test_validate_or_decrypt_preserves_undecryptable_wellformed_00_storage() {
+        // F3: a WELL-FORMED legacy `00` secretbox that fails to open is INDISTINGUISHABLE from a
+        // transient machine-UUID read failure (macOS login window / Windows shutdown), so it MUST
+        // be PRESERVED, never rejected — a store() coincident with such a blip must not
+        // permanently wipe a possibly-valid credential. (Bit-rot lands here too, but preserving
+        // an already-dead `00` is harmless: the fork authenticates from config.password_prs, and
+        // an undecryptable credential still fails closed at the CPace boundary.)
         let legacy_storage =
             encrypt_str_or_original("legacy-secret", PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
-        let mut invalid_payload = base64::decode(
+        let mut payload = base64::decode(
             &legacy_storage.as_bytes()[PASSWORD_ENC_VERSION.len()..],
             base64::Variant::Original,
         )
         .unwrap();
-        *invalid_payload.last_mut().unwrap() ^= 1;
+        *payload.last_mut().unwrap() ^= 1; // flip a MAC bit: still well-formed, won't open
 
         let mut cfg = Config::default();
-        cfg.password = PASSWORD_ENC_VERSION.to_owned()
-            + &base64::encode(invalid_payload, base64::Variant::Original);
+        cfg.password =
+            PASSWORD_ENC_VERSION.to_owned() + &base64::encode(payload, base64::Variant::Original);
+        cfg.salt = "salt123".to_owned();
+        let original_password = cfg.password.clone();
+
+        assert!(Config::validate_or_decrypt_permanent_password_storage(&mut cfg).is_ok());
+        assert_eq!(cfg.password, original_password, "well-formed 00 blob preserved verbatim");
+        assert_eq!(cfg.salt, "salt123");
+    }
+
+    #[test]
+    fn test_validate_or_decrypt_clears_malformed_00_storage() {
+        // F3 complement: a `00`-prefixed value that is NOT a well-formed secretbox (decoded
+        // payload shorter than a MAC) cannot decrypt under ANY machine-UUID, so it is definite
+        // corruption, not a transient blip — rejected (→ cleared, fail closed).
+        let mut cfg = Config::default();
+        cfg.password =
+            PASSWORD_ENC_VERSION.to_owned() + &base64::encode(b"short", base64::Variant::Original);
         cfg.salt = "salt123".to_owned();
 
         assert!(Config::validate_or_decrypt_permanent_password_storage(&mut cfg).is_err());
+    }
+
+    #[test]
+    fn test_prepare_config_for_store_preserves_transient_00_credential() {
+        // F3 end-to-end: prepare_config_for_store runs on EVERY store(); it must NOT clear a
+        // well-formed-but-undecryptable `00` credential, else a store() (e.g. saving an unrelated
+        // option) coincident with a transient machine-UUID failure would permanently wipe the
+        // password, salt AND prs.
+        let legacy_storage =
+            encrypt_str_or_original("legacy-secret", PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
+        let mut payload = base64::decode(
+            &legacy_storage.as_bytes()[PASSWORD_ENC_VERSION.len()..],
+            base64::Variant::Original,
+        )
+        .unwrap();
+        *payload.last_mut().unwrap() ^= 1;
+        let mut cfg = Config::default();
+        cfg.password =
+            PASSWORD_ENC_VERSION.to_owned() + &base64::encode(payload, base64::Variant::Original);
+        cfg.salt = "salt123".to_owned();
+        cfg.password_prs = "some-prs-storage".to_owned();
+        let (p, s, prs) = (cfg.password.clone(), cfg.salt.clone(), cfg.password_prs.clone());
+
+        Config::prepare_config_for_store(&mut cfg);
+
+        assert_eq!(cfg.password, p, "a transient 00 credential must be preserved");
+        assert_eq!(cfg.salt, s);
+        assert_eq!(cfg.password_prs, prs, "prs must not be wiped on a transient blip");
+    }
+
+    #[test]
+    fn test_prepare_config_for_store_clears_malformed_00_credential() {
+        // F3 complement, end-to-end: a definitely-malformed (unrecoverable) `00` is cleared —
+        // all three credential forms together (fail closed, no split-brain).
+        let mut cfg = Config::default();
+        cfg.password =
+            PASSWORD_ENC_VERSION.to_owned() + &base64::encode(b"short", base64::Variant::Original);
+        cfg.salt = "salt123".to_owned();
+        cfg.password_prs = "some-prs-storage".to_owned();
+
+        Config::prepare_config_for_store(&mut cfg);
+
+        assert!(cfg.password.is_empty());
+        assert!(cfg.salt.is_empty());
+        assert!(cfg.password_prs.is_empty());
+    }
+
+    #[test]
+    fn test_has_permanent_password_reflects_live_prs_not_stale_storage() {
+        // F2 (coherence): `has_permanent_password` (the UI/IPC "is a permanent password set"
+        // signal) MUST track the value the CPace auth boundary actually keys from — the live PRS
+        // (config.password_prs) — not config.password. A password-set/prs-empty half-state (and an
+        // undecryptable `01…` blob) refuses EVERY connection, so it must read as NOT set.
+        let (storage, prs_storage) =
+            derive_permanent_password_storages("correct horse battery staple").unwrap();
+
+        // Fully provisioned: both at-rest forms present and decryptable → reads as set.
+        let mut provisioned = Config::default();
+        provisioned.password = storage.clone();
+        provisioned.password_prs = prs_storage;
+        provisioned.salt = "salt123".to_owned();
+        with_config_and_hard_settings(provisioned, HashMap::new(), || {
+            assert!(!Config::get_permanent_password_prs().is_empty());
+            assert!(Config::has_permanent_password());
+        });
+
+        // Half-state: config.password present (and it decodes as a valid hash), but PRS empty —
+        // the OLD storage-only signal reported "set" while the box refused every connection.
+        let mut half = Config::default();
+        half.password = storage;
+        half.salt = "salt123".to_owned();
+        with_config_and_hard_settings(half, HashMap::new(), || {
+            assert!(Config::get_permanent_password_prs().is_empty());
+            assert!(!Config::has_permanent_password());
+        });
+
+        // Undecryptable current-format blob (transient machine-UUID failure): storage present but
+        // neither form decrypts → reads as NOT set, and recovers to set once the UUID reads again.
+        let mut opaque = Config::default();
+        opaque.password = "01AAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned();
+        opaque.password_prs = "01AAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned();
+        opaque.salt = "salt123".to_owned();
+        with_config_and_hard_settings(opaque, HashMap::new(), || {
+            assert!(Config::get_permanent_password_prs().is_empty());
+            assert!(!Config::has_permanent_password());
+        });
+    }
+
+    fn unique_tmp_dir(tag: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let n = SEQ.fetch_add(1, Ordering::Relaxed);
+        let ts = SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!(
+            "rustdesk-loadpath-{tag}-{}-{ts}-{n}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn test_load_path_first_run_returns_default_without_creating_file() {
+        // F1: a NON-existent file is a genuine first run → default, and NOTHING is created.
+        let dir = unique_tmp_dir("firstrun");
+        let file = dir.join("absent.toml");
+        let cfg: Config2 = load_path(file.clone());
+        assert_eq!(cfg, Config2::default());
+        assert!(!file.exists(), "load_path must not create a file on first run");
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_load_path_valid_file_loads_unchanged() {
+        // F1: a valid config round-trips unchanged (the happy path is untouched).
+        let dir = unique_tmp_dir("valid");
+        let file = dir.join("valid.toml");
+        let mut original = Config2::default();
+        original.options.insert("k".to_owned(), "v".to_owned());
+        store_path(file.clone(), original.clone()).unwrap();
+        let loaded: Config2 = load_path(file.clone());
+        assert_eq!(loaded, original);
+        assert!(file.exists());
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_load_path_present_but_corrupt_is_preserved_not_overwritten() {
+        // F1: a PRESENT-but-unparseable file is corruption → a fail-closed default is returned,
+        // the exact corrupt bytes are PRESERVED aside for recovery, and the original path is
+        // never overwritten by a default (it is vacated for a clean self-heal instead).
+        let dir = unique_tmp_dir("corrupt");
+        let file = dir.join("corrupt.toml");
+        let corrupt_bytes = b"= = = this is not valid toml [[[".to_vec();
+        fs::write(&file, &corrupt_bytes).unwrap();
+
+        let cfg: Config2 = load_path(file.clone());
+        assert_eq!(cfg, Config2::default(), "a corrupt load yields a fail-closed default");
+        assert!(
+            !file.exists(),
+            "the corrupt file must be moved aside, not left in place to be overwritten"
+        );
+        let backup = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .find(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|n| n.contains(".corrupt."))
+                    .unwrap_or(false)
+            })
+            .expect("a `.corrupt.<ts>` backup of the exact bytes must exist");
+        assert_eq!(
+            fs::read(&backup).unwrap(),
+            corrupt_bytes,
+            "the corrupt bytes are preserved verbatim for operator recovery"
+        );
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_store_does_not_double_wrap_current_format_credential() {
+        // F4: a well-formed but currently-undecryptable `01…` credential (a transient machine-UUID
+        // failure) is already the current at-rest form and MUST be stored VERBATIM — never
+        // re-wrapped in the legacy `00` envelope. Inspect the RAW on-disk storage
+        // (Config::load_ does not decrypt) right after store(); it must be unchanged.
+        let _lock = CONFIG_STATE_TEST_LOCK.lock().unwrap();
+        let _file_guard = ConfigFileRestoreGuard::new(Config::file_(""));
+        let opaque = "01AAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(); // 01-prefixed, non-decryptable
+        let mut cfg = Config::default();
+        cfg.id = "123456789".to_owned();
+        cfg.password = opaque.clone();
+        cfg.salt = "salt123".to_owned();
+        cfg.store();
+        let raw = Config::load_::<Config>("");
+        assert_eq!(
+            raw.password, opaque,
+            "a 01-format credential must be stored verbatim (no spurious 00 double-wrap)"
+        );
     }
 
     #[test]

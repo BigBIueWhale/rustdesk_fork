@@ -507,6 +507,106 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   **⤷ NOTE: this bullet sampled ~5 items; it is SUPERSEDED by the `## Incomplete`
   section immediately below (2026-07-03 full sweep = ~80 sites, incl. 7 user-visible
   defects + 1 live race this earlier note missed).**
+- **File-transfer receive write-path no-follow (R-S8/R-A5) — POSIX handle walk confirmed
+  correct-by-design.** The Unix receive-write path (`libs/hbb_common/src/fs.rs`:
+  `open_parent_dir_no_follow` ~828, `open_recv_write_no_follow_std` ~979) opens **every** parent
+  component with `openat(O_RDONLY|O_DIRECTORY|O_CLOEXEC|O_NOFOLLOW)` walking down from `/` (or cwd),
+  then the target with `openat(O_NOFOLLOW)` (rejecting non-regular targets), and finalizes with
+  `renameat`/`unlinkat`/`fstatat` under that same parent handle — a full-path **handle walk**, not a
+  final-component check. This is **correct-by-design and deliberately not narrowed**: it is a
+  *per-write TOCTOU* guarantee (R-A5) defending the authenticated peer's **own** privileged write
+  (root on the §17 box) against a **local unprivileged** attacker racing a symlink into an
+  intermediate directory or the target between validation and write. It is **not** scope-confinement —
+  per §2/R-S8 the password-holding peer is trusted with full-filesystem reach as a single unconfined
+  mode, and a confinement toggle is forbidden (R-S12). Two intended design consequences: (1) a receive
+  destination that legitimately *traverses* a symlinked prefix (a relocated `~/Downloads` on a
+  symlinked volume, a macOS firmlink, an Android `/sdcard` bind) is **refused** — the walk cannot tell
+  a trusted admin-made prefix symlink from an attacker-raced one without canonicalizing, and
+  canonicalizing the peer-chosen base then reopening by path would reintroduce the exact race; on the
+  deployed Ubuntu box (`/home/user`, `/root` — no symlink components) it never triggers. (2) The
+  proposed **narrowing** to "no-follow only the peer-relative segments, trust the base prefix" was
+  **considered and rejected as a TOCTOU regression**: the peer-chosen base is uncanonicalized, so
+  following base-prefix symlinks reopens the escape. The one airtight way to support symlinked-prefix
+  destinations without reopening the race is a *trusted-symlink resolver* (a `chase_symlinks`/
+  CHASE_SAFE walk that follows a link component only when its immediate parent is root/euid-owned and
+  non-group/other-writable, else refuses) — **deferred** until a deployment concretely needs it (this
+  one does not). **Both roles** ride the same shared path — server-receive (upload into the box,
+  `src/ui_cm_interface.rs:1002 handle_fs` → `TransferJob::new_write`) and client/viewer-receive
+  (download from a peer, `src/client/io_loop.rs:797,869`) — so R-A5's per-write assertion binds the
+  viewer path too, per R-S8. Behavior-tested (`fs.rs`
+  `recv_write_no_follow_refuses_symlink_{target,parent_component}` +
+  `recv_finish_renameat_replaces_symlink_final_...`, `#[cfg(unix)]`) and gated by `verify.sh` (3c) /
+  the R-S8/R-A5 grep gate.
+- **Windows file-transfer parent-junction TOCTOU — precise Windows-VM-gated residual (LOW).** The
+  Windows receive-write branch (`fs.rs` `open_recv_write_no_follow_std` ~999–1010, `#[cfg(not(unix))]`)
+  opens only the **final** component reparse-safe (`FILE_FLAG_OPEN_REPARSE_POINT` = `0x0020_0000`, line
+  ~1006) but does **no reparse-safe parent walk** — the OS resolves every intermediate directory by
+  path, *following* any junction / mount-point / symlink on the parent, so the intermediate-directory
+  TOCTOU that the Unix `openat(O_NOFOLLOW)` walk closes stays open on Windows. The Windows
+  finalize/cleanup branches share the gap: `finish_recv_write_no_follow` uses path-based
+  `std::fs::rename` (~1092), `remove_recv_write_artifacts_no_follow` uses `std::fs::remove_file`
+  (~1054), `read_recv_sidecar_to_string_no_follow` uses `std::fs::read_to_string` (~1114) — all resolve
+  parents by path, not relative to a walked handle. Separately (cross-platform code, Windows behavior):
+  `validate_no_symlink_components` (`fs.rs` 755–789) rejects components via
+  `symlink_metadata().file_type().is_symlink()`, but on Windows `is_symlink()` is true only for
+  `IO_REPARSE_TAG_SYMLINK` and **misses NTFS junctions** (`IO_REPARSE_TAG_MOUNT_POINT`) — a junction
+  component passes path-validation outright (the junction-inclusive test is
+  `file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT (0x400)`, already used by
+  `src/platform/windows/acl.rs::is_reparse_point`); being a separate syscall from the open it is a
+  TOCTOU regardless, which is why the *handle-relative walk* — not merely a better attribute test — is
+  the real fix.
+  **Severity LOW, Windows-server only** (the deployed box is Ubuntu/Xorg — unaffected). Exploitation
+  needs a co-located **local** attacker who can plant/swap a reparse point on an intermediate directory
+  that is **on** the receive path *and* writable by them; the redirected write then runs at the service
+  privilege (SYSTEM / the service account). Nuance: creating an NTFS **junction** needs **no** privilege
+  (unprivileged `mklink /J` / `FSCTL_SET_REPARSE_POINT`), a **symlink** needs
+  `SeCreateSymbolicLinkPrivilege`/Developer-Mode — but either way the attacker still needs write access
+  to that specific intermediate dir, which for the default per-user download dir (ACL'd to the owner) a
+  lower-privileged local user lacks; the practical exposure is a **non-default** receive path traversing
+  a directory writable by a lower-privileged principal. Hence LOW.
+  **Exact fix (mirrors the Unix O_NOFOLLOW walk).** Win32 `CreateFileW` **cannot** do it — it has no
+  `openat`/relative-to-handle form and re-resolves parents from the full path each call, so
+  per-component `CreateFileW(FILE_FLAG_OPEN_REPARSE_POINT)` would *not* close the parent race. Use the
+  NT layer: (1) consume the drive `Prefix`/`RootDir` as a start handle — open the volume root (e.g.
+  `\??\C:\`) with `FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT` — the Windows analog of the
+  Unix walk's `/` anchor; (2) for each `Normal` component (reject `..`), `NtOpenFile`/`NtCreateFile`
+  with `OBJECT_ATTRIBUTES{ RootDirectory = parent_handle, ObjectName = &UNICODE_STRING(component) }` +
+  `FILE_OPEN_REPARSE_POINT|FILE_DIRECTORY_FILE` (the real `openat` equivalent — resolves relative to the
+  parent handle and opens the reparse point itself instead of traversing it), then
+  `GetFileInformationByHandle` and **reject** if `dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT`
+  (catches junctions *and* symlinks); (3) open the final target relative to the walked parent handle
+  (`FILE_OPEN_REPARSE_POINT|FILE_NON_DIRECTORY_FILE`, create/open disposition, `FILE_GENERIC_WRITE`),
+  verify it is not a reparse point; (4) finalize relative to that handle — rename via
+  `NtSetInformationFile(FileRenameInformation, RootDirectory=parent)` /
+  `SetFileInformationByHandle(FileRenameInfo)`, sidecar read/remove handle-relative; (5) make
+  `validate_no_symlink_components` junction-inclusive on Windows
+  (`file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT`) as defense-in-depth atop the walk.
+  **Decision: DOCUMENTED, not applied** — the fork's rule is *never ship a Windows security change that
+  cannot be verified here; an unverified patch is worse than a precise documented residual.*
+  Verification boundary, probed empirically (2026-07-05): `cargo check -p hbb_common --target
+  x86_64-pc-windows-msvc` **fails** during the native-C-dep build — `zstd-sys v2.0.11` →
+  `cc-rs: Failed to find tool. Is lib.exe installed?` (no MSVC archiver/toolchain on this Linux host;
+  `sodiumoxide`/`ring` would hit the same wall); the `x86_64-pc-windows-gnu` target is not installed
+  and `x86_64-w64-mingw32-gcc` is absent — so the **integrated** cfg(windows) `fs.rs` change cannot be
+  type-checked in `hbb_common` context here. A standalone `winapi 0.3.9 + ntapi 0.4.1` FFI sketch of the
+  walk's surface (NtOpenFile / NtCreateFile / OBJECT_ATTRIBUTES / UNICODE_STRING /
+  FILE_OPEN_REPARSE_POINT / GetFileInformationByHandle / FILE_ATTRIBUTE_REPARSE_POINT) **does**
+  `cargo check --target x86_64-pc-windows-msvc` GREEN under the pinned 1.75 toolchain — the FFI symbols
+  are real and resolve — but that isolated check does not exercise the integrated change: the
+  `&Path`→per-component `UNICODE_STRING` conversion (Length in **bytes**, not chars), the
+  variable-length `FILE_RENAME_INFORMATION` alloc, the disposition logic, the `crate::ResultType`/
+  async-`File` integration, and the required `Cargo.toml` dependency addition (`ntapi` + winapi
+  `fileapi`/`ntdef`/`ntstatus` features) composing with hbb_common's deps for windows-msvc — none
+  checkable without the blocked in-context Windows check. Applying would ship raw NT syscalls in a
+  SYSTEM-privileged write path that only compiled as an isolated sketch and were never run (a
+  mis-shaped `OBJECT_ATTRIBUTES`/`UNICODE_STRING`/`FILE_RENAME_INFORMATION` = memory corruption).
+  **Must be implemented AND validated in the §12.2 Windows-VM build:** cfg(windows) mirror-tests of
+  `recv_write_no_follow_refuses_symlink_{parent_component,target}` using a **junction**
+  (`FSCTL_SET_REPARSE_POINT`/`mklink /J`) as the intermediate/final component, plus a Windows
+  `verify.sh` gate over the new helper tokens. **Both roles** on Windows (server-receive +
+  viewer-download) share the gap and the fix — same `fs.rs` path. (The `fs.rs` doc comment at ~977
+  already notes the Windows artifact path is "validated by its own build VM"; this residual is that
+  validation's precise to-do.)
 
 ## ✅ CLOSED — the excision-vestige backlog + the R-S17 pin-GUI defects (implemented 2026-07-04)
 

@@ -392,6 +392,12 @@ ra6_clean 'crate::lan::|mod lan;|LanPeers|DiscoveryPeer|fn get_lan_peers|fn remo
 # posture (R-SV5). The whole send_wol path (and lan.rs itself) is now excised; assert the
 # wol::send_wol broadcast call stays absent.
 ra6_clean 'wol::send_wol' 'R-SV4(c) Wake-on-LAN UDP-broadcast egress (lan::send_wol)' || rc=1
+# R-SV4/R-D6 / §18: the nip.io NAT64 helper (query_nip_io — a DNS lookup to the external *.nip.io
+# wildcard resolver) and its ipv4_to_ipv6 string builder are EXCISED. Their only production reach was
+# connect_tcp_local's IPv6-local+IPv4-target branch, dead because every viewer connect passes
+# local=None (client.rs) — so the whole inert NAT64 chain (helpers + IsResolvedSocketAddr scaffold) is
+# removed at the source rather than gated. Assert the nip.io DNS-egress helper stays absent.
+ra6_clean 'query_nip_io|fn ipv4_to_ipv6|\.nip\.io' 'R-SV4/R-D6 nip.io NAT64 DNS-egress residue' || rc=1
 # R-SV1 / R-X1 / §18: the hbbs_http::downloader reqwest-GET fetch-to-buffer subsystem is EXCISED. It was
 # orphaned by the R-X1 updater excision — its sole starter (the `download-new-version` Flutter key +
 # updater::get_download_file_from_url) was already gone, leaving `download_file` caller-less and the
@@ -1750,6 +1756,9 @@ echo "$ctrl" | grep -q 'TogglePrivacyMode'   || rs19="$rs19 privacy-toggle-not-r
 capset=$(awk '/let is_desktop_capture = match/,/_ => false,/' "$conn")
 if echo "$capset" | grep -q 'RestartRemoteDevice'; then rs19="$rs19 restart-still-in-capture"; fi
 if echo "$capset" | grep -q 'TogglePrivacyMode';   then rs19="$rs19 privacy-still-in-capture"; fi
+# MessageQuery answers make_display_changed_msg (monitor geometry/resolution), so it MUST sit in the
+# Remote-or-ViewCamera capture allowlist — else a FileTransfer/Terminal/PortForward peer reads display metadata.
+echo "$capset" | grep -q 'MessageQuery'            || rs19="$rs19 messagequery-not-capture-gated"
 # (c) flag-gated sinks key on AuthConnType / voice_calling
 grep -q 'self.clipboard && self.is_authed_remote_conn()' "$conn"       || rs19="$rs19 clipboard-text-not-remote-gated"
 grep -q '!self.disable_audio && self.voice_calling' "$conn"            || rs19="$rs19 audio-not-voice-gated"

@@ -265,14 +265,17 @@ fn compute_isk(ya: &[u8], ada: &[u8], yb: &[u8], adb: &[u8], sid: &[u8], k: &[u8
 }
 
 /// Two per-direction secretbox keys via HKDF-SHA-512 with distinct info labels
-/// (R-P2/R-P9). Returns `(k_c2s, k_s2c)`.
-fn derive_session_keys(isk: &[u8; 64]) -> ([u8; 32], [u8; 32]) {
+/// (R-P2/R-P9). Returns `(k_c2s, k_s2c)`, each wrapped in [`Zeroizing`] so the
+/// transient copies are wiped on every caller exit path — including the R-P3
+/// confirmation-failure abort, where they are never moved into the drop-guarded
+/// [`DirectionalKeys`] (R-T15(a)/R-P12).
+fn derive_session_keys(isk: &[u8; 64]) -> (Zeroizing<[u8; 32]>, Zeroizing<[u8; 32]>) {
     let hk = Hkdf::<Sha512>::new(Some(HKDF_SALT), isk);
-    let mut k_c2s = [0u8; 32];
-    let mut k_s2c = [0u8; 32];
+    let mut k_c2s = Zeroizing::new([0u8; 32]);
+    let mut k_s2c = Zeroizing::new([0u8; 32]);
     // expand() only fails for absurd output lengths; 32 bytes never does.
-    hk.expand(HKDF_INFO_C2S, &mut k_c2s).expect("hkdf c2s");
-    hk.expand(HKDF_INFO_S2C, &mut k_s2c).expect("hkdf s2c");
+    hk.expand(HKDF_INFO_C2S, &mut k_c2s[..]).expect("hkdf c2s");
+    hk.expand(HKDF_INFO_S2C, &mut k_s2c[..]).expect("hkdf s2c");
     (k_c2s, k_s2c)
 }
 
@@ -468,11 +471,12 @@ impl Initiator {
         let mac_key = derive_mac_key(&sid, &isk);
         let ta = compute_tag(&mac_key, &ya_pt, AD_INITIATOR);
 
+        // Copy into the WAIT_4 state (its own Drop wipes them); the Zeroizing locals wipe on return.
         let next = InitiatorAwaitConfirm {
             mac_key,
             yb: step2.yb,
-            k_c2s,
-            k_s2c,
+            k_c2s: *k_c2s,
+            k_s2c: *k_s2c,
         };
         Ok((next, Step3 { ya: ya_pt, ta }))
     }
@@ -610,6 +614,8 @@ impl ResponderAwaitConfirm {
         let mac_key = derive_mac_key(&self.sid, &isk);
 
         if !verify_tag(&mac_key, &step3.ya, AD_INITIATOR, &step3.ta) {
+            // k_c2s/k_s2c wipe here on scope exit (their `Zeroizing` drop) — they were never
+            // moved into the drop-guarded DirectionalKeys on this abort (R-T15(a)/R-P12).
             self.yb_scalar.zeroize();
             return Err(PakeError::Confirmation);
         }
@@ -617,8 +623,8 @@ impl ResponderAwaitConfirm {
         self.yb_scalar.zeroize();
         Ok((
             DirectionalKeys {
-                send: k_s2c,
-                recv: k_c2s,
+                send: *k_s2c,
+                recv: *k_c2s,
             },
             Step4 { tb },
         ))

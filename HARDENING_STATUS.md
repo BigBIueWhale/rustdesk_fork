@@ -111,8 +111,10 @@ closed by deriving `self.audio` from `AuthConnType`, since the `audio_service` s
 `audio_enabled()`), and cursor-position/window-focus capture. Validated: docker `cargo check` (both
 feature sets), `verify.sh` all-green incl. the generalized R-S19 gate (asserts derivation-before-options
 + the 3-way guard + the sink gates), `apple-conform-check` PASS (iOS/macOS source-conformant). The
-Windows-cfg `SelectedSid` edit is type-trivial (the R-B2 Windows build re-prove confirms it). Deliberately
-left: `MessageQuery` display-topology metadata (accepted low-severity, no host action). Not a §2 exposure
+Windows-cfg `SelectedSid` edit is type-trivial (the R-B2 Windows build re-prove confirms it). `MessageQuery`
+(which answers `make_display_changed_msg` — monitor geometry/resolution) is now confined to the
+Remote-or-ViewCamera `is_desktop_capture` allowlist too, so a FileTransfer/Terminal/PortForward peer can no
+longer read display metadata (verify.sh R-S19 asserts it). Not a §2 exposure
 (all instances moot for the trusted password-holder); least-privilege coherence the actually-secure fork
 carries as a MUST. **The final dedicated all-platform Opus sweep is DONE** (`60f8904`): PART 1 confirmed
 the connection.rs fix is sound / not bypassable (cross-confirmed by multiple independent passes — SAS is
@@ -126,8 +128,8 @@ the viewer analog of `AuthConnType::Remote`); (3) the **Windows CLIPRDR→CM** f
 (now gated on the confined `self.clipboard && self.file`, removing a latent approve-mode-pin dependence);
 (4) **Android MediaProjection** fired for view-camera/terminal (now excluded in both the Dart and Kotlin
 gates). All moot under §2; validated via docker cargo check + verify.sh + apple-conform + dart-verify.
-Accepted low-severity residual (no host action/capability): `MessageQuery` display-topology metadata and
-the video-QoS metadata arms (`ClientRecordStatus`/`AutoAdjustFps`). Remaining: R-B2 all-3-platform build
+Accepted low-severity residual (no host action/capability): the video-QoS metadata arms
+(`ClientRecordStatus`/`AutoAdjustFps`). Remaining: R-B2 all-3-platform build
 re-prove at this HEAD (a background build loop is handling it; the connection.rs/video_service.rs changes
 are in all builds, and the Windows/Kotlin edges are validated by the win-exe/apk builds).
 
@@ -341,6 +343,18 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 - **Desktop GPU texture-upload display** — #2b-adjacent native viewer surface
   (`texture_rgba_renderer`), restored 2026-06-28 (f0b9966 revert); accepted
   alongside #2b — already-validated pixels, no parser, viewer/desktop-only.
+- **iOS at-rest config wrapper keyed by `get_uuid()`** — the iOS twin of Appendix C #14. On iOS the
+  `password_prs` at-rest wrapper is keyed by the config keypair PK (`get_uuid()`), which is itself
+  stored in plaintext in the same TOML, so the `symmetric_crypt` wrapper adds no confidentiality over
+  a plain config read. Scoped out, not fixed: §2 explicitly excludes endpoint at-rest reads, and the
+  stored value is already the Argon2id PRS (a memory-hard salted hash, R-P1/R-S9) — not the plaintext
+  password and not the OS/sudo credential even when those are reused — so a cold read yields only the
+  connect-equivalent hash. A proper fix rebinds the iOS at-rest key to Keychain/Secure-Enclave, but
+  that is untestable on this Linux host (no iOS build), it touches the wrapper the CPace PRS derives
+  from, and it MUST NOT change `derive_cpace_prs` output bytes — so it is recorded as a known,
+  scoped-out residual rather than a partial, unverifiable change. The APPLE-6 plist fix (dropping
+  `UIFileSharingEnabled`/`UISupportsDocumentBrowser`) independently removes the Files-app/iTunes
+  exposure of the Documents directory this wrapper sits in, closing the local-exfiltration channel.
 - **R-V3 independent CPace audit — ✅ PERFORMED 2026-07-02; VERDICT SOUND (findings
   resolved @4eb6912).** An independent expert review (docs/CRYPTO-AUDIT-2026-07-02.md):
   the §10.4 construction reproduced byte-for-byte by an INDEPENDENT implementation

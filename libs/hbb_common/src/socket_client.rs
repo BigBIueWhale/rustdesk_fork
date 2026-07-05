@@ -3,10 +3,9 @@ use crate::{
     tcp::FramedStream,
     ResultType, Stream,
 };
-use anyhow::Context;
 use std::net::SocketAddr;
 use tokio::net::ToSocketAddrs;
-use tokio_socks::{IntoTargetAddr, TargetAddr};
+use tokio_socks::IntoTargetAddr;
 
 #[inline]
 pub fn check_port<T: std::string::ToString>(host: T, port: i32) -> String {
@@ -96,34 +95,9 @@ pub fn test_if_valid_server_for_proxy_(host: &str) -> String {
     }
 }
 
-pub trait IsResolvedSocketAddr {
-    fn resolve(&self) -> Option<&SocketAddr>;
-}
-
-impl IsResolvedSocketAddr for SocketAddr {
-    fn resolve(&self) -> Option<&SocketAddr> {
-        Some(self)
-    }
-}
-
-impl IsResolvedSocketAddr for String {
-    fn resolve(&self) -> Option<&SocketAddr> {
-        None
-    }
-}
-
-impl IsResolvedSocketAddr for &str {
-    fn resolve(&self) -> Option<&SocketAddr> {
-        None
-    }
-}
-
 // Direct-IP fork: the flagship path is always TCP (WebSocket transport excised, §8).
 #[inline]
-pub async fn connect_tcp<
-    't,
-    T: IntoTargetAddr<'t> + ToSocketAddrs + IsResolvedSocketAddr + std::fmt::Display,
->(
+pub async fn connect_tcp<'t, T: IntoTargetAddr<'t> + ToSocketAddrs + std::fmt::Display>(
     target: T,
     ms_timeout: u64,
 ) -> ResultType<crate::Stream> {
@@ -131,10 +105,7 @@ pub async fn connect_tcp<
 }
 
 // This function connects directly to the target without checking for websocket endpoints.
-pub async fn connect_tcp_local<
-    't,
-    T: IntoTargetAddr<'t> + ToSocketAddrs + IsResolvedSocketAddr + std::fmt::Display,
->(
+pub async fn connect_tcp_local<'t, T: IntoTargetAddr<'t> + ToSocketAddrs + std::fmt::Display>(
     target: T,
     local: Option<SocketAddr>,
     ms_timeout: u64,
@@ -145,86 +116,14 @@ pub async fn connect_tcp_local<
         ));
     }
 
-    if let Some(target_addr) = target.resolve() {
-        if let Some(local_addr) = local {
-            if local_addr.is_ipv6() && target_addr.is_ipv4() {
-                let resolved_target = query_nip_io(target_addr).await?;
-                return Ok(Stream::Tcp(
-                    FramedStream::new(resolved_target, Some(local_addr), ms_timeout).await?,
-                ));
-            }
-        }
-    }
-
     Ok(Stream::Tcp(
         FramedStream::new(target, local, ms_timeout).await?,
     ))
 }
 
-#[inline]
-pub fn is_ipv4(target: &TargetAddr<'_>) -> bool {
-    match target {
-        TargetAddr::Ip(addr) => addr.is_ipv4(),
-        _ => true,
-    }
-}
-
-#[inline]
-pub async fn query_nip_io(addr: &SocketAddr) -> ResultType<SocketAddr> {
-    tokio::net::lookup_host(format!("{}.nip.io:{}", addr.ip(), addr.port()))
-        .await?
-        .find(|x| x.is_ipv6())
-        .context("Failed to get ipv6 from nip.io")
-}
-
-#[inline]
-pub fn ipv4_to_ipv6(addr: String, ipv4: bool) -> String {
-    if !ipv4 && crate::is_ipv4_str(&addr) {
-        if let Some(ip) = addr.split(':').next() {
-            return addr.replace(ip, &format!("{ip}.nip.io"));
-        }
-    }
-    addr
-}
-
 #[cfg(test)]
 mod tests {
-    use std::net::ToSocketAddrs;
-
     use super::*;
-
-    #[test]
-    fn test_nat64() {
-        test_nat64_async();
-    }
-
-    #[tokio::main(flavor = "current_thread")]
-    async fn test_nat64_async() {
-        assert_eq!(ipv4_to_ipv6("1.1.1.1".to_owned(), true), "1.1.1.1");
-        assert_eq!(ipv4_to_ipv6("1.1.1.1".to_owned(), false), "1.1.1.1.nip.io");
-        assert_eq!(
-            ipv4_to_ipv6("1.1.1.1:8080".to_owned(), false),
-            "1.1.1.1.nip.io:8080"
-        );
-        assert_eq!(
-            ipv4_to_ipv6("rustdesk.com".to_owned(), false),
-            "rustdesk.com"
-        );
-        if ("rustdesk.com:80")
-            .to_socket_addrs()
-            .unwrap()
-            .next()
-            .unwrap()
-            .is_ipv6()
-        {
-            assert!(query_nip_io(&"1.1.1.1:80".parse().unwrap())
-                .await
-                .unwrap()
-                .is_ipv6());
-            return;
-        }
-        assert!(query_nip_io(&"1.1.1.1:80".parse().unwrap()).await.is_err());
-    }
 
     #[test]
     fn test_test_if_valid_server() {

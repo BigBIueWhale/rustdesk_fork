@@ -164,8 +164,8 @@ fn check_anchor_construction(an: &Anchor) {
     assert_eq!(hex(&isk), clean(an.isk), "ISK");
 
     let (k_c2s, k_s2c) = derive_session_keys(&isk);
-    assert_eq!(hex(&k_c2s), an.k_c2s, "k_c2s");
-    assert_eq!(hex(&k_s2c), an.k_s2c, "k_s2c");
+    assert_eq!(hex(&k_c2s[..]), an.k_c2s, "k_c2s");
+    assert_eq!(hex(&k_s2c[..]), an.k_s2c, "k_s2c");
 
     let mac_key = derive_mac_key(&sid, &isk);
     assert_eq!(hex(&mac_key[..]), clean(an.mac_key), "mac_key");

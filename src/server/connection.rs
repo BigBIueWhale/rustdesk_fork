@@ -40,7 +40,7 @@ use hbb_common::{
     },
     tokio_util::codec::{BytesCodec, Framed},
 };
-#[cfg(any(target_os = "android", target_os = "ios"))]
+#[cfg(target_os = "android")]
 use scrap::android::{call_main_service_key_event, call_main_service_pointer_input};
 use scrap::camera;
 use serde_derive::Serialize;
@@ -2042,6 +2042,10 @@ impl Connection {
                             | Some(misc::Union::RefreshVideoDisplay(_))
                             | Some(misc::Union::ChangeResolution(_))
                             | Some(misc::Union::ChangeDisplayResolution(_))
+                            // MessageQuery answers with make_display_changed_msg — display
+                            // geometry/resolution, the same monitor metadata ViewCamera legitimately
+                            // needs but a FileTransfer/Terminal/PortForward peer has no business reading.
+                            | Some(misc::Union::MessageQuery(_))
                     ),
                     _ => false,
                 };
@@ -2059,7 +2063,7 @@ impl Connection {
                     if self.is_authed_view_camera_conn() {
                         return true;
                     }
-                    #[cfg(any(target_os = "android", target_os = "ios"))]
+                    #[cfg(target_os = "android")]
                     if let Err(e) = call_main_service_pointer_input("mouse", me.mask, me.x, me.y) {
                         log::debug!("call_main_service_pointer_input fail:{}", e);
                     }
@@ -2098,7 +2102,7 @@ impl Connection {
                     if self.is_authed_view_camera_conn() {
                         return true;
                     }
-                    #[cfg(any(target_os = "android", target_os = "ios"))]
+                    #[cfg(target_os = "android")]
                     if let Err(e) = match pde.union {
                         Some(pointer_device_event::Union::TouchEvent(touch)) => match touch.union {
                             Some(touch_event::Union::PanStart(pan_start)) => {
@@ -3826,7 +3830,11 @@ impl Connection {
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         if let Ok(q) = o.terminal_persistent.enum_value() {
-            if q != BoolOption::NotSet {
+            // terminal_persistent is a Terminal-session capability; self.terminal is set only in the
+            // Terminal login arm, so key the apply on the session type (R-S19) rather than let any
+            // conn type drive terminal state — the non-Terminal apply is inert (empty service_id) but
+            // confining it structurally keeps the capability a function of the AuthConnType.
+            if self.terminal && q != BoolOption::NotSet {
                 self.update_terminal_persistence(q == BoolOption::Yes).await;
             }
         }

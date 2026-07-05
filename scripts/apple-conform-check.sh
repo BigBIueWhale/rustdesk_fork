@@ -237,13 +237,19 @@ IOS_INFO_KEYS = {
     "CFBundleVersion",
     "ITSAppUsesNonExemptEncryption",
     "LSRequiresIPhoneOS",
+    # iOS 14+ gates connections to local-network hosts behind this usage string; without it the
+    # fork's core direct-IP LAN connect is silently blocked (APPLE-4). Direct-IP only — no Bonjour,
+    # so NSBonjourServices stays absent.
+    "NSLocalNetworkUsageDescription",
     "UIApplicationSupportsIndirectInputEvents",
-    "UIFileSharingEnabled",
     "UILaunchStoryboardName",
     "UIMainStoryboardFile",
     "UISupportedInterfaceOrientations",
     "UISupportedInterfaceOrientations~ipad",
-    "UISupportsDocumentBrowser",
+    # UIFileSharingEnabled / UISupportsDocumentBrowser are DROPPED: the iOS config (the connect-
+    # equivalent Argon2id PRS, R-P1/R-S9) lives in Documents (getApplicationDocumentsDirectory ->
+    # APP_DIR -> Config::path), which they expose to the Files app + iTunes/Finder — the same local
+    # PRS-exfiltration Android's allowBackup="false" closed (R-X6). Absent == disabled.
     "UIViewControllerBasedStatusBarAppearance",
     "io.flutter.embedded_views_preview",
 }

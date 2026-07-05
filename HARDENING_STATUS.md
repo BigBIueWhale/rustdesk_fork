@@ -291,6 +291,27 @@ CLIPRDR) — is dispositioned **`ACCEPT` + SHOULD-sandbox**: "a *universal resid
 **documented residual** not closable by keying — the fork SHOULD sandbox the
 decode path." It is **not** a MUST.
 
+**The residual is armed, not latent (recorded 2026-07-05 under the universal-deployment re-rating).**
+The pinned in-process decoders on the peer-reachable **viewer** path carry **open, unfixed, RCE-class
+CVEs right now** (see `docs/NATIVE-CODEC-WATCH.md`, recorded 2026-06-29 against the Debian security tracker):
+- **libaom 3.12.1** — the AV1 decoder (`aomdec`), reached when a hostile peer sends an `Av1s` frame:
+  **CVE-2026-56211** (remote code execution), **CVE-2026-56209** (arbitrary address write),
+  **CVE-2026-56210** (heap-buffer-overflow read), **CVE-2026-56208** (heap buffer overflow). No-DSA /
+  unfixed across every Debian release — **no fixed aom release exists**.
+- **libvpx 1.15.2** — the VP8/VP9 decoder: **CVE-2026-1861**, a decoder heap buffer overflow (malformed
+  video → OOB heap write; fixed in Chrome 144.0.7559.132 via "enhanced bounds checking in the libvpx
+  decoder"). The pinned 1.15.2 (a 2025 release) predates the fix; the fixed libvpx commit is not yet pinned.
+All lie in the **decoder**, not the encoder (the fork encodes its own screen, so encoder-only advisories
+are N/A). So the spec's "pinned ≠ CVE-free" caveat is **not hypothetical**: there are live, unfixed
+memory-corruption / RCE bugs on the exact bytes an in-process viewer decodes when connected to a
+hostile-but-password-correct box — in **every** binary (every build ships the full viewer, R-R2b). This
+does not change the `ACCEPT`/SHOULD disposition, but it makes the SHOULD-sandbox the **highest-value open
+hardening item** for a universal-deployment posture (where a viewer routinely connects to boxes it does
+not control), and the strongest argument to reconsider a *narrow* decoder sandbox (a maintainer call — do
+**not** unilaterally re-add the reverted subsystem). The controlled/`--server` role is **unaffected**: it
+decodes no peer video (it encodes its own screen); its only inbound native decode is Opus, gated behind an
+operator-accepted voice call (R-S19), plus 64 MiB-bounded zstd.
+
 A prior session (2026-06-26→28) built a large worker-subprocess sandbox for #2b —
 hidden same-artifact `--native-*-worker` roles, a `native_worker_sandbox` helper
 (seccomp-BPF / Seatbelt / Windows Job-Object / token confinement), and Android

@@ -11,7 +11,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 LEDGER=docs/NATIVE-CODEC-WATCH.md
-EXPECTED_REQUIREMENTS_SHA=5cf47b53870ca386886ce5337e211f11adf11623110e08027de376a4a6b0902f
+EXPECTED_REQUIREMENTS_SHA=4df7fba2ad03119a9e4bdf8ae91ef0e5bcef60524e28fca40499a0f3394ac5cf
 expected_packages=(aom cpu-features libjpeg-turbo libvpx libyuv oboe opus)
 rc=0
 

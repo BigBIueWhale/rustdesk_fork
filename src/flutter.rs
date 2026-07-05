@@ -156,6 +156,41 @@ pub extern "C" fn handle_applicationShouldOpenUntitledFile() {
     crate::platform::macos::handle_application_should_open_untitled_file();
 }
 
+#[cfg(target_os = "macos")]
+#[no_mangle]
+extern "C" fn handle_open_urls(
+    _self: &objc::runtime::Object,
+    _cmd: objc::runtime::Sel,
+    _: cocoa::base::id,
+    urls: cocoa::base::id,
+) {
+    use cocoa::foundation::{NSArray, NSString, NSURL};
+    use std::ffi::CStr;
+
+    unsafe {
+        for i in 0..urls.count() {
+            let url = CStr::from_ptr(urls.objectAtIndex(i).absoluteString().UTF8String())
+                .to_string_lossy()
+                .into_owned();
+            log::debug!("URL received: {}", url);
+            std::thread::spawn(move || crate::handle_url_scheme(url));
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+extern "C" fn service_should_handle_reopen(
+    _obj: &objc::runtime::Object,
+    _sel: objc::runtime::Sel,
+    _sender: cocoa::base::id,
+    _has_visible_windows: objc::runtime::BOOL,
+) -> objc::runtime::BOOL {
+    log::debug!("Invoking the main rustdesk process");
+    std::thread::spawn(move || crate::handle_url_scheme(String::new()));
+    objc::runtime::NO
+}
+
 #[cfg(windows)]
 #[no_mangle]
 pub extern "C" fn rustdesk_core_main_args(args_len: *mut c_int) -> *mut *mut c_char {

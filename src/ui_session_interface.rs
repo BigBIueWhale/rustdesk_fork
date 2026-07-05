@@ -1519,7 +1519,12 @@ impl<T: InvokeUiSession> Session<T> {
             if let Some(pi) = pi {
                 if pi.windows_sessions.current_sid == sid {
                     if self.is_file_transfer() {
-                        if pi.username.is_empty() {
+                        // Same Windows-only "no console user" semantics as handle_peer_info: a unix
+                        // peer serves file transfer at service privilege, so only an empty console
+                        // user on a Windows peer blocks it.
+                        let peer_is_windows =
+                            pi.platform == hbb_common::whoami::Platform::Windows.to_string();
+                        if peer_is_windows && pi.username.is_empty() {
                             self.on_error(
                                 "No active console user logged on, please connect and logon first.",
                             );
@@ -1704,7 +1709,14 @@ impl<T: InvokeUiSession> Interface for Session<T> {
             self.set_permission("restart", false);
         }
         if self.is_file_transfer() {
-            if pi.username.is_empty() && pi.windows_sessions.sessions.is_empty() {
+            // A "no console user logged on" state only blocks file transfer on a Windows peer, where
+            // the pre-logon screen is the SYSTEM session with no interactive user or reachable profile.
+            // A unix peer serves file transfer at the CM service privilege regardless of any console
+            // session, so an empty username must not block it. Post-auth UX only (CPace gated the
+            // connection); a peer lying about its platform merely re-blocks itself.
+            let peer_is_windows = pi.platform == hbb_common::whoami::Platform::Windows.to_string();
+            if peer_is_windows && pi.username.is_empty() && pi.windows_sessions.sessions.is_empty()
+            {
                 self.on_error("No active console user logged on, please connect and logon first.");
                 return;
             }

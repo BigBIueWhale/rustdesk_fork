@@ -1788,6 +1788,47 @@ if [ -z "$rs19e" ]; then
 else
   echo "  FAIL R-S19 edge residuals:$rs19e"; rc=1
 fi
+# R-F1/R-F2 (functional: FILE TRANSFER preserved on the headless unix --server). On a box with no
+# logind/console session, get_active_username() resolves empty and windows_sessions is always empty,
+# so the inherited viewer gate ("No active console user logged on") mis-fired and blocked file
+# transfer even though file I/O runs in the CM process at the --server owner's privilege (like the
+# terminal's SelfUser, R-F1). Two coordinated guards restore it, both asserted here:
+#  (1) SERVER: PeerInfo.username falls back to the --server PROCESS OWNER (hbb_common::whoami::
+#      username) when get_active_username() is empty — a truthful non-empty username. Scoped to unix
+#      desktops (linux+macos) and empty-guarded, so Windows/Android WTS/console semantics are untouched.
+#  (2) VIEWER: the "No active console user logged on" refusal is Windows-PEER-only (that state is
+#      Windows session semantics — the pre-logon SYSTEM session); a unix peer serves file transfer at
+#      service privilege, so an empty console user MUST NOT block it. Both refusal sites
+#      (handle_peer_info + send_selected_session_id) gate on pi.platform == whoami::Platform::Windows.
+ftx=
+conn=src/server/connection.rs
+uif=src/ui_session_interface.rs
+# (1) server-side process-owner username fallback: unix-only cfg, empty-guarded, whoami::username
+ftu_block=$(awk '/let mut username = crate::platform::get_active_username/,/let mut res = LoginResponse::new/' "$conn")
+echo "$ftu_block" | grep -q 'cfg(any(target_os = "linux", target_os = "macos"))'  || ftx="$ftx server-fallback-not-unix-cfg-gated"
+echo "$ftu_block" | grep -q 'if username.is_empty()'                              || ftx="$ftx server-fallback-not-empty-guarded"
+echo "$ftu_block" | grep -q 'username = hbb_common::whoami::username()'           || ftx="$ftx server-no-process-owner-fallback"
+# (1b) the prelogin username-blanking for a file-transfer login is Windows-ONLY. On a headless unix
+#      box is_prelogin() is TRUE (no seat0 -> `getent passwd ` lists every user, matching nologin
+#      shells), so a unix-broad re-clear (the inherited cfg(not(android/ios))) would UNDO the
+#      process-owner fallback above. It MUST sit under cfg(windows) — mirroring the terminal's
+#      Windows-only is_prelogin handling (fill_terminal_user_token) — so unix keeps the real user.
+if grep -B1 'if self.file_transfer.is_some() && crate::platform::is_prelogin()' "$conn" | grep -q 'cfg(target_os = "windows")'; then :; else ftx="$ftx ft-prelogin-reclear-not-windows-gated"; fi
+if grep -A1 'if self.file_transfer.is_some() {' "$conn" | grep -q 'if crate::platform::is_prelogin'; then ftx="$ftx ft-prelogin-reclear-old-unix-nested-form-remains"; fi
+# (2) both viewer refusal sites are Windows-peer-gated; the old ungated username-only refusal is gone
+n_win=$(grep -c 'pi.platform == hbb_common::whoami::Platform::Windows.to_string()' "$uif" || true)
+[ "${n_win:-0}" -ge 2 ] || ftx="$ftx viewer-refusal-fewer-than-2-windows-guards"
+if grep -q 'if pi.username.is_empty() && pi.windows_sessions.sessions.is_empty() {' "$uif"; then
+  ftx="$ftx viewer-handle_peer_info-ungated-refusal-remains"
+fi
+hpi=$(awk '/fn handle_peer_info/,/} else if !self.is_port_forward/' "$uif")
+echo "$hpi" | grep -q 'No active console user'  || ftx="$ftx handle_peer_info-refusal-vanished"
+echo "$hpi" | grep -q 'peer_is_windows'         || ftx="$ftx handle_peer_info-refusal-not-windows-gated"
+if [ -z "$ftx" ]; then
+  echo "  ok  R-F1/R-F2 file transfer on headless unix: server reports the process-owner username + the viewer 'no console user' refusal is Windows-peer-only"
+else
+  echo "  FAIL R-F1/R-F2 file-transfer headless-unix guards weakened:$ftx"; rc=1
+fi
 # R-T11 (§20): the PUBLIC listener (listen_any_v4) MUST bind WITHOUT SO_REUSEPORT — a single-
 # instance service needs no kernel load-balance group, and REUSEPORT lets another same-uid (root)
 # process silently join the group and steal inbound connections (invisible to R-A4's own-process

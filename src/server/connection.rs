@@ -1100,6 +1100,14 @@ impl Connection {
         self.confine_capabilities_to_conn_type(auth_conn_type);
         #[allow(unused_mut)]
         let mut username = crate::platform::get_active_username();
+        // On a headless unix box there is no logind/console session for `get_active_username` to
+        // resolve, so it returns empty. File transfer runs in the CM process as the `--server` owner
+        // (the same SelfUser the terminal reports — R-F1), so report that real user rather than an
+        // empty console user. Windows/Android keep their WTS/console-session semantics untouched.
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        if username.is_empty() {
+            username = hbb_common::whoami::username();
+        }
         let mut res = LoginResponse::new();
         let mut pi = PeerInfo {
             username: username.clone(),
@@ -1217,12 +1225,16 @@ impl Connection {
         if crate::platform::is_root() {
             sas_enabled = true;
         }
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        if self.file_transfer.is_some() {
-            if crate::platform::is_prelogin() {
-                // }|| self.tx_to_cm.send(ipc::Data::Test).is_err() {
-                username = "".to_owned();
-            }
+        // The pre-logon SYSTEM session has no interactive user or reachable profile, so a Windows
+        // file-transfer login there reports no console user — the viewer's matching Windows-only gate
+        // then refuses it. On unix, file transfer serves at the CM service privilege regardless of any
+        // console session (like the terminal's SelfUser, R-F1), so the process-owner username above
+        // stands with no prelogin blanking. Mirrors the terminal's Windows-only is_prelogin handling
+        // (fill_terminal_user_token); on a headless unix box is_prelogin() is true (no seat0), which
+        // must NOT blank the file-transfer user.
+        #[cfg(target_os = "windows")]
+        if self.file_transfer.is_some() && crate::platform::is_prelogin() {
+            username = "".to_owned();
         }
         // Terminal feature is supported on desktop only
         #[allow(unused_mut)]

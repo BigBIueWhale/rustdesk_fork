@@ -13,12 +13,16 @@
 //!                `my_id` is the ASCII canary `PLAINTEXT-CANARY-DEADBEEF` so the R-A9 wire-capture
 //!                test can assert it NEVER appears on the wire (the post-key frame is AEAD-sealed);
 //!   - `inject` : R-A8/R-T7 — after keying, corrupt the engaged SEND key, then send a frame
-//!                and send a forged frame; the server's AEAD MUST reject it (`decryption error`).
+//!                and send a forged frame; the server's AEAD MUST reject it (`decryption error`);
+//!   - `filetransfer` : R-F1/R-F2 — send a FileTransfer `LoginRequest`, then a `ReadDir("")`, and
+//!                report the `PeerInfo` (its `username` MUST be NON-EMPTY on a headless unix
+//!                `--server` — the process-owner fallback — never the "No active console user"
+//!                refusal) plus any directory `FileResponse`.
 //!
 //! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
 //!
-//! Usage: `probe_client <addr> <password> <ok|fail> [read|login|inject] [local_addr]`  (exit 0 = matched)
+//! Usage: `probe_client <addr> <password> <ok|fail> [read|login|inject|portforward|filetransfer] [local_addr]`  (exit 0 = matched)
 use hbb_common::cpace::run_initiator;
 use hbb_common::message_proto::Message;
 use hbb_common::protobuf::Message as _; // parse_from_bytes / write_to_bytes
@@ -33,7 +37,7 @@ fn main() {
     let pw = a.get(2).cloned().expect("password");
     let expect = a.get(3).map(String::as_str).unwrap_or("ok").to_string();
     let mode = a.get(4).map(String::as_str).unwrap_or("").to_string();
-    let do_read = mode == "read" || mode == "login" || mode == "inject" || mode == "portforward";
+    let do_read = mode == "read" || mode == "login" || mode == "inject" || mode == "portforward" || mode == "filetransfer";
     // Optional local source address (6th arg) — e.g. 127.0.0.2:0 to connect as a DIFFERENT source,
     // for the R-A8.2 owner-safe limiter test (a flood from one source must not block another).
     let local = a.get(5).and_then(|s| s.parse::<std::net::SocketAddr>().ok());
@@ -153,11 +157,91 @@ fn main() {
                         msg.set_login_request(lr);
                         let _ = stream.send_raw(msg.write_to_bytes().unwrap_or_default()).await;
                     }
+                    if mode == "filetransfer" {
+                        // R-F1/R-F2 END-TO-END against a headless unix --server. Before the fix this box
+                        // (no logind/console session) reported an EMPTY PeerInfo.username and the viewer
+                        // refused file transfer with "No active console user logged on". The server now
+                        // falls back to the --server process owner, so the keyed FileTransfer login MUST
+                        // yield a PeerInfo whose username is NON-EMPTY — never that refusal. A ReadDir("")
+                        // then drives the file path (served in the CM process at service privilege; its
+                        // dir FileResponse is reported if the CM round-trips).
+                        use hbb_common::message_proto::{file_response, login_response, message, FileAction, FileTransfer, LoginRequest, ReadDir};
+                        let mut lr = LoginRequest::new();
+                        // The box's own id, so the responder's username guard admits the login.
+                        lr.username = hbb_common::config::Config::get_id();
+                        lr.my_id = "ft-probe".to_string();
+                        lr.my_name = "ft-probe".to_string();
+                        lr.version = "1.4.0".to_string();
+                        lr.my_platform = "Linux".to_string();
+                        lr.set_file_transfer(FileTransfer {
+                            dir: "".to_string(),
+                            show_hidden: false,
+                            ..Default::default()
+                        });
+                        let mut msg = Message::new();
+                        msg.set_login_request(lr);
+                        let _ = stream.send_raw(msg.write_to_bytes().unwrap_or_default()).await;
+                        let mut sent_readdir = false;
+                        for _ in 0..10 {
+                            let bytes = match stream.next_timeout(4000).await {
+                                Some(Ok(b)) => b,
+                                _ => {
+                                    pk.push_str("[FT-NO-RESPONSE] ");
+                                    break;
+                                }
+                            };
+                            match Message::parse_from_bytes(&bytes).map(|m| m.union) {
+                                Ok(Some(message::Union::LoginResponse(r))) => match r.union {
+                                    Some(login_response::Union::PeerInfo(peer)) => {
+                                        pk.push_str(&format!(
+                                            "[FT-PEERINFO username_nonempty={} username={:?} platform={:?}] ",
+                                            !peer.username.is_empty(),
+                                            peer.username,
+                                            peer.platform
+                                        ));
+                                        if !sent_readdir {
+                                            let mut fa = FileAction::new();
+                                            fa.set_read_dir(ReadDir {
+                                                path: "".to_string(),
+                                                include_hidden: false,
+                                                ..Default::default()
+                                            });
+                                            let mut m = Message::new();
+                                            m.set_file_action(fa);
+                                            let _ = stream.send_raw(m.write_to_bytes().unwrap_or_default()).await;
+                                            sent_readdir = true;
+                                        }
+                                    }
+                                    Some(login_response::Union::Error(e)) => {
+                                        pk.push_str(&format!("[FT-LOGIN-ERROR {e}] "));
+                                        break;
+                                    }
+                                    _ => {}
+                                },
+                                Ok(Some(message::Union::FileResponse(fr))) => match fr.union {
+                                    Some(file_response::Union::Dir(d)) => {
+                                        pk.push_str(&format!(
+                                            "[FT-DIR-RESPONSE path={:?} entries={}] ",
+                                            d.path,
+                                            d.entries.len()
+                                        ));
+                                        break;
+                                    }
+                                    Some(file_response::Union::Error(e)) => {
+                                        pk.push_str(&format!("[FT-FILE-ERROR {e:?}] "));
+                                        break;
+                                    }
+                                    _ => {}
+                                },
+                                _ => {}
+                            }
+                        }
+                    }
                     // The generic post-key frame dump is for read/login/inject only; a port-forward
                     // tunnel already did its round-trip above, and its post-PeerInfo bytes are RAW
                     // relay data (not Messages), so skip the dump there.
                     for i in 0..6 {
-                        if mode == "portforward" {
+                        if mode == "portforward" || mode == "filetransfer" {
                             break;
                         }
                         match stream.next_timeout(3000).await {

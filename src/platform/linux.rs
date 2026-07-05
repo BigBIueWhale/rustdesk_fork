@@ -1010,7 +1010,9 @@ fn is_flatpak() -> bool {
     std::path::PathBuf::from("/.flatpak-info").exists()
 }
 
-// Headless is enabled, always return true.
+// True when seat0's active user is a non-login system account (shell /bin/false or nologin) — i.e.
+// only the display-manager greeter is running and no real user has logged in yet. (Flatpak has no
+// host seat visibility, so it is treated as not-prelogin.)
 pub fn is_prelogin() -> bool {
     if is_flatpak() {
         return false;

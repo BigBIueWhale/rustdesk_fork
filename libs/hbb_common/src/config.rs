@@ -3649,20 +3649,27 @@ mod tests {
 
     #[test]
     fn test_permanent_password_sync_treats_same_encrypted_hash_as_unchanged() {
+        // R-S9 idempotency — the complement of sync_rebuilds_password_prs_from_storage:
+        // re-syncing the credential already at rest is a no-op (returns `false` = unchanged),
+        // so the daemon does not needlessly rewrite the config. config.password (the
+        // encrypted-hash storage envelope) and config.password_prs (the live CPace PRS) are
+        // the two at-rest forms of the SAME 32 PRS bytes and are always written together, so
+        // the real steady state has BOTH present and consistent — that is what "unchanged"
+        // requires. (Were password_prs missing or stale, the sync would instead REBUILD it
+        // from the storage and report a change.) The at-rest ciphertext carries a random
+        // nonce (symmetric_crypt), so the unchanged decision compares the DECRYPTED PRS, never
+        // the unstable ciphertext bytes — this pins that.
+        let (storage, prs_storage) = derive_permanent_password_storages("p@ssw0rd").unwrap();
+        let salt = "salt123";
         let mut cfg = Config::default();
-        cfg.salt = "salt123".to_owned();
-        let h1 = compute_permanent_password_h1("p@ssw0rd", &cfg.salt);
-        let encrypted_hash_storage =
-            encode_permanent_password_encrypted_storage_from_h1(&h1).unwrap();
-        cfg.password = encrypted_hash_storage.clone();
-        Config::validate_or_decrypt_permanent_password_storage(&mut cfg).unwrap();
+        cfg.password = storage.clone();
+        cfg.password_prs = prs_storage;
+        cfg.salt = salt.to_owned();
 
-        assert!(!Config::apply_permanent_password_storage_for_sync(
-            &mut cfg,
-            &encrypted_hash_storage,
-            "salt123"
-        )
-        .unwrap());
+        assert!(
+            !Config::apply_permanent_password_storage_for_sync(&mut cfg, &storage, salt).unwrap(),
+            "re-syncing the identical already-stored credential must be a no-op (unchanged)"
+        );
     }
 
     #[test]

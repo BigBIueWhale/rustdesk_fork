@@ -185,9 +185,13 @@ echo "== (3c-i) IPC _service path-sharing across uids (R-S11a/R-X13) =="
 # synced set/rotate durable: password_prs stays in step with `storage`, so the headless --server reads a
 # live PRS and listens (R-S9) with the current password on restart. This pins the reconstruction:
 # base64(decode(storage)) == derive_cpace_prs(password), and the rebuilt at-rest PRS decrypts back to it.
+# Its complement — re-syncing an already-consistent credential is a NO-OP (idempotent, so no needless
+# config rewrite), and the "unchanged" decision compares the DECRYPTED PRS, never the ciphertext bytes
+# (symmetric_crypt uses a random nonce, so those bytes are unstable) — is pinned by the third test.
 echo "== (3c-i-b) permanent-password PRS credential durability (R-S9) =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::permanent_password::tests::prs_storage_reconstructs_from_password_storage --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::sync_rebuilds_password_prs_from_storage --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_permanent_password_sync_treats_same_encrypted_hash_as_unchanged --color never
 
 # (3c-ii-a) Viewer peer media admission bounds (Appendix C #2b/R-T0): a
 # hostile peer controls VideoFrame.display and keyframe/audio cadence, so the

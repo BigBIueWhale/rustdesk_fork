@@ -63,8 +63,9 @@ sudo rustdesk --password '<a-strong-password>'
 ```
 
 This is the shared secret a viewer must know. It is stored only as a salted
-password-equivalent, never in cleartext. Without it the service logs
-*"no permanent password is set — refusing to listen"* and does not bind.
+password-equivalent, never in cleartext. Without it the service **parks** — it stays
+up but binds no listener (logging *"no permanent password set — the direct listener is
+PARKED"*) and refuses every connection until a password is set.
 
 ### 2b. Apply
 
@@ -141,11 +142,13 @@ A correctly-deployed host shows a single `0.0.0.0:21118` TCP LISTEN line and no 
   `apt install ./rustdesk-<ver>.deb`; the `postinst` reloads the service.
 - **Stop/disable:** `sudo systemctl disable --now rustdesk`. The `prerm` stops/disables
   the unit on package removal.
-- **Logs:** `journalctl -u rustdesk`. The fail-closed refusals (no password /
-  managed-override) are logged at error level with their R-ID.
+- **Logs:** `journalctl -u rustdesk`. With no password the service **parks** and logs the
+  R-S9 park at warn level; a managed-override / policy violation is a fail-closed refusal
+  logged at error level with its R-ID.
 - **Do not clone/migrate the box to different hardware:** the permanent-password credential is
   encrypted at rest under the machine's UUID, so a disk clone / VM migration / hardware swap makes it
   unreadable and the host fail-closes (refuses to listen) until you re-run `sudo rustdesk --password ...`
   on the new hardware. This is intentional — the at-rest credential is bound to the box.
 - **Android/Windows clients** connect to the same `<host-ip>:21118` with the same
-  password (no fingerprint to pin).
+  password (no fingerprint to pin). Using an **Android phone as the controlled host** is a
+  different, *attended-only* model — see [`ANDROID-SERVER.md`](./ANDROID-SERVER.md).

@@ -1196,14 +1196,6 @@ class RustdeskImpl {
     throw UnimplementedError("mainGetDataDirIos");
   }
 
-  Future<void> mainStopService({dynamic hint}) {
-    throw UnimplementedError("mainStopService");
-  }
-
-  Future<void> mainStartService({dynamic hint}) {
-    throw UnimplementedError("mainStartService");
-  }
-
   Future<void> mainUpdateTemporaryPassword({dynamic hint}) {
     throw UnimplementedError("mainUpdateTemporaryPassword");
   }

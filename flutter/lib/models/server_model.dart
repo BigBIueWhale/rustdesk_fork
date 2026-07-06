@@ -403,9 +403,9 @@ class ServerModel with ChangeNotifier {
     notifyListeners();
     try {
       parent.target?.ffiModel.updateEventListener(parent.target!.sessionId, "");
+      // R-D7a: the direct listener is service-owned — MainService.onCreate (bound by init_service)
+      // starts it via JNI startServer; there is no separate service-enable config write.
       await parent.target?.invokeMethod("init_service");
-      // ugly is here, because for desktop, below is useless
-      await bind.mainStartService();
       updateClientState();
     } catch (e) {
       // Honest status (§19/R-G7): the "service running / reachable on :21118" surface is driven
@@ -427,8 +427,11 @@ class ServerModel with ChangeNotifier {
   Future<void> stopService() async {
     _isStart = false;
     closeAll();
+    // R-D7a: the real stop is the OS foreground-service lifecycle — invokeMethod("stop_service")
+    // -> MainActivity.stop_service -> MainService.destroy() -> onDestroy -> JNI stopServer, which
+    // supersedes the service-owned-listener generation so the accept loop drops the socket. There
+    // is no stop-service config write (the listener reads no such option, R-D4).
     await parent.target?.invokeMethod("stop_service");
-    await bind.mainStopService();
     notifyListeners();
     // for androidUpdatekeepScreenOn only
     WakelockManager.disable(_wakelockKey);

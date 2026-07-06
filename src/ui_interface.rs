@@ -413,8 +413,10 @@ pub fn set_option(key: String, value: String) {
     // service — it was the live service-kill path (the sciter "Enable service"/"Start service" toggle,
     // macos.rs, any ipc::set_option). The key stays pinned "N" + in the is_option_can_save reject set
     // (R-S16/R-S11), so a write now falls through inert. The sole sanctioned uninstall is the explicit
-    // `--uninstall` CLI (core_main). NB the Android `main_stop_service` foreground-service toggle is a
-    // SEPARATE, legitimate feature (Config::set_option on cfg(android), not this path) and is untouched.
+    // `--uninstall` CLI (core_main). On Android there is no stop-service config toggle at all: the
+    // controlled-side stop is the OS foreground-service lifecycle (MainService.onDestroy -> the JNI
+    // stopServer, which drives the direct listener's service-owned-generation teardown, R-D7a), not
+    // a Config write — so no option-write path reaches the Android listener either.
     if &key == "audio-input" {
         #[cfg(not(target_os = "ios"))]
         crate::audio_service::restart();

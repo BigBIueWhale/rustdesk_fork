@@ -1915,20 +1915,6 @@ pub fn main_get_data_dir_ios(app_dir: String) -> SyncReturn<String> {
     SyncReturn(data_dir.to_string_lossy().to_string())
 }
 
-pub fn main_stop_service() {
-    #[cfg(target_os = "android")]
-    {
-        config::Config::set_option("stop-service".into(), "Y".into());
-    }
-}
-
-pub fn main_start_service() {
-    #[cfg(target_os = "android")]
-    {
-        config::Config::set_option("stop-service".into(), "".into());
-    }
-}
-
 pub fn main_check_super_user_permission() -> bool {
     check_super_user_permission()
 }
@@ -2530,7 +2516,24 @@ pub mod server_side {
                 crate::read_custom_client(&custom_client_config);
             }
         }
+        // R-D7a: establish a fresh service-owned-listener generation BEFORE spawning the server
+        // thread, so the new server runs under the current generation and any stale prior thread
+        // (a fast MainService stop->start) is already superseded and unwinds. The direct listener
+        // is owned by this MainService instance; MainService.onDestroy -> stopServer supersedes it.
+        crate::direct_service::android_begin_generation();
         std::thread::spawn(move || start_server(true));
+    }
+
+    #[no_mangle]
+    pub unsafe extern "system" fn Java_ffi_FFI_stopServer(_env: JNIEnv, _class: JClass) {
+        // R-D7a: MainService.onDestroy drives the service-owned-listener teardown. Supersede the
+        // current server generation; the `direct_server` accept loop + `start_direct_only`
+        // keep-alive observe it and unwind, dropping the `TcpListener` so the listening socket
+        // closes. This is the graceful twin of process-death fd close (an OS/OEM/battery kill
+        // closes it via the START_NOT_STICKY exit). No config write — the stop is the OS
+        // foreground-service lifecycle, not an option (the listener reads no `stop-service`, R-D4).
+        log::debug!("stopServer from jvm");
+        crate::direct_service::android_request_stop();
     }
 
     #[no_mangle]
@@ -2540,12 +2543,6 @@ pub mod server_side {
     ) {
         log::debug!("R-T13 rebuildDirectServerListener from jvm");
         crate::direct_service::request_direct_listener_rebuild("android-network-change");
-    }
-
-    #[no_mangle]
-    pub unsafe extern "system" fn Java_ffi_FFI_startService(_env: JNIEnv, _class: JClass) {
-        log::debug!("startService from jvm");
-        config::Config::set_option("stop-service".into(), "".into());
     }
 
     #[no_mangle]

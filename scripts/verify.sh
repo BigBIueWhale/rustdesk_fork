@@ -881,8 +881,9 @@ fi
 # service is un-killable at runtime; the SOLE sanctioned uninstall is the `--uninstall` CLI (core_main). The
 # sciter UI controls (#stop-service menu + #start-service link + their handlers + the hide_stop_service
 # builtin) are removed too — bringing the legacy sciter front-end + the shared set_option to flutter parity
-# (flutter excised its stop-service button earlier). (The Android main_stop_service foreground-service toggle
-# is a SEPARATE, legitimate feature — Config::set_option on cfg(android), not this path — and is KEPT.)
+# (flutter excised its stop-service button earlier). (Android has no stop-service config toggle: the
+# controlled-side stop is the MainService.onDestroy -> JNI stopServer foreground-service lifecycle that
+# supersedes the direct listener's service-owned generation — not a Config write — R-D7a.)
 r_x9_killsvc=
 grep -qE '&key == "stop-service"' src/ui_interface.rs && r_x9_killsvc="$r_x9_killsvc ui_interface-special-case"
 # (the sciter #stop-service/#start-service/Enable-service controls are gone with the Sciter UI, R-B6)

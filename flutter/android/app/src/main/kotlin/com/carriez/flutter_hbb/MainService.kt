@@ -320,6 +320,13 @@ class MainService : Service() {
         checkMediaPermission()
         unregisterNetworkCallback()
         releaseNetworkKeepaliveWakeLock()
+        // R-D7a: the direct listener is OWNED by this foreground service (started by FFI.startServer
+        // in onCreate). Tear it down as the service is destroyed — stopServer supersedes the Rust
+        // service-owned-listener generation, so the accept loop drops the TcpListener and the socket
+        // closes. The user "Stop service" path reaches here via MainActivity.stop_service -> destroy()
+        // -> stopSelf -> onDestroy; an OS/OEM/battery kill closes the socket by process death instead
+        // (START_NOT_STICKY means no zombie auto-restart rebinds it).
+        FFI.stopServer()
         super.onDestroy()
     }
 
@@ -399,9 +406,6 @@ class MainService : Service() {
             createForegroundNotification()
             acquireNetworkKeepaliveWakeLock()
 
-            if (intent.getBooleanExtra(EXT_INIT_FROM_BOOT, false)) {
-                FFI.startService()
-            }
             Log.d(logTag, "service starting: ${startId}:${Thread.currentThread()}")
             val mediaProjectionManager =
                 getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager

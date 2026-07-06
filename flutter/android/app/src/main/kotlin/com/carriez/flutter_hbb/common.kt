@@ -15,9 +15,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.provider.Settings.*
-import android.util.DisplayMetrics
 import android.util.Log
-import android.view.WindowManager
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat.getSystemService
 import com.hjq.permissions.Permission
@@ -129,24 +127,6 @@ class AudioReader(val bufSize: Int, private val maxFrames: Int) {
             null
         }
     }
-}
-
-
-fun getScreenSize(windowManager: WindowManager) : Pair<Int, Int>{
-    var w = 0
-    var h = 0
-    @Suppress("DEPRECATION")
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        val m = windowManager.maximumWindowMetrics
-        w = m.bounds.width()
-        h = m.bounds.height()
-    } else {
-        val dm = DisplayMetrics()
-        windowManager.defaultDisplay.getRealMetrics(dm)
-        w = dm.widthPixels
-        h = dm.heightPixels
-    }
-    return Pair(w, h)
 }
 
  fun translate(input: String): String {

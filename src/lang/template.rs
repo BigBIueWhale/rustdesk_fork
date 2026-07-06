@@ -255,6 +255,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("How to get Android input permission?", ""),
         ("android_input_permission_tip1", ""),
         ("android_input_permission_tip2", ""),
+        ("android_input_permission_tip3_restricted", ""),
         ("android_new_connection_tip", ""),
         ("android_service_will_start_tip", ""),
         ("android_stop_service_tip", ""),

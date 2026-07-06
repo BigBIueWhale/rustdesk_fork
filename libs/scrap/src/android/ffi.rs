@@ -295,17 +295,15 @@ pub struct MediaCodecInfos {
     pub codecs: Vec<MediaCodecInfo>,
 }
 
-#[no_mangle]
-pub extern "system" fn Java_ffi_FFI_setCodecInfo(env: JNIEnv, _class: JClass, info: JString) {
-    let mut env = env;
-    if let Ok(info) = env.get_string(&info) {
-        let info: String = info.into();
-        if let Ok(infos) = serde_json::from_str::<MediaCodecInfos>(&info) {
-            *MEDIA_CODEC_INFOS.write().unwrap() = Some(infos);
-        }
-    }
-}
-
+// Dead-code excision (JNI-paired): the `Java_ffi_FFI_setCodecInfo` export — populated at app start
+// from Kotlin's `MainActivity.setCodecInfo` — is removed together with its Kotlin caller and the
+// `FFI.setCodecInfo` declaration (removing only one side of a JNI pair breaks linkage). Its sole
+// consumer was the MediaCodec probe in `scrap/src/common/hwcodec.rs`, gated behind
+// `#[cfg(feature = "hwcodec")]` and compiled out on every shipped artifact (CPU-only, software
+// codec). The reader half below (`get_codec_info`/`clear_codec_info`, `MEDIA_CODEC_INFOS`, and the
+// `MediaCodecInfo(s)` structs) is deliberately kept because that compiled-out module still
+// references it; with the writer gone `MEDIA_CODEC_INFOS` simply stays `None`, which is inert for
+// the software capture path this fork ships.
 pub fn get_codec_info() -> Option<MediaCodecInfos> {
     MEDIA_CODEC_INFOS.read().unwrap().as_ref().cloned()
 }

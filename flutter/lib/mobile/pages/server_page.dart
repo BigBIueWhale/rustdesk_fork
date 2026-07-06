@@ -356,12 +356,32 @@ class ServerInfo extends StatelessWidget {
         TextStyle(fontSize: 25.0, fontWeight: FontWeight.bold);
 
     Widget ConnectionStateNotification() {
-      // R-G2/R-G8: direct-IP — the controlled side listens on the pinned direct port
+      // R-G2/R-G7: direct-IP — the controlled side listens on the pinned direct port
       // (config::DIRECT_PORT = 21118); there is no rendezvous "connecting"/"not ready" state.
-      return Row(children: [
-        const Icon(Icons.check, color: colorPositive, size: iconSize)
-            .marginOnly(right: iconMarginRight),
-        Expanded(child: Text(translate('Listening on :21118')))
+      // Report TWO distinct, honest facts instead of one static green check:
+      //  1. The listener is reachable on :21118 while THIS app is open — an attended box, not an
+      //     always-on/unattended server (R-D7a: Android is viewer-dominant, no daemon).
+      //  2. Screen capture only actually flows once MediaProjection consent is in hand (mediaOk,
+      //     re-synced from native MainService.isReady by the check_service poll) — so the card
+      //     must not imply capture is ready before that consent, or after it is lost.
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.check, color: colorPositive, size: iconSize)
+              .marginOnly(right: iconMarginRight),
+          Expanded(
+              child: Text(translate('Reachable on :21118 while this app is open')))
+        ]),
+        const SizedBox(height: 8),
+        Row(children: [
+          Icon(serverModel.mediaOk ? Icons.check : Icons.warning_amber_sharp,
+                  color: serverModel.mediaOk ? colorPositive : colorNegative,
+                  size: iconSize)
+              .marginOnly(right: iconMarginRight),
+          Expanded(
+              child: Text(translate(serverModel.mediaOk
+                  ? 'Screen capture ready'
+                  : 'Screen capture not ready — grant screen capture below')))
+        ]),
       ]);
     }
 
@@ -683,12 +703,6 @@ void androidChannelInit() {
     debugPrint("flutter got android msg,$method,$arguments");
     try {
       switch (method) {
-        case "start_capture":
-          {
-            gFFI.dialogManager.dismissAll();
-            gFFI.serverModel.updateClientState();
-            break;
-          }
         case "on_state_changed":
           {
             var name = arguments["name"] as String;

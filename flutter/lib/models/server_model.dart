@@ -397,13 +397,27 @@ class ServerModel with ChangeNotifier {
       setPasswordDialog(notEmptyCallback: () => startService());
       return;
     }
+    // Optimistically flip _isStart before the awaited native calls so the media-permission
+    // callback (changeStatue("media") -> startService when !_isStart) cannot re-enter here.
     _isStart = true;
     notifyListeners();
-    parent.target?.ffiModel.updateEventListener(parent.target!.sessionId, "");
-    await parent.target?.invokeMethod("init_service");
-    // ugly is here, because for desktop, below is useless
-    await bind.mainStartService();
-    updateClientState();
+    try {
+      parent.target?.ffiModel.updateEventListener(parent.target!.sessionId, "");
+      await parent.target?.invokeMethod("init_service");
+      // ugly is here, because for desktop, below is useless
+      await bind.mainStartService();
+      updateClientState();
+    } catch (e) {
+      // Honest status (§19/R-G7): the "service running / reachable on :21118" surface is driven
+      // by _isStart, so a start that did NOT actually complete must not leave it asserting a
+      // running server. Reset the flag (and notify) so the UI falls back to "Service is not
+      // running" rather than showing a false green check. (A user-declined MediaProjection is a
+      // separate path already handled by on_media_projection_canceled -> stopService.)
+      debugPrint("startService failed: $e");
+      _isStart = false;
+      notifyListeners();
+      return;
+    }
     if (isAndroid) {
       androidUpdatekeepScreenOn();
     }
@@ -683,7 +697,12 @@ class ServerModel with ChangeNotifier {
     // R-D7a: keep-screen-on is hard-pinned to "during controlled" — the never / service-on modes
     // are excised, so the screen stays on exactly while a controlled session is active. (R-X6 had
     // already decoupled this from the excised floating-window gate.)
-    final on = _clients.map((e) => !e.disconnected).isNotEmpty;
+    // Bugfix: the intended predicate is "any live (non-disconnected) client". The old
+    // `_clients.map((e) => !e.disconnected).isNotEmpty` discarded the filter — `.map(...).isNotEmpty`
+    // is true whenever `_clients` is non-empty — so the wakelock stayed held while a
+    // disconnected-but-not-yet-removed client lingered. `.any(...)` applies the predicate. This
+    // matches the same `clients.any((c) => !c.disconnected)` idiom used elsewhere in this model.
+    final on = _clients.any((e) => !e.disconnected);
     if (on) {
       WakelockManager.enable(_wakelockKey, isServer: true);
     } else {
@@ -800,10 +819,20 @@ showInputWarnAlert(FFI ffi) {
       title: Text(translate("How to get Android input permission?")),
       content: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(translate("android_input_permission_tip1")),
           const SizedBox(height: 10),
           Text(translate("android_input_permission_tip2")),
+          // Android 13+ (API 33) greys out the Accessibility toggle for sideloaded apps as a
+          // "Restricted setting" until the user explicitly unblocks it via App info -> (kebab)
+          // menu -> "Allow restricted settings" (which requires a lock-screen credential to
+          // authenticate). Without this step the [RustDesk Input] toggle simply cannot be turned
+          // on, so spell it out — only on the affected platform versions.
+          if (androidVersion >= 33) ...[
+            const SizedBox(height: 10),
+            Text(translate("android_input_permission_tip3_restricted")),
+          ],
         ],
       ),
       actions: [

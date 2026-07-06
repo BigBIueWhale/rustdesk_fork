@@ -68,6 +68,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Open System Setting", "Open system setting"),
         ("android_input_permission_tip1", "In order for a remote device to control your Android device via mouse or touch, you need to allow RustDesk to use the \"Accessibility\" service."),
         ("android_input_permission_tip2", "Please go to the next system settings page, find and enter [Installed Services], turn on [RustDesk Input] service."),
+        ("android_input_permission_tip3_restricted", "On Android 13 and later, a sideloaded app's accessibility toggle is blocked as a \"Restricted setting\" and appears greyed out. If [RustDesk Input] cannot be turned on, first go to App info → tap the ⋮ menu (top-right) → \"Allow restricted settings\" → confirm with your PIN, pattern, password or biometric, then return to Accessibility and enable [RustDesk Input]. A lock-screen credential must be set for this option to appear."),
         ("android_new_connection_tip", "New control request has been received, which wants to control your current device."),
         ("android_service_will_start_tip", "Turning on \"Screen Capture\" will automatically start the service, allowing other devices to request a connection to your device."),
         ("android_stop_service_tip", "Closing the service will automatically close all established connections."),

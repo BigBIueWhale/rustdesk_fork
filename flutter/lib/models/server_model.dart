@@ -13,6 +13,7 @@ import 'package:window_manager/window_manager.dart';
 import '../common.dart';
 import '../common/formatter/id_formatter.dart';
 import '../desktop/pages/server_page.dart' as desktop;
+import '../desktop/pages/desktop_home_page.dart' show setPasswordDialog;
 import '../desktop/widgets/tabbar_widget.dart';
 import '../mobile/pages/server_page.dart';
 import 'model.dart';
@@ -375,6 +376,27 @@ class ServerModel with ChangeNotifier {
 
   /// Start the screen sharing service.
   Future<void> startService() async {
+    // finding D / R-S9: on mobile the controlled side binds NO listener without a
+    // permanent password — the Rust core parks fail-closed and refuses every connection —
+    // and, before the crash fix, tapping "Start service" with no password bound nothing
+    // yet took down the WHOLE app, because the Android Rust core shares the app process
+    // and its startup self-check called std::process::exit(1). Gate here, the single
+    // chokepoint before init_service, so every mobile start path (the Start button and
+    // the media-permission auto-start) is covered: require a permanent password first and
+    // route the user to set one. The fork deliberately has NO auto-generated password —
+    // the user must choose one — so we prompt rather than fabricate a credential; the
+    // service starts once a non-empty password is set (notEmptyCallback re-invokes this).
+    // (`permanent-password-set` is is_permanent_password_set() == !get_permanent_password_prs()
+    // .is_empty(), the exact condition the Rust park/bail use, so this gate never diverges
+    // from the fail-closed backstop.) Desktop is intentionally untouched (it uses the
+    // installed --service, and its launch path runs before the widget tree exists).
+    if ((isAndroid || isIOS) &&
+        (await bind.mainGetCommon(key: 'permanent-password-set')) != 'true') {
+      showToast(translate(
+          'Please set a permanent password before starting the service.'));
+      setPasswordDialog(notEmptyCallback: () => startService());
+      return;
+    }
     _isStart = true;
     notifyListeners();
     parent.target?.ffiModel.updateEventListener(parent.target!.sessionId, "");

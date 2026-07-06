@@ -13,7 +13,9 @@
 #
 # Validated at RUNTIME (not merely compile):
 #   - R-B4 build  : the full `rustdesk` binary builds + links + runs headless (sciter is `dyn`);
-#   - R-A4 (fail-closed startup) : with NO permanent password the box refuses to listen + exits;
+#   - R-A4/R-S9 (fail-closed startup) : with NO permanent password the box PARKS — it stays alive
+#     but binds NO listener (nothing on the pinned port) and refuses every connection (finding D:
+#     the startup process::exit was removed; on the shared-process Android app it crashed the app);
 #   - R-B4 / R-D3/R-D5/R-D6 socket surface : with a password seeded the box binds EXACTLY ONE v4 TCP
 #     listener on the pinned port (21118) and ZERO UDP — the §17 direct-IP/no-UDP thesis, empirical;
 #   - R-A4 (runtime socket self-check) : `assert_socket_surface` confirms the same from inside;
@@ -57,13 +59,32 @@ echo "$mdwe_out" | grep -qE 'MDWE_CODEC_OK' && echo "$mdwe_out" | grep -q 'EXIT=
   && echo "  ok  R-D3a: VP9 encoder W^X-clean under MemoryDenyWriteExecute (init + 5/5 encodes, no W+X mapping)" \
   || { echo "  FAIL R-D3a: the codec path is NOT W^X-safe under MDWE — do NOT ship MemoryDenyWriteExecute=yes:"; echo "$mdwe_out" | tail -3; rc=1; }
 
-echo "== (1) fail-closed startup: --server with NO password MUST refuse (R-A4) =="
-out1=$("${RUN[@]}" bash -c 'export HOME=/tmp/rd1; mkdir -p "$HOME"; timeout 12 env LD_PRELOAD=/work/target/smoke-bind-loopback.so ./target/debug/rustdesk --server 2>&1' || true)
-echo "$out1" | grep -q 'no permanent password is set — refusing to listen' \
-  || { echo "  FAIL R-A4: server did not refuse on a missing permanent password"; rc=1; }
-echo "$out1" | grep -q 'startup invariants violated — the box refuses to run insecure' \
-  || { echo "  FAIL R-A4: no fail-closed refusal"; rc=1; }
-[ "$rc" = 0 ] && echo "  ok  R-A4 fail-closed startup (no password -> refuse to listen, runtime)"
+echo "== (1) fail-closed startup: --server with NO password MUST PARK — stay alive but bind NOTHING (R-A4/R-S9, finding D) =="
+# Finding D: the empty-permanent-password startup process::exit was removed (on Android it crashed
+# the shared-process app). An empty password now fails closed by PARKING — direct_server binds NO
+# listener and every connection is refused per-connection (server.rs, R-S9). Prove the box stays
+# ALIVE (does not exit/crash) yet binds NOTHING on the pinned port. Background it (it no longer
+# exits) and probe /proc, mirroring stage (2)'s pattern.
+out1=$("${RUN[@]}" bash -c '
+  export HOME=/tmp/rd1; mkdir -p "$HOME"
+  LD_PRELOAD=/work/target/smoke-bind-loopback.so ./target/debug/rustdesk --server >/tmp/srv1.log 2>&1 & SRV=$!
+  sleep 8
+  echo "ALIVE=$(kill -0 $SRV 2>/dev/null && echo yes || echo no)"
+  echo "TCP_LISTEN=[$(awk "\$4==\"0A\"{print \$2}" /proc/net/tcp /proc/net/tcp6 2>/dev/null | tr "\n" " ")]"
+  grep -m1 "the direct listener is PARKED" /tmp/srv1.log || true
+  grep -m1 "Direct server listening" /tmp/srv1.log || true
+  kill -TERM $SRV 2>/dev/null; sleep 1; kill -9 $SRV 2>/dev/null || true
+' || true)
+echo "$out1"
+echo "$out1" | grep -q 'ALIVE=yes' \
+  || { echo "  FAIL R-A4/R-S9: --server exited on an empty permanent password (finding D: it MUST park, not exit/crash)"; rc=1; }
+echo "$out1" | grep -q 'TCP_LISTEN=\[\]' \
+  || { echo "  FAIL R-S9: a listener is bound with NO permanent password (must bind NOTHING while parked)"; rc=1; }
+echo "$out1" | grep -q 'the direct listener is PARKED' \
+  || { echo "  FAIL R-S9: missing the fail-closed park diagnostic on the empty-password path"; rc=1; }
+echo "$out1" | grep -q 'Direct server listening' \
+  && { echo "  FAIL R-S9: the server bound a listener with no permanent password"; rc=1; }
+[ "$rc" = 0 ] && echo "  ok  R-A4/R-S9 fail-closed startup (no password -> PARK: alive, nothing bound, runtime)"
 
 echo "== (2) seed a password, LISTEN on 127.0.0.1, assert the socket surface (R-B4) + R-T9 drain =="
 out2=$("${RUN[@]}" bash -c '

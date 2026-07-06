@@ -50,15 +50,21 @@ pub fn request_direct_listener_rebuild(reason: &str) {
 /// R-A4 startup self-check: refuse to listen unless the controlled-side runtime
 /// invariants hold. Defense-in-depth over the R-S16 funnel — confirm the policy
 /// reads back pinned (verification-method/approve-mode) through Config::get_option
-/// and that a usable permanent-password credential exists (R-S9). A violation is
-/// fail-closed: the process exits rather than serve insecure. The empty
-/// BUILTIN/HARD funnels are checked below; the companion bound-socket-surface
-/// assertion (exactly one TCP v4 listener on the pinned port, zero UDP of any
-/// kind) runs post-listen in `assert_socket_surface` — it needs the listener up
-/// first, so it lives at the bind site rather than here.
+/// and that the empty BUILTIN/HARD override funnels carry no managed value. A
+/// violation is fail-closed: on the desktop --service the process EXITS (systemd
+/// restarts it, never serving insecure); on Android/iOS the Rust core shares the
+/// interactive app process, so it returns Err instead of exiting (finding D) and
+/// `start_direct_only` surfaces the reason + refuses to bind. The permanent-password
+/// credential is deliberately NOT checked here (finding D): an empty password fails
+/// closed at RUNTIME via the `direct_server` park (nothing bound) + the per-connection
+/// R-S9 bail (server.rs), so the old startup exit for that case — redundant with the
+/// park and fatal to the shared-process Android app — is gone. The companion
+/// bound-socket-surface assertion (exactly one TCP v4 listener on the pinned port,
+/// zero UDP of any kind) runs post-listen in `assert_socket_surface` — it needs the
+/// listener up first, so it lives at the bind site rather than here.
 // R-A4 is UNCONDITIONAL (R-R2b): every shipped binary refuses to listen unless the
 // pinned policy + the one-TCP/zero-UDP surface verify — never behind a feature flag.
-fn assert_startup_invariants() {
+fn assert_startup_invariants() -> Result<(), String> {
     let mut ok = true;
     if Config::get_option(hbb_common::config::keys::OPTION_VERIFICATION_METHOD)
         != "use-permanent-password"
@@ -70,10 +76,16 @@ fn assert_startup_invariants() {
         log::error!("R-A4: approve-mode is not pinned to password");
         ok = false;
     }
-    if Config::get_permanent_password_prs().is_empty() {
-        log::error!("R-A4/R-S9: no permanent password is set — refusing to listen");
-        ok = false;
-    }
+    // NOTE (finding D): the empty-permanent-password branch was REMOVED here. An empty
+    // permanent password already fails closed at RUNTIME without a startup exit — the
+    // `direct_server` accept loop PARKS (binds no listener) while the PRS is empty
+    // (the R-S9 park below) and every connection is refused per-connection (server.rs,
+    // R-S9 bail). The startup exit was BOTH redundant with that park AND fatal on
+    // Android, where the Rust core shares the interactive app process:
+    // std::process::exit(1) crashed the whole app when "Start service" was tapped before
+    // a password was set. Routing the empty-password case through the park keeps it
+    // fail-closed on every platform, and a desktop --service that starts before
+    // `rustdesk --password` provisioning now PARKS rather than crash-loops under systemd.
     // R-X12: the capture+input backend is compile-pinned to X11 (is_x11() == true). Assert it at
     // startup so any future un-pin that lets is_x11() go false (a Wayland/misdetected session) refuses
     // to listen rather than silently failing X11 capture — the runtime half of the X11 pin.
@@ -102,9 +114,27 @@ fn assert_startup_invariants() {
         ok = false;
     }
     if !ok {
-        log::error!("R-A4: startup invariants violated — the box refuses to run insecure");
-        std::process::exit(1);
+        // Fail-closed. These are build-integrity invariants that never fire on a correct
+        // build. On the desktop --service a violation must never serve insecure, so it
+        // exits and systemd restarts it. On Android/iOS the Rust core shares the
+        // interactive app process, so process::exit would crash the whole app (finding
+        // D): return the reason instead so `start_direct_only` refuses to bind and
+        // surfaces it to the Dart UI — never exiting on mobile.
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        {
+            log::error!("R-A4: startup invariants violated — the box refuses to run insecure");
+            std::process::exit(1);
+        }
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        {
+            let reason =
+                "server startup security invariants violated (misconfiguration) — refusing to start"
+                    .to_string();
+            log::error!("R-A4: {reason} (mobile: refusing to bind, not exiting the app process)");
+            return Err(reason);
+        }
     }
+    Ok(())
 }
 
 /// R-A4 (§9) post-listen socket-surface assertion. Once the direct listener is
@@ -132,8 +162,26 @@ fn assert_socket_surface(port: u16) {
              §18 compile-out + the build smoke-test (R-B4)"
         ),
         SurfaceCheck::Violation(why) => {
-            log::error!("R-A4: socket-surface violation — {why}; refusing to serve");
-            std::process::exit(1);
+            // Desktop --service: a real surface violation is fatal (refuse to serve;
+            // systemd restarts). On Android/iOS the Rust core shares the interactive app
+            // process, which legitimately owns extra sockets (the Flutter engine / Dart
+            // VM / JNI), so the process-scoped "zero UDP" invariant is false-positive-
+            // prone there — never process::exit (finding D). Log the violation loudly and
+            // keep serving: every connection is still CPace-gated + R-S9-refused, so a
+            // co-process UDP socket is not an access path to the direct listener.
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            {
+                log::error!("R-A4: socket-surface violation — {why}; refusing to serve");
+                std::process::exit(1);
+            }
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            {
+                log::error!(
+                    "R-A4: socket-surface check reported a violation on mobile ({why}); \
+                     NOT fatal here (Android/JNI legitimately owns extra sockets) — the \
+                     direct listener stays CPace-gated + R-S9-refused"
+                );
+            }
         }
     }
 }
@@ -209,7 +257,26 @@ fn self_enforce_resource_limits() {
 fn self_enforce_resource_limits() {}
 
 pub async fn start_direct_only() {
-    assert_startup_invariants();
+    if let Err(_reason) = assert_startup_invariants() {
+        // Reached ONLY on Android/iOS — the desktop --service exits inside the assert and
+        // never returns Err. The Rust core shares the interactive app process here, so we
+        // must not exit (finding D): surface the failure to the Dart UI (best-effort
+        // msgbox on the main event channel) and refuse to bind — fail closed, no listener.
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        {
+            let _ = crate::flutter::push_global_event(
+                crate::flutter::APP_TYPE_MAIN,
+                serde_json::json!({
+                    "name": "msgbox",
+                    "type": "custom-error",
+                    "title": "Start service",
+                    "text": _reason,
+                })
+                .to_string(),
+            );
+        }
+        return;
+    }
     self_enforce_resource_limits();
     if config::is_outgoing_only() {
         // A viewer-only box binds no inbound listener (R-SV5); park the service future.
@@ -289,6 +356,10 @@ async fn direct_server(server: ServerPtr) {
     // get_direct_port), so the listener always rebinds the same v4 address; a transient bind failure
     // backs off and retries the identical bind, and the streak resets on a successful bind.
     let mut bind_err_streak: u32 = 0;
+    // R-S9 fail-closed park: true while the listener is parked because no permanent password is
+    // set, so the loud "PARKED" diagnostic below is logged once per entry into that state rather
+    // than on every 1s poll. Reset the moment a usable password is present.
+    let mut parked_no_password = false;
     loop {
         // R-T9 (§20): on graceful shutdown, stop accepting and drop the listener (returning here
         // drops the `listener` local, so the listening socket closes and new SYNs get an RST), then
@@ -309,24 +380,37 @@ async fn direct_server(server: ServerPtr) {
                 continue;
             }
         }
-        // R-S9 defense-in-depth: the "listen on 0.0.0.0 IFF a permanent
-        // password is set" invariant must hold at RUNTIME, not only at the startup gate
-        // (assert_startup_invariants). If the permanent password is CLEARED while the service runs
-        // (set_permanent_password("") from the UI), drop the listener so no bound-but-dead 0.0.0.0 socket
-        // lingers, and park until a password is set again — the bind block below then re-binds and re-runs
-        // assert_socket_surface. The per-connection gate (server.rs, R-S9) already refuses every
-        // connection in this window, so the socket is never an access path; this just makes the socket
-        // itself track the credential (defense in depth over an already-safe state).
+        // R-S9 fail-closed: the "listen on 0.0.0.0 IFF a permanent password is set"
+        // invariant is enforced at RUNTIME here — this park is now the PRIMARY guard for
+        // the empty-password case (the startup exit that used to also cover it was removed
+        // from assert_startup_invariants — finding D — because it crashed the shared-process
+        // Android app and was redundant with this park). Two entry paths, both fail closed:
+        //   - fresh start with no password provisioned: `listener` is already None, so
+        //     NOTHING is ever bound; log the parked state once and keep polling;
+        //   - password CLEARED at runtime (set_permanent_password("") from the UI) while
+        //     listening: drop the listener so no bound-but-dead 0.0.0.0 socket lingers.
+        // Either way the bind block below stays skipped until a password is set, when it
+        // re-binds and re-runs assert_socket_surface. The per-connection gate (server.rs,
+        // R-S9) already refuses every connection in this window, so no listener is ever an
+        // access path without a password — the socket simply tracks the credential.
         if Config::get_permanent_password_prs().is_empty() {
             if listener.is_some() {
                 log::warn!(
                     "R-S9: permanent password cleared at runtime — dropping the direct listener until one is set again"
                 );
                 listener = None;
+            } else if !parked_no_password {
+                // Log ONCE per entry so a --service / Android app started before password
+                // provisioning is diagnosable rather than silently non-listening.
+                log::warn!(
+                    "R-S9: no permanent password set — the direct listener is PARKED (nothing bound, all connections refused) until one is provisioned"
+                );
             }
+            parked_no_password = true;
             sleep(1.).await;
             continue;
         }
+        parked_no_password = false;
         // R-D4 / R-F4 / R-X9: the direct listener is UNCONDITIONAL — it is the box's only
         // inbound path (§17), so it has no enable-toggle at all. Upstream's `direct-server`
         // option (which gated the listener) was REMOVED from the tree entirely (R-G4 / R-SV1),

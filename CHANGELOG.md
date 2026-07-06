@@ -5,7 +5,7 @@ All notable changes to the hardened fork, newest first. Each entry's heading is 
 truth for the exact code a release contains is the **commit** it was built from, linked in the GitHub
 release notes.
 
-## 1.4.7-hardened.1 — 2026-07-05
+## 1.4.7-hardened.1 — 2026-07-06
 
 A hardened, **direct-IP-only** RustDesk, built on upstream RustDesk 1.4.7.
 
@@ -30,6 +30,18 @@ A hardened, **direct-IP-only** RustDesk, built on upstream RustDesk 1.4.7.
   (R-A4).
 - The rendezvous / relay / KCP / LAN-discovery / auto-updater / plugin-loader / host-key subsystems are
   compiled out, and CI greps assert their tokens stay absent (R-A6). Egress is silent by construction (§18).
+
+### Android (controlled side)
+- An Android device can act as the controlled host — its screen is shared and it accepts remote
+  keyboard / mouse / touch control.
+- The controlled side is **owned by the foreground service**: reachable only while the service runs and a
+  permanent password is set, and "Stop service" (or an OS kill) genuinely closes the listener by
+  construction — the on/off status can never claim reachable when it is not.
+- **The sideloaded-install flow is spelled out in-app.** On Android 13+ the accessibility toggle is a
+  "Restricted setting" for sideloaded apps; the app walks you through App info → ⋮ → "Allow restricted
+  settings" → authenticate → enable — the step that actually makes remote control work.
+- Honest scope: screen view is attainable (per-session consent; `FLAG_SECURE` windows capture black);
+  remote input is best-effort within Android's limits — the phone is viewer-dominant in practice.
 
 ### Build + release
 - **Reproducible (R-B2).** Debian, Android, and Windows each cold double-build byte-for-byte identically

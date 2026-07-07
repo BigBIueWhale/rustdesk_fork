@@ -162,8 +162,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("allow-only-conn-window-open-tip", "Only allow connection if RustDesk window is open"),
         ("no_need_privacy_mode_no_physical_displays_tip", "No physical displays, no need to use the privacy mode."),
         ("no_audio_input_device_tip", "No audio input device found."),
-        ("clear_Wayland_screen_selection_tip", "After clearing the screen selection, you can reselect the screen to share."),
-        ("confirm_clear_Wayland_screen_selection_tip", "Are you sure you want to clear the Wayland screen selection?"),
         ("android_new_voice_call_tip", "A new voice call request was received. If you accept, the audio will switch to voice communication."),
         ("texture_render_tip", "Use texture rendering to make the pictures smoother. You could try disabling this option if you encounter rendering issues."),
         ("network_error_tip", "Please check your network connection, then click retry."),

@@ -725,10 +725,6 @@ class RustdeskImpl {
     throw UnimplementedError("mainGetError");
   }
 
-  bool mainShowOption({required String key, dynamic hint}) {
-    throw UnimplementedError("mainShowOption");
-  }
-
   Future<void> mainSetOption(
       {required String key, required String value, dynamic hint}) {
     js.context.callMethod('setByName', [
@@ -1550,11 +1546,6 @@ class RustdeskImpl {
   Future<void> sessionRequestNewDisplayInitMsgs(
       {required UuidValue sessionId, required int display, dynamic hint}) {
     throw UnimplementedError("sessionRequestNewDisplayInitMsgs");
-  }
-
-  Future<String> mainHandleWaylandScreencastRestoreToken(
-      {required String key, required String value, dynamic hint}) {
-    throw UnimplementedError("mainHandleWaylandScreencastRestoreToken");
   }
 
   bool mainIsOptionFixed({required String key, dynamic hint}) {

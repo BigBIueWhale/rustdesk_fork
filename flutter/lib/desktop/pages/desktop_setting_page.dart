@@ -389,7 +389,11 @@ class _GeneralState extends State<_General> {
         // the card only ever rendered Offstage (hidden ≠ removed, the R-G1 trap).
         if (!isWeb) audio(context),
         if (!isWeb) record(context),
-        if (!isWeb) WaylandCard(),
+        // R-X12 / R-G1 (§19): the "Wayland" settings card is removed, not hidden. Its only render
+        // condition is a non-empty wayland-restore-token, but the Wayland/pipewire capture path
+        // (scrap `mod wayland`) is compiled out (R-X12) and nothing persists that token, so it is
+        // always empty and the card only ever rendered Offstage — the same "hidden ≠ removed" R-G1
+        // trap the hwcodec card above calls out.
         other()
       ],
     ).marginOnly(bottom: _kListViewBottomMargin);
@@ -533,10 +537,14 @@ class _GeneralState extends State<_General> {
       ));
     }
 
-    if (!isWeb && bind.mainShowOption(key: kOptionAllowLinuxHeadless)) {
-      children.add(_OptionCheckBox(
-          context, 'Allow linux headless', kOptionAllowLinuxHeadless));
-    }
+    // R-X14 / R-G1 (§19): the "Allow linux headless" checkbox is removed, not shown greyed. It
+    // actuated the `allow-linux-headless` option, but the os_login->PAM desktop-session-start
+    // subsystem it gated is compiled out of the tree (R-X14) and the option is pinned N
+    // (R-S16 / PINNED_SETTINGS). A control whose backing subsystem is excised MUST be removed under
+    // R-G1's primary rule (as the hwcodec card and the update toggle above were), not rendered
+    // read-only — the "set by policy" form is reserved for a preserved content-capability, which a
+    // headless X-session-start is not. The config pin (R-S16) and the write-reject stay; the row's
+    // now-orphaned show-gate FFI (main_show_option) is excised with it (§19 no-leftovers).
     return _Card(title: 'Other', children: children);
   }
 
@@ -1677,165 +1685,6 @@ Widget _Radio<T>(BuildContext context,
     ).marginOnly(left: _kRadioLeftMargin),
     onTap: () => onChange2?.call(value),
   );
-}
-
-class WaylandCard extends StatefulWidget {
-  const WaylandCard({Key? key}) : super(key: key);
-
-  @override
-  State<WaylandCard> createState() => _WaylandCardState();
-}
-
-class _WaylandCardState extends State<WaylandCard> {
-  final restoreTokenKey = 'wayland-restore-token';
-  static const _kClearShortcutsInhibitorEventKey =
-      'clear-gnome-shortcuts-inhibitor-permission-res';
-  final _clearShortcutsInhibitorFailedMsg = ''.obs;
-  // Don't show the shortcuts permission reset button for now.
-  // Users can change it manually:
-  //   "Settings" -> "Apps" -> "RustDesk" -> "Permissions" -> "Inhibit Shortcuts".
-  // For resetting(clearing) the permission from the portal permission store, you can
-  // use (replace <desktop-id> with the RustDesk desktop file ID):
-  //   busctl --user call org.freedesktop.impl.portal.PermissionStore \
-  //   /org/freedesktop/impl/portal/PermissionStore org.freedesktop.impl.portal.PermissionStore \
-  //   DeletePermission sss "gnome" "shortcuts-inhibitor" "<desktop-id>"
-  // On a native install this is typically "rustdesk.desktop"; on Flatpak it is usually
-  // the exported desktop ID derived from the Flatpak app-id (e.g. "com.rustdesk.RustDesk.desktop").
-  //
-  // We may add it back in the future if needed.
-  final showResetInhibitorPermission = false;
-
-  @override
-  void initState() {
-    super.initState();
-    if (showResetInhibitorPermission) {
-      platformFFI.registerEventHandler(
-          _kClearShortcutsInhibitorEventKey, _kClearShortcutsInhibitorEventKey,
-          (evt) async {
-        if (!mounted) return;
-        if (evt['success'] == true) {
-          setState(() {});
-        } else {
-          _clearShortcutsInhibitorFailedMsg.value =
-              evt['msg'] as String? ?? 'Unknown error';
-        }
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    if (showResetInhibitorPermission) {
-      platformFFI.unregisterEventHandler(
-          _kClearShortcutsInhibitorEventKey, _kClearShortcutsInhibitorEventKey);
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return futureBuilder(
-      future: bind.mainHandleWaylandScreencastRestoreToken(
-          key: restoreTokenKey, value: "get"),
-      hasData: (restoreToken) {
-        final hasShortcutsPermission = showResetInhibitorPermission &&
-            bind.mainGetCommonSync(
-                    key: "has-gnome-shortcuts-inhibitor-permission") ==
-                "true";
-
-        final children = [
-          if (restoreToken.isNotEmpty)
-            _buildClearScreenSelection(context, restoreToken),
-          if (hasShortcutsPermission)
-            _buildClearShortcutsInhibitorPermission(context),
-        ];
-        return Offstage(
-          offstage: children.isEmpty,
-          child: _Card(title: 'Wayland', children: children),
-        );
-      },
-    );
-  }
-
-  Widget _buildClearScreenSelection(BuildContext context, String restoreToken) {
-    onConfirm() async {
-      final msg = await bind.mainHandleWaylandScreencastRestoreToken(
-          key: restoreTokenKey, value: "clear");
-      gFFI.dialogManager.dismissAll();
-      if (msg.isNotEmpty) {
-        msgBox(gFFI.sessionId, 'custom-nocancel', 'Error', msg, '',
-            gFFI.dialogManager);
-      } else {
-        setState(() {});
-      }
-    }
-
-    showConfirmMsgBox() => msgBoxCommon(
-            gFFI.dialogManager,
-            'Confirmation',
-            Text(
-              translate('confirm_clear_Wayland_screen_selection_tip'),
-            ),
-            [
-              dialogButton('OK', onPressed: onConfirm),
-              dialogButton('Cancel',
-                  onPressed: () => gFFI.dialogManager.dismissAll())
-            ]);
-
-    return _Button(
-      'Clear Wayland screen selection',
-      showConfirmMsgBox,
-      tip: 'clear_Wayland_screen_selection_tip',
-      style: ButtonStyle(
-        backgroundColor: MaterialStateProperty.all<Color>(
-            Theme.of(context).colorScheme.error.withOpacity(0.75)),
-      ),
-    );
-  }
-
-  Widget _buildClearShortcutsInhibitorPermission(BuildContext context) {
-    onConfirm() {
-      _clearShortcutsInhibitorFailedMsg.value = '';
-      bind.mainSetCommon(
-          key: "clear-gnome-shortcuts-inhibitor-permission", value: "");
-      gFFI.dialogManager.dismissAll();
-    }
-
-    showConfirmMsgBox() => msgBoxCommon(
-            gFFI.dialogManager,
-            'Confirmation',
-            Text(
-              translate('confirm-clear-shortcuts-inhibitor-permission-tip'),
-            ),
-            [
-              dialogButton('OK', onPressed: onConfirm),
-              dialogButton('Cancel',
-                  onPressed: () => gFFI.dialogManager.dismissAll())
-            ]);
-
-    return Column(children: [
-      Obx(
-        () => _clearShortcutsInhibitorFailedMsg.value.isEmpty
-            ? Offstage()
-            : Align(
-                alignment: Alignment.topLeft,
-                child: Text(_clearShortcutsInhibitorFailedMsg.value,
-                        style: DefaultTextStyle.of(context)
-                            .style
-                            .copyWith(color: Colors.red))
-                    .marginOnly(bottom: 10.0)),
-      ),
-      _Button(
-        'Reset keyboard shortcuts permission',
-        showConfirmMsgBox,
-        tip: 'clear-shortcuts-inhibitor-permission-tip',
-        style: ButtonStyle(
-          backgroundColor: MaterialStateProperty.all<Color>(
-              Theme.of(context).colorScheme.error.withOpacity(0.75)),
-        ),
-      ),
-    ]);
-  }
 }
 
 // ignore: non_constant_identifier_names

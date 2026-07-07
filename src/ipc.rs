@@ -418,8 +418,6 @@ pub enum Data {
     CheckHwcodec,
     #[cfg(feature = "flutter")]
     VideoConnCount(Option<usize>),
-    // Although the key is not necessary, it is used to avoid hardcoding the key.
-    WaylandScreencastRestoreToken((String, String)),
     HwCodecConfig(Option<String>),
     #[cfg(all(target_os = "windows", feature = "flutter"))]
     PrinterData(Vec<u8>),
@@ -953,35 +951,6 @@ async fn handle(data: Data, stream: &mut Connection) {
                     // --server and portable
                     scrap::hwcodec::HwCodecConfig::set(v);
                 }
-            }
-        }
-        Data::WaylandScreencastRestoreToken((key, value)) => {
-            let v = if value == "get" {
-                let opt = get_local_option(key.clone());
-                #[cfg(not(target_os = "linux"))]
-                {
-                    Some(opt)
-                }
-                #[cfg(target_os = "linux")]
-                {
-                    // R-X12: scrap::wayland::pipewire::is_rdp_session_hold() removed (Wayland portal
-                    // capture compiled out, X11-pinned) — no RDP capture session is ever held.
-                    let v = if opt.is_empty() { "".to_owned() } else { opt };
-                    Some(v)
-                }
-            } else if value == "clear" {
-                set_local_option(key.clone(), "".to_owned());
-                // R-X12: scrap::wayland::pipewire::close_session() removed (Wayland capture compiled out).
-                Some("".to_owned())
-            } else {
-                None
-            };
-            if let Some(v) = v {
-                allow_err!(
-                    stream
-                        .send(&Data::WaylandScreencastRestoreToken((key, v)))
-                        .await
-                );
             }
         }
         Data::InstallOption(opt) => match opt {
@@ -1657,20 +1626,6 @@ pub async fn hwcodec_process() {
     }
 }
 
-#[tokio::main(flavor = "current_thread")]
-pub async fn get_wayland_screencast_restore_token(key: String) -> ResultType<String> {
-    let v = handle_wayland_screencast_restore_token(key, "get".to_owned()).await?;
-    Ok(v.unwrap_or_default())
-}
-
-#[tokio::main(flavor = "current_thread")]
-pub async fn clear_wayland_screencast_restore_token(key: String) -> ResultType<bool> {
-    if let Some(v) = handle_wayland_screencast_restore_token(key, "clear".to_owned()).await? {
-        return Ok(v.is_empty());
-    }
-    return Ok(false);
-}
-
 #[cfg(all(
     feature = "flutter",
     not(any(target_os = "android", target_os = "ios"))
@@ -1755,21 +1710,6 @@ pub async fn get_terminal_session_count() -> ResultType<usize> {
     } else {
         Ok(0)
     }
-}
-
-async fn handle_wayland_screencast_restore_token(
-    key: String,
-    value: String,
-) -> ResultType<Option<String>> {
-    let ms_timeout = 1_000;
-    let mut c = connect(ms_timeout, "").await?;
-    c.send(&Data::WaylandScreencastRestoreToken((key, value)))
-        .await?;
-    if let Some(Data::WaylandScreencastRestoreToken((_key, v))) = c.next_timeout(ms_timeout).await?
-    {
-        return Ok(Some(v));
-    }
-    return Ok(None);
 }
 
 #[tokio::main(flavor = "current_thread")]

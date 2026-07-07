@@ -1606,12 +1606,12 @@ pub fn main_has_vram() -> SyncReturn<bool> {
     SyncReturn(has_vram())
 }
 
-pub fn main_supported_hwdecodings() -> SyncReturn<String> {
-    let decoding = supported_hwdecodings();
-    let msg = HashMap::from([("h264", decoding.0), ("h265", decoding.1)]);
-
-    SyncReturn(serde_json::ser::to_string(&msg).unwrap_or("".to_owned()))
-}
+// R-R2b / R-G1 (§19): main_supported_hwdecodings (the {"h264","h265"} decode-ability query the
+// Default-Codec radios read) is excised with the last of those radios — the desktop set went at
+// 15778fc, the mobile set here (its sole surviving caller). hwcodec/vram/mediacodec are compiled out
+// (CPU-only vpx/aom), so it only ever reported {false,false}; with no UI caller left it is dead.
+// ui_interface::supported_hwdecodings goes with it (this was its sole caller); scrap's
+// Decoder::supported_decodings — the live protocol decode-ability path — is untouched.
 
 pub fn main_is_root() -> bool {
     is_root()

@@ -536,16 +536,17 @@ class _DisplayPage extends StatefulWidget {
 class __DisplayPageState extends State<_DisplayPage> {
   @override
   Widget build(BuildContext context) {
-    final Map codecsJson = jsonDecode(bind.mainSupportedHwdecodings());
-    final h264 = codecsJson['h264'] ?? false;
-    final h265 = codecsJson['h265'] ?? false;
+    // R-R2b / R-G1 (§19): the H264/H265 hardware-decode radios are removed, not hidden. They only
+    // rendered when mainSupportedHwdecodings() reported h264/h265 support, but hwcodec/vram/ffmpeg-HW
+    // and Android mediacodec are compiled out of every build (software vpx/aom only), so scrap's
+    // supported_decodings() leaves ability_h264/ability_h265 at 0 and the map was always
+    // {"h264":false,"h265":false} — the radios only ever rendered nothing (hidden ≠ removed, the R-G1
+    // trap the desktop Default-Codec card excised symmetrically at 15778fc). Only software codecs remain.
     var codecList = [
       _RadioEntry('Auto', 'auto'),
       _RadioEntry('VP8', 'vp8'),
       _RadioEntry('VP9', 'vp9'),
       _RadioEntry('AV1', 'av1'),
-      if (h264) _RadioEntry('H264', 'h264'),
-      if (h265) _RadioEntry('H265', 'h265')
     ];
     RxBool showCustomImageQuality = false.obs;
     return Scaffold(

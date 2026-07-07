@@ -877,30 +877,11 @@ pub fn has_vram() -> bool {
     cfg!(feature = "vram")
 }
 
-#[cfg(feature = "flutter")]
-#[inline]
-pub fn supported_hwdecodings() -> (bool, bool) {
-    let decoding = scrap::codec::Decoder::supported_decodings(
-        None,
-        use_texture_render(),
-        None,
-        &vec![],
-    );
-    #[allow(unused_mut)]
-    let (mut h264, mut h265) = (decoding.ability_h264 > 0, decoding.ability_h265 > 0);
-    #[cfg(feature = "vram")]
-    {
-        // supported_decodings check runtime luid
-        let vram = scrap::vram::VRamDecoder::possible_available_without_check();
-        if vram.0 {
-            h264 = true;
-        }
-        if vram.1 {
-            h265 = true;
-        }
-    }
-    (h264, h265)
-}
+// R-R2b / R-G1 (§18/§19): supported_hwdecodings (the H264/H265 decode-ability the excised Default-Codec
+// radios read via the main_supported_hwdecodings FFI, removed with them) is excised — the FFI was its
+// sole caller. hwcodec/vram/mediacodec are compiled out (CPU-only vpx/aom), so it only ever returned
+// (false, false). scrap::codec::Decoder::supported_decodings — the LIVE protocol decode-ability path —
+// is deliberately retained; only this UI-only wrapper is gone.
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[inline]

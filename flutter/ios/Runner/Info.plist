@@ -65,7 +65,7 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
 	<key>ITSAppUsesNonExemptEncryption</key>
-  <false/>
+	<true/>
   <key>io.flutter.embedded_views_preview</key>
   <true/>
 </dict>

@@ -1011,17 +1011,23 @@ ra6_clean 'ipc::Data::SwitchPermission'                                  'R-S16(
 #  - the desktop CM mid-session permission icons are non-interactive (Data::SwitchPermission excised; BUG1).
 #  - the desktop "Stop service" button is hidden when stop-service is pinned (BUG4(a): the service is
 #    un-killable by a local write by design; a live button would stay "Stop" with no feedback).
-#  - the mobile audio/file/clipboard permission toggles re-read the stored value after the rejected write,
-#    so the switch flag cannot diverge from the enforced config (BUG4(b)).
+#  - GA/M1 (§19): the mobile controlled-side pinned capabilities (enable-keyboard/clipboard/file-transfer/
+#    audio) are shown READ-ONLY via _pinnedPolicyRow ("Set by policy", the mobile _PinnedPolicyToggle
+#    twin, R-G1) — NOT live toggles that wrote the pinned enable-* key (the funnel rejected the write, so
+#    the switch snapped back: the misleading-control footgun the operator hit on Android). This SUPERSEDES
+#    the older keep-the-toggle-but-resync approach with a STRONGER invariant: (a) the read-only indicator
+#    is present, and (b) the inert enable-* writes are EXCISED from the model. The OS-permission grant
+#    affordances (Accessibility/storage/mic, R-G7) are preserved separately and are NOT enable-* writes.
 r_s16d_ui=""
 grep -qF 'PINNED_SETTINGS.iter().any' src/ui_interface.rs || r_s16d_ui="$r_s16d_ui is_option_fixed-pinned"
 ! grep -qE 'cmSwitchPermission|canModifyPermission' flutter/lib/desktop/pages/server_page.dart || r_s16d_ui="$r_s16d_ui cm-perms-runtime-switchable"
 grep -qF 'isOptionFixed(kOptionStopService)' flutter/lib/desktop/pages/desktop_setting_page.dart || r_s16d_ui="$r_s16d_ui stop-service-hide"
-[ "$(grep -cF 'R-S16(d): re-sync the flag to the STORED value' flutter/lib/models/server_model.dart)" -ge 3 ] || r_s16d_ui="$r_s16d_ui mobile-toggle-resync"
+grep -qF '_pinnedPolicyRow' flutter/lib/mobile/pages/server_page.dart || r_s16d_ui="$r_s16d_ui mobile-pinned-readonly"
+! grep -qE 'mainSet[A-Za-z]*Option\([^;]*kOptionEnable(Keyboard|Audio|Clipboard|FileTransfer)' flutter/lib/models/server_model.dart || r_s16d_ui="$r_s16d_ui mobile-inert-enable-write"
 if [ -n "$r_s16d_ui" ]; then
   echo "  FAIL R-S16(d)/UI: a pinned-policy control reverted to a live silent-no-op affordance:$r_s16d_ui"; rc=1
 else
-  echo "  ok  R-S16(d)/UI pinned controls grey + CM perms inert + Stop-service hidden + mobile toggles re-sync"
+  echo "  ok  R-S16(d)/UI pinned controls grey + CM perms inert + Stop-service hidden + mobile pinned caps read-only"
 fi
 # R-G7 (§19): the Android controlled-side UI conformance — two literal removals the §19 sweep mandates.
 #  (1) CLICK-TO-ACCEPT dropped: the incoming-connection login dialog passes a NULL accept callback, so

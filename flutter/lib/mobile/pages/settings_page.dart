@@ -49,7 +49,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   var _ignoreBatteryOpt = false;
   var _showTerminalExtraKeys = false;
   var _enableAbr = false;
-  var _enableRecordSession = false;
   var _autoRecordIncomingSession = false;
   var _autoRecordOutgoingSession = false;
   var _allowAutoDisconnect = false;
@@ -60,8 +59,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   _SettingsState() {
     _enableAbr = option2bool(
         kOptionEnableAbr, bind.mainGetOptionSync(key: kOptionEnableAbr));
-    _enableRecordSession = option2bool(kOptionEnableRecordSession,
-        bind.mainGetOptionSync(key: kOptionEnableRecordSession));
     _autoRecordIncomingSession = option2bool(kOptionAllowAutoRecordIncoming,
         bind.mainGetOptionSync(key: kOptionAllowAutoRecordIncoming));
     _autoRecordOutgoingSession = option2bool(kOptionAllowAutoRecordOutgoing,
@@ -169,20 +166,12 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                 });
               },
       ),
-      SettingsTile.switchTile(
-        title: Text(translate('Enable recording session')),
-        initialValue: _enableRecordSession,
-        onToggle: isOptionFixed(kOptionEnableRecordSession)
-            ? null
-            : (v) async {
-                await mainSetBoolOption(kOptionEnableRecordSession, v);
-                final newValue =
-                    await mainGetBoolOption(kOptionEnableRecordSession);
-                setState(() {
-                  _enableRecordSession = newValue;
-                });
-              },
-      ),
+      // M3 / R-G1 (§19): the "Enable recording session" toggle is REMOVED, not greyed. Its key
+      // enable-record-session is policy-pinned Y (config.rs PINNED_SETTINGS), so is_option_can_save
+      // rejected the write and the tile was merely disabled via isOptionFixed — the R-S12
+      // "editable-but-inert" trap R-G1 forbids. The controlled side always grants it (full control,
+      // R-S16), and its pinned value is shown READ-ONLY on the desktop Permissions card
+      // (_PinnedPolicyToggle 'Enable recording session'), so the mobile surface is deleted here.
       SettingsTile.switchTile(
         title: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,

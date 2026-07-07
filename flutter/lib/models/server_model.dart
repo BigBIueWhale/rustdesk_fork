@@ -31,7 +31,9 @@ class ServerModel with ChangeNotifier {
   bool _inputOk = false;
   bool _audioOk = false;
   bool _fileOk = false;
-  bool _clipboardOk = false;
+  // M1/R-G1: the clipboard capability has NO Android runtime permission (no OS "half"). Under the
+  // pinned policy (enable-clipboard=Y, R-S16) it is always granted, so it carries no toggle/flag
+  // here — it is shown READ-ONLY ("Set by policy") from the funnel, not driven by a model bool.
   bool hideCm = false;
   String _verificationMethod = "";
   // R-X7/R-G4: the rotating OTP credential is excised (no temporary-password backend) — its
@@ -60,8 +62,6 @@ class ServerModel with ChangeNotifier {
   bool get audioOk => _audioOk;
 
   bool get fileOk => _fileOk;
-
-  bool get clipboardOk => _clipboardOk;
 
   String get verificationMethod {
     final index = [
@@ -135,40 +135,26 @@ class ServerModel with ChangeNotifier {
       });
     }
 
-    // Initial keyboard status is off on mobile
-    if (isMobile) {
-      bind.mainSetOption(key: kOptionEnableKeyboard, value: 'N');
-    }
+    // M2 / R-S16: the inherited "initial keyboard status off on mobile" write
+    // (mainSetOption(enable-keyboard, 'N')) is REMOVED — enable-keyboard is policy-pinned Y
+    // (config.rs PINNED_SETTINGS), so is_option_can_save rejected it: a dead no-op fired at every
+    // mobile startup. Remote input is gated by the on-device AccessibilityService grant (inputOk),
+    // not by this option, so nothing depends on the write.
   }
 
-  /// 1. check android permission
-  /// 2. check config
-  /// audio true by default (if permission on) (false default < Android 10)
-  /// file true by default (if permission on)
+  /// M1: reflect the on-device OS runtime-permission state into the capability flags.
+  /// The peer capabilities themselves are policy-pinned Y (R-S16), so the inherited enable-*
+  /// writes here (enable-audio/enable-file-transfer = N) were rejected no-ops (is_option_can_save)
+  /// that only desynced the local flag — the R-G1 snap-back footgun — and are EXCISED. What remains
+  /// is the honest device-permission state each capability needs to actually function on Android:
+  ///   audio = RECORD_AUDIO held (Android 10+; below that, capture is unsupported);
+  ///   file  = MANAGE_EXTERNAL_STORAGE held.
+  /// Clipboard has NO device permission (policy-only), so it carries no flag — it is shown read-only.
   checkAndroidPermission() async {
-    // audio
-    if (androidVersion < 30 ||
-        !await AndroidPermissionManager.check(kRecordAudio)) {
-      _audioOk = false;
-      bind.mainSetOption(key: kOptionEnableAudio, value: "N");
-    } else {
-      final audioOption = await bind.mainGetOption(key: kOptionEnableAudio);
-      _audioOk = audioOption != 'N';
-    }
+    _audioOk = androidVersion >= 30 &&
+        await AndroidPermissionManager.check(kRecordAudio);
 
-    // file
-    if (!await AndroidPermissionManager.check(kManageExternalStorage)) {
-      _fileOk = false;
-      bind.mainSetOption(key: kOptionEnableFileTransfer, value: "N");
-    } else {
-      final fileOption =
-          await bind.mainGetOption(key: kOptionEnableFileTransfer);
-      _fileOk = fileOption != 'N';
-    }
-
-    // clipboard
-    final clipOption = await bind.mainGetOption(key: kOptionEnableClipboard);
-    _clipboardOk = clipOption != 'N';
+    _fileOk = await AndroidPermissionManager.check(kManageExternalStorage);
 
     notifyListeners();
   }
@@ -221,34 +207,38 @@ class ServerModel with ChangeNotifier {
     }
   }
 
-  toggleAudio() async {
+  /// M1 / R-G7 / R-S16: request the Android RECORD_AUDIO runtime permission (Android 10+). This is
+  /// an on-device OS-permission ONBOARDING affordance, NOT a policy toggle: enable-audio is
+  /// policy-pinned Y (R-S16) and shown READ-ONLY in the UI. There is NO enable-audio config write —
+  /// the pin rejects it (is_option_can_save), so the inherited write only made the switch snap back
+  /// (the R-G1 misleading-control footgun). The OS grant is one-way from the app (revoke is a
+  /// system-settings action), so once it is held there is nothing to toggle off.
+  requestAudioPermission() async {
+    if (_audioOk) return;
     if (clients.any((c) => !c.disconnected)) {
       await showClientsMayNotBeChangedAlert(parent.target);
     }
-    if (!_audioOk && !await AndroidPermissionManager.check(kRecordAudio)) {
+    if (!await AndroidPermissionManager.check(kRecordAudio)) {
       final res = await AndroidPermissionManager.request(kRecordAudio);
       if (!res) {
         showToast(translate('Failed'));
         return;
       }
     }
-
-    _audioOk = !_audioOk;
-    bind.mainSetOption(
-        key: kOptionEnableAudio, value: _audioOk ? defaultOptionYes : 'N');
-    // R-S16(d): re-sync the flag to the STORED value. enable-audio is policy-pinned, so the write above is
-    // rejected by the option funnel; without this re-read the local flag would diverge (the toggle reads
-    // "off" while capture stays enabled). A no-op on a non-pinned build (reads back the just-written value).
-    _audioOk = bind.mainGetOptionSync(key: kOptionEnableAudio) != 'N';
+    _audioOk = await AndroidPermissionManager.check(kRecordAudio);
     notifyListeners();
   }
 
-  toggleFile() async {
+  /// M1 / R-G7 / R-S16: request the Android MANAGE_EXTERNAL_STORAGE runtime permission. On-device
+  /// OS-permission onboarding, decoupled from the pinned policy — enable-file-transfer is
+  /// policy-pinned Y (R-S16), shown READ-ONLY in the UI. No enable-file-transfer write (the pin
+  /// rejects it — the snap-back footgun, R-G1). One-way from the app; read-only once granted.
+  requestFilePermission() async {
+    if (_fileOk) return;
     if (clients.any((c) => !c.disconnected)) {
       await showClientsMayNotBeChangedAlert(parent.target);
     }
-    if (!_fileOk &&
-        !await AndroidPermissionManager.check(kManageExternalStorage)) {
+    if (!await AndroidPermissionManager.check(kManageExternalStorage)) {
       final res =
           await AndroidPermissionManager.request(kManageExternalStorage);
       if (!res) {
@@ -256,33 +246,24 @@ class ServerModel with ChangeNotifier {
         return;
       }
     }
-
-    _fileOk = !_fileOk;
-    bind.mainSetOption(
-        key: kOptionEnableFileTransfer,
-        value: _fileOk ? defaultOptionYes : 'N');
-    // R-S16(d): re-sync the flag to the STORED value (enable-file-transfer is policy-pinned -> rejected).
-    _fileOk = bind.mainGetOptionSync(key: kOptionEnableFileTransfer) != 'N';
+    _fileOk = await AndroidPermissionManager.check(kManageExternalStorage);
     notifyListeners();
   }
 
-  toggleClipboard() async {
-    _clipboardOk = !clipboardOk;
-    bind.mainSetOption(
-        key: kOptionEnableClipboard,
-        value: clipboardOk ? defaultOptionYes : 'N');
-    // R-S16(d): re-sync the flag to the STORED value (enable-clipboard is policy-pinned -> rejected).
-    _clipboardOk = bind.mainGetOptionSync(key: kOptionEnableClipboard) != 'N';
-    notifyListeners();
-  }
-
+  /// M1 / M2 / R-G7 / R-S16: grant or revoke the Android AccessibilityService that injects remote
+  /// input — an on-device OS-permission control, NOT a policy toggle. enable-keyboard is policy-pinned
+  /// Y (R-S16) and shown READ-ONLY in the UI; the inherited enable-keyboard write here (the sibling of
+  /// the dead startup write and the changeStatue write, all excised by M2) is REMOVED — it was rejected
+  /// by the pin and only desynced the state. Grant -> open Accessibility settings (showInputWarnAlert);
+  /// revoke -> InputService.disableSelf via the native "stop_input". _inputOk is driven by the native
+  /// on_state_changed -> changeStatue("input"), so the row reflects the REAL service state — that native
+  /// feedback is the re-sync the M2 note asks for, so no config re-read (the sibling asymmetry) is needed.
   toggleInput() async {
     if (clients.any((c) => !c.disconnected)) {
       await showClientsMayNotBeChangedAlert(parent.target);
     }
     if (_inputOk) {
       parent.target?.invokeMethod("stop_input");
-      bind.mainSetOption(key: kOptionEnableKeyboard, value: 'N');
     } else {
       if (parent.target != null) {
         /// the result of toggle-on depends on user actions in the settings page.
@@ -448,11 +429,9 @@ class ServerModel with ChangeNotifier {
         }
         break;
       case "input":
-        if (_inputOk != value) {
-          bind.mainSetOption(
-              key: kOptionEnableKeyboard,
-              value: value ? defaultOptionYes : 'N');
-        }
+        // M2 / R-S16: no enable-keyboard write — the key is policy-pinned Y (R-S16), so the write was
+        // rejected; _inputOk simply mirrors the native AccessibilityService state (InputService.isOpen),
+        // the honest single source of truth for whether remote input can actually be injected.
         _inputOk = value;
         break;
       default:

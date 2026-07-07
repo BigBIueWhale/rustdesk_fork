@@ -266,17 +266,43 @@ class _PermissionCheckerState extends State<PermissionChecker> {
     final hasAudioPermission = androidVersion >= 30;
     final hideStopService = isAndroid &&
         bind.mainGetBuildinOption(key: kOptionHideStopService) == 'Y';
-    final allowPermChangeInAcceptWindow = option2bool(
-        kOptionEnablePermChangeInAcceptWindow,
-        bind.mainGetBuildinOption(
-          key: kOptionEnablePermChangeInAcceptWindow,
-        ));
-    final permissionChangeLocked = isAndroid &&
-        serverModel.clients.any((c) => !c.disconnected) &&
-        !allowPermChangeInAcceptWindow;
+    // M1 / R-G1 / R-G7 (§19): the controlled-side "Permissions" surface is split into its TWO honest,
+    // decoupled halves. The inherited rows conflated them — each toggle wrote a policy-pinned enable-*
+    // key the funnel REJECTS (is_option_can_save), so the switch flipped then SNAPPED BACK, the R-G1
+    // misleading-control footgun the operator hit on Android. The split:
+    //   (1) POLICY — the peer capabilities are policy-pinned Y (R-S16 PINNED_SETTINGS: full control
+    //       for the CPace-authenticated owner). Shown READ-ONLY ("Set by policy"), parity with the
+    //       desktop _PinnedPolicyToggle list; a static indicator with NO actuating control, so the UI
+    //       cannot even attempt the rejected write (no snap-back). The inert enable-* writes are
+    //       excised from server_model (checkAndroidPermission / the toggles / the startup write).
+    //   (2) DEVICE PERMISSIONS — the Android runtime permissions each capability needs on THIS box to
+    //       actually function (MediaProjection / Accessibility / storage / microphone), preserved as
+    //       OS-onboarding grant affordances (R-G7), decoupled from the pinned policy. Screen Capture
+    //       stays exactly as-is (the per-session MediaProjection consent + FGS lifecycle, R-S14/R-D7a).
     return PaddingCard(
         title: translate("Permissions"),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // (1) POLICY — read-only, granted-by-policy (R-G1 / R-S16). No actuating control.
+          Text(
+                  translate(
+                      "Granted to the connected owner by policy (full control)"),
+                  style: const TextStyle(fontSize: 12, color: MyTheme.darkGray))
+              .marginOnly(bottom: 4),
+          _pinnedPolicyRow(
+              context, "Enable keyboard/mouse", kOptionEnableKeyboard),
+          _pinnedPolicyRow(context, "Enable clipboard", kOptionEnableClipboard),
+          _pinnedPolicyRow(
+              context, "Enable file transfer", kOptionEnableFileTransfer),
+          _pinnedPolicyRow(context, "Enable audio", kOptionEnableAudio),
+          const Divider(),
+          // (2) DEVICE PERMISSIONS — OS-onboarding grants for this box (R-G7).
+          Text(
+                  translate(
+                      "Grant the permissions each capability needs on this device"),
+                  style: const TextStyle(fontSize: 12, color: MyTheme.darkGray))
+              .marginOnly(bottom: 4),
+          // Screen Capture = the MediaProjection consent + FGS-owned capture (R-S14 / R-D7a). KEEP
+          // AS-IS: per-session capture consent + service lifecycle, NOT an enable-* write.
           serverModel.mediaOk && !hideStopService
               ? ElevatedButton.icon(
                       style: ButtonStyle(
@@ -295,21 +321,29 @@ class _PermissionCheckerState extends State<PermissionChecker> {
                 serverModel.mediaOk,
                 // R-X7a/§19: scam-warning dialog excised — toggle screen capture directly.
                 serverModel.toggleService),
+          // Input Control = the Android AccessibilityService (BIND_ACCESSIBILITY_SERVICE) that injects
+          // remote input. Genuinely two-way in-app (grant -> Accessibility settings; revoke ->
+          // InputService.disableSelf via "stop_input"), so it stays a live toggle — an OS-permission
+          // control, NOT the excised enable-keyboard policy write (M1/M2).
           PermissionRow(
             translate("Input Control"),
             serverModel.inputOk,
             serverModel.toggleInput,
           ),
-          PermissionRow(
-            translate("Transfer file"),
-            serverModel.fileOk,
-            serverModel.toggleFile,
-            enabled: !permissionChangeLocked,
-          ),
+          // Transfer file = MANAGE_EXTERNAL_STORAGE. The OS grant is one-way from the app (revoke is a
+          // system-settings action), so it is an actionable "Grant" when ungranted and READ-ONLY once
+          // held; no enable-file-transfer write (M1).
+          _deviceGrantRow(context, translate("Transfer file"),
+              translate("Storage access"), serverModel.fileOk,
+              serverModel.requestFilePermission),
+          // Audio Capture = RECORD_AUDIO (Android 10+; below that, capture is unsupported).
           hasAudioPermission
-              ? PermissionRow(translate("Audio Capture"), serverModel.audioOk,
-                  serverModel.toggleAudio,
-                  enabled: !permissionChangeLocked)
+              ? _deviceGrantRow(
+                  context,
+                  translate("Audio Capture"),
+                  translate("Microphone access"),
+                  serverModel.audioOk,
+                  serverModel.requestAudioPermission)
               : Row(children: [
                   Icon(Icons.info_outline).marginOnly(right: 15),
                   Expanded(
@@ -318,14 +352,61 @@ class _PermissionCheckerState extends State<PermissionChecker> {
                     style: const TextStyle(color: MyTheme.darkGray),
                   ))
                 ]),
-          PermissionRow(
-            translate("Enable clipboard"),
-            serverModel.clipboardOk,
-            serverModel.toggleClipboard,
-            enabled: !permissionChangeLocked,
-          ),
         ]));
   }
+}
+
+// M1 / R-G1 / R-S16 (§19): a controlled-side POLICY-PINNED capability rendered READ-ONLY — the mobile
+// twin of desktop_setting_page.dart's _PinnedPolicyToggle. A static Icon + Text + "Set by policy" tag
+// with NO Switch / onChanged / onTap, so the widget structurally cannot attempt the write
+// is_option_can_save rejects (R-S16(c)); it can never flip-then-revert (the R-G1 footgun the inherited
+// enable-* toggles exhibited). The value is read live through the Config::get_option funnel
+// (mainGetBoolOptionSync), so it always reflects the enforced policy rather than a hard-coded guess.
+Widget _pinnedPolicyRow(BuildContext context, String label, String optionKey) {
+  final on = mainGetBoolOptionSync(optionKey);
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Row(children: [
+      Icon(on ? Icons.check : Icons.remove,
+              size: 18, color: on ? Colors.green : MyTheme.darkGray)
+          .marginOnly(right: 8),
+      Expanded(
+          child: Text(translate(label),
+              style: const TextStyle(color: MyTheme.darkGray))),
+      Text(translate('Set by policy'),
+          style: const TextStyle(color: MyTheme.darkGray, fontSize: 12)),
+    ]),
+  );
+}
+
+// M1 / R-G7 (§19): an on-device OS-runtime-permission grant affordance (storage, microphone),
+// DECOUPLED from the pinned policy above. The OS grant is one-way from the app (revoke is a
+// system-settings action), so: ungranted -> an actionable "Grant" that runs the OS request;
+// granted -> a READ-ONLY "granted" indicator (never a toggle-off that would do nothing / revert,
+// the R-G1 footgun). No enable-* config write anywhere in this path (M1) — the policy is pinned and
+// shown read-only separately.
+Widget _deviceGrantRow(BuildContext context, String name, String osHint,
+    bool granted, VoidCallback onGrant) {
+  if (granted) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      visualDensity: VisualDensity.compact,
+      leading: const Icon(Icons.check, color: Colors.green),
+      title: Text(name),
+      subtitle: Text(translate('Permission granted'),
+          style: const TextStyle(fontSize: 12, color: MyTheme.darkGray)),
+    );
+  }
+  return ListTile(
+    contentPadding: EdgeInsets.zero,
+    visualDensity: VisualDensity.compact,
+    leading: const Icon(Icons.warning_amber_sharp, color: Colors.orange),
+    title: Text(name),
+    subtitle:
+        Text(osHint, style: const TextStyle(fontSize: 12, color: MyTheme.darkGray)),
+    trailing: TextButton(onPressed: onGrant, child: Text(translate('Grant'))),
+    onTap: onGrant,
+  );
 }
 
 class PermissionRow extends StatelessWidget {

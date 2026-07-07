@@ -423,6 +423,34 @@ if [ -n "$rx2_bad" ]; then
 else
   echo "  ok  R-X2 plugin framework fully excised (no Dart tree, no flutter_ffi plugin_* stubs, no proto Plugin messages)"
 fi
+# GD (web-stub orphan sweep, §19 no-leftovers): flutter/lib/web/bridge.dart is the WEB build's
+# hand-maintained FFI shim that mirrors the generated RustdeskImpl. After the excisions it carried inert
+# stubs whose Rust flutter_ffi.rs backend is GONE (confirmed absent from the freshly-regenerated
+# generated_bridge.dart) and which had 0 callers tree-wide -- swept here. Assert they stay absent from the
+# web shim so a reintroduced stub (or a caller of one) is caught; the earlier R-X1/R-SV3/R-X2 gates check
+# the Rust/flutter_ffi side, this one covers the web-only shim they did not reach. Mapping:
+#   R-X1/R-SV2 self-updater FFI     : mainUpdateMe
+#   R-X1/R-SV3 self-update-CHECK    : mainGetSoftwareUpdateUrl, mainGetNewVersion
+#   R-R2b hwcodec/vram/ffmpeg-HW    : mainSupportedHwdecodings   (only ever reported {} -> dead)
+#   R-X2 native-plugin loader       : plugin{Event,RegisterEventStream,GetSessionOption,SetSessionOption,
+#                                     GetSharedOption,SetSharedOption,Reload,Enable,IsEnabled,SyncUi,
+#                                     ListReload,Install}
+#   R-X7 2FA / trusted-device       : mainGetTrustedDevices, mainRemoveTrustedDevices, mainClearTrustedDevices
+#   R-X7 temporary-password         : mainGetTemporaryPassword, mainUpdateTemporaryPassword
+#   rendezvous change-id / status   : mainChangeId, mainGetAsyncStatus
+#   pre-existing web-only stubs     : mainGetDefaultSoundInput, mainLoadRecentPeersSync, sessionSelectFiles
+#                                     (never an FFI fn upstream either; swept for completeness)
+gd_web='flutter/lib/web/bridge.dart'
+gd_tok='mainUpdateMe|mainGetSoftwareUpdateUrl|mainGetNewVersion|mainSupportedHwdecodings|mainGetTrustedDevices|mainRemoveTrustedDevices|mainClearTrustedDevices|mainGetTemporaryPassword|mainUpdateTemporaryPassword|mainChangeId|mainGetAsyncStatus|mainGetDefaultSoundInput|mainLoadRecentPeersSync|sessionSelectFiles|pluginEvent|pluginRegisterEventStream|pluginGetSessionOption|pluginSetSessionOption|pluginGetSharedOption|pluginSetSharedOption|pluginReload|pluginEnable|pluginIsEnabled|pluginSyncUi|pluginListReload|pluginInstall'
+if [ -f "$gd_web" ]; then
+  # match a declaration or call (name immediately followed by "("), skipping comment lines
+  gd_hits=$(grep -nE "\b(${gd_tok})[[:space:]]*\(" "$gd_web" 2>/dev/null | grep -vE ':[0-9]+:[[:space:]]*(//|\*)' || true)
+  if [ -n "$gd_hits" ]; then
+    echo "  FAIL GD web-stub sweep: an excised-backend/no-FFI stub reappeared in web/bridge.dart:"; echo "$gd_hits" | sed 's/^/      /'; rc=1
+  else
+    echo "  ok  GD web/bridge.dart orphan-stub sweep holds (26 excised-backend/no-FFI stubs absent: self-updater+update-check R-X1/R-SV3, hwdecodings R-R2b, 12 plugin* R-X2, 2FA+trusted-device+temp-password R-X7, change-id/async-status, 3 pre-existing web-only)"
+  fi
+fi
 ra6_clean '"--import-config"|"--remove"|fn import_config'                  'R-X4 trust-anchor CLI gadgets' || rc=1
 # R-X5: the LAN-discovery UDP listener/querier (the 0.0.0.0:RENDEZVOUS_PORT+3=21119 responder that
 # disclosed MAC/ID/hostname/active-username/platform, removed in 322aebb) MUST stay absent — §8's

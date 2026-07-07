@@ -689,10 +689,6 @@ class RustdeskImpl {
     throw UnimplementedError("mainGetSoundInputs");
   }
 
-  Future<String?> mainGetDefaultSoundInput({dynamic hint}) {
-    throw UnimplementedError("mainGetDefaultSoundInput");
-  }
-
   String mainGetLoginDeviceInfo({dynamic hint}) {
     String userAgent = html.window.navigator.userAgent;
     String appName = html.window.navigator.appName;
@@ -703,14 +699,6 @@ class RustdeskImpl {
       'type': 'Web client',
       'name': js.context.callMethod('getByName', ['my_name']),
     });
-  }
-
-  Future<void> mainChangeId({required String newId, dynamic hint}) {
-    throw UnimplementedError("mainChangeId");
-  }
-
-  Future<String> mainGetAsyncStatus({dynamic hint}) {
-    throw UnimplementedError("mainGetAsyncStatus");
   }
 
   Future<String> mainGetOption({required String key, dynamic hint}) {
@@ -930,10 +918,6 @@ class RustdeskImpl {
         () => js.context.callMethod('getByName', ['load_recent_peers']));
   }
 
-  String mainLoadRecentPeersSync({dynamic hint}) {
-    return js.context.callMethod('getByName', ['load_recent_peers_sync']);
-  }
-
   Future<String> mainLoadRecentPeersForAb(
       {required String filter, dynamic hint}) {
     throw UnimplementedError("mainLoadRecentPeersForAb");
@@ -1018,20 +1002,12 @@ class RustdeskImpl {
     return Future(() => mainGetLocalOption(key: 'last_remote_id'));
   }
 
-  Future<void> mainGetSoftwareUpdateUrl({dynamic hint}) {
-    throw UnimplementedError("mainGetSoftwareUpdateUrl");
-  }
-
   Future<String> mainGetHomeDir({dynamic hint}) {
     return Future.value('');
   }
 
   Future<String> mainGetLangs({dynamic hint}) {
     return Future(() => js.context.callMethod('getByName', ['langs']));
-  }
-
-  Future<String> mainGetTemporaryPassword({dynamic hint}) {
-    return Future.value('');
   }
 
   Future<String> cmGetClientsState({dynamic hint}) {
@@ -1071,10 +1047,6 @@ class RustdeskImpl {
 
   bool mainHasVram({dynamic hint}) {
     throw UnimplementedError("mainHasVram");
-  }
-
-  String mainSupportedHwdecodings({dynamic hint}) {
-    return '{}';
   }
 
   Future<bool> mainIsRoot({dynamic hint}) {
@@ -1190,10 +1162,6 @@ class RustdeskImpl {
 
   String mainGetDataDirIos({dynamic hint}) {
     throw UnimplementedError("mainGetDataDirIos");
-  }
-
-  Future<void> mainUpdateTemporaryPassword({dynamic hint}) {
-    throw UnimplementedError("mainUpdateTemporaryPassword");
   }
 
   Future<bool> mainSetPermanentPasswordWithResult(
@@ -1327,14 +1295,6 @@ class RustdeskImpl {
     throw UnimplementedError("mainGotoInstall");
   }
 
-  String mainGetNewVersion({dynamic hint}) {
-    throw UnimplementedError("mainGetNewVersion");
-  }
-
-  bool mainUpdateMe({dynamic hint}) {
-    throw UnimplementedError("mainUpdateMe");
-  }
-
   Future<void> setCurSessionId({required UuidValue sessionId, dynamic hint}) {
     throw UnimplementedError("setCurSessionId");
   }
@@ -1443,74 +1403,6 @@ class RustdeskImpl {
     throw UnimplementedError("sendUrlScheme");
   }
 
-  Future<void> pluginEvent(
-      {required String id,
-      required String peer,
-      required Uint8List event,
-      dynamic hint}) {
-    throw UnimplementedError("pluginEvent");
-  }
-
-  Stream<EventToUI> pluginRegisterEventStream(
-      {required String id, dynamic hint}) {
-    throw UnimplementedError("pluginRegisterEventStream");
-  }
-
-  String? pluginGetSessionOption(
-      {required String id,
-      required String peer,
-      required String key,
-      dynamic hint}) {
-    throw UnimplementedError("pluginGetSessionOption");
-  }
-
-  Future<void> pluginSetSessionOption(
-      {required String id,
-      required String peer,
-      required String key,
-      required String value,
-      dynamic hint}) {
-    throw UnimplementedError("pluginSetSessionOption");
-  }
-
-  String? pluginGetSharedOption(
-      {required String id, required String key, dynamic hint}) {
-    throw UnimplementedError("pluginGetSharedOption");
-  }
-
-  Future<void> pluginSetSharedOption(
-      {required String id,
-      required String key,
-      required String value,
-      dynamic hint}) {
-    throw UnimplementedError("pluginSetSharedOption");
-  }
-
-  Future<void> pluginReload({required String id, dynamic hint}) {
-    throw UnimplementedError("pluginReload");
-  }
-
-  void pluginEnable({required String id, required bool v, dynamic hint}) {
-    throw UnimplementedError("pluginEnable");
-  }
-
-  bool pluginIsEnabled({required String id, dynamic hint}) {
-    throw UnimplementedError("pluginIsEnabled");
-  }
-
-  Future<void> pluginSyncUi({required String syncTo, dynamic hint}) {
-    throw UnimplementedError("pluginSyncUi");
-  }
-
-  Future<void> pluginListReload({dynamic hint}) {
-    throw UnimplementedError("pluginListReload");
-  }
-
-  Future<void> pluginInstall(
-      {required String id, required bool b, dynamic hint}) {
-    throw UnimplementedError("pluginInstall");
-  }
-
   bool isSupportMultiUiSession({required String version, dynamic hint}) {
     return versionToNumber(v: version) > versionToNumber(v: '1.2.4');
   }
@@ -1554,18 +1446,6 @@ class RustdeskImpl {
 
   bool mainGetUseTextureRender({dynamic hint}) {
     throw UnimplementedError("mainGetUseTextureRender");
-  }
-
-  Future<String> mainGetTrustedDevices({dynamic hint}) {
-    throw UnimplementedError("mainGetTrustedDevices");
-  }
-
-  Future<void> mainRemoveTrustedDevices({required String json, dynamic hint}) {
-    throw UnimplementedError("mainRemoveTrustedDevices");
-  }
-
-  Future<void> mainClearTrustedDevices({dynamic hint}) {
-    throw UnimplementedError("mainClearTrustedDevices");
   }
 
   Future<String> getVoiceCallInputDevice({required bool isCm, dynamic hint}) {
@@ -1629,11 +1509,6 @@ class RustdeskImpl {
             'is_remote': isRemote
           })
         ]));
-  }
-
-  Future<void> sessionSelectFiles(
-      {required UuidValue sessionId, dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', ['select_files']));
   }
 
   String? sessionGetConnToken({required UuidValue sessionId, dynamic hint}) {

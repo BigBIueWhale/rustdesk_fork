@@ -3,7 +3,7 @@ use hbb_common::{
     config::{self, Config},
     log, sleep, tokio,
 };
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::server::{new as new_server, ServerPtr};
 #[cfg(not(target_os = "android"))]
@@ -37,6 +37,49 @@ fn get_direct_port() -> i32 {
 
 static LISTENER_REBUILD_EPOCH: AtomicU64 = AtomicU64::new(0);
 
+/// R-D7a / R-S9 / R-G1 (verify-ground-truth): the REAL, live state of the direct listener —
+/// `true` iff `direct_server` currently holds a bound `TcpListener` on the pinned v4 port. It is
+/// the single source of truth the UI reads for "reachable on :21118" (via the FFI
+/// `main_get_common("direct-listener-bound")`), NOT a Dart-side optimistic flag: on Android
+/// `serverModel.isStart` is set before `init_service` and never synced from the native service, so
+/// after a boot listener-only start (BR-17) it is `false` while the listener is UP — the lie this
+/// signal replaces. It is published by an RAII `ListenerBoundGuard` (below) stored INSIDE the bound
+/// listener's `Option`, so it is tied to the listener's LIFETIME and cleared on EVERY teardown path
+/// — see that guard's doc. Reflects reachability within the accept-loop poll (~1s).
+static DIRECT_LISTENER_BOUND: AtomicBool = AtomicBool::new(false);
+
+/// R-D7a / R-G1: read the live direct-listener-bound signal above — the true socket state the UI
+/// surfaces as "reachable on :21118". Compiles on every target (the FFI key handler is not
+/// Android-gated); on the desktop `--service` it mirrors the process/unit-lifetime listener.
+pub fn is_direct_listener_bound() -> bool {
+    DIRECT_LISTENER_BOUND.load(Ordering::SeqCst)
+}
+
+/// R-G1 (verify-ground-truth, R2-1 fix): RAII guard that ties `DIRECT_LISTENER_BOUND` to the bound
+/// listener's LIFETIME. `new()` (called only after a successful `listen_any_v4`) publishes `true`;
+/// its `Drop` publishes `false`. It is held INSIDE the `Option<(TcpListener, ListenerBoundGuard)>`
+/// in `direct_server`, so the flag is cleared on EVERY teardown — the graceful `return`s (R-T9
+/// shutdown, R-D7a Android service-stop), the `listener = None` replacements (R-T13 rebuild, the
+/// R-S9 no-password park), AND — decisively — the runtime-abort of the `direct_server` task future
+/// when `start_direct_only`'s keep-alive returns after a stop: dropping the future runs `Drop` for
+/// its live locals (the `listener` held across the `accept().await`), which a bare `store(false)`
+/// statement placed AFTER that `.await` would never reach. Because only a thread that binds
+/// constructs a guard, and port exclusivity means at most one thread holds the bound listener at a
+/// time, a superseded never-bound Android thread cannot clear the live one (this subsumes the old
+/// per-thread `i_am_bound` gate).
+struct ListenerBoundGuard;
+impl ListenerBoundGuard {
+    fn new() -> Self {
+        DIRECT_LISTENER_BOUND.store(true, Ordering::SeqCst);
+        ListenerBoundGuard
+    }
+}
+impl Drop for ListenerBoundGuard {
+    fn drop(&mut self) {
+        DIRECT_LISTENER_BOUND.store(false, Ordering::SeqCst);
+    }
+}
+
 /// R-T13 (§20): Android network switches can invalidate the direct listener while the foreground
 /// service stays alive. Kotlin observes the platform network lifecycle and calls this narrow hook;
 /// the accept loop below reacts by dropping the existing listener (`listener = None`) and rebinding
@@ -54,11 +97,16 @@ pub fn request_direct_listener_rebuild(reason: &str) {
 /// `cdylib`). This monotonic generation counter binds the direct listener to the service instance
 /// that started it. It is the STRUCTURAL TWIN of `LISTENER_REBUILD_EPOCH` above (R-T13): a
 /// `fetch_add(1)` supersedes any running generation, and the accept loop / keep-alive compare the
-/// generation they started under against the current one — but here supersession means "the owning
-/// service was destroyed, tear the listener down" rather than "rebind the same port".
-///   - `MainService.onCreate` -> JNI `startServer` calls `android_begin_generation()` to establish a
-///     fresh generation before spawning the server thread, so the new server runs under the current
-///     generation and any stale prior thread (a fast stop->start) is already superseded.
+/// generation they were STARTED UNDER against the current one — but here supersession means "the
+/// owning service was destroyed, tear the listener down" rather than "rebind the same port".
+///   - `MainService.onCreate` -> JNI `startServer` calls `android_begin_generation()` and hands its
+///     RETURN by value into the spawned server thread (through `start_server` -> `start_direct_only`
+///     -> `direct_server`), so the accept loop + keep-alive run under EXACTLY that generation —
+///     never a late `ANDROID_SERVER_GENERATION.load()` inside the thread. That timing distinction
+///     is load-bearing (N1/F1): a late load could read a generation a concurrent `stopServer`/
+///     `startServer` had already superseded (or the post-stop value itself), letting a stopped
+///     service's thread believe it was current and keep the listener bound ("Stop doesn't stop").
+///     With the captured value, ANY begin/stop after this thread's start makes GEN != my_generation.
 ///   - `MainService.onDestroy` -> JNI `stopServer` calls `android_request_stop()` to supersede the
 ///     running generation. `direct_server` observes it at its loop top and `return`s (dropping the
 ///     `TcpListener` local -> socket closed), and `start_direct_only` observes it in its keep-alive
@@ -304,7 +352,12 @@ fn self_enforce_resource_limits() {
 #[cfg(not(target_os = "linux"))]
 fn self_enforce_resource_limits() {}
 
-pub async fn start_direct_only() {
+/// `android_generation` (R-D7a, N1/F1): on Android this is `Some(g)` — the generation
+/// `android_begin_generation()` established for THIS service start, captured in the JNI
+/// `startServer` and threaded here BY VALUE (never re-loaded from the global inside the thread,
+/// which a concurrent stop/re-start could have superseded). Desktop/iOS pass `None`: their
+/// listener lifetime is the process/`systemd`-unit lifetime (R-X9), not a service generation.
+pub async fn start_direct_only(android_generation: Option<u64>) {
     if let Err(_reason) = assert_startup_invariants() {
         // Reached ONLY on Android/iOS — the desktop --service exits inside the assert and
         // never returns Err. The Rust core shares the interactive app process here, so we
@@ -341,7 +394,7 @@ pub async fn start_direct_only() {
     let server = new_server();
     let server_cloned = server.clone();
     tokio::spawn(async move {
-        direct_server(server_cloned).await;
+        direct_server(server_cloned, android_generation).await;
     });
     // R-T9 (§20): install the graceful-shutdown handler. SIGTERM (what `systemctl stop` / an
     // upgrade sends) or SIGINT stops the accept loop and drains live sessions with a bounded
@@ -408,7 +461,20 @@ pub async fn start_direct_only() {
     // zombie auto-restart rebinds a listener the user stopped — R-S14).
     #[cfg(target_os = "android")]
     {
-        let my_generation = ANDROID_SERVER_GENERATION.load(Ordering::SeqCst);
+        // R-D7a (N1/F1 fix): compare against the generation CAPTURED at service start and passed
+        // in by value — NOT a late `ANDROID_SERVER_GENERATION.load()`, which could adopt a
+        // generation a concurrent `stopServer`/`startServer` already superseded and so keep this
+        // (stopped) service's thread alive. On the legitimate Android path this is always `Some`
+        // (the JNI `startServer` supplies it); a `None` here means a misrouted start — fail closed.
+        let my_generation = match android_generation {
+            Some(g) => g,
+            None => {
+                log::error!(
+                    "R-D7a: start_direct_only reached on Android with no service generation — fail closed (no listener)"
+                );
+                return;
+            }
+        };
         loop {
             if !android_generation_current(my_generation) {
                 log::info!(
@@ -421,17 +487,29 @@ pub async fn start_direct_only() {
     }
 }
 
-async fn direct_server(server: ServerPtr) {
+#[cfg_attr(not(target_os = "android"), allow(unused_variables))]
+async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
     let mut listener = None;
     let mut port = 0;
     let mut seen_rebuild_epoch = LISTENER_REBUILD_EPOCH.load(Ordering::SeqCst);
-    // R-D7a (Android): the service-owned-listener generation this accept task runs under. It was
-    // established by JNI `startServer` (android_begin_generation) BEFORE this thread was spawned,
-    // so the snapshot here reads that generation; when `MainService.onDestroy` -> `stopServer`
-    // supersedes it, the loop-top check below returns and drops the `listener` local (socket
-    // closed). Desktop/iOS: absent — the listener lifetime is the process/unit lifetime (R-X9).
+    // R-D7a (Android, N1/F1 fix): the service-owned-listener generation this accept task runs
+    // under is PASSED IN BY VALUE from the JNI `startServer` entry (android_begin_generation's
+    // return, via start_server -> start_direct_only), NOT re-loaded from the global here. A late
+    // `load()` could adopt a generation a concurrent stop/re-start already superseded — the N1/F1
+    // orphaned-listener race — so a "stopped" service's accept task could keep the socket bound.
+    // Using the captured value, `MainService.onDestroy` -> `stopServer`'s bump always makes the
+    // loop-top check below observe GEN != my_generation, drop the `listener` local, and stop
+    // accepting. Desktop/iOS: absent — the listener lifetime is the process/unit lifetime (R-X9).
     #[cfg(target_os = "android")]
-    let my_generation = ANDROID_SERVER_GENERATION.load(Ordering::SeqCst);
+    let my_generation = match android_generation {
+        Some(g) => g,
+        None => {
+            log::error!(
+                "R-D7a: direct_server started on Android with no service generation — fail closed (not binding)"
+            );
+            return;
+        }
+    };
     // R-T12: the consecutive accept()-error streak, driving the escalating bounded back-off in the
     // error arm below; reset on any successful accept or the benign 1s poll-timeout.
     let mut accept_err_streak: u32 = 0;
@@ -451,6 +529,8 @@ async fn direct_server(server: ServerPtr) {
         // process exit; this only guarantees no new connection is admitted past the signal.
         if crate::server::is_shutting_down() {
             log::info!("R-T9: shutdown — direct_server stops accepting");
+            // R-G1: returning drops the `listener` local -> its ListenerBoundGuard's Drop publishes
+            // DIRECT_LISTENER_BOUND = false (no manual store needed).
             return;
         }
         // R-D7a (Android): the foreground service that owns this listener was destroyed
@@ -463,6 +543,10 @@ async fn direct_server(server: ServerPtr) {
             log::info!(
                 "R-D7a: Android service stopped — direct_server drops the listener and stops accepting"
             );
+            // R-G1: returning drops the `listener` local -> its ListenerBoundGuard's Drop publishes
+            // DIRECT_LISTENER_BOUND = false. (If the start_direct_only keep-alive returns first and
+            // the tokio runtime aborts this task instead, dropping the future ALSO drops `listener`
+            // -> same Drop -> false. Both stop paths converge on false, no stuck-true, no race.)
             return;
         }
         let rebuild_epoch = LISTENER_REBUILD_EPOCH.load(Ordering::SeqCst);
@@ -472,6 +556,9 @@ async fn direct_server(server: ServerPtr) {
                 // R-T13: network-change rebuild — drop the existing listener so the next iteration
                 // re-enters the already-audited bind path (`listener = None` -> listen_any_v4).
                 log::info!("R-T13: rebuilding direct listener after Android network change");
+                // R-G1: dropping the listener tuple runs its ListenerBoundGuard Drop -> publishes
+                // false; the next iteration re-binds and constructs a fresh guard -> true. So the
+                // flag reflects the real bind across the rebuild.
                 listener = None;
                 continue;
             }
@@ -494,6 +581,7 @@ async fn direct_server(server: ServerPtr) {
                 log::warn!(
                     "R-S9: permanent password cleared at runtime — dropping the direct listener until one is set again"
                 );
+                // R-G1: dropping the listener tuple runs its ListenerBoundGuard Drop -> false.
                 listener = None;
             } else if !parked_no_password {
                 // Log ONCE per entry so a --service / Android app started before password
@@ -517,11 +605,15 @@ async fn direct_server(server: ServerPtr) {
             port = get_direct_port();
             match hbb_common::tcp::listen_any_v4(port as _).await {
                 Ok(l) => {
-                    listener = Some(l);
                     bind_err_streak = 0; // a successful bind resets the retry back-off
+                    // R-G1 (verify-ground-truth): the listener is bound — store it WITH a fresh
+                    // ListenerBoundGuard, whose `new()` publishes DIRECT_LISTENER_BOUND = true. The
+                    // guard now lives inside `listener`, so it is dropped (publishing false) on every
+                    // teardown path, including the runtime-abort of this task (R2-1 fix).
+                    listener = Some((l, ListenerBoundGuard::new()));
                     log::info!(
                         "Direct server listening on: {:?}",
-                        listener.as_ref().map(|l| l.local_addr())
+                        listener.as_ref().map(|(l, _)| l.local_addr())
                     );
                     // R-A4: the listener is up — assert the live socket surface
                     // (exactly one TCP v4 listener on the pinned port, zero UDP
@@ -550,7 +642,7 @@ async fn direct_server(server: ServerPtr) {
                 }
             }
         }
-        if let Some(l) = listener.as_mut() {
+        if let Some((l, _)) = listener.as_mut() {
             match hbb_common::timeout(1000, l.accept()).await {
                 Ok(Ok((stream, addr))) => {
                     accept_err_streak = 0; // R-T12: a successful accept resets the error back-off

@@ -2342,6 +2342,13 @@ pub fn main_get_common(key: String) -> String {
         return false.to_string();
     } else if key == "permanent-password-set" {
         return ui_interface::is_permanent_password_set().to_string();
+    } else if key == "direct-listener-bound" {
+        // R-D7a / R-G1 (verify-ground-truth): the REAL live state of the direct listener (a bound
+        // TcpListener on :21118), not the optimistic Dart `serverModel.isStart`. The mobile
+        // ServerInfo / "screen sharing off" cards read this so "reachable on :21118" reflects the
+        // actual socket — true after a boot listener-only start (BR-17), false when the FGS/listener
+        // is actually down.
+        return crate::direct_service::is_direct_listener_bound().to_string();
     } else if key == "local-permanent-password-set" {
         return ui_interface::is_local_permanent_password_set().to_string();
     } else {
@@ -2508,12 +2515,15 @@ pub mod server_side {
                 crate::read_custom_client(&custom_client_config);
             }
         }
-        // R-D7a: establish a fresh service-owned-listener generation BEFORE spawning the server
-        // thread, so the new server runs under the current generation and any stale prior thread
-        // (a fast MainService stop->start) is already superseded and unwinds. The direct listener
-        // is owned by this MainService instance; MainService.onDestroy -> stopServer supersedes it.
-        crate::direct_service::android_begin_generation();
-        std::thread::spawn(move || start_server(true));
+        // R-D7a (N1/F1 fix): establish a fresh service-owned-listener generation and CAPTURE it,
+        // then hand it BY VALUE to the spawned server thread. The server runs under exactly this
+        // generation — not a late `ANDROID_SERVER_GENERATION.load()` inside the thread, which a
+        // concurrent stopServer/startServer could have superseded before the thread read it (the
+        // orphaned-listener race where a stopped service's listener survived). Any begin/stop after
+        // this point makes GEN != generation, so MainService.onDestroy -> stopServer deterministically
+        // tears this listener down. The direct listener is owned by this MainService instance.
+        let generation = crate::direct_service::android_begin_generation();
+        std::thread::spawn(move || start_server(true, generation));
     }
 
     #[no_mangle]

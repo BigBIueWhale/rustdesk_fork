@@ -730,10 +730,14 @@ pub fn check_zombie() {
 /// Otherwise, client will check if there's already a server and start one if not.
 #[cfg(any(target_os = "android", target_os = "ios"))]
 #[tokio::main]
-pub async fn start_server(_is_server: bool) {
+pub async fn start_server(_is_server: bool, generation: u64) {
     // R-D4 / R-D7: direct-only on every target (the Android JNI service entry too) — no
     // rendezvous mediator. The inherited start_all is bypassed for start_direct_only.
-    crate::direct_service::start_direct_only().await;
+    // R-D7a (N1/F1): `generation` is the service-owned-listener generation the JNI `startServer`
+    // established (android_begin_generation's return) and captured before spawning this thread;
+    // pass it through so the accept loop runs under exactly it, never a late re-load (the
+    // orphaned-listener race). iOS never starts a controlled listener, so this is Android's path.
+    crate::direct_service::start_direct_only(Some(generation)).await;
 }
 
 /// Start the host server that allows the remote peer to control the current machine.
@@ -781,7 +785,9 @@ pub async fn start_server(is_server: bool) {
         scrap::hwcodec::start_check_process();
         // R-D4 / §17: direct-only service entry — no rendezvous mediator (the inherited
         // start_all and its register/STUN/KCP/LAN protocol are bypassed, removal pending).
-        crate::direct_service::start_direct_only().await;
+        // R-D7a (N1/F1): desktop/`--service` has no Android service generation — its listener
+        // lifetime is the process/systemd-unit lifetime (R-X9), so pass `None`.
+        crate::direct_service::start_direct_only(None).await;
     } else {
         match crate::ipc::connect(1000, "").await {
             Ok(mut conn) => {

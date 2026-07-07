@@ -15,6 +15,17 @@ import '../../models/platform_model.dart';
 import '../../models/server_model.dart';
 import 'home_page.dart';
 
+// R-D7a / R-S9 / R-G1 (verify-ground-truth): the REAL reachability of the direct listener, read
+// synchronously from the Rust `direct-listener-bound` signal (the actual bound-TcpListener state) —
+// NOT the optimistic Dart `serverModel.isStart`, which is set before init_service and never synced
+// from the native service (so it is false after a boot listener-only start even though the listener
+// is UP, and stale otherwise). On Android the listener is FGS-owned (R-D7a): bound iff the service
+// runs AND a permanent password is set (R-S9 park), and Stop closes it.
+bool _directListenerBound() =>
+    bind.mainGetCommonSync(key: 'direct-listener-bound') == 'true';
+bool _permanentPasswordSet() =>
+    bind.mainGetCommonSync(key: 'permanent-password-set') == 'true';
+
 class ServerPage extends StatefulWidget implements PageShape {
   @override
   final title = translate("Share screen");
@@ -119,8 +130,24 @@ class ServiceNotRunningNotification extends StatelessWidget {
   Widget build(BuildContext context) {
     final serverModel = Provider.of<ServerModel>(context);
 
+    // BR-15 (§19): "service" mislabels the CAPTURE toggle as the listener. This card controls
+    // SCREEN SHARING (MediaProjection capture), distinct from the direct listener. Report the REAL
+    // listener state (from the Rust direct-listener-bound signal), NOT a static "port stays open"
+    // claim: on Android the listener is FGS-owned (R-D7a), bound iff the service runs AND a
+    // permanent password is set (R-S9), and Stop closes it — so an unconditional "port is open"
+    // line was false in the stopped state and contradicted android_stop_service_tip.
+    final bound = _directListenerBound();
+    final passwordSet = _permanentPasswordSet();
+    final String portStatus = bound
+        ? translate(
+            "The port on :21118 is open for connections (e.g. file transfer). Starting screen sharing also shares this device's screen.")
+        : passwordSet
+            ? translate(
+                "The port on :21118 is closed: the service is not running. It opens while the service runs and a permanent password is set; stopping also closes it.")
+            : translate(
+                "The port on :21118 is closed: no permanent password is set. It opens while the service runs and a permanent password is set.");
     return PaddingCard(
-        title: translate("Service is not running"),
+        title: translate("Screen sharing is off"),
         titleIcon:
             const Icon(Icons.warning_amber_sharp, color: Colors.redAccent),
         child: Column(
@@ -130,212 +157,26 @@ class ServiceNotRunningNotification extends StatelessWidget {
                     style:
                         const TextStyle(fontSize: 12, color: MyTheme.darkGray))
                 .marginOnly(bottom: 8),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(bound ? Icons.check : Icons.info_outline,
+                      color: bound ? Colors.green : MyTheme.darkGray, size: 18)
+                  .marginOnly(right: 8),
+              Expanded(
+                  child: Text(portStatus,
+                      style: const TextStyle(
+                          fontSize: 12, color: MyTheme.darkGray))),
+            ]).marginOnly(bottom: 8),
             ElevatedButton.icon(
                 icon: const Icon(Icons.play_arrow),
+                // R-X7a/§19: the scam-warning social-engineering dialog is excised (it fired on
+                // every start because accounts are excised -> userName is always empty); start
+                // screen sharing directly.
                 onPressed: () {
-                  if (gFFI.userModel.userName.value.isEmpty &&
-                      bind.mainGetLocalOption(key: "show-scam-warning") !=
-                          "N") {
-                    showScamWarning(context, serverModel);
-                  } else {
-                    serverModel.toggleService();
-                  }
+                  serverModel.toggleService();
                 },
-                label: Text(translate("Start service")))
+                label: Text(translate("Start screen sharing")))
           ],
         ));
-  }
-}
-
-class ScamWarningDialog extends StatefulWidget {
-  final ServerModel serverModel;
-
-  ScamWarningDialog({required this.serverModel});
-
-  @override
-  ScamWarningDialogState createState() => ScamWarningDialogState();
-}
-
-class ScamWarningDialogState extends State<ScamWarningDialog> {
-  int _countdown = bind.isCustomClient() ? 0 : 12;
-  bool show_warning = false;
-  late Timer _timer;
-  late ServerModel _serverModel;
-
-  @override
-  void initState() {
-    super.initState();
-    _serverModel = widget.serverModel;
-    startCountdown();
-  }
-
-  void startCountdown() {
-    const oneSecond = Duration(seconds: 1);
-    _timer = Timer.periodic(oneSecond, (timer) {
-      setState(() {
-        _countdown--;
-        if (_countdown <= 0) {
-          timer.cancel();
-        }
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isButtonLocked = _countdown > 0;
-
-    return AlertDialog(
-      content: ClipRRect(
-        borderRadius: BorderRadius.circular(20.0),
-        child: SingleChildScrollView(
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topRight,
-                end: Alignment.bottomLeft,
-                colors: [
-                  Color(0xffe242bc),
-                  Color(0xfff4727c),
-                ],
-              ),
-            ),
-            padding: EdgeInsets.all(25.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.warning_amber_sharp,
-                      color: Colors.white,
-                    ),
-                    SizedBox(width: 10),
-                    Text(
-                      translate("Warning"),
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 20.0,
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 20),
-                Center(
-                  child: Image.asset(
-                    'assets/scam.png',
-                    width: 180,
-                  ),
-                ),
-                SizedBox(height: 18),
-                Text(
-                  translate("scam_title"),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 22.0,
-                  ),
-                ),
-                SizedBox(height: 18),
-                Text(
-                  "${translate("scam_text1")}\n\n${translate("scam_text2")}\n",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16.0,
-                  ),
-                ),
-                Row(
-                  children: <Widget>[
-                    Checkbox(
-                      value: show_warning,
-                      onChanged: (value) {
-                        setState(() {
-                          show_warning = value!;
-                        });
-                      },
-                    ),
-                    Text(
-                      translate("Don't show again"),
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15.0,
-                      ),
-                    ),
-                  ],
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Container(
-                      constraints: BoxConstraints(maxWidth: 150),
-                      child: ElevatedButton(
-                        onPressed: isButtonLocked
-                            ? null
-                            : () {
-                                Navigator.of(context).pop();
-                                _serverModel.toggleService();
-                                if (show_warning) {
-                                  bind.mainSetLocalOption(
-                                      key: "show-scam-warning", value: "N");
-                                }
-                              },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueAccent,
-                        ),
-                        child: Text(
-                          isButtonLocked
-                              ? "${translate("I Agree")} (${_countdown}s)"
-                              : translate("I Agree"),
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13.0,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 15),
-                    Container(
-                      constraints: BoxConstraints(maxWidth: 150),
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueAccent,
-                        ),
-                        child: Text(
-                          translate("Decline"),
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13.0,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-      contentPadding: EdgeInsets.all(0.0),
-    );
   }
 }
 
@@ -356,20 +197,32 @@ class ServerInfo extends StatelessWidget {
         TextStyle(fontSize: 25.0, fontWeight: FontWeight.bold);
 
     Widget ConnectionStateNotification() {
-      // R-G2/R-G7: direct-IP — the controlled side listens on the pinned direct port
-      // (config::DIRECT_PORT = 21118); there is no rendezvous "connecting"/"not ready" state.
-      // Report TWO distinct, honest facts instead of one static green check:
-      //  1. The listener is reachable on :21118 while THIS app is open — an attended box, not an
-      //     always-on/unattended server (R-D7a: Android is viewer-dominant, no daemon).
+      // R-G2/R-G7/R-S9 (BR-4 mobile analog, verify-ground-truth): direct-IP — the controlled side
+      // listens on the pinned direct port (config::DIRECT_PORT = 21118); no rendezvous
+      // "connecting"/"not ready" state. Report TWO distinct, honest facts instead of one static
+      // green check:
+      //  1. REACHABLE — driven by the REAL Rust `direct-listener-bound` signal (the actual bound
+      //     TcpListener), NOT `serverModel.isStart` (an optimistic Dart flag set before init_service
+      //     and never synced from the native service — false after a boot listener-only start even
+      //     though the listener is UP). `permanent-password-set` only picks the "why not reachable"
+      //     wording (no password vs service stopped).
       //  2. Screen capture only actually flows once MediaProjection consent is in hand (mediaOk,
       //     re-synced from native MainService.isReady by the check_service poll) — so the card
       //     must not imply capture is ready before that consent, or after it is lost.
+      final reachable = _directListenerBound();
+      final passwordSet = _permanentPasswordSet();
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Icon(Icons.check, color: colorPositive, size: iconSize)
+          Icon(reachable ? Icons.check : Icons.warning_amber_sharp,
+                  color: reachable ? colorPositive : colorNegative,
+                  size: iconSize)
               .marginOnly(right: iconMarginRight),
           Expanded(
-              child: Text(translate('Reachable on :21118 while this app is open')))
+              child: Text(translate(reachable
+                  ? 'Reachable on :21118'
+                  : passwordSet
+                      ? 'Not reachable — the service is not running'
+                      : 'Not reachable — set a permanent password to open the port')))
         ]),
         const SizedBox(height: 8),
         Row(children: [
@@ -431,18 +284,17 @@ class _PermissionCheckerState extends State<PermissionChecker> {
                               MaterialStateProperty.all(Colors.red)),
                       icon: const Icon(Icons.stop),
                       onPressed: serverModel.toggleService,
-                      label: Text(translate("Stop service")))
+                      // BR-15 (§19): relabel the CAPTURE toggle honestly — this stops screen
+                      // sharing, not the password-gated listener (which the FGS owns, R-D7a).
+                      label: Text(translate("Stop screen sharing")))
                   .marginOnly(bottom: 8)
               : SizedBox.shrink(),
           if (!hideStopService || !serverModel.mediaOk)
             PermissionRow(
                 translate("Screen Capture"),
                 serverModel.mediaOk,
-                !serverModel.mediaOk &&
-                        gFFI.userModel.userName.value.isEmpty &&
-                        bind.mainGetLocalOption(key: "show-scam-warning") != "N"
-                    ? () => showScamWarning(context, serverModel)
-                    : serverModel.toggleService),
+                // R-X7a/§19: scam-warning dialog excised — toggle screen capture directly.
+                serverModel.toggleService),
           PermissionRow(
             translate("Input Control"),
             serverModel.inputOk,
@@ -749,11 +601,3 @@ void androidChannelInit() {
   });
 }
 
-void showScamWarning(BuildContext context, ServerModel serverModel) {
-  showDialog(
-    context: context,
-    builder: (BuildContext context) {
-      return ScamWarningDialog(serverModel: serverModel);
-    },
-  );
-}

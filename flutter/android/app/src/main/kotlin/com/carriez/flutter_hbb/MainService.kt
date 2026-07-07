@@ -317,6 +317,12 @@ class MainService : Service() {
     }
 
     override fun onDestroy() {
+        // F5 / R-S14: release the MediaProjection as the service is destroyed ("release when not
+        // running"). onDestroy is the common teardown sink for BOTH the app-driven Stop
+        // (MainActivity "stop_service" -> destroy() -> stopSelf -> onDestroy) and a system/OEM/
+        // battery kill; the inherited code released the projection on neither, leaking it until
+        // process death. Runs before checkMediaPermission() so the now-false _isReady is reported.
+        releaseMediaProjection()
         checkMediaPermission()
         unregisterNetworkCallback()
         releaseNetworkKeepaliveWakeLock()
@@ -416,8 +422,21 @@ class MainService : Service() {
                 checkMediaPermission()
                 _isReady = true
             } ?: let {
-                Log.d(logTag, "getParcelableExtra intent null, invoke requestMediaProjection")
-                requestMediaProjection()
+                // BR-17 / R-D7a: honor the boot/start split that was plumbed (EXT_INIT_FROM_BOOT,
+                // set by BootReceiver) but never read. On BOOT, start the foreground service + the
+                // password-gated direct listener ONLY (both already up from onCreate: FFI.startServer
+                // + createForegroundNotification) — do NOT request MediaProjection. Requesting it here
+                // popped the unprompted "Share your screen?" system dialog on unlock; capture consent
+                // must be a per-session, human-tapped action (Android is attended-only, R-S14). A
+                // deliberate foreground "Start screen sharing" tap arrives with the result extra
+                // present (via PermissionRequestTransparentActivity) and so takes the branch above,
+                // unaffected; file transfer needs only the listener (no capture) and also works.
+                if (intent.getBooleanExtra(EXT_INIT_FROM_BOOT, false)) {
+                    Log.d(logTag, "init from boot: foreground service + listener only, not requesting MediaProjection")
+                } else {
+                    Log.d(logTag, "getParcelableExtra intent null, invoke requestMediaProjection")
+                    requestMediaProjection()
+                }
             }
         }
         return START_NOT_STICKY // don't use sticky (auto restart), the new service (from auto restart) will lose control
@@ -534,6 +553,21 @@ class MainService : Service() {
         audioRecordHandle.tryReleaseAudio()
     }
 
+    // F5 / R-S14 ("release when not running"): stop and drop the MediaProjection so a held capture
+    // grant cannot outlive the owning foreground service. Idempotent + null-safe — the single
+    // release sink both teardown paths use. The inherited code released it on NEITHER: the
+    // app-driven destroy() only null'd the reference (never .stop()), and the system-initiated
+    // onDestroy did nothing, so the projection leaked until process death.
+    @Synchronized
+    private fun releaseMediaProjection() {
+        mediaProjection?.let {
+            Log.d(logTag, "F5: stopping MediaProjection")
+            it.stop()
+        }
+        mediaProjection = null
+        _isReady = false
+    }
+
     fun destroy() {
         Log.d(logTag, "destroy service")
         _isReady = false
@@ -546,7 +580,9 @@ class MainService : Service() {
             virtualDisplay = null
         }
 
-        mediaProjection = null
+        // F5: stop AND drop the projection (was: only `mediaProjection = null`, never .stop()).
+        // onDestroy (below, via stopSelf) is idempotently a no-op after this.
+        releaseMediaProjection()
         checkMediaPermission()
         unregisterNetworkCallback()
         releaseNetworkKeepaliveWakeLock()

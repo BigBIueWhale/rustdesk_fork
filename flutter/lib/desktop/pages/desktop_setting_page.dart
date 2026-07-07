@@ -1092,29 +1092,13 @@ class _DisplayState extends State<_Display> {
 
     final groupValue =
         bind.mainGetUserDefaultOption(key: kOptionCodecPreference);
-    var hwRadios = [];
     final isOptFixed = isOptionFixed(kOptionCodecPreference);
-    try {
-      final Map codecsJson = jsonDecode(bind.mainSupportedHwdecodings());
-      final h264 = codecsJson['h264'] ?? false;
-      final h265 = codecsJson['h265'] ?? false;
-      if (h264) {
-        hwRadios.add(_Radio(context,
-            value: 'h264',
-            groupValue: groupValue,
-            label: 'H264',
-            onChanged: isOptFixed ? null : onChanged));
-      }
-      if (h265) {
-        hwRadios.add(_Radio(context,
-            value: 'h265',
-            groupValue: groupValue,
-            label: 'H265',
-            onChanged: isOptFixed ? null : onChanged));
-      }
-    } catch (e) {
-      debugPrint("failed to parse supported hwdecodings, err=$e");
-    }
+    // R-R2b / R-G1 (§19): the H264/H265 hardware-decode radios are removed, not hidden. They only
+    // rendered when mainSupportedHwdecodings() reported h264/h265 support, but hwcodec/vram/ffmpeg-HW
+    // (and Android mediacodec) are compiled out of every build (software vpx/aom only), so scrap's
+    // supported_decodings() leaves ability_h264/ability_h265 at 0 and the map is always
+    // {"h264":false,"h265":false} — the radios only ever rendered nothing (hidden ≠ removed, the
+    // R-G1 trap the Hardware-Codec and Wayland cards above call out). Only the software codecs remain.
     return _Card(title: 'Default Codec', children: [
       _Radio(context,
           value: 'auto',
@@ -1136,7 +1120,6 @@ class _DisplayState extends State<_Display> {
           groupValue: groupValue,
           label: 'AV1',
           onChanged: isOptFixed ? null : onChanged),
-      ...hwRadios,
     ]);
   }
 

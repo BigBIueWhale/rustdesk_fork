@@ -118,8 +118,8 @@ bool isDoubleEqual(double a, double b) {
 class IconFont {
   static const _family1 = 'Tabbar';
   static const _family2 = 'PeerSearchbar';
-  static const _family3 = 'AddressBook';
-  static const _family4 = 'DeviceGroup';
+  // R-G4: the 'AddressBook' + 'DeviceGroup' glyph families backed the excised Address-book /
+  // "Accessible devices" tab icons; their IconData entries are removed with the tabs.
   static const _family5 = 'More';
 
   IconFont._();
@@ -132,11 +132,6 @@ class IconFont {
   static const IconData menu = IconData(0xe628, fontFamily: _family1);
   static const IconData search = IconData(0xe6a4, fontFamily: _family2);
   static const IconData roundClose = IconData(0xe6ed, fontFamily: _family2);
-  static const IconData addressBook = IconData(0xe602, fontFamily: _family3);
-  static const IconData deviceGroupOutline =
-      IconData(0xe623, fontFamily: _family4);
-  static const IconData deviceGroupFill =
-      IconData(0xe748, fontFamily: _family4);
   static const IconData more = IconData(0xe609, fontFamily: _family5);
 }
 
@@ -1621,10 +1616,8 @@ Future<bool> matchPeer(
   if (peer.alias.toLowerCase().contains(searchText)) {
     return true;
   }
-  if (peerTabShowNote(peerTabIndex) &&
-      peer.note.toLowerCase().contains(searchText)) {
-    return true;
-  }
+  // R-G4: peer notes were an address-book feature (excised); the local Recent/Favorite peers carry
+  // none, so there is no note field to match.
   return false;
 }
 
@@ -3671,23 +3664,6 @@ disableWindowMovable(int? windowId) {
   }
 }
 
-Widget netWorkErrorWidget() {
-  return Center(
-      child: Column(
-    mainAxisAlignment: MainAxisAlignment.center,
-    crossAxisAlignment: CrossAxisAlignment.center,
-    children: [
-      Text(translate("network_error_tip")),
-      ElevatedButton(
-              onPressed: gFFI.userModel.refreshCurrentUser,
-              child: Text(translate("Retry")))
-          .marginSymmetric(vertical: 16),
-      SelectableText(gFFI.userModel.networkError.value,
-          style: TextStyle(fontSize: 11, color: Colors.red)),
-    ],
-  ));
-}
-
 List<ResizeEdge>? get windowManagerEnableResizeEdges => isWindows
     ? [
         ResizeEdge.topLeft,
@@ -3825,10 +3801,6 @@ String getConnectionText(String streamType) {
   } else {
     return '$connectionText ($streamType)';
   }
-}
-
-bool peerTabShowNote(PeerTabIndex peerTabIndex) {
-  return peerTabIndex == PeerTabIndex.ab || peerTabIndex == PeerTabIndex.group;
 }
 
 // TODO: We should support individual bits combinations in the future.

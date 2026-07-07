@@ -2832,15 +2832,8 @@ pub fn is_disable_settings() -> bool {
     is_some_hard_opton("disable-settings")
 }
 
-#[inline]
-pub fn is_disable_ab() -> bool {
-    is_some_hard_opton("disable-ab")
-}
-
-#[inline]
-pub fn is_disable_account() -> bool {
-    is_some_hard_opton("disable-account")
-}
+// R-G4 / R-SV6 (§19): `is_disable_ab` / `is_disable_account` removed with the excised account /
+// address-book / group front-end (their only callers were the deleted flutter FFI resolvers).
 
 #[inline]
 pub fn is_disable_installation() -> bool {

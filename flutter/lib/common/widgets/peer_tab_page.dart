@@ -2,9 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:bot_toast/bot_toast.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_hbb/common/widgets/address_book.dart';
 import 'package:flutter_hbb/common/widgets/dialog.dart';
-import 'package:flutter_hbb/common/widgets/my_group.dart';
 import 'package:flutter_hbb/common/widgets/peers_view.dart';
 import 'package:flutter_hbb/common/widgets/peer_card.dart';
 import 'package:flutter_hbb/consts.dart';
@@ -12,7 +10,6 @@ import 'package:flutter_hbb/desktop/widgets/popup_menu.dart';
 import 'package:flutter_hbb/desktop/widgets/material_mod_popup_menu.dart'
     as mod_menu;
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
-import 'package:flutter_hbb/models/ab_model.dart';
 import 'package:flutter_hbb/models/peer_model.dart';
 
 import 'package:flutter_hbb/models/peer_tab_model.dart';
@@ -43,6 +40,9 @@ EdgeInsets? _menuPadding() {
 
 class _PeerTabPageState extends State<PeerTabPage>
     with SingleTickerProviderStateMixin {
+  // R-G2 / R-G4 / R-SV6 (§19): only the two LOCAL, login-free lists remain. The account-synced
+  // Address Book and "Accessible devices" (group) tabs are EXCISED with their models (R-G4 delete,
+  // not gate). `entries` length == PeerTabModel.maxTabCount == PeerTabIndex length.
   final List<_TabEntry> entries = [
     _TabEntry(RecentPeersView(
       menuPadding: _menuPadding(),
@@ -50,19 +50,6 @@ class _PeerTabPageState extends State<PeerTabPage>
     _TabEntry(FavoritePeersView(
       menuPadding: _menuPadding(),
     )),
-    _TabEntry(
-        AddressBook(
-          menuPadding: _menuPadding(),
-        ),
-        ({dynamic hint}) => gFFI.abModel.pullAb(
-            force: hint == null ? ForcePullAb.listAndCurrent : null,
-            quiet: false)),
-    _TabEntry(
-      MyGroup(
-        menuPadding: _menuPadding(),
-      ),
-      ({dynamic hint}) => gFFI.groupModel.pull(force: hint == null),
-    ),
   ];
   RelativeRect? mobileTabContextMenuPos;
 
@@ -81,8 +68,6 @@ class _PeerTabPageState extends State<PeerTabPage>
               ? PeerUiType.tile
               : PeerUiType.list;
     }
-    hideAbTagsPanel.value =
-        bind.mainGetLocalOption(key: kOptionHideAbTagsPanel) == 'Y';
   }
 
   Future<void> handleTabSelection(int tabIndex) async {
@@ -203,32 +188,6 @@ class _PeerTabPageState extends State<PeerTabPage>
     return Expanded(
         child: child.marginSymmetric(
             vertical: (isDesktop || isWebDesktop) ? 12.0 : 6.0));
-  }
-
-  Widget _createRefresh(
-      {required PeerTabIndex index, required RxBool loading}) {
-    final model = Provider.of<PeerTabModel>(context);
-    final textColor = Theme.of(context).textTheme.titleLarge?.color;
-    return Offstage(
-      offstage: model.currentTab != index.index,
-      child: Tooltip(
-        message: translate('Refresh'),
-        child: RefreshWidget(
-            onPressed: () {
-              if (gFFI.peerTabModel.currentTab < entries.length) {
-                entries[gFFI.peerTabModel.currentTab].load?.call();
-              }
-            },
-            spinning: loading,
-            child: RotatedBox(
-                quarterTurns: 2,
-                child: Icon(
-                  Icons.refresh,
-                  size: 18,
-                  color: textColor,
-                ))),
-      ),
-    );
   }
 
   Widget _createPeerViewTypeSwitch(BuildContext context) {
@@ -363,8 +322,6 @@ class _PeerTabPageState extends State<PeerTabPage>
             children: [
               deleteSelection(),
               addSelectionToFav(),
-              addSelectionToAb(),
-              editSelectionTags(),
             ],
           ),
         ),
@@ -381,15 +338,13 @@ class _PeerTabPageState extends State<PeerTabPage>
 
   Widget deleteSelection() {
     final model = Provider.of<PeerTabModel>(context);
-    if (model.currentTab == PeerTabIndex.group.index) {
-      return Offstage();
-    }
     return _hoverAction(
         context: context,
         toolTip: translate('Delete'),
         onTap: () {
           onSubmit() async {
             final peers = model.selectedPeers;
+            // Only the local Recent (0) and Favorites (1) tabs remain (R-G2/R-G4).
             switch (model.currentTab) {
               case 0:
                 for (var p in peers) {
@@ -405,16 +360,11 @@ class _PeerTabPageState extends State<PeerTabPage>
                 await bind.mainStoreFav(favs: favs);
                 bind.mainLoadFavPeers();
                 break;
-              // R-G2: the Discovered/LAN tab was removed, so the index-keyed delete switch shifts —
-              // index 2 is now the address book (was index 3), 3 is the group (handled by default).
-              case 2:
-                await gFFI.abModel.deletePeers(peers.map((p) => p.id).toList());
-                break;
               default:
                 break;
             }
             gFFI.peerTabModel.setMultiSelectionMode(false);
-            if (model.currentTab != 2) showToast(translate('Successful'));
+            showToast(translate('Successful'));
           }
 
           deleteConfirmDialog(onSubmit, translate('Delete'));
@@ -444,50 +394,6 @@ class _PeerTabPageState extends State<PeerTabPage>
         },
         child: Icon(PeerTabModel.icons[PeerTabIndex.fav.index]),
       ).marginOnly(left: !(isDesktop || isWebDesktop) ? 11 : 6),
-    );
-  }
-
-  Widget addSelectionToAb() {
-    final model = Provider.of<PeerTabModel>(context);
-    final addressbooks = gFFI.abModel.addressBooksCanWrite();
-    if (model.currentTab == PeerTabIndex.ab.index) {
-      addressbooks.remove(gFFI.abModel.currentName.value);
-    }
-    return Offstage(
-      offstage: !gFFI.userModel.isLogin || addressbooks.isEmpty,
-      child: _hoverAction(
-        context: context,
-        toolTip: translate('Add to address book'),
-        onTap: () {
-          final peers = model.selectedPeers.map((e) => Peer.copy(e)).toList();
-          addPeersToAbDialog(peers);
-          model.setMultiSelectionMode(false);
-        },
-        child: Icon(PeerTabModel.icons[PeerTabIndex.ab.index]),
-      ).marginOnly(left: !(isDesktop || isWebDesktop) ? 11 : 6),
-    );
-  }
-
-  Widget editSelectionTags() {
-    final model = Provider.of<PeerTabModel>(context);
-    return Offstage(
-      offstage: !gFFI.userModel.isLogin ||
-          model.currentTab != PeerTabIndex.ab.index ||
-          gFFI.abModel.currentAbTags.isEmpty,
-      child: _hoverAction(
-              context: context,
-              toolTip: translate('Edit Tag'),
-              onTap: () {
-                editAbTagDialog(List.empty(), (selectedTags) async {
-                  final peers = model.selectedPeers;
-                  await gFFI.abModel.changeTagForPeers(
-                      peers.map((p) => p.id).toList(), selectedTags);
-                  model.setMultiSelectionMode(false);
-                  showToast(translate('Successful'));
-                });
-              },
-              child: Icon(Icons.tag))
-          .marginOnly(left: !(isDesktop || isWebDesktop) ? 11 : 6),
     );
   }
 
@@ -525,31 +431,10 @@ class _PeerTabPageState extends State<PeerTabPage>
         .marginOnly(left: 6);
   }
 
-  Widget _toggleTags() {
-    return _hoverAction(
-        context: context,
-        toolTip: translate('Toggle Tags'),
-        hoverableWhenfalse: hideAbTagsPanel,
-        child: Icon(
-          Icons.tag_rounded,
-          size: 18,
-        ),
-        onTap: () async {
-          await bind.mainSetLocalOption(
-              key: kOptionHideAbTagsPanel,
-              value: hideAbTagsPanel.value ? defaultOptionNo : "Y");
-          hideAbTagsPanel.value = !hideAbTagsPanel.value;
-        });
-  }
-
   List<Widget> _landscapeRightActions(BuildContext context) {
     final model = Provider.of<PeerTabModel>(context);
     return [
       const PeerSearchBar().marginOnly(right: 13),
-      _createRefresh(
-          index: PeerTabIndex.ab, loading: gFFI.abModel.currentAbLoading),
-      _createRefresh(
-          index: PeerTabIndex.group, loading: gFFI.groupModel.groupLoading),
       Offstage(
         offstage: model.currentTabCachedPeers.isEmpty,
         child: _createMultiSelection(),
@@ -558,10 +443,6 @@ class _PeerTabPageState extends State<PeerTabPage>
       Offstage(
         offstage: model.currentTab == PeerTabIndex.recent.index,
         child: PeerSortDropdown(),
-      ),
-      Offstage(
-        offstage: model.currentTab != PeerTabIndex.ab.index,
-        child: _toggleTags(),
       ),
     ];
   }
@@ -610,20 +491,13 @@ class _PeerTabPageState extends State<PeerTabPage>
       );
     }
 
-    // Always show search, refresh
+    // Always show search
     List<Widget> actions = [
       const PeerSearchBar(),
-      if (model.currentTab == PeerTabIndex.ab.index)
-        _createRefresh(
-            index: PeerTabIndex.ab, loading: gFFI.abModel.currentAbLoading),
-      if (model.currentTab == PeerTabIndex.group.index)
-        _createRefresh(
-            index: PeerTabIndex.group, loading: gFFI.groupModel.groupLoading),
     ];
     final List<Widget> dynamicActions = [
       if (model.currentTabCachedPeers.isNotEmpty) _createMultiSelection(),
       if (model.currentTab != PeerTabIndex.recent.index) PeerSortDropdown(),
-      if (model.currentTab == PeerTabIndex.ab.index) _toggleTags()
     ];
     final rightWidth = availableWidth -
         searchWidth -
@@ -926,68 +800,6 @@ class _PeerSortDropdownState extends State<PeerSortDropdown> {
         elevation: 8,
       ),
     );
-  }
-}
-
-class RefreshWidget extends StatefulWidget {
-  final VoidCallback onPressed;
-  final Widget child;
-  final RxBool? spinning;
-  const RefreshWidget(
-      {super.key, required this.onPressed, required this.child, this.spinning});
-
-  @override
-  State<RefreshWidget> createState() => RefreshWidgetState();
-}
-
-class RefreshWidgetState extends State<RefreshWidget> {
-  double turns = 0.0;
-  bool hover = false;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.spinning?.listen((v) {
-      if (v && mounted) {
-        setState(() {
-          turns += 1;
-        });
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final deco = BoxDecoration(
-      color: Theme.of(context).colorScheme.background,
-      borderRadius: BorderRadius.circular(6),
-    );
-    return AnimatedRotation(
-        turns: turns,
-        duration: const Duration(milliseconds: 200),
-        onEnd: () {
-          if (widget.spinning?.value == true && mounted) {
-            setState(() => turns += 1.0);
-          }
-        },
-        child: Container(
-          padding: EdgeInsets.all(4.0),
-          margin: EdgeInsets.symmetric(horizontal: 1),
-          decoration: hover ? deco : null,
-          child: InkWell(
-              onTap: () {
-                if (mounted) setState(() => turns += 1.0);
-                widget.onPressed();
-              },
-              onHover: (value) {
-                if (mounted) {
-                  setState(() {
-                    hover = value;
-                  });
-                }
-              },
-              child: widget.child),
-        ));
   }
 }
 

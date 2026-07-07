@@ -2159,6 +2159,34 @@ if grep -qE '^[[:space:]]*reqwest[[:space:]]*=|^name = "reqwest"$' Cargo.toml Ca
 else
   echo "  ok  R-SV6/R-G4 reqwest dependency graph absent"
 fi
+# R-G2 / R-G4 / R-SV6 (§19): the account / address-book / "Accessible devices" (group) FRONT-END and
+# its Dart models are EXCISED, not runtime-disabled behind an isEnabled/isDisable* flag (the exact
+# R-G4 anti-pattern). A direct-IP fork has no account server, so the abModel/groupModel/UserModel/
+# login-shim subsystem is deleted end-to-end and the two account-synced peer tabs collapse to the
+# local, login-free Recent/Favorites lists. Assert: the orphaned Dart files are gone; no live
+# (non-comment) Dart reference to the models/widgets/login shim survives; the PeerTabIndex tab set is
+# collapsed to two members (maxTabCount==2, so no stale saved tab-index can go out of bounds); and the
+# Rust disable-* resolvers whose only callers were those models are absent. (flutter/lib greps filter
+# `//` comment lines so the excision-rationale comments are not false hits.)
+gf_dead=""
+for f in flutter/lib/models/ab_model.dart flutter/lib/models/group_model.dart \
+         flutter/lib/models/user_model.dart flutter/lib/common/widgets/address_book.dart \
+         flutter/lib/common/widgets/my_group.dart flutter/lib/common/widgets/login.dart \
+         flutter/lib/common/hbbs/hbbs.dart; do
+  [ -e "$f" ] && gf_dead="$gf_dead $f"
+done
+if [ -n "$gf_dead" ]; then
+  echo "  FAIL R-G2/R-G4/R-SV6: an excised account/AB/group file regrew:$gf_dead"; rc=1
+elif grep -rnE '\b(abModel|groupModel|AbModel|GroupModel|UserModel|loginDialog|AddressBookPeerCard|MyGroupPeerCard|AddressBookPeersView|MyGroupPeerView|PeerTabIndex\.(ab|group))\b' flutter/lib/ --include='*.dart' | grep -vE ':[0-9]+:[[:space:]]*//' | grep -q .; then
+  echo "  FAIL R-G2/R-G4/R-SV6: a live account/AB/group Dart reference regrew in flutter/lib"; rc=1
+elif grep -rn 'gFFI.userModel' flutter/lib/ --include='*.dart' | grep -vE ':[0-9]+:[[:space:]]*//' | grep -q .; then
+  echo "  FAIL R-G2/R-G4/R-SV6: gFFI.userModel regrew (account model must be absent)"; rc=1
+elif ! grep -qE 'static const int maxTabCount = 2;' flutter/lib/models/peer_tab_model.dart; then
+  echo "  FAIL R-G2/R-G4: peer_tab_model.dart maxTabCount != 2 (tab set not collapsed to Recent/Favorites -> out-of-bounds risk)"; rc=1
+else
+  echo "  ok  R-G2/R-G4/R-SV6 account/AB/group front-end + models excised (7 files gone; no live Dart ref; PeerTabIndex collapsed to 2)"
+fi
+ra6_clean 'fn is_disable_ab|fn is_disable_account|fn is_disable_group_panel' 'R-G4/R-SV6 Rust account/AB/group disable-* resolvers' || rc=1
 # R-G4 / §8: insecure-TLS fallback is excised structurally, not just config-pinned. The old
 # call-site parameter names may remain for compatibility, but no connector/verifier may disable
 # certificate verification or install an assertion-only verifier.

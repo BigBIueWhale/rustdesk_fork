@@ -165,7 +165,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("texture_render_tip", "Use texture rendering to make the pictures smoother. You could try disabling this option if you encounter rendering issues."),
         ("network_error_tip", "Please check your network connection, then click retry."),
         ("one-way-file-transfer-tip", "One-way file transfer is enabled on the controlled side."),
-        ("account_login_unavailable_tip", "Account login is unavailable: this is a serverless, direct-IP fork (it dials nobody)."),
         ("View camera", "View camera"),
         ("view_camera_unsupported_tip", "The remote device does not support viewing the camera."),
         ("d3d_render_tip", "When D3D rendering is enabled, the remote control screen may be black on some machines."),

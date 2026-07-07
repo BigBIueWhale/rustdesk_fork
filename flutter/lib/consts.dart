@@ -50,7 +50,6 @@ const String kAppTypeDesktopPortForward = "port forward";
 const String kAppTypeDesktopTerminal = "terminal";
 
 const String kWindowMainWindowOnTop = "main_window_on_top";
-const String kWindowRefreshCurrentUser = "refresh_current_user";
 const String kWindowGetWindowInfo = "get_window_info";
 const String kWindowGetScreenList = "get_screen_list";
 // This method is not used, maybe it can be removed.
@@ -137,7 +136,6 @@ const String kOptionRemoteMenubarEdge = "remote-menubar-edge";
 const String kOptionRemoteMenubarFraction = "remote-menubar-frac";
 const String kOptionAllowMultiEdgeToolbarDock =
     "allow-multi-edge-toolbar-dock";
-const String kOptionHideAbTagsPanel = "hideAbTagsPanel";
 const String kOptionRemoteMenubarState = "remoteMenubarState";
 const String kOptionPeerSorting = "peer-sorting";
 const String kOptionPeerTabIndex = "peer-tab-index";

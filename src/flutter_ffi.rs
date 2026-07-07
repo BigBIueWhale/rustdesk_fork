@@ -2128,17 +2128,10 @@ pub fn is_disable_settings() -> SyncReturn<bool> {
     SyncReturn(config::is_disable_settings())
 }
 
-pub fn is_disable_ab() -> SyncReturn<bool> {
-    SyncReturn(config::is_disable_ab())
-}
-
-pub fn is_disable_account() -> SyncReturn<bool> {
-    SyncReturn(config::is_disable_account())
-}
-
-pub fn is_disable_group_panel() -> SyncReturn<bool> {
-    SyncReturn(LocalConfig::get_option("disable-group-panel") == "Y")
-}
+// R-G4 / R-SV6 (§19): the account / address-book / "Accessible devices" (group) subsystem is EXCISED
+// from the front-end and its models, so the `is_disable_ab` / `is_disable_account` /
+// `is_disable_group_panel` FFI resolvers (whose only Dart callers were the now-deleted ab/group
+// models) are removed — the feature is deleted, not runtime-gated behind a disable-* option.
 
 // windows only
 pub fn is_disable_installation() -> SyncReturn<bool> {

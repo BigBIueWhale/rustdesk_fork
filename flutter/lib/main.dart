@@ -139,7 +139,6 @@ void runMainApp(bool startService) async {
   if (startService) {
     gFFI.serverModel.startService();
   }
-  gFFI.userModel.refreshCurrentUser();
   runApp(App());
 
   bool? alwaysOnTop;
@@ -178,7 +177,6 @@ void runMobileApp() async {
   if (isAndroid) androidChannelInit();
   if (isAndroid) platformFFI.syncAndroidServiceAppDirConfigPath();
   draggablePositions.load();
-  gFFI.userModel.refreshCurrentUser();
   runApp(App());
   await initUniLinks();
 }

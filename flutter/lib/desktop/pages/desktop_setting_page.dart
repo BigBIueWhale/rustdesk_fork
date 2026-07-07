@@ -359,17 +359,23 @@ class _General extends StatefulWidget {
 }
 
 class _GeneralState extends State<_General> {
-  final RxBool serviceStop =
-      isWeb ? RxBool(false) : Get.find<RxBool>(tag: 'stop-service');
-  RxBool serviceBtnEnabled = true.obs;
-
   @override
   Widget build(BuildContext context) {
     final scrollController = ScrollController();
     return ListView(
       controller: scrollController,
       children: [
-        if (!isWeb) service(),
+        // R-G1 / GC (§19): the "Service" Start/Stop card is REMOVED, not Offstage-hidden. The controlled
+        // service is pinned always-on (stop-service=N — un-killable by a local UI write, R-X9/R-X10) and
+        // OS-supervised (systemd `Restart=` / Windows SCM `sc failure` / macOS launchd `KeepAlive`), so it
+        // is always-on by policy and never a real user control; a Start/Stop button could only write the
+        // pinned key, which the policy funnel (is_option_can_save) silently rejects — the exact R-G1
+        // "looks like it changes policy but cannot" footgun. The honest service state ("Reachable on
+        // :21118" vs an actionable reason) is surfaced on the connection page from the cross-process
+        // direct-listener-bound signal (treatment T1, 741d3b1), so this card was redundant AND misleading.
+        // The former Offstage-when-running hide was the one card still using the "hidden != removed"
+        // anti-pattern R-G1 forbids; it is deleted (not greyed, not hidden). The stop-service /
+        // hide-stop-service config keys are retained (read on mobile + elsewhere) — only this desktop UI goes.
         theme(),
         _Card(title: 'Language', children: [language()]),
         // R-R2b / R-G1 (§19): the "Hardware Codec" card is removed — hwcodec/vram are compiled out of
@@ -412,38 +418,6 @@ class _GeneralState extends State<_General> {
           label: 'Follow System',
           onChanged: isOptFixed ? null : onChanged),
     ]);
-  }
-
-  Widget service() {
-    if (bind.isOutgoingOnly()) {
-      return const Offstage();
-    }
-
-    final hideStopService =
-        bind.mainGetBuildinOption(key: kOptionHideStopService) == 'Y' ||
-            // R-S16(d): the fork pins stop-service=N (the service is un-killable by a local write -- never
-            // self-DoS a headless DMZ box). A live "Stop" button would write stop-service=Y, be rejected by
-            // the policy funnel, and stay "Stop" with no feedback. Hide it when pinned (Start still works).
-            isOptionFixed(kOptionStopService);
-
-    return Obx(() {
-      if (hideStopService && !serviceStop.value) {
-        return const Offstage();
-      }
-
-      return _Card(title: 'Service', children: [
-        _Button(serviceStop.value ? 'Start' : 'Stop', () {
-          () async {
-            serviceBtnEnabled.value = false;
-            await start_service(serviceStop.value);
-            // enable the button after 1 second
-            Future.delayed(const Duration(seconds: 1), () {
-              serviceBtnEnabled.value = true;
-            });
-          }();
-        }, enabled: serviceBtnEnabled.value)
-      ]);
-    });
   }
 
   Widget other() {

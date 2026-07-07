@@ -2941,22 +2941,12 @@ Widget futureBuilder(
       });
 }
 
-Future<bool> callMainCheckSuperUserPermission() async {
-  bool checked = await bind.mainCheckSuperUserPermission();
-  if (isMacOS) {
-    await windowManager.show();
-  }
-  return checked;
-}
-
-Future<void> start_service(bool is_start) async {
-  bool checked = !bind.mainIsInstalled() ||
-      !isMacOS ||
-      await callMainCheckSuperUserPermission();
-  if (checked) {
-    mainSetBoolOption(kOptionStopService, !is_start);
-  }
-}
+// R-G1 / GC: `start_service` (and its sole helper `callMainCheckSuperUserPermission`) are removed with the
+// desktop Service Start/Stop card (desktop_setting_page.dart). Their only job was to write the pinned
+// `stop-service` key (mainSetBoolOption(kOptionStopService, ...)) — a local UI write the policy funnel
+// (is_option_can_save) rejects and R-X9 forbids as a self-DoS of the OS-supervised, always-on service.
+// Excised, not left as a dead pinned-key write path. Mobile drives the foreground-service lifecycle
+// through server_model, not this helper; the stop-service / hide-stop-service config keys are retained.
 
 Future<bool> canBeBlocked() async {
   if (isWeb) {

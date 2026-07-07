@@ -915,8 +915,8 @@ ra6_clean 'fn set_path_permission_for_portable_service_shmem|fn validate_path_fo
 # direct listener starts UNCONDITIONALLY (reads no option, R-A4/R-D4). "removed not disabled": no
 # get/set_option("stop-service"), option2bool, or check_if_stop_service in that machinery. The key
 # stays pinned "N" in PINNED_SETTINGS (R-S16) + in the is_option_can_save reject set (R-S11) — the
-# un-writable guarantee. The Flutter hide/read-only behavior and the runtime service-kill writers are
-# gated by the R-S16(d) UI and R-X9/R-X10 clauses below.
+# un-writable guarantee. The Flutter card-removal (R-G1) + read-only behavior and the runtime
+# service-kill writers are gated by the R-S16(d) UI and R-X9/R-X10 clauses below.
 r_x9_stopsvc=
 grep -qE 'Config::(get|set)_option\([^)]*"stop-service"|option2bool\("stop-service"|fn check_if_stop_service' src/platform/windows.rs src/platform/linux.rs src/direct_service.rs && r_x9_stopsvc="$r_x9_stopsvc service-listener-reads-toggle"
 grep -qE '\("stop-service", *"N"\)' libs/hbb_common/src/config.rs || r_x9_stopsvc="$r_x9_stopsvc pin-removed"
@@ -1041,8 +1041,11 @@ ra6_clean 'ipc::Data::SwitchPermission'                                  'R-S16(
 # rejects must not render as a live, mutating affordance that silently no-ops.
 #  - is_option_fixed() reports PINNED_SETTINGS keys as fixed, so every pinned control auto-greys (BUG4 root).
 #  - the desktop CM mid-session permission icons are non-interactive (Data::SwitchPermission excised; BUG1).
-#  - the desktop "Stop service" button is hidden when stop-service is pinned (BUG4(a): the service is
-#    un-killable by a local write by design; a live button would stay "Stop" with no feedback).
+#  - the desktop Service Start/Stop card is REMOVED, not Offstage-hidden (GC/R-G1: the service is pinned
+#    always-on -- stop-service=N, un-killable by a local write -- and OS-supervised, so it is never a user
+#    control; the honest reachability status lives on the connection page, T1). A pinned actuating control
+#    is deleted, not hidden -- the former Offstage-when-running hide was the exact R-G1 "hidden != removed"
+#    trap. Assert the card + its stop-service write/hide are ABSENT from the desktop settings UI.
 #  - GA/M1 (§19): the mobile controlled-side pinned capabilities (enable-keyboard/clipboard/file-transfer/
 #    audio) are shown READ-ONLY via _pinnedPolicyRow ("Set by policy", the mobile _PinnedPolicyToggle
 #    twin, R-G1) — NOT live toggles that wrote the pinned enable-* key (the funnel rejected the write, so
@@ -1053,13 +1056,13 @@ ra6_clean 'ipc::Data::SwitchPermission'                                  'R-S16(
 r_s16d_ui=""
 grep -qF 'PINNED_SETTINGS.iter().any' src/ui_interface.rs || r_s16d_ui="$r_s16d_ui is_option_fixed-pinned"
 ! grep -qE 'cmSwitchPermission|canModifyPermission' flutter/lib/desktop/pages/server_page.dart || r_s16d_ui="$r_s16d_ui cm-perms-runtime-switchable"
-grep -qF 'isOptionFixed(kOptionStopService)' flutter/lib/desktop/pages/desktop_setting_page.dart || r_s16d_ui="$r_s16d_ui stop-service-hide"
+! grep -qE 'StopService|start_service\(' flutter/lib/desktop/pages/desktop_setting_page.dart || r_s16d_ui="$r_s16d_ui stop-service-card-present"
 grep -qF '_pinnedPolicyRow' flutter/lib/mobile/pages/server_page.dart || r_s16d_ui="$r_s16d_ui mobile-pinned-readonly"
 ! grep -qE 'mainSet[A-Za-z]*Option\([^;]*kOptionEnable(Keyboard|Audio|Clipboard|FileTransfer)' flutter/lib/models/server_model.dart || r_s16d_ui="$r_s16d_ui mobile-inert-enable-write"
 if [ -n "$r_s16d_ui" ]; then
   echo "  FAIL R-S16(d)/UI: a pinned-policy control reverted to a live silent-no-op affordance:$r_s16d_ui"; rc=1
 else
-  echo "  ok  R-S16(d)/UI pinned controls grey + CM perms inert + Stop-service hidden + mobile pinned caps read-only"
+  echo "  ok  R-S16(d)/UI pinned controls grey + CM perms inert + Stop-service card removed + mobile pinned caps read-only"
 fi
 # R-G7 (§19): the Android controlled-side UI conformance — two literal removals the §19 sweep mandates.
 #  (1) CLICK-TO-ACCEPT dropped: the incoming-connection login dialog passes a NULL accept callback, so

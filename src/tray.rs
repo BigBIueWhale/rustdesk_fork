@@ -54,26 +54,32 @@ fn make_tray() -> hbb_common::ResultType<()> {
     let mut event_loop = EventLoopBuilder::new().build();
 
     let tray_menu = Menu::new();
-    let hide_stop_service =
-        crate::ui_interface::get_builtin_option(hbb_common::config::keys::OPTION_HIDE_STOP_SERVICE)
-            == "Y";
-    // The tray icon is only shown when the service is running, so we don't need to check
-    // the `stop-service` option here.
-    let quit_i = if !hide_stop_service {
-        Some(MenuItem::new(
-            translate("Stop service".to_owned()),
-            true,
-            None,
-        ))
-    } else {
-        None
-    };
+    // T1 / §19 / R-X9 / R-X10: the destructive "Stop service" tray item is REMOVED on all three
+    // desktops. It ran `uninstall_service` — Windows `sc stop`+`sc delete` (a self-DoS that DELETED
+    // the installed service the GUI cannot reinstall, the cavity-1 permanent wedge), Linux `systemctl
+    // disable`+`stop`, macOS an admin uninstall — so a single tray click tore down the OS-supervised
+    // controlled-host service. A tray action MUST NOT stop or uninstall that service. (The unset
+    // OPTION_HIDE_STOP_SERVICE gate that used to hide it is now dead in the TRAY, but the key lives
+    // on — it still gates the mobile/desktop-settings Service card — so it is NOT removed.)
     let open_i = MenuItem::new(translate("Open".to_owned()), true, None);
-    if let Some(quit_i) = &quit_i {
-        tray_menu.append_items(&[&open_i, quit_i]).ok();
-    } else {
-        tray_menu.append_items(&[&open_i]).ok();
-    }
+    // The replacement NON-destructive "Exit" is offered ONLY where the tray is its OWN process, so
+    // closing it cannot touch the listener:
+    //   * Linux/Windows — the tray is a SEPARATE `--tray` process (core_main.rs), so tao's
+    //     ControlFlow::Exit → process::exit closes ONLY the tray; the installed service (SCM/systemd)
+    //     keeps serving :21118, and the tray re-appears on the next service/session (re)launch.
+    //   * macOS — the tray runs IN the `--server` process (core_main.rs: start_server(true) on a
+    //     thread + start_tray() on the main thread), and tao's macOS run() exits via
+    //     process::exit(0). That code-0 exit is read as "successful" by the `--server` LaunchAgent
+    //     (KeepAlive{SuccessfulExit=false}; the fork's exit(-1) is what triggers a restart,
+    //     ipc.rs:766), so an "Exit" would drop the listener with NO launchd recovery — the R-X9 macOS
+    //     twin of the wedge. So macOS offers NO destructive Exit; the app/server is managed at the OS
+    //     level (Cmd-Q / launchd), untouched here.
+    #[cfg(not(target_os = "macos"))]
+    let quit_i = MenuItem::new(translate("Exit".to_owned()), true, None);
+    #[cfg(not(target_os = "macos"))]
+    tray_menu.append_items(&[&open_i, &quit_i]).ok();
+    #[cfg(target_os = "macos")]
+    tray_menu.append_items(&[&open_i]).ok();
     let tooltip = |count: usize| {
         if count == 0 {
             format!(
@@ -173,22 +179,18 @@ fn make_tray() -> hbb_common::ResultType<()> {
         }
 
         if let Ok(event) = menu_channel.try_recv() {
-            if let Some(quit_i) = &quit_i {
-                if event.id == quit_i.id() {
-                    /* failed in windows, seems no permission to check system process
-                    if !crate::check_process("--server", false) {
-                        *control_flow = ControlFlow::Exit;
-                        return;
-                    }
-                    */
-                    if !crate::platform::uninstall_service(false, false) {
-                        *control_flow = ControlFlow::Exit;
-                    }
-                } else if event.id == open_i.id() {
-                    open_func();
-                }
-            } else if event.id == open_i.id() {
+            if event.id == open_i.id() {
                 open_func();
+            }
+            // T1 / R-X9 / R-X10: NON-destructive quit — close ONLY the separate `--tray` process
+            // (Linux/Windows). tao's ControlFlow::Exit → process::exit ends just the tray; the
+            // installed service keeps running and accepting on :21118, and the tray re-appears on the
+            // next service/session (re)launch. NOT built on macOS (see the menu comment): there the
+            // tray shares the `--server` process, so a code-0 process::exit would self-DoS the
+            // listener with no launchd recovery.
+            #[cfg(not(target_os = "macos"))]
+            if event.id == quit_i.id() {
+                *control_flow = ControlFlow::Exit;
             }
         }
 

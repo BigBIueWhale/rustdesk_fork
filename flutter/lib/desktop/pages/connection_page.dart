@@ -32,7 +32,25 @@ class OnlineStatusWidget extends StatefulWidget {
 
 /// State for the connection page.
 class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
-  final _svcStopped = Get.find<RxBool>(tag: 'stop-service');
+  // T1 / BR-4 (verify-ground-truth): the desktop reachability status is driven by the REAL state of
+  // the controlled `--server`, NOT the pinned `stop-service` RxBool (always false → the old
+  // unconditional green "Listening" lie). The desktop GUI is a SEPARATE process from the `--server`
+  // that binds :21118, so both facts are read cross-process from the daemon:
+  //   * _reachable          — the REAL `direct-listener-bound` atomic in the `--server` (the actual
+  //                           bound TcpListener), queried over the main IPC channel. False when the
+  //                           service is dead/wedged (IPC unreachable, BR-9), R-S9-parked (no
+  //                           password, or an undecryptable machine-UUID-sealed PRS), or bind-locked.
+  //   * _passwordConfigured — `local-permanent-password-set`. Its FFI attempts a best-effort IPC
+  //                           sync then reads the GUI's OWN local config, so the RESULT falls back
+  //                           (allow_err) to the last-synced local value when the "" channel is gone
+  //                           — wedge-tolerant even though the call itself is not. That keeps the
+  //                           "why not reachable" wording correct during a wedge (a password IS set →
+  //                           "service not running", not the misleading "set a password").
+  // Polled asynchronously (mainGetCommon, never the sync variant) because the desktop read is a
+  // ~1s-timeout IPC round-trip that must not block the UI isolate.
+  bool _reachable = false;
+  bool _passwordConfigured = false;
+  bool _polling = false;
   Timer? _updateTimer;
 
   double get em => 14.0;
@@ -42,7 +60,7 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
   void initState() {
     super.initState();
     _updateTimer = periodic_immediate(Duration(seconds: 1), () async {
-      updateStatus();
+      await updateStatus();
     });
   }
 
@@ -55,17 +73,6 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
   @override
   Widget build(BuildContext context) {
     final isIncomingOnly = bind.isIncomingOnly();
-    startServiceWidget() => Offstage(
-          offstage: !_svcStopped.value,
-          child: InkWell(
-                  onTap: () async {
-                    await start_service(true);
-                  },
-                  child: Text(translate("Start service"),
-                      style: TextStyle(
-                          decoration: TextDecoration.underline, fontSize: em)))
-              .marginOnly(left: em),
-        );
 
     basicWidget() => Row(
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -75,58 +82,72 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
               width: 8,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(4),
-                // R-G2: direct-IP — green when the service is listening, warn when stopped; the
-                // rendezvous connecting/ready dot states are gone.
-                color: _svcStopped.value
-                    ? kColorWarn
-                    : Color.fromARGB(255, 50, 190, 166),
+                // BR-4: green ONLY when the direct listener is actually bound (the real
+                // cross-process signal); warn otherwise (no password / service not running / wedged).
+                color: _reachable
+                    ? Color.fromARGB(255, 50, 190, 166)
+                    : kColorWarn,
               ),
             ).marginSymmetric(horizontal: em),
             Container(
               width: isIncomingOnly ? 226 : null,
               child: _buildConnStatusMsg(),
             ),
-            // stop
-            if (!isIncomingOnly) startServiceWidget(),
           ],
         );
 
     return Container(
       height: height,
-      child: Obx(() => isIncomingOnly
-          ? Column(
-              children: [
-                basicWidget(),
-                Align(
-                        child: startServiceWidget(),
-                        alignment: Alignment.centerLeft)
-                    .marginOnly(top: 2.0, left: 22.0),
-              ],
-            )
-          : basicWidget()),
+      child: basicWidget(),
     ).paddingOnly(right: isIncomingOnly ? 8 : 0);
   }
 
   _buildConnStatusMsg() {
     widget.onSvcStatusChanged?.call();
+    // BR-4 / R-S9 (verify-ground-truth): mirror the honest mobile ServerInfo card — report the REAL
+    // reachability of the direct port, and when NOT reachable name the actionable reason. Desktop
+    // capture needs no per-session OS consent (X11/DXGI), so unlike mobile there is no second
+    // "capture ready" fact — just the one honest reachability line.
     return Text(
-      // R-G2/R-G8: direct-IP — no rendezvous "connecting to the network"/"not ready" states; the
-      // controlled side just listens on the pinned direct port (config::DIRECT_PORT = 21118).
-      _svcStopped.value
-          ? translate("Service is not running")
-          : translate("Listening on :21118"),
+      _reachable
+          ? translate("Reachable on :21118")
+          : _passwordConfigured
+              ? translate("Not reachable — the service is not running")
+              : translate("Not reachable — set a permanent password to open the port"),
       style: TextStyle(fontSize: em),
     );
   }
 
   updateStatus() async {
-    // R-G2: the rendezvous status_num (connecting/ready) is gone; only the live video-connection
-    // count is still surfaced (the direct-IP controlled side is "listening" whenever it runs).
-    final status =
-        jsonDecode(await bind.mainGetConnectStatus()) as Map<String, dynamic>;
+    // Re-entrancy guard: during a wedge each cross-process read blocks on its ~1s IPC timeout, so a
+    // slow poll must not overlap the next tick.
+    if (_polling) return;
+    _polling = true;
     try {
-      stateGlobal.videoConnCount.value = status['video_conn_count'] as int;
-    } catch (_) {}
+      // R-G2: the rendezvous status_num (connecting/ready) is gone; only the live video-connection
+      // count is still surfaced.
+      final status =
+          jsonDecode(await bind.mainGetConnectStatus()) as Map<String, dynamic>;
+      try {
+        stateGlobal.videoConnCount.value = status['video_conn_count'] as int;
+      } catch (_) {}
+      // BR-4: fetch the REAL cross-process reachability facts from the daemon (see the field docs).
+      final reachable =
+          (await bind.mainGetCommon(key: 'direct-listener-bound')) == 'true';
+      final passwordConfigured =
+          (await bind.mainGetCommon(key: 'local-permanent-password-set')) ==
+              'true';
+      if (mounted &&
+          (reachable != _reachable ||
+              passwordConfigured != _passwordConfigured)) {
+        setState(() {
+          _reachable = reachable;
+          _passwordConfigured = passwordConfigured;
+        });
+      }
+    } finally {
+      _polling = false;
+    }
   }
 }
 

@@ -2,6 +2,18 @@
 Description=RustDesk (hardened fork — headless controlled-only direct-IP service, §17)
 Requires=network.target
 After=systemd-user-sessions.service network.target
+# ── N3 / R-T1(a) "always recover" ─────────────────────────────────────────────
+# Disable systemd's start-rate limiter. systemd supervises the TOP-LEVEL `rustdesk --service`
+# (ExecStart); a `--server` child crash is self-healed in-process by the `--service` monitor, so this
+# limit bites a `--service` crash loop. With Restart=on-failure + RestartSec=2 (below), a FAST
+# `--service` crash loop (faulting immediately on start) would otherwise exceed systemd's default
+# 5-starts-in-10s ceiling and systemd would latch the unit in a permanent `failed` state — a locked-
+# out, unreachable DMZ box, the exact opposite of R-T1(a)'s "always recover" intent. StartLimit*
+# live in [Unit] (systemd ≥229). Setting the interval to 0 removes the lockout so the supervisor
+# keeps retrying every RestartSec forever (the ~2s gap is not a CPU spin), matching the Windows SCM
+# failure-action retry (windows.rs get_create_service) and macOS launchd KeepAlive. A deliberate
+# `systemctl stop` still stays stopped — Restart=on-failure does not fire on a clean stop.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple

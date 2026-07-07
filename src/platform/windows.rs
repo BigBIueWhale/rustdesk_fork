@@ -2960,8 +2960,26 @@ fn get_create_service(exe: &str) -> String {
     // R-X9: the installed service is ALWAYS created + auto-start; the runtime-writable stop-service
     // toggle that could suppress it (a local --option/IPC write) is excised — the key stays pinned
     // "N" in PINNED_SETTINGS (R-S16) and is not IPC-writable (R-S11).
+    //
+    // T1 / BR-9..BR-12 (Windows service resilience): `sc create ... start= auto` restarts the
+    // `--service` only at BOOT, so a mid-session crash / `panic='abort'` / elevated kill of the
+    // `--service` left the box PERMANENTLY unreachable — the direct listener died with no supervisor
+    // to relaunch it (the cavity-1 wedge), whereas Linux systemd (`Restart=on-failure`) and macOS
+    // launchd (`KeepAlive`) already self-heal the same fault. `sc failure` configures the SCM's OWN
+    // recovery actions so the OS service manager restarts the service on unexpected termination —
+    // exact PARITY with systemd/launchd, and R-X9/R-X10-clean: the OS supervisor restarts ITS OWN
+    // service (no new privilege transition, no GUI/in-process self-restart, no self-escalation; the
+    // single installed-service privilege model is unchanged). With the default failure flag
+    // (SERVICE_CONFIG_FAILURE_ACTIONS_FLAG = 0, guaranteed on a fresh `sc create`) the actions fire
+    // ONLY when the process terminates WITHOUT reporting SERVICE_STOPPED — a crash / abort / Task-
+    // Manager kill — and NOT on a clean `sc stop` / services.msc stop (which reports SERVICE_STOPPED
+    // with exit 0), so a DELIBERATE stop stays stopped (recover from a fault, never fight the
+    // operator). Backoff 5s/10s/30s and then 30s forever (SCM repeats the last action, never gives
+    // up → "always recover", the N3 twin of the systemd start-limit fix); the failure counter resets
+    // after a day of uptime so a genuine one-off does not inherit a stale 30s delay.
     format!("
 sc create {app_name} binpath= \"\\\"{exe}\\\" --service\" start= auto DisplayName= \"{app_name} Service\"
+sc failure {app_name} reset= 86400 actions= restart/5000/restart/10000/restart/30000
 sc start {app_name}
 ",
     app_name = crate::get_app_name())

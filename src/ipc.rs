@@ -823,6 +823,14 @@ async fn handle(data: Data, stream: &mut Connection) {
                     };
                 } else if name == "voice-call-input" {
                     value = crate::audio_service::get_voice_call_input_device();
+                } else if name == "direct-listener-bound" {
+                    // T1 / BR-4 (verify-ground-truth): answer the GUI's cross-process query for the
+                    // REAL direct-listener state. This handler runs in the process that hosts the
+                    // main "" IPC channel AND binds :21118 (the `--server`, server.rs), so the atomic
+                    // read here is the true socket state (bound / R-S9-parked / rebinding). The
+                    // desktop GUI is a SEPARATE process whose own atomic is always false, hence this
+                    // read-only IPC GET (mirrors how `permanent-password-set` is queried above).
+                    value = Some(crate::direct_service::is_direct_listener_bound().to_string());
                 } else {
                     value = None;
                 }
@@ -1378,6 +1386,17 @@ pub fn is_permanent_password_set() -> bool {
     }
     log::warn!("Failed to query permanent password state from daemon");
     false
+}
+
+/// T1 / BR-4 (verify-ground-truth): query the daemon (`--server`) for the REAL direct-listener
+/// state over the main "" IPC channel. Used by the desktop GUI, which runs in a SEPARATE process
+/// from the `--server` that binds :21118 (so reading its own `direct_service` atomic would always
+/// yield false). A dead/wedged service (the "" channel is unreachable → `get_config` errors) and a
+/// parked/rebinding listener (atomic false in the daemon) both correctly read as NOT bound, so the
+/// desktop "Reachable on :21118" status can never over-claim.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub fn get_direct_listener_bound() -> bool {
+    matches!(get_config("direct-listener-bound"), Ok(Some(v)) if v.trim() == "true")
 }
 
 pub fn is_permanent_password_preset() -> bool {

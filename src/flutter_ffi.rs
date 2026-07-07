@@ -2348,7 +2348,19 @@ pub fn main_get_common(key: String) -> String {
         // ServerInfo / "screen sharing off" cards read this so "reachable on :21118" reflects the
         // actual socket — true after a boot listener-only start (BR-17), false when the FGS/listener
         // is actually down.
-        return crate::direct_service::is_direct_listener_bound().to_string();
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        {
+            // Android/iOS: the FGS listener and this FFI run in the SAME process — read the atomic.
+            return crate::direct_service::is_direct_listener_bound().to_string();
+        }
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        {
+            // T1 / BR-4: on the desktop the GUI is a SEPARATE process from the `--server` that binds
+            // :21118, so reading its own atomic would always be false. Query the daemon's real
+            // atomic over the main "" IPC channel; a dead/wedged service (no IPC) honestly reads as
+            // NOT bound, so the desktop status reflects a wedge instead of the old green lie.
+            return crate::ipc::get_direct_listener_bound().to_string();
+        }
     } else if key == "local-permanent-password-set" {
         return ui_interface::is_local_permanent_password_set().to_string();
     } else {

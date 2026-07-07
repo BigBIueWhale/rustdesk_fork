@@ -144,4 +144,9 @@ gh release create "${create_args[@]}" \
 
 URL="$(gh release view "$TAG" --json url -q .url 2>/dev/null || echo "$REPO_SLUG releases")"
 log "OK — $mode '$TITLE' published: $URL"
-[ "$PRERELEASE" = 1 ] && log "  (PRERELEASE — the fork's honest maturity; use --final only for a matured, audited cut)"
+if [ "$PRERELEASE" = 1 ]; then
+    # Prerelease-only note. Wrapped in if/then/fi (not a trailing `&& log`): on a --final release
+    # PRERELEASE=0, so a `[ … ] && log …` short-circuit would make the test's exit status (1) the
+    # script's exit code — falsely signalling failure AFTER the release already published.
+    log "  (PRERELEASE — the fork's honest maturity; use --final only for a matured, audited cut)"
+fi

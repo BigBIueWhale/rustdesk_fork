@@ -413,6 +413,34 @@ def build_flutter_windows(version, features, skip_portable_pack):
     os.chdir('..')
     shutil.copy2('target/release/deps/dylib_virtual_display.dll',
                  flutter_build_dir_2)
+    # R-B2 (Windows byte-reproducibility): canonicalize EVERY embedded PE in the flutter dist Release dir
+    # NOW -- after `flutter build windows --release` finalizes it (+ the dylib_virtual_display.dll copy
+    # above) and BEFORE either packager reads it. TWO packagers consume this SAME dir: the portable packer
+    # (generate.py, below) brotli-packs it into rustdesk-*install.exe, and the WiX .msi step
+    # (scripts/build-windows.ps1, which runs AFTER build.py returns) CAB-packs it into rustdesk.msi. cwd is
+    # the repo root here, so these in-place edits persist for that later .msi step too.
+    #
+    # The MSVC-linked PEs here -- the cargo cdylibs librustdesk.dll + dylib_virtual_display.dll, the flutter
+    # runner rustdesk.exe, and the flutter plugin DLLs -- are all linked with LINK=/Brepro (set by
+    # build-windows.ps1). /Brepro was meant to make the PE TimeDateStamp a deterministic content hash, but
+    # its debug-directory "repro hash" also picks up a NON-content input, so that debug metadata DRIFTS
+    # build-to-build even when the compiled code is byte-identical -- the same MSVC /Brepro quirk that
+    # canonicalize-pe.py already neutralizes on the FINAL packer .exe host-side (scripts/build-windows-vm.sh
+    # extract()). That host-side pass never reaches these EMBEDDED PEs -- they are already brotli/CAB-packed
+    # inside the installers by then -- so left un-normalized their drift tips BOTH installers' SHA-256 across
+    # a double build (R-B2 A!=B). Normalize each embedded PE with the SAME script/flags as that packer-.exe
+    # invocation (zero the COFF/debug TimeDateStamps + checksum, sort the winres version-info strings -- all
+    # load-irrelevant, idempotent metadata), so the dir the two packagers read is byte-deterministic.
+    # Windows-only path: build_flutter_deb / the Android build never reach here (they run with
+    # platform!=Windows), so the .deb/.apk stay byte-identical.
+    release_pes = sorted(
+        p for p in pathlib.Path(flutter_build_dir_2).rglob('*')
+        if p.is_file() and p.suffix.lower() in ('.dll', '.exe'))
+    if not release_pes:
+        print(f'R-B2: no PE (*.dll/*.exe) under {flutter_build_dir_2} to canonicalize -- flutter build dir empty?')
+        exit(-1)
+    for pe in release_pes:
+        system2(f'python3 scripts/canonicalize-pe.py "{pe.as_posix()}"')
     if skip_portable_pack:
         return
     os.chdir('libs/portable')

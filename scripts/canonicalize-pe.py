@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 # scripts/canonicalize-pe.py -- zero the non-deterministic PE metadata of a Windows binary for R-B2.
 #
-# The fork's reproducible windows build (build-windows.ps1) already pins every CONTENT source: /Brepro on the
-# flutter MSVC links + the cargo rustflags, SOURCE_DATE_EPOCH for app_metadata/gen_version. That converges the
-# whole embedded flutter build dir (the portable packer's data.bin -- 78 files, all byte-identical across builds).
+# The fork's reproducible windows build (build-windows.ps1) pins every CONTENT source: /Brepro on the flutter
+# MSVC links + the cargo rustflags, SOURCE_DATE_EPOCH for app_metadata/gen_version -- so the compiled CONTENT of
+# every PE is byte-identical across builds.
 #
-# The lone residual is the portable packer's OWN PE metadata: with /Brepro, link.exe stamps the COFF
-# TimeDateStamp + a debug-directory IMAGE_DEBUG_TYPE_REPRO "repro hash" that, for the rustc BIN (vs the cdylib,
-# which converges), differs build-to-build even though the PE content is byte-identical (an MSVC /Brepro quirk
-# that picks up a non-content input -- the CRT-startup object metadata). cmp localized it to exactly ~200 bytes:
-# the COFF TimeDateStamp (e_lfanew+8) + the debug entries' TimeDateStamps + their raw repro-hash data.
+# The residual is per-PE debug METADATA: with /Brepro, link.exe stamps the COFF TimeDateStamp + a
+# debug-directory IMAGE_DEBUG_TYPE_REPRO "repro hash" that differs build-to-build even though the PE content is
+# byte-identical (an MSVC /Brepro quirk that picks up a non-content input -- the CRT-startup object metadata).
+# This afflicts EVERY /Brepro-linked PE: the portable-packer/rustc .exe canonicalized here host-side (on the
+# final installer), AND the embedded flutter-dist PEs (librustdesk.dll + dylib_virtual_display.dll + the runner
+# rustdesk.exe + the plugin DLLs), which build.py::build_flutter_windows canonicalizes IN-VM before the
+# packagers embed them (this host-side pass can't reach them once they are brotli/CAB-packed). cmp localized the
+# packer-.exe delta to ~200 bytes: the COFF TimeDateStamp (e_lfanew+8) + the debug entries' TimeDateStamps + raw
+# repro-hash data.
 #
 # This canonicalizes those fields to zero -- a standard reproducible-build technique (Debian/Go/etc. do the same).
 # The zeroed fields are pure tamper-evidence metadata, never used at load time, so the .exe stays valid + runs.

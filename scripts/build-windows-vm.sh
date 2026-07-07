@@ -197,9 +197,10 @@ extract() {
     [ -f "$OUT_DIR/rustdesk-setup.exe" ] || die "no rustdesk-setup.exe produced — see $OUT_DIR/build-log.txt"
     # R-B2: canonicalize the portable packer's own PE so the .exe is BYTE-reproducible. Every CONTENT source is
     # already pinned (/Brepro PE timestamps for flutter+cargo, SOURCE_DATE_EPOCH for app_metadata/gen_version ->
-    # the 78 embedded files are byte-identical). The lone residuals are the packer's COFF TimeDateStamp + the
-    # MSVC /Brepro debug-repro hash + winres's HashMap-ordered VS_VERSION_INFO strings; canonicalize-pe.py zeros
-    # the first two and sorts the version strings. PROVEN: two pre-canonical builds -> identical SHA after this.
+    # the embedded files' CONTENT is byte-identical); the embedded PEs' /Brepro debug METADATA is canonicalized
+    # IN-VM by build.py::build_flutter_windows before packing. The residuals on THIS final .exe are its COFF
+    # TimeDateStamp + the MSVC /Brepro debug-repro hash + winres's HashMap-ordered VS_VERSION_INFO strings;
+    # canonicalize-pe.py zeros the first two and sorts the version strings.
     python3 "$SCRIPT_DIR/canonicalize-pe.py" "$OUT_DIR/rustdesk-setup.exe"
     sha256sum "$OUT_DIR/rustdesk-setup.exe" | tee "$OUT_DIR/rustdesk-setup.exe.sha256"
     # The .msi is now REQUIRED (build-windows.ps1 builds it via the WiX msbuild step); a missing one means

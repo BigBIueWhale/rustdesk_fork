@@ -39,7 +39,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("allowed characters", "დაშვებული სიმბოლოები"),
         ("Website", "ვებგვერდი"),
         ("About", "პროგრამის შესახებ"),
-        ("Slogan_tip", "შექმნილია გულით ამ შეშლილ სამყაროში!"),
         ("Privacy Statement", "კონფიდენციალურობის განაცხადი"),
         ("Mute", "ხმის გათიშვა"),
         ("Build Date", "აგების თარიღი"),

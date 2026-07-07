@@ -47,7 +47,10 @@ import java.nio.ByteBuffer
 import kotlin.math.max
 import kotlin.math.min
 
-const val DEFAULT_NOTIFY_TITLE = "RustDesk"
+// R-G8 / R-SV9 (de-brand): the foreground-service notification title carries the fork identity,
+// not the bare upstream brand. (The app label / accessibility-service name — the app's own
+// identity, not marketing — is left intact; R-G8 names the notification title specifically.)
+const val DEFAULT_NOTIFY_TITLE = "RustDesk Hardened Fork"
 const val DEFAULT_NOTIFY_TEXT = "Service is running"
 const val DEFAULT_NOTIFY_ID = 1
 const val NOTIFY_ID_OFFSET = 100

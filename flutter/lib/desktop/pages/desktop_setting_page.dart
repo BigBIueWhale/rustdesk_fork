@@ -1276,8 +1276,13 @@ class _AboutState extends State<_About> {
                             'Copyright © ${DateTime.now().toString().substring(0, 4)} Purslane Ltd.\n$license',
                             style: const TextStyle(color: Colors.white),
                           ),
+                          // R-G8 / §19 (de-brand): the upstream marketing slogan ("Made with heart
+                          // in this chaotic world!", the Slogan_tip lang key) is replaced by the
+                          // honest fork identity, matching the CHANGELOG heading / GitHub release
+                          // name. The Purslane Ltd. copyright above is the AGPL-3.0 legal
+                          // attribution and is PRESERVED; only the marketing tagline is dropped.
                           Text(
-                            translate('Slogan_tip'),
+                            'RustDesk Hardened Fork',
                             style: TextStyle(
                                 fontWeight: FontWeight.w800,
                                 color: Colors.white),

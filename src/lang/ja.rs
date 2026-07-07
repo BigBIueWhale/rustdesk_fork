@@ -39,7 +39,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("allowed characters", "使用可能な文字"),
         ("Website", "公式サイト"),
         ("About", "RustDesk について"),
-        ("Slogan_tip", "この混沌とした世界から、愛をこめて！"),
         ("Privacy Statement", "プライバシーポリシー"),
         ("Mute", "ミュート"),
         ("Build Date", "ビルド日時"),

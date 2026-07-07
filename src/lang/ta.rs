@@ -39,7 +39,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("allowed characters", "அனுமதிக்கப்பட்ட எழுத்துக்கள்"),
         ("Website", "இணையதளம்"),
         ("About", "பற்றி"),
-        ("Slogan_tip", "சுலோகம்_குறிப்பு"),
         ("Privacy Statement", "தனியுரிமை அறிக்கை"),
         ("Mute", "ஒலியடக்கவும்"),
         ("Build Date", "கட்டப்பட்ட தேதி"),

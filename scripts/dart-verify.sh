@@ -176,6 +176,13 @@ dg_clean 'bind\.queryOnlines' 'R-G/R-D online-status query trigger'
 # links). Gate the privacy + docs URL paths (the `rustdesk.com/pricing` in the dead
 # "use public server" guide goes with the R-G2 server-UI removal). Only `//` comments name them.
 dg_clean 'rustdesk\.com/privacy|rustdesk\.com/docs' 'R-G8 rustdesk.com privacy/docs links'
+# R-G8 / §19 (de-brand): the desktop About tab dropped the upstream marketing slogan
+# (translate('Slogan_tip') = "Made with heart in this chaotic world!") in favour of the honest
+# fork identity ("RustDesk Hardened Fork"). The Slogan_tip lang key is also deleted from all 51
+# lang tables (verify.sh R-A6). The AGPL Purslane Ltd. copyright line above it is PRESERVED — this
+# gate targets only the marketing tagline. No live translate() may reference it again (only the
+# `//` de-brand comment names it, which dg_clean excludes).
+dg_clean 'Slogan_tip' 'R-G8 About-tab marketing slogan'
 # R-X12 / R-G8 / §19: the Wayland-keyboard prompt machinery is excised. The fork is X11-pinned
 # (R-X12), so a controlled peer is never Wayland (current_is_wayland() is false on the §17 Xorg box,
 # and fork-to-fork is the only PAKE-compatible topology) — the "Wayland keyboard input" warning was

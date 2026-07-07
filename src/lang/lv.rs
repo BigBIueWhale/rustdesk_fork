@@ -39,7 +39,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("allowed characters", "atļautās rakstzīmes"),
         ("Website", "Tīmekļa vietne"),
         ("About", "Par"),
-        ("Slogan_tip", "Radīts ar sirdi šajā haotiskajā pasaulē!"),
         ("Privacy Statement", "Paziņojums par konfidencialitāti"),
         ("Mute", "Izslēgt skaņu"),
         ("Build Date", "Būvēšanas datums"),

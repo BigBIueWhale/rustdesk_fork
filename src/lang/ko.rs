@@ -39,7 +39,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("allowed characters", "허용되는 문자"),
         ("Website", "웹사이트"),
         ("About", "정보"),
-        ("Slogan_tip", "이 혼란스러운 세상에서 마음을 담아 만들었습니다! - 한국어 번역: 비너스걸"),
         ("Privacy Statement", "개인정보 보호정책"),
         ("Mute", "음소거"),
         ("Build Date", "빌드 날짜"),

@@ -39,7 +39,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("allowed characters", "Caràcters admesos"),
         ("Website", "Lloc web"),
         ("About", "Quant al RustDesk"),
-        ("Slogan_tip", "Fet de tot cor dins d'aquest món caòtic!\nTraducció: Benet R. i Camps (BennyBeat)."),
         ("Privacy Statement", "Declaració de privadesa"),
         ("Mute", "Silencia"),
         ("Build Date", "Data de compilació"),

@@ -2264,6 +2264,9 @@ ra6_clean 'relay-hint' 'R-G6 relay-fallback hint emission' || rc=1
 #   - R-G6 (relay/websocket UI):  relay_hint_tip, websocket_tip
 #   - R-G8 ("Powered by RustDesk" badge):  powered_by_me  (also drops the lang.rs RustDesk
 #     app-name substitution exclusion that existed only to protect this string)
+#   - R-G8 (About-tab marketing slogan):  Slogan_tip  ("Made with heart in this chaotic world!" —
+#     the upstream marketing tagline; the desktop About tab now shows the honest fork identity
+#     ("RustDesk Hardened Fork") instead, and the Purslane Ltd. AGPL copyright line is PRESERVED)
 #   - R-X7 (2FA UI, fully excised):  enable-2fa-title, enable-2fa-desc, enable-bot-tip,
 #     wrong-2fa-code, enter-2fa-title, cancel-2fa-confirm-tip
 #   - R-X1 (auto-updater UI, fully excised):  download-new-version-failed-tip, new-version-of-{}-tip,
@@ -2276,7 +2279,7 @@ ra6_clean 'relay-hint' 'R-G6 relay-fallback hint emission' || rc=1
 # §12 win/mac packaging asset-name path, returns `error:update-failed-check-msi-tip`), so deleting
 # its table entries would orphan a referenced key. The `{}` placeholders are regex-escaped (\{\})
 # because ra6_clean matches with grep -E.
-ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-2fa-desc|enable-bot-tip|wrong-2fa-code|enter-2fa-title|cancel-2fa-confirm-tip|powered_by_me|download-new-version-failed-tip|new-version-of-\{\}-tip|upgrade_remote_rustdesk_client_to_\{\}_tip|upgrade_rustdesk_server_pro_to_\{\}_tip|whitelist_tip|Use IP Whitelisting|IP Whitelisting)"' '§19 dead lang keys' || rc=1
+ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-2fa-desc|enable-bot-tip|wrong-2fa-code|enter-2fa-title|cancel-2fa-confirm-tip|powered_by_me|Slogan_tip|download-new-version-failed-tip|new-version-of-\{\}-tip|upgrade_remote_rustdesk_client_to_\{\}_tip|upgrade_rustdesk_server_pro_to_\{\}_tip|whitelist_tip|Use IP Whitelisting|IP Whitelisting)"' '§19 dead lang keys' || rc=1
 # §19 dead-lang-key sweep (R-X9/R-X11 elevation/UAC UI): the peer-triggered elevation AND the Windows
 # attended-mode "accept and elevate" / UAC-prompt UI are excised — the host runs as a root systemd
 # service (R-D1/R-X10), so per-session elevation is dead. These 7 keys have no live translate() caller.
@@ -2312,6 +2315,20 @@ if grep -rqE '\("(empty_lan_tip|connecting_status|not_ready_status|ID/Relay Serv
   echo "  FAIL §19: a removed dead rendezvous/relay/lan/WS lang key was re-added to a src/lang/ table"; rc=1
 else
   echo "  ok  §19 dead rendezvous/relay/lan/WS lang keys absent (13: empty_lan_tip + status + ID/Relay/API-server cluster + setup_server_tip + Use-WebSocket + disable-udp-tip + Allow-insecure-TLS-fallback + Discovered)"
+fi
+# R-G8 / R-SV9 (de-brand, SHOULD): the Android foreground-service notification title MUST NOT be the
+# bare upstream brand "RustDesk" — R-G8 names the MainService.kt notification title as a de-brand
+# surface (alongside the "RustDesk network" status nomenclature). It now carries the fork identity
+# ("RustDesk Hardened Fork", the CHANGELOG/release name). The negative match forbids ONLY the bare
+# `= "RustDesk"` form (closing quote immediately after) so any de-branded value the operator picks
+# still passes. NOTE (scope): the app label / accessibility-service name (android:label / app_name =
+# "RustDesk") is the app's own IDENTITY, not marketing, and is deliberately left intact — R-G8
+# de-brands the notification/marketing surfaces, not the honest RustDesk lineage of the app name.
+r_g8_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
+if grep -qE 'DEFAULT_NOTIFY_TITLE[[:space:]]*=[[:space:]]*"RustDesk"' "$r_g8_kt" 2>/dev/null; then
+  echo "  FAIL R-G8/R-SV9: the Android foreground notification title is the bare upstream brand \"RustDesk\" — de-brand it to the fork identity (MainService.kt DEFAULT_NOTIFY_TITLE)"; rc=1
+else
+  echo "  ok  R-G8/R-SV9 Android notification title de-branded (not the bare upstream \"RustDesk\")"
 fi
 # R-G2/R-SV9 (connect-box hint, MUST): the id_input_tip/web_id_input_tip help text (rendered LIVE
 # at flutter connection_page_title.dart) teaches ONLY the direct-IP accept-set (an IP, or a domain

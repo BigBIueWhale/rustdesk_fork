@@ -39,7 +39,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("allowed characters", "povolené znaky"),
         ("Website", "Webová stránka"),
         ("About", "O RustDesk"),
-        ("Slogan_tip", "Stvorené srdcom v tomto chaotickom svete!"),
         ("Privacy Statement", "Vyhlásenie o ochrane osobných údajov"),
         ("Mute", "Stíšiť"),
         ("Build Date", "Dátum zostavenia"),

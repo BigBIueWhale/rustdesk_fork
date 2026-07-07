@@ -39,7 +39,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("allowed characters", "允許的字元"),
         ("Website", "網站"),
         ("About", "關於"),
-        ("Slogan_tip", "在這個混沌的世界中用心製作！"),
         ("Privacy Statement", "隱私權宣告"),
         ("Mute", "靜音"),
         ("Build Date", "建構日期"),

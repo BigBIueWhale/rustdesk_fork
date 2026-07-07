@@ -39,7 +39,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("allowed characters", "tilladte tegn"),
         ("Website", "Hjemmeside"),
         ("About", "Om"),
-        ("Slogan_tip", "Lavet med kærlighed i denne kaotiske verden!"),
         ("Privacy Statement", "Privatlivspolitik"),
         ("Mute", "Sluk for mikrofonen"),
         ("Build Date", "Build dato"),

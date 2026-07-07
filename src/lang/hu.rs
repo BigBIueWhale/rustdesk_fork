@@ -39,7 +39,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("allowed characters", "engedélyezett karakterek"),
         ("Website", "Weboldal"),
         ("About", "Névjegy"),
-        ("Slogan_tip", "Szenvedéllyel programozva - egy káoszba süllyedő világban!"),
         ("Privacy Statement", "Adatvédelmi nyilatkozat"),
         ("Mute", "Némítás"),
         ("Build Date", "Összeállítás ideje"),

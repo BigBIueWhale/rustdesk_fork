@@ -142,6 +142,42 @@ pub fn is_prelogin() -> bool {
     false
 }
 
+// True on a headless direct-`--server` box that has no console/seat0 user at all — and where none
+// will ever arrive — so the connection-manager (`--cm`) and whiteboard subprocesses MUST run as the
+// `--server` process owner (the service user) instead of blocking forever on `is_prelogin()` waiting
+// for a login that never comes. This is the same "run at the service privilege for the already-CPace-
+// authenticated owner" context the terminal (`SelfUser`, R-F1) and screen-capture already use, and it
+// keeps file transfer a single full-filesystem mode at that privilege (R-S8).
+//
+// `is_prelogin()` alone CANNOT drive the wait-vs-proceed decision: it is ALSO true for a desktop
+// display-manager greeter, where a real console login is imminent and the existing wait is correct.
+// The signal on Linux is an EMPTY active username — logind exposes no usable seat0 session that
+// `get_values_of_seat0` reports: either a headless/logind-less host (no console user, and none is
+// coming), or a greeter that variant skips (e.g. gdm-Wayland). Proceeding as the service user is the
+// correct fail-safe in BOTH cases: strictly better than the old infinite hang, downstream of CPace
+// (only the root-entitled authenticated owner ever reaches it), and the `--service` still swaps to the
+// per-user server on a real interactive login. An X11 greeter that DOES report a non-empty (`nologin`)
+// username still waits via `is_prelogin()`, so an imminent console login is not preempted. This is the
+// same signal the headless PeerInfo owner-fallback keys on (`connection.rs`, R-F1); a present console
+// user (empty→false) preserves today's run-in-that-user's-session desktop path unchanged.
+//
+// Windows: always false — the pre-logon SYSTEM session MUST keep waiting; its "No active console
+// user" refusal is intended (a file-transfer login there is deliberately not served). macOS: always
+// false — a headless Mac and a login-window desktop both report a root-owned `/dev/console`, so they
+// are not cheaply distinguishable; preserve the existing wait (macOS headless stays as today rather
+// than risk regressing the desktop login-window path).
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub fn is_headless_no_console_user() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        get_active_username().is_empty()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
 // Note: This method is inefficient on Windows. It will get all the processes.
 // It should only be called when performance is not critical.
 // If we wanted to get the command line ourselves, there would be a lot of new code.

@@ -4780,12 +4780,23 @@ async fn start_ipc(
 ) -> ResultType<()> {
     use hbb_common::anyhow::anyhow;
 
-    loop {
+    // On a normal desktop the connection-manager (`--cm`) runs in the console user's session, so we
+    // wait until that user has logged in (`is_prelogin()` clears) before spawning it. But on a
+    // headless direct-`--server` box there is no seat0/console user and none will ever arrive, so
+    // this wait would spin forever and the CM (which serves file transfer, host audio, chat/voice)
+    // would never start. In that case run the CM as the `--server` process owner — the service user,
+    // the same `SelfUser` the terminal and screen-capture already use (R-S8/R-F1) — instead of
+    // waiting. `headless_service_user` records which case we took so the spawn below picks the
+    // matching launcher (service-user `run_me` vs. console-user `run_as_user`).
+    let headless_service_user = loop {
+        if crate::platform::is_headless_no_console_user() {
+            break true;
+        }
         if !crate::platform::is_prelogin() {
-            break;
+            break false;
         }
         sleep(1.).await;
-    }
+    };
     #[cfg(target_os = "linux")]
     let headless_cm = crate::is_server()
         && crate::platform::is_headless_allowed()
@@ -4866,7 +4877,13 @@ async fn start_ipc(
         }
         if stream.is_none() {
             let run_done;
-            if crate::platform::is_root() {
+            // A root `--server` normally launches the CM into the console user's session via
+            // `run_as_user`. On a headless box there is no such user, so `run_as_user(None)` would
+            // bail "No valid uid" (`linux.rs`). Take the same-user `run_me(["--cm"])` path instead
+            // (the `!run_done` branch below), so the CM runs as the `--server` owner — root, at the
+            // service privilege the authenticated owner already commands (R-S8/R-F1). Its browsing
+            // root then resolves to that owner's real home (`Config::get_home()` → `$HOME`/getpwuid).
+            if crate::platform::is_root() && !headless_service_user {
                 let mut res = Ok(None);
                 for _ in 0..10 {
                     #[cfg(not(any(target_os = "linux")))]

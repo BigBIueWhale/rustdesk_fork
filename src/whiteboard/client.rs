@@ -141,12 +141,20 @@ async fn start_whiteboard_() -> ResultType<()> {
         return Ok(());
     }
 
-    loop {
+    // Same headless-CM decision as `connection.rs::start_ipc`: on a desktop, wait for the console
+    // user to log in and run the `--whiteboard` subprocess in that session; on a headless direct-
+    // `--server` box (no seat0 user, ever) run it as the `--server` process owner (the service user,
+    // R-S8/R-F1) rather than blocking here forever. `headless_service_user` selects the matching
+    // launcher for the spawn below (service-user `run_me` vs. console-user `run_as_user`).
+    let headless_service_user = loop {
+        if crate::platform::is_headless_no_console_user() {
+            break true;
+        }
         if !crate::platform::is_prelogin() {
-            break;
+            break false;
         }
         sleep(1.).await;
-    }
+    };
     let mut stream = None;
     if let Ok(s) = ipc::connect(1000, "_whiteboard").await {
         stream = Some(s);
@@ -159,7 +167,10 @@ async fn start_whiteboard_() -> ResultType<()> {
         let mut user = None;
 
         let run_done;
-        if crate::platform::is_root() {
+        // Headless: skip `run_as_user` (which would bail "No valid uid" with no console user) and
+        // fall through to the same-user `run_me(["--whiteboard"])` below, running as the `--server`
+        // owner at the service privilege (R-S8/R-F1). Desktop: unchanged console-user launch.
+        if crate::platform::is_root() && !headless_service_user {
             let mut res = Ok(None);
             for _ in 0..10 {
                 #[cfg(not(any(target_os = "linux")))]

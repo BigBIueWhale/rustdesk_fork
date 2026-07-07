@@ -111,7 +111,7 @@ echo "== (3b-iv) trust-anchor get_key ignores a stored override (R-A4/R-X4) =="
 # is_option_can_save — `id` (+ set_key_confirmed(false)) and `salt` (set_salt's hashed-pw guard is a
 # no-op — the PRS is the host-key-salted Argon2id hash, not derived from this salt field) — which have NO legit main-channel writer; (c) Data::Socks(Some)
 # (set_socks, the proxy/local-MITM primitive an Options-key allowlist would miss). The legit operator
-# writes (permanent-password / unlock-pin / voice-call-input) + reads (value=None) pass. The cross-uid
+# writes (permanent-password / voice-call-input) + reads (value=None) pass. The cross-uid
 # sync uses the peer-uid-gated _service channel. Behavior-tested AND the loop routes through the
 # allowlist before handle() (R-A6 reachability), AND the allowlist is asserted POSITIVE (not a one-arm
 # denylist that would let id/salt/Socks through — the exact "missed sibling" the 5th sweep found).
@@ -119,7 +119,7 @@ echo "== (3b-iii) IPC main-channel config-write positive allowlist (R-S11) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_channel_rejects_whole_config_sync_write --color never
 r_s11=
 grep -q 'if !main_channel_admits_config_write(&data)' src/ipc.rs                       || r_s11="$r_s11 loop-not-wired"
-grep -qE '"permanent-password" \| "unlock-pin" \| "voice-call-input"' src/ipc.rs       || r_s11="$r_s11 no-positive-config-allowlist"
+grep -qE '"permanent-password" \| "voice-call-input"' src/ipc.rs                       || r_s11="$r_s11 no-positive-config-allowlist"
 grep -q 'Data::Socks(Some(_)) => false' src/ipc.rs                                     || r_s11="$r_s11 socks-not-rejected"
 # R-S11 binds EVERY shipped artifact, not Linux/macOS alone (Windows .exe/.msi are shipped). The
 # allowlist MUST also guard the Windows main pipe (postfix == ""). Because the linux/macos gate logs
@@ -133,29 +133,32 @@ if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel config-write allowlist:
   echo "  ok  R-S11 main-channel config-write POSITIVE allowlist (SyncConfig+id+salt+Socks rejected; legit operator writes pass; gate binds Linux/macOS AND the Windows main pipe)"; fi
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() — set_socks / set_permanent_password /
-# set_id / set_salt / set_unlock_pin / the whole-config Config::set+Config2::set —
+# set_id / set_salt / the whole-config Config::set+Config2::set —
 # MUST each sit in a Data arm that main_channel_admits_config_write DENIES (Socks(Some) / the non-
 # whitelisted Config struct-fields / SyncConfig(Some)). The `_ => true` catch-all would let a NEW
 # bypassing write (a new Data arm) reach Config unguarded on the main channel — the exact regression.
 # set_options is EXCLUDED (it self-filters via is_option_can_save, R-S16); HwCodecConfig::set is a
 # separate hwcodec store (compiled out, R-R2b), excluded by the \b before Config. Pin the count: a new
 # bypassing write trips this, forcing the author to deny its Data variant in main_channel_admits.
-hb_cfg_writes=$(awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -cE '\bConfig::set_socks|\bConfig::set_permanent_password|\bConfig::set_id|\bConfig::set_salt|\bConfig::set_unlock_pin|\bConfig::set\(|\bConfig2::set\(')
+hb_cfg_writes=$(awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -cE '\bConfig::set_socks|\bConfig::set_permanent_password|\bConfig::set_id|\bConfig::set_salt|\bConfig::set\(|\bConfig2::set\(')
 # I-1 (2026-07-03): was 9; the id-write arm's set_key_confirmed(false) was excised with the dead
-# rendezvous key_confirmed cluster (the setter no longer exists), so the bypassing-write count is 8.
-if [ "$hb_cfg_writes" != "8" ]; then
-  echo "  FAIL R-S11/R-A6: handle() now has $hb_cfg_writes is_option_can_save-bypassing config-writes (expected 8). A config-write was added/removed — ensure any NEW one's Data variant is DENIED by main_channel_admits_config_write (never the _ => true default), then update this count."; rc=1
+# rendezvous key_confirmed cluster (the setter no longer exists), 9->8.
+# I-2 (2026-07-07): was 8; T2/b1c243c excised the local unlock-PIN subsystem end-to-end, removing the
+# Config::set_unlock_pin write from handle() (and the --set-unlock-pin CLI arm), so the count is 8->7.
+if [ "$hb_cfg_writes" != "7" ]; then
+  echo "  FAIL R-S11/R-A6: handle() now has $hb_cfg_writes is_option_can_save-bypassing config-writes (expected 7). A config-write was added/removed — ensure any NEW one's Data variant is DENIED by main_channel_admits_config_write (never the _ => true default), then update this count."; rc=1
 else
-  echo "  ok  R-S11/R-A6 the 8 is_option_can_save-bypassing config-writes in handle() are all reached via main_channel_admits-denied arms (Socks/Config-nonwhitelist/SyncConfig) — no new bypassing write"
+  echo "  ok  R-S11/R-A6 the 7 is_option_can_save-bypassing config-writes in handle() are all gated by main_channel_admits_config_write (Socks(Some)/Config id+salt/SyncConfig(Some) denied; permanent-password explicitly allow-listed as the legit operator write) — none reaches Config via the _ => true default"
 fi
 
 # A2/R-D8: the --password provisioning arm MUST stay install-gated but NOT root-gated. An unprivileged
 # same-uid owner (haggai_computer's uid-1000 supervisord `user`, R-D8) provisions over its OWN per-uid
 # IPC, whose 0600 + SO_PEERCRED (R-S11) is the real authorization — not the CLI gate. Re-adding an
 # is_root() gate would break non-root provisioning and force CAP_SYS_PTRACE in a container. Range = the
-# --password arm up to the next CLI arm (--set-unlock-pin, which legitimately keeps is_root()); comment
+# --password arm up to the next CLI arm — now --get-id, since T2/b1c243c deleted the old --set-unlock-pin
+# end-anchor (--get-id is the actual next arm and carries no is_root gate); comment
 # lines are stripped so the A2 rationale comment (which names is_root()) cannot false-match.
-pw_arm=$(awk '/args\[0\] == "--password"/,/args\[0\] == "--set-unlock-pin"/' src/core_main.rs | grep -vE '^[[:space:]]*//')
+pw_arm=$(awk '/args\[0\] == "--password"/,/args\[0\] == "--get-id"/' src/core_main.rs | grep -vE '^[[:space:]]*//')
 if echo "$pw_arm" | grep -q 'set_permanent_password' && ! echo "$pw_arm" | grep -q 'is_root'; then
   echo "  ok  A2/R-D8 --password is install-gated, not root-gated (same-uid owner provisions; the IPC uid-scoping authorizes — no CAP_SYS_PTRACE)"
 else

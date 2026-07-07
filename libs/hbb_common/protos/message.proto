@@ -461,7 +461,11 @@ message FileTransferSendRequest {
 
   enum FileType {
     Generic = 0;
-    Printer = 1;
+    // BR-13: the remote-printer capability is excised — a print driver is a native
+    // display-DRIVER-class surface, the same native-code class the fork minimizes
+    // (cf. enable-virtual-display pinned OFF, Appendix C #2b). The `Printer` file
+    // sub-type is deleted; tag 1 is reserved (not reused) so no file job re-reads it.
+    reserved 1;
   }
   FileType file_type = 5;
 }

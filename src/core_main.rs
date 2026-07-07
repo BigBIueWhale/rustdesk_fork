@@ -223,10 +223,7 @@ pub fn core_main() -> Option<Vec<String>> {
                 if config::is_disable_installation() {
                     return None;
                 }
-                #[cfg(not(windows))]
                 let options = "desktopicon startmenu";
-                #[cfg(windows)]
-                let options = "desktopicon startmenu printer";
                 let res = platform::install_me(options, "".to_owned(), true, args.len() > 1);
                 let text = match res {
                     Ok(_) => translate("Installation Successful!".to_string()),
@@ -263,28 +260,6 @@ pub fn core_main() -> Option<Vec<String>> {
                 hbb_common::allow_err!(
                     crate::virtual_display_manager::amyuni_idd::uninstall_driver()
                 );
-                return None;
-            } else if args[0] == "--install-remote-printer" {
-                #[cfg(windows)]
-                if crate::platform::is_win_10_or_greater() {
-                    match remote_printer::install_update_printer(&crate::get_app_name()) {
-                        Ok(_) => {
-                            log::info!("Remote printer installed/updated successfully");
-                        }
-                        Err(e) => {
-                            log::error!("Failed to install/update the remote printer: {}", e);
-                        }
-                    }
-                } else {
-                    log::error!("Win10 or greater required!");
-                }
-                return None;
-            } else if args[0] == "--uninstall-remote-printer" {
-                #[cfg(windows)]
-                if crate::platform::is_win_10_or_greater() {
-                    remote_printer::uninstall_printer(&crate::get_app_name());
-                    log::info!("Remote printer uninstalled");
-                }
                 return None;
             }
         }

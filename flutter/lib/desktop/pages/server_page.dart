@@ -693,7 +693,7 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
                           translate('Enable file copy and paste')),
                       // R-G7 / R-S16(d)(ii) (§19): the per-connection permission chips for the
                       // N-PINNED capabilities (restart / recording / block-input / privacy-mode —
-                      // also terminal/printer, which never had chips here) are REMOVED. Those
+                      // also terminal, which never had chips here) are REMOVED. Those
                       // capabilities are pinned-off and the runtime SwitchPermission widener is
                       // excised, so a chip could neither show a real state nor widen one — it would
                       // imply a control that cannot act. Only the content-capability chips

@@ -32,7 +32,6 @@ fn pinned_policy_is_the_single_source_of_truth() {
         "enable-record-session",
         "enable-block-input",
         "enable-privacy-mode",
-        "enable-remote-printer",
         "allow-remote-config-modification",
     ] {
         assert_eq!(Config::get_option(k), "Y", "{k} must be pinned Y (full access)");

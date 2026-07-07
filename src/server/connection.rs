@@ -297,8 +297,6 @@ pub struct Connection {
     follow_remote_cursor: bool,
     follow_remote_window: bool,
     multi_ui_session: bool,
-    tx_from_authed: mpsc::UnboundedSender<ipc::Data>,
-    printer_data: Vec<(Instant, String, Vec<u8>)>,
     // Tracks read job IDs delegated to CM process.
     // When a read job is delegated to CM (via FS::ReadFile), the job id is added here.
     // Used to filter stale responses (FileBlockFromCM, FileReadDone, etc.) for
@@ -380,7 +378,6 @@ impl Connection {
         let (tx, mut rx) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();
         let (tx_video, mut rx_video) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();
         let (tx_input, _rx_input) = std_mpsc::channel();
-        let (tx_from_authed, mut rx_from_authed) = mpsc::unbounded_channel::<ipc::Data>();
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let (tx_cm_stream_ready, _rx_cm_stream_ready) = mpsc::channel(1);
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -468,8 +465,6 @@ impl Connection {
             delayed_read_dir: None,
             #[cfg(target_os = "macos")]
             retina: Retina::default(),
-            tx_from_authed,
-            printer_data: Vec::new(),
             cm_read_job_ids: HashSet::new(),
             write_job_ids: HashSet::new(),
             peer_text_gate: Default::default(),
@@ -836,19 +831,6 @@ impl Connection {
                         break;
                     }
                 },
-                Some(data) = rx_from_authed.recv() => {
-                    match data {
-                        #[cfg(all(target_os = "windows", feature = "flutter"))]
-                        ipc::Data::PrinterData(data) => {
-                            if Self::permission(keys::OPTION_ENABLE_REMOTE_PRINTER, &conn.control_permissions) {
-                                conn.send_printer_request(data).await;
-                            } else {
-                                conn.send_remote_printing_disallowed().await;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
                 _ = second_timer.tick() => {
                     #[cfg(windows)]
                     conn.portable_check();
@@ -1088,8 +1070,6 @@ impl Connection {
             self.inner.id(),
             auth_conn_type,
             self.session_key(),
-            self.tx_from_authed.clone(),
-            self.lr.clone(),
         ));
         // R-S19 (CWE-863): confine every peer-triggerable capability to the authorized AuthConnType
         // NOW — at authorization time, before any peer LoginRequest option is applied
@@ -2378,14 +2358,7 @@ impl Connection {
                     }
                 }
                 Some(message::Union::FileAction(fa)) => {
-                    let mut handle_fa = self.file_transfer.is_some();
-                    if !handle_fa {
-                        if let Some(file_action::Union::Send(s)) = fa.union.as_ref() {
-                            if JobType::from_proto(s.file_type) == JobType::Printer {
-                                handle_fa = true;
-                            }
-                        }
-                    }
+                    let handle_fa = self.file_transfer.is_some();
                     if handle_fa {
                         if self.delayed_read_dir.is_some() {
                             if let Some(file_action::Union::ReadDir(rd)) = fa.union {
@@ -2512,33 +2485,6 @@ impl Connection {
                                                 true, // check file count limit
                                             )
                                             .await;
-                                        }
-                                    }
-                                    JobType::Printer => {
-                                        if let Some((_, _, data)) = self
-                                            .printer_data
-                                            .iter()
-                                            .position(|(_, p, _)| *p == path)
-                                            .map(|index| self.printer_data.remove(index))
-                                        {
-                                            let data_source = fs::DataSource::MemoryCursor(
-                                                std::io::Cursor::new(data),
-                                            );
-                                            // Printer jobs don't need file count limit check
-                                            self.create_and_start_read_job(
-                                                id,
-                                                job_type,
-                                                data_source,
-                                                s.file_num,
-                                                s.include_hidden,
-                                                true, // always enable overwrite detection for printer
-                                                path,
-                                                false, // no file count limit for printer
-                                            )
-                                            .await;
-                                        } else {
-                                            // Ignore this message if the printer data is not found
-                                            return true;
                                         }
                                     }
                                 }
@@ -4365,13 +4311,11 @@ impl Connection {
 
     /// Create a new read job and start processing it (Connection-side).
     ///
-    /// This is a generic Connection-side read job creation helper used for:
-    /// - Generic file transfers on non-Windows platforms
-    /// - Printer jobs on all platforms (including Windows)
+    /// This is a generic Connection-side read job creation helper used for
+    /// generic file transfers on non-Windows platforms.
     ///
     /// On Windows, generic file reads are delegated to CM via `start_read_job()` in
-    /// `src/ui_cm_interface.rs` for elevated access. Printer jobs bypass this delegation
-    /// since they read from in-memory data (`MemoryCursor`), not the filesystem.
+    /// `src/ui_cm_interface.rs` for elevated access.
     ///
     /// Both Connection-side and CM-side implementations use `TransferJob::new_read()`
     /// with similar parameters. When modifying job creation logic, ensure both paths
@@ -4677,32 +4621,6 @@ impl Connection {
     #[cfg(feature = "unix-file-copy-paste")]
     fn try_empty_file_clipboard(&mut self) {
         try_empty_clipboard_files(ClipboardSide::Host, self.inner.id());
-    }
-
-    #[cfg(all(target_os = "windows", feature = "flutter"))]
-    async fn send_printer_request(&mut self, data: Vec<u8>) {
-        // This path is only used to identify the printer job.
-        let path = format!("RustDesk://FsJob//Printer/{}", get_time());
-
-        let msg = fs::new_send(0, fs::JobType::Printer, path.clone(), 1, false);
-        self.send(msg).await;
-        self.printer_data
-            .retain(|(t, _, _)| t.elapsed().as_secs() < 60);
-        self.printer_data.push((Instant::now(), path, data));
-    }
-
-    #[cfg(all(target_os = "windows", feature = "flutter"))]
-    async fn send_remote_printing_disallowed(&mut self) {
-        let mut msg_out = Message::new();
-        let res = MessageBox {
-            msgtype: "custom-nook-nocancel-hasclose".to_owned(),
-            title: "remote-printing-disallowed-tile-tip".to_owned(),
-            text: "remote-printing-disallowed-text-tip".to_owned(),
-            link: "".to_owned(),
-            ..Default::default()
-        };
-        msg_out.set_message_box(res);
-        self.send(msg_out).await;
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -5185,19 +5103,6 @@ fn start_wakelock_thread() -> std::sync::mpsc::Sender<(usize, usize)> {
     tx
 }
 
-#[cfg(all(target_os = "windows", feature = "flutter"))]
-pub fn on_printer_data(data: Vec<u8>) {
-    crate::server::AUTHED_CONNS
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|c| c.printer)
-        .next()
-        .map(|c| {
-            c.sender.send(Data::PrinterData(data)).ok();
-        });
-}
-
 #[cfg(windows)]
 pub struct PortableState {
     pub last_uac: bool,
@@ -5417,8 +5322,6 @@ pub struct AuthedConn {
     pub conn_id: i32,
     pub conn_type: AuthConnType,
     pub session_key: SessionKey,
-    pub sender: mpsc::UnboundedSender<Data>,
-    pub printer: bool,
 }
 
 mod raii {
@@ -5450,18 +5353,11 @@ mod raii {
             conn_id: i32,
             conn_type: AuthConnType,
             session_key: SessionKey,
-            sender: mpsc::UnboundedSender<Data>,
-            lr: LoginRequest,
         ) -> Self {
-            let printer = conn_type == crate::server::AuthConnType::Remote
-                && crate::is_support_remote_print(&lr.version)
-                && lr.my_platform == hbb_common::whoami::Platform::Windows.to_string();
             AUTHED_CONNS.lock().unwrap().push(AuthedConn {
                 conn_id,
                 conn_type,
                 session_key,
-                sender,
-                printer,
             });
             Self::check_wake_lock();
             use std::sync::Once;

@@ -99,7 +99,6 @@ const String kOptionVideoSaveDirectory = "video-save-directory";
 const String kOptionAccessMode = "access-mode";
 const String kOptionEnableKeyboard = "enable-keyboard";
 // "Settings -> Security -> Permissions"
-const String kOptionEnableRemotePrinter = "enable-remote-printer";
 const String kOptionEnableClipboard = "enable-clipboard";
 const String kOptionEnableFileTransfer = "enable-file-transfer";
 const String kOptionEnableAudio = "enable-audio";
@@ -172,7 +171,6 @@ const String kOptionEnableFlutterHttpOnRust = "enable-flutter-http-on-rust";
 // builtin options
 const String kOptionHideWebSocketSetting = "hide-websocket-settings";
 const String kOptionHideStopService = "hide-stop-service";
-const String kOptionHideRemotePrinterSetting = "hide-remote-printer-settings";
 const String kOptionHideSecuritySetting = "hide-security-settings";
 const String kOptionHideNetworkSetting = "hide-network-settings";
 const String kOptionRemovePresetPasswordWarning =
@@ -284,15 +282,6 @@ const int kMaxRelativeMouseDelta = 10000;
 /// and Flutter keyboard handling. Value should be small enough to allow
 /// intentional quick toggles but large enough to prevent accidental double-triggers.
 const int kRelativeMouseModeToggleDebounceMs = 150;
-
-// incomming (should be incoming) is kept, because change it will break the previous setting.
-const String kKeyPrinterIncomingJobAction = 'printer-incomming-job-action';
-const String kValuePrinterIncomingJobDismiss = 'dismiss';
-const String kValuePrinterIncomingJobDefault = '';
-const String kValuePrinterIncomingJobSelected = 'selected';
-const String kKeyPrinterSelected = 'printer-selected-name';
-const String kKeyPrinterSave = 'allow-printer-dialog-save';
-const String kKeyPrinterAllowAutoPrint = 'allow-printer-auto-print';
 
 double kNewWindowOffset = isWindows
     ? 56.0

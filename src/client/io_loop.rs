@@ -788,12 +788,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 let od = can_enable_overwrite_detection(self.handler.lc.read().unwrap().version);
                 if is_remote {
                     log::debug!("New job {}, write to {} from remote {}", id, to, path);
-                    let to = match r#type {
-                        fs::JobType::Generic => fs::DataSource::FilePath(PathBuf::from(&to)),
-                        fs::JobType::Printer => {
-                            fs::DataSource::MemoryCursor(std::io::Cursor::new(Vec::new()))
-                        }
-                    };
+                    let to = fs::DataSource::FilePath(PathBuf::from(&to));
                     self.write_jobs.push(fs::TransferJob::new_write(
                         id,
                         r#type,
@@ -1914,86 +1909,16 @@ impl<T: InvokeUiSession> Remote<T> {
                         }
                         Some(file_response::Union::Done(d)) => {
                             let mut err: Option<String> = None;
-                            let mut job_type = fs::JobType::Generic;
-                            let mut printer_data = None;
                             if let Some(job) = fs::remove_job(d.id, &mut self.write_jobs) {
                                 job.modify_time();
                                 err = job.job_error();
-                                job_type = job.r#type;
-                                printer_data = match job.get_buf_data().await {
-                                    Ok(d) => d,
-                                    Err(e) => {
-                                        log::error!("Failed to get the printer data: {}", e);
-                                        None
-                                    }
-                                };
                             }
-                            match job_type {
-                                fs::JobType::Generic => {
-                                    self.handle_job_status(d.id, d.file_num, err);
-                                }
-                                fs::JobType::Printer => {
-                                    if let Some(err) = err {
-                                        log::error!("Receive print job failed, error {err}");
-                                    } else {
-                                        let data_len =
-                                            printer_data.as_ref().map(|d| d.len()).unwrap_or(0);
-                                        #[cfg(target_os = "windows")]
-                                        {
-                                            let printer_name = self
-                                                .handler
-                                                .printer_names
-                                                .write()
-                                                .unwrap()
-                                                .remove(&d.id);
-                                            if let Some(data) = printer_data {
-                                                log::info!(
-                                                    "Receive print job done, data len: {}",
-                                                    data_len
-                                                );
-                                                let _ = hbb_common::tokio::task::spawn_blocking(
-                                                    move || {
-                                                        if let Err(err) = crate::platform::windows::send_raw_data_to_printer(
-                                                            printer_name,
-                                                            data,
-                                                        ) {
-                                                            log::error!(
-                                                                "failed to send remote print job to printer: {}",
-                                                                err
-                                                            );
-                                                        }
-                                                    },
-                                                );
-                                            } else {
-                                                log::warn!(
-                                                    "dropping Windows remote printer job with no buffered XPS data"
-                                                );
-                                            }
-                                        }
-                                        #[cfg(not(target_os = "windows"))]
-                                        {
-                                            log::info!(
-                                                "Receive print job done, data len: {:?}",
-                                                data_len
-                                            );
-                                        }
-                                    }
-                                }
-                            }
+                            self.handle_job_status(d.id, d.file_num, err);
                         }
                         Some(file_response::Union::Error(e)) => {
-                            let job_type = fs::remove_job(e.id, &mut self.write_jobs)
-                                .or_else(|| fs::remove_job(e.id, &mut self.read_jobs))
-                                .map(|j| j.r#type)
-                                .unwrap_or(fs::JobType::Generic);
-                            match job_type {
-                                fs::JobType::Generic => {
-                                    self.handle_job_status(e.id, e.file_num, Some(e.error));
-                                }
-                                fs::JobType::Printer => {
-                                    log::error!("Printer job error: {}", e.error);
-                                }
-                            }
+                            let _ = fs::remove_job(e.id, &mut self.write_jobs)
+                                .or_else(|| fs::remove_job(e.id, &mut self.read_jobs));
+                            self.handle_job_status(e.id, e.file_num, Some(e.error));
                         }
                         _ => {}
                     }
@@ -2216,14 +2141,6 @@ impl<T: InvokeUiSession> Remote<T> {
                     }
                 }
                 Some(message::Union::FileAction(action)) => match action.union {
-                    Some(file_action::Union::Send(_s)) => match _s.file_type.enum_value() {
-                        #[cfg(target_os = "windows")]
-                        Ok(file_transfer_send_request::FileType::Printer) => {
-                            let id = fs::get_next_job_id();
-                            self.handler.printer_request(id, _s.path);
-                        }
-                        _ => {}
-                    },
                     Some(file_action::Union::SendConfirm(c)) => {
                         if let Some(job) = fs::get_job(c.id, &mut self.read_jobs) {
                             job.confirm(&c).await;

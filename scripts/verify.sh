@@ -513,6 +513,26 @@ if [ -n "$ra6_dart_hits" ]; then
 else
   echo "  ok  R-A6/R-P5 host-identity/fingerprint/known-hosts Dart UI excised (flutter/lib, generated_bridge excluded)"
 fi
+# R-A6 / BR-13 (native-driver minimization): the remote-printer capability is EXCISED. A print driver
+# drives the same native display-DRIVER API class the fork minimizes — the rationale that pins
+# enable-virtual-display OFF (R-D8 / Appendix C #2b) — it is Windows-only + inert on the §17 Linux box,
+# and its "Install {App} Printer" action errored (no driver payload shipped). Removed end-to-end: the
+# `remote_printer` crate + workspace member, `printer_service` + `on_printer_data`, the
+# `enable-remote-printer` pin + option consts, the install/print FFI, the Dart Printer settings tab, the
+# MSI `RemotePrinter` custom action + `RustDeskPrinterDriver` driver payload, and the proto
+# `FileType.Printer` / `ControlPermissions.remote_printer`. These tokens MUST stay absent.
+ra6_clean 'remote_printer|printer_service|enable-remote-printer|install-printer|is-support-printer-driver|is_support_remote_print|on_printer_data|session_printer_response|main_get_printer_names' 'R-A6/BR-13 remote-printer capability (Rust: crate/service/FFI/config/proto)' || rc=1
+# The Dart UI + MSI/WiX/C++ side (ra6_clean is Rust-only): the Printer settings tab + install-printer
+# FFI callers (flutter/lib; generated_bridge.dart is the regenerated FRB shim, excluded), and the WiX
+# RemotePrinter custom action + RustDeskPrinterDriver driver-package payload (res/). Comment lines
+# (//, #, <!--) are excluded so an explanatory reference cannot false-trip.
+ra6_printer_tok='RemotePrinter|RustDeskPrinterDriver|remote_printer|printer_service|enable-remote-printer|install-printer|is-support-printer-driver'
+ra6_printer_hits=$(grep -RInE "$ra6_printer_tok" flutter/lib res --include='*.dart' --include='*.rs' --include='*.cpp' --include='*.h' --include='*.def' --include='*.vcxproj' --include='*.wxs' --include='*.wxl' --include='*.py' 2>/dev/null | grep -v 'generated_bridge.dart' | grep -vE ':[0-9]+:[[:space:]]*(//|#|<!--)' || true)
+if [ -n "$ra6_printer_hits" ]; then
+  echo "  FAIL R-A6/BR-13: remote-printer tokens must be absent from flutter/lib + res but are present:"; echo "$ra6_printer_hits" | sed 's/^/      /'; rc=1
+else
+  echo "  ok  R-A6/BR-13 remote-printer tokens absent from flutter/lib + res (Dart UI + MSI/WiX/C++)"
+fi
 ra6_clean 'DEBUG_BOOT_COMPLETED'                                          'R-X6 fake-boot broadcast'  || rc=1
 # R-X6: the Linux D-Bus deep-link delivery transport (src/server/dbus.rs: session-bus name
 # org.rustdesk.rustdesk, method NewConnection) is EXCISED. It ignored the caller (any co-installed
@@ -1446,8 +1466,8 @@ fi
 # SECURITY-RELEVANT key resolves through it without a pin or a compile-out (mirroring R-S16(d)(iv)'s
 # get_builtin_option treatment). The spec names enable-check-update — the software-updater egress —
 # which R-SV3 compiles OUT. The other capability-adjacent LocalConfig readers are #[cfg(windows)]
-# (pre-elevate-service @ core_main.rs = the local-pref elevation; the printer-job action @ io_loop.rs),
-# so the Linux build (the cargo-check gate below) compiles them out — unreachable on the deployed box.
+# (pre-elevate-service @ core_main.rs = the local-pref elevation),
+# so the Linux build (the cargo-check gate below) compiles it out — unreachable on the deployed box.
 # The remaining readers are benign UI prefs (lang/texture-render/video-dir/input-source/group-panel).
 r_sv10=
 # (a) no LocalConfig reader resolves the updater-egress key, and the const stays UNDEFINED (R-SV3
@@ -2200,7 +2220,7 @@ ra6_clean '"(request_elevation_tip|still_click_uac_tip|wait_accept_uac_tip|eleva
 # Wayland keyboard-input consent (R-X12 input/capture), the OTP/2FA-bot/trusted-devices UI (R-X7), the
 # SOCKS/HTTP proxy editor, the address-book/account UI (R-G4/R-SV6), and the OS-credential login dialog
 # (R-S18/R-X8). The `(s)` in the Socks5/Http(s) key is regex-escaped (\( \)). NOTE: dynamic `{}`-template
-# keys (e.g. rel-mouse-exit-{}-tip, printer-{}-*) and the file-manager keys were deliberately EXCLUDED —
+# keys (e.g. rel-mouse-exit-{}-tip) and the file-manager keys were deliberately EXCLUDED —
 # they need per-key vetting against the translate("…{}…").replace pattern before any removal.
 ra6_clean '"(wayland-keyboard-input-disabled-tip|wayland-keyboard-input-consent-tip|wayland-keyboard-input-applies-to-tip|wayland-soft-keyboard-input-label|wayland-keyboard-input-reset-choice-tip|remember-wayland-keyboard-choice-tip|doc_fix_wayland|One-time Password|enable-bot-desc|cancel-bot-confirm-tip|enable-trusted-devices-tip|Socks5 Proxy|Socks5/Http\(s\) Proxy|default_proxy_tip|push_ab_failed_tip|pull_group_failed_tip|ab_web_console_tip|OS Password|OS Account|os_account_desk_tip|login_linux_tip)"' '§19 dead excised-feature lang keys (R-X12/R-X7/R-G4/R-S18 + proxy)' || rc=1
 # §19 systematic sweep, batch 2 — the remaining no-caller, NON-{}-template keys from the en.rs scan.
@@ -2210,7 +2230,7 @@ ra6_clean '"(wayland-keyboard-input-disabled-tip|wayland-keyboard-input-consent-
 # Elevation Error, Request Elevation), floating-window (R-X6), terminal-admin, the TLS-fallback tip, and
 # dead file-manager variants (the manager uses translate('Delete'), never 'Confirm Delete'/'Grid View'/
 # 'List View'/'Empty Directory'/'Two-Finger Tap'). All verified no-caller (never looked up) and free of
-# non-{} dynamic concat. The 5 {}-template keys (rel-mouse-exit-{}-tip, printer-{}-*, {}-to-update-tip)
+# non-{} dynamic concat. The remaining {}-template keys (rel-mouse-exit-{}-tip, {}-to-update-tip)
 # are LIVE via translate("…{…}…") template-matching and are deliberately KEPT, not listed here.
 ra6_clean '"(id_change_tip|invalid_http|server_not_support|Confirm Delete|Empty Directory|Local Address|Change Local Port|Auto Login|Wrong credentials|Two-Finger Tap|doc_mac_permission|Direct Connection|Secure Connection|Insecure Connection|Unlock Network Settings|Direct IP Access|Elevation Error|Request Elevation|Switch Sides|Empty Username|remember_account_tip|clipboard_wait_response_timeout_tip|logout_tip|Refresh Password|Grid View|List View|floating_window_tip|terminal-admin-login-tip|allow-insecure-tls-fallback-tip|server-oss-not-support-tip|note-at-conn-end-tip|server_requires_deployment_tip)"' '§19 dead no-caller lang keys batch 2 (network/server/elevation/file-mgr-variant)' || rc=1
 # §19 dead lang keys (post-sciter-excision sweep): the rendezvous/relay/lan/WS UI that referenced these

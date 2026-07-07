@@ -419,9 +419,6 @@ pub enum Data {
     #[cfg(feature = "flutter")]
     VideoConnCount(Option<usize>),
     HwCodecConfig(Option<String>),
-    #[cfg(all(target_os = "windows", feature = "flutter"))]
-    PrinterData(Vec<u8>),
-    InstallOption(Option<(String, String)>),
     #[cfg(all(
         feature = "flutter",
         not(any(target_os = "android", target_os = "ios"))
@@ -953,23 +950,6 @@ async fn handle(data: Data, stream: &mut Connection) {
                 }
             }
         }
-        Data::InstallOption(opt) => match opt {
-            Some((_k, _v)) => {
-                #[cfg(target_os = "windows")]
-                if let Err(e) = crate::platform::windows::update_install_option(&_k, &_v) {
-                    log::error!(
-                        "Failed to update install option \"{}\" to \"{}\", error: {}",
-                        &_k,
-                        &_v,
-                        e
-                    );
-                }
-            }
-            None => {
-                // `None` is usually used to get values.
-                // This branch is left blank for unification and further use.
-            }
-        },
         #[cfg(target_os = "windows")]
         Data::PortForwardSessionCount(c) => match c {
             None => {
@@ -1710,16 +1690,6 @@ pub async fn get_terminal_session_count() -> ResultType<usize> {
     } else {
         Ok(0)
     }
-}
-
-#[tokio::main(flavor = "current_thread")]
-pub async fn set_install_option(k: String, v: String) -> ResultType<()> {
-    if let Ok(mut c) = connect(1000, "").await {
-        c.send(&&Data::InstallOption(Some((k, v)))).await?;
-        // do not put below before connect, because we need to check should_exit
-        c.next_timeout(1000).await.ok();
-    }
-    Ok(())
 }
 
 #[cfg(test)]

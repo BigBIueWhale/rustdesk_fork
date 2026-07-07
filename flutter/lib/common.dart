@@ -2214,7 +2214,6 @@ bool handleUriLink({List<String>? cmdArgs, Uri? uri, String? uriString}) {
 
   UriLinkType? type;
   String? id;
-  String? password;
   for (int i = 0; i < args.length; i++) {
     switch (args[i]) {
       case '--connect':
@@ -2249,7 +2248,14 @@ bool handleUriLink({List<String>? cmdArgs, Uri? uri, String? uriString}) {
         i++;
         break;
       case '--password':
-        password = args[i + 1];
+        // R-X6 (stricter): an embedded credential is NEVER carried into a deep-link/CLI
+        // connect. A password baked into a rustdesk:// link or a --password CLI arg is a
+        // footgun — links/args leak into shell history, logs, clipboards, and shared
+        // messages. The fork's model is that the operator TYPES the box's password (the
+        // CPace secret), or it comes from the stored per-peer secret — never a link/arg.
+        // So the value is consumed-and-dropped (never assigned, never forwarded); the
+        // connect proceeds to the address and the user authenticates via the normal
+        // prompt. This mirrors the mobile branch (urlLinkToCmdArgs), which already omits it.
         i++;
         break;
       case '--relay':
@@ -2266,30 +2272,28 @@ bool handleUriLink({List<String>? cmdArgs, Uri? uri, String? uriString}) {
     }
     final cid = id;
     late final VoidCallback doConnect;
+    // R-X6 (stricter): NO embedded credential is forwarded into any deep-link/CLI connect.
+    // The session window is opened to the address only; the operator authenticates via the
+    // normal password prompt (the CPace secret) or the stored per-peer secret — never a
+    // password carried by the link/arg. (Mirrors the clean mobile branch above.)
     switch (type) {
       case UriLinkType.remoteDesktop:
-        doConnect =
-            () => rustDeskWinManager.newRemoteDesktop(cid, password: password);
+        doConnect = () => rustDeskWinManager.newRemoteDesktop(cid);
         break;
       case UriLinkType.fileTransfer:
-        doConnect =
-            () => rustDeskWinManager.newFileTransfer(cid, password: password);
+        doConnect = () => rustDeskWinManager.newFileTransfer(cid);
         break;
       case UriLinkType.viewCamera:
-        doConnect =
-            () => rustDeskWinManager.newViewCamera(cid, password: password);
+        doConnect = () => rustDeskWinManager.newViewCamera(cid);
         break;
       case UriLinkType.portForward:
-        doConnect = () =>
-            rustDeskWinManager.newPortForward(cid, false, password: password);
+        doConnect = () => rustDeskWinManager.newPortForward(cid, false);
         break;
       case UriLinkType.rdp:
-        doConnect = () =>
-            rustDeskWinManager.newPortForward(cid, true, password: password);
+        doConnect = () => rustDeskWinManager.newPortForward(cid, true);
         break;
       case UriLinkType.terminal:
-        doConnect =
-            () => rustDeskWinManager.newTerminal(cid, password: password);
+        doConnect = () => rustDeskWinManager.newTerminal(cid);
         break;
     }
     // R-X6: a deep-link-initiated connection (fromUri) requires explicit user confirmation. The

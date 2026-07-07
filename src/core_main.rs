@@ -528,7 +528,6 @@ pub fn core_main() -> Option<Vec<String>> {
 fn core_main_invoke_new_connection(mut args: std::env::Args) -> Option<Vec<String>> {
     let mut authority = None;
     let mut id = None;
-    let mut param_array = vec![];
     let mut relay_requested = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -538,9 +537,15 @@ fn core_main_invoke_new_connection(mut args: std::env::Args) -> Option<Vec<Strin
                 id = args.next();
             }
             "--password" => {
-                if let Some(password) = args.next() {
-                    param_array.push(format!("password={password}"));
-                }
+                // R-X6 (stricter): NEVER fold an embedded credential into the connect URI. A
+                // password on argv or in a rustdesk:// link is a footgun — it leaks into shell
+                // history, logs, and (were it folded here) the WM_USER+2 / _url IPC delivery
+                // message that carries the link to a running instance. Consume-and-drop it: the
+                // connect proceeds to the address only, and the operator authenticates via the
+                // normal password prompt (the CPace secret). The strip holds in BOTH layers —
+                // this Rust core AND the Dart handleUriLink parser (spec R-X6; a Dart-only strip
+                // is bypassable since the raw URI reaches the core via bind.sendUrlScheme).
+                let _ = args.next();
             }
             "--relay" => {
                 relay_requested = true;
@@ -560,16 +565,11 @@ fn core_main_invoke_new_connection(mut args: std::env::Args) -> Option<Vec<Strin
             if id.ends_with(&ext) {
                 id = id.replace(&ext, "");
             }
-            let params = param_array.join("&");
-            let params_flag = if params.is_empty() { "" } else { "?" };
-            uni_links = format!(
-                "{}{}/{}{}{}",
-                crate::get_uri_prefix(),
-                authority,
-                id,
-                params_flag,
-                params
-            );
+            // R-X6 (stricter): the connect URI carries the ADDRESS ONLY — no embedded
+            // password/key/relay query params (they are consumed-and-dropped / rejected
+            // above), so a link or CLI arg can never convey a credential or trust anchor
+            // into the WM_USER+2 / _url IPC delivery, nor into the connect it triggers.
+            uni_links = format!("{}{}/{}", crate::get_uri_prefix(), authority, id);
         }
     }
     if uni_links.is_empty() {

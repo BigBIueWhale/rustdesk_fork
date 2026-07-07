@@ -207,7 +207,6 @@ class WebHomePage extends StatelessWidget {
     bool isViewCamera = false;
     bool isTerminal = false;
     String? id;
-    String? password;
     for (int i = 0; i < args.length; i++) {
       switch (args[i]) {
         case '--connect':
@@ -230,10 +229,8 @@ class WebHomePage extends StatelessWidget {
           id = args[i + 1];
           i++;
           break;
-        case '--password':
-          password = args[i + 1];
-          i++;
-          break;
+        // R-X6: no '--password' case — a deep-link/CLI must not carry an embedded
+        // credential into connect (urlLinkToCmdArgs never emits it; mirrors common.dart).
         default:
           break;
       }
@@ -242,8 +239,7 @@ class WebHomePage extends StatelessWidget {
       connect(context, id, 
         isFileTransfer: isFileTransfer, 
         isViewCamera: isViewCamera, 
-        isTerminal: isTerminal,
-        password: password);
+        isTerminal: isTerminal);
     }
   }
 }

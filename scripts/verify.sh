@@ -567,6 +567,35 @@ elif ! grep -qF 'connect-only and MUST NOT carry an embedded' flutter/lib/common
 else
   echo "  ok  R-X6 Dart deep-link parser strips embedded key/password/relay"
 fi
+# R-X6 (stricter) — the handleUriLink DESKTOP/CLI args-list branch MUST NOT parse an embedded --password
+# nor forward any password into the deep-link/CLI connect. The mobile branch (urlLinkToCmdArgs) already
+# omits it; this locks the desktop/CLI (common.dart) + mobile (home_page.dart handleUnilink) branches to the same clean shape. A password baked into a rustdesk://
+# link or a --password CLI arg is a footgun (it leaks into shell history, logs, clipboards, shared msgs).
+# Assert (a) no `password = args[i+1]` parse, (b) no `new*(cid, ...password:)` forward into the connect
+# (only handleUriLink connects via the `cid` local; the legit UI connect paths use `id` + a remembered
+# secret and keep their password), and (c) the positive strip marker is present (regrowth guard).
+r_x6_cli=""
+grep -qE 'password *= *args\[ *i *\+ *1 *\]' flutter/lib/common.dart flutter/lib/mobile/pages/home_page.dart                            && r_x6_cli="$r_x6_cli parse:--password"
+grep -qE 'rustDeskWinManager\.new[A-Za-z]+\(cid,[^)]*password:' flutter/lib/common.dart   && r_x6_cli="$r_x6_cli forward:new*(cid,password)"
+grep -qF 'NO embedded credential is forwarded into any deep-link/CLI connect' flutter/lib/common.dart || r_x6_cli="$r_x6_cli marker-gone"
+if [ -n "$r_x6_cli" ]; then
+  echo "  FAIL R-X6: the deep-link/CLI handleUriLink connect still carries an embedded password:$r_x6_cli"; rc=1
+else
+  echo "  ok  R-X6 handleUriLink connect carries NO embedded password (desktop/CLI branch matches the clean mobile branch)"
+fi
+# R-X6 (stricter, Rust layer) — core_main_invoke_new_connection MUST NOT fold an embedded --password into
+# the connect URI. It used to `param_array.push(format!("password={password}"))`, folding it as ?password=
+# into the uni-link then delivered over the WM_USER+2 (Windows) / _url IPC (macOS) transports — leaking the
+# credential into that IPC message even before any consumer read it. The strip MUST hold in BOTH layers,
+# because the raw URI reaches the Rust core via bind.sendUrlScheme, bypassing a Dart-only fix (spec R-X6).
+r_x6_rustcli=""
+grep -qE 'param_array\.push\(format!\("password=' src/core_main.rs && r_x6_rustcli="$r_x6_rustcli fold:password="
+grep -qF 'NEVER fold an embedded credential into the connect URI' src/core_main.rs || r_x6_rustcli="$r_x6_rustcli marker-gone"
+if [ -n "$r_x6_rustcli" ]; then
+  echo "  FAIL R-X6: core_main still folds an embedded --password into the connect URI:$r_x6_rustcli"; rc=1
+else
+  echo "  ok  R-X6 core_main connect URI carries the address only (no embedded --password fold)"
+fi
 # R-G6 / R-SV4 / R-X6: relay route syntax must FAIL CLOSED. The inherited flow accepted
 # rustdesk://<id>/r, stripped `/r` in Rust, set forceRelay, and could persist
 # force-always-relay. The direct-only fork may keep generated ABI compatibility, but no

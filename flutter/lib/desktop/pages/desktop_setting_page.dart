@@ -733,12 +733,6 @@ class _GeneralState extends State<_General> {
   }
 }
 
-enum _AccessMode {
-  custom,
-  full,
-  view,
-}
-
 class _Safety extends StatefulWidget {
   const _Safety({Key? key}) : super(key: key);
 
@@ -749,131 +743,76 @@ class _Safety extends StatefulWidget {
 class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
-  bool locked = bind.mainIsInstalled();
   final scrollController = ScrollController();
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    // R-S11 / R-S16 / R-G1 (T2): the inherited "Unlock Security Settings" elevation gate is REMOVED
+    // (not rewired to another gate). The fork excised the active elevation ceremonies (R-X9 Windows
+    // run_uac/elevate, R-X11 Linux gtk_sudo), which left check_super_user_permission() a passive
+    // "am I already root/elevated?" probe — always false for the never-elevated desktop GUI — so the
+    // lock silently swallowed every click and stranded the sole-authenticator "Set permanent password"
+    // (and 5 legitimate non-pinned prefs) behind it. The gate defended nothing: the controlled-side
+    // config write is already SO_PEERCRED/uid-gated at the IPC layer (R-S11), and the pinned policy
+    // stays immutable at the config funnel regardless of any UI (R-S16: is_option_can_save rejects
+    // every pinned write). So the tab is directly usable; pinned values are shown read-only below.
     return SingleChildScrollView(
         controller: scrollController,
         child: Column(
           children: [
-            _lock(locked, 'Unlock Security Settings', () {
-              locked = false;
-              setState(() => {});
-            }),
-            preventMouseKeyBuilder(
-              block: locked,
-              child: Column(children: [
-                permissions(context),
-                password(context),
-                // R-X7 / §18: the '2FA' settings card (2FA + Telegram bot + trusted devices)
-                // is removed — 2FA is excised (pinned-off-dead); the box authenticates by the
-                // CPace permanent password (R-S6). The `tfa()` builder is deleted with it.
-                // R-G4 / R-SV5 (§19): the 'ID' card (Change-ID) is removed — the numeric ID is
-                // dead under the direct-IP model (R-SV5); the box is reached by <ip|domain>:port.
-                more(context),
-              ]),
-            ),
+            permissions(context),
+            password(context),
+            // R-X7 / §18: the '2FA' settings card (2FA + Telegram bot + trusted devices)
+            // is removed — 2FA is excised (pinned-off-dead); the box authenticates by the
+            // CPace permanent password (R-S6). The `tfa()` builder is deleted with it.
+            // R-G4 / R-SV5 (§19): the 'ID' card (Change-ID) is removed — the numeric ID is
+            // dead under the direct-IP model (R-SV5); the box is reached by <ip|domain>:port.
+            more(context),
           ],
         )).marginOnly(bottom: _kListViewBottomMargin);
   }
 
   Widget permissions(context) {
-    bool enabled = !locked;
-    // Simple temp wrapper for PR check
-    tmpWrapper() {
-      String accessMode = bind.mainGetOptionSync(key: kOptionAccessMode);
-      _AccessMode mode;
-      if (accessMode == 'full') {
-        mode = _AccessMode.full;
-      } else if (accessMode == 'view') {
-        mode = _AccessMode.view;
-      } else {
-        mode = _AccessMode.custom;
-      }
-      String initialKey;
-      bool? fakeValue;
-      switch (mode) {
-        case _AccessMode.custom:
-          initialKey = '';
-          fakeValue = null;
-          break;
-        case _AccessMode.full:
-          initialKey = 'full';
-          fakeValue = true;
-          break;
-        case _AccessMode.view:
-          initialKey = 'view';
-          fakeValue = false;
-          break;
-      }
-
-      return _Card(title: 'Permissions', children: [
-        ComboBox(
-            keys: [
-              defaultOptionAccessMode,
-              'full',
-              'view',
-            ],
-            values: [
-              translate('Custom'),
-              translate('Full Access'),
-              translate('Screen Share'),
-            ],
-            enabled: enabled && !isOptionFixed(kOptionAccessMode),
-            initialKey: initialKey,
-            onChanged: (mode) async {
-              await bind.mainSetOption(key: kOptionAccessMode, value: mode);
-              setState(() {});
-            }).marginOnly(left: _kContentHMargin),
-        Column(
-          children: [
-            _OptionCheckBox(
-                context, 'Enable keyboard/mouse', kOptionEnableKeyboard,
-                enabled: enabled, fakeValue: fakeValue),
-            if (isWindows)
-              _OptionCheckBox(
-                  context, 'Enable remote printer', kOptionEnableRemotePrinter,
-                  enabled: enabled, fakeValue: fakeValue),
-            _OptionCheckBox(context, 'Enable clipboard', kOptionEnableClipboard,
-                enabled: enabled, fakeValue: fakeValue),
-            _OptionCheckBox(
-                context, 'Enable file transfer', kOptionEnableFileTransfer,
-                enabled: enabled, fakeValue: fakeValue),
-            _OptionCheckBox(context, 'Enable audio', kOptionEnableAudio,
-                enabled: enabled, fakeValue: fakeValue),
-            _OptionCheckBox(context, 'Enable camera', kOptionEnableCamera,
-                enabled: enabled, fakeValue: fakeValue),
-            _OptionCheckBox(context, 'Enable terminal', kOptionEnableTerminal,
-                enabled: enabled, fakeValue: fakeValue),
-            _OptionCheckBox(
-                context, 'Enable TCP tunneling', kOptionEnableTunnel,
-                enabled: enabled, fakeValue: fakeValue),
-            _OptionCheckBox(
-                context, 'Enable remote restart', kOptionEnableRemoteRestart,
-                enabled: enabled, fakeValue: fakeValue),
-            _OptionCheckBox(
-                context, 'Enable recording session', kOptionEnableRecordSession,
-                enabled: enabled, fakeValue: fakeValue),
-            if (isWindows)
-              _OptionCheckBox(context, 'Enable blocking user input',
-                  kOptionEnableBlockInput,
-                  enabled: enabled, fakeValue: fakeValue),
-            if (bind.mainSupportedPrivacyModeImpls() != '[]')
-              _OptionCheckBox(
-                  context, 'Enable privacy mode', kOptionEnablePrivacyMode,
-                  enabled: enabled, fakeValue: fakeValue),
-            _OptionCheckBox(context, 'Enable remote configuration modification',
-                kOptionAllowRemoteConfigModification,
-                enabled: enabled, fakeValue: fakeValue),
-          ],
-        ),
-      ]);
-    }
-
-    return tmpWrapper();
+    // R-G1 / R-S16 (§19, T2): access-mode and every capability below are PINNED by the controlled-side
+    // policy (config::keys::PINNED_SETTINGS — access-mode=full, enable-*=Y). They are enforced at the
+    // Config::get_option funnel and every runtime write is rejected by is_option_can_save (R-S16(c)),
+    // so per R-G1 they are shown READ-ONLY ("set by policy"), never as the greyed live-looking toggles
+    // the inherited UI rendered (the R-S12 "editable-but-inert" trap). These rows emit NO Checkbox /
+    // onChanged / onTap, so the UI cannot even attempt the rejected write — it cannot make a pin live.
+    // Values are read live through the funnel (mainGetOptionSync / mainGetBoolOptionSync), so the
+    // display always reflects the enforced policy rather than a hard-coded guess.
+    final accessMode = bind.mainGetOptionSync(key: kOptionAccessMode);
+    final accessModeLabel = accessMode == 'full'
+        ? 'Full Access'
+        : (accessMode == 'view' ? 'Screen Share' : 'Custom');
+    return _Card(title: 'Permissions', children: [
+      _PinnedPolicyValue(context, 'Access mode', translate(accessModeLabel)),
+      _PinnedPolicyToggle(
+          context, 'Enable keyboard/mouse', kOptionEnableKeyboard),
+      if (isWindows)
+        _PinnedPolicyToggle(
+            context, 'Enable remote printer', kOptionEnableRemotePrinter),
+      _PinnedPolicyToggle(context, 'Enable clipboard', kOptionEnableClipboard),
+      _PinnedPolicyToggle(
+          context, 'Enable file transfer', kOptionEnableFileTransfer),
+      _PinnedPolicyToggle(context, 'Enable audio', kOptionEnableAudio),
+      _PinnedPolicyToggle(context, 'Enable camera', kOptionEnableCamera),
+      _PinnedPolicyToggle(context, 'Enable terminal', kOptionEnableTerminal),
+      _PinnedPolicyToggle(context, 'Enable TCP tunneling', kOptionEnableTunnel),
+      _PinnedPolicyToggle(
+          context, 'Enable remote restart', kOptionEnableRemoteRestart),
+      _PinnedPolicyToggle(
+          context, 'Enable recording session', kOptionEnableRecordSession),
+      if (isWindows)
+        _PinnedPolicyToggle(
+            context, 'Enable blocking user input', kOptionEnableBlockInput),
+      if (bind.mainSupportedPrivacyModeImpls() != '[]')
+        _PinnedPolicyToggle(
+            context, 'Enable privacy mode', kOptionEnablePrivacyMode),
+      _PinnedPolicyToggle(context, 'Enable remote configuration modification',
+          kOptionAllowRemoteConfigModification),
+    ]);
   }
 
   Widget password(BuildContext context) {
@@ -884,26 +823,34 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
           // one-time-password path is excised (R-X7), so the verification-method radios and
           // the OTP (length + numeric) selectors are dead/misleading — removed. The fork's
           // sole credential is the permanent password (R-P1/R-S9); only its setup remains.
+          // T2: surfaced UNCONDITIONALLY — the dead elevation lock that stranded this button on
+          // Win/Linux is gone (see build). The dialog -> main_set_permanent_password IPC path is the
+          // exact one CLI --password uses; this is the sole authenticator, so it MUST be GUI-settable.
           return _Card(title: 'Password', children: [
             if (!isChangePermanentPasswordDisabled())
-              _SubButton('Set permanent password', setPasswordDialog, !locked),
+              _SubButton('Set permanent password', setPasswordDialog),
           ]);
         })));
   }
 
   Widget more(BuildContext context) {
-    bool enabled = !locked;
+    // T2: the dead lock is gone (see build). These NON-pinned Security prefs — share-rdp,
+    // allow-auto-disconnect (+ timeout), keep-awake-during-incoming-sessions — are legitimate,
+    // writable, and now directly editable; they were only trapped behind the lock.
+    // allow-only-conn-window-open IS pinned (R-S16 PINNED_SETTINGS => ""), so it is shown
+    // read-only per R-G1, not as a greyed toggle.
+    // T2 (excise): the local settings-PIN row is GONE, not merely freed — its only consumer was
+    // the removed elevation lock (R-G1: no dead/inert control survives; excise-don't-disable). The
+    // whole local settings-PIN subsystem (Dart widget/dialogs, FFI, IPC, Config field, CLI) is gone.
     return _Card(title: 'Security', children: [
-      shareRdp(context, enabled),
+      shareRdp(context, true),
       ...autoDisconnect(context),
       _OptionCheckBox(context, 'keep-awake-during-incoming-sessions-label',
           kOptionKeepAwakeDuringIncomingSessions,
-          reverse: false, enabled: enabled),
+          reverse: false),
       if (bind.mainIsInstalled())
-        _OptionCheckBox(context, 'allow-only-conn-window-open-tip',
-            'allow-only-conn-window-open',
-            reverse: false, enabled: enabled),
-      if (bind.mainIsInstalled() && !isUnlockPinDisabled()) unlockPin()
+        _PinnedPolicyToggle(context, 'allow-only-conn-window-open-tip',
+            'allow-only-conn-window-open'),
     ]);
   }
 
@@ -934,46 +881,6 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
     );
   }
 
-  Widget hide_cm(bool enabled) {
-    return ChangeNotifierProvider.value(
-        value: gFFI.serverModel,
-        child: Consumer<ServerModel>(builder: (context, model, child) {
-          final enableHideCm = model.approveMode == 'password' &&
-              model.verificationMethod == kUsePermanentPassword;
-          onHideCmChanged(bool? b) {
-            if (b != null) {
-              bind.mainSetOption(
-                  key: 'allow-hide-cm', value: bool2option('allow-hide-cm', b));
-            }
-          }
-
-          return Tooltip(
-              message: enableHideCm ? "" : translate('hide_cm_tip'),
-              child: GestureDetector(
-                onTap:
-                    enableHideCm ? () => onHideCmChanged(!model.hideCm) : null,
-                child: Row(
-                  children: [
-                    Checkbox(
-                            value: model.hideCm,
-                            onChanged: enabled && enableHideCm
-                                ? onHideCmChanged
-                                : null)
-                        .marginOnly(right: 5),
-                    Expanded(
-                      child: Text(
-                        translate('Hide connection management window'),
-                        style: TextStyle(
-                            color: disabledTextColor(
-                                context, enabled && enableHideCm)),
-                      ),
-                    ),
-                  ],
-                ),
-              ));
-        }));
-  }
-
   List<Widget> autoDisconnect(BuildContext context) {
     TextEditingController controller = TextEditingController();
     update(bool v) => setState(() {});
@@ -981,7 +888,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
     return [
       _OptionCheckBox(
           context, 'auto_disconnect_option_tip', kOptionAllowAutoDisconnect,
-          update: update, enabled: !locked),
+          update: update),
       () {
         bool enabled = option2bool(kOptionAllowAutoDisconnect,
             bind.mainGetOptionSync(key: kOptionAllowAutoDisconnect));
@@ -999,7 +906,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
                 width: 95,
                 child: TextField(
                   controller: controller,
-                  enabled: enabled && !locked && !isOptFixed,
+                  enabled: enabled && !isOptFixed,
                   onChanged: (_) => applyEnabled.value = true,
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(RegExp(
@@ -1014,7 +921,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
               ),
               Obx(() => ElevatedButton(
                     onPressed:
-                        applyEnabled.value && enabled && !locked && !isOptFixed
+                        applyEnabled.value && enabled && !isOptFixed
                             ? () async {
                                 applyEnabled.value = false;
                                 await bind.mainSetOption(
@@ -1027,45 +934,11 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
                     ),
                   ))
             ]),
-            enabled: enabled && !locked && !isOptFixed,
+            enabled: enabled && !isOptFixed,
           ),
         );
       }(),
     ];
-  }
-
-  Widget unlockPin() {
-    bool enabled = !locked;
-    RxString unlockPin = bind.mainGetUnlockPin().obs;
-    update() async {
-      unlockPin.value = bind.mainGetUnlockPin();
-    }
-
-    onChanged(bool? checked) async {
-      changeUnlockPinDialog(unlockPin.value, update);
-    }
-
-    final isOptFixed = isOptionFixed(kOptionDisableUnlockPin);
-    return GestureDetector(
-      child: Obx(() => Row(
-            children: [
-              Checkbox(
-                      value: unlockPin.isNotEmpty,
-                      onChanged: enabled && !isOptFixed ? onChanged : null)
-                  .marginOnly(right: 5),
-              Expanded(
-                  child: Text(
-                translate('Unlock with PIN'),
-                style: TextStyle(color: disabledTextColor(context, enabled)),
-              ))
-            ],
-          )),
-      onTap: enabled
-          ? () {
-              onChanged(!unlockPin.isNotEmpty);
-            }
-          : null,
-    ).marginOnly(left: _kCheckBoxLeftMargin);
   }
 }
 
@@ -1733,6 +1606,47 @@ Widget _OptionCheckBox(
   );
 }
 
+// R-G1 (§19): render a controlled-side policy-PINNED (R-S16) capability as a READ-ONLY indicator —
+// the funnel value plus a "set by policy" tag — never a greyed actuating toggle (the R-S12
+// "editable-but-inert" trap the fork forbids). Deliberately a static Icon + Text with NO Checkbox,
+// GestureDetector, onChanged or onTap, so the widget structurally cannot attempt the write that
+// is_option_can_save would reject anyway (R-S16(c)) — the presentation cannot make a pin writable.
+// ignore: non_constant_identifier_names
+Widget _PinnedPolicyToggle(BuildContext context, String label, String key) {
+  final on = mainGetBoolOptionSync(key);
+  final color = disabledTextColor(context, false);
+  return Row(
+    children: [
+      Icon(on ? Icons.check : Icons.remove, size: 18, color: color)
+          .marginOnly(right: 5),
+      Expanded(
+        child: Text(translate(label), style: TextStyle(color: color)),
+      ),
+      Text(translate('Set by policy'),
+              style: TextStyle(color: color, fontSize: 12))
+          .marginOnly(left: 6),
+    ],
+  ).marginOnly(left: _kCheckBoxLeftMargin);
+}
+
+// R-G1 read-only indicator for a pinned NON-boolean policy value (e.g. access-mode = full). Same
+// non-actuating contract as _PinnedPolicyToggle: display only, no write path.
+// ignore: non_constant_identifier_names
+Widget _PinnedPolicyValue(BuildContext context, String label, String value) {
+  final color = disabledTextColor(context, false);
+  return Row(
+    children: [
+      Expanded(
+        child: Text('${translate(label)}: $value',
+            style: TextStyle(color: color)),
+      ),
+      Text(translate('Set by policy'),
+              style: TextStyle(color: color, fontSize: 12))
+          .marginOnly(left: 6),
+    ],
+  ).marginOnly(left: _kCheckBoxLeftMargin);
+}
+
 // ignore: non_constant_identifier_names
 Widget _Radio<T>(BuildContext context,
     {required T value,
@@ -1974,50 +1888,6 @@ Widget _SubLabeledWidget(BuildContext context, String label, Widget child,
       child,
     ],
   ).marginOnly(left: _kContentHSubMargin);
-}
-
-Widget _lock(
-  bool locked,
-  String label,
-  Function() onUnlock,
-) {
-  return Offstage(
-      offstage: !locked,
-      child: Row(
-        children: [
-          Flexible(
-            child: SizedBox(
-              width: _kCardFixedWidth,
-              child: Card(
-                child: ElevatedButton(
-                  child: SizedBox(
-                      height: 25,
-                      child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.security_sharp,
-                              size: 20,
-                            ),
-                            Text(translate(label)).marginOnly(left: 5),
-                          ]).marginSymmetric(vertical: 2)),
-                  onPressed: () async {
-                    final unlockPin = bind.mainGetUnlockPin();
-                    if (unlockPin.isEmpty || isUnlockPinDisabled()) {
-                      bool checked = await callMainCheckSuperUserPermission();
-                      if (checked) {
-                        onUnlock();
-                      }
-                    } else {
-                      checkUnlockPinDialog(unlockPin, onUnlock);
-                    }
-                  },
-                ).marginSymmetric(horizontal: 2, vertical: 4),
-              ).marginOnly(left: _kCardLeftMargin),
-            ).marginOnly(top: 10),
-          ),
-        ],
-      ));
 }
 
 _LabeledTextField(

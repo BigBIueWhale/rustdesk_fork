@@ -1565,15 +1565,6 @@ class RustdeskImpl {
     throw UnimplementedError("mainGetUseTextureRender");
   }
 
-  // R-X7: Telegram-bot 2FA bridge stubs removed (the bot FFI is excised).
-  String mainGetUnlockPin({dynamic hint}) {
-    throw UnimplementedError("mainGetUnlockPin");
-  }
-
-  String mainSetUnlockPin({required String pin, dynamic hint}) {
-    throw UnimplementedError("mainSetUnlockPin");
-  }
-
   Future<String> mainGetTrustedDevices({dynamic hint}) {
     throw UnimplementedError("mainGetTrustedDevices");
   }

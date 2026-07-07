@@ -676,7 +676,7 @@ impl Drop for CheckIfRestart {
 /// `--server` reads config via it). Reject the whole-config write so the unguarded Config::set is
 /// unreachable from the main-channel handler.
 ///
-/// R-S11 also names the Data::Config STRUCT-FIELD sub-keys (salt / id / unlock-pin) and
+/// R-S11 also names the Data::Config STRUCT-FIELD sub-keys (salt / id) and
 /// Data::Socks -> set_socks: these bypass is_option_can_save (R-S16) ENTIRELY — they
 /// are identity/credential struct fields + the proxy, NOT options — so the R-S16 pin never covers them.
 /// Make this a POSITIVE allowlist over the config-mutating arms, not a one-arm denylist: only the
@@ -686,8 +686,8 @@ impl Drop for CheckIfRestart {
 /// hash, not a value re-derived from this legacy `salt` field — R-P1), config.rs) are REJECTED, so a same-uid process cannot
 /// rewrite the device identity or the password salt through the main channel. Data::Socks(Some) (the
 /// proxy / local-MITM primitive, already inert under the pinned proxy-url, R-D6(d)(iii)) is rejected
-/// at the channel too. (permanent-password = the UI password-set; unlock-pin = the --set-unlock-pin /
-/// GUI PIN persist, core_main.rs; voice-call-input = the audio device — all legitimate operator writes.)
+/// at the channel too. (permanent-password = the UI password-set; voice-call-input = the audio
+/// device — both legitimate operator writes.)
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) fn main_channel_admits_config_write(data: &Data) -> bool {
     match data {
@@ -698,7 +698,7 @@ pub(crate) fn main_channel_admits_config_write(data: &Data) -> bool {
         // the `_` arm); id / salt / any other struct-field name is REJECTED.
         Data::Config((name, Some(_))) => matches!(
             name.as_str(),
-            "permanent-password" | "unlock-pin" | "voice-call-input"
+            "permanent-password" | "voice-call-input"
         ),
         // set_socks: the proxy / local-MITM primitive an Options-key allowlist would miss.
         Data::Socks(Some(_)) => false,
@@ -823,8 +823,6 @@ async fn handle(data: Data, stream: &mut Connection) {
                     };
                 } else if name == "voice-call-input" {
                     value = crate::audio_service::get_voice_call_input_device();
-                } else if name == "unlock-pin" {
-                    value = Some(Config::get_unlock_pin());
                 } else {
                     value = None;
                 }
@@ -850,8 +848,6 @@ async fn handle(data: Data, stream: &mut Connection) {
                     Config::set_salt(&value);
                 } else if name == "voice-call-input" {
                     crate::audio_service::set_voice_call_input_device(Some(value), true);
-                } else if name == "unlock-pin" {
-                    Config::set_unlock_pin(&value);
                 } else {
                     return;
                 }
@@ -1430,44 +1426,6 @@ async fn set_permanent_password_with_ack_async(v: String) -> ResultType<bool> {
     Ok(false)
 }
 
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn set_unlock_pin(v: String, translate: bool) -> ResultType<()> {
-    let v = v.trim().to_owned();
-    let min_len = 4;
-    let max_len = crate::ui_interface::max_encrypt_len();
-    let len = v.chars().count();
-    if !v.is_empty() {
-        if len < min_len {
-            let err = if translate {
-                crate::lang::translate(
-                    "Requires at least {".to_string() + &format!("{min_len}") + "} characters",
-                )
-            } else {
-                // Sometimes, translated can't show normally in command line
-                format!("Requires at least {} characters", min_len)
-            };
-            bail!(err);
-        }
-        if len > max_len {
-            bail!("No more than {max_len} characters");
-        }
-    }
-    Config::set_unlock_pin(&v);
-    set_config("unlock-pin", v)
-}
-
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn get_unlock_pin() -> String {
-    if let Ok(Some(v)) = get_config("unlock-pin") {
-        Config::set_unlock_pin(&v);
-        v
-    } else {
-        Config::get_unlock_pin()
-    }
-}
-
 pub fn get_id() -> String {
     if let Ok(Some(v)) = get_config("id") {
         // update salt also, so that next time reinstallation not causing first-time auto-login failure
@@ -1833,7 +1791,7 @@ mod test {
         assert!(main_channel_admits_config_write(&Data::Options(None)));
         // R-S11 (Appendix C #15): the Data::Config STRUCT-FIELD writes bypass is_option_can_save — the
         // identity (id) + credential (salt) fields have NO legitimate main-channel writer and MUST be
-        // rejected; the legit UI/operator writes (permanent-password, unlock-pin) stay; a value=None is
+        // rejected; the legit UI/operator write (permanent-password) stays; a value=None is
         // a READ and stays.
         let cfg = |n: &str, v: Option<&str>| Data::Config((n.to_owned(), v.map(|s| s.to_owned())));
         assert!(
@@ -1847,10 +1805,6 @@ mod test {
         assert!(
             main_channel_admits_config_write(&cfg("permanent-password", Some("pw"))),
             "the UI permanent-password set stays legitimate"
-        );
-        assert!(
-            main_channel_admits_config_write(&cfg("unlock-pin", Some("1234"))),
-            "the --set-unlock-pin / GUI PIN set stays legitimate"
         );
         assert!(
             main_channel_admits_config_write(&cfg("id", None)),

@@ -256,8 +256,13 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                               ).marginOnly(right: 8, top: 4),
                             ),
                           ),
-                          onTap: () => DesktopSettingPage.switch2page(
-                              SettingsTabKey.safety),
+                          // T2: open the Set-Password dialog directly — the "Change Password"
+                          // affordance should change the password, not merely navigate into the
+                          // settings tab. The former navigation dead-ended at the elevation-locked
+                          // Safety tab (that lock is now removed); setPasswordDialog() (defined below,
+                          // same file) is the exact IPC path CLI --password uses
+                          // (main_set_permanent_password).
+                          onTap: () => setPasswordDialog(),
                           onHover: (value) => editHover.value = value,
                         ),
                     ],

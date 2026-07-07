@@ -370,24 +370,6 @@ pub fn core_main() -> Option<Vec<String>> {
                 }
             }
             return None;
-        } else if args[0] == "--set-unlock-pin" {
-            if config::Config::is_disable_unlock_pin() {
-                println!("Unlock PIN is disabled!");
-                return None;
-            }
-            #[cfg(feature = "flutter")]
-            if args.len() == 2 {
-                if crate::platform::is_installed() && is_root() {
-                    if let Err(err) = crate::ipc::set_unlock_pin(args[1].to_owned(), false) {
-                        println!("{err}");
-                    } else {
-                        println!("Done!");
-                    }
-                } else {
-                    println!("Installation and administrative privileges required!");
-                }
-            }
-            return None;
         } else if args[0] == "--get-id" {
             println!("{}", crate::ipc::get_id());
             return None;
@@ -664,7 +646,6 @@ fn is_user_main_ipc_scope_cli_command(args: &[String]) -> bool {
     matches!(
         args.first().map(String::as_str),
         Some("--password")
-            | Some("--set-unlock-pin")
             | Some("--get-id")
             | Some("--option")
             | Some("--assign")
@@ -691,7 +672,6 @@ mod tests {
     fn user_main_ipc_scope_cli_command_matches_management_commands_only() {
         for command in [
             "--password",
-            "--set-unlock-pin",
             "--get-id",
             "--option",
             "--assign",

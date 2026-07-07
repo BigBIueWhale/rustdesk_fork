@@ -259,8 +259,9 @@ pub struct Config2 {
     nat_type: i32,
     #[serde(default, deserialize_with = "deserialize_i32")]
     serial: i32,
-    #[serde(default, deserialize_with = "deserialize_string")]
-    unlock_pin: String,
+    // T2 (excise): the local-settings-PIN field was removed with that subsystem (R-G1 /
+    // excise-don't-disable). Config2 has no #[serde(deny_unknown_fields)], so an OLD config
+    // file that still carries the now-removed key loads fine — serde ignores the unknown field.
 
     #[serde(default)]
     socks: Option<Socks5Server>,
@@ -528,10 +529,6 @@ impl Config2 {
             config.socks = Some(socks);
             store |= store2;
         }
-        let (unlock_pin, _, store2) =
-            decrypt_str_or_original(&config.unlock_pin, PASSWORD_ENC_VERSION);
-        config.unlock_pin = unlock_pin;
-        store |= store2;
         if store {
             config.store();
         }
@@ -555,8 +552,6 @@ impl Config2 {
                 keep_encrypted_storage_if_plaintext_unchanged(&socks.password, stored_password);
             config.socks = Some(socks);
         }
-        config.unlock_pin =
-            keep_encrypted_storage_if_plaintext_unchanged(&config.unlock_pin, &stored.unlock_pin);
         Config::store_(&config, "2");
     }
 
@@ -1274,15 +1269,6 @@ impl Config {
             .unwrap_or(false)
     }
 
-    pub fn is_disable_unlock_pin() -> bool {
-        BUILTIN_SETTINGS
-            .read()
-            .unwrap()
-            .get(keys::OPTION_DISABLE_UNLOCK_PIN)
-            .map(|v| v == "Y")
-            .unwrap_or(false)
-    }
-
     pub fn get_id() -> String {
         let mut id = CONFIG.read().unwrap().id.clone();
         if id.is_empty() {
@@ -1729,25 +1715,6 @@ impl Config {
             return NetworkType::ProxySocks;
         }
         NetworkType::Direct
-    }
-
-    pub fn get_unlock_pin() -> String {
-        if Self::is_disable_unlock_pin() {
-            return String::new();
-        }
-        CONFIG2.read().unwrap().unlock_pin.clone()
-    }
-
-    pub fn set_unlock_pin(pin: &str) {
-        if Self::is_disable_unlock_pin() {
-            return;
-        }
-        let mut config = CONFIG2.write().unwrap();
-        if pin == config.unlock_pin {
-            return;
-        }
-        config.unlock_pin = pin.to_string();
-        config.store();
     }
 
     pub fn get() -> Config {
@@ -3046,7 +3013,6 @@ pub mod keys {
     pub const OPTION_MAIN_WINDOW_ALWAYS_ON_TOP: &str = "main-window-always-on-top";
     pub const OPTION_DISABLE_CHANGE_PERMANENT_PASSWORD: &str = "disable-change-permanent-password";
     pub const OPTION_DISABLE_CHANGE_ID: &str = "disable-change-id";
-    pub const OPTION_DISABLE_UNLOCK_PIN: &str = "disable-unlock-pin";
 
     // flutter local options
     pub const OPTION_FLUTTER_REMOTE_MENUBAR_STATE: &str = "remoteMenubarState";
@@ -3313,7 +3279,6 @@ pub mod keys {
         OPTION_FILE_TRANSFER_MAX_FILES,
         OPTION_DISABLE_CHANGE_PERMANENT_PASSWORD,
         OPTION_DISABLE_CHANGE_ID,
-        OPTION_DISABLE_UNLOCK_PIN,
         OPTION_USE_RAW_TCP_FOR_API,
         OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW,
         OPTION_ALLOW_COMMAND_LINE_SETTINGS_WHEN_SETTINGS_DISABLED,
@@ -3898,30 +3863,6 @@ mod tests {
             assert_eq!(stored_id, updated_id);
             assert_eq!(Config::get().id, updated_id);
         });
-    }
-
-    #[test]
-    fn test_config2_store_keeps_existing_unlock_pin_when_pin_is_unchanged() {
-        let _guard = CONFIG_STATE_TEST_LOCK.lock().unwrap();
-        let _file_guard = ConfigFileRestoreGuard::new(Config::file_("2"));
-        let pin = "123456";
-        let original_unlock_pin =
-            encrypt_str_or_original(pin, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
-        let mut cfg = Config2 {
-            unlock_pin: original_unlock_pin.clone(),
-            ..Default::default()
-        };
-        Config::store_(&cfg, "2");
-        let (unlock_pin, decrypted, _) =
-            decrypt_str_or_original(&cfg.unlock_pin, PASSWORD_ENC_VERSION);
-        assert!(decrypted);
-        cfg.unlock_pin = unlock_pin;
-        cfg.nat_type = 1;
-
-        cfg.store();
-
-        let stored = Config::load_::<Config2>("2");
-        assert_eq!(stored.unlock_pin, original_unlock_pin);
     }
 
     #[test]

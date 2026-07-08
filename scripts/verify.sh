@@ -111,10 +111,10 @@ echo "== (3b-iv) trust-anchor get_key ignores a stored override (R-A4/R-X4) =="
 # is_option_can_save — `id` (+ set_key_confirmed(false)) and `salt` (set_salt's hashed-pw guard is a
 # no-op — the PRS is the host-key-salted Argon2id hash, not derived from this salt field) — which have NO legit main-channel writer; (c) Data::Socks(Some)
 # (set_socks, the proxy/local-MITM primitive an Options-key allowlist would miss). The legit operator
-# writes (permanent-password / voice-call-input) + reads (value=None) pass. The cross-uid
-# sync uses the peer-uid-gated _service channel. Behavior-tested AND the loop routes through the
-# allowlist before handle() (R-A6 reachability), AND the allowlist is asserted POSITIVE (not a one-arm
-# denylist that would let id/salt/Socks through — the exact "missed sibling" the 5th sweep found).
+# writes (permanent-password / voice-call-input) + reads (value=None) pass. Behavior-tested AND the
+# loop routes through the allowlist before handle() (R-A6 reachability), AND the allowlist is asserted
+# POSITIVE (not a one-arm denylist that would let id/salt/Socks through — the exact "missed sibling"
+# the 5th sweep found).
 echo "== (3b-iii) IPC main-channel config-write positive allowlist (R-S11) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_channel_rejects_whole_config_sync_write --color never
 r_s11=
@@ -131,11 +131,41 @@ grep -q 'Data::Socks(Some(_)) => false' src/ipc.rs                              
 grep -B1 'pub(crate) fn main_channel_admits_config_write' src/ipc.rs | grep -q 'windows' || r_s11="$r_s11 allowlist-fn-not-cfg-windows"
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel config-write allowlist:$r_s11"; rc=1; else
   echo "  ok  R-S11 main-channel config-write POSITIVE allowlist (SyncConfig+id+salt+Socks rejected; legit operator writes pass; gate binds Linux/macOS AND the Windows main pipe)"; fi
+
+# (3b-iii-b) R-S11b-1: Linux/macOS `_service` is a privileged service-control channel, not a
+# root<->user Config/Config2 bus. The world-connectable service socket may keep only narrow liveness
+# traffic here; it MUST NOT accept/return SyncConfig, and stale-socket probing must not read config.
+echo "== (3b-iii-b) IPC _service has no whole-config bus (R-S11b-1) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::service_channel_rejects_config_bus --color never
+r_s11b=
+grep -q 'pub(crate) fn service_channel_admits_message' src/ipc.rs || r_s11b="$r_s11b no-service-message-gate"
+grep -q 'matches!(data, Data::Test)' src/ipc.rs || r_s11b="$r_s11b service-gate-not-test-only"
+service_dispatch_block=$(awk '/service_channel_admits_message\(&data\)/,/continue;/' src/ipc.rs)
+echo "$service_dispatch_block" | grep -q 'service_channel_admits_message(&data)' || r_s11b="$r_s11b service-loop-not-wired"
+if echo "$service_dispatch_block" | grep -q 'Data::SyncConfig'; then
+  r_s11b="$r_s11b service-loop-still-admits-syncconfig"
+fi
+if awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -qE 'Data::SyncConfig\(Some\([^)]*\)\)[[:space:]]*=>'; then
+  r_s11b="$r_s11b whole-config-write-handler-present"
+fi
+if awk '/probe_existing_listener/,/^}/' src/ipc/fs.rs | grep -q 'Data::SyncConfig'; then
+  r_s11b="$r_s11b service-probe-reads-config"
+fi
+grep -q 'stream.send(&Data::Test)' src/ipc/fs.rs                                   || r_s11b="$r_s11b service-probe-not-test-ping"
+if grep -q 'connect_service' src/server.rs; then
+  r_s11b="$r_s11b server-still-connects-service-channel"
+fi
+if grep -qE 'wait_initial_config_sync|sync_and_watch_config_dir|CONFIG_SYNC_(INTERVAL|INITIAL)' src/server.rs; then
+  r_s11b="$r_s11b service-config-sync-loop-present"
+fi
+if [ -n "$r_s11b" ]; then echo "  FAIL R-S11b-1 _service whole-config bus removal:$r_s11b"; rc=1; else
+  echo "  ok  R-S11b-1 _service admits only Data::Test; stale-socket probe uses Test; root/user whole-config sync loop and SyncConfig(Some) write handler are absent"; fi
+
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() — set_socks / set_permanent_password /
-# set_id / set_salt / the whole-config Config::set+Config2::set —
-# MUST each sit in a Data arm that main_channel_admits_config_write DENIES (Socks(Some) / the non-
-# whitelisted Config struct-fields / SyncConfig(Some)). The `_ => true` catch-all would let a NEW
+# set_id / set_salt — MUST each sit in a Data arm that main_channel_admits_config_write DENIES
+# (Socks(Some) / the non-whitelisted Config struct-fields) or explicitly allows as the remaining
+# operator-owned write (permanent-password / voice-call-input). The `_ => true` catch-all would let a NEW
 # bypassing write (a new Data arm) reach Config unguarded on the main channel — the exact regression.
 # set_options is EXCLUDED (it self-filters via is_option_can_save, R-S16); HwCodecConfig::set is a
 # separate hwcodec store (compiled out, R-R2b), excluded by the \b before Config. Pin the count: a new
@@ -145,10 +175,12 @@ hb_cfg_writes=$(awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -cE '\bConfig:
 # rendezvous key_confirmed cluster (the setter no longer exists), 9->8.
 # I-2 (2026-07-07): was 8; T2/b1c243c excised the local unlock-PIN subsystem end-to-end, removing the
 # Config::set_unlock_pin write from handle() (and the --set-unlock-pin CLI arm), so the count is 8->7.
-if [ "$hb_cfg_writes" != "7" ]; then
-  echo "  FAIL R-S11/R-A6: handle() now has $hb_cfg_writes is_option_can_save-bypassing config-writes (expected 7). A config-write was added/removed — ensure any NEW one's Data variant is DENIED by main_channel_admits_config_write (never the _ => true default), then update this count."; rc=1
+# I-3 (2026-07-08): was 7; R-S11b-1 removed the whole-config SyncConfig(Some) receiver write arm,
+# deleting Config::set + Config2::set from handle(), so the count is 7->5.
+if [ "$hb_cfg_writes" != "5" ]; then
+  echo "  FAIL R-S11/R-A6: handle() now has $hb_cfg_writes is_option_can_save-bypassing config-writes (expected 5). A config-write was added/removed — ensure any NEW one's Data variant is DENIED by main_channel_admits_config_write (never the _ => true default), then update this count."; rc=1
 else
-  echo "  ok  R-S11/R-A6 the 7 is_option_can_save-bypassing config-writes in handle() are all gated by main_channel_admits_config_write (Socks(Some)/Config id+salt/SyncConfig(Some) denied; permanent-password explicitly allow-listed as the legit operator write) — none reaches Config via the _ => true default"
+  echo "  ok  R-S11/R-A6 the 5 is_option_can_save-bypassing config-writes in handle() are all gated by main_channel_admits_config_write (Socks(Some)/Config id+salt denied; permanent-password explicitly allow-listed as the legit operator write; whole-config SyncConfig(Some) write arm absent) — none reaches Config via the _ => true default"
 fi
 
 # A2/R-D8: the --password provisioning arm MUST stay install-gated but NOT root-gated. An unprivileged
@@ -183,10 +215,10 @@ echo "== (3c-i) IPC _service path-sharing across uids (R-S11a/R-X13) =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_service_ipc_path_is_shared_across_uids --color never
 
 # (3c-i-b) Permanent-password PRS credential durability (R-S9): config.password (the storage
-# envelope) and config.password_prs (the live CPace PRS) BOTH encode the same 32 PRS bytes, so the
-# service->user config sync — which carries only `storage` — rebuilds password_prs from it. This keeps a
-# synced set/rotate durable: password_prs stays in step with `storage`, so the headless --server reads a
-# live PRS and listens (R-S9) with the current password on restart. This pins the reconstruction:
+# envelope) and config.password_prs (the live CPace PRS) BOTH encode the same 32 PRS bytes, so a
+# credential snapshot carrying only `storage` rebuilds password_prs from it. This keeps a set/rotate
+# durable: password_prs stays in step with `storage`, so the headless --server reads a live PRS and
+# listens (R-S9) with the current password on restart. This pins the reconstruction:
 # base64(decode(storage)) == derive_cpace_prs(password), and the rebuilt at-rest PRS decrypts back to it.
 # Its complement — re-syncing an already-consistent credential is a NO-OP (idempotent, so no needless
 # config rewrite), and the "unchanged" decision compares the DECRYPTED PRS, never the ciphertext bytes

@@ -153,6 +153,35 @@ else
   rc=1
 fi
 
+echo "== (2b-i) R-S11b-1 macOS _service has no whole-config bus =="
+r_s11b=
+grep -q 'pub(crate) fn service_channel_admits_message' "$REPO/src/ipc.rs" || r_s11b="$r_s11b no-service-message-gate"
+grep -q 'matches!(data, Data::Test)' "$REPO/src/ipc.rs" || r_s11b="$r_s11b service-gate-not-test-only"
+service_dispatch_block=$(awk '/service_channel_admits_message\(&data\)/,/continue;/' "$REPO/src/ipc.rs")
+echo "$service_dispatch_block" | grep -q 'service_channel_admits_message(&data)' || r_s11b="$r_s11b service-loop-not-wired"
+if echo "$service_dispatch_block" | grep -q 'Data::SyncConfig'; then
+  r_s11b="$r_s11b service-loop-still-admits-syncconfig"
+fi
+if awk '/^async fn handle\(/,/^}/' "$REPO/src/ipc.rs" | grep -qE 'Data::SyncConfig\(Some\([^)]*\)\)[[:space:]]*=>'; then
+  r_s11b="$r_s11b whole-config-write-handler-present"
+fi
+if awk '/probe_existing_listener/,/^}/' "$REPO/src/ipc/fs.rs" | grep -q 'Data::SyncConfig'; then
+  r_s11b="$r_s11b service-probe-reads-config"
+fi
+grep -q 'stream.send(&Data::Test)' "$REPO/src/ipc/fs.rs" || r_s11b="$r_s11b service-probe-not-test-ping"
+if grep -q 'connect_service' "$REPO/src/server.rs"; then
+  r_s11b="$r_s11b server-still-connects-service-channel"
+fi
+if grep -qE 'wait_initial_config_sync|sync_and_watch_config_dir|CONFIG_SYNC_(INTERVAL|INITIAL)' "$REPO/src/server.rs"; then
+  r_s11b="$r_s11b service-config-sync-loop-present"
+fi
+if [ -n "$r_s11b" ]; then
+  echo "  FAIL R-S11b-1 macOS _service whole-config bus removal:$r_s11b"
+  rc=1
+else
+  note "ok  R-S11b-1 _service admits only Data::Test; service liveness does not read or write Config/Config2"
+fi
+
 # (2c) Appendix C #2b is an ACCEPTED, documented residual: the fork SHOULD (not MUST) sandbox the decode
 # path. Commit 0c54912 deliberately reverted the ENTIRE native-worker decode-sandbox subsystem (the
 # per-codec worker processes + the macOS Seatbelt sandbox file + the Android isolatedProcess services

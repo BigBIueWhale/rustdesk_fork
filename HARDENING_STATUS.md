@@ -9,7 +9,7 @@ history remains the traceability record for that intermediate work.
 
 ## Current Verdict
 
-> ⚠️ **Qualified by live QA (2026-07-06) — see the _Live acceptance-testing regressions_ section below.** Hands-on acceptance testing of the deployed `v1.4.7-hardened.1` prerelease surfaced connection-lifecycle, settings-control, desktop-shutdown, and UI↔excision-coherence regressions this verdict does not yet reflect. The cryptographic / transport core and the direct-IP posture hold; the build is **not release-ready**, and the prerelease is not to be promoted. Investigation in progress — damage-control, not implementation.
+> ⚠️ **Qualified by live QA (2026-07-06) and service-boundary audit (2026-07-08) — see the _Live acceptance-testing regressions_ and _R-S11b/R-S11c service-owned IPC authority_ sections below.** Hands-on acceptance testing of the deployed `v1.4.7-hardened.1` prerelease surfaced connection-lifecycle, settings-control, desktop-shutdown, and UI↔excision-coherence regressions this verdict does not yet reflect. The follow-on IPC audit reclassified service-owned unattended credentials and privileged service actions as a blocking authority-boundary item. The cryptographic / transport core and the direct-IP posture hold; the build is **not release-ready**, and the prerelease is not to be promoted. Investigation in progress — damage-control, not implementation.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
 place and gated.** The single mandatory CPace PAKE runs at the `create_tcp_connection`
@@ -135,6 +135,142 @@ Accepted low-severity residual (no host action/capability): the video-QoS metada
 (`ClientRecordStatus`/`AutoAdjustFps`). Remaining: R-B2 all-3-platform build
 re-prove at this HEAD (a background build loop is handling it; the connection.rs/video_service.rs changes
 are in all builds, and the Windows/Kotlin edges are validated by the win-exe/apk builds).
+
+**R-S11b/R-S11c — service-owned IPC authority — status: OPEN / RELEASE-BLOCKING.**
+The 2026-07-08 service-boundary audit supersedes the earlier narrow "IPC transport is local and
+write-allowlisted" conclusion for installed-service mode. The issue is not socket locality; it is authority
+ownership. In installed mode the unattended password/PRS and machine remote-access policy are owned by the
+root/SYSTEM/LaunchDaemon service because that service will honor them later over the network. Therefore a
+normal user-session IPC config write is the wrong primitive even if it is same-session, same-UID, or
+executable-path matched. The old R-S11 allowlist and R-S11a transport/parent-dir hardening remain useful
+prerequisites; they do not close the service-owned credential/action class.
+
+Tracking rule for this block: every remediation item must name the platform(s), endpoint/message/action,
+privilege boundary, exact attack surface, and closure condition. A fix is not complete until the old path is
+unreachable and a source/test/AST gate prevents reintroduction.
+
+**Completed slices:**
+- **R-S11b-1 — Linux/macOS `_service` whole-config boundary — CLOSED 2026-07-08.** Platforms: Linux installed
+  service and macOS LaunchDaemon/source-conformance path. Endpoint: AF_UNIX `_service` formerly carrying
+  `Data::SyncConfig(None)` and `Data::SyncConfig(Some(_))`, including stale-socket probes that read config.
+  Boundary: active user ↔ root/LaunchDaemon service. Attack surface closed: a local active-user process no
+  longer receives or replaces whole service `Config`/`Config2` over `_service`. Source closure:
+  `src/ipc.rs` admits only `Data::Test` on Linux/macOS `_service` via `service_channel_admits_message`;
+  `src/ipc.rs` deletes the `Data::SyncConfig(Some(_))` receiver write arm; `src/ipc/fs.rs` probes `_service`
+  liveness with `Data::Test`, not config reads; `src/server.rs` deletes
+  `wait_initial_config_sync`/`sync_and_watch_config_dir` and the root↔user service-config watch loop.
+  Verification closure: `scripts/verify.sh` runs `ipc::test::service_channel_rejects_config_bus` and asserts
+  the service loop, stale-socket probe, server startup, and handler do not reintroduce the whole-config bus;
+  `scripts/apple-conform-check.sh` mirrors the source assertions for the macOS conformance path.
+
+**Release-blocking items:**
+- **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,
+  Linux installed service, macOS LaunchDaemon/source path. Android is app-UID/service-owned rather than
+  root/SYSTEM, and non-installed/portable user-mode remains user-owned. Endpoints: `Data::Config` for
+  `permanent-password`, CLI/FFI/UI password setters that reach ordinary IPC, and any `SyncConfig` path that
+  carries password storage/salt. Boundary: user-session process ↔ privileged unattended host. Attack
+  surface: an unprivileged local caller can mint or replace the credential the privileged host later accepts
+  remotely. Closure: normal IPC rejects service-owned password writes in installed mode; add a typed
+  `SetUnattendedPassword` service operation; commit only inside the privileged service after OS admin
+  authorization (Linux polkit; Windows UAC/service-admin proof; macOS Authorization Services/privileged
+  helper); the service derives/stores the PRS itself; tests cover installed vs user-mode behavior.
+- **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
+  installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, but
+  ordinary config writers, whole-config reads/responses, and any reintroduced whole-config import remain in
+  scope; Windows remains high risk because main IPC is same-session. Endpoints: `Data::Config`,
+  `Data::Options`, `Data::Socks`, `Data::SyncConfig`, trusted-device removals,
+  server/direct-listener/RDP/session-sharing policy writers, and any hidden UI/CLI/FFI path that persists
+  controlled-side policy. Boundary: user-session process ↔ privileged host policy. Attack surface: a local
+  caller can alter who can reach the service, how it binds, which trust/identity state it uses, or which
+  hardened policy pins are effective. Closure: privileged service policy writes are typed service actions
+  with receiver-side validation; whole user config is never imported; `Config::set*`, `set_socks`,
+  trust-store writes, identity/salt/key writes, and service-policy writes are not reachable from ordinary IPC
+  except through named approved operations with gates.
+- **R-S11c-1 — Windows main IPC credential write into a SYSTEM/winlogon-launched server.** Platform:
+  Windows installed service. Endpoint: main named pipe `\\.\pipe\<APP>\query` accepting same-session genuine
+  executable peers; action: `Data::Config(("permanent-password", value))`. Boundary: same-session desktop
+  process ↔ service-launched server process. Attack surface: same-session is not machine-admin authority,
+  yet it can change the service-hosted remote credential. Closure: covered by R-S11b-2 and additionally
+  gated on Windows so same-session/same-exe never authorizes service credential mutation; the service
+  validates admin authority before any PRS write.
+- **R-S11c-2 — Windows `_service` caller-supplied session switching.** Platform: Windows multi-session,
+  RDP, fast-user-switching, installed service. Endpoint: `_service` named pipe carrying `Data::UserSid`.
+  Boundary: local caller ↔ SYSTEM service session broker. Attack surface: the legitimate remote path checks
+  policy before sending, but a direct local IPC caller can supply a target session and make the service launch
+  or move the server there. Closure: `_service` rejects raw caller-supplied session IDs; the service itself
+  validates target existence, current session, `share_rdp`/policy, caller authority, and a service-minted
+  capability tied to an authenticated Remote connection; tests cover invalid target, no policy, stale
+  capability, and direct local IPC bypass attempts.
+- **R-S11c-3 — Windows `_service` privileged SAS/HKLM action.** Platform: Windows installed service.
+  Endpoint: `_service` message `Data::SAS` and the handler that may temporarily write HKLM
+  `SoftwareSASGeneration` before sending SAS. Boundary: same-session caller ↔ SYSTEM service. Attack
+  surface: a privileged OS action is exposed as a generic local service command. Closure: remove generic SAS
+  from `_service` or require a service-minted capability tied to an authenticated Remote session and a
+  current control context; direct same-session IPC alone is rejected; tests assert unauthorized local callers
+  cannot reach the HKLM/SAS path.
+- **R-S11c-4 — `_cm` pre-login file authority.** Platforms: Linux, Windows, macOS desktop CM paths; highest
+  severity where CM can run as root/headless/no-console, lower but still wrong as same-user ambient trust.
+  Endpoint: `_cm` IPC accepts `Data::FS` before `Data::Login`. Boundary: local helper client ↔ file-transfer
+  authority. Attack surface: local read/write/delete/rename/digest/file-transfer operations are reachable
+  before connection ownership is proven; if privileged, this becomes local privileged filesystem authority.
+  Closure: reject all `Data::FS` before authenticated connection login/capability; bind CM to a
+  per-connection nonce minted by the owning `Connection`; key file authority to `AuthConnType::FileTransfer`
+  or `Remote` as designed; tests cover pre-login FS rejection and stale/wrong nonce rejection.
+- **R-S11c-5 — macOS privileged service packaging.** Platform: macOS source-conformance and any future macOS
+  artifact. Surfaces: `update.scpt` chowning `/Applications/RustDesk.app` to the active user while
+  `daemon.plist` runs a binary from that bundle as root; daemon `ProgramArguments` using `/bin/sh -c`;
+  daemon logs under predictable `/tmp` paths; privileged install/update shell quoting. Boundary:
+  user-writable app/update flow ↔ root LaunchDaemon. Attack surface: user-writable root-run code path or
+  privileged file/log clobbering. Closure: root-run binaries, plists, support dirs, and logs are root-owned
+  and non-user-writable; update flow never makes the service path user-owned; LaunchDaemon uses direct
+  arguments, not shell; privileged scripts avoid unquoted shell construction; Apple conformance gate checks
+  ownership/mode/path/log invariants.
+
+**Contained hardening items from the same audit:**
+- **R-S11c-6 — Windows named-pipe endpoint hardening.** Platform: Windows desktop. Endpoint:
+  predictable `\\.\pipe\<APP>\query{postfix}` names and broad create permissions for main/`_service`.
+  Boundary: local process ↔ IPC endpoint identity. Attack surface: pipe squatting, spoofing/confusion, or
+  denial of service even where message auth blocks higher impact. Closure: privileged endpoints are created
+  by the service with tight DACLs; clients authenticate/verify the server endpoint where practical; broad
+  `allow_everyone_create` is not used for privileged channels; tests cover pre-creation/squatting.
+- **R-S11c-7 — Linux `_pa` audio helper ambient same-UID trust.** Platform: Linux desktop while `_pa` is
+  running. Endpoint: `_pa` IPC streams PulseAudio/default-monitor frames. Boundary: same-UID local process ↔
+  active audio capture helper. Attack surface: same-UID local audio capture/spoofing outside the owning
+  connection. Closure: require a per-connection capability/nonce tied to the active authorized session; reject
+  arbitrary same-UID clients; test wrong/missing/stale capability.
+- **R-S11c-8 — `_whiteboard` helper ambient same-UID trust.** Platforms: desktop whiteboard helper paths.
+  Endpoint: `_whiteboard` IPC accepts drawing/input events and `Exit`. Boundary: same-UID local process ↔
+  active overlay helper. Attack surface: local spoof/DoS of whiteboard overlay. Closure: require an owning
+  connection capability/nonce; reject arbitrary same-UID clients and stale `Exit`.
+- **R-S11c-9 — Windows URL forwarding via unauthenticated window messages.** Platform: Windows desktop.
+  Endpoint: `WM_COPYDATA` / `WM_USER+2` URL forwarding to an existing UI window. Boundary: local process ↔
+  URL/deep-link dispatcher. Current impact: prompt/DoS only because password/config/import deep-link writes
+  are excised. Closure: keep credential/config authorities rejected; if URL handling ever becomes sensitive,
+  move forwarding to authenticated local IPC or add sender validation; gate to prevent credential/config
+  writes from reappearing behind window messages.
+- **R-S11c-10 — Linux root-context shell interpolation.** Platform: Linux service/helper discovery.
+  Surfaces: root-side env/home/session discovery commands that interpolate UID/process/user fields into shell
+  strings. Boundary: discovered local names/metadata ↔ root shell. Current impact: lower probability than the
+  primary IPC findings because the main spawn path is argv-based and inputs are mostly OS-discovered, but root
+  shell strings are not acceptable. Closure: replace with direct `/proc`, `getpwnam`/`getpwuid`, or argv-only
+  commands; no shell pipeline/string interpolation in root-context helpers.
+- **R-S11b-4 — config secrecy statement after IPC closure.** Platforms: all. Surface: at-rest password/PRS
+  wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
+  accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary
+  and not a substitute for IPC secrecy. Closure condition for this block: no service IPC leaks PRS/key/salt,
+  config files remain owner/root-only, and docs/tests continue to treat PRS/config as remote credentials. Any
+  future stronger storage (TPM/OS keychain) is defense-in-depth, not the cure for the IPC class.
+
+**Checked during this audit and not opened under R-S11b/R-S11c:** Android exported components/service
+surfaces remain contained by manifest/exported-permission shape; iOS has no controlled-side/root IPC surface
+in scope; Unix IPC parent/socket hardening remains a prerequisite and is not the failing layer; FileTransfer
+authorization, file-transfer symlink TOCTOU, port-forward plaintext, decompression amplification,
+OS-login/PAM/LogonUser, deep-link password/config/import, and Windows terminal-helper SYSTEM-shell concerns
+are tracked by their existing requirements/fixes, not reopened here. Dependency advisories remain the
+separate R-R3/Appendix D open item.
+
+Current implementation is **not yet compliant** with this stronger requirement. No release or prerelease
+should be promoted until the release-blocking items above are implemented and gated.
 
 **R-B2 — the reproducible release is produced + published by DEFAULT script runs, no manual step.** The
 whole flow is opinionated + self-validating end to end, so an operator (not an AI agent) produces AND
@@ -746,28 +882,21 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   identity, host-proof, or local pin (R-P5), so those specific items are moot. The audits' core
   findings on the PAKE state machine, two-key cipher, constant-time paths, R-P3 MAC, and Argon2id
   memory-hardness are UNAFFECTED and stand.
-- **Local IPC/CM authorization audit — ✅ PERFORMED 2026-07-01; VERDICT SOUND.** A
-  dedicated adversarial pass over the LOCAL trust boundary (a hostile same-host
-  process — foreign-uid or same-uid) traced the accept→authz→dispatch on every one of
-  the 6 IPC listeners + the CM channel. **No reachable privilege crossing for a
-  non-owner process.** Load-bearing: owner-only channels are 0600 socket + 0700 per-uid
-  parent (`/tmp/<app>-<uid>/`) so a foreign uid is kernel-blocked; the sole
-  world-connectable `_service` (0666) is authorized AT ACCEPT by SO_PEERCRED
-  (`uid==0||active_uid` via a fresh, unspoofable logind seat0 lookup) + `/proc/<pid>/exe`
-  match, and allow-listed to `SyncConfig` only; R-S11/R-S11a parent hardening
-  (`O_NOFOLLOW|O_DIRECTORY`, reject-symlinked-parent, foreign-owned → PermissionDenied or
-  reject-and-recreate-on-fresh-inode never fchown-adopt, fd-relative `unlinkat`) read
-  and confirmed against its tests; the CM `Data::Authorize` auto-accept verdict is gated
-  UPSTREAM by CPace (`is_secured()` required before authorize) + the default-deny
-  whitelist, so a forged Authorize can only accept a peer that already passed CPace
-  (owner-equivalent by design); no secret sits on a world-readable path (config dump
-  behind the uid+exe gate, pid file 0600, password = Argon2id PRS). Two model-consistent
-  DEFENSE-IN-DEPTH observations (NOT foreign-uid crossings): (i) the main owner channel
-  is authenticated by filesystem perms (0600+0700), not SO_PEERCRED — a same-uid
-  non-rustdesk process is admitted, but that is within same-uid==owner authority (all
-  reachable via the owner's own config file); (ii) a local user can win a `/tmp` race to
-  plant a non-emptyable junk dir and make the root `_service` config-sync refuse to
-  start — fail-closed, no escalation, low severity, inherent to the never-adopt design.
+- **Local IPC/CM authorization audit — ⚠️ SUPERSEDED 2026-07-08 by R-S11b/R-S11c.** The
+  2026-07-01 pass remains useful only for its transport facts: owner-only channels are
+  0600 socket + 0700 per-uid parent; the service parent-dir hardening uses
+  `O_NOFOLLOW|O_DIRECTORY`, rejects symlinked/foreign-owned parents, and recreates
+  rather than adopts; pid files are 0600; foreign uid access to owner-only sockets is
+  kernel-blocked. Its conclusion that the local IPC boundary was "sound" is retired.
+  The missed model was authority ownership in installed-service mode: "same UID",
+  "same session", "active uid + executable path", and "only `SyncConfig`" are not
+  sufficient when the receiver is the root/SYSTEM/LaunchDaemon service and the message
+  can read/write connect-equivalent credentials, rewrite service policy, select a
+  privileged target session, invoke SAS/HKLM behavior, or drive pre-login helper file
+  operations. The service-owned credential/action class is now tracked as OPEN under
+  R-S11b/R-S11c above. Any future IPC audit must distinguish transport admission from
+  message authority and must treat the process that enforces a credential/action as
+  the owner of that credential/action.
 - **Protobuf parser attack-surface audit — ✅ PERFORMED 2026-06-29; parser
   SOUND for our threat model.** The `protobuf` crate (rust-protobuf) **v3.7.2**
   (crates.io, `Cargo.lock` checksum

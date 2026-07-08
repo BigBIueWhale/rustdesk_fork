@@ -134,11 +134,12 @@ pub const DIRECT_PORT: i32 = 21118;
 
 #[inline]
 pub fn is_service_ipc_postfix(postfix: &str) -> bool {
-    // `_service` is the protected cross-user IPC channel used by the root service (the user
-    // `--server`/UI process connects to it, so it shares the `_service` IPC parent directory and is
-    // world-connectable, gated by accept-time peer-uid authorization). R-X13 (§8): the `_uinput_*`
-    // cross-uid Wayland-injection channels that also carried this classification are gone with the
-    // uinput module, so `_service` is now the SOLE service postfix.
+    // `_service` is the protected cross-user service-control/status IPC channel used by the root
+    // service. The user process may connect to it, so it shares the `_service` IPC parent directory
+    // and is world-connectable, gated by accept-time peer-uid authorization and a narrow message
+    // allowlist. R-X13 (§8): the `_uinput_*` cross-uid Wayland-injection channels that also carried
+    // this classification are gone with the uinput module, so `_service` is now the SOLE service
+    // postfix.
     postfix == "_service"
 }
 
@@ -1435,7 +1436,7 @@ impl Config {
         (config.password.clone(), config.salt.clone())
     }
 
-    /// Persist permanent password storage and salt from service->user config sync.
+    /// Persist permanent password storage and salt from a daemon credential snapshot.
     pub fn set_permanent_password_storage_for_sync(
         storage: &str,
         salt: &str,
@@ -3321,8 +3322,8 @@ mod tests {
 
     #[test]
     fn sync_rebuilds_password_prs_from_storage() {
-        // R-S9: a service->user config sync carries only (storage, salt), never
-        // password_prs, so the sync rebuilds password_prs from the storage envelope (both encode
+        // R-S9: a credential snapshot may carry only (storage, salt), never
+        // password_prs, so the apply path rebuilds password_prs from the storage envelope (both encode
         // the SAME 32 PRS bytes). This keeps the box listening with a live PRS (R-S9) and
         // authenticating the current password after a restart. This exercises the
         // private sync-apply on a LOCAL Config (no global state), so it is hermetic and parallel-safe.
@@ -3332,7 +3333,7 @@ mod tests {
         let mut config = Config::default();
         assert!(config.password_prs.is_empty(), "a fresh config has no PRS");
 
-        // apply the payload the daemon actually sends over the sync (storage + salt only):
+        // apply the daemon credential snapshot payload (storage + salt only):
         let changed =
             Config::apply_permanent_password_storage_for_sync(&mut config, &storage, salt).unwrap();
         assert!(changed, "a new credential is a change");

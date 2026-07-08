@@ -749,5 +749,4 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
 }
 
 // R-D4: the `CheckIfResendPk` no-op RAII shell (the original resent `register_pk` on a post-config-
-// sync pk change — moot with no registration) is REMOVED with the mediator-shell sweep. Its sole
-// construction site was the macOS-gated `server.rs` wait_initial_config_sync.
+// sync pk change — moot with no registration) is REMOVED with the mediator-shell sweep.

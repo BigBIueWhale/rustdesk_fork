@@ -33,10 +33,10 @@ fn cm_and_data_channels_are_owner_only() {
 
 #[test]
 fn only_service_channel_is_world_connectable() {
-    // 0o0666 (world-connectable): ONLY `_service`, the root-service cross-user channel, by design —
-    // the user `--server`/UI process must reach the root service. R-X13 (§8): the `_uinput_*` Wayland
-    // injection channels that previously shared this classification are gone with the uinput module,
-    // so a `_uinput_*` postfix is now owner-only (asserted below as the regression guard).
+    // 0o0666 (world-connectable): ONLY `_service`, the root-service cross-user status/control channel,
+    // by design. R-X13 (§8): the `_uinput_*` Wayland injection channels that previously shared this
+    // classification are gone with the uinput module, so a `_uinput_*` postfix is now owner-only
+    // (asserted below as the regression guard).
     assert!(is_service_ipc_postfix("_service"));
     assert!(
         !is_service_ipc_postfix("_uinput_keyboard"),

@@ -752,13 +752,10 @@ async fn probe_existing_listener(postfix: &str) -> bool {
     if postfix != crate::POSTFIX_SERVICE {
         return true;
     }
-    if stream.send(&Data::SyncConfig(None)).await.is_err() {
+    if stream.send(&Data::Test).await.is_err() {
         return false;
     }
-    matches!(
-        stream.next_timeout(1000).await,
-        Ok(Some(Data::SyncConfig(Some(_))))
-    )
+    matches!(stream.next_timeout(1000).await, Ok(Some(Data::Test)))
 }
 
 pub(crate) async fn check_pid(postfix: &str) -> bool {

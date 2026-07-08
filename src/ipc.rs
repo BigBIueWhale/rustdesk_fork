@@ -462,18 +462,16 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                     break;
                                 }
                                 Ok(Some(data)) => {
-                                    // On Linux/macOS, the protected `_service` channel is used only for
-                                    // syncing config between root service and the active user process.
-                                    // The SyncConfig allowlist below is intentionally scoped to `_service`
-                                    // (the sole service postfix — R-X13 removed the `_uinput_*` channels with
-                                    // the uinput module), minimizing the exposed message surface here.
+                                    // On Linux/macOS, `_service` is a service-control channel, not a
+                                    // config bus. Keep the world-connectable socket to narrow
+                                    // receiver-authorized messages only.
                                     #[cfg(any(target_os = "linux", target_os = "macos"))]
                                     if postfix == crate::POSTFIX_SERVICE {
-                                        if matches!(&data, Data::SyncConfig(_)) {
+                                        if service_channel_admits_message(&data) {
                                             handle(data, &mut stream).await;
                                         } else {
                                             log::warn!(
-                                                "Rejected non-sync data on protected _service IPC channel: postfix={}, data_kind={:?}, peer_uid={:?}",
+                                                "Rejected unauthorized data on protected _service IPC channel: postfix={}, data_kind={:?}, peer_uid={:?}",
                                                 postfix,
                                                 std::mem::discriminant(&data),
                                                 stream.peer_uid()
@@ -586,8 +584,7 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
                 // NOTE: On Linux/macOS, some IPC sockets are intentionally world-connectable
                 // (0666) so the active (non-root) user process can connect. Authorization is
                 // enforced at accept-time for these channels, and the protected `_service`
-                // channel is further restricted by an explicit message allowlist (SyncConfig
-                // only).
+                // channel is further restricted by an explicit message allowlist.
                 let socket_mode = if config::is_service_ipc_postfix(postfix) {
                     0o0666
                 } else {
@@ -657,14 +654,11 @@ impl Drop for CheckIfRestart {
 }
 
 /// R-S11 / Appendix C #15: the MAIN IPC channel (UI⇄service; on Linux/macOS the 0o0600 same-uid
-/// socket) is a config-integrity boundary. `Data::SyncConfig(Some(_))` drives `Config::set` +
-/// `Config2::set` (config.rs), which overwrite the ENTIRE config with NO is_option_can_save /
-/// pinned-key check — so a same-uid local process could re-pin the trust-anchor key_pair, re-home
-/// id/rendezvous, and undo the §8 excisions + §9 pins from inside. That whole-config PUSH is
-/// legitimate ONLY on the peer-uid-gated `_service` cross-uid channel (the root↔user sync,
-/// server.rs); on the main channel only the `SyncConfig(None)` read-request is legitimate (the
-/// `--server` reads config via it). Reject the whole-config write so the unguarded Config::set is
-/// unreachable from the main-channel handler.
+/// socket) is a config-integrity boundary. `Data::SyncConfig(Some(_))` is a whole-config push that
+/// overwrites the ENTIRE config with NO is_option_can_save / pinned-key check, so it is never a
+/// legitimate main-channel request. Only the `SyncConfig(None)` read-request is legitimate there
+/// (the UI reads the existing `--server` config through it). Keep the request denied at the channel
+/// boundary even though the whole-config receiver write arm has been removed.
 ///
 /// R-S11 also names the Data::Config STRUCT-FIELD sub-keys (salt / id) and
 /// Data::Socks -> set_socks: these bypass is_option_can_save (R-S16) ENTIRELY — they
@@ -681,19 +675,23 @@ impl Drop for CheckIfRestart {
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) fn main_channel_admits_config_write(data: &Data) -> bool {
     match data {
-        // Whole-config push: legitimate ONLY on the peer-uid-gated _service channel; on the main
+        // Whole-config push: no IPC channel may write a whole Config/Config2 object; on the main
         // channel only the SyncConfig(None) read-request is.
         Data::SyncConfig(Some(_)) => false,
         // Struct-field writes: allow only the legit UI/operator keys. value=None is a READ (allowed by
         // the `_` arm); id / salt / any other struct-field name is REJECTED.
-        Data::Config((name, Some(_))) => matches!(
-            name.as_str(),
-            "permanent-password" | "voice-call-input"
-        ),
+        Data::Config((name, Some(_))) => {
+            matches!(name.as_str(), "permanent-password" | "voice-call-input")
+        }
         // set_socks: the proxy / local-MITM primitive an Options-key allowlist would miss.
         Data::Socks(Some(_)) => false,
         _ => true,
     }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn service_channel_admits_message(data: &Data) -> bool {
+    matches!(data, Data::Test)
 }
 
 async fn handle(data: Data, stream: &mut Connection) {
@@ -859,12 +857,8 @@ async fn handle(data: Data, stream: &mut Connection) {
             let t = Config::get_nat_type();
             allow_err!(stream.send(&Data::NatType(Some(t))).await);
         }
-        Data::SyncConfig(Some(configs)) => {
-            let (config, config2) = *configs;
-            let _chk = CheckIfRestart::new();
-            Config::set(config);
-            Config2::set(config2);
-            allow_err!(stream.send(&Data::SyncConfig(None)).await);
+        Data::Test => {
+            allow_err!(stream.send(&Data::Test).await);
         }
         Data::SyncConfig(None) => {
             allow_err!(
@@ -1673,10 +1667,9 @@ mod test {
     }
 
     // R-S11 / Appendix C #15: the MAIN-channel config-write allowlist MUST reject a whole-config
-    // SyncConfig(Some) push (the unguarded Config::set/Config2::set bypass that could re-pin the
-    // trust anchor / undo the §8/§9 pins) while admitting the SyncConfig(None) read-request + the
-    // per-key writes that legitimately stay (Options is pinned at is_option_can_save per R-S16;
-    // Config carries the UI's permanent-password set).
+    // SyncConfig(Some) push while admitting the SyncConfig(None) read-request + the per-key writes that
+    // legitimately stay (Options is pinned at is_option_can_save per R-S16; Config carries the UI's
+    // permanent-password set). The receiver-side whole-config write arm is intentionally absent.
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
     fn main_channel_rejects_whole_config_sync_write() {
@@ -1720,6 +1713,39 @@ mod test {
         assert!(
             main_channel_admits_config_write(&Data::Socks(None)),
             "a Data::Socks read (None) must be allowed"
+        );
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn service_channel_rejects_config_bus() {
+        use hbb_common::config::{Config, Config2};
+
+        assert!(
+            service_channel_admits_message(&Data::Test),
+            "R-S11b-1: _service keeps only the narrow liveness ping"
+        );
+        assert!(
+            !service_channel_admits_message(&Data::SyncConfig(None)),
+            "R-S11b-1: _service must not return whole Config/Config2 as a liveness probe"
+        );
+        assert!(
+            !service_channel_admits_message(&Data::SyncConfig(Some(Box::new((
+                Config::default(),
+                Config2::default()
+            ))))),
+            "R-S11b-1: _service must not import whole Config/Config2 from a user process"
+        );
+        assert!(
+            !service_channel_admits_message(&Data::Options(None)),
+            "R-S11b-1: _service is not an options/config read channel"
+        );
+        assert!(
+            !service_channel_admits_message(&Data::Config((
+                "permanent-password".to_owned(),
+                Some("pw".to_owned())
+            ))),
+            "R-S11b-1: _service does not accept ordinary config-key credential writes"
         );
     }
 

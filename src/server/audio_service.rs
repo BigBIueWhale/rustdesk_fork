@@ -104,10 +104,7 @@ mod pa_impl {
         #[cfg(target_os = "linux")]
         allow_err!(
             stream
-                .send(&crate::ipc::Data::Config((
-                    "audio-input".to_owned(),
-                    Some(super::get_audio_input())
-                )))
+                .send(&crate::ipc::Data::PulseAudioSource(super::get_audio_input()))
                 .await
         );
         #[cfg(target_os = "linux")]

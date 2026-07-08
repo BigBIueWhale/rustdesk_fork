@@ -140,13 +140,13 @@ fn permanent_password_prs_is_memory_hard_hash() {
 
 // R-D6(d)(iii)/R-S11: the fork is direct-only. proxy-url is pinned, and set_socks/get_socks/
 // get_network_type bypass the get_option funnel — so they MUST honor the pin AT THE ACCESSOR.
-// Otherwise a local main-channel IPC write (Data::Socks) installs a proxy: a local-MITM /
-// egress-reroute primitive, and the trigger that flips CheckTestNatType's is_direct to fire a
-// STUN UDP probe (an R-A4 zero-UDP violation). This proves the accessors refuse it.
+// Otherwise the historical local IPC proxy write could install a local-MITM / egress-reroute
+// proxy, and flip CheckTestNatType's is_direct to fire a STUN UDP probe (an R-A4 zero-UDP
+// violation). This proves the accessors refuse it.
 #[test]
 fn socks_is_inert_under_the_proxy_pin() {
     use hbb_common::config::{NetworkType, Socks5Server};
-    // a local Data::Socks write attempts to install an attacker proxy
+    // an attacker proxy write attempts to install a route
     Config::set_socks(Some(Socks5Server {
         proxy: "127.0.0.1:1080".into(),
         ..Default::default()

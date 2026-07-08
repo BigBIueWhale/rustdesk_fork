@@ -107,16 +107,13 @@ echo "== (3b-iv) trust-anchor get_key ignores a stored override (R-A4/R-X4) =="
 
 # (3b-iii) R-S11 / Appendix C #15: the MAIN IPC channel (UI⇄service, 0o0600 same-uid) is a config-
 # integrity boundary. main_channel_admits_state_mutation is a POSITIVE allowlist over mutating
-# arms, rejecting: (a) the Data::Config STRUCT-FIELD writes that bypass
-# is_option_can_save — `id` (+ set_key_confirmed(false)) and `salt` (set_salt's hashed-pw guard is a
-# no-op — the PRS is the host-key-salted Argon2id hash, not derived from this salt field), and the
-# old `permanent-password` key — which have NO legit main-channel writer; (b) Data::Socks(Some)
-# (set_socks, the proxy/local-MITM primitive an Options-key allowlist would miss). The remaining writes
-# are authority-scoped: voice-call-input always, typed user-owned permanent password/options only for user-owned servers.
+# arms. The legacy generic write shapes are absent: no Data::Config((name, Some(value))) for
+# id/salt/permanent-password/voice-call-input, no Data::Socks(Some) proxy mutation, and no generic
+# send_config/set_config helper. Config IPC is request/value only; remaining writes are typed:
+# voice-call-input always, typed user-owned permanent password/options only for user-owned servers.
 # Service-owned servers reject typed user-owned password/options writes and storage/salt sync (R-S11b-2a/R-S11b-3a). Behavior-tested AND the
 # loop routes through the allowlist before handle() (R-A6 reachability), AND the allowlist is asserted
-# POSITIVE (not a one-arm denylist that would let id/salt/Socks through — the exact "missed sibling"
-# the 5th sweep found). Whole-config IPC is not a gated variant: SyncConfig is absent.
+# POSITIVE. Whole-config IPC is not a gated variant: SyncConfig is absent.
 echo "== (3b-iii) IPC main-channel state-mutation positive allowlist (R-S11) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_channel_rejects_untyped_state_mutations --color never
 r_s11=
@@ -132,10 +129,16 @@ grep -q 'canSetUserOwnedPermanentPassword' flutter/lib/desktop/pages/desktop_hom
 grep -q 'canSetUserOwnedPermanentPassword' flutter/lib/desktop/pages/desktop_setting_page.dart || r_s11="$r_s11 settings-password-writability-ui-missing"
 grep -q '"permanent-password" => authority.allows_main_channel_user_owned_password_write()' src/ipc.rs && r_s11="$r_s11 password-still-generic-config-key"
 grep -q '"permanent-password" => authority.allows_main_channel_password_write()' src/ipc.rs && r_s11="$r_s11 password-still-generic-config-key"
-grep -q 'send_config("permanent-password"' src/ipc.rs && r_s11="$r_s11 password-still-sent-as-config-key"
+grep -q 'Data::Config((' src/ipc.rs && r_s11="$r_s11 config-write-shape-present"
+grep -q 'send_config(' src/ipc.rs && r_s11="$r_s11 generic-send-config-present"
+grep -q 'set_config_async' src/ipc.rs && r_s11="$r_s11 generic-set-config-async-present"
+grep -q 'pub async fn set_config' src/ipc.rs && r_s11="$r_s11 generic-set-config-present"
 grep -q 'Data::Options(Some(_)) => authority.allows_main_channel_options_write()' src/ipc.rs || r_s11="$r_s11 options-authority-not-gated"
-grep -q '"voice-call-input" => true' src/ipc.rs                                        || r_s11="$r_s11 voice-input-not-allowlisted"
-grep -q 'Data::Socks(Some(_)) => false' src/ipc.rs                                     || r_s11="$r_s11 socks-not-rejected"
+grep -q 'Data::SetVoiceCallInput(_) => true' src/ipc.rs                                || r_s11="$r_s11 voice-input-typed-arm-missing"
+grep -q 'ConfigRequest(String)' src/ipc.rs                                             || r_s11="$r_s11 config-request-missing"
+grep -q 'ConfigValue((String, Option<String>))' src/ipc.rs                             || r_s11="$r_s11 config-value-missing"
+grep -q 'Socks(Option' src/ipc.rs && r_s11="$r_s11 socks-ipc-variant-present"
+grep -q 'Data::Socks' src/ipc.rs && r_s11="$r_s11 socks-ipc-reference-present"
 # R-S11 binds EVERY shipped artifact, not Linux/macOS alone (Windows .exe/.msi are shipped). The
 # allowlist MUST also guard the Windows main pipe (postfix == ""). Because the linux/macos gate logs
 # stream.peer_uid() (unix-only, SO_PEERCRED), Windows needs its OWN cfg(windows) gate calling the same
@@ -145,7 +148,7 @@ grep -q 'Data::Socks(Some(_)) => false' src/ipc.rs                              
 [ "$(grep -c 'if !main_channel_admits_state_mutation(' src/ipc.rs)" -ge 2 ]            || r_s11="$r_s11 windows-main-pipe-gate-missing"
 grep -B1 'pub(crate) fn main_channel_admits_state_mutation' src/ipc.rs | grep -q 'windows' || r_s11="$r_s11 allowlist-fn-not-cfg-windows"
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel state-mutation allowlist:$r_s11"; rc=1; else
-  echo "  ok  R-S11/R-S11b main-channel state-mutation POSITIVE allowlist (whole-config IPC absent; Config id/salt/permanent-password+Socks rejected; typed user-owned password/options are user-owned only; gate binds Linux/macOS AND the Windows main pipe)"; fi
+  echo "  ok  R-S11/R-S11b main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, and Socks IPC are absent; typed voice/password/options remain scoped; gate binds Linux/macOS AND the Windows main pipe)"; fi
 
 # (3b-iii-b) R-S11b-1: Linux/macOS `_service` is a privileged service-control channel, not a
 # root<->user Config/Config2 bus. The world-connectable service socket may keep only narrow liveness
@@ -184,7 +187,7 @@ if [ -n "$r_s11b" ]; then echo "  FAIL R-S11b-1 _service whole-config bus remova
 
 # (3b-iii-c) R-S11b-2a/R-S11c-1a: service-owned unattended passwords are not ordinary config IPC.
 # Service launch paths mark their --server child; the receiver uses that marker to deny
-# Data::Config("permanent-password"), typed user-owned password writes, whole-config snapshots, and every
+# generic config credential writes, typed user-owned password writes, whole-config snapshots, and every
 # password storage/salt sync over main IPC. The user-owned path remains user-owned, so --password is no longer
 # root-routed through UserMainIpcScope.
 echo "== (3b-iii-c) service-owned permanent password rejects ordinary IPC (R-S11b-2a/R-S11c-1a) =="
@@ -202,7 +205,8 @@ grep -A3 'Data::SetUserOwnedPermanentPassword(_) => {' src/ipc.rs | grep -q 'aut
 grep -q 'Data::SetUserOwnedPermanentPasswordResult(false)' src/ipc.rs                || r_s11b2="$r_s11b2 typed-password-reject-nack-missing"
 grep -q '"permanent-password" => authority.allows_main_channel_user_owned_password_write()' src/ipc.rs && r_s11b2="$r_s11b2 password-still-generic-config-key"
 grep -q '"permanent-password" => authority.allows_main_channel_password_write()' src/ipc.rs && r_s11b2="$r_s11b2 password-still-generic-config-key"
-grep -q 'send_config("permanent-password"' src/ipc.rs && r_s11b2="$r_s11b2 password-still-sent-as-config-key"
+grep -q 'Data::Config((' src/ipc.rs && r_s11b2="$r_s11b2 generic-config-write-shape-present"
+grep -q 'send_config(' src/ipc.rs && r_s11b2="$r_s11b2 generic-send-config-present"
 ipc_main_authority=$(awk '/impl MainIpcAuthority/,/^}/' src/ipc.rs)
 echo "$ipc_main_authority" | grep -B1 'crate::platform::is_root()' | grep -q 'target_os = "windows"' || r_s11b2="$r_s11b2 windows-system-fallback-not-windows-cfg"
 awk '/pub fn is_root\(\)/,/^}/' src/platform/windows.rs | grep -q 'is_local_system'    || r_s11b2="$r_s11b2 windows-root-fallback-not-local-system"
@@ -221,7 +225,7 @@ if echo "$user_scope_fn" | grep -q '"--password"'; then
   r_s11b2="$r_s11b2 password-still-root-routes-to-user-main-ipc"
 fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 service-owned password IPC closure:$r_s11b2"; rc=1; else
-  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config key + typed user-owned password write are denied for service-owned receivers; whole-config IPC is absent; storage/salt sync is denied; --password remains typed user-owned IPC"; fi
+  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; whole-config IPC is absent; storage/salt sync is denied; --password remains typed user-owned IPC"; fi
 
 # (3b-iii-d) R-S11b-3a: service-owned machine policy is not an ordinary Data::Options write.
 # Options writes use a typed daemon ACK/NACK; IPC callers persist only after an accepted ACK and never
@@ -401,10 +405,9 @@ if [ -n "$r_s11c5" ]; then echo "  FAIL R-S11c-5 macOS privileged service packag
   echo "  ok  R-S11c-5 macOS LaunchDaemon is direct-argv; daemon logs are under /Library/Logs/RustDesk; install/update keep root-owned non-user-writable service artifacts"; fi
 
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
-# the is_option_can_save-BYPASSING config writes inside handle() — set_socks / set_permanent_password /
-# set_id / set_salt — MUST each sit in a Data arm that main_channel_admits_state_mutation DENIES
-# (Socks(Some) / the non-whitelisted Config struct-fields) or explicitly allows as a named operation
-# (typed user-owned permanent password / voice-call-input). The `_ => true` catch-all would let a NEW
+# the is_option_can_save-BYPASSING config writes inside handle() are now only the typed
+# user-owned permanent-password operation. set_socks / set_id / set_salt and generic Config writes
+# are absent, not denied. The `_ => true` catch-all would let a NEW
 # bypassing write (a new Data arm) reach Config unguarded on the main channel — the exact regression.
 # set_options is EXCLUDED (it self-filters via is_option_can_save, R-S16); HwCodecConfig::set is a
 # separate hwcodec store (compiled out, R-R2b), excluded by the \b before Config. Pin the count: a new
@@ -416,10 +419,12 @@ hb_cfg_writes=$(awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -cE '\bConfig:
 # Config::set_unlock_pin write from handle() (and the --set-unlock-pin CLI arm), so the count is 8->7.
 # I-3 (2026-07-08): was 7; R-S11b-1 removed the whole-config SyncConfig(Some) receiver write arm,
 # deleting Config::set + Config2::set from handle(), so the count is 7->5.
-if [ "$hb_cfg_writes" != "5" ]; then
-  echo "  FAIL R-S11/R-A6: handle() now has $hb_cfg_writes is_option_can_save-bypassing config-writes (expected 5). A config-write was added/removed — ensure any NEW one's Data variant is DENIED by main_channel_admits_state_mutation (never the _ => true default), then update this count."; rc=1
+# I-4 (2026-07-09): was 5; R-S11b-3c deleted Data::Socks and the generic Data::Config write arm,
+# removing Config::set_socks, Config::set_id, and Config::set_salt from handle(), so the count is 5->1.
+if [ "$hb_cfg_writes" != "1" ]; then
+  echo "  FAIL R-S11/R-A6: handle() now has $hb_cfg_writes is_option_can_save-bypassing config-writes (expected 1). A config-write was added/removed — make it a typed operation with explicit authority or keep it outside IPC, then update this count."; rc=1
 else
-  echo "  ok  R-S11/R-A6 the 5 is_option_can_save-bypassing config-writes in handle() are all gated by main_channel_admits_state_mutation (Socks(Some)/Config id+salt/permanent-password denied; typed permanent-password user-owned only; whole-config IPC variant absent) — none reaches Config via the _ => true default"
+  echo "  ok  R-S11/R-A6 handle() has only the typed user-owned permanent-password config write; generic Config writes, Socks IPC, and whole-config IPC are absent"
 fi
 
 # R-D8: the --password CLI remains a typed user-owned headless automation path, but path/root checks are not
@@ -1520,8 +1525,8 @@ ra6_clean 'post_conn_audit|post_alarm_audit|post_file_audit' 'R-D6 audit phone-h
 # the get_option funnel (they read the structured CONFIG2.socks field), so the PINNED_SETTINGS proxy-url
 # pin does not reach them — the inherited guard only checked the RustDesk-SIGNED OVERWRITE_SETTINGS, which
 # is EMPTY on a fork, leaving set_socks LIVE. The fork makes each accessor consult the proxy-url pin
-# DIRECTLY (pinned_setting), so a local main-channel IPC Data::Socks write cannot install a proxy (a
-# local-MITM / egress-reroute primitive, and the trigger that flips CheckTestNatType's is_direct to fire
+# DIRECTLY (pinned_setting), so the historical local IPC proxy write cannot install a proxy (a
+# local-MITM / egress-reroute primitive, or trigger CheckTestNatType's is_direct to fire
 # a STUN UDP probe). Behavior is proven by config_it (socks_is_inert_under_the_proxy_pin); this is belt.
 r_d6socks_n=$(grep -c 'pinned_setting(keys::OPTION_PROXY_URL).is_some()' libs/hbb_common/src/config.rs 2>/dev/null || echo 0)
 if [ "${r_d6socks_n:-0}" -ge 3 ]; then
@@ -2533,8 +2538,7 @@ fi
 # R-D5 / R-SV4 / R-G1: config-option keys + an IPC vestige orphaned by the UDP / webrtc / WebSocket
 # excisions are REMOVED, not just left unread — OPTION_DISABLE_UDP (the UDP transport is gone) +
 # OPTION_ICE_SERVERS (its only reader was the now-deleted webrtc.rs get_ice_servers) const keys and
-# their KEYS_SETTINGS entries, plus the dead Data::SocksWs proxy-IPC path (get_socks_ws had zero
-# callers; the live proxy getter is Data::Socks). "removed not disabled" (§8/R-G4).
+# their KEYS_SETTINGS entries, plus the dead proxy-IPC paths. "removed not disabled" (§8/R-G4).
 r_deadopt=
 grep -qE 'OPTION_DISABLE_UDP|OPTION_ICE_SERVERS' libs/hbb_common/src/config.rs && r_deadopt="$r_deadopt config-dead-option-key"
 grep -qE 'SocksWs|get_socks_ws' src/ipc.rs && r_deadopt="$r_deadopt socksws-ipc-vestige"

@@ -453,8 +453,8 @@ pub fn install_options() -> String {
 
 // R-D6 (Tier-4): the app-layer socks/proxy get/set wrappers (+ their `ipc::*socks*` query shims and
 // the `main_get_proxy_status` FFI) are excised — there is no proxy-settings UI to drive them (the
-// proxy URL is lockdown-pinned inert). The `Config::get_socks` storage + the connect-path actuator
-// (socket_client) + the R-S11 `Data::Socks` main-channel-write rejection stay as a tested boundary.
+// proxy URL is lockdown-pinned inert). The `Config::get_socks` storage remains inert at the accessor;
+// the old proxy IPC message and handler are gone.
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[inline]
@@ -1029,7 +1029,7 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                                 *OPTIONS.lock().unwrap() = v;
                                 *OPTION_SYNCED.lock().unwrap() = true;
                             }
-                            Ok(Some(ipc::Data::Config((name, Some(value))))) => {
+                            Ok(Some(ipc::Data::ConfigValue((name, Some(value))))) => {
                                 if name == "id" {
                                     #[cfg(not(feature = "flutter"))]
                                     {
@@ -1060,7 +1060,7 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                     }
                     _ = timer.tick() => {
                         c.send(&ipc::Data::Options(None)).await.ok();
-                        c.send(&ipc::Data::Config(("id".to_owned(), None))).await.ok();
+                        c.send(&ipc::Data::ConfigRequest("id".to_owned())).await.ok();
                         #[cfg(target_os = "windows")]
                         c.send(&ipc::Data::FileTransferEnabledState(None)).await.ok();
                     }

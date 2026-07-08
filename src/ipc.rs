@@ -328,14 +328,17 @@ pub enum Data {
     SystemInfo(Option<String>),
     ClickTime(i64),
     Close,
-    Config((String, Option<String>)),
+    ConfigRequest(String),
+    ConfigValue((String, Option<String>)),
     Options(Option<HashMap<String, String>>),
     OptionsSetResult(bool),
+    SetVoiceCallInput(String),
     SetUserOwnedPermanentPassword(String),
     SetUserOwnedPermanentPasswordResult(bool),
     NatType(Option<i32>),
     RawMessage(Vec<u8>),
-    Socks(Option<config::Socks5Server>),
+    #[cfg(target_os = "linux")]
+    PulseAudioSource(String),
     FS(FS),
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     AuthorizedFS {
@@ -542,14 +545,12 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                     // R-S11: the SAME per-arm state-mutation allowlist binds the WINDOWS
                                     // main pipe (postfix == ""; the only postfix `start()` is ever called
                                     // with on Windows). Windows has no `_service` channel and no
-                                    // SO_PEERCRED peer_uid, but the same Data variants (id/salt
-                                    // struct-field writes, Socks(Some) proxy)
-                                    // MUST be rejected here so that even a same-session, same-executable
+                                    // SO_PEERCRED peer_uid, but the same named mutation policy MUST
+                                    // be enforced here so that even a same-session, same-executable
                                     // process (already the only peer admitted by
-                                    // authorize_windows_main_ipc_connection) cannot re-pin the host
-                                    // key_pair / id / salt or install a local proxy from inside — the
-                                    // config-integrity boundary R-S11 mandates "per write-arm", on every
-                                    // shipped artifact, not Linux/macOS alone.
+                                    // authorize_windows_main_ipc_connection) cannot mutate privileged
+                                    // state from inside — the config-integrity boundary R-S11 mandates
+                                    // "per write-arm", on every shipped artifact, not Linux/macOS alone.
                                     #[cfg(target_os = "windows")]
                                     if !main_channel_admits_state_mutation(
                                         &data,
@@ -782,19 +783,13 @@ fn current_process_allows_main_channel_permanent_password_storage_sync() -> bool
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) fn main_channel_admits_state_mutation(data: &Data, authority: MainIpcAuthority) -> bool {
     match data {
-        // Struct-field writes: allow only the remaining legitimate operator-owned keys.
-        Data::Config((name, Some(_))) => match name.as_str() {
-            "voice-call-input" => true,
-            _ => false,
-        },
+        Data::SetVoiceCallInput(_) => true,
         Data::SetUserOwnedPermanentPassword(_) => {
             authority.allows_main_channel_user_owned_password_write()
         }
         // Whole-options writes are ordinary user-owned configuration writes. A service-owned server
         // enforces machine policy and must not accept them over the generic main IPC config bus.
         Data::Options(Some(_)) => authority.allows_main_channel_options_write(),
-        // set_socks: the proxy / local-MITM primitive an Options-key allowlist would miss.
-        Data::Socks(Some(_)) => false,
         _ => true,
     }
 }
@@ -875,23 +870,6 @@ async fn handle(data: Data, stream: &mut Connection) {
                 std::process::exit(-1); // to make sure --server luauchagent process can restart because SuccessfulExit used
             }
         }
-        Data::Socks(s) => match s {
-            None => {
-                allow_err!(stream.send(&Data::Socks(Config::get_socks())).await);
-            }
-            Some(data) => {
-                // R-A6/R-S11: the CheckTestNatType Drop guard (which fired test_nat_type — a NAT/STUN
-                // probe — when is_direct flipped) is REMOVED from the service IPC handler. set_socks is
-                // now inert (R-D6(d)(iii)), so is_direct is constant and the guard was already dead; this
-                // structurally severs the service-entry -> test_nat_type Drop reach R-A6 wants severed.
-                if data.proxy.is_empty() {
-                    Config::set_socks(None);
-                } else {
-                    Config::set_socks(Some(data));
-                }
-                log::info!("socks updated");
-            }
-        },
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         Data::ValidateCmConnection {
             id,
@@ -914,87 +892,73 @@ async fn handle(data: Data, stream: &mut Connection) {
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         Data::ValidateCmConnection { .. } => {}
-        Data::Config((name, value)) => match value {
-            None => {
-                let value;
-                if name == "id" {
-                    value = Some(Config::get_id());
-                } else if name == "permanent-password-storage-and-salt" {
-                    if current_process_allows_main_channel_permanent_password_storage_sync() {
-                        let (storage, salt) =
-                            Config::get_local_permanent_password_storage_and_salt();
-                        value = Some(storage + "\n" + &salt);
-                    } else {
-                        log::warn!(
-                            "Rejected permanent password storage sync from service-owned server"
-                        );
-                        value = None;
-                    }
-                } else if name == "permanent-password-set" {
-                    value = Some(if Config::has_permanent_password() {
-                        "Y".to_owned()
-                    } else {
-                        "N".to_owned()
-                    });
-                } else if name == "permanent-password-is-preset" {
-                    value = Some(if Config::is_using_preset_password() {
-                        "Y".to_owned()
-                    } else {
-                        "N".to_owned()
-                    });
-                } else if name == "permanent-password-user-owned-writable" {
-                    value = Some(
-                        if current_process_allows_user_owned_permanent_password_write()
-                            && !Config::is_disable_change_permanent_password()
-                        {
-                            "Y".to_owned()
-                        } else {
-                            "N".to_owned()
-                        },
+        Data::ConfigRequest(name) => {
+            let value = if name == "id" {
+                Some(Config::get_id())
+            } else if name == "permanent-password-storage-and-salt" {
+                if current_process_allows_main_channel_permanent_password_storage_sync() {
+                    let (storage, salt) = Config::get_local_permanent_password_storage_and_salt();
+                    Some(storage + "\n" + &salt)
+                } else {
+                    log::warn!(
+                        "Rejected permanent password storage sync from service-owned server"
                     );
-                } else if name == "salt" {
-                    if current_process_allows_main_channel_permanent_password_storage_sync() {
-                        value = Some(Config::get_salt());
-                    } else {
-                        log::warn!(
-                            "Rejected permanent password salt sync from service-owned server"
-                        );
-                        value = None;
-                    }
-                } else if name == "hide_cm" {
-                    value = if crate::common::is_custom_client() {
-                        Some(hbb_common::password_security::hide_cm().to_string())
-                    } else {
-                        None
-                    };
-                } else if name == "voice-call-input" {
-                    value = crate::audio_service::get_voice_call_input_device();
-                } else if name == "direct-listener-bound" {
-                    // T1 / BR-4 (verify-ground-truth): answer the GUI's cross-process query for the
-                    // REAL direct-listener state. This handler runs in the process that hosts the
-                    // main "" IPC channel AND binds :21118 (the `--server`, server.rs), so the atomic
-                    // read here is the true socket state (bound / R-S9-parked / rebinding). The
-                    // desktop GUI is a SEPARATE process whose own atomic is always false, hence this
-                    // read-only IPC GET (mirrors how `permanent-password-set` is queried above).
-                    value = Some(crate::direct_service::is_direct_listener_bound().to_string());
-                } else {
-                    value = None;
+                    None
                 }
-                allow_err!(stream.send(&Data::Config((name, value))).await);
-            }
-            Some(value) => {
-                if name == "id" {
-                    Config::set_id(&value);
-                } else if name == "salt" {
-                    Config::set_salt(&value);
-                } else if name == "voice-call-input" {
-                    crate::audio_service::set_voice_call_input_device(Some(value), true);
+            } else if name == "permanent-password-set" {
+                Some(if Config::has_permanent_password() {
+                    "Y".to_owned()
                 } else {
-                    return;
+                    "N".to_owned()
+                })
+            } else if name == "permanent-password-is-preset" {
+                Some(if Config::is_using_preset_password() {
+                    "Y".to_owned()
+                } else {
+                    "N".to_owned()
+                })
+            } else if name == "permanent-password-user-owned-writable" {
+                Some(
+                    if current_process_allows_user_owned_permanent_password_write()
+                        && !Config::is_disable_change_permanent_password()
+                    {
+                        "Y".to_owned()
+                    } else {
+                        "N".to_owned()
+                    },
+                )
+            } else if name == "salt" {
+                if current_process_allows_main_channel_permanent_password_storage_sync() {
+                    Some(Config::get_salt())
+                } else {
+                    log::warn!("Rejected permanent password salt sync from service-owned server");
+                    None
                 }
-                log::info!("{} updated", name);
-            }
-        },
+            } else if name == "hide_cm" {
+                if crate::common::is_custom_client() {
+                    Some(hbb_common::password_security::hide_cm().to_string())
+                } else {
+                    None
+                }
+            } else if name == "voice-call-input" {
+                crate::audio_service::get_voice_call_input_device()
+            } else if name == "direct-listener-bound" {
+                // T1 / BR-4 (verify-ground-truth): answer the GUI's cross-process query for the
+                // REAL direct-listener state. This handler runs in the process that hosts the
+                // main "" IPC channel AND binds :21118 (the `--server`, server.rs), so the atomic
+                // read here is the true socket state (bound / R-S9-parked / rebinding). The
+                // desktop GUI is a SEPARATE process whose own atomic is always false, hence this
+                // read-only IPC GET (mirrors how `permanent-password-set` is queried above).
+                Some(crate::direct_service::is_direct_listener_bound().to_string())
+            } else {
+                None
+            };
+            allow_err!(stream.send(&Data::ConfigValue((name, value))).await);
+        }
+        Data::SetVoiceCallInput(value) => {
+            crate::audio_service::set_voice_call_input_device(Some(value), true);
+            log::info!("voice-call-input updated");
+        }
         Data::SetUserOwnedPermanentPassword(value) => {
             let accepted = current_process_allows_user_owned_permanent_password_write()
                 && !Config::is_disable_change_permanent_password()
@@ -1289,7 +1253,7 @@ pub async fn start_pa() {
                         Ok(stream) => {
                             let mut stream = Connection::new(stream);
                             let mut device: String = "".to_owned();
-                            if let Some(Ok(Some(Data::Config((_, Some(x)))))) =
+                            if let Some(Ok(Some(Data::PulseAudioSource(x)))) =
                                 stream.next_timeout2(1000).await
                             {
                                 device = x;
@@ -1375,11 +1339,6 @@ where
         Ok(())
     }
 
-    async fn send_config(&mut self, name: &str, value: String) -> ResultType<()> {
-        self.send(&Data::Config((name.to_owned(), Some(value))))
-            .await
-    }
-
     pub async fn next_timeout(&mut self, ms_timeout: u64) -> ResultType<Option<Data>> {
         Ok(timeout(ms_timeout, self.next()).await??)
     }
@@ -1431,8 +1390,8 @@ pub async fn get_config(name: &str) -> ResultType<Option<String>> {
 
 async fn get_config_async(name: &str, ms_timeout: u64) -> ResultType<Option<String>> {
     let mut c = connect(ms_timeout, "").await?;
-    c.send(&Data::Config((name.to_owned(), None))).await?;
-    if let Some(Data::Config((name2, value))) = c.next_timeout(ms_timeout).await? {
+    c.send(&Data::ConfigRequest(name.to_owned())).await?;
+    if let Some(Data::ConfigValue((name2, value))) = c.next_timeout(ms_timeout).await? {
         if name == name2 {
             return Ok(value);
         }
@@ -1440,9 +1399,9 @@ async fn get_config_async(name: &str, ms_timeout: u64) -> ResultType<Option<Stri
     return Ok(None);
 }
 
-pub async fn set_config_async(name: &str, value: String) -> ResultType<()> {
+async fn set_voice_call_input_device_async(value: String) -> ResultType<()> {
     let mut c = connect(1000, "").await?;
-    c.send_config(name, value).await?;
+    c.send(&Data::SetVoiceCallInput(value)).await?;
     Ok(())
 }
 
@@ -1458,8 +1417,8 @@ async fn set_data_async(data: &Data) -> ResultType<()> {
 }
 
 #[tokio::main(flavor = "current_thread")]
-pub async fn set_config(name: &str, value: String) -> ResultType<()> {
-    set_config_async(name, value).await
+pub async fn set_voice_call_input_device(value: String) -> ResultType<()> {
+    set_voice_call_input_device_async(value).await
 }
 
 fn apply_permanent_password_storage_and_salt_payload(payload: Option<&str>) -> ResultType<()> {
@@ -1660,10 +1619,9 @@ pub async fn get_nat_type(ms_timeout: u64) -> i32 {
         .unwrap_or(Config::get_nat_type())
 }
 
-// R-D6 (Tier-4): the IPC socks CLIENT query wrappers (get_socks_/get_socks_async/get_socks/set_socks
-// — which sent `Data::Socks` to the service and read it back) are excised with the proxy-settings UI.
-// The service-side `Data::Socks` HANDLER arm + the R-S11 main-channel-write rejection guard + the
-// `Config` storage stay (the tested proxy-write security boundary).
+// R-D6 (Tier-4): the IPC socks CLIENT query wrappers (get_socks_/get_socks_async/get_socks/set_socks)
+// and the service-side proxy handler are excised with the proxy-settings UI. The `Config` storage
+// remains inert under the direct-only proxy pin.
 
 // R-SV6(c)/R-D4: `notify_deployed()` (sent `Data::Deployed`) is removed with the deploy excision —
 // device deployment is gone (deploy_device is a refuse-stub), so there was no caller and no arm to
@@ -1911,21 +1869,25 @@ mod test {
             ),
             "R-S11b-3: service-owned machine policy MUST NOT be changed over ordinary options IPC"
         );
-        // R-S11 (Appendix C #15): the Data::Config STRUCT-FIELD writes bypass is_option_can_save — the
-        // identity (id), credential marker (salt), and old permanent-password key have NO legitimate
-        // main-channel writer and MUST be rejected; a value=None is a READ and stays.
-        let cfg = |n: &str, v: Option<&str>| Data::Config((n.to_owned(), v.map(|s| s.to_owned())));
+        // R-S11 (Appendix C #15): the legacy Data::Config write shape is deleted. Config IPC is
+        // request/value only; legitimate mutations use named operations.
         assert!(
-            !main_channel_admits_state_mutation(&cfg("id", Some("evil-id")), user_owned),
-            "R-S11: a Data::Config id write (rewrites device identity) MUST be rejected"
+            main_channel_admits_state_mutation(&Data::ConfigRequest("id".to_owned()), user_owned),
+            "a ConfigRequest id read must be allowed"
         );
         assert!(
-            !main_channel_admits_state_mutation(&cfg("salt", Some("evil-salt")), user_owned),
-            "R-S11: a Data::Config salt write (set_salt's guard is a no-op — the PRS is the memory-hard Argon2id hash, not derived from this salt field) MUST be rejected"
+            main_channel_admits_state_mutation(
+                &Data::SetVoiceCallInput("mic".to_owned()),
+                user_owned
+            ),
+            "voice-call-input stays as a typed non-config local operation"
         );
         assert!(
-            !main_channel_admits_state_mutation(&cfg("permanent-password", Some("pw")), user_owned),
-            "R-S11b-2: permanent-password is not a generic Data::Config key"
+            main_channel_admits_state_mutation(
+                &Data::ConfigValue(("id".to_owned(), Some("value".to_owned()))),
+                user_owned
+            ),
+            "a ConfigValue response is not a write operation"
         );
         assert!(
             main_channel_admits_state_mutation(
@@ -1933,13 +1895,6 @@ mod test {
                 user_owned
             ),
             "the typed user-owned permanent-password operation stays legitimate"
-        );
-        assert!(
-            !main_channel_admits_state_mutation(
-                &cfg("permanent-password", Some("pw")),
-                service_owned
-            ),
-            "R-S11b-2: a service-owned unattended password MUST NOT be set over ordinary IPC"
         );
         assert!(
             !main_channel_admits_state_mutation(
@@ -1952,23 +1907,6 @@ mod test {
         assert!(
             !MainIpcAuthority::ServiceOwned.allows_main_channel_password_storage_sync(),
             "R-S11b-2: service-owned password storage/salt snapshots MUST NOT sync over ordinary IPC"
-        );
-        assert!(
-            main_channel_admits_state_mutation(&cfg("id", None), user_owned),
-            "a Data::Config id READ (value=None) must be allowed"
-        );
-        // R-S11: the proxy / local-MITM primitive (set_socks) is rejected at the channel (already inert
-        // under the pinned proxy-url, but defense-in-depth at the boundary).
-        assert!(
-            !main_channel_admits_state_mutation(
-                &Data::Socks(Some(hbb_common::config::Socks5Server::default())),
-                user_owned
-            ),
-            "R-S11: a Data::Socks(Some) write MUST be rejected on the main channel"
-        );
-        assert!(
-            main_channel_admits_state_mutation(&Data::Socks(None), user_owned),
-            "a Data::Socks read (None) must be allowed"
         );
     }
 
@@ -1984,11 +1922,12 @@ mod test {
             "R-S11b-1: _service is not an options/config read channel"
         );
         assert!(
-            !service_channel_admits_message(&Data::Config((
-                "permanent-password".to_owned(),
-                Some("pw".to_owned())
-            ))),
-            "R-S11b-1: _service does not accept ordinary config-key credential writes"
+            !service_channel_admits_message(&Data::ConfigRequest("permanent-password".to_owned())),
+            "R-S11b-1: _service is not a config read channel"
+        );
+        assert!(
+            !service_channel_admits_message(&Data::SetVoiceCallInput("mic".to_owned())),
+            "R-S11b-1: _service does not accept typed main-channel mutations"
         );
         assert!(
             !service_channel_admits_message(&Data::SetUserOwnedPermanentPassword("pw".to_owned())),

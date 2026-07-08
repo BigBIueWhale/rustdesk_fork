@@ -1602,8 +1602,8 @@ impl Config {
         // R-D6(d)(iii)/R-S11: the fork is direct-only (no proxy). proxy-url is pinned empty in
         // PINNED_SETTINGS, but set_socks bypasses the `get_option` funnel and the inherited guard
         // only checks the RustDesk-SIGNED `OVERWRITE_SETTINGS` (empty on a fork) — so it MUST honor
-        // the pin DIRECTLY here, else a local main-channel IPC write (Data::Socks) could set a
-        // proxy: a local-MITM / egress-reroute primitive, and the trigger that flips
+        // the pin DIRECTLY here; the historical local IPC proxy write would otherwise have set a
+        // proxy as a local-MITM / egress-reroute primitive, and the trigger that flips
         // CheckTestNatType's `is_direct` to fire a STUN probe (an R-A4 zero-UDP violation). Inert
         // whenever proxy-url is pinned (always, on a fork build).
         if pinned_setting(keys::OPTION_PROXY_URL).is_some() {

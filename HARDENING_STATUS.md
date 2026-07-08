@@ -165,9 +165,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `scripts/apple-conform-check.sh` mirrors the source assertions for the macOS conformance path.
 - **R-S11b-2a/R-S11c-1a — service-marked server rejects ordinary password IPC — CLOSED 2026-07-08.**
   Platforms: Windows installed service-launched `--server`, Linux root-service-launched root or active-user
-  `--server`, and macOS LaunchAgent `--server` source path. Endpoint/action: main IPC
-  `Data::Config(("permanent-password", Some(_)))` and `Data::Config(("permanent-password-storage-and-salt",
-  None))`. Boundary: user-owned IPC caller ↔ service-owned unattended credential. Attack surface closed:
+  `--server`, and macOS LaunchAgent `--server` source path. Endpoint/action: historical main IPC
+  generic config credential writes and password storage/salt read snapshots. Boundary: user-owned IPC caller ↔
+  service-owned unattended credential. Attack surface closed:
   the service-launched server is marked with `--service-owned-server`; `src/ipc.rs` classifies that receiver
   as `MainIpcAuthority::ServiceOwned` (with a Windows LocalSystem fallback); main-channel allowlisting rejects
   ordinary password writes and returns an explicit NACK; the handler also rejects password writes and refuses
@@ -182,12 +182,11 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Platforms: Linux, Windows, and macOS desktop main IPC; Android/iOS remain app-owned in-process paths rather
   than installed desktop service boundaries. Endpoint/action: `Data::SetUserOwnedPermanentPassword(String)` and
   `Data::SetUserOwnedPermanentPasswordResult(bool)` replace the old in-tree
-  `Data::Config(("permanent-password", Some(_)))` writer; `permanent-password-user-owned-writable` is a
+  generic permanent-password config writer; `permanent-password-user-owned-writable` is a
   read-only receiver capability query. Boundary: user-owned daemon credential state vs installed-service
   unattended credential state. Attack surface closed: CLI, FFI, and Flutter desktop password setters no longer
-  send the permanent password as a generic config-key mutation; the main-channel state-mutation allowlist rejects
-  `Data::Config(("permanent-password", Some(_)))` for both user-owned and service-owned receivers; service-owned
-  receivers reject and NACK the typed user-owned operation; desktop UI exposes the password setter only when the
+  send the permanent password as a generic config-key mutation; the generic config write shape is absent;
+  service-owned receivers reject and NACK the typed user-owned operation; desktop UI exposes the password setter only when the
   receiver advertises user-owned writability. Changing or removing a password does not prove knowledge of the
   old RustDesk password; authority is daemon ownership now, and OS-admin authorization for future service-owned
   provisioning. Verification closure: `scripts/verify.sh` runs
@@ -221,6 +220,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   absent from `src/ipc.rs`, absent from `src/server.rs`, and absent from `_service` stale-socket probing; the
   main-channel unit test now covers the remaining untyped state mutations instead of accepting a whole-config
   read path.
+- **R-S11b-3c — generic config/proxy IPC write shape deleted — CLOSED 2026-07-09.** Platforms: Linux,
+  Windows, and macOS desktop main IPC; Linux `_pa` helper bootstrap. Endpoint/action: historical generic
+  config write tuple, proxy IPC variant, generic `send_config`/`set_config` helpers, and the `_pa` audio-source
+  bootstrap that reused the generic config write payload. Boundary: same-session IPC caller ↔ daemon identity,
+  salt, proxy, and local operator preference state. Attack surface closed: config IPC is request/value only
+  (`ConfigRequest`/`ConfigValue`); the handler has no `Config::set_id`, `Config::set_salt`, or
+  `Config::set_socks` reach; voice-call input is the typed `SetVoiceCallInput` operation; `_pa` receives a
+  typed `PulseAudioSource`; and the proxy IPC variant is absent rather than denied. Verification closure:
+  `scripts/verify.sh` runs the main-channel mutation test, asserts absence of the legacy generic config write
+  shape, generic config helpers, and proxy IPC variant, and pins the handler's
+  `is_option_can_save`-bypassing config-write count to the single typed user-owned password operation;
+  `scripts/apple-conform-check.sh` mirrors the source absence assertions for macOS.
 - **R-S11c-2a/R-S11c-3a — Windows `_service` raw session/SAS commands removed — CLOSED 2026-07-08.**
   Platform: Windows installed service. Endpoint/action: `_service` named pipe messages formerly carrying
   `Data::UserSid(Some(_))` for service-owned session switching and `Data::SAS` for SYSTEM-mediated
@@ -275,11 +286,11 @@ unreachable and a source/test/AST gate prevents reintroduction.
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,
   Linux installed service, macOS LaunchDaemon/source path. Android is app-UID/service-owned rather than
   root/SYSTEM, and non-installed/portable user-mode remains user-owned. Endpoints: any service-owned password
-  provisioning operation, historical `Data::Config` for `permanent-password`, CLI/FFI/UI password setters, and
+  provisioning operation, historical generic config permanent-password writes, CLI/FFI/UI password setters, and
   any whole-config IPC path that carries password storage/salt. Boundary: user-session process ↔ privileged
   unattended host. Attack surface: any unprivileged local caller path that can mint or replace the credential
   the privileged host later accepts remotely. Current state: the ordinary IPC password config-key write is absent
-  from in-tree setters and rejected for every receiver by R-S11b-2b/R-S11c-1b; typed user-owned password writes
+  from the data model and in-tree setters after R-S11b-2b/R-S11c-1b and R-S11b-3c; typed user-owned password writes
   are accepted only by user-owned receivers; service-marked receivers reject typed user-owned writes, the
   whole-config IPC variant is absent, and standalone salt read/storage-salt sync are denied by
   R-S11b-2a/R-S11c-1a. User-owned `--server` paths remain
@@ -290,21 +301,21 @@ unreachable and a source/test/AST gate prevents reintroduction.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows
-  remains high risk because main IPC is same-session. Endpoints: `Data::Config`,
-  `Data::Options`, `Data::Socks`, trusted-device removals,
+  remains high risk because main IPC is same-session. Endpoints: `Data::Options`, trusted-device removals,
   server/direct-listener/RDP/session-sharing policy writers, and any hidden UI/CLI/FFI path that persists
   controlled-side policy. Boundary: user-session process ↔ privileged host policy. Attack surface: a local
   caller can alter who can reach the service, how it binds, which trust/identity state it uses, or which
   hardened policy pins are effective. Current state: ordinary whole-options IPC writes are closed for
   service-marked servers by R-S11b-3a, including typed daemon ACK/NACK and no local persistence fallback inside
   the IPC helper; user-owned `--server` option writes remain user-owned; whole user config is never imported
-  over IPC after R-S11b-3b. Remaining closure: privileged service policy writes are typed service actions with
-  receiver-side validation; `Config::set*`, `set_socks`, trust-store writes, identity/salt/key writes, and
-  service-policy writes are not reachable from ordinary IPC except through named approved operations with gates.
+  over IPC after R-S11b-3b; generic config writes, generic config helpers, and the proxy IPC variant are absent
+  after R-S11b-3c. Remaining closure: privileged service policy writes are typed service actions with
+  receiver-side validation; trust-store writes, service-policy writes, and any future identity/salt/key/proxy
+  write are not reachable from ordinary IPC except through named approved operations with gates.
 - **R-S11c-1 — Windows main IPC credential write into a SYSTEM/winlogon-launched server.** Platform:
   Windows installed service. Endpoint: main named pipe `\\.\pipe\<APP>\query` accepting same-session genuine
-  executable peers; action: any password write for a service-launched server, historically
-  `Data::Config(("permanent-password", value))`. Boundary: same-session desktop process ↔ service-launched
+  executable peers; action: any password write for a service-launched server, historically generic config
+  permanent-password writes. Boundary: same-session desktop process ↔ service-launched
   server process. Attack surface: same-session is not machine-admin authority, so it must not change the
   service-hosted remote credential. Current state: the same-session/same-exe main pipe no longer authorizes
   the generic password config key, and the typed user-owned password operation is rejected by service-owned

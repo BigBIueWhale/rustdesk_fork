@@ -197,7 +197,10 @@ grep -A3 'Data::SetUserOwnedPermanentPassword(_) => {' "$REPO/src/ipc.rs" | grep
 grep -q 'Data::SetUserOwnedPermanentPasswordResult(false)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 typed-password-reject-nack-missing"
 grep -q '"permanent-password" => authority.allows_main_channel_user_owned_password_write()' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 password-still-generic-config-key"
 grep -q '"permanent-password" => authority.allows_main_channel_password_write()' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 password-still-generic-config-key"
-grep -q 'send_config("permanent-password"' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 password-still-sent-as-config-key"
+grep -q 'Data::Config((' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 generic-config-write-shape-present"
+grep -q 'send_config(' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 generic-send-config-present"
+grep -q 'Socks(Option' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 socks-ipc-variant-present"
+grep -q 'Data::Socks' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 socks-ipc-reference-present"
 grep -q 'Data::Options(Some(_)) => authority.allows_main_channel_options_write()' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-write-not-authority-gated"
 grep -q 'Rejected options write over ordinary IPC for service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-write-not-denied"
 grep -q 'OptionsSetResult(bool)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-typed-result-missing"
@@ -218,7 +221,7 @@ if [ -n "$r_s11b2" ]; then
   echo "  FAIL R-S11b-2a/R-S11b-3a macOS service-owned IPC closure:$r_s11b2"
   rc=1
 else
-  note "ok  R-S11b-2a/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password config key and typed user-owned password/options writes are denied by source policy; whole-config IPC is absent; storage/salt sync is denied"
+  note "ok  R-S11b-2a/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password config writes are absent; typed user-owned password/options writes are denied by source policy; whole-config IPC is absent; storage/salt sync is denied"
 fi
 
 echo "== (2b-iii) R-S11c-4a macOS CM pre-login filesystem IPC rejected =="

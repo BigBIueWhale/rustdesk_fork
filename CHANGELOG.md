@@ -5,6 +5,23 @@ All notable changes to the hardened fork, newest first. Each entry's heading is 
 truth for the exact code a release contains is the **commit** it was built from, linked in the GitHub
 release notes.
 
+## 1.4.7-hardened.2 — 2026-07-08
+
+### Linux service sandbox
+- Restored the shipped Linux CLIPRDR/FUSE file-clipboard path under the systemd sandbox by admitting only
+  the legacy FUSE mount syscalls the current implementation uses: `mount`, `umount`, and `umount2`.
+- Kept the broader `@mount` group out of the service policy. The new mount API and root-changing calls
+  (`chroot`, `pivot_root`, `open_tree`, `move_mount`, `fsconfig`, `fsopen`, `fsmount`, `fspick`,
+  `mount_setattr`) remain denied.
+- Kept denied syscalls fail-closed: the unit does not install a `SystemCallErrorNumber=` fallback.
+
+### Verification
+- Updated the R-D3a gate to require the exact FUSE-only syscall allowlist and to reject broad mount-group
+  reintroduction or an errno fallback.
+- Corrected the dependency-audit disposition for `fuser`: Linux file clipboard is a shipped reachable path,
+  so the accepted residual is now tied to the service-unit syscall boundary and existing FUSE mount-point /
+  queue bounds.
+
 ## 1.4.7-hardened.1 — 2026-07-07
 
 A hardened, **direct-IP-only** RustDesk, built on upstream RustDesk 1.4.7.

@@ -32,13 +32,18 @@ use hbb_common::{
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) use ipc_auth::authorize_cm_ipc_connection;
 #[cfg(windows)]
+use ipc_auth::authorize_windows_main_ipc_connection;
+#[cfg(windows)]
 pub(crate) use ipc_auth::ensure_peer_executable_matches_current_by_pid_opt;
 #[cfg(windows)]
 pub(crate) use ipc_auth::log_rejected_windows_ipc_connection;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use ipc_auth::{active_uid, authorize_service_scoped_ipc_connection};
 #[cfg(windows)]
-use ipc_auth::{authorize_windows_main_ipc_connection, should_allow_everyone_create_on_windows};
+use ipc_auth::{
+    ensure_windows_ipc_server_matches_current, windows_ipc_listener_security_attributes,
+    windows_named_pipe_client_access_mask,
+};
 // R-X13 (§8): the ipc_auth re-exports (ensure_peer_executable_matches_current_by_fd /
 // is_allowed_service_peer_uid / log_rejected_uinput_connection / peer_uid_from_fd) were the uinput
 // peer-authorization accessors, removed with the uinput module. The _service-channel authorization
@@ -71,6 +76,22 @@ use std::os::unix::fs::PermissionsExt;
 use std::{
     collections::HashMap,
     sync::atomic::{AtomicBool, Ordering},
+};
+#[cfg(windows)]
+use std::{
+    ffi::OsStr,
+    os::windows::{ffi::OsStrExt, io::RawHandle},
+};
+#[cfg(windows)]
+use windows::{
+    core::PCWSTR,
+    Win32::{
+        Foundation::{CloseHandle, ERROR_PIPE_BUSY},
+        Storage::FileSystem::{
+            CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_FLAG_OVERLAPPED, FILE_SHARE_MODE,
+            OPEN_EXISTING, SECURITY_IDENTIFICATION, SECURITY_SQOS_PRESENT,
+        },
+    },
 };
 
 // IPC actions here.
@@ -615,26 +636,17 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
         scrub_secure_ipc_parent_dir(&path, postfix)?;
     }
     let mut endpoint = Endpoint::new(path.clone());
-    let security_attrs = {
-        #[cfg(windows)]
-        {
-            if should_allow_everyone_create_on_windows(postfix) {
-                SecurityAttributes::allow_everyone_create()
-            } else {
-                Ok(SecurityAttributes::empty())
-            }
-        }
-        #[cfg(not(windows))]
-        {
-            SecurityAttributes::allow_everyone_create()
-        }
-    };
-    match security_attrs {
-        Ok(attr) => endpoint.set_security_attributes(attr),
-        Err(err) => {
-            log::error!("Failed to set ipc{} security: {}", postfix, err);
-        }
-    };
+    #[cfg(windows)]
+    let attr = windows_ipc_listener_security_attributes(postfix).map_err(|err| {
+        log::error!("Failed to set ipc{} security: {}", postfix, err);
+        err
+    })?;
+    #[cfg(not(windows))]
+    let attr = SecurityAttributes::allow_everyone_create().map_err(|err| {
+        log::error!("Failed to set ipc{} security: {}", postfix, err);
+        hbb_common::anyhow::Error::from(err)
+    })?;
+    endpoint.set_security_attributes(attr);
     match endpoint.incoming() {
         Ok(incoming) => {
             if postfix == crate::POSTFIX_SERVICE {
@@ -1330,9 +1342,67 @@ async fn handle(data: Data, stream: &mut Connection, channel: IpcChannel) {
 }
 
 #[inline]
-async fn connect_with_path(ms_timeout: u64, path: &str) -> ResultType<ConnectionTmpl<ConnClient>> {
+async fn connect_with_path(
+    ms_timeout: u64,
+    path: &str,
+    postfix: &str,
+) -> ResultType<ConnectionTmpl<ConnClient>> {
+    #[cfg(windows)]
+    let client = timeout(ms_timeout, connect_windows_named_pipe(path)).await??;
+    #[cfg(not(windows))]
+    let _ = postfix;
+    #[cfg(not(windows))]
     let client = timeout(ms_timeout, Endpoint::connect(path)).await??;
+    #[cfg(windows)]
+    ensure_windows_ipc_server_matches_current(&client, postfix)?;
     Ok(ConnectionTmpl::new(client))
+}
+
+#[cfg(windows)]
+async fn connect_windows_named_pipe(path: &str) -> std::io::Result<ConnClient> {
+    loop {
+        match open_windows_named_pipe_client(path) {
+            Ok(client) => return Ok(client),
+            Err(err) if err.raw_os_error() == Some(ERROR_PIPE_BUSY.0 as i32) => {}
+            Err(err) => return Err(err),
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+}
+
+#[cfg(windows)]
+fn open_windows_named_pipe_client(path: &str) -> std::io::Result<ConnClient> {
+    let wide_path: Vec<u16> = OsStr::new(path)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let flags = FILE_FLAGS_AND_ATTRIBUTES(
+        FILE_FLAG_OVERLAPPED.0 | SECURITY_IDENTIFICATION.0 | SECURITY_SQOS_PRESENT.0,
+    );
+    let handle = match unsafe {
+        CreateFileW(
+            PCWSTR::from_raw(wide_path.as_ptr()),
+            windows_named_pipe_client_access_mask(),
+            FILE_SHARE_MODE(0),
+            None,
+            OPEN_EXISTING,
+            flags,
+            None,
+        )
+    } {
+        Ok(handle) => handle,
+        Err(_) => return Err(std::io::Error::last_os_error()),
+    };
+    let client = unsafe { ConnClient::from_raw_handle(handle.0 as RawHandle) };
+    match client {
+        Ok(client) => Ok(client),
+        Err(err) => {
+            unsafe {
+                let _ = CloseHandle(handle);
+            }
+            Err(err)
+        }
+    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -1420,15 +1490,15 @@ pub async fn connect(ms_timeout: u64, postfix: &str) -> ResultType<ConnectionTmp
         if is_root_main_ipc {
             let uid = user_main_ipc_server_uid()?;
             let path = Config::ipc_path_for_uid(uid, postfix);
-            return connect_with_path(ms_timeout, &path).await;
+            return connect_with_path(ms_timeout, &path, postfix).await;
         }
         let path = Config::ipc_path(postfix);
-        return connect_with_path(ms_timeout, &path).await;
+        return connect_with_path(ms_timeout, &path, postfix).await;
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         let path = Config::ipc_path(postfix);
-        connect_with_path(ms_timeout, &path).await
+        connect_with_path(ms_timeout, &path, postfix).await
     }
 }
 
@@ -1471,7 +1541,7 @@ pub async fn connect_for_uid(
     postfix: &str,
 ) -> ResultType<ConnectionTmpl<ConnClient>> {
     let path = Config::ipc_path_for_uid(uid, postfix);
-    connect_with_path(ms_timeout, &path).await
+    connect_with_path(ms_timeout, &path, postfix).await
 }
 
 #[cfg(target_os = "linux")]

@@ -349,9 +349,15 @@ unreachable and a source/test/AST gate prevents reintroduction.
 - **R-S11c-6 — Windows named-pipe endpoint hardening.** Platform: Windows desktop. Endpoint:
   predictable `\\.\pipe\<APP>\query{postfix}` names and broad create permissions for main/`_service`.
   Boundary: local process ↔ IPC endpoint identity. Attack surface: pipe squatting, spoofing/confusion, or
-  denial of service even where message auth blocks higher impact. Closure: privileged endpoints are created
-  by the service with tight DACLs; clients authenticate/verify the server endpoint where practical; broad
-  `allow_everyone_create` is not used for privileged channels; tests cover pre-creation/squatting.
+  denial of service even where message auth blocks higher impact. Current state: Windows main and `_service`
+  listeners no longer use the broad `allow_everyone_create` descriptor. Privileged listener creation builds
+  an explicit SDDL DACL: LocalSystem can create/own service-side pipe instances; a non-System user-owned
+  server gets its own logon/user SID for server-instance creation; the active session identity gets only the
+  client read/write/synchronize mask and not `FILE_CREATE_PIPE_INSTANCE`; `Everyone` and the Administrators
+  group are absent from the base DACL. Windows clients open the pipe with that explicit non-generic mask and
+  verify the connected server PID/executable, with `_service` additionally requiring a LocalSystem server.
+  The long-lived `_service` listener is recreated on active-session changes so its DACL and the runtime
+  expected-session check do not drift. Status: closed for the named-pipe endpoint boundary.
 - **R-S11c-7 — Linux `_pa` audio helper ambient same-UID trust.** Platform: Linux desktop while `_pa` is
   running. Endpoint: `_pa` IPC streams PulseAudio/default-monitor frames. Boundary: same-UID local process ↔
   active audio capture helper. Attack surface: same-UID local audio capture/spoofing outside the owning

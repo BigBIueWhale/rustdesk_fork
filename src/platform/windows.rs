@@ -617,6 +617,13 @@ fn authorize_service_scoped_ipc_connection(
     true
 }
 
+async fn refresh_service_ipc_listener(
+    incoming: parity_tokio_ipc::Incoming,
+) -> ResultType<parity_tokio_ipc::Incoming> {
+    drop(incoming);
+    ipc::new_listener(crate::POSTFIX_SERVICE).await
+}
+
 extern "system" {
     fn BlockInput(v: BOOL) -> BOOL;
 }
@@ -670,6 +677,7 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
             let current_active_session = unsafe { get_current_session(share_rdp()) };
             if session_id != current_active_session {
                 session_id = current_active_session;
+                incoming = refresh_service_ipc_listener(incoming).await?;
                 // https://github.com/rustdesk/rustdesk/discussions/10039
                 let count = ipc::get_port_forward_session_count(1000).await.unwrap_or(0);
                 if count == 0 {
@@ -714,6 +722,7 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                     if tmp != session_id {
                         log::info!("session changed from {} to {}", session_id, tmp);
                         session_id = tmp;
+                        incoming = refresh_service_ipc_listener(incoming).await?;
                         let count = ipc::get_port_forward_session_count(1000).await.unwrap_or(0);
                         if count == 0 {
                             send_close_async("").await.ok();

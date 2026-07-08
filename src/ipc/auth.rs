@@ -19,12 +19,289 @@ use std::{
     sync::{Mutex, OnceLock},
 };
 #[cfg(windows)]
-use windows::Win32::{Foundation::HANDLE, System::Pipes::GetNamedPipeClientProcessId};
+use std::{collections::BTreeSet, ffi::c_void};
+#[cfg(windows)]
+use windows::{
+    core::PWSTR,
+    Win32::{
+        Foundation::{CloseHandle, LocalFree, HANDLE, HLOCAL},
+        Security::{
+            Authorization::ConvertSidToStringSidW, GetTokenInformation, TokenGroups, TokenUser,
+            PSID, TOKEN_GROUPS, TOKEN_INFORMATION_CLASS, TOKEN_QUERY, TOKEN_USER,
+        },
+        System::{
+            Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
+            Threading::{GetCurrentProcess, OpenProcessToken},
+        },
+    },
+};
 
 #[cfg(windows)]
 #[inline]
-pub(crate) fn should_allow_everyone_create_on_windows(postfix: &str) -> bool {
+pub(crate) fn windows_privileged_ipc_uses_restricted_dacl(postfix: &str) -> bool {
     postfix.is_empty() || hbb_common::config::is_service_ipc_postfix(postfix)
+}
+
+#[cfg(windows)]
+pub(crate) const WINDOWS_NAMED_PIPE_CLIENT_ACCESS_MASK: u32 = 0x0012_019b;
+#[cfg(windows)]
+const SE_GROUP_LOGON_ID: u32 = 0xc000_0000;
+#[cfg(windows)]
+const LOCAL_SYSTEM_SID: &str = "S-1-5-18";
+
+#[cfg(windows)]
+struct WindowsIpcDaclSids {
+    server_sids: Vec<String>,
+    client_sids: Vec<String>,
+}
+
+#[cfg(windows)]
+struct WindowsHandle(HANDLE);
+
+#[cfg(windows)]
+impl Drop for WindowsHandle {
+    fn drop(&mut self) {
+        if !self.0.is_invalid() {
+            unsafe {
+                let _ = CloseHandle(self.0);
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+struct LocalString(PWSTR);
+
+#[cfg(windows)]
+impl Drop for LocalString {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                let _ = LocalFree(Some(HLOCAL(self.0.as_ptr() as *mut c_void)));
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+#[inline]
+pub(crate) fn windows_named_pipe_client_access_mask() -> u32 {
+    WINDOWS_NAMED_PIPE_CLIENT_ACCESS_MASK
+}
+
+#[cfg(windows)]
+pub(crate) fn windows_ipc_listener_security_attributes(
+    postfix: &str,
+) -> ResultType<parity_tokio_ipc::SecurityAttributes> {
+    if !windows_privileged_ipc_uses_restricted_dacl(postfix) {
+        return Ok(parity_tokio_ipc::SecurityAttributes::empty());
+    }
+    let sids = windows_ipc_dacl_sids_for_postfix(postfix)?;
+    let sddl = windows_restricted_ipc_sddl(&sids);
+    parity_tokio_ipc::SecurityAttributes::from_sddl(&sddl).map_err(|err| {
+        anyhow::anyhow!(
+            "Failed to build Windows IPC security descriptor for '{}': {}",
+            postfix,
+            err
+        )
+        .into()
+    })
+}
+
+#[cfg(windows)]
+fn windows_ipc_dacl_sids_for_postfix(postfix: &str) -> ResultType<WindowsIpcDaclSids> {
+    let mut server_sids = BTreeSet::new();
+    let mut client_sids = BTreeSet::new();
+
+    let current_token = current_process_token()?;
+    if let Some(current_sid) = preferred_token_boundary_sid(current_token.0)? {
+        if current_sid != LOCAL_SYSTEM_SID {
+            server_sids.insert(current_sid);
+        }
+    }
+
+    let session_id =
+        crate::platform::windows::get_current_session_id(crate::platform::windows::is_share_rdp());
+    if session_id != u32::MAX {
+        match active_session_user_token(session_id) {
+            Ok(token) => {
+                if let Some(active_sid) = preferred_token_boundary_sid(token.0)? {
+                    if active_sid != LOCAL_SYSTEM_SID {
+                        client_sids.insert(active_sid);
+                    }
+                }
+            }
+            Err(err) => log::warn!(
+                "Active-session IPC DACL sid unavailable for postfix '{}', session_id={}: {}",
+                postfix,
+                session_id,
+                err
+            ),
+        }
+    }
+
+    for sid in &server_sids {
+        client_sids.remove(sid);
+    }
+    Ok(WindowsIpcDaclSids {
+        server_sids: server_sids.into_iter().collect(),
+        client_sids: client_sids.into_iter().collect(),
+    })
+}
+
+#[cfg(windows)]
+fn current_process_token() -> ResultType<WindowsHandle> {
+    let mut token = HANDLE::default();
+    unsafe {
+        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token)
+            .map_err(|err| anyhow::anyhow!("OpenProcessToken(current) failed: {}", err))?;
+    }
+    Ok(WindowsHandle(token))
+}
+
+#[cfg(windows)]
+fn active_session_user_token(session_id: u32) -> ResultType<WindowsHandle> {
+    let token = crate::platform::windows::get_user_token(session_id, true);
+    if token.is_null() {
+        bail!("GetSessionUserTokenWin returned null");
+    }
+    Ok(WindowsHandle(HANDLE(token as *mut c_void)))
+}
+
+#[cfg(windows)]
+fn preferred_token_boundary_sid(token: HANDLE) -> ResultType<Option<String>> {
+    Ok(token_logon_sid_string(token)?.or(Some(token_user_sid_string(token)?)))
+}
+
+#[cfg(windows)]
+fn token_information_buffer(
+    token: HANDLE,
+    token_information_class: TOKEN_INFORMATION_CLASS,
+) -> ResultType<Vec<u8>> {
+    let mut len = 0u32;
+    let _ = unsafe { GetTokenInformation(token, token_information_class, None, 0, &mut len) };
+    if len == 0 {
+        bail!(
+            "GetTokenInformation({:?}) did not return a buffer size: {}",
+            token_information_class,
+            std::io::Error::last_os_error()
+        );
+    }
+    let mut buffer = vec![0u8; len as usize];
+    unsafe {
+        GetTokenInformation(
+            token,
+            token_information_class,
+            Some(buffer.as_mut_ptr() as *mut c_void),
+            len,
+            &mut len,
+        )
+        .map_err(|err| {
+            anyhow::anyhow!(
+                "GetTokenInformation({:?}) failed: {}",
+                token_information_class,
+                err
+            )
+        })?;
+    }
+    Ok(buffer)
+}
+
+#[cfg(windows)]
+fn token_user_sid_string(token: HANDLE) -> ResultType<String> {
+    let buffer = token_information_buffer(token, TokenUser)?;
+    let token_user = unsafe { &*(buffer.as_ptr() as *const TOKEN_USER) };
+    sid_to_string(token_user.User.Sid)
+}
+
+#[cfg(windows)]
+fn token_logon_sid_string(token: HANDLE) -> ResultType<Option<String>> {
+    let buffer = token_information_buffer(token, TokenGroups)?;
+    let token_groups = unsafe { &*(buffer.as_ptr() as *const TOKEN_GROUPS) };
+    let groups = token_groups.Groups.as_ptr();
+    for index in 0..token_groups.GroupCount as usize {
+        let group = unsafe { *groups.add(index) };
+        if (group.Attributes & SE_GROUP_LOGON_ID) == SE_GROUP_LOGON_ID {
+            return sid_to_string(group.Sid).map(Some);
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(windows)]
+fn sid_to_string(sid: PSID) -> ResultType<String> {
+    if sid.is_invalid() {
+        bail!("SID pointer is null");
+    }
+    let mut sid_string = PWSTR::null();
+    unsafe {
+        ConvertSidToStringSidW(sid, &mut sid_string)
+            .map_err(|err| anyhow::anyhow!("ConvertSidToStringSidW failed: {}", err))?;
+    }
+    if sid_string.is_null() {
+        bail!("ConvertSidToStringSidW returned null");
+    }
+    let _sid_guard = LocalString(sid_string);
+    let sid = unsafe { sid_string.to_string() }
+        .map_err(|err| anyhow::anyhow!("Converted SID was not valid UTF-16: {}", err))?;
+    if !is_numeric_sid_string(&sid) {
+        bail!("Converted SID has unexpected SDDL form: {}", sid);
+    }
+    Ok(sid)
+}
+
+#[cfg(windows)]
+fn is_numeric_sid_string(sid: &str) -> bool {
+    sid.strip_prefix("S-")
+        .is_some_and(|rest| rest.bytes().all(|b| b.is_ascii_digit() || b == b'-'))
+}
+
+#[cfg(windows)]
+fn windows_restricted_ipc_sddl(sids: &WindowsIpcDaclSids) -> String {
+    let mut sddl = String::from("D:P(A;;GA;;;SY)");
+    for sid in &sids.server_sids {
+        sddl.push_str(&format!("(A;;GA;;;{})", sid));
+    }
+    for sid in &sids.client_sids {
+        sddl.push_str(&format!(
+            "(A;;0x{:08x};;;{})",
+            WINDOWS_NAMED_PIPE_CLIENT_ACCESS_MASK, sid
+        ));
+    }
+    sddl
+}
+
+#[cfg(windows)]
+pub(crate) fn ensure_windows_ipc_server_matches_current(
+    client: &parity_tokio_ipc::ConnectionClient,
+    postfix: &str,
+) -> ResultType<()> {
+    let pipe_handle = client.as_raw_handle();
+    if pipe_handle.is_null() {
+        bail!("Windows IPC client handle is null");
+    }
+    let mut server_pid = 0u32;
+    unsafe {
+        GetNamedPipeServerProcessId(HANDLE(pipe_handle), &mut server_pid)
+            .map_err(|err| anyhow::anyhow!("GetNamedPipeServerProcessId failed: {}", err))?;
+    }
+    if server_pid == 0 {
+        bail!("GetNamedPipeServerProcessId returned pid 0");
+    }
+    ensure_peer_executable_matches_current_by_pid_opt(Some(server_pid), postfix)?;
+    if postfix.is_empty() && !peer_process_is_current_exe_server(server_pid) {
+        bail!("Windows main IPC server is not the current executable's --server process");
+    }
+    if hbb_common::config::is_service_ipc_postfix(postfix) {
+        let is_system = crate::platform::windows::is_process_running_as_system(server_pid)
+            .map_err(|err| {
+                anyhow::anyhow!("Failed to determine _service server identity: {}", err)
+            })?;
+        if !is_system {
+            bail!("Windows _service IPC server is not running as LocalSystem");
+        }
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -766,12 +1043,38 @@ mod tests {
 
     #[test]
     #[cfg(windows)]
-    fn test_should_allow_everyone_create_on_windows_policy() {
-        assert!(super::should_allow_everyone_create_on_windows(""));
-        assert!(super::should_allow_everyone_create_on_windows("_service"));
-        assert!(!super::should_allow_everyone_create_on_windows(
+    fn test_windows_privileged_ipc_uses_restricted_dacl_policy() {
+        assert!(super::windows_privileged_ipc_uses_restricted_dacl(""));
+        assert!(super::windows_privileged_ipc_uses_restricted_dacl(
+            "_service"
+        ));
+        assert!(!super::windows_privileged_ipc_uses_restricted_dacl(
             "_portable_service"
         ));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_windows_restricted_ipc_sddl_omits_world_and_administrators() {
+        let sddl = super::windows_restricted_ipc_sddl(&super::WindowsIpcDaclSids {
+            server_sids: vec!["S-1-5-5-100-200".to_owned()],
+            client_sids: vec!["S-1-5-21-1-2-3-1001".to_owned()],
+        });
+        assert!(sddl.starts_with("D:P(A;;GA;;;SY)"));
+        assert!(sddl.contains("(A;;GA;;;S-1-5-5-100-200)"));
+        assert!(sddl.contains("(A;;0x0012019b;;;S-1-5-21-1-2-3-1001)"));
+        assert!(!sddl.contains(";;;BA"));
+        assert!(!sddl.contains(";;;WD"));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_windows_client_pipe_access_does_not_grant_create_instance() {
+        const FILE_CREATE_PIPE_INSTANCE: u32 = 0x0000_0004;
+        assert_eq!(
+            super::WINDOWS_NAMED_PIPE_CLIENT_ACCESS_MASK & FILE_CREATE_PIPE_INSTANCE,
+            0
+        );
     }
 
     #[test]

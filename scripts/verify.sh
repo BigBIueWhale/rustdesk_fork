@@ -151,6 +151,28 @@ grep -B1 'pub(crate) fn main_channel_admits_state_mutation' src/ipc.rs | grep -q
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel state-mutation allowlist:$r_s11"; rc=1; else
   echo "  ok  R-S11/R-S11b main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, and Socks IPC are absent; typed voice/password/options remain scoped; gate binds Linux/macOS AND the Windows main pipe)"; fi
 
+echo "== (3b-iii-a2) Windows named-pipe endpoints are DACL-bound (R-S11c-6) =="
+r_s11c6=
+grep -q 'windows_ipc_listener_security_attributes(postfix)' src/ipc.rs              || r_s11c6="$r_s11c6 listener-not-dacl-routed"
+grep -q 'SecurityAttributes::from_sddl' src/ipc/auth.rs                            || r_s11c6="$r_s11c6 no-sddl-security-attributes"
+grep -q 'String::from("D:P(A;;GA;;;SY)")' src/ipc/auth.rs                         || r_s11c6="$r_s11c6 base-dacl-not-system-only"
+grep -q 'WINDOWS_NAMED_PIPE_CLIENT_ACCESS_MASK: u32 = 0x0012_019b' src/ipc/auth.rs || r_s11c6="$r_s11c6 narrow-client-mask-missing"
+grep -q 'FILE_CREATE_PIPE_INSTANCE' src/ipc/auth.rs                                || r_s11c6="$r_s11c6 create-instance-negative-test-missing"
+grep -q 'open_windows_named_pipe_client' src/ipc.rs                                || r_s11c6="$r_s11c6 custom-client-open-missing"
+grep -q 'CreateFileW' src/ipc.rs                                                   || r_s11c6="$r_s11c6 direct-client-open-missing"
+grep -q 'ensure_windows_ipc_server_matches_current(&client, postfix)' src/ipc.rs   || r_s11c6="$r_s11c6 server-verification-not-wired"
+grep -q 'GetNamedPipeServerProcessId' src/ipc/auth.rs                              || r_s11c6="$r_s11c6 server-pid-check-missing"
+grep -q 'refresh_service_ipc_listener(incoming).await' src/platform/windows.rs     || r_s11c6="$r_s11c6 service-listener-session-refresh-missing"
+if grep -q 'should_allow_everyone_create_on_windows' src/ipc.rs src/ipc/auth.rs; then
+  r_s11c6="$r_s11c6 legacy-world-create-policy-present"
+fi
+if grep -q 'String::from("D:P(A;;GA;;;SY)(A;;GA;;;BA)' src/ipc/auth.rs; then
+  r_s11c6="$r_s11c6 administrators-in-base-dacl"
+fi
+if [ -n "$r_s11c6" ]; then echo "  FAIL R-S11c-6 Windows named-pipe DACL hardening:$r_s11c6"; rc=1; else
+  echo "  ok  R-S11c-6 Windows named pipes use SDDL DACLs, narrow client opens, server PID verification, and session-refreshed _service listeners"
+fi
+
 # (3b-iii-b) R-S11b-1/R-S11b-2c: Linux/macOS `_service` is a privileged service-control channel,
 # not a root<->user Config/Config2 bus. The world-connectable service socket may keep only narrow,
 # typed receiver-authorized traffic; it MUST NOT accept/return whole config, and stale-socket probing

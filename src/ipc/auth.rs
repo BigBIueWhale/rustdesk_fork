@@ -12,6 +12,8 @@ use std::os::unix::fs::MetadataExt;
 use std::os::unix::io::RawFd;
 #[cfg(windows)]
 use std::os::windows::io::AsRawHandle;
+#[cfg(windows)]
+use std::{collections::BTreeSet, ffi::c_void};
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 use std::{
     fs,
@@ -19,19 +21,21 @@ use std::{
     sync::{Mutex, OnceLock},
 };
 #[cfg(windows)]
-use std::{collections::BTreeSet, ffi::c_void};
-#[cfg(windows)]
 use windows::{
     core::PWSTR,
     Win32::{
         Foundation::{CloseHandle, LocalFree, HANDLE, HLOCAL},
         Security::{
-            Authorization::ConvertSidToStringSidW, GetTokenInformation, TokenGroups, TokenUser,
-            PSID, TOKEN_GROUPS, TOKEN_INFORMATION_CLASS, TOKEN_QUERY, TOKEN_USER,
+            Authorization::ConvertSidToStringSidW, GetTokenInformation, RevertToSelf,
+            TokenElevation, TokenGroups, TokenUser, PSID, TOKEN_ELEVATION, TOKEN_GROUPS,
+            TOKEN_INFORMATION_CLASS, TOKEN_QUERY, TOKEN_USER,
         },
         System::{
-            Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
-            Threading::{GetCurrentProcess, OpenProcessToken},
+            Pipes::{
+                GetNamedPipeClientProcessId, GetNamedPipeServerProcessId,
+                ImpersonateNamedPipeClient,
+            },
+            Threading::{GetCurrentProcess, GetCurrentThread, OpenProcessToken, OpenThreadToken},
         },
     },
 };
@@ -78,6 +82,20 @@ impl Drop for LocalString {
         if !self.0.is_null() {
             unsafe {
                 let _ = LocalFree(Some(HLOCAL(self.0.as_ptr() as *mut c_void)));
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+struct ThreadImpersonationGuard;
+
+#[cfg(windows)]
+impl Drop for ThreadImpersonationGuard {
+    fn drop(&mut self) {
+        unsafe {
+            if let Err(err) = RevertToSelf() {
+                log::error!("Failed to revert named-pipe client impersonation: {}", err);
             }
         }
     }
@@ -212,6 +230,19 @@ fn token_user_sid_string(token: HANDLE) -> ResultType<String> {
     let buffer = token_information_buffer(token, TokenUser)?;
     let token_user = unsafe { &*(buffer.as_ptr() as *const TOKEN_USER) };
     sid_to_string(token_user.User.Sid)
+}
+
+#[cfg(windows)]
+fn token_is_elevated(token: HANDLE) -> ResultType<bool> {
+    let buffer = token_information_buffer(token, TokenElevation)?;
+    if buffer.len() < std::mem::size_of::<TOKEN_ELEVATION>() {
+        bail!(
+            "GetTokenInformation(TokenElevation) returned a short buffer: {}",
+            buffer.len()
+        );
+    }
+    let elevation = unsafe { &*(buffer.as_ptr() as *const TOKEN_ELEVATION) };
+    Ok(elevation.TokenIsElevated != 0)
 }
 
 #[cfg(windows)]
@@ -902,6 +933,46 @@ impl ConnectionTmpl<parity_tokio_ipc::Connection> {
         } else {
             None
         }
+    }
+
+    fn with_impersonated_client_token<T>(
+        &self,
+        context: &str,
+        f: impl FnOnce(HANDLE) -> ResultType<T>,
+    ) -> ResultType<T> {
+        let pipe_handle = self.inner.get_ref().as_raw_handle();
+        if pipe_handle.is_null() {
+            bail!(
+                "Failed to impersonate {}: named pipe handle is null",
+                context
+            );
+        }
+        unsafe {
+            ImpersonateNamedPipeClient(HANDLE(pipe_handle))
+                .map_err(|err| anyhow::anyhow!("Failed to impersonate {}: {}", context, err))?;
+        }
+        let _revert = ThreadImpersonationGuard;
+
+        let mut token = HANDLE::default();
+        unsafe {
+            OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, true, &mut token).map_err(|err| {
+                anyhow::anyhow!("Failed to open {} impersonation token: {}", context, err)
+            })?;
+        }
+        let _token_guard = WindowsHandle(token);
+        f(token)
+    }
+
+    pub(crate) fn windows_pipe_client_token_is_elevated(&self) -> ResultType<bool> {
+        self.with_impersonated_client_token("Windows service-owned password caller", |token| {
+            token_is_elevated(token)
+        })
+    }
+
+    pub(crate) fn windows_pipe_client_token_is_local_system(&self) -> ResultType<bool> {
+        self.with_impersonated_client_token("Windows service-owned password commit peer", |token| {
+            Ok(token_user_sid_string(token)? == LOCAL_SYSTEM_SID)
+        })
     }
 
     fn server_authorization_status(

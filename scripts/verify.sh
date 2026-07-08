@@ -214,8 +214,11 @@ if [ -n "$r_s11b" ]; then echo "  FAIL R-S11b-1 _service whole-config bus remova
 # Service launch paths mark their --server child; the receiver uses that marker to deny
 # generic config credential writes, typed user-owned password writes, whole-config snapshots, and every
 # password storage/salt sync over main IPC. Linux installed-service password changes use a typed `_service`
-# request authorized by polkit, then a root-service commit into the service-owned main server. The user-owned
-# path remains user-owned, and --password dispatches to the owner-aware typed operation.
+# request authorized by polkit, then a root-service commit into the service-owned main server. Windows
+# installed-service password changes use the same typed request/commit split, but the `_service` receiver
+# proves an elevated RustDesk caller by named-pipe client-token impersonation and the main server accepts the
+# final commit only from a LocalSystem service peer. The user-owned path remains user-owned, and --password
+# dispatches to the owner-aware typed operation.
 echo "== (3b-iii-c) service-owned permanent password rejects ordinary IPC (R-S11b-2a/R-S11c-1a) =="
 r_s11b2=
 grep -q 'SERVICE_OWNED_SERVER_ARG' src/common.rs                                      || r_s11b2="$r_s11b2 no-service-owned-arg"
@@ -229,9 +232,9 @@ grep -q 'MainIpcAuthority::ServiceOwned' src/ipc.rs                             
 grep -q 'Data::SetUserOwnedPermanentPassword(_) => {' src/ipc.rs                    || r_s11b2="$r_s11b2 typed-password-arm-missing"
 grep -A3 'Data::SetUserOwnedPermanentPassword(_) => {' src/ipc.rs | grep -q 'authority.allows_main_channel_user_owned_password_write()' || r_s11b2="$r_s11b2 typed-password-write-not-authority-gated"
 grep -q 'Data::SetUserOwnedPermanentPasswordResult(false)' src/ipc.rs                || r_s11b2="$r_s11b2 typed-password-reject-nack-missing"
-grep -q 'RequestServiceOwnedUnattendedPasswordChange(String)' src/ipc.rs             || r_s11b2="$r_s11b2 linux-service-password-request-missing"
-grep -q 'CommitServiceOwnedUnattendedPasswordChange(String)' src/ipc.rs              || r_s11b2="$r_s11b2 linux-service-password-commit-missing"
-grep -q 'ServiceOwnedUnattendedPasswordChangeResult(bool)' src/ipc.rs                || r_s11b2="$r_s11b2 linux-service-password-result-missing"
+grep -q 'RequestServiceOwnedUnattendedPasswordChange(String)' src/ipc.rs             || r_s11b2="$r_s11b2 service-password-request-missing"
+grep -q 'CommitServiceOwnedUnattendedPasswordChange(String)' src/ipc.rs              || r_s11b2="$r_s11b2 service-password-commit-missing"
+grep -q 'ServiceOwnedUnattendedPasswordChangeResult(bool)' src/ipc.rs                || r_s11b2="$r_s11b2 service-password-result-missing"
 grep -q 'Data::RequestServiceOwnedUnattendedPasswordChange(_) => false' src/ipc.rs   || r_s11b2="$r_s11b2 service-password-request-not-denied-on-main"
 grep -A5 'Data::CommitServiceOwnedUnattendedPasswordChange(_) => {' src/ipc.rs | grep -q 'peer_authority.allows_service_owned_unattended_password_commit()' || r_s11b2="$r_s11b2 service-password-commit-not-root-peer-gated"
 grep -q 'current_process_allows_service_owned_unattended_password_commit' src/ipc.rs || r_s11b2="$r_s11b2 service-password-handler-commit-gate-missing"
@@ -246,6 +249,19 @@ grep -q 'UserMainIpcScope::new()' src/ipc.rs                                    
 grep -q 'com.carriez.RustDesk.set-unattended-password' res/com.carriez.RustDesk.policy || r_s11b2="$r_s11b2 linux-polkit-policy-missing"
 grep -q '<allow_active>auth_admin</allow_active>' res/com.carriez.RustDesk.policy    || r_s11b2="$r_s11b2 linux-polkit-policy-not-admin-authorized"
 grep -q 'usr/share/polkit-1/actions' build.py                                       || r_s11b2="$r_s11b2 linux-polkit-policy-not-packaged"
+grep -q 'windows_peer_is_authorized_for_service_owned_password_change' src/ipc.rs    || r_s11b2="$r_s11b2 windows-service-password-authorizer-missing"
+grep -q 'windows_pipe_client_token_is_elevated' src/ipc/auth.rs                     || r_s11b2="$r_s11b2 windows-service-password-token-elevation-missing"
+grep -q 'windows_pipe_client_token_is_local_system' src/ipc/auth.rs                  || r_s11b2="$r_s11b2 windows-service-password-localsystem-token-missing"
+grep -q 'ImpersonateNamedPipeClient' src/ipc/auth.rs                                || r_s11b2="$r_s11b2 windows-service-password-not-client-token-impersonated"
+grep -q 'RevertToSelf' src/ipc/auth.rs                                               || r_s11b2="$r_s11b2 windows-service-password-impersonation-not-reverted"
+grep -q 'Self::WindowsLocalSystemPeer => true' src/ipc.rs                            || r_s11b2="$r_s11b2 windows-service-password-commit-not-localsystem-gated"
+grep -q 'handle_windows_service_owned_unattended_password_request' src/platform/windows.rs || r_s11b2="$r_s11b2 windows-service-password-service-loop-not-wired"
+grep -q 'RequestServiceOwnedUnattendedPasswordChange(value)' src/platform/windows.rs || r_s11b2="$r_s11b2 windows-service-password-request-not-dispatched"
+grep -q 'crate::platform::is_elevated(None).unwrap_or(false)' src/ipc.rs             || r_s11b2="$r_s11b2 windows-service-password-ui-not-elevation-gated"
+windows_password_authorizer=$(awk '/fn windows_peer_is_authorized_for_service_owned_password_change/,/^}/' src/ipc.rs)
+if echo "$windows_password_authorizer" | grep -q 'is_elevated(Some'; then
+  r_s11b2="$r_s11b2 windows-service-password-authorizer-uses-pid-elevation"
+fi
 grep -q '"permanent-password" => authority.allows_main_channel_user_owned_password_write()' src/ipc.rs && r_s11b2="$r_s11b2 password-still-generic-config-key"
 grep -q '"permanent-password" => authority.allows_main_channel_password_write()' src/ipc.rs && r_s11b2="$r_s11b2 password-still-generic-config-key"
 grep -q 'Data::Config((' src/ipc.rs && r_s11b2="$r_s11b2 generic-config-write-shape-present"
@@ -269,7 +285,7 @@ if echo "$user_scope_fn" | grep -q '"--password"'; then
   r_s11b2="$r_s11b2 password-still-root-routes-to-user-main-ipc"
 fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 service-owned password IPC closure:$r_s11b2"; rc=1; else
-  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux service-owned password changes require polkit and a root-service commit; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
+  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux uses polkit/root-service commit; Windows uses pipe-client token elevation plus LocalSystem service commit; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
 
 # (3b-iii-d) R-S11b-3a: service-owned machine policy is not an ordinary Data::Options write.
 # Options writes use a typed daemon ACK/NACK; IPC callers persist only after an accepted ACK and never
@@ -450,7 +466,7 @@ if [ -n "$r_s11c5" ]; then echo "  FAIL R-S11c-5 macOS privileged service packag
 
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() are now only typed password
-# operations: user-owned direct commit and Linux service-owned root-service commit. set_socks /
+# operations: user-owned direct commit and Linux/Windows service-owned service commit. set_socks /
 # set_id / set_salt and generic Config writes are absent, not denied. The `_ => true` catch-all would let a NEW
 # bypassing write (a new Data arm) reach Config unguarded on the main channel — the exact regression.
 # set_options is EXCLUDED (it self-filters via is_option_can_save, R-S16); HwCodecConfig::set is a
@@ -465,8 +481,8 @@ hb_cfg_writes=$(awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -cE '\bConfig:
 # deleting Config::set + Config2::set from handle(), so the count is 7->5.
 # I-4 (2026-07-09): was 5; R-S11b-3c deleted Data::Socks and the generic Data::Config write arm,
 # removing Config::set_socks, Config::set_id, and Config::set_salt from handle(), so the count is 5->1.
-# I-5 (2026-07-09): was 1; R-S11b-2c added the Linux service-owned password commit arm with
-# receiver-side service-owned + root-peer authority, so the count is 1->2.
+# I-5 (2026-07-09): was 1; R-S11b-2c/R-S11b-2d added the service-owned password commit arm with
+# receiver-side service-owned + root/LocalSystem service-peer authority, so the count is 1->2.
 if [ "$hb_cfg_writes" != "2" ]; then
   echo "  FAIL R-S11/R-A6: handle() now has $hb_cfg_writes is_option_can_save-bypassing config-writes (expected 2). A config-write was added/removed — make it a typed operation with explicit authority or keep it outside IPC, then update this count."; rc=1
 else
@@ -475,7 +491,8 @@ fi
 
 # R-D8/R-S11b: the --password CLI remains a typed headless automation path, but path/root checks are not
 # authority. It dispatches to the same owner-aware permanent-password operation as the GUI: user-owned servers
-# accept the user-owned typed request; Linux installed-service mode goes through polkit + root-service commit.
+# accept the user-owned typed request; Linux installed-service mode goes through polkit + root-service commit;
+# Windows installed-service mode goes through elevated pipe-client proof + LocalSystem service commit.
 pw_arm=$(awk '/args\[0\] == "--password"/,/args\[0\] == "--get-id"/' src/core_main.rs | grep -vE '^[[:space:]]*//')
 if echo "$pw_arm" | grep -q 'set_permanent_password' && ! echo "$pw_arm" | grep -q 'is_root' && ! echo "$pw_arm" | grep -q 'is_installed'; then
   echo "  ok  R-D8/R-S11b --password uses the owner-aware typed password operation, not root-gated or install-path-gated"

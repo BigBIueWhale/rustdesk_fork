@@ -216,6 +216,24 @@ unreachable and a source/test/AST gate prevents reintroduction.
   polkit policy packaging, owner-aware UI/FFI/CLI routing, and the updated two-write handler reachability count;
   `ipc::test::main_channel_rejects_untyped_state_mutations`,
   `ipc::test::service_channel_rejects_config_bus`, and Linux `/proc` parser tests cover the source policy.
+- **R-S11b-2d/R-S11c-1e — Windows service-owned unattended password provisioning — CLOSED 2026-07-09.**
+  Platform: Windows installed service. Endpoint/action:
+  `Data::RequestServiceOwnedUnattendedPasswordChange(String)` over `_service`, followed by
+  `Data::CommitServiceOwnedUnattendedPasswordChange(String)` from the LocalSystem service into the
+  service-owned main server. Boundary: active desktop process ↔ LocalSystem `_service` ↔ service-owned
+  `--server` process that honors the unattended credential. Attack surface closed: a medium-integrity
+  same-session process cannot mint the privileged unattended password through ordinary main IPC or by forging
+  the service request. The desktop/CLI service-owned setter is exposed on Windows only when the caller process
+  is already elevated; the service receiver still performs the load-bearing check itself by impersonating the
+  connected named-pipe client and requiring an elevated client token before forwarding the commit. The main
+  server accepts the final commit only when the receiver is service-owned and the committing pipe client token
+  is LocalSystem. The service loop handles only `Close`, `Test`, and the typed password request; it does not
+  forward arbitrary `_service` traffic into the main IPC handler. Main-channel service-owned password requests
+  remain denied, ordinary user-owned password writes remain denied for service-owned receivers, and rejection
+  ACKs fail closed. Verification closure: `scripts/verify.sh` asserts the Windows typed request dispatch,
+  pipe-client token impersonation, `RevertToSelf`, elevated-token request gate, LocalSystem-token commit gate,
+  already-elevated UI/CLI exposure, and absence of PID-based elevation proof for this operation; the Windows
+  source test `windows_service_owned_password_commit_requires_localsystem_peer` covers the main-channel policy.
 - **R-S11b-3a — service-marked server rejects ordinary options IPC — CLOSED 2026-07-08.** Platforms:
   Windows installed service-launched `--server`, Linux root-service-launched root or active-user `--server`,
   and macOS LaunchAgent `--server` source path. Endpoint/action: main IPC `Data::Options(Some(_))`.
@@ -252,7 +270,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `scripts/verify.sh` runs the main-channel mutation test, asserts absence of the legacy generic config write
   shape, generic config helpers, and proxy IPC variant, and pins the handler's
   `is_option_can_save`-bypassing config-write count to the two typed password operations (user-owned direct
-  commit and Linux service-owned root-service commit);
+  commit and Linux/Windows service-owned service commit);
   `scripts/apple-conform-check.sh` mirrors the source absence assertions for macOS.
 - **R-S11c-2a/R-S11c-3a — Windows `_service` raw session/SAS commands removed — CLOSED 2026-07-08.**
   Platform: Windows installed service. Endpoint/action: `_service` named pipe messages formerly carrying
@@ -318,10 +336,11 @@ unreachable and a source/test/AST gate prevents reintroduction.
   R-S11b-2a/R-S11c-1a. User-owned `--server` paths remain
   user-owned. Linux installed-service provisioning is closed by R-S11b-2c/R-S11c-1d: a polkit-authorized
   `_service` request is the only enabled service-owned password path, and the final commit is accepted only
-  by a service-owned server from a root peer. Remaining closure: Windows needs UAC/service-admin proof before
-  any service-owned PRS write; macOS needs the Authorization Services/privileged-helper path before any
-  service-owned PRS write; tests must cover those platform-native service-owned provisioning paths vs user-mode
-  behavior.
+  by a service-owned server from a root peer. Windows installed-service provisioning is closed by
+  R-S11b-2d/R-S11c-1e: the `_service` request requires an elevated connected pipe-client token, and the final
+  main-server commit is accepted only from a LocalSystem service peer. Remaining closure: macOS needs the
+  Authorization Services/privileged-helper path before any service-owned PRS write; tests must cover that
+  platform-native service-owned provisioning path vs user-mode behavior.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows
@@ -336,15 +355,6 @@ unreachable and a source/test/AST gate prevents reintroduction.
   after R-S11b-3c. Remaining closure: privileged service policy writes are typed service actions with
   receiver-side validation; trust-store writes, service-policy writes, and any future identity/salt/key/proxy
   write are not reachable from ordinary IPC except through named approved operations with gates.
-- **R-S11c-1 — Windows main IPC credential write into a SYSTEM/winlogon-launched server.** Platform:
-  Windows installed service. Endpoint: main named pipe `\\.\pipe\<APP>\query` accepting same-session genuine
-  executable peers; action: any password write for a service-launched server, historically generic config
-  permanent-password writes. Boundary: same-session desktop process ↔ service-launched
-  server process. Attack surface: same-session is not machine-admin authority, so it must not change the
-  service-hosted remote credential. Current state: the same-session/same-exe main pipe no longer authorizes
-  the generic password config key, and the typed user-owned password operation is rejected by service-owned
-  receivers after R-S11b-2a/R-S11c-1a and R-S11b-2b/R-S11c-1b. Remaining closure: a typed service operation
-  still needs receiver-side admin authority validation before any PRS write.
 **Contained hardening items from the same audit:**
 - **R-S11c-6 — Windows named-pipe endpoint hardening.** Platform: Windows desktop. Endpoint:
   predictable `\\.\pipe\<APP>\query{postfix}` names and broad create permissions for main/`_service`.

@@ -705,7 +705,22 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                                 log::info!("close received");
                                 break;
                             }
-                            _ => {}
+                            ipc::Data::Test => {
+                                allow_err!(stream.send(&ipc::Data::Test).await);
+                            }
+                            ipc::Data::RequestServiceOwnedUnattendedPasswordChange(value) => {
+                                ipc::handle_windows_service_owned_unattended_password_request(
+                                    value,
+                                    &mut stream,
+                                )
+                                .await;
+                            }
+                            _ => {
+                                log::warn!(
+                                    "Rejected unauthorized data on protected Windows _service IPC channel: data_kind={:?}",
+                                    std::mem::discriminant(&data)
+                                );
+                            }
                         }
                     }
                 }

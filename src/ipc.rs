@@ -29,6 +29,8 @@ use hbb_common::{
     tokio_util::codec::Framed,
     ResultType,
 };
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) use ipc_auth::authorize_cm_ipc_connection;
 #[cfg(windows)]
 pub(crate) use ipc_auth::ensure_peer_executable_matches_current_by_pid_opt;
 #[cfg(windows)]
@@ -272,6 +274,28 @@ pub enum DataControl {
     },
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+#[serde(tag = "t")]
+pub enum CmAuthConnType {
+    Remote,
+    FileTransfer,
+    ViewCamera,
+    Terminal,
+    PortForward,
+}
+
+impl CmAuthConnType {
+    pub(crate) fn allows_file_authority(self) -> bool {
+        matches!(self, Self::Remote | Self::FileTransfer)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Default)]
+pub struct CmConnectionAuthority {
+    pub valid: bool,
+    pub file: bool,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "t", content = "c")]
 pub enum Data {
@@ -285,6 +309,7 @@ pub enum Data {
         avatar: String,
         authorized: bool,
         port_forward: String,
+        conn_type: CmAuthConnType,
         keyboard: bool,
         clipboard: bool,
         audio: bool,
@@ -295,6 +320,7 @@ pub enum Data {
         block_input: bool,
         privacy_mode: bool,
         from_switch: bool,
+        cm_auth_token: String,
     },
     ChatMessage {
         text: String,
@@ -309,6 +335,18 @@ pub enum Data {
     RawMessage(Vec<u8>),
     Socks(Option<config::Socks5Server>),
     FS(FS),
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    AuthorizedFS {
+        cm_auth_token: String,
+        fs: FS,
+    },
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    ValidateCmConnection {
+        id: i32,
+        conn_type: CmAuthConnType,
+        cm_auth_token: String,
+        result: Option<CmConnectionAuthority>,
+    },
     Test,
     SyncConfig(Option<Box<(Config, Config2)>>),
     #[cfg(target_os = "windows")]
@@ -872,6 +910,28 @@ async fn handle(data: Data, stream: &mut Connection) {
                 log::info!("socks updated");
             }
         },
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        Data::ValidateCmConnection {
+            id,
+            conn_type,
+            cm_auth_token,
+            result: None,
+        } => {
+            let result =
+                crate::server::validate_cm_connection_authority(id, conn_type, &cm_auth_token);
+            allow_err!(
+                stream
+                    .send(&Data::ValidateCmConnection {
+                        id,
+                        conn_type,
+                        cm_auth_token: String::new(),
+                        result: Some(result),
+                    })
+                    .await
+            );
+        }
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        Data::ValidateCmConnection { .. } => {}
         Data::Config((name, value)) => match value {
             None => {
                 let value;
@@ -1199,6 +1259,38 @@ pub async fn connect(ms_timeout: u64, postfix: &str) -> ResultType<ConnectionTmp
     {
         let path = Config::ipc_path(postfix);
         connect_with_path(ms_timeout, &path).await
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) async fn validate_cm_connection_authority(
+    id: i32,
+    conn_type: CmAuthConnType,
+    cm_auth_token: &str,
+) -> ResultType<CmConnectionAuthority> {
+    if id <= 0 {
+        bail!("invalid cm connection id");
+    }
+    if cm_auth_token.is_empty() {
+        bail!("missing cm authority token");
+    }
+
+    let mut stream = connect(1_000, "").await?;
+    stream
+        .send(&Data::ValidateCmConnection {
+            id,
+            conn_type,
+            cm_auth_token: cm_auth_token.to_owned(),
+            result: None,
+        })
+        .await?;
+
+    match stream.next_timeout(1_000).await? {
+        Some(Data::ValidateCmConnection {
+            result: Some(result),
+            ..
+        }) => Ok(result),
+        _ => bail!("invalid cm authority validation response"),
     }
 }
 

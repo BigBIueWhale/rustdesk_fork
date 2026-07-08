@@ -284,6 +284,7 @@ pub struct Connection {
     closed: bool,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     start_cm_ipc_para: Option<StartCmIpcPara>,
+    cm_auth_token: String,
     auto_disconnect_timer: Option<(Instant, u64)>,
     authed_conn_id: Option<self::raii::AuthedConnID>,
     file_remove_log_control: FileRemoveLogControl,
@@ -455,6 +456,7 @@ impl Connection {
                 rx_desktop_ready,
                 tx_cm_stream_ready,
             }),
+            cm_auth_token: crate::encode64(hbb_common::rand::random::<[u8; 32]>()),
             auto_disconnect_timer: None,
             authed_conn_id: None,
             file_remove_log_control: FileRemoveLogControl::new(id),
@@ -1064,10 +1066,20 @@ impl Connection {
         } else {
             AuthConnType::Remote
         };
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        let cm_file = self.file
+            && matches!(
+                auth_conn_type,
+                AuthConnType::Remote | AuthConnType::FileTransfer
+            );
         self.authed_conn_id = Some(self::raii::AuthedConnID::new(
             self.inner.id(),
             auth_conn_type,
             self.session_key(),
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            self.cm_auth_token.clone(),
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            cm_file,
         ));
         // R-S19 (CWE-863): confine every peer-triggerable capability to the authorized AuthConnType
         // NOW — at authorization time, before any peer LoginRequest option is applied
@@ -1496,12 +1508,24 @@ impl Connection {
     }
 
     fn try_start_cm(&mut self, peer_id: String, name: String, authorized: bool) {
+        let cm_conn_type = if self.file_transfer.is_some() {
+            ipc::CmAuthConnType::FileTransfer
+        } else if self.view_camera {
+            ipc::CmAuthConnType::ViewCamera
+        } else if self.terminal {
+            ipc::CmAuthConnType::Terminal
+        } else if !self.port_forward_address.is_empty() {
+            ipc::CmAuthConnType::PortForward
+        } else {
+            ipc::CmAuthConnType::Remote
+        };
         self.send_to_cm(ipc::Data::Login {
             id: self.inner.id(),
             is_file_transfer: self.file_transfer.is_some(),
             is_view_camera: self.view_camera,
             is_terminal: self.terminal,
             port_forward: self.port_forward_address.clone(),
+            conn_type: cm_conn_type,
             peer_id,
             name,
             avatar: self.lr.avatar.clone(),
@@ -1516,6 +1540,7 @@ impl Connection {
             block_input: self.block_input,
             privacy_mode: self.privacy_mode,
             from_switch: self.from_switch,
+            cm_auth_token: self.cm_auth_token.clone(),
         });
     }
 
@@ -1526,6 +1551,12 @@ impl Connection {
 
     #[inline]
     fn send_fs(&mut self, data: ipc::FS) {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        self.send_to_cm(ipc::Data::AuthorizedFS {
+            cm_auth_token: self.cm_auth_token.clone(),
+            fs: data,
+        });
+        #[cfg(any(target_os = "android", target_os = "ios"))]
         self.send_to_cm(ipc::Data::FS(data));
     }
 
@@ -3812,7 +3843,9 @@ impl Connection {
                         // R-S19: the whiteboard cursor overlay is a Remote-only screen-interaction
                         // feature; do not spawn the --whiteboard overlay process for other types.
                         if self.is_authed_remote_conn() {
-                            whiteboard::register_whiteboard(whiteboard::get_key_cursor(self.inner.id));
+                            whiteboard::register_whiteboard(whiteboard::get_key_cursor(
+                                self.inner.id,
+                            ));
                         }
                     } else {
                         let mut msg_out = Message::new();
@@ -4896,12 +4929,15 @@ async fn start_ipc(
             res = rx_to_cm.recv() => {
                 match res {
                     Some(data) => {
-                        if let Data::FS(ipc::FS::WriteBlock{id,
+                        if let Data::AuthorizedFS { cm_auth_token, fs: ipc::FS::WriteBlock{id,
                             file_num,
                             conn_id,
                             data,
-                            compressed}) = data {
-                                stream.send(&Data::FS(ipc::FS::WriteBlock{id, file_num, conn_id, data: Bytes::new(), compressed})).await?;
+                            compressed} } = data {
+                                stream.send(&Data::AuthorizedFS {
+                                    cm_auth_token,
+                                    fs: ipc::FS::WriteBlock{id, file_num, conn_id, data: Bytes::new(), compressed},
+                                }).await?;
                                 stream.send_raw(data).await?;
                         } else {
                             stream.send(&data).await?;
@@ -5313,6 +5349,40 @@ pub struct AuthedConn {
     pub conn_id: i32,
     pub conn_type: AuthConnType,
     pub session_key: SessionKey,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub cm_auth_token: String,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub cm_file: bool,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) fn validate_cm_connection_authority(
+    conn_id: i32,
+    conn_type: ipc::CmAuthConnType,
+    cm_auth_token: &str,
+) -> ipc::CmConnectionAuthority {
+    if conn_id <= 0 || cm_auth_token.is_empty() {
+        return ipc::CmConnectionAuthority::default();
+    }
+    let authed_conns = AUTHED_CONNS.lock().unwrap();
+    let Some(conn) = authed_conns.iter().find(|conn| {
+        conn.conn_id == conn_id
+            && conn.cm_auth_token == cm_auth_token
+            && match (conn.conn_type, conn_type) {
+                (AuthConnType::Remote, ipc::CmAuthConnType::Remote)
+                | (AuthConnType::FileTransfer, ipc::CmAuthConnType::FileTransfer)
+                | (AuthConnType::ViewCamera, ipc::CmAuthConnType::ViewCamera)
+                | (AuthConnType::Terminal, ipc::CmAuthConnType::Terminal)
+                | (AuthConnType::PortForward, ipc::CmAuthConnType::PortForward) => true,
+                _ => false,
+            }
+    }) else {
+        return ipc::CmConnectionAuthority::default();
+    };
+    ipc::CmConnectionAuthority {
+        valid: true,
+        file: conn.cm_file && conn_type.allows_file_authority(),
+    }
 }
 
 mod raii {
@@ -5344,11 +5414,17 @@ mod raii {
             conn_id: i32,
             conn_type: AuthConnType,
             session_key: SessionKey,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))] cm_auth_token: String,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))] cm_file: bool,
         ) -> Self {
             AUTHED_CONNS.lock().unwrap().push(AuthedConn {
                 conn_id,
                 conn_type,
                 session_key,
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                cm_auth_token,
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                cm_file,
             });
             Self::check_wake_lock();
             use std::sync::Once;

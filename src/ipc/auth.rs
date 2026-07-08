@@ -542,6 +542,48 @@ pub(crate) fn authorize_windows_main_ipc_connection(stream: &Connection, postfix
     true
 }
 
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn peer_process_is_current_exe_server(peer_pid: u32) -> bool {
+    let Some(exe_name) = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.file_name().map(|name| name.to_owned()))
+    else {
+        return false;
+    };
+    let exe_name = exe_name.to_string_lossy();
+    crate::platform::get_pids_of_process_with_first_arg(exe_name.as_ref(), "--server")
+        .iter()
+        .any(|pid| pid.as_u32() == peer_pid)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) fn authorize_cm_ipc_connection(stream: &Connection) -> bool {
+    let peer_pid = stream.peer_pid();
+    if let Err(err) = ensure_peer_executable_matches_current_by_pid_opt(peer_pid, "_cm") {
+        log::warn!(
+            "Rejected unauthorized connection on _cm IPC channel due to executable mismatch: peer_pid={:?}, err={}",
+            peer_pid,
+            err
+        );
+        return false;
+    }
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    {
+        let Some(peer_pid) = peer_pid else {
+            log::warn!("Rejected unauthorized connection on _cm IPC channel: peer pid unavailable");
+            return false;
+        };
+        if !peer_process_is_current_exe_server(peer_pid) {
+            log::warn!(
+                "Rejected unauthorized connection on _cm IPC channel: peer is not the current executable's --server process, peer_pid={}",
+                peer_pid
+            );
+            return false;
+        }
+    }
+    true
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 impl<T> ConnectionTmpl<T>
 where

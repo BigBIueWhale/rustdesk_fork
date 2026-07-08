@@ -201,18 +201,25 @@ unreachable and a source/test/AST gate prevents reintroduction.
   SAS may be reintroduced only as a typed receiver-authorized capability tied to an authenticated Remote
   connection and current policy state. Verification closure: `scripts/verify.sh` asserts the raw message/API
   symbols and receiver dispatch are absent and the caller paths fail closed.
-- **R-S11c-4a — `_cm` pre-login filesystem messages rejected — CLOSED 2026-07-08.** Platforms:
-  Linux, Windows, and macOS desktop CM paths; Android in-process CM. Endpoint/action: `_cm` / CM
-  `Data::FS` carrying file read/write/delete/rename/digest operations before `Data::Login`. Boundary:
-  helper client ↔ file-transfer authority. Attack surface closed: CM now has an explicit
-  `CmFileAuthority` state that is absent until a positive `Data::Login` for an authorized,
-  file-capable Remote or FileTransfer connection with a nonzero connection id. Desktop `_cm` rejects
-  and closes the stream on `Data::FS` before that state, before reading `WriteBlock` raw bytes or calling
-  `handle_fs`; Android drops the same pre-authority filesystem message before `handle_fs`. ViewCamera,
-  Terminal, PortForward, unauthorized, id-zero, and no-file-capability logins do not create CM file
-  authority. Verification closure: `scripts/verify.sh` runs `cm_file_authority_*` tests and source-gates
-  the desktop and Android `Data::FS` arms so the authority check precedes `handle_fs`;
-  `scripts/apple-conform-check.sh` mirrors the desktop source assertion for macOS.
+- **R-S11c-4a/R-S11c-4b — `_cm` file authority bound to a server-validated connection — CLOSED 2026-07-08.**
+  Platforms: Linux, Windows, and macOS desktop CM paths; Android in-process CM. Endpoint/action:
+  `_cm` / CM file read/write/delete/rename/digest operations. Boundary: helper client ↔ file-transfer
+  authority. Attack surface closed: desktop CM no longer trusts a local helper's self-asserted
+  `Data::Login`. Each authenticated `Connection` mints a random `cm_auth_token`, records it in
+  `AUTHED_CONNS` with the authenticated `AuthConnType` and server-side file capability, and sends it to
+  CM. CM validates `(conn_id, AuthConnType, token)` through the main server IPC before calling
+  `add_connection`; stale, missing, wrong-type, wrong-token, and forged local logins fail before any CM
+  client state is created. Desktop file operations are accepted only as `Data::AuthorizedFS` carrying
+  the same token on the already validated CM stream; legacy desktop `Data::FS` is reject-only and is
+  closed before `WriteBlock` raw bytes or `handle_fs`. File authority is additionally limited to
+  server-validated Remote/FileTransfer sessions with server-validated file capability, so ViewCamera,
+  Terminal, PortForward, unauthorized, id-zero, and no-file-capability sessions do not create CM file
+  authority. Android remains an in-process channel and keeps the same receiver-side `CmFileAuthority`
+  derivation before `handle_fs`. Verification closure: `scripts/verify.sh` runs `cm_file_authority_*`
+  tests and source-gates the server token registry, the `ValidateCmConnection` callback, validation
+  before `add_connection`, desktop `AuthorizedFS` token matching, desktop legacy `Data::FS` rejection,
+  and Android pre-`handle_fs` gating; `scripts/apple-conform-check.sh` mirrors the desktop source
+  assertion for macOS.
 - **R-S11c-5 — macOS privileged service packaging — CLOSED 2026-07-08.** Platform: macOS
   source-conformance and any future macOS artifact. Surfaces: `src/platform/privileges_scripts/daemon.plist`,
   `install.scpt`, `update.scpt`, `uninstall.scpt`, and their `osascript` call sites in
@@ -267,17 +274,6 @@ unreachable and a source/test/AST gate prevents reintroduction.
   pipe no longer authorizes ordinary service credential mutation after R-S11b-2a/R-S11c-1a. Remaining
   closure: the typed service operation still needs receiver-side admin authority validation before any PRS
   write.
-- **R-S11c-4 — `_cm` pre-login file authority.** Platforms: Linux, Windows, macOS desktop CM paths; highest
-  severity where CM can run as root/headless/no-console, lower but still wrong as same-user ambient trust.
-  Endpoint: `_cm` IPC accepts `Data::FS` before `Data::Login`. Boundary: local helper client ↔ file-transfer
-  authority. Attack surface: local read/write/delete/rename/digest/file-transfer operations are reachable
-  before connection ownership is proven; if privileged, this becomes local privileged filesystem authority.
-  Current state: R-S11c-4a rejects `Data::FS` before an authorized file-capable CM login on desktop and
-  Android, and rejects non-file-capable connection types before `handle_fs`. Remaining closure:
-  `Data::Login` is still self-asserted by the local helper client, not bound to a per-connection
-  capability/nonce minted by the owning `Connection`; a forged local `Data::Login { authorized: true, ... }`
-  must fail. Bind CM to that nonce/capability, key file authority to `AuthConnType::FileTransfer` or
-  `Remote` as designed at the receiver, and test stale/wrong/missing nonce rejection.
 **Contained hardening items from the same audit:**
 - **R-S11c-6 — Windows named-pipe endpoint hardening.** Platform: Windows desktop. Endpoint:
   predictable `\\.\pipe\<APP>\query{postfix}` names and broad create permissions for main/`_service`.

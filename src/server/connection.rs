@@ -2843,14 +2843,12 @@ impl Connection {
                                 && sessions.len() > 1
                                 && current_process_sid != sid
                                 && sessions.iter().any(|e| e.sid == sid)
-                                // R-S19: the RDP user-session switch is a Remote-only screen-control
-                                // action; a non-Remote peer falls through to its own type branch below.
                                 && self.is_authed_remote_conn()
                             {
-                                std::thread::spawn(move || {
-                                    let _ = ipc::connect_to_user_session(Some(sid));
-                                });
-                                return false;
+                                log::warn!(
+                                    "Rejected Windows session switch request: service-owned session switching requires a receiver-authorized capability"
+                                );
+                                return true;
                             }
                             if self.file_transfer.is_some() {
                                 if let Some((dir, show_hidden)) = self.delayed_read_dir.take() {

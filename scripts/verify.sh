@@ -222,6 +222,29 @@ grep -q 'Ok(()) => {' src/ui_interface.rs                                       
 if [ -n "$r_s11b3" ]; then echo "  FAIL R-S11b-3a service-owned options IPC closure:$r_s11b3"; rc=1; else
   echo "  ok  R-S11b-3a service-owned --server rejects Data::Options(Some) before privacy/config side effects; IPC options writes require typed ACK before caller persistence and have no local fallback"; fi
 
+# (3b-iii-e) R-S11c-2/R-S11c-3: Windows `_service` is not a raw privileged-action bus.
+# Session switching and SAS/HKLM-touching actions require a receiver-authorized capability API; until that
+# exists, the raw local service messages are absent and the caller-side request paths fail closed.
+echo "== (3b-iii-e) Windows _service raw privileged commands absent (R-S11c-2/R-S11c-3) =="
+r_s11c23=
+if rg -n 'Data::SAS|Data::UserSid|connect_to_user_session|UserSid\(Option' src/ipc.rs src/platform/windows.rs src/server >/tmp/r_s11c23_hits.txt; then
+  r_s11c23="$r_s11c23 raw-service-message-symbol-present:$(tr '\n' ';' </tmp/r_s11c23_hits.txt)"
+fi
+ipc_data_enum=$(awk '/pub enum Data {/,/^}/' src/ipc.rs)
+if echo "$ipc_data_enum" | grep -Eq '^[[:space:]]*(SAS|UserSid)[[:space:]]*(,|\(|\{)'; then
+  r_s11c23="$r_s11c23 raw-service-message-enum-variant-present"
+fi
+windows_service_loop=$(awk '/async fn run_service/,/^async fn launch_server/' src/platform/windows.rs)
+echo "$windows_service_loop" | grep -q 'ipc::new_listener(crate::POSTFIX_SERVICE)' || r_s11c23="$r_s11c23 service-loop-range-missed-listener"
+echo "$windows_service_loop" | grep -q 'authorize_service_scoped_ipc_connection' || r_s11c23="$r_s11c23 service-loop-range-missed-auth"
+if echo "$windows_service_loop" | grep -Eq 'Data::(SAS|UserSid)|send_sas|SoftwareSASGeneration'; then
+  r_s11c23="$r_s11c23 service-loop-still-dispatches-raw-session-or-sas"
+fi
+grep -q 'service-owned session switching requires a receiver-authorized capability' src/server/connection.rs || r_s11c23="$r_s11c23 selected-sid-not-fail-closed"
+grep -q 'SAS in the physical console session requires a receiver-authorized service capability' src/server/input_service.rs || r_s11c23="$r_s11c23 sas-not-fail-closed"
+if [ -n "$r_s11c23" ]; then echo "  FAIL R-S11c-2/R-S11c-3 Windows _service raw privileged command closure:$r_s11c23"; rc=1; else
+  echo "  ok  R-S11c-2/R-S11c-3 Windows _service has no raw UserSid/SAS commands; session-switch and SAS requests fail closed pending a typed capability API"; fi
+
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() — set_socks / set_permanent_password /
 # set_id / set_salt — MUST each sit in a Data arm that main_channel_admits_config_write DENIES

@@ -1940,8 +1940,9 @@ async fn lock_screen_2() {
 #[tokio::main(flavor = "current_thread")]
 async fn send_sas() -> ResultType<()> {
     if crate::platform::is_physical_console_session().unwrap_or(true) {
-        let mut stream = crate::ipc::connect(1000, crate::POSTFIX_SERVICE).await?;
-        hbb_common::timeout(1000, stream.send(&crate::ipc::Data::SAS)).await??;
+        bail!(
+            "SAS in the physical console session requires a receiver-authorized service capability"
+        );
     } else {
         crate::platform::send_sas();
     };

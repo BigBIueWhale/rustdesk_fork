@@ -661,7 +661,6 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
     log::info!("session id {}", session_id);
     let mut h_process = launch_server(session_id, true).await.unwrap_or(NULL);
     let mut incoming = ipc::new_listener(crate::POSTFIX_SERVICE).await?;
-    let mut stored_usid = None;
     loop {
         let sids: Vec<_> = get_available_sessions(false)
             .iter()
@@ -698,24 +697,6 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                                 log::info!("close received");
                                 break;
                             }
-                            ipc::Data::SAS => {
-                                send_sas();
-                            }
-                            ipc::Data::UserSid(usid) => {
-                                if let Some(usid) = usid {
-                                    if session_id != usid {
-                                        log::info!(
-                                            "session changed from {} to {}",
-                                            session_id,
-                                            usid
-                                        );
-                                        session_id = usid;
-                                        stored_usid = Some(session_id);
-                                        h_process =
-                                            launch_server(session_id, true).await.unwrap_or(NULL);
-                                    }
-                                }
-                            }
                             _ => {}
                         }
                     }
@@ -730,7 +711,7 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                         continue;
                     }
                     let mut close_sent = false;
-                    if tmp != session_id && stored_usid != Some(session_id) {
+                    if tmp != session_id {
                         log::info!("session changed from {} to {}", session_id, tmp);
                         session_id = tmp;
                         let count = ipc::get_port_forward_session_count(1000).await.unwrap_or(0);

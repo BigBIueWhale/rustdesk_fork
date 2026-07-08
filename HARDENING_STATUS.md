@@ -189,6 +189,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   closure: `scripts/verify.sh` tests the user-owned vs service-owned allowlist and asserts the typed ACK/NACK,
   no-local-fallback rule, receiver gate, and UI cache ordering; `scripts/apple-conform-check.sh` mirrors
   the macOS source assertions.
+- **R-S11c-2a/R-S11c-3a — Windows `_service` raw session/SAS commands removed — CLOSED 2026-07-08.**
+  Platform: Windows installed service. Endpoint/action: `_service` named pipe messages formerly carrying
+  `Data::UserSid(Some(_))` for service-owned session switching and `Data::SAS` for SYSTEM-mediated
+  Ctrl+Alt+Del / temporary HKLM `SoftwareSASGeneration` changes. Boundary: local same-session process or
+  user-launched `--server` ↔ SYSTEM service. Attack surface closed: `src/ipc.rs` no longer defines
+  `Data::UserSid`, `Data::SAS`, or `connect_to_user_session`; `src/platform/windows.rs` no longer dispatches
+  either raw command in the service loop; selected-session requests in `src/server/connection.rs` fail closed
+  instead of asking `_service` to launch a target session; physical-console SAS in `src/server/input_service.rs`
+  fails closed instead of sending a generic service command. Service-owned session switching and service-mediated
+  SAS may be reintroduced only as a typed receiver-authorized capability tied to an authenticated Remote
+  connection and current policy state. Verification closure: `scripts/verify.sh` asserts the raw message/API
+  symbols and receiver dispatch are absent and the caller paths fail closed.
 
 **Release-blocking items:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,
@@ -225,21 +237,6 @@ unreachable and a source/test/AST gate prevents reintroduction.
   pipe no longer authorizes ordinary service credential mutation after R-S11b-2a/R-S11c-1a. Remaining
   closure: the typed service operation still needs receiver-side admin authority validation before any PRS
   write.
-- **R-S11c-2 — Windows `_service` caller-supplied session switching.** Platform: Windows multi-session,
-  RDP, fast-user-switching, installed service. Endpoint: `_service` named pipe carrying `Data::UserSid`.
-  Boundary: local caller ↔ SYSTEM service session broker. Attack surface: the legitimate remote path checks
-  policy before sending, but a direct local IPC caller can supply a target session and make the service launch
-  or move the server there. Closure: `_service` rejects raw caller-supplied session IDs; the service itself
-  validates target existence, current session, `share_rdp`/policy, caller authority, and a service-minted
-  capability tied to an authenticated Remote connection; tests cover invalid target, no policy, stale
-  capability, and direct local IPC bypass attempts.
-- **R-S11c-3 — Windows `_service` privileged SAS/HKLM action.** Platform: Windows installed service.
-  Endpoint: `_service` message `Data::SAS` and the handler that may temporarily write HKLM
-  `SoftwareSASGeneration` before sending SAS. Boundary: same-session caller ↔ SYSTEM service. Attack
-  surface: a privileged OS action is exposed as a generic local service command. Closure: remove generic SAS
-  from `_service` or require a service-minted capability tied to an authenticated Remote session and a
-  current control context; direct same-session IPC alone is rejected; tests assert unauthorized local callers
-  cannot reach the HKLM/SAS path.
 - **R-S11c-4 — `_cm` pre-login file authority.** Platforms: Linux, Windows, macOS desktop CM paths; highest
   severity where CM can run as root/headless/no-console, lower but still wrong as same-user ambient trust.
   Endpoint: `_cm` IPC accepts `Data::FS` before `Data::Login`. Boundary: local helper client ↔ file-transfer

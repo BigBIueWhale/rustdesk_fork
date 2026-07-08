@@ -302,9 +302,6 @@ pub enum Data {
     SystemInfo(Option<String>),
     ClickTime(i64),
     Close,
-    #[cfg(windows)]
-    SAS,
-    UserSid(Option<u32>),
     Config((String, Option<String>)),
     Options(Option<HashMap<String, String>>),
     OptionsSetResult(bool),
@@ -1621,14 +1618,6 @@ pub fn close_all_instances() -> ResultType<bool> {
         Ok(_) => Ok(true),
         Err(err) => Err(err),
     }
-}
-
-#[cfg(windows)]
-#[tokio::main(flavor = "current_thread")]
-pub async fn connect_to_user_session(usid: Option<u32>) -> ResultType<()> {
-    let mut stream = crate::ipc::connect_service(1000).await?;
-    timeout(1000, stream.send(&crate::ipc::Data::UserSid(usid))).await??;
-    Ok(())
 }
 
 #[tokio::main(flavor = "current_thread")]

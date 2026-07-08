@@ -245,6 +245,34 @@ grep -q 'SAS in the physical console session requires a receiver-authorized serv
 if [ -n "$r_s11c23" ]; then echo "  FAIL R-S11c-2/R-S11c-3 Windows _service raw privileged command closure:$r_s11c23"; rc=1; else
   echo "  ok  R-S11c-2/R-S11c-3 Windows _service has no raw UserSid/SAS commands; session-switch and SAS requests fail closed pending a typed capability API"; fi
 
+# (3b-iii-f) R-S11c-4a: `_cm` is a helper authority boundary. It must not accept
+# file-operation IPC before the owning connection has sent an authorized,
+# file-capable CM login. This is the pre-login closure only; the per-connection
+# nonce/capability binding remains a separate R-S11c-4 item.
+echo "== (3b-iii-f) CM pre-login filesystem IPC rejected (R-S11c-4a) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config cm_file_authority --color never
+r_s11c4=
+grep -q 'struct CmFileAuthority' src/ui_cm_interface.rs || r_s11c4="$r_s11c4 no-cm-file-authority-type"
+grep -q 'file_authority: CmFileAuthority' src/ui_cm_interface.rs || r_s11c4="$r_s11c4 desktop-runner-has-no-authority-state"
+grep -q 'let file_authority = CmFileAuthority::from_login' src/ui_cm_interface.rs || r_s11c4="$r_s11c4 desktop-login-does-not-derive-authority"
+grep -Eq '^[[:space:]]*file_authority = CmFileAuthority::from_login' src/ui_cm_interface.rs || r_s11c4="$r_s11c4 android-login-does-not-derive-authority"
+grep -q 'Rejected CM Data::FS before authorized file-capable login' src/ui_cm_interface.rs || r_s11c4="$r_s11c4 desktop-reject-log-missing"
+grep -q 'Rejected Android CM Data::FS before authorized file-capable login' src/ui_cm_interface.rs || r_s11c4="$r_s11c4 android-reject-log-missing"
+desktop_cm_fs_block=$(awk '/Data::FS\(mut fs\)/,/Data::FileTransferLog/' src/ui_cm_interface.rs)
+desktop_gate_line=$(echo "$desktop_cm_fs_block" | grep -n 'if !self.file_authority.allows_fs()' | head -1 | cut -d: -f1)
+desktop_handle_line=$(echo "$desktop_cm_fs_block" | grep -n 'handle_fs' | head -1 | cut -d: -f1)
+if [ -z "$desktop_gate_line" ] || [ -z "$desktop_handle_line" ] || [ "$desktop_gate_line" -ge "$desktop_handle_line" ]; then
+  r_s11c4="$r_s11c4 desktop-fs-gate-not-before-handle_fs"
+fi
+android_cm_fs_block=$(awk '/Some\(Data::FS\(fs\)\)/,/Some\(Data::Close\)/' src/ui_cm_interface.rs)
+android_gate_line=$(echo "$android_cm_fs_block" | grep -n 'if !file_authority.allows_fs()' | head -1 | cut -d: -f1)
+android_handle_line=$(echo "$android_cm_fs_block" | grep -n 'handle_fs' | head -1 | cut -d: -f1)
+if [ -z "$android_gate_line" ] || [ -z "$android_handle_line" ] || [ "$android_gate_line" -ge "$android_handle_line" ]; then
+  r_s11c4="$r_s11c4 android-fs-gate-not-before-handle_fs"
+fi
+if [ -n "$r_s11c4" ]; then echo "  FAIL R-S11c-4a CM pre-login file IPC closure:$r_s11c4"; rc=1; else
+  echo "  ok  R-S11c-4a CM rejects Data::FS before authorized file-capable login on desktop and Android; nonce/capability binding remains open"; fi
+
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() — set_socks / set_permanent_password /
 # set_id / set_salt — MUST each sit in a Data arm that main_channel_admits_config_write DENIES

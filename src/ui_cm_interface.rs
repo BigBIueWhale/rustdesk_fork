@@ -176,12 +176,50 @@ struct IpcTaskRunner<T: InvokeUiCM> {
     close: bool,
     running: bool,
     conn_id: i32,
+    file_authority: CmFileAuthority,
     #[cfg(target_os = "windows")]
     file_transfer_enabled: bool,
     #[cfg(target_os = "windows")]
     file_transfer_enabled_peer: bool,
     /// Read jobs for CM-side file reading (server to client transfers)
     read_jobs: Vec<fs::TransferJob>,
+}
+
+#[cfg(not(any(target_os = "ios")))]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct CmFileAuthority {
+    conn_id: i32,
+    allows_fs: bool,
+}
+
+#[cfg(not(any(target_os = "ios")))]
+impl CmFileAuthority {
+    fn absent() -> Self {
+        Self::default()
+    }
+
+    fn from_login(
+        id: i32,
+        authorized: bool,
+        is_file_transfer: bool,
+        is_view_camera: bool,
+        is_terminal: bool,
+        port_forward: &str,
+        file: bool,
+    ) -> Self {
+        let has_port_forward = !port_forward.is_empty();
+        let is_clean_file_transfer =
+            is_file_transfer && !is_view_camera && !is_terminal && !has_port_forward;
+        let is_remote = !is_file_transfer && !is_view_camera && !is_terminal && !has_port_forward;
+        Self {
+            conn_id: id,
+            allows_fs: id > 0 && authorized && file && (is_clean_file_transfer || is_remote),
+        }
+    }
+
+    fn allows_fs(self) -> bool {
+        self.allows_fs
+    }
 }
 
 lazy_static::lazy_static! {
@@ -499,8 +537,18 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                             match data {
                                 Data::Login{id, is_file_transfer, is_view_camera, is_terminal, port_forward, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, file_transfer_enabled: _file_transfer_enabled, restart, recording, block_input, privacy_mode, from_switch} => {
                                     log::debug!("conn_id: {}", id);
+                                    let file_authority = CmFileAuthority::from_login(
+                                        id,
+                                        authorized,
+                                        is_file_transfer,
+                                        is_view_camera,
+                                        is_terminal,
+                                        &port_forward,
+                                        file,
+                                    );
                                     self.cm.add_connection(id, is_file_transfer, is_view_camera, is_terminal, port_forward, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, restart, recording, block_input, privacy_mode, from_switch, self.tx.clone());
                                     self.conn_id = id;
+                                    self.file_authority = file_authority;
                                     #[cfg(target_os = "windows")]
                                     {
                                         self.file_transfer_enabled = _file_transfer_enabled;
@@ -528,6 +576,13 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                     self.cm.new_message(self.conn_id, text);
                                 }
                                 Data::FS(mut fs) => {
+                                    if !self.file_authority.allows_fs() {
+                                        log::warn!(
+                                            "Rejected CM Data::FS before authorized file-capable login: conn_id={}",
+                                            self.file_authority.conn_id
+                                        );
+                                        break;
+                                    }
                                     if let ipc::FS::WriteBlock { id, file_num, conn_id, data: _, compressed } = fs {
                                         if let Ok(bytes) = self.stream.next_raw().await {
                                             fs = ipc::FS::WriteBlock{id, file_num, conn_id, data:bytes.into(), compressed};
@@ -729,6 +784,7 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
             close: true,
             running: true,
             conn_id: 0,
+            file_authority: CmFileAuthority::absent(),
             #[cfg(target_os = "windows")]
             file_transfer_enabled: false,
             #[cfg(target_os = "windows")]
@@ -792,6 +848,7 @@ pub async fn start_listen<T: InvokeUiCM>(
     tx: mpsc::UnboundedSender<Data>,
 ) {
     let mut current_id = 0;
+    let mut file_authority = CmFileAuthority::absent();
     let mut write_jobs: Vec<fs::TransferJob> = Vec::new();
     loop {
         match rx.recv().await {
@@ -816,6 +873,15 @@ pub async fn start_listen<T: InvokeUiCM>(
                 from_switch,
                 ..
             }) => {
+                file_authority = CmFileAuthority::from_login(
+                    id,
+                    authorized,
+                    is_file_transfer,
+                    is_view_camera,
+                    is_terminal,
+                    &port_forward,
+                    file,
+                );
                 current_id = id;
                 cm.add_connection(
                     id,
@@ -843,6 +909,13 @@ pub async fn start_listen<T: InvokeUiCM>(
                 cm.new_message(current_id, text);
             }
             Some(Data::FS(fs)) => {
+                if !file_authority.allows_fs() {
+                    log::warn!(
+                        "Rejected Android CM Data::FS before authorized file-capable login: conn_id={}",
+                        file_authority.conn_id
+                    );
+                    continue;
+                }
                 // Android doesn't need CM-side file reading (no need_validate_file_read_access)
                 let mut read_jobs_placeholder: Vec<fs::TransferJob> = Vec::new();
                 handle_fs(
@@ -1758,6 +1831,34 @@ mod tests {
         tokio::{runtime::Runtime, sync::mpsc::unbounded_channel},
     };
     use std::fs;
+
+    #[test]
+    #[cfg(not(any(target_os = "ios")))]
+    fn cm_file_authority_rejects_absent_and_unauthorized_login() {
+        assert!(!CmFileAuthority::absent().allows_fs());
+        assert!(!CmFileAuthority::from_login(1, false, true, false, false, "", true).allows_fs());
+        assert!(!CmFileAuthority::from_login(0, true, true, false, false, "", true).allows_fs());
+        assert!(!CmFileAuthority::from_login(1, true, true, false, false, "", false).allows_fs());
+    }
+
+    #[test]
+    #[cfg(not(any(target_os = "ios")))]
+    fn cm_file_authority_allows_only_authorized_file_capable_sessions() {
+        assert!(CmFileAuthority::from_login(7, true, true, false, false, "", true).allows_fs());
+        assert!(CmFileAuthority::from_login(7, true, false, false, false, "", true).allows_fs());
+        assert!(!CmFileAuthority::from_login(7, true, false, true, false, "", true).allows_fs());
+        assert!(!CmFileAuthority::from_login(7, true, false, false, true, "", true).allows_fs());
+        assert!(
+            !CmFileAuthority::from_login(7, true, false, false, false, "127.0.0.1:3389", true)
+                .allows_fs()
+        );
+        assert!(!CmFileAuthority::from_login(7, true, true, true, false, "", true).allows_fs());
+        assert!(!CmFileAuthority::from_login(7, true, true, false, true, "", true).allows_fs());
+        assert!(
+            !CmFileAuthority::from_login(7, true, true, false, false, "127.0.0.1:3389", true)
+                .allows_fs()
+        );
+    }
 
     #[test]
     #[cfg(not(any(target_os = "ios")))]

@@ -209,6 +209,25 @@ else
   note "ok  R-S11b-2a/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password/options writes + whole-config/storage/salt sync are denied by source policy"
 fi
 
+echo "== (2b-iii) R-S11c-4a macOS CM pre-login filesystem IPC rejected =="
+r_s11c4=
+grep -q 'struct CmFileAuthority' "$REPO/src/ui_cm_interface.rs" || r_s11c4="$r_s11c4 no-cm-file-authority-type"
+grep -q 'file_authority: CmFileAuthority' "$REPO/src/ui_cm_interface.rs" || r_s11c4="$r_s11c4 desktop-runner-has-no-authority-state"
+grep -q 'let file_authority = CmFileAuthority::from_login' "$REPO/src/ui_cm_interface.rs" || r_s11c4="$r_s11c4 desktop-login-does-not-derive-authority"
+grep -q 'Rejected CM Data::FS before authorized file-capable login' "$REPO/src/ui_cm_interface.rs" || r_s11c4="$r_s11c4 desktop-reject-log-missing"
+desktop_cm_fs_block=$(awk '/Data::FS\(mut fs\)/,/Data::FileTransferLog/' "$REPO/src/ui_cm_interface.rs")
+desktop_gate_line=$(echo "$desktop_cm_fs_block" | grep -n 'if !self.file_authority.allows_fs()' | head -1 | cut -d: -f1)
+desktop_handle_line=$(echo "$desktop_cm_fs_block" | grep -n 'handle_fs' | head -1 | cut -d: -f1)
+if [ -z "$desktop_gate_line" ] || [ -z "$desktop_handle_line" ] || [ "$desktop_gate_line" -ge "$desktop_handle_line" ]; then
+  r_s11c4="$r_s11c4 desktop-fs-gate-not-before-handle_fs"
+fi
+if [ -n "$r_s11c4" ]; then
+  echo "  FAIL R-S11c-4a macOS CM pre-login file IPC closure:$r_s11c4"
+  rc=1
+else
+  note "ok  R-S11c-4a macOS CM rejects Data::FS before authorized file-capable login; nonce/capability binding remains open"
+fi
+
 # (2c) Appendix C #2b is an ACCEPTED, documented residual: the fork SHOULD (not MUST) sandbox the decode
 # path. Commit 0c54912 deliberately reverted the ENTIRE native-worker decode-sandbox subsystem (the
 # per-codec worker processes + the macOS Seatbelt sandbox file + the Android isolatedProcess services

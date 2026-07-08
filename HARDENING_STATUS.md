@@ -201,6 +201,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   SAS may be reintroduced only as a typed receiver-authorized capability tied to an authenticated Remote
   connection and current policy state. Verification closure: `scripts/verify.sh` asserts the raw message/API
   symbols and receiver dispatch are absent and the caller paths fail closed.
+- **R-S11c-4a — `_cm` pre-login filesystem messages rejected — CLOSED 2026-07-08.** Platforms:
+  Linux, Windows, and macOS desktop CM paths; Android in-process CM. Endpoint/action: `_cm` / CM
+  `Data::FS` carrying file read/write/delete/rename/digest operations before `Data::Login`. Boundary:
+  helper client ↔ file-transfer authority. Attack surface closed: CM now has an explicit
+  `CmFileAuthority` state that is absent until a positive `Data::Login` for an authorized,
+  file-capable Remote or FileTransfer connection with a nonzero connection id. Desktop `_cm` rejects
+  and closes the stream on `Data::FS` before that state, before reading `WriteBlock` raw bytes or calling
+  `handle_fs`; Android drops the same pre-authority filesystem message before `handle_fs`. ViewCamera,
+  Terminal, PortForward, unauthorized, id-zero, and no-file-capability logins do not create CM file
+  authority. Verification closure: `scripts/verify.sh` runs `cm_file_authority_*` tests and source-gates
+  the desktop and Android `Data::FS` arms so the authority check precedes `handle_fs`;
+  `scripts/apple-conform-check.sh` mirrors the desktop source assertion for macOS.
 
 **Release-blocking items:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,
@@ -242,9 +254,12 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Endpoint: `_cm` IPC accepts `Data::FS` before `Data::Login`. Boundary: local helper client ↔ file-transfer
   authority. Attack surface: local read/write/delete/rename/digest/file-transfer operations are reachable
   before connection ownership is proven; if privileged, this becomes local privileged filesystem authority.
-  Closure: reject all `Data::FS` before authenticated connection login/capability; bind CM to a
-  per-connection nonce minted by the owning `Connection`; key file authority to `AuthConnType::FileTransfer`
-  or `Remote` as designed; tests cover pre-login FS rejection and stale/wrong nonce rejection.
+  Current state: R-S11c-4a rejects `Data::FS` before an authorized file-capable CM login on desktop and
+  Android, and rejects non-file-capable connection types before `handle_fs`. Remaining closure:
+  `Data::Login` is still self-asserted by the local helper client, not bound to a per-connection
+  capability/nonce minted by the owning `Connection`; a forged local `Data::Login { authorized: true, ... }`
+  must fail. Bind CM to that nonce/capability, key file authority to `AuthConnType::FileTransfer` or
+  `Remote` as designed at the receiver, and test stale/wrong/missing nonce rejection.
 - **R-S11c-5 — macOS privileged service packaging.** Platform: macOS source-conformance and any future macOS
   artifact. Surfaces: `update.scpt` chowning `/Applications/RustDesk.app` to the active user while
   `daemon.plist` runs a binary from that bundle as root; daemon `ProgramArguments` using `/bin/sh -c`;

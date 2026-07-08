@@ -228,6 +228,78 @@ else
   note "ok  R-S11c-4a macOS CM rejects Data::FS before authorized file-capable login; nonce/capability binding remains open"
 fi
 
+echo "== (2b-iv) R-S11c-5 macOS privileged-service packaging =="
+r_s11c5=
+daemon_plist="$REPO/src/platform/privileges_scripts/daemon.plist"
+install_scpt="$REPO/src/platform/privileges_scripts/install.scpt"
+update_scpt="$REPO/src/platform/privileges_scripts/update.scpt"
+uninstall_scpt="$REPO/src/platform/privileges_scripts/uninstall.scpt"
+daemon_args_block=$(awk '/<key>ProgramArguments<\/key>/,/<\/array>/' "$daemon_plist")
+echo "$daemon_args_block" | grep -q '<string>/Applications/RustDesk.app/Contents/MacOS/service</string>' || r_s11c5="$r_s11c5 daemon-not-direct-service-exec"
+if echo "$daemon_args_block" | grep -qE '<string>/(bin|usr/bin)/(sh|bash)</string>|<string>-c</string>'; then
+  r_s11c5="$r_s11c5 daemon-shell-launch"
+fi
+grep -q '<string>/Library/Logs/RustDesk/rustdesk_service.err</string>' "$daemon_plist" || r_s11c5="$r_s11c5 daemon-stderr-not-library-log"
+grep -q '<string>/Library/Logs/RustDesk/rustdesk_service.out</string>' "$daemon_plist" || r_s11c5="$r_s11c5 daemon-stdout-not-library-log"
+if grep -q '/tmp/rustdesk_service' "$daemon_plist" "$install_scpt" "$update_scpt" "$uninstall_scpt"; then
+  r_s11c5="$r_s11c5 tmp-daemon-log-path"
+fi
+for script in "$install_scpt" "$update_scpt"; do
+  script_sh_line=$(grep 'set sh to' "$script")
+  grep -q 'set reject_symlinks to' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-no-symlink-reject"
+  grep -q 'quoted form of service_exec' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-service-exec-symlink-not-checked"
+  grep -q 'set verify_app_bundle_tree to' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-no-app-tree-verifier"
+  grep -qF '[ ! -d " & quoted form of app_bundle' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-app-bundle-dir-not-required"
+  grep -qF '[ ! -f " & quoted form of service_exec' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-service-exec-file-not-required"
+  grep -qF '[ ! -x " & quoted form of service_exec' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-service-exec-executable-not-required"
+  grep -Fq '/usr/bin/find " & quoted form of app_bundle & " -type l -print | while IFS= read -r app_link' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-app-tree-symlinks-not-enumerated"
+  grep -Fq 'done || exit 1;' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-app-tree-verifier-not-fail-closed"
+  grep -Fq '/bin/readlink \"$app_link\"' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-app-symlink-target-not-read"
+  grep -Fq 'case \"$app_target\" in " & quoted form of app_bundle & "/*)' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-absolute-symlink-target-not-contained"
+  grep -Fq '*../*|../*|*/..|..)' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-relative-symlink-escape-not-rejected"
+  grep -q 'set reject_root_pref_symlinks to' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-root-pref-symlink-reject-missing"
+  grep -q 'quoted form of root_prefs_file' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-root-pref-file-not-named"
+  grep -q 'quoted form of root_prefs2_file' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-root-pref2-file-not-named"
+  grep -q '/usr/bin/install -d -o root -g wheel -m 0755' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-no-root-dir-install"
+  grep -q 'quoted form of log_dir' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-no-log-dir"
+  grep -q 'quoted form of log_stderr' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-no-stderr-log-path"
+  grep -q 'quoted form of log_stdout' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-no-stdout-log-path"
+  grep -q 'quoted form of support_dir' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-no-support-dir"
+  grep -q 'quoted form of root_prefs_dir' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-no-root-prefs-dir"
+  grep -q '/bin/chmod -N " & quoted form of log_dir' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-dirs-acl-not-cleared"
+  grep -q '/bin/rm -f " & quoted form of log_stderr' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-logs-not-recreated"
+  grep -q '/bin/chmod -N " & quoted form of log_stderr' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-log-acl-not-cleared"
+  grep -q '/usr/sbin/chown -R root:wheel " & quoted form of app_bundle' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-app-not-root-owned"
+  grep -q '/bin/chmod -RN " & quoted form of app_bundle' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-app-acl-not-cleared"
+  grep -q '/bin/chmod -R u+rwX,go+rX,go-w " & quoted form of app_bundle' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-app-mode-not-locked"
+  grep -q '/usr/bin/printf %s " & quoted form of daemon_file' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-daemon-plist-not-printf-written"
+  grep -q '/usr/bin/printf %s " & quoted form of agent_file' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-agent-plist-not-printf-written"
+  grep -q '/bin/chmod -N " & quoted form of daemon_plist' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-daemon-plist-acl-not-cleared"
+  grep -q '/bin/chmod -N " & quoted form of agent_plist' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-agent-plist-acl-not-cleared"
+  grep -q '/bin/chmod 0644 " & quoted form of daemon_plist' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-daemon-plist-mode-missing"
+  grep -q '/bin/chmod 0644 " & quoted form of agent_plist' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-agent-plist-mode-missing"
+  grep -Fq '[ -L \"$user_prefs\" ]' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-source-pref-dir-symlink-not-rejected"
+  grep -Fq '[ -L \"$user_prefs/RustDesk.toml\" ]' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-source-pref-symlink-not-rejected"
+  grep -Fq 'if [ -L \"$prefs_file\" ]; then exit 1; fi' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-root-pref-file-symlink-not-rejected"
+  echo "$script_sh_line" | grep -q 'reject_root_pref_symlinks.*copy_user_prefs' || r_s11c5="$r_s11c5 $(basename "$script")-root-pref-symlink-reject-not-before-copy"
+done
+grep -q 'verify_app_bundle_tree.*secure_app' "$install_scpt" || r_s11c5="$r_s11c5 install-app-tree-not-verified-before-secure"
+grep -Fq '{ " & verify_app_bundle_tree & " } && /usr/sbin/chown -R root:wheel' "$update_scpt" || r_s11c5="$r_s11c5 update-app-tree-not-verified-after-ditto-before-chown"
+if grep -qE 'chown -R .*:staff|quoted form of user & ":staff"|/Users/" & user|echo " & quoted form of (daemon|agent)_file' "$install_scpt" "$update_scpt"; then
+  r_s11c5="$r_s11c5 user-owned-or-echo-plist-install"
+fi
+if grep -qE '> " & (daemon|agent)_plist|launchctl unload -w " & daemon_plist|/bin/rm /Library/Launch' "$install_scpt" "$update_scpt" "$uninstall_scpt"; then
+  r_s11c5="$r_s11c5 unquoted-privileged-path"
+fi
+grep -q 'arg(active_user_home)' "$REPO/src/platform/macos.rs" || r_s11c5="$r_s11c5 install-call-does-not-pass-home"
+grep -q 'arg(&active_user_home)' "$REPO/src/platform/macos.rs" || r_s11c5="$r_s11c5 update-call-does-not-pass-home"
+if [ -n "$r_s11c5" ]; then
+  echo "  FAIL R-S11c-5 macOS privileged-service packaging:$r_s11c5"
+  rc=1
+else
+  note "ok  R-S11c-5 LaunchDaemon uses direct argv; daemon logs live under /Library/Logs/RustDesk; install/update keep app bundle, plists, support dirs, and logs root-owned/non-user-writable"
+fi
+
 # (2c) Appendix C #2b is an ACCEPTED, documented residual: the fork SHOULD (not MUST) sandbox the decode
 # path. Commit 0c54912 deliberately reverted the ENTIRE native-worker decode-sandbox subsystem (the
 # per-codec worker processes + the macOS Seatbelt sandbox file + the Android isolatedProcess services

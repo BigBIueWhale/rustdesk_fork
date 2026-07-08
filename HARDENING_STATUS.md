@@ -213,6 +213,24 @@ unreachable and a source/test/AST gate prevents reintroduction.
   authority. Verification closure: `scripts/verify.sh` runs `cm_file_authority_*` tests and source-gates
   the desktop and Android `Data::FS` arms so the authority check precedes `handle_fs`;
   `scripts/apple-conform-check.sh` mirrors the desktop source assertion for macOS.
+- **R-S11c-5 — macOS privileged service packaging — CLOSED 2026-07-08.** Platform: macOS
+  source-conformance and any future macOS artifact. Surfaces: `src/platform/privileges_scripts/daemon.plist`,
+  `install.scpt`, `update.scpt`, `uninstall.scpt`, and their `osascript` call sites in
+  `src/platform/macos.rs`. Boundary: active-user update/install flow ↔ root LaunchDaemon. Attack surface
+  closed: the LaunchDaemon no longer uses `/bin/sh -c`, and its stdout/stderr paths no longer point under
+  predictable `/tmp`; install/update create `/Library/Logs/RustDesk`, `/Library/Application Support/RustDesk`,
+  and the root preferences directory as root-owned, non-user-writable directories; install/update write plists
+  with quoted content/path handling and explicit root:wheel ownership plus non-writable modes; install/update
+  leave `/Applications/RustDesk.app` root:wheel and group/world non-writable instead of active-user-owned; the
+  privileged scripts reject symlinked service-owned paths, reject bundle symlinks that escape the app tree,
+  require the root-launched service executable to be a non-symlink executable file, reject source and
+  destination preference symlinks, clear ACLs from app/plist/log/support/preference artifacts, recreate daemon
+  log files before launchd opens them, and no longer build preference-copy paths from `/Users/` plus an
+  unquoted user name. Verification closure: `scripts/verify.sh` and
+  `scripts/apple-conform-check.sh` assert direct daemon `ProgramArguments`, `/Library/Logs/RustDesk` daemon
+  logs, absence of `/tmp/rustdesk_service`, absence of active-user `:staff` bundle ownership, root-owned
+  directory setup, ACL clearing, bundle-symlink escape rejection, preference symlink rejection, log recreation,
+  quoted plist writes, and quoted privileged plist paths.
 
 **Release-blocking items:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,
@@ -260,16 +278,6 @@ unreachable and a source/test/AST gate prevents reintroduction.
   capability/nonce minted by the owning `Connection`; a forged local `Data::Login { authorized: true, ... }`
   must fail. Bind CM to that nonce/capability, key file authority to `AuthConnType::FileTransfer` or
   `Remote` as designed at the receiver, and test stale/wrong/missing nonce rejection.
-- **R-S11c-5 — macOS privileged service packaging.** Platform: macOS source-conformance and any future macOS
-  artifact. Surfaces: `update.scpt` chowning `/Applications/RustDesk.app` to the active user while
-  `daemon.plist` runs a binary from that bundle as root; daemon `ProgramArguments` using `/bin/sh -c`;
-  daemon logs under predictable `/tmp` paths; privileged install/update shell quoting. Boundary:
-  user-writable app/update flow ↔ root LaunchDaemon. Attack surface: user-writable root-run code path or
-  privileged file/log clobbering. Closure: root-run binaries, plists, support dirs, and logs are root-owned
-  and non-user-writable; update flow never makes the service path user-owned; LaunchDaemon uses direct
-  arguments, not shell; privileged scripts avoid unquoted shell construction; Apple conformance gate checks
-  ownership/mode/path/log invariants.
-
 **Contained hardening items from the same audit:**
 - **R-S11c-6 — Windows named-pipe endpoint hardening.** Platform: Windows desktop. Endpoint:
   predictable `\\.\pipe\<APP>\query{postfix}` names and broad create permissions for main/`_service`.

@@ -222,13 +222,17 @@ pub fn is_installed_daemon(prompt: bool) -> bool {
         return false;
     };
 
+    let active_user_home = get_active_user_home()
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
     std::thread::spawn(move || {
         match std::process::Command::new("osascript")
             .arg("-e")
             .arg(install_script_body)
             .arg(daemon_plist_body)
             .arg(agent_plist_body)
-            .arg(&get_active_username())
+            .arg(active_user_home)
             .status()
         {
             Err(e) => {
@@ -272,6 +276,11 @@ fn update_daemon_agent(agent_plist_file: String, update_source_dir: String, sync
         return;
     };
 
+    let active_user = get_active_username();
+    let active_user_home = get_active_user_home()
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
     let func = move || {
         let mut binding = std::process::Command::new("osascript");
         let cmd = binding
@@ -279,7 +288,8 @@ fn update_daemon_agent(agent_plist_file: String, update_source_dir: String, sync
             .arg(update_script_body)
             .arg(daemon_plist_body)
             .arg(agent_plist_body)
-            .arg(&get_active_username())
+            .arg(&active_user)
+            .arg(&active_user_home)
             .arg(std::process::id().to_string())
             .arg(update_source_dir);
         match cmd.status() {

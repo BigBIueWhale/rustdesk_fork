@@ -188,7 +188,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Username", "Korisničko ime"),
         ("Invalid port", "Pogrešan port"),
         ("Closed manually by the peer", "Klijent ručno raskinuo konekciju"),
-        ("Enable remote configuration modification", "Dozvoli modifikaciju udaljene konfiguracije"),
         ("Run without install", "Pokreni bez instalacije"),
         ("Connect via relay", "Spoj se preko posrednika"),
         ("Always connect via relay", "Uvek se spoj preko posrednika"),

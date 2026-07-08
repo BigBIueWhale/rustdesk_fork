@@ -188,7 +188,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Username", "Uživatelské jméno"),
         ("Invalid port", "Neplatné číslo portu"),
         ("Closed manually by the peer", "Ručně ukončeno protistranou"),
-        ("Enable remote configuration modification", "Povolit vzdálenou úpravu konfigurace"),
         ("Run without install", "Spustit bez instalace"),
         ("Connect via relay", "Připojení přes předávací server"),
         ("Always connect via relay", "Vždy se připojovat prostřednictvím předávacího serveru"),

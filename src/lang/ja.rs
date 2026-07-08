@@ -188,7 +188,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Username", "ユーザー名"),
         ("Invalid port", "無効なポート"),
         ("Closed manually by the peer", "リモートホストによって切断されました"),
-        ("Enable remote configuration modification", "リモート設定の変更を有効化する"),
         ("Run without install", "インストールせずに実行"),
         ("Connect via relay", "中継サーバー経由で接続"),
         ("Always connect via relay", "常に中継サーバー経由で接続"),

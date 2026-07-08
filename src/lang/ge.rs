@@ -188,7 +188,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Username", "მომხმარებლის სახელი"),
         ("Invalid port", "არასწორი პორტი"),
         ("Closed manually by the peer", "დახურულია დაშორებული კვანძის მიერ ხელით"),
-        ("Enable remote configuration modification", "დაშორებული კონფიგურაციის ცვლილების დაშვება"),
         ("Run without install", "გაშვება ინსტალაციის გარეშე"),
         ("Connect via relay", "რეტრანსლატორის მეშვეობით დაკავშირება"),
         ("Always connect via relay", "ყოველთვის დაკავშირება რეტრანსლატორის მეშვეობით"),

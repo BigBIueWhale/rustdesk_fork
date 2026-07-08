@@ -188,7 +188,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Username", "Nùmene utente"),
         ("Invalid port", "Nùmeru ghenna non vàlidu"),
         ("Closed manually by the peer", "Serradu a manu dae su dispositivu remotu"),
-        ("Enable remote configuration modification", "Abìlita sa modìfica remota de sa cunfiguratzione"),
         ("Run without install", "Allughe chene installare"),
         ("Connect via relay", "Collega·ti impreende una tràmuda relay"),
         ("Always connect via relay", "Collega·ti semper impreende una tràmuda relay"),

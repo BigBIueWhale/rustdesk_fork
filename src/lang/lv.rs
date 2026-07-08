@@ -188,7 +188,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Username", "Lietotājvārds"),
         ("Invalid port", "Nederīgs ports"),
         ("Closed manually by the peer", "Sesija aizvērta manuāli"),
-        ("Enable remote configuration modification", "Iespējot attālās konfigurācijas modifikāciju"),
         ("Run without install", "Palaist bez instalēšanas"),
         ("Connect via relay", "Savienot, izmantojot releju"),
         ("Always connect via relay", "Vienmēr izveidot savienojumu, izmantojot releju"),

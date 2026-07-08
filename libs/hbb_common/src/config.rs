@@ -2921,7 +2921,6 @@ pub mod keys {
     pub const OPTION_ENABLE_VIRTUAL_DISPLAY: &str = "enable-virtual-display";
     pub const OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW: &str =
         "enable-perm-change-in-accept-window";
-    pub const OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION: &str = "allow-remote-config-modification";
     pub const OPTION_ALLOW_AUTO_DISCONNECT: &str = "allow-auto-disconnect";
     pub const OPTION_AUTO_DISCONNECT_TIMEOUT: &str = "auto-disconnect-timeout";
     pub const OPTION_ALLOW_ONLY_CONN_WINDOW_OPEN: &str = "allow-only-conn-window-open";
@@ -3130,7 +3129,6 @@ pub mod keys {
         OPTION_ENABLE_BLOCK_INPUT,
         OPTION_ENABLE_PRIVACY_MODE,
         OPTION_ENABLE_VIRTUAL_DISPLAY,
-        OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION,
         OPTION_ALLOW_AUTO_DISCONNECT,
         OPTION_AUTO_DISCONNECT_TIMEOUT,
         OPTION_ALLOW_ONLY_CONN_WINDOW_OPEN,
@@ -3209,9 +3207,6 @@ pub mod keys {
         // NOT control the owner reaches another way, and a no-op on the §17 headless Xvfb box — so it
         // stays OFF as defense-in-depth on the native-driver surface.
         (OPTION_ENABLE_VIRTUAL_DISPLAY, "N"),
-        // Manage RustDesk itself from the session: the owner has complete control of the box, its
-        // remote-desktop config included. Funnel-pinned ON (R-S16) — a value, not a runtime toggle.
-        (OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION, "Y"),
         // No TOTP, no Telegram-bot push (R-X7, R-D6); trusted-devices is fully excised, not just pinned.
         ("2fa", ""),
         ("bot", ""),

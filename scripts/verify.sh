@@ -3137,15 +3137,16 @@ else
   echo "  ok  R-B12(a) aom/libyuv vcpkg distfiles SHA512-pinned via ./online capture + full-commit fallback + stage wired"
 fi
 
-echo "== (7) capability-key pin completeness (R-S16(d)/R-G1/R-D2) =="
-# Every controlled-side capability key is a compile-time PINNED_SETTINGS entry; none is left
-# operator-settable. Under the full-access policy (R-D8/R-X8) allow-remote-config-modification is
-# pinned "Y" — the authenticated owner manages RustDesk itself from the session — but it is STILL a
-# pin, not a runtime knob (the funnel rejects every write to it, R-S16). Assert it stays in the table.
-if grep -qE '\(OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION, *"Y"\)' libs/hbb_common/src/config.rs; then
-  echo "  ok  R-S16(d)/R-G1 allow-remote-config-modification pinned 'Y' in PINNED_SETTINGS (full access; pinned, not operator-settable)"
+echo "== (7) remote-configuration UI blocking excised (R-S16(d)/R-G1/R-D2) =="
+remote_config_blocker_hits=$(rg -n \
+  'allow-remote-config-modification|AllowRemoteConfigModification|kOptionAllowRemoteConfigModification|OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION|Enable remote configuration modification|canBeBlocked|shouldBeBlocked|buildRemoteBlock|preventMouseKeyBuilder|ControlPermissionsRemoteModify|MouseMoveTime|MOUSE_MOVE_TIME|VideoConnCount|videoConnCount|video_conn_count|main(CheckMouseTime|GetMouseTime|GetConnectStatus)|wire_main_(check_mouse_time|get_mouse_time|get_connect_status)|is-remote-modify-enabled-by-control-permissions' \
+  src libs flutter/lib 2>/dev/null || true)
+if [ -n "$remote_config_blocker_hits" ]; then
+  echo "  FAIL R-S16(d)/R-G1: remote-configuration UI blocker remnants survived:"
+  echo "$remote_config_blocker_hits"
+  rc=1
 else
-  echo "  FAIL R-S16(d): allow-remote-config-modification missing/mis-pinned in PINNED_SETTINGS (full-access policy expects 'Y')"; rc=1
+  echo "  ok  R-S16(d)/R-G1 remote-configuration UI blocking option and plumbing absent"
 fi
 if rg -q 'allow-remote-[c]m-modification|AllowRemoteCm|allowRemoteCMModification' \
   src libs flutter/lib; then

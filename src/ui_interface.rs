@@ -28,17 +28,11 @@ use crate::ipc;
 pub type Children = Arc<Mutex<(bool, HashMap<(String, String), Child>)>>;
 
 // I-1 / R-G2: `status_num` (the rendezvous connecting/ready state, always 0 here — the mediator is
-// excised) and `key_confirmed` (the rendezvous register_pk ACK, never flips true) are removed. The
-// service-listening indicator is driven by the `stop-service` flag, not this status. `video_conn_count`
-// (live remote-session count) is the sole per-tick payload on flutter.
+// excised) and `key_confirmed` (the rendezvous register_pk ACK, never flips true) are removed.
 #[derive(Clone, Debug, Serialize)]
 pub struct UiStatus {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub mouse_time: i64,
     #[cfg(not(feature = "flutter"))]
     pub id: String,
-    #[cfg(feature = "flutter")]
-    pub video_conn_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -50,14 +44,9 @@ pub struct LoginDeviceInfo {
 
 lazy_static::lazy_static! {
     static ref UI_STATUS : Arc<Mutex<UiStatus>> = Arc::new(Mutex::new(UiStatus{
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        mouse_time: 0,
         #[cfg(not(feature = "flutter"))]
         id: "".to_owned(),
-        #[cfg(feature = "flutter")]
-        video_conn_count: 0,
     }));
-    static ref IS_REMOTE_MODIFY_ENABLED_BY_CONTROL_PERMISSIONS : Arc<Mutex<Option<bool>>> = Arc::new(Mutex::new(None));
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -493,27 +482,6 @@ pub fn is_installed_lower_version() -> bool {
         let b = crate::platform::windows::get_reg("BuildDate");
         return crate::BUILD_DATE.cmp(&b).is_gt();
     }
-}
-
-#[inline]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn get_mouse_time() -> f64 {
-    UI_STATUS.lock().unwrap().mouse_time as f64
-}
-
-#[inline]
-pub fn check_mouse_time() {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        let sender = SENDER.lock().unwrap();
-        allow_err!(sender.send(ipc::Data::MouseMoveTime(0)));
-    }
-}
-
-#[inline]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn get_connect_status() -> UiStatus {
-    UI_STATUS.lock().unwrap().clone()
 }
 
 // R-X7: temporary_password()/update_temporary_password() removed with the OTP credential.
@@ -1016,9 +984,6 @@ pub fn get_login_device_info_json() -> String {
 #[tokio::main(flavor = "current_thread")]
 async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc::Data>) {
     let mut rx = rx;
-    let mut mouse_time = 0;
-    #[cfg(feature = "flutter")]
-    let mut video_conn_count = 0;
     #[cfg(not(feature = "flutter"))]
     let mut id = "".to_owned();
     let is_cm = crate::common::is_cm();
@@ -1037,11 +1002,6 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                                 }
                                 break;
                             }
-                            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                            Ok(Some(ipc::Data::MouseMoveTime(v))) => {
-                                mouse_time = v;
-                                UI_STATUS.lock().unwrap().mouse_time = v;
-                            }
                             Ok(Some(ipc::Data::Options(Some(v)))) => {
                                 *OPTIONS.lock().unwrap() = v;
                                 *OPTION_SYNCED.lock().unwrap() = true;
@@ -1058,22 +1018,6 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                                 // only other reader, the `id = value` above, is compiled out).
                                 #[cfg(feature = "flutter")]
                                 let _ = value;
-                            }
-                            // I-1 / R-G2: the dead `OnlineStatus` tick (rendezvous latency, always 0,
-                            // plus the never-set `key_confirmed`) is removed. It used to be the SOLE
-                            // per-tick writer of UI_STATUS, so the LIVE `video_conn_count` refresh
-                            // moves into this arm (its poll request already fires below).
-                            #[cfg(feature = "flutter")]
-                            Ok(Some(ipc::Data::VideoConnCount(Some(n)))) => {
-                                video_conn_count = n;
-                                *UI_STATUS.lock().unwrap() = UiStatus {
-                                    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                                    mouse_time,
-                                    video_conn_count,
-                                };
-                            }
-                            Ok(Some(ipc::Data::ControlPermissionsRemoteModify(v))) => {
-                                *IS_REMOTE_MODIFY_ENABLED_BY_CONTROL_PERMISSIONS.lock().unwrap() = v;
                             }
                             #[cfg(target_os = "windows")]
                             Ok(Some(ipc::Data::FileTransferEnabledState(v))) => {
@@ -1094,9 +1038,6 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                     _ = timer.tick() => {
                         c.send(&ipc::Data::Options(None)).await.ok();
                         c.send(&ipc::Data::Config(("id".to_owned(), None))).await.ok();
-                        #[cfg(feature = "flutter")]
-                        c.send(&ipc::Data::VideoConnCount(None)).await.ok();
-                        c.send(&ipc::Data::ControlPermissionsRemoteModify(None)).await.ok();
                         #[cfg(target_os = "windows")]
                         c.send(&ipc::Data::FileTransferEnabledState(None)).await.ok();
                     }
@@ -1111,12 +1052,8 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
             break;
         }
         *UI_STATUS.lock().unwrap() = UiStatus {
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            mouse_time,
             #[cfg(not(feature = "flutter"))]
             id: id.clone(),
-            #[cfg(feature = "flutter")]
-            video_conn_count,
         };
         sleep(1.).await;
     }
@@ -1175,10 +1112,4 @@ pub fn check_hwcodec() {
 #[cfg(feature = "flutter")]
 pub fn max_encrypt_len() -> usize {
     hbb_common::config::ENCRYPT_MAX_LEN
-}
-
-pub fn is_remote_modify_enabled_by_control_permissions() -> Option<bool> {
-    *IS_REMOTE_MODIFY_ENABLED_BY_CONTROL_PERMISSIONS
-        .lock()
-        .unwrap()
 }

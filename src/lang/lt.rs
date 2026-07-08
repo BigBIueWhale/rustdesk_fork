@@ -188,7 +188,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Username", "Vartotojo vardas"),
         ("Invalid port", "Netinkamas prievadas"),
         ("Closed manually by the peer", "Partneris atmetė prašymą prisijungti"),
-        ("Enable remote configuration modification", "Įgalinti nuotolinį konfigūracijos modifikavimą"),
         ("Run without install", "Vykdyti be diegimo"),
         ("Connect via relay", "Prisijungti per relę"),
         ("Always connect via relay", "Visada prisijunkite per relę"),

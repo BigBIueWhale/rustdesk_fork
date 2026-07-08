@@ -188,7 +188,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Username", "Emri i përdoruesit"),
         ("Invalid port", "Port e pavlefshme"),
         ("Closed manually by the peer", "E mbyllur manualisht nga peer"),
-        ("Enable remote configuration modification", "Aktivizoni modifikimin e konfigurimit në distancë"),
         ("Run without install", "Ekzekuto pa instaluar"),
         ("Connect via relay", "Lidhu nëpërmjet transmetuesit"),
         ("Always connect via relay", "Gjithmonë lidheni me transmetues"),

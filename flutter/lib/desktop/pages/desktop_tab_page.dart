@@ -68,22 +68,10 @@ class _DesktopTabPageState extends State<DesktopTabPage> {
   @override
   void initState() {
     super.initState();
-    // HardwareKeyboard.instance.addHandler(_handleKeyEvent);
   }
-
-  /*
-  bool _handleKeyEvent(KeyEvent event) {
-    if (!mouseIn && event is KeyDownEvent) {
-      print('key down: ${event.logicalKey}');
-      shouldBeBlocked(_block, canBeBlocked);
-    }
-    return false; // allow it to propagate
-  }
-  */
 
   @override
   void dispose() {
-    // HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     Get.delete<DesktopTabController>();
 
     super.dispose();

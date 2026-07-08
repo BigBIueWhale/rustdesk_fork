@@ -188,7 +188,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Username", "Felhasználónév"),
         ("Invalid port", "Érvénytelen port"),
         ("Closed manually by the peer", "A kapcsolatot a másik fél saját kezűleg bezárta"),
-        ("Enable remote configuration modification", "Távoli konfiguráció-módosítás engedélyezése"),
         ("Run without install", "Futtatás telepítés nélkül"),
         ("Connect via relay", "Kapcsolódás továbbító-kiszolgálón keresztül"),
         ("Always connect via relay", "Kapcsolódás mindig továbbító-kiszolgálón keresztül"),

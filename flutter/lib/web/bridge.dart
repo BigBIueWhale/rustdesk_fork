@@ -780,11 +780,6 @@ class RustdeskImpl {
     throw UnimplementedError("mainGetPeerSync");
   }
 
-  Future<String> mainGetConnectStatus({dynamic hint}) {
-    return Future(
-        () => js.context.callMethod('getByName', ["get_conn_status"]));
-  }
-
   Future<void> mainCheckConnectStatus({dynamic hint}) {
     throw UnimplementedError("mainCheckConnectStatus");
   }
@@ -1171,14 +1166,6 @@ class RustdeskImpl {
 
   Future<bool> mainCheckSuperUserPermission({dynamic hint}) {
     throw UnimplementedError("mainCheckSuperUserPermission");
-  }
-
-  Future<void> mainCheckMouseTime({dynamic hint}) {
-    throw UnimplementedError("mainCheckMouseTime");
-  }
-
-  Future<double> mainGetMouseTime({dynamic hint}) {
-    throw UnimplementedError("mainGetMouseTime");
   }
 
   Future<void> mainCreateShortcut({required String id, dynamic hint}) {

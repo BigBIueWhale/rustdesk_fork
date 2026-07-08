@@ -1,7 +1,6 @@
 // main window right pane
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -124,13 +123,6 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
     if (_polling) return;
     _polling = true;
     try {
-      // R-G2: the rendezvous status_num (connecting/ready) is gone; only the live video-connection
-      // count is still surfaced.
-      final status =
-          jsonDecode(await bind.mainGetConnectStatus()) as Map<String, dynamic>;
-      try {
-        stateGlobal.videoConnCount.value = status['video_conn_count'] as int;
-      } catch (_) {}
       // BR-4: fetch the REAL cross-process reachability facts from the daemon (see the field docs).
       final reachable =
           (await bind.mainGetCommon(key: 'direct-listener-bound')) == 'true';

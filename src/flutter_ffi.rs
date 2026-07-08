@@ -20,12 +20,11 @@ use hbb_common::{
 };
 use std::{
     collections::HashMap,
-    path::PathBuf,
     sync::{
         atomic::{AtomicI32, Ordering},
         Arc,
     },
-    time::{Duration, SystemTime},
+    time::SystemTime,
 };
 
 // FRB 1.80.1 codegen quirk: the generated `bridge_generated.rs` "DUMMY CODE FOR BINDGEN"
@@ -1031,19 +1030,6 @@ pub fn main_get_peer_sync(id: String) -> SyncReturn<String> {
     SyncReturn(serde_json::to_string(&conf).unwrap_or("".to_string()))
 }
 
-pub fn main_get_connect_status() -> String {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        serde_json::to_string(&get_connect_status()).unwrap_or("".to_string())
-    }
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    {
-        // I-1 / R-G2: the rendezvous online-status (`status_num`) is dead — the mediator is excised
-        // and mobile has no video-conn-count board, so there is no live per-tick status payload.
-        "{}".to_string()
-    }
-}
-
 pub fn main_check_connect_status() {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     start_option_status_sync(); // avoid multi calls
@@ -1868,21 +1854,6 @@ pub fn main_check_super_user_permission() -> bool {
     check_super_user_permission()
 }
 
-pub fn main_check_mouse_time() {
-    check_mouse_time();
-}
-
-pub fn main_get_mouse_time() -> f64 {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        get_mouse_time()
-    }
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    {
-        0.0
-    }
-}
-
 pub fn main_create_shortcut(_id: String) {
     #[cfg(windows)]
     create_shortcut(_id);
@@ -2245,13 +2216,6 @@ pub fn main_audio_support_loopback() -> SyncReturn<bool> {
 pub fn main_get_common(key: String) -> String {
     if key == "transfer-job-id" {
         return hbb_common::fs::get_next_job_id().to_string();
-    } else if key == "is-remote-modify-enabled-by-control-permissions" {
-        return match is_remote_modify_enabled_by_control_permissions() {
-            Some(true) => "true",
-            Some(false) => "false",
-            None => "",
-        }
-        .to_string();
     } else if key == "has-gnome-shortcuts-inhibitor-permission" {
         #[cfg(target_os = "linux")]
         return crate::platform::linux::has_gnome_shortcuts_inhibitor_permission().to_string();

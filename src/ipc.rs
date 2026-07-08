@@ -301,8 +301,6 @@ pub enum Data {
     },
     SystemInfo(Option<String>),
     ClickTime(i64),
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    MouseMoveTime(i64),
     Close,
     #[cfg(windows)]
     SAS,
@@ -416,8 +414,6 @@ pub enum Data {
         err: String,
     },
     CheckHwcodec,
-    #[cfg(feature = "flutter")]
-    VideoConnCount(Option<usize>),
     HwCodecConfig(Option<String>),
     #[cfg(all(
         feature = "flutter",
@@ -430,7 +426,6 @@ pub enum Data {
     PortForwardSessionCount(Option<usize>),
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Whiteboard((String, crate::whiteboard::CustomEvent)),
-    ControlPermissionsRemoteModify(Option<bool>),
     #[cfg(target_os = "windows")]
     FileTransferEnabledState(Option<bool>),
 }
@@ -716,11 +711,6 @@ async fn handle(data: Data, stream: &mut Connection) {
             let t = crate::server::CLICK_TIME.load(Ordering::SeqCst);
             allow_err!(stream.send(&Data::ClickTime(t)).await);
         }
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        Data::MouseMoveTime(_) => {
-            let t = crate::server::MOUSE_MOVE_TIME.load(Ordering::SeqCst);
-            allow_err!(stream.send(&Data::MouseMoveTime(t)).await);
-        }
         Data::Close => {
             log::info!("Receive close message");
             if EXIT_RECV_CLOSE.load(Ordering::SeqCst) {
@@ -778,16 +768,6 @@ async fn handle(data: Data, stream: &mut Connection) {
                 log::info!("socks updated");
             }
         },
-        #[cfg(feature = "flutter")]
-        Data::VideoConnCount(None) => {
-            let n = crate::server::AUTHED_CONNS
-                .lock()
-                .unwrap()
-                .iter()
-                .filter(|x| x.conn_type == crate::server::AuthConnType::Remote)
-                .count();
-            allow_err!(stream.send(&Data::VideoConnCount(Some(n))).await);
-        }
         Data::Config((name, value)) => match value {
             None => {
                 let value;
@@ -969,16 +949,6 @@ async fn handle(data: Data, stream: &mut Connection) {
                 // Port forward session count is only a get value.
             }
         },
-        Data::ControlPermissionsRemoteModify(_) => {
-            use hbb_common::rendezvous_proto::control_permissions::Permission;
-            let state =
-                crate::server::get_control_permission_state(Permission::remote_modify, true);
-            allow_err!(
-                stream
-                    .send(&Data::ControlPermissionsRemoteModify(state))
-                    .await
-            );
-        }
         #[cfg(target_os = "windows")]
         Data::FileTransferEnabledState(_) => {
             use hbb_common::rendezvous_proto::control_permissions::Permission;

@@ -188,7 +188,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Username", "Käyttäjänimi"),
         ("Invalid port", "Virheellinen portti"),
         ("Closed manually by the peer", "Suljettu vastapuolen toimesta"),
-        ("Enable remote configuration modification", "Salli etäasetusten muokkaus"),
         ("Run without install", "Suorita ilman asennusta"),
         ("Connect via relay", "Yhdistä välityspalvelimen kautta"),
         ("Always connect via relay", "Yhdistä aina välityspalvelimen kautta"),

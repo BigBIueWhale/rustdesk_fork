@@ -106,22 +106,32 @@ echo "== (3b-iv) trust-anchor get_key ignores a stored override (R-A4/R-X4) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config common::tests::get_key_is_the_pinned_anchor_ignoring_overrides --color never
 
 # (3b-iii) R-S11 / Appendix C #15: the MAIN IPC channel (UI⇄service, 0o0600 same-uid) is a config-
-# integrity boundary. main_channel_admits_config_write is a POSITIVE allowlist over the config-mutating
+# integrity boundary. main_channel_admits_state_mutation is a POSITIVE allowlist over mutating
 # arms, rejecting: (a) the whole-config SyncConfig(Some) push (Config::set overwrites the ENTIRE config
 # with NO is_option_can_save/pin check); (b) the Data::Config STRUCT-FIELD writes that bypass
 # is_option_can_save — `id` (+ set_key_confirmed(false)) and `salt` (set_salt's hashed-pw guard is a
-# no-op — the PRS is the host-key-salted Argon2id hash, not derived from this salt field) — which have NO legit main-channel writer; (c) Data::Socks(Some)
-# (set_socks, the proxy/local-MITM primitive an Options-key allowlist would miss). The remaining operator
-# writes are authority-scoped: voice-call-input always, permanent-password/options only for user-owned servers.
-# Service-owned servers reject ordinary password/options writes and storage/salt sync (R-S11b-2a/R-S11b-3a). Behavior-tested AND the
+# no-op — the PRS is the host-key-salted Argon2id hash, not derived from this salt field), and the
+# old `permanent-password` key — which have NO legit main-channel writer; (c) Data::Socks(Some)
+# (set_socks, the proxy/local-MITM primitive an Options-key allowlist would miss). The remaining writes
+# are authority-scoped: voice-call-input always, typed user-owned permanent password/options only for user-owned servers.
+# Service-owned servers reject typed user-owned password/options writes and storage/salt sync (R-S11b-2a/R-S11b-3a). Behavior-tested AND the
 # loop routes through the allowlist before handle() (R-A6 reachability), AND the allowlist is asserted
 # POSITIVE (not a one-arm denylist that would let id/salt/Socks through — the exact "missed sibling"
 # the 5th sweep found).
-echo "== (3b-iii) IPC main-channel config-write positive allowlist (R-S11) =="
+echo "== (3b-iii) IPC main-channel state-mutation positive allowlist (R-S11) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_channel_rejects_whole_config_sync_write --color never
 r_s11=
-grep -q 'if !main_channel_admits_config_write(' src/ipc.rs                             || r_s11="$r_s11 loop-not-wired"
-grep -q '"permanent-password" => authority.allows_main_channel_password_write()' src/ipc.rs || r_s11="$r_s11 password-authority-not-gated"
+grep -q 'if !main_channel_admits_state_mutation(' src/ipc.rs                            || r_s11="$r_s11 loop-not-wired"
+grep -q 'Data::SetUserOwnedPermanentPassword(_) => {' src/ipc.rs                    || r_s11="$r_s11 typed-user-owned-password-arm-missing"
+grep -A3 'Data::SetUserOwnedPermanentPassword(_) => {' src/ipc.rs | grep -q 'authority.allows_main_channel_user_owned_password_write()' || r_s11="$r_s11 typed-user-owned-password-not-authority-gated"
+grep -q 'SetUserOwnedPermanentPasswordResult(bool)' src/ipc.rs                          || r_s11="$r_s11 typed-user-owned-password-result-missing"
+grep -q 'permanent-password-user-owned-writable' src/ipc.rs                            || r_s11="$r_s11 password-writability-receiver-missing"
+grep -q 'permanent-password-user-owned-writable' src/flutter_ffi.rs                    || r_s11="$r_s11 password-writability-ffi-missing"
+grep -q 'canSetUserOwnedPermanentPassword' flutter/lib/desktop/pages/desktop_home_page.dart || r_s11="$r_s11 home-password-writability-ui-missing"
+grep -q 'canSetUserOwnedPermanentPassword' flutter/lib/desktop/pages/desktop_setting_page.dart || r_s11="$r_s11 settings-password-writability-ui-missing"
+grep -q '"permanent-password" => authority.allows_main_channel_user_owned_password_write()' src/ipc.rs && r_s11="$r_s11 password-still-generic-config-key"
+grep -q '"permanent-password" => authority.allows_main_channel_password_write()' src/ipc.rs && r_s11="$r_s11 password-still-generic-config-key"
+grep -q 'send_config("permanent-password"' src/ipc.rs && r_s11="$r_s11 password-still-sent-as-config-key"
 grep -q 'Data::Options(Some(_)) => authority.allows_main_channel_options_write()' src/ipc.rs || r_s11="$r_s11 options-authority-not-gated"
 grep -q '"voice-call-input" => true' src/ipc.rs                                        || r_s11="$r_s11 voice-input-not-allowlisted"
 grep -q 'Data::Socks(Some(_)) => false' src/ipc.rs                                     || r_s11="$r_s11 socks-not-rejected"
@@ -131,10 +141,10 @@ grep -q 'Data::Socks(Some(_)) => false' src/ipc.rs                              
 # allowlist fn — so there must be >=2 gate call sites and the fn must be cfg'd for windows. Without this
 # a same-session/same-exe process could Data::SyncConfig(Some)/Config(id|salt) the host key_pair on the
 # Windows artifact (the linux-only gate + the linux-cfg unit test are blind to it).
-[ "$(grep -c 'if !main_channel_admits_config_write(' src/ipc.rs)" -ge 2 ]              || r_s11="$r_s11 windows-main-pipe-gate-missing"
-grep -B1 'pub(crate) fn main_channel_admits_config_write' src/ipc.rs | grep -q 'windows' || r_s11="$r_s11 allowlist-fn-not-cfg-windows"
-if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel config-write allowlist:$r_s11"; rc=1; else
-  echo "  ok  R-S11/R-S11b main-channel config-write POSITIVE allowlist (SyncConfig+id+salt+Socks rejected; permanent-password/options are user-owned only; gate binds Linux/macOS AND the Windows main pipe)"; fi
+[ "$(grep -c 'if !main_channel_admits_state_mutation(' src/ipc.rs)" -ge 2 ]            || r_s11="$r_s11 windows-main-pipe-gate-missing"
+grep -B1 'pub(crate) fn main_channel_admits_state_mutation' src/ipc.rs | grep -q 'windows' || r_s11="$r_s11 allowlist-fn-not-cfg-windows"
+if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel state-mutation allowlist:$r_s11"; rc=1; else
+  echo "  ok  R-S11/R-S11b main-channel state-mutation POSITIVE allowlist (SyncConfig+Config id/salt/permanent-password+Socks rejected; typed user-owned password/options are user-owned only; gate binds Linux/macOS AND the Windows main pipe)"; fi
 
 # (3b-iii-b) R-S11b-1: Linux/macOS `_service` is a privileged service-control channel, not a
 # root<->user Config/Config2 bus. The world-connectable service socket may keep only narrow liveness
@@ -167,8 +177,8 @@ if [ -n "$r_s11b" ]; then echo "  FAIL R-S11b-1 _service whole-config bus remova
 
 # (3b-iii-c) R-S11b-2a/R-S11c-1a: service-owned unattended passwords are not ordinary config IPC.
 # Service launch paths mark their --server child; the receiver uses that marker to deny
-# Data::Config("permanent-password"), whole-config snapshots, and every password storage/salt
-# sync over main IPC. The user-owned path remains user-owned, so --password is no longer
+# Data::Config("permanent-password"), typed user-owned password writes, whole-config snapshots, and every
+# password storage/salt sync over main IPC. The user-owned path remains user-owned, so --password is no longer
 # root-routed through UserMainIpcScope.
 echo "== (3b-iii-c) service-owned permanent password rejects ordinary IPC (R-S11b-2a/R-S11c-1a) =="
 r_s11b2=
@@ -180,6 +190,12 @@ windows_launch_server=$(awk '/async fn launch_server/,/^}/' src/platform/windows
 echo "$windows_launch_server" | grep -q 'SERVICE_OWNED_SERVER_ARG'                    || r_s11b2="$r_s11b2 windows-service-server-not-marked"
 grep -q -- '<string>--service-owned-server</string>' src/platform/privileges_scripts/agent.plist || r_s11b2="$r_s11b2 macos-agent-server-not-marked"
 grep -q 'MainIpcAuthority::ServiceOwned' src/ipc.rs                                  || r_s11b2="$r_s11b2 service-owned-authority-missing"
+grep -q 'Data::SetUserOwnedPermanentPassword(_) => {' src/ipc.rs                    || r_s11b2="$r_s11b2 typed-password-arm-missing"
+grep -A3 'Data::SetUserOwnedPermanentPassword(_) => {' src/ipc.rs | grep -q 'authority.allows_main_channel_user_owned_password_write()' || r_s11b2="$r_s11b2 typed-password-write-not-authority-gated"
+grep -q 'Data::SetUserOwnedPermanentPasswordResult(false)' src/ipc.rs                || r_s11b2="$r_s11b2 typed-password-reject-nack-missing"
+grep -q '"permanent-password" => authority.allows_main_channel_user_owned_password_write()' src/ipc.rs && r_s11b2="$r_s11b2 password-still-generic-config-key"
+grep -q '"permanent-password" => authority.allows_main_channel_password_write()' src/ipc.rs && r_s11b2="$r_s11b2 password-still-generic-config-key"
+grep -q 'send_config("permanent-password"' src/ipc.rs && r_s11b2="$r_s11b2 password-still-sent-as-config-key"
 ipc_main_authority=$(awk '/impl MainIpcAuthority/,/^}/' src/ipc.rs)
 echo "$ipc_main_authority" | grep -B1 'crate::platform::is_root()' | grep -q 'target_os = "windows"' || r_s11b2="$r_s11b2 windows-system-fallback-not-windows-cfg"
 awk '/pub fn is_root\(\)/,/^}/' src/platform/windows.rs | grep -q 'is_local_system'    || r_s11b2="$r_s11b2 windows-root-fallback-not-local-system"
@@ -188,13 +204,17 @@ grep -q 'Rejected whole-config sync from service-owned server' src/ipc.rs       
 grep -q 'allows_main_channel_password_storage_sync' src/ipc.rs                        || r_s11b2="$r_s11b2 storage-sync-policy-missing"
 grep -q 'Rejected permanent password storage sync from service-owned server' src/ipc.rs || r_s11b2="$r_s11b2 handler-storage-sync-not-denied"
 grep -q 'Rejected permanent password salt sync from service-owned server' src/ipc.rs   || r_s11b2="$r_s11b2 handler-standalone-salt-sync-not-denied"
-grep -q 'send_main_channel_config_write_rejection_ack' src/ipc.rs                     || r_s11b2="$r_s11b2 password-reject-nack-missing"
+grep -q 'send_main_channel_mutation_rejection_ack' src/ipc.rs                         || r_s11b2="$r_s11b2 mutation-reject-nack-missing"
+grep -q 'permanent-password-user-owned-writable' src/ipc.rs                            || r_s11b2="$r_s11b2 password-writability-receiver-missing"
+grep -q 'permanent-password-user-owned-writable' src/flutter_ffi.rs                    || r_s11b2="$r_s11b2 password-writability-ffi-missing"
+grep -q 'canSetUserOwnedPermanentPassword' flutter/lib/desktop/pages/desktop_home_page.dart || r_s11b2="$r_s11b2 home-password-writability-ui-missing"
+grep -q 'canSetUserOwnedPermanentPassword' flutter/lib/desktop/pages/desktop_setting_page.dart || r_s11b2="$r_s11b2 settings-password-writability-ui-missing"
 user_scope_fn=$(awk '/fn is_user_main_ipc_scope_cli_command/,/^}/' src/core_main.rs)
 if echo "$user_scope_fn" | grep -q '"--password"'; then
   r_s11b2="$r_s11b2 password-still-root-routes-to-user-main-ipc"
 fi
-if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2a service-owned password IPC closure:$r_s11b2"; rc=1; else
-  echo "  ok  R-S11b-2a service-launched --server is marked; ordinary password write + whole-config/storage/salt sync are denied; --password no longer root-routes into user main IPC"; fi
+if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 service-owned password IPC closure:$r_s11b2"; rc=1; else
+  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config key + typed user-owned password write + whole-config/storage/salt sync are denied for service-owned receivers; --password remains typed user-owned IPC"; fi
 
 # (3b-iii-d) R-S11b-3a: service-owned machine policy is not an ordinary Data::Options write.
 # Options writes use a typed daemon ACK/NACK; IPC callers persist only after an accepted ACK and never
@@ -375,9 +395,9 @@ if [ -n "$r_s11c5" ]; then echo "  FAIL R-S11c-5 macOS privileged service packag
 
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() — set_socks / set_permanent_password /
-# set_id / set_salt — MUST each sit in a Data arm that main_channel_admits_config_write DENIES
-# (Socks(Some) / the non-whitelisted Config struct-fields) or explicitly allows as the remaining
-# operator-owned write (permanent-password / voice-call-input). The `_ => true` catch-all would let a NEW
+# set_id / set_salt — MUST each sit in a Data arm that main_channel_admits_state_mutation DENIES
+# (Socks(Some) / the non-whitelisted Config struct-fields) or explicitly allows as a named operation
+# (typed user-owned permanent password / voice-call-input). The `_ => true` catch-all would let a NEW
 # bypassing write (a new Data arm) reach Config unguarded on the main channel — the exact regression.
 # set_options is EXCLUDED (it self-filters via is_option_can_save, R-S16); HwCodecConfig::set is a
 # separate hwcodec store (compiled out, R-R2b), excluded by the \b before Config. Pin the count: a new
@@ -390,18 +410,19 @@ hb_cfg_writes=$(awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -cE '\bConfig:
 # I-3 (2026-07-08): was 7; R-S11b-1 removed the whole-config SyncConfig(Some) receiver write arm,
 # deleting Config::set + Config2::set from handle(), so the count is 7->5.
 if [ "$hb_cfg_writes" != "5" ]; then
-  echo "  FAIL R-S11/R-A6: handle() now has $hb_cfg_writes is_option_can_save-bypassing config-writes (expected 5). A config-write was added/removed — ensure any NEW one's Data variant is DENIED by main_channel_admits_config_write (never the _ => true default), then update this count."; rc=1
+  echo "  FAIL R-S11/R-A6: handle() now has $hb_cfg_writes is_option_can_save-bypassing config-writes (expected 5). A config-write was added/removed — ensure any NEW one's Data variant is DENIED by main_channel_admits_state_mutation (never the _ => true default), then update this count."; rc=1
 else
-  echo "  ok  R-S11/R-A6 the 5 is_option_can_save-bypassing config-writes in handle() are all gated by main_channel_admits_config_write (Socks(Some)/Config id+salt denied; permanent-password user-owned only; whole-config SyncConfig(Some) write arm absent) — none reaches Config via the _ => true default"
+  echo "  ok  R-S11/R-A6 the 5 is_option_can_save-bypassing config-writes in handle() are all gated by main_channel_admits_state_mutation (Socks(Some)/Config id+salt/permanent-password denied; typed permanent-password user-owned only; whole-config SyncConfig(Some) write arm absent) — none reaches Config via the _ => true default"
 fi
 
-# R-D8: the --password CLI remains a user-owned headless automation path, but path/root checks are not
-# authority. A service-owned receiver rejects in IPC; user-owned same-uid servers can still provision.
+# R-D8: the --password CLI remains a typed user-owned headless automation path, but path/root checks are not
+# authority. A service-owned receiver rejects in IPC; user-owned same-uid servers can still provision without
+# proving the old RustDesk password.
 pw_arm=$(awk '/args\[0\] == "--password"/,/args\[0\] == "--get-id"/' src/core_main.rs | grep -vE '^[[:space:]]*//')
-if echo "$pw_arm" | grep -q 'set_permanent_password' && ! echo "$pw_arm" | grep -q 'is_root' && ! echo "$pw_arm" | grep -q 'is_installed'; then
-  echo "  ok  R-D8 --password is a user-owned IPC request, not root-gated or install-path-gated; service-owned receivers reject in IPC"
+if echo "$pw_arm" | grep -q 'set_user_owned_permanent_password' && ! echo "$pw_arm" | grep -q 'is_root' && ! echo "$pw_arm" | grep -q 'is_installed'; then
+  echo "  ok  R-D8 --password is a typed user-owned IPC request, not root-gated or install-path-gated; service-owned receivers reject in IPC"
 else
-  echo "  FAIL R-D8: the --password arm is missing set_permanent_password or still uses root/install-path authority"; rc=1
+  echo "  FAIL R-D8: the --password arm is missing set_user_owned_permanent_password or still uses root/install-path authority"; rc=1
 fi
 
 # (3c) File-transfer write-path safety (R-S8/R-A5): the receive-write opens are NO-FOLLOW

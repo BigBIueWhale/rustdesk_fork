@@ -236,23 +236,29 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                         ).workaroundFreezeLinuxMint(),
                       ),
                       if (!bind.isDisableSettings())
-                        InkWell(
-                          child: Tooltip(
-                            message: translate('Change Password'),
-                            child: Obx(
-                              () => Icon(
-                                Icons.edit,
-                                color: editHover.value
-                                    ? textColor
-                                    : Color(0xFFDDDDDD),
-                                size: 22,
-                              ).marginOnly(right: 8, top: 4),
-                            ),
-                          ),
-                          // User-owned servers accept this IPC setter; service-owned installed hosts
-                          // fail closed until the service-authorized password operation exists.
-                          onTap: () => setPasswordDialog(),
-                          onHover: (value) => editHover.value = value,
+                        FutureBuilder<bool>(
+                          future: canSetUserOwnedPermanentPassword(),
+                          builder: (_, data) {
+                            if (data.data != true) {
+                              return const Offstage();
+                            }
+                            return InkWell(
+                              child: Tooltip(
+                                message: translate('Change Password'),
+                                child: Obx(
+                                  () => Icon(
+                                    Icons.edit,
+                                    color: editHover.value
+                                        ? textColor
+                                        : Color(0xFFDDDDDD),
+                                    size: 22,
+                                  ).marginOnly(right: 8, top: 4),
+                                ),
+                              ),
+                              onTap: () => setPasswordDialog(),
+                              onHover: (value) => editHover.value = value,
+                            );
+                          },
                         ),
                     ],
                   ),
@@ -729,7 +735,16 @@ class _DesktopHomePageState extends State<DesktopHomePage>
 
 }
 
+Future<bool> canSetUserOwnedPermanentPassword() async {
+  return (await bind.mainGetCommon(
+          key: "permanent-password-user-owned-writable")) ==
+      "true";
+}
+
 void setPasswordDialog({VoidCallback? notEmptyCallback}) async {
+  if (!await canSetUserOwnedPermanentPassword()) {
+    return;
+  }
   final p0 = TextEditingController(text: "");
   final p1 = TextEditingController(text: "");
   var errMsg0 = "";

@@ -331,6 +331,8 @@ pub enum Data {
     Config((String, Option<String>)),
     Options(Option<HashMap<String, String>>),
     OptionsSetResult(bool),
+    SetUserOwnedPermanentPassword(String),
+    SetUserOwnedPermanentPasswordResult(bool),
     NatType(Option<i32>),
     RawMessage(Vec<u8>),
     Socks(Option<config::Socks5Server>),
@@ -518,27 +520,27 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                         }
                                         continue;
                                     }
-                                    // R-S11 / Appendix C #15: reject a whole-config SyncConfig write
-                                    // on the main channel — the unguarded Config::set bypass that could
-                                    // re-pin the trust anchor / undo the §8/§9 pins from inside.
+                                    // R-S11 / R-S11b / Appendix C #15/#25: the main channel is a
+                                    // state-mutation boundary. Reject whole-config writes and service-owned
+                                    // policy/credential mutations before the handler reaches Config setters.
                                     #[cfg(any(target_os = "linux", target_os = "macos"))]
-                                    if !main_channel_admits_config_write(
+                                    if !main_channel_admits_state_mutation(
                                         &data,
                                         MainIpcAuthority::for_current_process(),
                                     ) {
                                         log::warn!(
-                                            "Rejected a config write on the main IPC channel (R-S11/R-S11b): data_kind={:?}, peer_uid={:?}",
+                                            "Rejected a state mutation on the main IPC channel (R-S11/R-S11b): data_kind={:?}, peer_uid={:?}",
                                             std::mem::discriminant(&data),
                                             stream.peer_uid()
                                         );
-                                        send_main_channel_config_write_rejection_ack(
+                                        send_main_channel_mutation_rejection_ack(
                                             &data,
                                             &mut stream,
                                         )
                                         .await;
                                         continue;
                                     }
-                                    // R-S11: the SAME per-arm config-write allowlist binds the WINDOWS
+                                    // R-S11: the SAME per-arm state-mutation allowlist binds the WINDOWS
                                     // main pipe (postfix == ""; the only postfix `start()` is ever called
                                     // with on Windows). Windows has no `_service` channel and no
                                     // SO_PEERCRED peer_uid, but the same Data variants (whole-config
@@ -550,15 +552,15 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                     // config-integrity boundary R-S11 mandates "per write-arm", on every
                                     // shipped artifact, not Linux/macOS alone.
                                     #[cfg(target_os = "windows")]
-                                    if !main_channel_admits_config_write(
+                                    if !main_channel_admits_state_mutation(
                                         &data,
                                         MainIpcAuthority::for_current_process(),
                                     ) {
                                         log::warn!(
-                                            "Rejected a config write on the main IPC channel (R-S11/R-S11b): data_kind={:?}",
+                                            "Rejected a state mutation on the main IPC channel (R-S11/R-S11b): data_kind={:?}",
                                             std::mem::discriminant(&data)
                                         );
-                                        send_main_channel_config_write_rejection_ack(
+                                        send_main_channel_mutation_rejection_ack(
                                             &data,
                                             &mut stream,
                                         )
@@ -706,8 +708,8 @@ impl Drop for CheckIfRestart {
     }
 }
 
-/// Main-channel config-write policy. Whole-config writes, identity/salt field writes, proxy writes,
-/// service-owned passwords, and service-owned options stay out of ordinary IPC.
+/// Main-channel mutation policy. Whole-config writes, identity/salt field writes, proxy writes,
+/// service-owned credentials, and service-owned options stay out of ordinary IPC.
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum MainIpcAuthority {
@@ -729,7 +731,7 @@ impl MainIpcAuthority {
         }
     }
 
-    fn allows_main_channel_password_write(self) -> bool {
+    fn allows_main_channel_user_owned_password_write(self) -> bool {
         matches!(self, Self::UserOwned)
     }
 
@@ -747,10 +749,10 @@ impl MainIpcAuthority {
 }
 
 #[inline]
-fn current_process_allows_main_channel_permanent_password_write() -> bool {
+fn current_process_allows_user_owned_permanent_password_write() -> bool {
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
-        MainIpcAuthority::for_current_process().allows_main_channel_password_write()
+        MainIpcAuthority::for_current_process().allows_main_channel_user_owned_password_write()
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
@@ -795,19 +797,19 @@ fn current_process_allows_main_channel_whole_config_sync() -> bool {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-pub(crate) fn main_channel_admits_config_write(data: &Data, authority: MainIpcAuthority) -> bool {
+pub(crate) fn main_channel_admits_state_mutation(data: &Data, authority: MainIpcAuthority) -> bool {
     match data {
         // Whole-config push: no IPC channel may write a whole Config/Config2 object; on the main
         // channel only the SyncConfig(None) read-request is.
         Data::SyncConfig(Some(_)) => false,
         // Struct-field writes: allow only the remaining legitimate operator-owned keys.
-        // In installed service-owned mode the unattended credential is not operator-owned
-        // config; it must not be mutated over ordinary Data::Config IPC.
         Data::Config((name, Some(_))) => match name.as_str() {
-            "permanent-password" => authority.allows_main_channel_password_write(),
             "voice-call-input" => true,
             _ => false,
         },
+        Data::SetUserOwnedPermanentPassword(_) => {
+            authority.allows_main_channel_user_owned_password_write()
+        }
         // Whole-options writes are ordinary user-owned configuration writes. A service-owned server
         // enforces machine policy and must not accept them over the generic main IPC config bus.
         Data::Options(Some(_)) => authority.allows_main_channel_options_write(),
@@ -817,12 +819,12 @@ pub(crate) fn main_channel_admits_config_write(data: &Data, authority: MainIpcAu
     }
 }
 
-async fn send_main_channel_config_write_rejection_ack(data: &Data, stream: &mut Connection) {
+async fn send_main_channel_mutation_rejection_ack(data: &Data, stream: &mut Connection) {
     match data {
-        Data::Config((name, Some(_))) if name == "permanent-password" => {
+        Data::SetUserOwnedPermanentPassword(_) => {
             allow_err!(
                 stream
-                    .send(&Data::Config((name.clone(), Some("N".to_owned()))))
+                    .send(&Data::SetUserOwnedPermanentPasswordResult(false))
                     .await
             );
         }
@@ -960,6 +962,16 @@ async fn handle(data: Data, stream: &mut Connection) {
                     } else {
                         "N".to_owned()
                     });
+                } else if name == "permanent-password-user-owned-writable" {
+                    value = Some(
+                        if current_process_allows_user_owned_permanent_password_write()
+                            && !Config::is_disable_change_permanent_password()
+                        {
+                            "Y".to_owned()
+                        } else {
+                            "N".to_owned()
+                        },
+                    );
                 } else if name == "salt" {
                     if current_process_allows_main_channel_permanent_password_storage_sync() {
                         value = Some(Config::get_salt());
@@ -991,26 +1003,8 @@ async fn handle(data: Data, stream: &mut Connection) {
                 allow_err!(stream.send(&Data::Config((name, value))).await);
             }
             Some(value) => {
-                let mut updated = true;
                 if name == "id" {
                     Config::set_id(&value);
-                } else if name == "permanent-password" {
-                    if !current_process_allows_main_channel_permanent_password_write() {
-                        log::warn!(
-                            "Rejected permanent password change over ordinary IPC for service-owned server"
-                        );
-                        updated = false;
-                    } else if Config::is_disable_change_permanent_password() {
-                        log::warn!("Changing permanent password is disabled");
-                        updated = false;
-                    } else {
-                        updated = Config::set_permanent_password(&value);
-                    }
-                    // Explicitly ACK/NACK permanent-password writes. This allows UIs/FFI to
-                    // distinguish "accepted by daemon" vs "IPC send succeeded" without
-                    // reading back any secret.
-                    let ack = if updated { "Y" } else { "N" }.to_owned();
-                    allow_err!(stream.send(&Data::Config((name.clone(), Some(ack)))).await);
                 } else if name == "salt" {
                     Config::set_salt(&value);
                 } else if name == "voice-call-input" {
@@ -1018,11 +1012,22 @@ async fn handle(data: Data, stream: &mut Connection) {
                 } else {
                     return;
                 }
-                if updated {
-                    log::info!("{} updated", name);
-                }
+                log::info!("{} updated", name);
             }
         },
+        Data::SetUserOwnedPermanentPassword(value) => {
+            let accepted = current_process_allows_user_owned_permanent_password_write()
+                && !Config::is_disable_change_permanent_password()
+                && Config::set_permanent_password(&value);
+            if !accepted {
+                log::warn!("Rejected user-owned permanent password change");
+            }
+            allow_err!(
+                stream
+                    .send(&Data::SetUserOwnedPermanentPasswordResult(accepted))
+                    .await
+            );
+        }
         Data::Options(value) => match value {
             None => {
                 let v = Config::get_options();
@@ -1045,6 +1050,7 @@ async fn handle(data: Data, stream: &mut Connection) {
             }
         },
         Data::OptionsSetResult(_) => {}
+        Data::SetUserOwnedPermanentPasswordResult(_) => {}
         Data::NatType(_) => {
             let t = Config::get_nat_type();
             allow_err!(stream.send(&Data::NatType(Some(t))).await);
@@ -1549,11 +1555,18 @@ pub fn is_permanent_password_preset() -> bool {
     false
 }
 
-pub fn set_permanent_password(v: String) -> ResultType<()> {
+pub fn can_set_user_owned_permanent_password() -> bool {
+    matches!(
+        get_config("permanent-password-user-owned-writable"),
+        Ok(Some(v)) if v.trim() == "Y"
+    )
+}
+
+pub fn set_user_owned_permanent_password(v: String) -> ResultType<()> {
     if Config::is_disable_change_permanent_password() {
         bail!("Changing permanent password is disabled");
     }
-    if set_permanent_password_with_ack(v)? {
+    if set_user_owned_permanent_password_with_ack(v)? {
         Ok(())
     } else {
         bail!("Changing permanent password was rejected by daemon");
@@ -1561,28 +1574,24 @@ pub fn set_permanent_password(v: String) -> ResultType<()> {
 }
 
 #[tokio::main(flavor = "current_thread")]
-pub async fn set_permanent_password_with_ack(v: String) -> ResultType<bool> {
-    set_permanent_password_with_ack_async(v).await
+pub async fn set_user_owned_permanent_password_with_ack(v: String) -> ResultType<bool> {
+    set_user_owned_permanent_password_with_ack_async(v).await
 }
 
-async fn set_permanent_password_with_ack_async(v: String) -> ResultType<bool> {
+async fn set_user_owned_permanent_password_with_ack_async(v: String) -> ResultType<bool> {
     // The daemon ACK/NACK is expected quickly since it applies the config in-process.
     let ms_timeout = 1_000;
     let mut c = connect(ms_timeout, "").await?;
-    c.send_config("permanent-password", v).await?;
-    if let Some(Data::Config((name2, Some(v)))) = c.next_timeout(ms_timeout).await? {
-        if name2 == "permanent-password" {
-            let v = v.trim();
-            let ok = v == "Y";
-            if ok {
-                // Ensure the hashed permanent password storage is written to the user config file.
-                // This sync must not affect the daemon ACK outcome.
-                if let Err(err) = sync_permanent_password_storage_from_daemon_async().await {
-                    log::warn!("Failed to sync permanent password storage from daemon: {err}");
-                }
+    c.send(&Data::SetUserOwnedPermanentPassword(v)).await?;
+    if let Some(Data::SetUserOwnedPermanentPasswordResult(ok)) = c.next_timeout(ms_timeout).await? {
+        if ok {
+            // Ensure the hashed permanent password storage is written to the user config file.
+            // This sync must not affect the daemon ACK outcome.
+            if let Err(err) = sync_permanent_password_storage_from_daemon_async().await {
+                log::warn!("Failed to sync permanent password storage from daemon: {err}");
             }
-            return Ok(ok);
         }
+        return Ok(ok);
     }
     Ok(false)
 }
@@ -1915,19 +1924,19 @@ mod test {
         let service_owned = MainIpcAuthority::ServiceOwned;
         let write = Data::SyncConfig(Some(Box::new((Config::default(), Config2::default()))));
         assert!(
-            !main_channel_admits_config_write(&write, user_owned),
+            !main_channel_admits_state_mutation(&write, user_owned),
             "R-S11: a whole-config SyncConfig(Some) write MUST be rejected on the main channel"
         );
-        assert!(main_channel_admits_config_write(
+        assert!(main_channel_admits_state_mutation(
             &Data::SyncConfig(None),
             user_owned
         ));
-        assert!(main_channel_admits_config_write(
+        assert!(main_channel_admits_state_mutation(
             &Data::Options(None),
             user_owned
         ));
         assert!(
-            main_channel_admits_config_write(
+            main_channel_admits_state_mutation(
                 &Data::Options(Some(HashMap::from([(
                     "direct-server".to_owned(),
                     "Y".to_owned()
@@ -1937,7 +1946,7 @@ mod test {
             "a user-owned options write stays legitimate"
         );
         assert!(
-            !main_channel_admits_config_write(
+            !main_channel_admits_state_mutation(
                 &Data::Options(Some(HashMap::from([(
                     "direct-server".to_owned(),
                     "Y".to_owned()
@@ -1947,27 +1956,41 @@ mod test {
             "R-S11b-3: service-owned machine policy MUST NOT be changed over ordinary options IPC"
         );
         // R-S11 (Appendix C #15): the Data::Config STRUCT-FIELD writes bypass is_option_can_save — the
-        // identity (id) + credential (salt) fields have NO legitimate main-channel writer and MUST be
-        // rejected; permanent-password is admitted only while user-owned; a value=None is a READ and stays.
+        // identity (id), credential marker (salt), and old permanent-password key have NO legitimate
+        // main-channel writer and MUST be rejected; a value=None is a READ and stays.
         let cfg = |n: &str, v: Option<&str>| Data::Config((n.to_owned(), v.map(|s| s.to_owned())));
         assert!(
-            !main_channel_admits_config_write(&cfg("id", Some("evil-id")), user_owned),
+            !main_channel_admits_state_mutation(&cfg("id", Some("evil-id")), user_owned),
             "R-S11: a Data::Config id write (rewrites device identity) MUST be rejected"
         );
         assert!(
-            !main_channel_admits_config_write(&cfg("salt", Some("evil-salt")), user_owned),
+            !main_channel_admits_state_mutation(&cfg("salt", Some("evil-salt")), user_owned),
             "R-S11: a Data::Config salt write (set_salt's guard is a no-op — the PRS is the memory-hard Argon2id hash, not derived from this salt field) MUST be rejected"
         );
         assert!(
-            main_channel_admits_config_write(&cfg("permanent-password", Some("pw")), user_owned),
-            "a user-owned permanent-password set stays legitimate"
+            !main_channel_admits_state_mutation(&cfg("permanent-password", Some("pw")), user_owned),
+            "R-S11b-2: permanent-password is not a generic Data::Config key"
         );
         assert!(
-            !main_channel_admits_config_write(
+            main_channel_admits_state_mutation(
+                &Data::SetUserOwnedPermanentPassword("pw".to_owned()),
+                user_owned
+            ),
+            "the typed user-owned permanent-password operation stays legitimate"
+        );
+        assert!(
+            !main_channel_admits_state_mutation(
                 &cfg("permanent-password", Some("pw")),
                 service_owned
             ),
             "R-S11b-2: a service-owned unattended password MUST NOT be set over ordinary IPC"
+        );
+        assert!(
+            !main_channel_admits_state_mutation(
+                &Data::SetUserOwnedPermanentPassword("pw".to_owned()),
+                service_owned
+            ),
+            "R-S11b-2: the user-owned password operation MUST NOT mutate a service-owned credential"
         );
         assert!(MainIpcAuthority::UserOwned.allows_main_channel_password_storage_sync());
         assert!(
@@ -1980,20 +2003,20 @@ mod test {
             "R-S11b-2: service-owned Config/Config2 snapshots MUST NOT sync over ordinary IPC"
         );
         assert!(
-            main_channel_admits_config_write(&cfg("id", None), user_owned),
+            main_channel_admits_state_mutation(&cfg("id", None), user_owned),
             "a Data::Config id READ (value=None) must be allowed"
         );
         // R-S11: the proxy / local-MITM primitive (set_socks) is rejected at the channel (already inert
         // under the pinned proxy-url, but defense-in-depth at the boundary).
         assert!(
-            !main_channel_admits_config_write(
+            !main_channel_admits_state_mutation(
                 &Data::Socks(Some(hbb_common::config::Socks5Server::default())),
                 user_owned
             ),
             "R-S11: a Data::Socks(Some) write MUST be rejected on the main channel"
         );
         assert!(
-            main_channel_admits_config_write(&Data::Socks(None), user_owned),
+            main_channel_admits_state_mutation(&Data::Socks(None), user_owned),
             "a Data::Socks read (None) must be allowed"
         );
     }
@@ -2028,6 +2051,10 @@ mod test {
                 Some("pw".to_owned())
             ))),
             "R-S11b-1: _service does not accept ordinary config-key credential writes"
+        );
+        assert!(
+            !service_channel_admits_message(&Data::SetUserOwnedPermanentPassword("pw".to_owned())),
+            "R-S11b-2: _service does not accept user-owned credential writes"
         );
     }
 

@@ -741,12 +741,20 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
           // one-time-password path is excised (R-X7), so the verification-method radios and
           // the OTP (length + numeric) selectors are dead/misleading — removed. The fork's
           // sole credential is the permanent password (R-P1/R-S9); only its setup remains.
-          // The dialog reaches the user-owned password setter. Service-owned installed hosts reject
-          // this ordinary IPC path until a service-authorized setter exists.
-          return _Card(title: 'Password', children: [
-            if (!isChangePermanentPasswordDisabled())
-              _SubButton('Set permanent password', setPasswordDialog),
-          ]);
+          if (isChangePermanentPasswordDisabled()) {
+            return const Offstage();
+          }
+          return FutureBuilder<bool>(
+            future: canSetUserOwnedPermanentPassword(),
+            builder: (_, data) {
+              if (data.data != true) {
+                return const Offstage();
+              }
+              return _Card(title: 'Password', children: [
+                _SubButton('Set permanent password', setPasswordDialog),
+              ]);
+            },
+          );
         })));
   }
 

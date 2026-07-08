@@ -177,6 +177,24 @@ unreachable and a source/test/AST gate prevents reintroduction.
   markers on Linux/Windows/macOS, no `--password` root-to-user routing, and handler-level whole-config,
   standalone salt, and storage-sync denial; `scripts/apple-conform-check.sh` asserts the macOS LaunchAgent marker and
   source policy.
+- **R-S11b-2b/R-S11c-1b — user-owned password mutation is typed, not a config write — CLOSED 2026-07-08.**
+  Platforms: Linux, Windows, and macOS desktop main IPC; Android/iOS remain app-owned in-process paths rather
+  than installed desktop service boundaries. Endpoint/action: `Data::SetUserOwnedPermanentPassword(String)` and
+  `Data::SetUserOwnedPermanentPasswordResult(bool)` replace the old in-tree
+  `Data::Config(("permanent-password", Some(_)))` writer; `permanent-password-user-owned-writable` is a
+  read-only receiver capability query. Boundary: user-owned daemon credential state vs installed-service
+  unattended credential state. Attack surface closed: CLI, FFI, and Flutter desktop password setters no longer
+  send the permanent password as a generic config-key mutation; the main-channel state-mutation allowlist rejects
+  `Data::Config(("permanent-password", Some(_)))` for both user-owned and service-owned receivers; service-owned
+  receivers reject and NACK the typed user-owned operation; desktop UI exposes the password setter only when the
+  receiver advertises user-owned writability. Changing or removing a password does not prove knowledge of the
+  old RustDesk password; authority is daemon ownership now, and OS-admin authorization for future service-owned
+  provisioning. Verification closure: `scripts/verify.sh` runs
+  `ipc::test::main_channel_rejects_whole_config_sync_write` and
+  `ipc::test::service_channel_rejects_config_bus`, asserts the typed operation/result, asserts absence of the
+  old generic password config-key send/gate, and checks the desktop writability query;
+  `scripts/apple-conform-check.sh` mirrors the macOS source assertions; `scripts/smoke-server.sh` exercises
+  the typed user-owned CLI path.
 - **R-S11b-3a — service-marked server rejects ordinary options IPC — CLOSED 2026-07-08.** Platforms:
   Windows installed service-launched `--server`, Linux root-service-launched root or active-user `--server`,
   and macOS LaunchAgent `--server` source path. Endpoint/action: main IPC `Data::Options(Some(_))`.
@@ -242,12 +260,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
 **Release-blocking items:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,
   Linux installed service, macOS LaunchDaemon/source path. Android is app-UID/service-owned rather than
-  root/SYSTEM, and non-installed/portable user-mode remains user-owned. Endpoints: `Data::Config` for
-  `permanent-password`, CLI/FFI/UI password setters that reach ordinary IPC, and any `SyncConfig` path that
-  carries password storage/salt. Boundary: user-session process ↔ privileged unattended host. Attack
-  surface: an unprivileged local caller can mint or replace the credential the privileged host later accepts
-  remotely. Current state: the ordinary IPC password write, whole-config sync, standalone salt read, and
-  storage/salt sync paths are closed for service-marked servers by R-S11b-2a/R-S11c-1a; user-owned `--server` paths remain
+  root/SYSTEM, and non-installed/portable user-mode remains user-owned. Endpoints: any service-owned password
+  provisioning operation, historical `Data::Config` for `permanent-password`, CLI/FFI/UI password setters, and
+  any `SyncConfig` path that carries password storage/salt. Boundary: user-session process ↔ privileged
+  unattended host. Attack surface: any unprivileged local caller path that can mint or replace the credential
+  the privileged host later accepts remotely. Current state: the ordinary IPC password config-key write is absent
+  from in-tree setters and rejected for every receiver by R-S11b-2b/R-S11c-1b; typed user-owned password writes
+  are accepted only by user-owned receivers; service-marked receivers reject typed user-owned writes, whole-config
+  sync, standalone salt read, and storage/salt sync by R-S11b-2a/R-S11c-1a. User-owned `--server` paths remain
   user-owned. Remaining closure: add a typed `SetUnattendedPassword` service operation; commit only inside
   the privileged service after OS admin authorization (Linux polkit; Windows UAC/service-admin proof; macOS
   Authorization Services/privileged helper); the service derives/stores the PRS itself; tests cover
@@ -268,12 +288,13 @@ unreachable and a source/test/AST gate prevents reintroduction.
   reachable from ordinary IPC except through named approved operations with gates.
 - **R-S11c-1 — Windows main IPC credential write into a SYSTEM/winlogon-launched server.** Platform:
   Windows installed service. Endpoint: main named pipe `\\.\pipe\<APP>\query` accepting same-session genuine
-  executable peers; action: `Data::Config(("permanent-password", value))`. Boundary: same-session desktop
-  process ↔ service-launched server process. Attack surface: same-session is not machine-admin authority,
-  yet it can change the service-hosted remote credential. Current state: the same-session/same-exe main
-  pipe no longer authorizes ordinary service credential mutation after R-S11b-2a/R-S11c-1a. Remaining
-  closure: the typed service operation still needs receiver-side admin authority validation before any PRS
-  write.
+  executable peers; action: any password write for a service-launched server, historically
+  `Data::Config(("permanent-password", value))`. Boundary: same-session desktop process ↔ service-launched
+  server process. Attack surface: same-session is not machine-admin authority, so it must not change the
+  service-hosted remote credential. Current state: the same-session/same-exe main pipe no longer authorizes
+  the generic password config key, and the typed user-owned password operation is rejected by service-owned
+  receivers after R-S11b-2a/R-S11c-1a and R-S11b-2b/R-S11c-1b. Remaining closure: a typed service operation
+  still needs receiver-side admin authority validation before any PRS write.
 **Contained hardening items from the same audit:**
 - **R-S11c-6 — Windows named-pipe endpoint hardening.** Platform: Windows desktop. Endpoint:
   predictable `\\.\pipe\<APP>\query{postfix}` names and broad create permissions for main/`_service`.
@@ -583,7 +604,7 @@ Shared un-cfg'd reap loop (`connection.rs`) + writer task (`tcp.rs`) → the ≤
 
 ### Cavity 2 — Settings write-path & the dead security controls: FINDINGS (Opus 1M, read-only, 2026-07-07) ✅ EXHAUSTIVE — every claim proven from source
 
-**Headline (CONFIRMED).** The desktop "Unlock Security Settings" button gates the whole Safety tab — including the sole-authenticator **"Set permanent password"** — on `check_super_user_permission()`. The fork excised the *active* elevation ceremonies (R-X9 `run_uac`/`elevate` Windows; R-X11 `gtk_sudo` Linux) and rewired that check into a **passive "am I already elevated/root?" probe**, leaving the unlock button + the essential password control behind it. The desktop GUI is **proven never-elevated**, so the probe always returns false, `onUnlock()` never fires, the click is silently swallowed — identically on Windows and Linux (BR-7). macOS diverges (genuine interactive admin dialog → works); Android has no such gate (password works). One mechanism → BR-7, password-half of BR-6, BR-2, settings-half of BR-3.
+**Headline (CONFIRMED).** The desktop "Unlock Security Settings" button gates the Safety tab — including the settings-page **"Set permanent password"** button — on `check_super_user_permission()`. The fork excised the *active* elevation ceremonies (R-X9 `run_uac`/`elevate` Windows; R-X11 `gtk_sudo` Linux) and rewired that check into a **passive "am I already elevated/root?" probe**, leaving the unlock button + ordinary settings controls behind it. The desktop GUI is **proven never-elevated**, so the probe always returns false, `onUnlock()` never fires, the click is silently swallowed — identically on Windows and Linux (BR-7). macOS diverges (genuine interactive admin dialog → works); Android has no such gate. One mechanism → BR-7, BR-2, settings-half of BR-3.
 
 **The exact break — full chain (cfg-gated source).** `desktop_setting_page.dart:749-752` `locked=mainIsInstalled()`; `:766-778` `preventMouseKeyBuilder = ExcludeFocus+AbsorbPointer(absorbing:locked)`; `:1979-2020` `_lock.onPressed`: `unlockPin` empty → `callMainCheckSuperUserPermission()` **false** → `if(checked) onUnlock()` never runs, **no else** → silent no-op. → `flutter_ffi.rs:1918` → `ui_interface.rs:917` → `platform::check_super_user_permission()`: **Windows** `is_elevated(None)` (passive `TokenElevation`, `windows.rs:2335-2370`; `run_uac`/`elevate` excised) → false; **Linux** `Ok(is_root())`=`username()=="root"` (`linux.rs:1400,1052`) → false; **macOS** `MacCheckAdminAuthorization()` (`macos.mm:84`) → true; **Android/iOS** returns true but mobile UI has **no `_lock` at all**.
 
@@ -595,18 +616,18 @@ Shared un-cfg'd reap loop (`connection.rs`) + writer task (`tcp.rs`) → the ≤
 | Control | Windows | Linux/Debian | macOS | Android | iOS |
 |---|---|---|---|---|---|
 | Unlock Security Settings | **DEAD** (passive `is_elevated`, asInvoker) | **DEAD** (passive `is_root`, non-root) | **WORKS** (interactive admin dialog) | N/A (no `_lock`) | viewer-only |
-| Set permanent password (GUI) | **BLOCKED** by lock; CLI `--password` works | **BLOCKED**; CLI works | works after unlock | **WORKS** (menu+auto-prompt, no lock) | no controlled service |
+| Set permanent password (GUI/CLI) | Settings button locked; home dialog/CLI work when user-owned writable | Settings button locked; home dialog/CLI work when user-owned writable | works after unlock or home dialog when user-owned writable | **WORKS** (menu+auto-prompt, no lock) | no controlled service |
 | Pinned security toggles | greyed + locked | greyed + locked | greyed (pinned) even after unlock | greyed | n/a |
 | Non-pinned Safety prefs | locked out | locked out | editable after unlock | editable | n/a |
 
-**BR-6 consequences (CONFIRMED).** *Set password*: button (`:889`, inside locked card) `enabled=!locked=false`→`onPressed:null`+AbsorbPointer; home pencil (`desktop_home_page.dart:259`) only navigates into the locked tab; desktop auto-prompt guarded `isAndroid||isIOS` (`server_model.dart:393`). The dialog + its IPC write are sound and are the **exact path CLI `--password` uses** (`ipc.rs:837-848` `Config::set_permanent_password`) — why CLI works, GUI doesn't. *"Enable remote config modification"*: pinned `Y` (`config.rs:3265`), quadruple-inert (AbsorbPointer + `enabled=false` + `fakeValue=true` checked + `isOptionFixed→onChanged:null`) — already ON by policy, shown greyed.
+**BR-6 consequences (CONFIRMED).** *Set password*: settings-page button (`:889`, inside locked card) `enabled=!locked=false`→`onPressed:null`+AbsorbPointer; desktop auto-prompt guarded `isAndroid||isIOS` (`server_model.dart:393`). The current home-dialog and CLI user-owned path is the typed `SetUserOwnedPermanentPassword` IPC operation gated by `permanent-password-user-owned-writable`; service-owned password provisioning remains closed until an admin-authorized service operation exists. *"Enable remote config modification"*: pinned `Y` (`config.rs:3265`), quadruple-inert (AbsorbPointer + `enabled=false` + `fakeValue=true` checked + `isOptionFixed→onChanged:null`) — already ON by policy, shown greyed.
 
 **Complete R-S16 pinned set — 28 keys classified (CONFIRMED).**
 - **(A) Correctly pinned AND UI-conformant, removed/hidden per R-G1 (13):** `verification-method`, `approve-mode` (R-X7a), `2fa`, `bot` (R-X7), `api-server`, `custom-rendezvous-server`, `relay-server`, `proxy-url` (Network/SOCKS removed R-G4), `enable-virtual-display`, `allow-websocket`, `allow-insecure-tls-fallback`, `allow-linux-headless`, `stop-service` (Stop button correctly **hidden**, `:430-454`).
 - **(B) Correctly pinned BUT shown as greyed live-looking toggle — R-G1 VIOLATION (15):** `access-mode`=full, `enable-{keyboard,clipboard,file-transfer,audio,camera,terminal,tunnel,remote-restart,record-session,block-input(Win),privacy-mode,remote-printer(Win)}`, `allow-remote-config-modification`, `allow-only-conn-window-open` (greyed+fakeValue checkboxes `:813-905`); `enable-record-session` also greyed on Android. **This 15-toggle set is the concrete backbone of BR-14.**
 - **Verdict:** the reject-set is **correctly scoped**; the defect is UI honesty — 15/28 rendered as greyed *actuating* toggles instead of read-only/removed (§19 live-looking-dead), compounded by the dead lock.
 
-**Password PROVEN structurally excluded from the reject-set (CONFIRMED).** `is_option_can_save` operates only on the options HashMap; the password is `config.password`/`password_prs` — **struct fields** (`config.rs:236,1425`) written via `Config::set_permanent_password`, and the IPC path (`ipc.rs:837-848`) calls it **directly, bypassing `set_options`/`purify_options`** → the reject-set **structurally cannot swallow the password.** BUILTIN/HARD funnels empty on a fork build (R-A4) → `is_disable_change_permanent_password`/`isUnlockPinDisabled`/`is_disable_settings` all false. The lockout is entirely the Dart `locked` gate. (Corrects the pre-audit hypothesis.)
+**Password PROVEN structurally excluded from the reject-set (CONFIRMED).** `is_option_can_save` operates only on the options HashMap; the password is `config.password`/`password_prs` — **struct fields** (`config.rs:236,1425`) written via `Config::set_permanent_password`. The user-owned typed IPC operation reaches that setter directly after the receiver ownership gate, bypassing `set_options`/`purify_options` by design, so the option reject-set **structurally cannot swallow the password.** BUILTIN/HARD funnels empty on a fork build (R-A4) → `is_disable_change_permanent_password`/`isUnlockPinDisabled`/`is_disable_settings` all false. The lockout is entirely the Dart `locked` gate. (Corrects the pre-audit hypothesis.)
 
 **Every control trapped behind `locked` (exhaustive) — 5 non-pinned victims beyond the password:** `share-rdp` (Win), `allow-auto-disconnect`+timeout+Apply, `keep-awake-during-incoming-sessions`, the `unlock-pin` setter — all non-pinned/writable but locked out on Win/Linux. The **unlock-PIN is chicken-and-egg dead** (its only setter lives inside the card it would unlock).
 
@@ -614,14 +635,14 @@ Shared un-cfg'd reap loop (`connection.rs`) + writer task (`tcp.rs`) → the ≤
 
 **BR-3 reconciliation (re-proven).** The connection-gated block is dead (`canBeBlocked()` always false — `IS_REMOTE_MODIFY_…` None for direct + `access-mode` pinned full). A live connection does NOT block settings; BR-3's "while connected" is a **misattribution** of the always-on `locked` gate; "no default to enable remote control" is moot (pinned ON, shown greyed).
 
-**Sweep 1 — siblings.** (1) 5 non-pinned controls trapped by the lock; (2) unlock-PIN chicken-and-egg; (3) home "Change Password" pencil dead-end; (4) **`hide_cm()` orphaned dead code** — defined `desktop_setting_page.dart:937-975`, **never called** (§19); (5) the 15 greyed pinned toggles (R-G1). Verified-CLEAN (don't re-flag): Network/Account + SOCKS/ID-Relay removed (R-G4); Android verification/approve/OTP removed (R-X7a); `service()` hides "Stop" when pinned; password IPC arm + dialog sound.
+**Sweep 1 — siblings.** (1) 5 non-pinned controls trapped by the lock; (2) unlock-PIN chicken-and-egg; (3) **`hide_cm()` orphaned dead code** — defined `desktop_setting_page.dart:937-975`, **never called** (§19); (4) the 15 greyed pinned toggles (R-G1). Verified-CLEAN (don't re-flag): Network/Account + SOCKS/ID-Relay removed (R-G4); Android verification/approve/OTP removed (R-X7a); `service()` hides "Stop" when pinned; typed user-owned password IPC arm + home dialog sound.
 
-**Sweep 2 — platform (per cfg).** Win/Linux: unlock DEAD, password GUI BLOCKED, 15 greyed toggles, 5 non-pinned locked out. macOS: unlock WORKS then password+non-pinned editable, pinned stay greyed. Android: no lock, password works (`server_page.dart:60`+auto-prompt), pinned greyed. iOS: viewer-only. Shared `_Safety`/`_lock` on Win/Linux/macOS — only `check_super_user_permission` diverges.
+**Sweep 2 — platform (per cfg).** Win/Linux: unlock DEAD, settings-page password button locked, home password dialog works only when the receiver is user-owned writable, 15 greyed toggles, 5 non-pinned locked out. macOS: unlock WORKS then password+non-pinned editable, and the home password dialog works when user-owned writable; pinned stay greyed. Android: no lock, password works (`server_page.dart:60`+auto-prompt), pinned greyed. iOS: viewer-only. Shared `_Safety`/`_lock` on Win/Linux/macOS — only `check_super_user_permission` diverges.
 
 **NEEDS-RUNTIME: none** source/framework-derivable. Sole residual is a *user-action* fact (whether the operator's one BR-2 success was a manual Run-as-admin launch — the only source-consistent path).
 
 **Superseded by R-S11b/R-S11c for installed-service password setting.** User-owned mode may keep the
-ordinary GUI/CLI password setter; installed service-owned mode requires a typed, admin-authorized service
+typed GUI/CLI password setter; installed service-owned mode requires a typed, admin-authorized service
 operation and must not use the old ordinary IPC write. The remaining UI work here is R-G1 honesty for the
 pinned/non-pinned controls, not a relaxation of the service-owned credential boundary.
 

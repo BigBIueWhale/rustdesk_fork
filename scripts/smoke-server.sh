@@ -113,8 +113,8 @@ echo "== (2b) R-D8/R-D2: the REAL 'rustdesk --password' CLI provisions over user
 # --password set-and-exit, then a keyed Direct-IP session." The other stages seed via the test-only
 # examples/seed_password (a direct Config write) for speed, which BYPASSES the production path. This
 # stage runs the REAL `--password` CLI as root against a root-owned manual --server
-# (the non-root same-uid path is stage 2c) — so it exercises ipc::set_permanent_password END-TO-END:
-# send_config("permanent-password"), the 1s ACK wait, user-owned storage sync, and the
+# (the non-root same-uid path is stage 2c) — so it exercises the typed user-owned password IPC END-TO-END:
+# SetUserOwnedPermanentPassword, the 1s ACK wait, user-owned storage sync, and the
 # current-thread-runtime CLEAN TEARDOWN — the "set-and-exit" stock RustDesk lacked.
 # We provision by CHANGING an initial seeded password (--server refuses to listen with none, R-A4) —
 # the identical user-owned IPC path; service-launched servers are marked separately and reject this path.
@@ -147,7 +147,7 @@ echo "$out2b" | grep -q 'KEYED_OLD: keying ok=false' \
 echo "== (2c) R-D8: 'rustdesk --password' provisions over SAME-UID user-owned IPC as a NON-ROOT owner (no root, no /proc scan, no CAP_SYS_PTRACE) =="
 # R-D8: production --password is a user-owned IPC request, not a root/install-path authority check. An unprivileged
 # owner (uid 4000 here, like haggai_computer's uid-1000 supervisord `user`) runs BOTH --server and
-# --password as ITSELF: set_permanent_password connects to its OWN per-uid IPC (/tmp/<app>-<uid>/ipc)
+# --password as ITSELF: set_user_owned_permanent_password connects to its OWN per-uid IPC (/tmp/<app>-<uid>/ipc)
 # directly — no geteuid()==0 /proc scan, hence no CAP_SYS_PTRACE. The IPC's per-uid 0600 + SO_PEERCRED
 # (R-S11) is the real authorization for this user-owned mode. (Incidentally
 # also proves the B1 RLIMIT_NOFILE self-enforcement runs cleanly under a non-root --server.)

@@ -324,7 +324,8 @@ pub fn core_main() -> Option<Vec<String>> {
                 return None;
             }
             if args.len() == 2 {
-                if let Err(err) = crate::ipc::set_permanent_password(args[1].to_owned()) {
+                let password = args[1].to_owned();
+                if let Err(err) = crate::ipc::set_user_owned_permanent_password(password) {
                     println!("{err}");
                 } else {
                     println!("Done!");

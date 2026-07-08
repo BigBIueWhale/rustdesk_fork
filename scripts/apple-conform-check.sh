@@ -186,7 +186,12 @@ echo "== (2b-ii) R-S11b-2a/R-S11b-3a macOS service-owned password/options are no
 r_s11b2=
 grep -q -- '<string>--service-owned-server</string>' "$REPO/src/platform/privileges_scripts/agent.plist" || r_s11b2="$r_s11b2 agent-server-not-marked"
 grep -q 'MainIpcAuthority::ServiceOwned' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 service-owned-authority-missing"
-grep -q '"permanent-password" => authority.allows_main_channel_password_write()' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 password-write-not-authority-gated"
+grep -q 'Data::SetUserOwnedPermanentPassword(_) => {' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 typed-password-arm-missing"
+grep -A3 'Data::SetUserOwnedPermanentPassword(_) => {' "$REPO/src/ipc.rs" | grep -q 'authority.allows_main_channel_user_owned_password_write()' || r_s11b2="$r_s11b2 typed-password-write-not-authority-gated"
+grep -q 'Data::SetUserOwnedPermanentPasswordResult(false)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 typed-password-reject-nack-missing"
+grep -q '"permanent-password" => authority.allows_main_channel_user_owned_password_write()' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 password-still-generic-config-key"
+grep -q '"permanent-password" => authority.allows_main_channel_password_write()' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 password-still-generic-config-key"
+grep -q 'send_config("permanent-password"' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 password-still-sent-as-config-key"
 grep -q 'Data::Options(Some(_)) => authority.allows_main_channel_options_write()' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-write-not-authority-gated"
 grep -q 'Rejected options write over ordinary IPC for service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-write-not-denied"
 grep -q 'OptionsSetResult(bool)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-typed-result-missing"
@@ -206,7 +211,7 @@ if [ -n "$r_s11b2" ]; then
   echo "  FAIL R-S11b-2a/R-S11b-3a macOS service-owned IPC closure:$r_s11b2"
   rc=1
 else
-  note "ok  R-S11b-2a/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password/options writes + whole-config/storage/salt sync are denied by source policy"
+  note "ok  R-S11b-2a/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password config key and typed user-owned password/options writes + whole-config/storage/salt sync are denied by source policy"
 fi
 
 echo "== (2b-iii) R-S11c-4a macOS CM pre-login filesystem IPC rejected =="
@@ -214,10 +219,24 @@ r_s11c4=
 grep -q 'struct CmFileAuthority' "$REPO/src/ui_cm_interface.rs" || r_s11c4="$r_s11c4 no-cm-file-authority-type"
 grep -q 'file_authority: CmFileAuthority' "$REPO/src/ui_cm_interface.rs" || r_s11c4="$r_s11c4 desktop-runner-has-no-authority-state"
 grep -q 'let file_authority = CmFileAuthority::from_login' "$REPO/src/ui_cm_interface.rs" || r_s11c4="$r_s11c4 desktop-login-does-not-derive-authority"
-grep -q 'Rejected CM Data::FS before authorized file-capable login' "$REPO/src/ui_cm_interface.rs" || r_s11c4="$r_s11c4 desktop-reject-log-missing"
-desktop_cm_fs_block=$(awk '/Data::FS\(mut fs\)/,/Data::FileTransferLog/' "$REPO/src/ui_cm_interface.rs")
-desktop_gate_line=$(echo "$desktop_cm_fs_block" | grep -n 'if !self.file_authority.allows_fs()' | head -1 | cut -d: -f1)
-desktop_handle_line=$(echo "$desktop_cm_fs_block" | grep -n 'handle_fs' | head -1 | cut -d: -f1)
+grep -q 'authorize_cm_ipc_connection(&stream)' "$REPO/src/ui_cm_interface.rs" || r_s11c4="$r_s11c4 desktop-cm-peer-auth-not-wired"
+grep -q 'AuthorizedFS {' "$REPO/src/ipc.rs" || r_s11c4="$r_s11c4 authorized-fs-variant-missing"
+grep -q 'ValidateCmConnection {' "$REPO/src/ipc.rs" || r_s11c4="$r_s11c4 cm-validation-message-missing"
+grep -q 'pub(crate) async fn validate_cm_connection_authority' "$REPO/src/ipc.rs" || r_s11c4="$r_s11c4 cm-validation-client-helper-missing"
+grep -q 'conn.cm_auth_token == cm_auth_token' "$REPO/src/server/connection.rs" || r_s11c4="$r_s11c4 cm-validation-not-bound-to-server-token"
+grep -q 'conn_type.allows_file_authority()' "$REPO/src/server/connection.rs" || r_s11c4="$r_s11c4 cm-validation-not-bound-to-conn-type"
+grep -q 'Rejected CM login without matching authorized server connection' "$REPO/src/ui_cm_interface.rs" || r_s11c4="$r_s11c4 desktop-invalid-login-reject-log-missing"
+grep -q 'Rejected CM AuthorizedFS without matching authorized file-capable login' "$REPO/src/ui_cm_interface.rs" || r_s11c4="$r_s11c4 desktop-authorizedfs-reject-log-missing"
+grep -q 'Rejected unauthenticated CM Data::FS on desktop IPC' "$REPO/src/ui_cm_interface.rs" || r_s11c4="$r_s11c4 desktop-plain-fs-reject-log-missing"
+desktop_cm_login_block=$(awk '/Data::Login{id/,/self.cm.add_connection/' "$REPO/src/ui_cm_interface.rs")
+desktop_validate_line=$(echo "$desktop_cm_login_block" | grep -n 'validate_cm_connection_authority' | head -1 | cut -d: -f1 || true)
+desktop_add_line=$(echo "$desktop_cm_login_block" | grep -n 'self.cm.add_connection' | head -1 | cut -d: -f1 || true)
+if [ -z "$desktop_validate_line" ] || [ -z "$desktop_add_line" ] || [ "$desktop_validate_line" -ge "$desktop_add_line" ]; then
+  r_s11c4="$r_s11c4 desktop-login-validation-not-before-add_connection"
+fi
+desktop_cm_fs_block=$(awk '/Data::AuthorizedFS/,/Data::FS\(_\)/' "$REPO/src/ui_cm_interface.rs")
+desktop_gate_line=$(echo "$desktop_cm_fs_block" | grep -n 'if !self.file_authority.allows_fs(cm_auth_token == self.cm_auth_token)' | head -1 | cut -d: -f1 || true)
+desktop_handle_line=$(echo "$desktop_cm_fs_block" | grep -n 'handle_fs' | head -1 | cut -d: -f1 || true)
 if [ -z "$desktop_gate_line" ] || [ -z "$desktop_handle_line" ] || [ "$desktop_gate_line" -ge "$desktop_handle_line" ]; then
   r_s11c4="$r_s11c4 desktop-fs-gate-not-before-handle_fs"
 fi
@@ -225,7 +244,7 @@ if [ -n "$r_s11c4" ]; then
   echo "  FAIL R-S11c-4a macOS CM pre-login file IPC closure:$r_s11c4"
   rc=1
 else
-  note "ok  R-S11c-4a macOS CM rejects Data::FS before authorized file-capable login; nonce/capability binding remains open"
+  note "ok  R-S11c-4a macOS CM rejects forged desktop login/plain FS unless the main server validates the active connection id/type/token"
 fi
 
 echo "== (2b-iv) R-S11c-5 macOS privileged-service packaging =="

@@ -1549,7 +1549,7 @@ pub fn main_get_langs() -> String {
 // R-X7: main_get_temporary_password / main_update_temporary_password removed (OTP excised).
 
 pub fn main_set_permanent_password_with_result(password: String) -> bool {
-    ui_interface::set_permanent_password_with_result(password)
+    ui_interface::set_user_owned_permanent_password_with_result(password)
 }
 
 pub fn cm_get_clients_state() -> String {
@@ -2223,6 +2223,8 @@ pub fn main_get_common(key: String) -> String {
         return false.to_string();
     } else if key == "permanent-password-set" {
         return ui_interface::is_permanent_password_set().to_string();
+    } else if key == "permanent-password-user-owned-writable" {
+        return ui_interface::can_set_user_owned_permanent_password().to_string();
     } else if key == "direct-listener-bound" {
         // R-D7a / R-G1 (verify-ground-truth): the REAL live state of the direct listener (a bound
         // TcpListener on :21118), not the optimistic Dart `serverModel.isStart`. The mobile

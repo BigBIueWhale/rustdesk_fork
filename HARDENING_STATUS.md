@@ -234,6 +234,22 @@ unreachable and a source/test/AST gate prevents reintroduction.
   pipe-client token impersonation, `RevertToSelf`, elevated-token request gate, LocalSystem-token commit gate,
   already-elevated UI/CLI exposure, and absence of PID-based elevation proof for this operation; the Windows
   source test `windows_service_owned_password_commit_requires_localsystem_peer` covers the main-channel policy.
+- **R-S11b-2e/R-S11c-1f — macOS service-owned unattended password provisioning — CLOSED 2026-07-09.**
+  Platform: macOS LaunchDaemon/LaunchAgent installed service. Endpoint/action:
+  `Data::RequestMacosServiceOwnedUnattendedPasswordChange { password, authorization }` over `_service`,
+  followed by `Data::CommitServiceOwnedUnattendedPasswordChange(String)` from the root LaunchDaemon into the
+  service-owned main server. Boundary: active desktop/CLI process ↔ root LaunchDaemon `_service` ↔
+  service-owned `--server` process that honors the unattended credential. Attack surface closed: service-owned
+  password provisioning no longer fails closed on macOS for lack of a privileged path, and it does not fall back
+  to ordinary main IPC or generic config writes. The caller first obtains an Authorization Services external
+  form for the admin right; the LaunchDaemon internalizes that external form and checks the right without
+  interaction before forwarding the commit. The main server accepts the final commit only when the receiver is
+  service-owned and the committing peer is root. Main-channel macOS service-owned password requests are denied,
+  ordinary user-owned password writes remain denied for service-owned receivers, and rejection ACKs fail closed.
+  Verification closure: `scripts/verify.sh` and `scripts/apple-conform-check.sh` assert the macOS request shape,
+  `_service` allowlist, main-channel denial, non-interactive `AuthorizationCreateFromExternalForm` verification,
+  root-peer commit gate, installed-daemon exposure gate, and service handler wiring; the Unix source tests cover
+  main-channel commit policy and `_service` request admission.
 - **R-S11b-3a — service-marked server rejects ordinary options IPC — CLOSED 2026-07-08.** Platforms:
   Windows installed service-launched `--server`, Linux root-service-launched root or active-user `--server`,
   and macOS LaunchAgent `--server` source path. Endpoint/action: main IPC `Data::Options(Some(_))`.
@@ -338,9 +354,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `_service` request is the only enabled service-owned password path, and the final commit is accepted only
   by a service-owned server from a root peer. Windows installed-service provisioning is closed by
   R-S11b-2d/R-S11c-1e: the `_service` request requires an elevated connected pipe-client token, and the final
-  main-server commit is accepted only from a LocalSystem service peer. Remaining closure: macOS needs the
-  Authorization Services/privileged-helper path before any service-owned PRS write; tests must cover that
-  platform-native service-owned provisioning path vs user-mode behavior.
+  main-server commit is accepted only from a LocalSystem service peer. macOS installed-service provisioning is
+  closed by R-S11b-2e/R-S11c-1f: the `_service` request carries an Authorization Services external form verified
+  by the root LaunchDaemon without interaction, and the final main-server commit is accepted only from a root
+  service peer.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows

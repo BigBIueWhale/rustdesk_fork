@@ -5,6 +5,8 @@
 #include <Security/AuthorizationTags.h>
 
 #include <CoreGraphics/CoreGraphics.h>
+#include <stdint.h>
+#include <string.h>
 #include <vector>
 #include <map>
 #include <set>
@@ -75,12 +77,6 @@ extern "C" bool InputMonitoringAuthStatus(bool prompt) {
     #endif
 }
 
-// R-X9 / R-X11 (macOS source twin): the AuthorizationExecuteWithPrivileges-based `Elevate`
-// — an in-process root-exec primitive that ran a process as root — is excised, together with
-// the osascript-admin `elevate` in macos.rs. Per R-X9 the SOLE macOS privilege transition is
-// the launchd LaunchDaemon/LaunchAgent (launchctl asuser); the fork carries no in-process
-// sudo/Authorization-exec primitive. What remains is an authorization CHECK only — whether
-// the user holds admin rights, for the UI's check_super_user_permission — executing nothing.
 extern "C" bool MacCheckAdminAuthorization() {
     AuthorizationRef authRef;
     OSStatus status = AuthorizationCreate(NULL, kAuthorizationEmptyEnvironment,
@@ -97,6 +93,63 @@ extern "C" bool MacCheckAdminAuthorization() {
                                 kAuthorizationFlagExtendRights;
     status = AuthorizationCopyRights(authRef, &authRights, kAuthorizationEmptyEnvironment, flags, NULL);
     AuthorizationFree(authRef, kAuthorizationFlagDefaults);
+    return status == errAuthorizationSuccess;
+}
+
+extern "C" size_t MacAuthorizationExternalFormLength() {
+    return sizeof(AuthorizationExternalForm);
+}
+
+extern "C" bool MacCreateAdminAuthorizationExternalForm(uint8_t *buffer, size_t len) {
+    if (buffer == NULL || len != sizeof(AuthorizationExternalForm)) {
+        return false;
+    }
+
+    AuthorizationRef authRef = NULL;
+    OSStatus status = AuthorizationCreate(NULL, kAuthorizationEmptyEnvironment,
+                                kAuthorizationFlagDefaults, &authRef);
+    if (status != errAuthorizationSuccess) {
+        return false;
+    }
+
+    AuthorizationItem authItem = {kAuthorizationRightExecute, 0, NULL, 0};
+    AuthorizationRights authRights = {1, &authItem};
+    AuthorizationFlags flags = kAuthorizationFlagDefaults |
+                                kAuthorizationFlagInteractionAllowed |
+                                kAuthorizationFlagPreAuthorize |
+                                kAuthorizationFlagExtendRights;
+    status = AuthorizationCopyRights(authRef, &authRights, kAuthorizationEmptyEnvironment, flags, NULL);
+    if (status == errAuthorizationSuccess) {
+        AuthorizationExternalForm externalForm;
+        status = AuthorizationMakeExternalForm(authRef, &externalForm);
+        if (status == errAuthorizationSuccess) {
+            memcpy(buffer, &externalForm, sizeof(externalForm));
+        }
+    }
+
+    AuthorizationFree(authRef, kAuthorizationFlagDefaults);
+    return status == errAuthorizationSuccess;
+}
+
+extern "C" bool MacVerifyAdminAuthorizationExternalForm(const uint8_t *buffer, size_t len) {
+    if (buffer == NULL || len != sizeof(AuthorizationExternalForm)) {
+        return false;
+    }
+
+    AuthorizationExternalForm externalForm;
+    memcpy(&externalForm, buffer, sizeof(externalForm));
+
+    AuthorizationRef authRef = NULL;
+    OSStatus status = AuthorizationCreateFromExternalForm(&externalForm, &authRef);
+    if (status != errAuthorizationSuccess) {
+        return false;
+    }
+
+    AuthorizationItem authItem = {kAuthorizationRightExecute, 0, NULL, 0};
+    AuthorizationRights authRights = {1, &authItem};
+    status = AuthorizationCopyRights(authRef, &authRights, kAuthorizationEmptyEnvironment,
+                                     kAuthorizationFlagDefaults, NULL);
+    AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);
     return status == errAuthorizationSuccess;
 }
 

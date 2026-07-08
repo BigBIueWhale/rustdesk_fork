@@ -173,7 +173,7 @@ if [ -n "$r_s11c6" ]; then echo "  FAIL R-S11c-6 Windows named-pipe DACL hardeni
   echo "  ok  R-S11c-6 Windows named pipes use SDDL DACLs, narrow client opens, server PID verification, and session-refreshed _service listeners"
 fi
 
-# (3b-iii-b) R-S11b-1/R-S11b-2c: Linux/macOS `_service` is a privileged service-control channel,
+# (3b-iii-b) R-S11b-1/R-S11b-2c/R-S11c-1f: Linux/macOS `_service` is a privileged service-control channel,
 # not a root<->user Config/Config2 bus. The world-connectable service socket may keep only narrow,
 # typed receiver-authorized traffic; it MUST NOT accept/return whole config, and stale-socket probing
 # must not read config.
@@ -183,6 +183,7 @@ r_s11b=
 grep -q 'pub(crate) fn service_channel_admits_message' src/ipc.rs || r_s11b="$r_s11b no-service-message-gate"
 grep -q 'Data::Test => true' src/ipc.rs || r_s11b="$r_s11b service-gate-misses-test"
 grep -q 'Data::RequestServiceOwnedUnattendedPasswordChange(_) => true' src/ipc.rs || r_s11b="$r_s11b linux-service-password-request-not-typed"
+grep -q 'Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. } => true' src/ipc.rs || r_s11b="$r_s11b macos-service-password-request-not-typed"
 service_dispatch_block=$(awk '/service_channel_admits_message\(&data\)/,/continue;/' src/ipc.rs)
 echo "$service_dispatch_block" | grep -q 'service_channel_admits_message(&data)' || r_s11b="$r_s11b service-loop-not-wired"
 if echo "$service_dispatch_block" | grep -q 'Data::SyncConfig'; then
@@ -208,7 +209,7 @@ if grep -qE 'wait_initial_config_sync|sync_and_watch_config_dir|CONFIG_SYNC_(INT
   r_s11b="$r_s11b service-config-sync-loop-present"
 fi
 if [ -n "$r_s11b" ]; then echo "  FAIL R-S11b-1 _service whole-config bus removal:$r_s11b"; rc=1; else
-  echo "  ok  R-S11b-1/R-S11b-2c _service admits liveness plus Linux's typed service-owned password request; stale-socket probe uses Test; root/user whole-config sync loop, SyncConfig IPC variant, and whole-config import are absent"; fi
+  echo "  ok  R-S11b-1/R-S11b-2c/R-S11c-1f _service admits liveness plus typed Linux/macOS service-owned password requests; stale-socket probe uses Test; root/user whole-config sync loop, SyncConfig IPC variant, and whole-config import are absent"; fi
 
 # (3b-iii-c) R-S11b-2a/R-S11b-2c/R-S11c-1a: service-owned unattended passwords are not ordinary config IPC.
 # Service launch paths mark their --server child; the receiver uses that marker to deny
@@ -217,8 +218,10 @@ if [ -n "$r_s11b" ]; then echo "  FAIL R-S11b-1 _service whole-config bus remova
 # request authorized by polkit, then a root-service commit into the service-owned main server. Windows
 # installed-service password changes use the same typed request/commit split, but the `_service` receiver
 # proves an elevated RustDesk caller by named-pipe client-token impersonation and the main server accepts the
-# final commit only from a LocalSystem service peer. The user-owned path remains user-owned, and --password
-# dispatches to the owner-aware typed operation.
+# final commit only from a LocalSystem service peer. macOS installed-service password changes use a typed
+# AuthorizationExternalForm `_service` request verified by the LaunchDaemon, then a root-service commit into
+# the service-owned main server. The user-owned path remains user-owned, and --password dispatches to the
+# owner-aware typed operation.
 echo "== (3b-iii-c) service-owned permanent password rejects ordinary IPC (R-S11b-2a/R-S11c-1a) =="
 r_s11b2=
 grep -q 'SERVICE_OWNED_SERVER_ARG' src/common.rs                                      || r_s11b2="$r_s11b2 no-service-owned-arg"
@@ -233,9 +236,11 @@ grep -q 'Data::SetUserOwnedPermanentPassword(_) => {' src/ipc.rs                
 grep -A3 'Data::SetUserOwnedPermanentPassword(_) => {' src/ipc.rs | grep -q 'authority.allows_main_channel_user_owned_password_write()' || r_s11b2="$r_s11b2 typed-password-write-not-authority-gated"
 grep -q 'Data::SetUserOwnedPermanentPasswordResult(false)' src/ipc.rs                || r_s11b2="$r_s11b2 typed-password-reject-nack-missing"
 grep -q 'RequestServiceOwnedUnattendedPasswordChange(String)' src/ipc.rs             || r_s11b2="$r_s11b2 service-password-request-missing"
+grep -q 'RequestMacosServiceOwnedUnattendedPasswordChange {' src/ipc.rs             || r_s11b2="$r_s11b2 macos-service-password-request-missing"
 grep -q 'CommitServiceOwnedUnattendedPasswordChange(String)' src/ipc.rs              || r_s11b2="$r_s11b2 service-password-commit-missing"
 grep -q 'ServiceOwnedUnattendedPasswordChangeResult(bool)' src/ipc.rs                || r_s11b2="$r_s11b2 service-password-result-missing"
 grep -q 'Data::RequestServiceOwnedUnattendedPasswordChange(_) => false' src/ipc.rs   || r_s11b2="$r_s11b2 service-password-request-not-denied-on-main"
+grep -q 'Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. } => false' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-request-not-denied-on-main"
 grep -A5 'Data::CommitServiceOwnedUnattendedPasswordChange(_) => {' src/ipc.rs | grep -q 'peer_authority.allows_service_owned_unattended_password_commit()' || r_s11b2="$r_s11b2 service-password-commit-not-root-peer-gated"
 grep -q 'current_process_allows_service_owned_unattended_password_commit' src/ipc.rs || r_s11b2="$r_s11b2 service-password-handler-commit-gate-missing"
 grep -q 'linux_peer_is_authorized_for_service_owned_password_change' src/ipc.rs      || r_s11b2="$r_s11b2 linux-polkit-authorizer-missing"
@@ -258,6 +263,16 @@ grep -q 'Self::WindowsLocalSystemPeer => true' src/ipc.rs                       
 grep -q 'handle_windows_service_owned_unattended_password_request' src/platform/windows.rs || r_s11b2="$r_s11b2 windows-service-password-service-loop-not-wired"
 grep -q 'RequestServiceOwnedUnattendedPasswordChange(value)' src/platform/windows.rs || r_s11b2="$r_s11b2 windows-service-password-request-not-dispatched"
 grep -q 'crate::platform::is_elevated(None).unwrap_or(false)' src/ipc.rs             || r_s11b2="$r_s11b2 windows-service-password-ui-not-elevation-gated"
+grep -q 'MacCreateAdminAuthorizationExternalForm' src/platform/macos.mm              || r_s11b2="$r_s11b2 macos-service-password-auth-create-missing"
+grep -q 'AuthorizationMakeExternalForm' src/platform/macos.mm                        || r_s11b2="$r_s11b2 macos-service-password-externalize-missing"
+grep -q 'MacVerifyAdminAuthorizationExternalForm' src/platform/macos.mm              || r_s11b2="$r_s11b2 macos-service-password-auth-verify-missing"
+grep -q 'AuthorizationCreateFromExternalForm' src/platform/macos.mm                  || r_s11b2="$r_s11b2 macos-service-password-internalize-missing"
+grep -q 'kAuthorizationFlagDefaults, NULL' src/platform/macos.mm                     || r_s11b2="$r_s11b2 macos-service-password-daemon-verification-may-interact"
+grep -q 'service_owned_unattended_password_authorization' src/platform/macos.rs      || r_s11b2="$r_s11b2 macos-service-password-ui-auth-request-missing"
+grep -q 'verify_service_owned_unattended_password_authorization' src/platform/macos.rs || r_s11b2="$r_s11b2 macos-service-password-daemon-auth-verify-missing"
+grep -q 'handle_macos_service_owned_unattended_password_request' src/ipc.rs          || r_s11b2="$r_s11b2 macos-service-password-service-handler-missing"
+grep -q 'crate::platform::is_installed() && crate::platform::is_installed_daemon(false)' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-install-state-gate-missing"
+grep -q 'Self::RootUnixPeer => true' src/ipc.rs                                      || r_s11b2="$r_s11b2 unix-service-password-commit-not-root-gated"
 windows_password_authorizer=$(awk '/fn windows_peer_is_authorized_for_service_owned_password_change/,/^}/' src/ipc.rs)
 if echo "$windows_password_authorizer" | grep -q 'is_elevated(Some'; then
   r_s11b2="$r_s11b2 windows-service-password-authorizer-uses-pid-elevation"
@@ -285,7 +300,7 @@ if echo "$user_scope_fn" | grep -q '"--password"'; then
   r_s11b2="$r_s11b2 password-still-root-routes-to-user-main-ipc"
 fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 service-owned password IPC closure:$r_s11b2"; rc=1; else
-  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux uses polkit/root-service commit; Windows uses pipe-client token elevation plus LocalSystem service commit; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
+  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux uses polkit/root-service commit; Windows uses pipe-client token elevation plus LocalSystem service commit; macOS uses AuthorizationExternalForm plus root-service commit; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
 
 # (3b-iii-d) R-S11b-3a: service-owned machine policy is not an ordinary Data::Options write.
 # Options writes use a typed daemon ACK/NACK; IPC callers persist only after an accepted ACK and never

@@ -157,6 +157,7 @@ echo "== (2b-i) R-S11b-1 macOS _service has no whole-config bus =="
 r_s11b=
 grep -q 'pub(crate) fn service_channel_admits_message' "$REPO/src/ipc.rs" || r_s11b="$r_s11b no-service-message-gate"
 grep -q 'Data::Test => true' "$REPO/src/ipc.rs" || r_s11b="$r_s11b service-gate-misses-test"
+grep -q 'Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. } => true' "$REPO/src/ipc.rs" || r_s11b="$r_s11b macos-service-password-request-not-typed"
 service_dispatch_block=$(awk '/service_channel_admits_message\(&data\)/,/continue;/' "$REPO/src/ipc.rs")
 echo "$service_dispatch_block" | grep -q 'service_channel_admits_message(&data)' || r_s11b="$r_s11b service-loop-not-wired"
 if echo "$service_dispatch_block" | grep -q 'Data::SyncConfig'; then
@@ -185,7 +186,7 @@ if [ -n "$r_s11b" ]; then
   echo "  FAIL R-S11b-1 macOS _service whole-config bus removal:$r_s11b"
   rc=1
 else
-  note "ok  R-S11b-1 macOS _service admits liveness only; whole-config IPC and imports are absent"
+  note "ok  R-S11b-1/R-S11c-1f macOS _service admits liveness plus the typed Authorization Services password request; whole-config IPC and imports are absent"
 fi
 
 echo "== (2b-ii) R-S11b-2a/R-S11b-3a macOS service-owned password/options are not ordinary IPC =="
@@ -195,6 +196,20 @@ grep -q 'MainIpcAuthority::ServiceOwned' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2
 grep -q 'Data::SetUserOwnedPermanentPassword(_) => {' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 typed-password-arm-missing"
 grep -A3 'Data::SetUserOwnedPermanentPassword(_) => {' "$REPO/src/ipc.rs" | grep -q 'authority.allows_main_channel_user_owned_password_write()' || r_s11b2="$r_s11b2 typed-password-write-not-authority-gated"
 grep -q 'Data::SetUserOwnedPermanentPasswordResult(false)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 typed-password-reject-nack-missing"
+grep -q 'RequestMacosServiceOwnedUnattendedPasswordChange {' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-request-missing"
+grep -q 'Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. } => false' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-request-not-denied-on-main"
+grep -q 'Data::CommitServiceOwnedUnattendedPasswordChange(_) => {' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-commit-missing"
+grep -A5 'Data::CommitServiceOwnedUnattendedPasswordChange(_) => {' "$REPO/src/ipc.rs" | grep -q 'peer_authority.allows_service_owned_unattended_password_commit()' || r_s11b2="$r_s11b2 macos-service-password-commit-not-root-peer-gated"
+grep -q 'MacCreateAdminAuthorizationExternalForm' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-auth-create-missing"
+grep -q 'AuthorizationMakeExternalForm' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-externalize-missing"
+grep -q 'MacVerifyAdminAuthorizationExternalForm' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-auth-verify-missing"
+grep -q 'AuthorizationCreateFromExternalForm' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-internalize-missing"
+grep -q 'kAuthorizationFlagDefaults, NULL' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-daemon-verification-may-interact"
+grep -q 'service_owned_unattended_password_authorization' "$REPO/src/platform/macos.rs" || r_s11b2="$r_s11b2 macos-service-password-ui-auth-request-missing"
+grep -q 'verify_service_owned_unattended_password_authorization' "$REPO/src/platform/macos.rs" || r_s11b2="$r_s11b2 macos-service-password-daemon-auth-verify-missing"
+grep -q 'handle_macos_service_owned_unattended_password_request' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-service-handler-missing"
+grep -q 'crate::platform::is_installed() && crate::platform::is_installed_daemon(false)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-install-state-gate-missing"
+grep -q 'Self::RootUnixPeer => true' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-commit-not-root-gated"
 grep -q '"permanent-password" => authority.allows_main_channel_user_owned_password_write()' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 password-still-generic-config-key"
 grep -q '"permanent-password" => authority.allows_main_channel_password_write()' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 password-still-generic-config-key"
 grep -q 'Data::Config((' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 generic-config-write-shape-present"
@@ -221,7 +236,7 @@ if [ -n "$r_s11b2" ]; then
   echo "  FAIL R-S11b-2a/R-S11b-3a macOS service-owned IPC closure:$r_s11b2"
   rc=1
 else
-  note "ok  R-S11b-2a/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password config writes are absent; typed user-owned password/options writes are denied by source policy; whole-config IPC is absent; storage/salt sync is denied"
+  note "ok  R-S11b-2/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password config writes are absent; typed user-owned password/options writes are denied by source policy; macOS service-owned password provisioning uses AuthorizationExternalForm plus root-service commit; whole-config IPC is absent; storage/salt sync is denied"
 fi
 
 echo "== (2b-iii) R-S11c-4a macOS CM pre-login filesystem IPC rejected =="

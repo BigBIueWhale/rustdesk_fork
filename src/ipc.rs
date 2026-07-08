@@ -358,9 +358,14 @@ pub enum Data {
     SetUserOwnedPermanentPasswordResult(bool),
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     RequestServiceOwnedUnattendedPasswordChange(String),
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    RequestMacosServiceOwnedUnattendedPasswordChange {
+        password: String,
+        authorization: Vec<u8>,
+    },
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     CommitServiceOwnedUnattendedPasswordChange(String),
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     ServiceOwnedUnattendedPasswordChangeResult(bool),
     NatType(Option<i32>),
     RawMessage(Vec<u8>),
@@ -779,10 +784,10 @@ impl MainIpcPeerAuthority {
         }
     }
 
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     fn allows_service_owned_unattended_password_commit(self) -> bool {
         match self {
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             Self::RootUnixPeer => true,
             #[cfg(target_os = "windows")]
             Self::WindowsLocalSystemPeer => true,
@@ -817,7 +822,7 @@ impl MainIpcAuthority {
         matches!(self, Self::UserOwned)
     }
 
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     fn allows_service_owned_unattended_password_commit(self) -> bool {
         matches!(self, Self::ServiceOwned)
     }
@@ -859,11 +864,11 @@ fn current_process_allows_main_channel_permanent_password_storage_sync() -> bool
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 #[inline]
 fn current_process_allows_service_owned_unattended_password_commit(stream: &Connection) -> bool {
     let peer_authority = {
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             MainIpcPeerAuthority::for_stream(stream)
         }
@@ -887,13 +892,15 @@ pub(crate) fn main_channel_admits_state_mutation(
         Data::SetUserOwnedPermanentPassword(_) => {
             authority.allows_main_channel_user_owned_password_write()
         }
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         Data::CommitServiceOwnedUnattendedPasswordChange(_) => {
             authority.allows_service_owned_unattended_password_commit()
                 && peer_authority.allows_service_owned_unattended_password_commit()
         }
         #[cfg(any(target_os = "linux", target_os = "windows"))]
         Data::RequestServiceOwnedUnattendedPasswordChange(_) => false,
+        #[cfg(target_os = "macos")]
+        Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. } => false,
         // Whole-options writes are ordinary user-owned configuration writes. A service-owned server
         // enforces machine policy and must not accept them over the generic main IPC config bus.
         Data::Options(Some(_)) => authority.allows_main_channel_options_write(),
@@ -911,8 +918,23 @@ async fn send_main_channel_mutation_rejection_ack(data: &Data, stream: &mut Conn
             );
         }
         #[cfg(any(target_os = "linux", target_os = "windows"))]
-        Data::RequestServiceOwnedUnattendedPasswordChange(_)
-        | Data::CommitServiceOwnedUnattendedPasswordChange(_) => {
+        Data::RequestServiceOwnedUnattendedPasswordChange(_) => {
+            allow_err!(
+                stream
+                    .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(false))
+                    .await
+            );
+        }
+        #[cfg(target_os = "macos")]
+        Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. } => {
+            allow_err!(
+                stream
+                    .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(false))
+                    .await
+            );
+        }
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+        Data::CommitServiceOwnedUnattendedPasswordChange(_) => {
             allow_err!(
                 stream
                     .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(false))
@@ -932,6 +954,8 @@ pub(crate) fn service_channel_admits_message(data: &Data) -> bool {
         Data::Test => true,
         #[cfg(target_os = "linux")]
         Data::RequestServiceOwnedUnattendedPasswordChange(_) => true,
+        #[cfg(target_os = "macos")]
+        Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. } => true,
         _ => false,
     }
 }
@@ -1031,9 +1055,9 @@ async fn linux_peer_is_authorized_for_service_owned_password_change(stream: &Con
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 async fn commit_service_owned_unattended_password_change(value: String) -> ResultType<bool> {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     let _scope = UserMainIpcScope::new();
     let ms_timeout = 1_000;
     let mut c = connect(ms_timeout, "").await?;
@@ -1067,6 +1091,43 @@ async fn handle_linux_service_owned_unattended_password_request(
         };
     if !accepted {
         log::warn!("Rejected service-owned unattended password change");
+    }
+    allow_err!(
+        stream
+            .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(accepted))
+            .await
+    );
+}
+
+#[cfg(target_os = "macos")]
+fn macos_peer_is_authorized_for_service_owned_password_change(authorization: &[u8]) -> bool {
+    if crate::platform::verify_service_owned_unattended_password_authorization(authorization) {
+        return true;
+    }
+    log::warn!("Rejected macOS service-owned unattended password change: authorization denied");
+    false
+}
+
+#[cfg(target_os = "macos")]
+async fn handle_macos_service_owned_unattended_password_request(
+    channel: IpcChannel,
+    value: String,
+    authorization: Vec<u8>,
+    stream: &mut Connection,
+) {
+    let accepted = channel == IpcChannel::Service
+        && macos_peer_is_authorized_for_service_owned_password_change(&authorization)
+        && match commit_service_owned_unattended_password_change(value).await {
+            Ok(committed) => committed,
+            Err(err) => {
+                log::warn!(
+                    "Rejected macOS service-owned unattended password change: service-to-server commit failed: {err}"
+                );
+                false
+            }
+        };
+    if !accepted {
+        log::warn!("Rejected macOS service-owned unattended password change");
     }
     allow_err!(
         stream
@@ -1280,6 +1341,19 @@ async fn handle(data: Data, stream: &mut Connection, channel: IpcChannel) {
         Data::RequestServiceOwnedUnattendedPasswordChange(value) => {
             handle_linux_service_owned_unattended_password_request(channel, value, stream).await;
         }
+        #[cfg(target_os = "macos")]
+        Data::RequestMacosServiceOwnedUnattendedPasswordChange {
+            password,
+            authorization,
+        } => {
+            handle_macos_service_owned_unattended_password_request(
+                channel,
+                password,
+                authorization,
+                stream,
+            )
+            .await;
+        }
         #[cfg(target_os = "windows")]
         Data::RequestServiceOwnedUnattendedPasswordChange(_) => {
             allow_err!(
@@ -1288,7 +1362,7 @@ async fn handle(data: Data, stream: &mut Connection, channel: IpcChannel) {
                     .await
             );
         }
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         Data::CommitServiceOwnedUnattendedPasswordChange(value) => {
             let accepted = channel == IpcChannel::Main
                 && current_process_allows_service_owned_unattended_password_commit(stream)
@@ -1899,7 +1973,12 @@ pub fn can_request_service_owned_unattended_password_change() -> bool {
     crate::platform::is_installed() && crate::platform::is_elevated(None).unwrap_or(false)
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+#[cfg(target_os = "macos")]
+pub fn can_request_service_owned_unattended_password_change() -> bool {
+    crate::platform::is_installed() && crate::platform::is_installed_daemon(false)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 pub fn can_request_service_owned_unattended_password_change() -> bool {
     false
 }
@@ -1916,14 +1995,14 @@ pub fn set_permanent_password(v: String) -> ResultType<()> {
     if can_set_user_owned_permanent_password() {
         return set_user_owned_permanent_password(v);
     }
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
         if can_request_service_owned_unattended_password_change() {
             return set_service_owned_unattended_password(v);
         }
         bail!("Changing service-owned unattended password requires administrator authorization");
     }
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
         bail!("Changing service-owned unattended password requires administrator authorization that is not implemented on this platform");
     }
@@ -1952,7 +2031,7 @@ async fn set_user_owned_permanent_password_with_ack_async(v: String) -> ResultTy
     Ok(false)
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub fn set_service_owned_unattended_password(v: String) -> ResultType<()> {
     if set_service_owned_unattended_password_with_ack(v)? {
         Ok(())
@@ -1961,13 +2040,25 @@ pub fn set_service_owned_unattended_password(v: String) -> ResultType<()> {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 #[tokio::main(flavor = "current_thread")]
 async fn set_service_owned_unattended_password_with_ack(v: String) -> ResultType<bool> {
     let ms_timeout = 1_000;
     let mut c = connect_service(ms_timeout).await?;
-    c.send(&Data::RequestServiceOwnedUnattendedPasswordChange(v))
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    {
+        c.send(&Data::RequestServiceOwnedUnattendedPasswordChange(v))
+            .await?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let authorization = crate::platform::service_owned_unattended_password_authorization()?;
+        c.send(&Data::RequestMacosServiceOwnedUnattendedPasswordChange {
+            password: v,
+            authorization,
+        })
         .await?;
+    }
     if let Some(Data::ServiceOwnedUnattendedPasswordChangeResult(ok)) =
         c.next_timeout(ms_timeout).await?
     {
@@ -2381,6 +2472,25 @@ mod test {
                 ),
                 "R-S11b-2: service-owned password requests go to _service, not main IPC"
             );
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let root_peer = MainIpcPeerAuthority::RootUnixPeer;
+            assert!(
+                !main_channel_admits_state_mutation(
+                    &Data::RequestMacosServiceOwnedUnattendedPasswordChange {
+                        password: "pw".to_owned(),
+                        authorization: vec![0; 32],
+                    },
+                    service_owned,
+                    root_peer
+                ),
+                "R-S11c-1: macOS service-owned password requests go to _service, not main IPC"
+            );
+        }
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        {
+            let root_peer = MainIpcPeerAuthority::RootUnixPeer;
             assert!(
                 !main_channel_admits_state_mutation(
                     &Data::CommitServiceOwnedUnattendedPasswordChange("pw".to_owned()),
@@ -2468,6 +2578,16 @@ mod test {
                 "pw".to_owned()
             )),
             "R-S11b-2: Linux _service accepts only the typed admin-authorized password request in addition to liveness"
+        );
+        #[cfg(target_os = "macos")]
+        assert!(
+            service_channel_admits_message(
+                &Data::RequestMacosServiceOwnedUnattendedPasswordChange {
+                    password: "pw".to_owned(),
+                    authorization: vec![0; 32],
+                }
+            ),
+            "R-S11c-1: macOS _service accepts only the typed Authorization Services password request in addition to liveness"
         );
         assert!(
             !service_channel_admits_message(&Data::Options(None)),

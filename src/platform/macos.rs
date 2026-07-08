@@ -68,6 +68,9 @@ extern "C" {
     fn IsCanScreenRecording(_: BOOL) -> BOOL;
     fn CanUseNewApiForScreenCaptureCheck() -> BOOL;
     fn MacCheckAdminAuthorization() -> BOOL;
+    fn MacAuthorizationExternalFormLength() -> usize;
+    fn MacCreateAdminAuthorizationExternalForm(buffer: *mut u8, len: usize) -> BOOL;
+    fn MacVerifyAdminAuthorizationExternalForm(buffer: *const u8, len: usize) -> BOOL;
     fn MacGetModeNum(display: u32, numModes: *mut u32) -> BOOL;
     fn MacGetModes(
         display: u32,
@@ -740,67 +743,9 @@ pub fn lock_screen() {
 
 pub fn start_os_service() {
     log::info!("Username: {}", crate::username());
-    if let Err(err) = crate::ipc::start("_service") {
+    if let Err(err) = crate::ipc::start(crate::POSTFIX_SERVICE) {
         log::error!("Failed to start ipc_service: {}", err);
     }
-
-    /* // mouse/keyboard works in prelogin now with launchctl asuser.
-       // below can avoid multi-users logged in problem, but having its own below problem.
-       // Not find a good way to start --cm without root privilege (affect file transfer).
-       // one way is to start with `launchctl asuser <uid> open -n -a /Applications/RustDesk.app/ --args --cm`,
-       // this way --cm is started with the user privilege, but we will have problem to start another RustDesk.app
-       // with open in explorer.
-        use std::sync::{
-            atomic::{AtomicBool, Ordering},
-            Arc,
-        };
-        let running = Arc::new(AtomicBool::new(true));
-        let r = running.clone();
-        let mut uid = "".to_owned();
-        let mut server: Option<std::process::Child> = None;
-        if let Err(err) = ctrlc::set_handler(move || {
-            r.store(false, Ordering::SeqCst);
-        }) {
-            println!("Failed to set Ctrl-C handler: {}", err);
-        }
-        while running.load(Ordering::SeqCst) {
-            let tmp = get_active_userid();
-            let mut start_new = false;
-            if tmp != uid && !tmp.is_empty() {
-                uid = tmp;
-                log::info!("active uid: {}", uid);
-                if let Some(ps) = server.as_mut() {
-                    hbb_common::allow_err!(ps.kill());
-                }
-            }
-            if let Some(ps) = server.as_mut() {
-                match ps.try_wait() {
-                    Ok(Some(_)) => {
-                        server = None;
-                        start_new = true;
-                    }
-                    _ => {}
-                }
-            } else {
-                start_new = true;
-            }
-            if start_new {
-                match run_as_user("--server") {
-                    Ok(Some(ps)) => server = Some(ps),
-                    Err(err) => {
-                        log::error!("Failed to start server: {}", err);
-                    }
-                    _ => { /*no happen*/ }
-                }
-            }
-            std::thread::sleep(std::time::Duration::from_millis(super::SERVICE_INTERVAL));
-        }
-
-        if let Some(ps) = server.take().as_mut() {
-            hbb_common::allow_err!(ps.kill());
-        }
-        log::info!("Exit");
-    */
 }
 
 pub fn toggle_blank_screen(_v: bool) {
@@ -984,11 +929,40 @@ pub fn check_super_user_permission() -> ResultType<bool> {
     unsafe { Ok(MacCheckAdminAuthorization() == YES) }
 }
 
-// R-X9 / R-X11 (macOS source twin): the osascript-admin `elevate` — which re-launched this
-// binary with arbitrary argv as root via `osascript … with administrator privileges` — is
-// excised. It had no caller and was an in-process root-exec primitive; per R-X9 the sole
-// macOS privilege transition is the launchd LaunchDaemon/LaunchAgent (launchctl asuser). Its
-// AuthorizationExecuteWithPrivileges twin `Elevate` is likewise gone from macos.mm.
+fn authorization_external_form_len() -> ResultType<usize> {
+    let len = unsafe { MacAuthorizationExternalFormLength() };
+    if len == 0 || len > 1024 {
+        bail!("Unexpected macOS AuthorizationExternalForm length: {}", len);
+    }
+    Ok(len)
+}
+
+pub fn service_owned_unattended_password_authorization() -> ResultType<Vec<u8>> {
+    let len = authorization_external_form_len()?;
+    let mut authorization = vec![0u8; len];
+    if unsafe { MacCreateAdminAuthorizationExternalForm(authorization.as_mut_ptr(), len) } == YES {
+        Ok(authorization)
+    } else {
+        bail!("Administrator authorization denied");
+    }
+}
+
+pub fn verify_service_owned_unattended_password_authorization(authorization: &[u8]) -> bool {
+    let Ok(expected_len) = authorization_external_form_len() else {
+        return false;
+    };
+    if authorization.len() != expected_len {
+        log::warn!(
+            "Rejected macOS authorization token with unexpected length: got {}, expected {}",
+            authorization.len(),
+            expected_len
+        );
+        return false;
+    }
+    unsafe {
+        MacVerifyAdminAuthorizationExternalForm(authorization.as_ptr(), authorization.len()) == YES
+    }
+}
 
 pub struct WakeLock(Option<keepawake::AwakeHandle>);
 

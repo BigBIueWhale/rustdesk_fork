@@ -93,6 +93,12 @@ lazy_static::lazy_static! {
     static ref IS_CM: bool = std::env::args().nth(1) == Some("--cm".to_owned()) || std::env::args().nth(1) == Some("--cm-no-ui".to_owned());
 }
 
+pub const SERVICE_OWNED_SERVER_ARG: &str = "--service-owned-server";
+
+pub fn is_service_owned_server_process() -> bool {
+    std::env::args_os().any(|arg| arg == std::ffi::OsStr::new(SERVICE_OWNED_SERVER_ARG))
+}
+
 pub struct SimpleCallOnReturn {
     pub b: bool,
     pub f: Box<dyn Fn() + Send + 'static>,

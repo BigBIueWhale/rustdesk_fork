@@ -182,6 +182,21 @@ else
   note "ok  R-S11b-1 _service admits only Data::Test; service liveness does not read or write Config/Config2"
 fi
 
+echo "== (2b-ii) R-S11b-2a macOS service-owned password is not ordinary IPC =="
+r_s11b2=
+grep -q -- '<string>--service-owned-server</string>' "$REPO/src/platform/privileges_scripts/agent.plist" || r_s11b2="$r_s11b2 agent-server-not-marked"
+grep -q 'UnattendedPasswordIpcAuthority::ServiceOwned' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 service-owned-authority-missing"
+grep -q '"permanent-password" => password_authority.allows_main_channel_password_write()' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 password-write-not-authority-gated"
+grep -q 'Rejected whole-config sync from service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 whole-config-sync-not-denied"
+grep -q 'Rejected permanent password storage sync from service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 storage-sync-not-denied"
+grep -q 'Rejected permanent password salt sync from service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 standalone-salt-sync-not-denied"
+if [ -n "$r_s11b2" ]; then
+  echo "  FAIL R-S11b-2a macOS service-owned password IPC closure:$r_s11b2"
+  rc=1
+else
+  note "ok  R-S11b-2a LaunchAgent marks service-owned --server; ordinary password write + whole-config/storage/salt sync are denied by source policy"
+fi
+
 # (2c) Appendix C #2b is an ACCEPTED, documented residual: the fork SHOULD (not MUST) sandbox the decode
 # path. Commit 0c54912 deliberately reverted the ENTIRE native-worker decode-sandbox subsystem (the
 # per-codec worker processes + the macOS Seatbelt sandbox file + the Android isolatedProcess services

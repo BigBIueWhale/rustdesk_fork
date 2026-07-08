@@ -5,7 +5,7 @@ mod ipc_auth;
 mod ipc_fs;
 
 use crate::{
-    common::is_server,
+    common::{is_server, is_service_owned_server_process},
     privacy_mode,
     privacy_mode::PrivacyModeState,
     ui_interface::{get_local_option, set_local_option},
@@ -486,11 +486,20 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                     // on the main channel — the unguarded Config::set bypass that could
                                     // re-pin the trust anchor / undo the §8/§9 pins from inside.
                                     #[cfg(any(target_os = "linux", target_os = "macos"))]
-                                    if !main_channel_admits_config_write(&data) {
+                                    if !main_channel_admits_config_write(
+                                        &data,
+                                        UnattendedPasswordIpcAuthority::for_current_process(),
+                                    ) {
                                         log::warn!(
-                                            "Rejected a whole-config SyncConfig write on the main IPC channel (R-S11): peer_uid={:?}",
+                                            "Rejected a config write on the main IPC channel (R-S11/R-S11b): data_kind={:?}, peer_uid={:?}",
+                                            std::mem::discriminant(&data),
                                             stream.peer_uid()
                                         );
+                                        send_main_channel_config_write_rejection_ack(
+                                            &data,
+                                            &mut stream,
+                                        )
+                                        .await;
                                         continue;
                                     }
                                     // R-S11: the SAME per-arm config-write allowlist binds the WINDOWS
@@ -505,11 +514,19 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                     // config-integrity boundary R-S11 mandates "per write-arm", on every
                                     // shipped artifact, not Linux/macOS alone.
                                     #[cfg(target_os = "windows")]
-                                    if !main_channel_admits_config_write(&data) {
+                                    if !main_channel_admits_config_write(
+                                        &data,
+                                        UnattendedPasswordIpcAuthority::for_current_process(),
+                                    ) {
                                         log::warn!(
-                                            "Rejected a config write on the main IPC channel (R-S11): data_kind={:?}",
+                                            "Rejected a config write on the main IPC channel (R-S11/R-S11b): data_kind={:?}",
                                             std::mem::discriminant(&data)
                                         );
+                                        send_main_channel_config_write_rejection_ack(
+                                            &data,
+                                            &mut stream,
+                                        )
+                                        .await;
                                         continue;
                                     }
                                     handle(data, &mut stream).await;
@@ -653,39 +670,113 @@ impl Drop for CheckIfRestart {
     }
 }
 
-/// R-S11 / Appendix C #15: the MAIN IPC channel (UI⇄service; on Linux/macOS the 0o0600 same-uid
-/// socket) is a config-integrity boundary. `Data::SyncConfig(Some(_))` is a whole-config push that
-/// overwrites the ENTIRE config with NO is_option_can_save / pinned-key check, so it is never a
-/// legitimate main-channel request. Only the `SyncConfig(None)` read-request is legitimate there
-/// (the UI reads the existing `--server` config through it). Keep the request denied at the channel
-/// boundary even though the whole-config receiver write arm has been removed.
-///
-/// R-S11 also names the Data::Config STRUCT-FIELD sub-keys (salt / id) and
-/// Data::Socks -> set_socks: these bypass is_option_can_save (R-S16) ENTIRELY — they
-/// are identity/credential struct fields + the proxy, NOT options — so the R-S16 pin never covers them.
-/// Make this a POSITIVE allowlist over the config-mutating arms, not a one-arm denylist: only the
-/// legitimate UI/operator Data::Config writes pass; `id` and `salt` (which have NO legitimate
-/// main-channel writer — the UI READS id via value=None, and set_salt's hashed-password guard is a
-/// no-op in the fork's PRS model (the at-rest credential is the memory-hard Argon2id
-/// hash, not a value re-derived from this legacy `salt` field — R-P1), config.rs) are REJECTED, so a same-uid process cannot
-/// rewrite the device identity or the password salt through the main channel. Data::Socks(Some) (the
-/// proxy / local-MITM primitive, already inert under the pinned proxy-url, R-D6(d)(iii)) is rejected
-/// at the channel too. (permanent-password = the UI password-set; voice-call-input = the audio
-/// device — both legitimate operator writes.)
+/// Main-channel config-write policy. Whole-config writes, identity/salt field writes, and proxy writes
+/// stay denied. `permanent-password` is user-owned only; a service-marked `--server` owns its unattended
+/// credential and ordinary `Data::Config` IPC cannot mutate or mirror it.
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-pub(crate) fn main_channel_admits_config_write(data: &Data) -> bool {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum UnattendedPasswordIpcAuthority {
+    UserOwned,
+    ServiceOwned,
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+impl UnattendedPasswordIpcAuthority {
+    fn for_current_process() -> Self {
+        #[cfg(target_os = "windows")]
+        if crate::platform::is_root() {
+            return Self::ServiceOwned;
+        }
+        if is_service_owned_server_process() {
+            Self::ServiceOwned
+        } else {
+            Self::UserOwned
+        }
+    }
+
+    fn allows_main_channel_password_write(self) -> bool {
+        matches!(self, Self::UserOwned)
+    }
+
+    fn allows_main_channel_password_storage_sync(self) -> bool {
+        matches!(self, Self::UserOwned)
+    }
+
+    fn allows_main_channel_whole_config_sync(self) -> bool {
+        matches!(self, Self::UserOwned)
+    }
+}
+
+#[inline]
+fn current_process_allows_main_channel_permanent_password_write() -> bool {
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    {
+        UnattendedPasswordIpcAuthority::for_current_process().allows_main_channel_password_write()
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        true
+    }
+}
+
+#[inline]
+fn current_process_allows_main_channel_permanent_password_storage_sync() -> bool {
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    {
+        UnattendedPasswordIpcAuthority::for_current_process()
+            .allows_main_channel_password_storage_sync()
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        true
+    }
+}
+
+#[inline]
+fn current_process_allows_main_channel_whole_config_sync() -> bool {
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    {
+        UnattendedPasswordIpcAuthority::for_current_process()
+            .allows_main_channel_whole_config_sync()
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        true
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+pub(crate) fn main_channel_admits_config_write(
+    data: &Data,
+    password_authority: UnattendedPasswordIpcAuthority,
+) -> bool {
     match data {
         // Whole-config push: no IPC channel may write a whole Config/Config2 object; on the main
         // channel only the SyncConfig(None) read-request is.
         Data::SyncConfig(Some(_)) => false,
-        // Struct-field writes: allow only the legit UI/operator keys. value=None is a READ (allowed by
-        // the `_` arm); id / salt / any other struct-field name is REJECTED.
-        Data::Config((name, Some(_))) => {
-            matches!(name.as_str(), "permanent-password" | "voice-call-input")
-        }
+        // Struct-field writes: allow only the remaining legitimate operator-owned keys.
+        // In installed service-owned mode the unattended credential is not operator-owned
+        // config; it must not be mutated over ordinary Data::Config IPC.
+        Data::Config((name, Some(_))) => match name.as_str() {
+            "permanent-password" => password_authority.allows_main_channel_password_write(),
+            "voice-call-input" => true,
+            _ => false,
+        },
         // set_socks: the proxy / local-MITM primitive an Options-key allowlist would miss.
         Data::Socks(Some(_)) => false,
         _ => true,
+    }
+}
+
+async fn send_main_channel_config_write_rejection_ack(data: &Data, stream: &mut Connection) {
+    if let Data::Config((name, Some(_))) = data {
+        if name == "permanent-password" {
+            allow_err!(
+                stream
+                    .send(&Data::Config((name.clone(), Some("N".to_owned()))))
+                    .await
+            );
+        }
     }
 }
 
@@ -772,8 +863,16 @@ async fn handle(data: Data, stream: &mut Connection) {
                 if name == "id" {
                     value = Some(Config::get_id());
                 } else if name == "permanent-password-storage-and-salt" {
-                    let (storage, salt) = Config::get_local_permanent_password_storage_and_salt();
-                    value = Some(storage + "\n" + &salt);
+                    if current_process_allows_main_channel_permanent_password_storage_sync() {
+                        let (storage, salt) =
+                            Config::get_local_permanent_password_storage_and_salt();
+                        value = Some(storage + "\n" + &salt);
+                    } else {
+                        log::warn!(
+                            "Rejected permanent password storage sync from service-owned server"
+                        );
+                        value = None;
+                    }
                 } else if name == "permanent-password-set" {
                     value = Some(if Config::has_permanent_password() {
                         "Y".to_owned()
@@ -787,7 +886,14 @@ async fn handle(data: Data, stream: &mut Connection) {
                         "N".to_owned()
                     });
                 } else if name == "salt" {
-                    value = Some(Config::get_salt());
+                    if current_process_allows_main_channel_permanent_password_storage_sync() {
+                        value = Some(Config::get_salt());
+                    } else {
+                        log::warn!(
+                            "Rejected permanent password salt sync from service-owned server"
+                        );
+                        value = None;
+                    }
                 } else if name == "hide_cm" {
                     value = if crate::common::is_custom_client() {
                         Some(hbb_common::password_security::hide_cm().to_string())
@@ -814,7 +920,12 @@ async fn handle(data: Data, stream: &mut Connection) {
                 if name == "id" {
                     Config::set_id(&value);
                 } else if name == "permanent-password" {
-                    if Config::is_disable_change_permanent_password() {
+                    if !current_process_allows_main_channel_permanent_password_write() {
+                        log::warn!(
+                            "Rejected permanent password change over ordinary IPC for service-owned server"
+                        );
+                        updated = false;
+                    } else if Config::is_disable_change_permanent_password() {
                         log::warn!("Changing permanent password is disabled");
                         updated = false;
                     } else {
@@ -861,13 +972,18 @@ async fn handle(data: Data, stream: &mut Connection) {
             allow_err!(stream.send(&Data::Test).await);
         }
         Data::SyncConfig(None) => {
-            allow_err!(
-                stream
-                    .send(&Data::SyncConfig(Some(
-                        (Config::get(), Config2::get()).into()
-                    )))
-                    .await
-            );
+            if current_process_allows_main_channel_whole_config_sync() {
+                allow_err!(
+                    stream
+                        .send(&Data::SyncConfig(Some(
+                            (Config::get(), Config2::get()).into()
+                        )))
+                        .await
+                );
+            } else {
+                log::warn!("Rejected whole-config sync from service-owned server");
+                allow_err!(stream.send(&Data::SyncConfig(None)).await);
+            }
         }
         #[cfg(windows)]
         Data::SyncWinCpuUsage(None) => {
@@ -1440,12 +1556,10 @@ pub async fn get_nat_type(ms_timeout: u64) -> i32 {
         .unwrap_or(Config::get_nat_type())
 }
 
-
 // R-D6 (Tier-4): the IPC socks CLIENT query wrappers (get_socks_/get_socks_async/get_socks/set_socks
 // — which sent `Data::Socks` to the service and read it back) are excised with the proxy-settings UI.
 // The service-side `Data::Socks` HANDLER arm + the R-S11 main-channel-write rejection guard + the
 // `Config` storage stay (the tested proxy-write security boundary).
-
 
 // R-SV6(c)/R-D4: `notify_deployed()` (sent `Data::Deployed`) is removed with the deploy excision —
 // device deployment is gone (deploy_device is a refuse-stub), so there was no caller and no arm to
@@ -1668,50 +1782,78 @@ mod test {
 
     // R-S11 / Appendix C #15: the MAIN-channel config-write allowlist MUST reject a whole-config
     // SyncConfig(Some) push while admitting the SyncConfig(None) read-request + the per-key writes that
-    // legitimately stay (Options is pinned at is_option_can_save per R-S16; Config carries the UI's
-    // permanent-password set). The receiver-side whole-config write arm is intentionally absent.
+    // legitimately stay. R-S11b adds that permanent-password is user-owned only; service-owned
+    // unattended credentials are denied over ordinary Data::Config IPC.
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
     fn main_channel_rejects_whole_config_sync_write() {
         use hbb_common::config::{Config, Config2};
+        let user_owned = UnattendedPasswordIpcAuthority::UserOwned;
+        let service_owned = UnattendedPasswordIpcAuthority::ServiceOwned;
         let write = Data::SyncConfig(Some(Box::new((Config::default(), Config2::default()))));
         assert!(
-            !main_channel_admits_config_write(&write),
+            !main_channel_admits_config_write(&write, user_owned),
             "R-S11: a whole-config SyncConfig(Some) write MUST be rejected on the main channel"
         );
-        assert!(main_channel_admits_config_write(&Data::SyncConfig(None)));
-        assert!(main_channel_admits_config_write(&Data::Options(None)));
+        assert!(main_channel_admits_config_write(
+            &Data::SyncConfig(None),
+            user_owned
+        ));
+        assert!(main_channel_admits_config_write(
+            &Data::Options(None),
+            user_owned
+        ));
         // R-S11 (Appendix C #15): the Data::Config STRUCT-FIELD writes bypass is_option_can_save — the
         // identity (id) + credential (salt) fields have NO legitimate main-channel writer and MUST be
-        // rejected; the legit UI/operator write (permanent-password) stays; a value=None is
-        // a READ and stays.
+        // rejected; permanent-password is admitted only while user-owned; a value=None is a READ and stays.
         let cfg = |n: &str, v: Option<&str>| Data::Config((n.to_owned(), v.map(|s| s.to_owned())));
         assert!(
-            !main_channel_admits_config_write(&cfg("id", Some("evil-id"))),
+            !main_channel_admits_config_write(&cfg("id", Some("evil-id")), user_owned),
             "R-S11: a Data::Config id write (rewrites device identity) MUST be rejected"
         );
         assert!(
-            !main_channel_admits_config_write(&cfg("salt", Some("evil-salt"))),
+            !main_channel_admits_config_write(&cfg("salt", Some("evil-salt")), user_owned),
             "R-S11: a Data::Config salt write (set_salt's guard is a no-op — the PRS is the memory-hard Argon2id hash, not derived from this salt field) MUST be rejected"
         );
         assert!(
-            main_channel_admits_config_write(&cfg("permanent-password", Some("pw"))),
-            "the UI permanent-password set stays legitimate"
+            main_channel_admits_config_write(&cfg("permanent-password", Some("pw")), user_owned),
+            "a user-owned permanent-password set stays legitimate"
         );
         assert!(
-            main_channel_admits_config_write(&cfg("id", None)),
+            !main_channel_admits_config_write(
+                &cfg("permanent-password", Some("pw")),
+                service_owned
+            ),
+            "R-S11b-2: a service-owned unattended password MUST NOT be set over ordinary IPC"
+        );
+        assert!(
+            UnattendedPasswordIpcAuthority::UserOwned.allows_main_channel_password_storage_sync()
+        );
+        assert!(
+            !UnattendedPasswordIpcAuthority::ServiceOwned
+                .allows_main_channel_password_storage_sync(),
+            "R-S11b-2: service-owned password storage/salt snapshots MUST NOT sync over ordinary IPC"
+        );
+        assert!(UnattendedPasswordIpcAuthority::UserOwned.allows_main_channel_whole_config_sync());
+        assert!(
+            !UnattendedPasswordIpcAuthority::ServiceOwned.allows_main_channel_whole_config_sync(),
+            "R-S11b-2: service-owned Config/Config2 snapshots MUST NOT sync over ordinary IPC"
+        );
+        assert!(
+            main_channel_admits_config_write(&cfg("id", None), user_owned),
             "a Data::Config id READ (value=None) must be allowed"
         );
         // R-S11: the proxy / local-MITM primitive (set_socks) is rejected at the channel (already inert
         // under the pinned proxy-url, but defense-in-depth at the boundary).
         assert!(
-            !main_channel_admits_config_write(&Data::Socks(Some(
-                hbb_common::config::Socks5Server::default()
-            ))),
+            !main_channel_admits_config_write(
+                &Data::Socks(Some(hbb_common::config::Socks5Server::default())),
+                user_owned
+            ),
             "R-S11: a Data::Socks(Some) write MUST be rejected on the main channel"
         );
         assert!(
-            main_channel_admits_config_write(&Data::Socks(None)),
+            main_channel_admits_config_write(&Data::Socks(None), user_owned),
             "a Data::Socks read (None) must be allowed"
         );
     }

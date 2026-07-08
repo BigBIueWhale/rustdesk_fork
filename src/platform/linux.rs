@@ -638,12 +638,15 @@ fn try_start_server_(desktop: Option<&Desktop>) -> ResultType<Option<Child>> {
                 get_cur_term(&desktop.uid).unwrap_or_else(|| suggest_best_term()),
             ));
             run_as_user(
-                vec!["--server"],
+                vec!["--server", crate::common::SERVICE_OWNED_SERVER_ARG],
                 Some((desktop.uid.clone(), desktop.username.clone())),
                 envs,
             )
         }
-        None => Ok(Some(crate::run_me(vec!["--server"])?)),
+        None => Ok(Some(crate::run_me(vec![
+            "--server",
+            crate::common::SERVICE_OWNED_SERVER_ARG,
+        ])?)),
     }
 }
 

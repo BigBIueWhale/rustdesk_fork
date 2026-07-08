@@ -783,8 +783,9 @@ async fn launch_server(session_id: DWORD, close_first: bool) -> ResultType<HANDL
         send_close_async("").await.ok();
     }
     let cmd = format!(
-        "\"{}\" --server",
-        std::env::current_exe()?.to_str().unwrap_or("")
+        "\"{}\" --server {}",
+        std::env::current_exe()?.to_str().unwrap_or(""),
+        crate::common::SERVICE_OWNED_SERVER_ARG
     );
     launch_privileged_process(session_id, &cmd)
 }

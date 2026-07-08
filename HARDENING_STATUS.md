@@ -162,6 +162,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Verification closure: `scripts/verify.sh` runs `ipc::test::service_channel_rejects_config_bus` and asserts
   the service loop, stale-socket probe, server startup, and handler do not reintroduce the whole-config bus;
   `scripts/apple-conform-check.sh` mirrors the source assertions for the macOS conformance path.
+- **R-S11b-2a/R-S11c-1a — service-marked server rejects ordinary password IPC — CLOSED 2026-07-08.**
+  Platforms: Windows installed service-launched `--server`, Linux root-service-launched root or active-user
+  `--server`, and macOS LaunchAgent `--server` source path. Endpoint/action: main IPC
+  `Data::Config(("permanent-password", Some(_)))` and `Data::Config(("permanent-password-storage-and-salt",
+  None))`. Boundary: user-owned IPC caller ↔ service-owned unattended credential. Attack surface closed:
+  the service-launched server is marked with `--service-owned-server`; `src/ipc.rs` classifies that receiver
+  as `UnattendedPasswordIpcAuthority::ServiceOwned` (with a Windows LocalSystem fallback); main-channel allowlisting rejects ordinary password
+  writes and returns an explicit NACK; the handler also rejects password writes and refuses whole-config,
+  standalone salt, and storage/salt sync snapshots if reached directly. Linux `--password` is no longer routed through
+  `UserMainIpcScope`, so root does not cross-write a service-owned user server through the legacy CLI path.
+  Verification closure: `scripts/verify.sh` asserts user-owned vs service-owned IPC policy, service launch
+  markers on Linux/Windows/macOS, no `--password` root-to-user routing, and handler-level whole-config,
+  standalone salt, and storage-sync denial; `scripts/apple-conform-check.sh` asserts the macOS LaunchAgent marker and
+  source policy.
 
 **Release-blocking items:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,
@@ -170,10 +184,12 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `permanent-password`, CLI/FFI/UI password setters that reach ordinary IPC, and any `SyncConfig` path that
   carries password storage/salt. Boundary: user-session process ↔ privileged unattended host. Attack
   surface: an unprivileged local caller can mint or replace the credential the privileged host later accepts
-  remotely. Closure: normal IPC rejects service-owned password writes in installed mode; add a typed
-  `SetUnattendedPassword` service operation; commit only inside the privileged service after OS admin
-  authorization (Linux polkit; Windows UAC/service-admin proof; macOS Authorization Services/privileged
-  helper); the service derives/stores the PRS itself; tests cover installed vs user-mode behavior.
+  remotely. Current state: the ordinary IPC password write, whole-config sync, standalone salt read, and
+  storage/salt sync paths are closed for service-marked servers by R-S11b-2a/R-S11c-1a; user-owned `--server` paths remain
+  user-owned. Remaining closure: add a typed `SetUnattendedPassword` service operation; commit only inside
+  the privileged service after OS admin authorization (Linux polkit; Windows UAC/service-admin proof; macOS
+  Authorization Services/privileged helper); the service derives/stores the PRS itself; tests cover
+  installed service-owned provisioning vs user-mode behavior.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, but
   ordinary config writers, whole-config reads/responses, and any reintroduced whole-config import remain in
@@ -190,9 +206,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Windows installed service. Endpoint: main named pipe `\\.\pipe\<APP>\query` accepting same-session genuine
   executable peers; action: `Data::Config(("permanent-password", value))`. Boundary: same-session desktop
   process ↔ service-launched server process. Attack surface: same-session is not machine-admin authority,
-  yet it can change the service-hosted remote credential. Closure: covered by R-S11b-2 and additionally
-  gated on Windows so same-session/same-exe never authorizes service credential mutation; the service
-  validates admin authority before any PRS write.
+  yet it can change the service-hosted remote credential. Current state: the same-session/same-exe main
+  pipe no longer authorizes ordinary service credential mutation after R-S11b-2a/R-S11c-1a. Remaining
+  closure: the typed service operation still needs receiver-side admin authority validation before any PRS
+  write.
 - **R-S11c-2 — Windows `_service` caller-supplied session switching.** Platform: Windows multi-session,
   RDP, fast-user-switching, installed service. Endpoint: `_service` named pipe carrying `Data::UserSid`.
   Boundary: local caller ↔ SYSTEM service session broker. Attack surface: the legitimate remote path checks
@@ -572,7 +589,10 @@ Shared un-cfg'd reap loop (`connection.rs`) + writer task (`tcp.rs`) → the ≤
 
 **NEEDS-RUNTIME: none** source/framework-derivable. Sole residual is a *user-action* fact (whether the operator's one BR-2 success was a manual Run-as-admin launch — the only source-consistent path).
 
-**Options (NOT-YET-DECIDED).** Remedy must satisfy simultaneously: (a) the sole authenticator MUST be GUI-settable on Win/Linux; (b) R-G1/§19 pinned-shown-as-pinned/absent (never a greyed actuating toggle); (c) no reintroduced elevation (the config write is already SO_PEERCRED/uid-gated at the IPC layer per R-S11 → an elevation gate defends nothing). Candidate directions (none chosen): drop the Safety-tab `locked` gate + surface "Set permanent password" unconditionally; remove/relabel the 15 greyed pinned toggles as read-only policy.
+**Superseded by R-S11b/R-S11c for installed-service password setting.** User-owned mode may keep the
+ordinary GUI/CLI password setter; installed service-owned mode requires a typed, admin-authorized service
+operation and must not use the old ordinary IPC write. The remaining UI work here is R-G1 honesty for the
+pinned/non-pinned controls, not a relaxation of the service-owned credential boundary.
 
 ### Cavity 3 — UI ↔ excision coherence: FINDINGS (Opus 1M, read-only, 2026-07-07) ✅ EXHAUSTIVE — every claim proven from source
 

@@ -52,6 +52,7 @@ RUN=(docker run --rm
   -e CARGO_TARGET_DIR=/build
   -e RUSTUP_TOOLCHAIN=1.75.0
   -w /work "$IMG")
+rc=0
 
 echo "== building the compile-check image =="
 docker volume create rd-cargo-cache  >/dev/null
@@ -110,16 +111,18 @@ echo "== (3b-iv) trust-anchor get_key ignores a stored override (R-A4/R-X4) =="
 # with NO is_option_can_save/pin check); (b) the Data::Config STRUCT-FIELD writes that bypass
 # is_option_can_save — `id` (+ set_key_confirmed(false)) and `salt` (set_salt's hashed-pw guard is a
 # no-op — the PRS is the host-key-salted Argon2id hash, not derived from this salt field) — which have NO legit main-channel writer; (c) Data::Socks(Some)
-# (set_socks, the proxy/local-MITM primitive an Options-key allowlist would miss). The legit operator
-# writes (permanent-password / voice-call-input) + reads (value=None) pass. Behavior-tested AND the
+# (set_socks, the proxy/local-MITM primitive an Options-key allowlist would miss). The remaining operator
+# writes are authority-scoped: voice-call-input always, permanent-password only for user-owned servers.
+# Service-owned servers reject ordinary password writes and storage/salt sync (R-S11b-2a). Behavior-tested AND the
 # loop routes through the allowlist before handle() (R-A6 reachability), AND the allowlist is asserted
 # POSITIVE (not a one-arm denylist that would let id/salt/Socks through — the exact "missed sibling"
 # the 5th sweep found).
 echo "== (3b-iii) IPC main-channel config-write positive allowlist (R-S11) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_channel_rejects_whole_config_sync_write --color never
 r_s11=
-grep -q 'if !main_channel_admits_config_write(&data)' src/ipc.rs                       || r_s11="$r_s11 loop-not-wired"
-grep -qE '"permanent-password" \| "voice-call-input"' src/ipc.rs                       || r_s11="$r_s11 no-positive-config-allowlist"
+grep -q 'if !main_channel_admits_config_write(' src/ipc.rs                             || r_s11="$r_s11 loop-not-wired"
+grep -q '"permanent-password" => password_authority.allows_main_channel_password_write()' src/ipc.rs || r_s11="$r_s11 password-authority-not-gated"
+grep -q '"voice-call-input" => true' src/ipc.rs                                        || r_s11="$r_s11 voice-input-not-allowlisted"
 grep -q 'Data::Socks(Some(_)) => false' src/ipc.rs                                     || r_s11="$r_s11 socks-not-rejected"
 # R-S11 binds EVERY shipped artifact, not Linux/macOS alone (Windows .exe/.msi are shipped). The
 # allowlist MUST also guard the Windows main pipe (postfix == ""). Because the linux/macos gate logs
@@ -127,10 +130,10 @@ grep -q 'Data::Socks(Some(_)) => false' src/ipc.rs                              
 # allowlist fn — so there must be >=2 gate call sites and the fn must be cfg'd for windows. Without this
 # a same-session/same-exe process could Data::SyncConfig(Some)/Config(id|salt) the host key_pair on the
 # Windows artifact (the linux-only gate + the linux-cfg unit test are blind to it).
-[ "$(grep -c 'if !main_channel_admits_config_write(&data)' src/ipc.rs)" -ge 2 ]        || r_s11="$r_s11 windows-main-pipe-gate-missing"
+[ "$(grep -c 'if !main_channel_admits_config_write(' src/ipc.rs)" -ge 2 ]              || r_s11="$r_s11 windows-main-pipe-gate-missing"
 grep -B1 'pub(crate) fn main_channel_admits_config_write' src/ipc.rs | grep -q 'windows' || r_s11="$r_s11 allowlist-fn-not-cfg-windows"
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel config-write allowlist:$r_s11"; rc=1; else
-  echo "  ok  R-S11 main-channel config-write POSITIVE allowlist (SyncConfig+id+salt+Socks rejected; legit operator writes pass; gate binds Linux/macOS AND the Windows main pipe)"; fi
+  echo "  ok  R-S11/R-S11b main-channel config-write POSITIVE allowlist (SyncConfig+id+salt+Socks rejected; permanent-password is user-owned only; gate binds Linux/macOS AND the Windows main pipe)"; fi
 
 # (3b-iii-b) R-S11b-1: Linux/macOS `_service` is a privileged service-control channel, not a
 # root<->user Config/Config2 bus. The world-connectable service socket may keep only narrow liveness
@@ -161,6 +164,37 @@ fi
 if [ -n "$r_s11b" ]; then echo "  FAIL R-S11b-1 _service whole-config bus removal:$r_s11b"; rc=1; else
   echo "  ok  R-S11b-1 _service admits only Data::Test; stale-socket probe uses Test; root/user whole-config sync loop and SyncConfig(Some) write handler are absent"; fi
 
+# (3b-iii-c) R-S11b-2a/R-S11c-1a: service-owned unattended passwords are not ordinary config IPC.
+# Service launch paths mark their --server child; the receiver uses that marker to deny
+# Data::Config("permanent-password"), whole-config snapshots, and every password storage/salt
+# sync over main IPC. The user-owned path remains user-owned, so --password is no longer
+# root-routed through UserMainIpcScope.
+echo "== (3b-iii-c) service-owned permanent password rejects ordinary IPC (R-S11b-2a/R-S11c-1a) =="
+r_s11b2=
+grep -q 'SERVICE_OWNED_SERVER_ARG' src/common.rs                                      || r_s11b2="$r_s11b2 no-service-owned-arg"
+linux_service_start=$(awk '/fn try_start_server_/,/^}/' src/platform/linux.rs)
+echo "$linux_service_start" | grep -Fq 'vec!["--server", crate::common::SERVICE_OWNED_SERVER_ARG]' || r_s11b2="$r_s11b2 linux-active-user-service-server-not-marked"
+echo "$linux_service_start" | grep -A4 'crate::run_me(vec!\[' | grep -q 'SERVICE_OWNED_SERVER_ARG' || r_s11b2="$r_s11b2 linux-root-service-server-not-marked"
+windows_launch_server=$(awk '/async fn launch_server/,/^}/' src/platform/windows.rs)
+echo "$windows_launch_server" | grep -q 'SERVICE_OWNED_SERVER_ARG'                    || r_s11b2="$r_s11b2 windows-service-server-not-marked"
+grep -q -- '<string>--service-owned-server</string>' src/platform/privileges_scripts/agent.plist || r_s11b2="$r_s11b2 macos-agent-server-not-marked"
+grep -q 'UnattendedPasswordIpcAuthority::ServiceOwned' src/ipc.rs                     || r_s11b2="$r_s11b2 service-owned-authority-missing"
+ipc_password_authority=$(awk '/impl UnattendedPasswordIpcAuthority/,/^}/' src/ipc.rs)
+echo "$ipc_password_authority" | grep -B1 'crate::platform::is_root()' | grep -q 'target_os = "windows"' || r_s11b2="$r_s11b2 windows-system-fallback-not-windows-cfg"
+awk '/pub fn is_root\(\)/,/^}/' src/platform/windows.rs | grep -q 'is_local_system'    || r_s11b2="$r_s11b2 windows-root-fallback-not-local-system"
+grep -q 'allows_main_channel_whole_config_sync' src/ipc.rs                           || r_s11b2="$r_s11b2 whole-config-sync-policy-missing"
+grep -q 'Rejected whole-config sync from service-owned server' src/ipc.rs             || r_s11b2="$r_s11b2 whole-config-sync-not-denied"
+grep -q 'allows_main_channel_password_storage_sync' src/ipc.rs                        || r_s11b2="$r_s11b2 storage-sync-policy-missing"
+grep -q 'Rejected permanent password storage sync from service-owned server' src/ipc.rs || r_s11b2="$r_s11b2 handler-storage-sync-not-denied"
+grep -q 'Rejected permanent password salt sync from service-owned server' src/ipc.rs   || r_s11b2="$r_s11b2 handler-standalone-salt-sync-not-denied"
+grep -q 'send_main_channel_config_write_rejection_ack' src/ipc.rs                     || r_s11b2="$r_s11b2 password-reject-nack-missing"
+user_scope_fn=$(awk '/fn is_user_main_ipc_scope_cli_command/,/^}/' src/core_main.rs)
+if echo "$user_scope_fn" | grep -q '"--password"'; then
+  r_s11b2="$r_s11b2 password-still-root-routes-to-user-main-ipc"
+fi
+if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2a service-owned password IPC closure:$r_s11b2"; rc=1; else
+  echo "  ok  R-S11b-2a service-launched --server is marked; ordinary password write + whole-config/storage/salt sync are denied; --password no longer root-routes into user main IPC"; fi
+
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() — set_socks / set_permanent_password /
 # set_id / set_salt — MUST each sit in a Data arm that main_channel_admits_config_write DENIES
@@ -180,21 +214,16 @@ hb_cfg_writes=$(awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -cE '\bConfig:
 if [ "$hb_cfg_writes" != "5" ]; then
   echo "  FAIL R-S11/R-A6: handle() now has $hb_cfg_writes is_option_can_save-bypassing config-writes (expected 5). A config-write was added/removed — ensure any NEW one's Data variant is DENIED by main_channel_admits_config_write (never the _ => true default), then update this count."; rc=1
 else
-  echo "  ok  R-S11/R-A6 the 5 is_option_can_save-bypassing config-writes in handle() are all gated by main_channel_admits_config_write (Socks(Some)/Config id+salt denied; permanent-password explicitly allow-listed as the legit operator write; whole-config SyncConfig(Some) write arm absent) — none reaches Config via the _ => true default"
+  echo "  ok  R-S11/R-A6 the 5 is_option_can_save-bypassing config-writes in handle() are all gated by main_channel_admits_config_write (Socks(Some)/Config id+salt denied; permanent-password user-owned only; whole-config SyncConfig(Some) write arm absent) — none reaches Config via the _ => true default"
 fi
 
-# A2/R-D8: the --password provisioning arm MUST stay install-gated but NOT root-gated. An unprivileged
-# same-uid owner (haggai_computer's uid-1000 supervisord `user`, R-D8) provisions over its OWN per-uid
-# IPC, whose 0600 + SO_PEERCRED (R-S11) is the real authorization — not the CLI gate. Re-adding an
-# is_root() gate would break non-root provisioning and force CAP_SYS_PTRACE in a container. Range = the
-# --password arm up to the next CLI arm — now --get-id, since T2/b1c243c deleted the old --set-unlock-pin
-# end-anchor (--get-id is the actual next arm and carries no is_root gate); comment
-# lines are stripped so the A2 rationale comment (which names is_root()) cannot false-match.
+# R-D8: the --password CLI remains a user-owned headless automation path, but path/root checks are not
+# authority. A service-owned receiver rejects in IPC; user-owned same-uid servers can still provision.
 pw_arm=$(awk '/args\[0\] == "--password"/,/args\[0\] == "--get-id"/' src/core_main.rs | grep -vE '^[[:space:]]*//')
-if echo "$pw_arm" | grep -q 'set_permanent_password' && ! echo "$pw_arm" | grep -q 'is_root'; then
-  echo "  ok  A2/R-D8 --password is install-gated, not root-gated (same-uid owner provisions; the IPC uid-scoping authorizes — no CAP_SYS_PTRACE)"
+if echo "$pw_arm" | grep -q 'set_permanent_password' && ! echo "$pw_arm" | grep -q 'is_root' && ! echo "$pw_arm" | grep -q 'is_installed'; then
+  echo "  ok  R-D8 --password is a user-owned IPC request, not root-gated or install-path-gated; service-owned receivers reject in IPC"
 else
-  echo "  FAIL A2/R-D8: the --password arm is missing set_permanent_password or is still is_root()-gated — would break non-root same-uid provisioning (haggai/R-D8)"; rc=1
+  echo "  FAIL R-D8: the --password arm is missing set_permanent_password or still uses root/install-path authority"; rc=1
 fi
 
 # (3c) File-transfer write-path safety (R-S8/R-A5): the receive-write opens are NO-FOLLOW
@@ -343,8 +372,6 @@ ra6_clean() { # token, human label
   fi
   echo "  ok  $label absent"
 }
-
-rc=0
 
 # R1(a) DoS hardening (regression gate): the responder's FIRST pre-key step (WAIT_1) — the ONLY recv an
 # unauthenticated internet attacker drives — MUST use a SHORTER deadline (5s) than the 18s of later steps,

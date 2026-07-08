@@ -741,9 +741,8 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
           // one-time-password path is excised (R-X7), so the verification-method radios and
           // the OTP (length + numeric) selectors are dead/misleading — removed. The fork's
           // sole credential is the permanent password (R-P1/R-S9); only its setup remains.
-          // T2: surfaced UNCONDITIONALLY — the dead elevation lock that stranded this button on
-          // Win/Linux is gone (see build). The dialog -> main_set_permanent_password IPC path is the
-          // exact one CLI --password uses; this is the sole authenticator, so it MUST be GUI-settable.
+          // The dialog reaches the user-owned password setter. Service-owned installed hosts reject
+          // this ordinary IPC path until a service-authorized setter exists.
           return _Card(title: 'Password', children: [
             if (!isChangePermanentPasswordDisabled())
               _SubButton('Set permanent password', setPasswordDialog),

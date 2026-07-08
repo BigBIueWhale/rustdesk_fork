@@ -185,7 +185,7 @@ pub fn core_main() -> Option<Vec<String>> {
         std::thread::spawn(move || crate::start_server(false));
     } else {
         #[cfg(any(target_os = "linux", target_os = "macos"))]
-        // Root CLI management commands must talk to the user `--server` main IPC.
+        // Root CLI management commands that remain user-owned talk to the user `--server` main IPC.
         // Example: `sudo rustdesk --option custom-rendezvous-server` should query the
         // user's IPC instead of root's `/tmp/<app>-0/ipc`; `connect()` still limits this
         // routing to empty-postfix main IPC only.
@@ -324,24 +324,10 @@ pub fn core_main() -> Option<Vec<String>> {
                 return None;
             }
             if args.len() == 2 {
-                // A2/R-D8: provisioning the permanent password requires only the INSTALLED binary
-                // that can reach a running `--server`'s per-uid IPC — NOT additionally root. The IPC
-                // socket is per-uid (`/tmp/<app>-<uid>/ipc`), mode 0600, gated by SO_PEERCRED +
-                // parent-dir hardening (R-S11), so `set_permanent_password` succeeds only for the
-                // `--server`'s own uid (the same-uid owner) or root (which reaches the user IPC via
-                // `UserMainIpcScope`); any other uid simply fails to connect. Dropping the `is_root()`
-                // pre-gate lets an unprivileged owner provision their own box under a per-user
-                // supervisor / container (R-D8) WITHOUT the cross-uid `/proc/<pid>/exe` scan that
-                // otherwise forces CAP_SYS_PTRACE in a container — the IPC's uid-scoping is the real
-                // authorization, not the CLI gate.
-                if crate::platform::is_installed() {
-                    if let Err(err) = crate::ipc::set_permanent_password(args[1].to_owned()) {
-                        println!("{err}");
-                    } else {
-                        println!("Done!");
-                    }
+                if let Err(err) = crate::ipc::set_permanent_password(args[1].to_owned()) {
+                    println!("{err}");
                 } else {
-                    println!("Run the installed binary to set the permanent password.");
+                    println!("Done!");
                 }
             }
             return None;
@@ -620,10 +606,7 @@ fn is_root() -> bool {
 fn is_user_main_ipc_scope_cli_command(args: &[String]) -> bool {
     matches!(
         args.first().map(String::as_str),
-        Some("--password")
-            | Some("--get-id")
-            | Some("--option")
-            | Some("--assign")
+        Some("--get-id") | Some("--option") | Some("--assign")
     )
 }
 
@@ -645,12 +628,7 @@ mod tests {
 
     #[test]
     fn user_main_ipc_scope_cli_command_matches_management_commands_only() {
-        for command in [
-            "--password",
-            "--get-id",
-            "--option",
-            "--assign",
-        ] {
+        for command in ["--get-id", "--option", "--assign"] {
             assert!(is_user_main_ipc_scope_cli_command(&args(&[command])));
         }
 
@@ -660,6 +638,7 @@ mod tests {
             "--tray",
             "--cm",
             "--check-hwcodec-config",
+            "--password",
             "--connect",
         ] {
             assert!(!is_user_main_ipc_scope_cli_command(&args(&[command])));

@@ -367,6 +367,10 @@ pub enum Data {
     CommitServiceOwnedUnattendedPasswordChange(String),
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     ServiceOwnedUnattendedPasswordChangeResult(bool),
+    #[cfg(target_os = "windows")]
+    RequestServiceOwnedShareRdp(bool),
+    #[cfg(target_os = "windows")]
+    ServiceOwnedShareRdpResult(bool),
     NatType(Option<i32>),
     RawMessage(Vec<u8>),
     #[cfg(target_os = "linux")]
@@ -897,6 +901,8 @@ pub(crate) fn main_channel_admits_state_mutation(
             authority.allows_service_owned_unattended_password_commit()
                 && peer_authority.allows_service_owned_unattended_password_commit()
         }
+        #[cfg(target_os = "windows")]
+        Data::RequestServiceOwnedShareRdp(_) => false,
         #[cfg(any(target_os = "linux", target_os = "windows"))]
         Data::RequestServiceOwnedUnattendedPasswordChange(_) => false,
         #[cfg(target_os = "macos")]
@@ -943,6 +949,10 @@ async fn send_main_channel_mutation_rejection_ack(data: &Data, stream: &mut Conn
         }
         Data::Options(Some(_)) => {
             allow_err!(stream.send(&Data::OptionsSetResult(false)).await);
+        }
+        #[cfg(target_os = "windows")]
+        Data::RequestServiceOwnedShareRdp(_) => {
+            allow_err!(stream.send(&Data::ServiceOwnedShareRdpResult(false)).await);
         }
         _ => {}
     }
@@ -1163,18 +1173,53 @@ pub(crate) async fn handle_windows_service_owned_unattended_password_request(
 
 #[cfg(target_os = "windows")]
 fn windows_peer_is_authorized_for_service_owned_password_change(stream: &Connection) -> bool {
+    windows_peer_is_authorized_for_service_owned_request(
+        stream,
+        "Windows service-owned unattended password change",
+    )
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) async fn handle_windows_service_owned_share_rdp_request(
+    enable: bool,
+    stream: &mut Connection,
+) {
+    let accepted = windows_peer_is_authorized_for_service_owned_share_rdp_change(stream)
+        && match crate::platform::windows::set_service_owned_share_rdp(enable) {
+            Ok(()) => true,
+            Err(err) => {
+                log::warn!("Rejected Windows service-owned RDP session-sharing change: {err}");
+                false
+            }
+        };
+    if !accepted {
+        log::warn!("Rejected Windows service-owned RDP session-sharing change");
+    }
+    allow_err!(
+        stream
+            .send(&Data::ServiceOwnedShareRdpResult(accepted))
+            .await
+    );
+}
+
+#[cfg(target_os = "windows")]
+fn windows_peer_is_authorized_for_service_owned_share_rdp_change(stream: &Connection) -> bool {
+    windows_peer_is_authorized_for_service_owned_request(
+        stream,
+        "Windows service-owned RDP session-sharing change",
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn windows_peer_is_authorized_for_service_owned_request(stream: &Connection, action: &str) -> bool {
     match stream.windows_pipe_client_token_is_elevated() {
         Ok(true) => true,
         Ok(false) => {
-            log::warn!(
-                "Rejected Windows service-owned unattended password change: caller token is not elevated"
-            );
+            log::warn!("Rejected {action}: caller token is not elevated");
             false
         }
         Err(err) => {
-            log::warn!(
-                "Rejected Windows service-owned unattended password change: failed to verify caller token elevation: {err}"
-            );
+            log::warn!("Rejected {action}: failed to verify caller token elevation: {err}");
             false
         }
     }
@@ -1402,6 +1447,8 @@ async fn handle(data: Data, stream: &mut Connection, channel: IpcChannel) {
         Data::SetUserOwnedPermanentPasswordResult(_) => {}
         #[cfg(any(target_os = "linux", target_os = "windows"))]
         Data::ServiceOwnedUnattendedPasswordChangeResult(_) => {}
+        #[cfg(target_os = "windows")]
+        Data::ServiceOwnedShareRdpResult(_) => {}
         Data::NatType(_) => {
             let t = Config::get_nat_type();
             allow_err!(stream.send(&Data::NatType(Some(t))).await);
@@ -2067,6 +2114,31 @@ async fn set_service_owned_unattended_password_with_ack(v: String) -> ResultType
     Ok(false)
 }
 
+#[cfg(target_os = "windows")]
+pub fn set_service_owned_share_rdp(enable: bool) -> ResultType<()> {
+    if !crate::platform::is_installed() {
+        bail!("Changing RDP session sharing requires an installed service");
+    }
+    if set_service_owned_share_rdp_with_ack(enable)? {
+        Ok(())
+    } else {
+        bail!("Changing RDP session sharing was rejected by service");
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[tokio::main(flavor = "current_thread")]
+async fn set_service_owned_share_rdp_with_ack(enable: bool) -> ResultType<bool> {
+    let ms_timeout = 1_000;
+    let mut c = connect_service(ms_timeout).await?;
+    c.send(&Data::RequestServiceOwnedShareRdp(enable)).await?;
+    match c.next_timeout(ms_timeout).await? {
+        Some(Data::ServiceOwnedShareRdpResult(ok)) => Ok(ok),
+        Some(other) => bail!("Unexpected RDP session-sharing response: {:?}", other),
+        None => Ok(false),
+    }
+}
+
 pub fn get_id() -> String {
     if let Ok(Some(v)) = get_config("id") {
         // update salt also, so that next time reinstallation not causing first-time auto-login failure
@@ -2538,6 +2610,14 @@ mod test {
                 system_peer
             ),
             "R-S11c-1: Windows service-owned password requests go to _service, not main IPC"
+        );
+        assert!(
+            !main_channel_admits_state_mutation(
+                &Data::RequestServiceOwnedShareRdp(true),
+                service_owned,
+                system_peer
+            ),
+            "R-S11b-3: Windows service-owned RDP session-sharing policy requests go to _service, not main IPC"
         );
         assert!(
             !main_channel_admits_state_mutation(

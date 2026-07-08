@@ -302,10 +302,11 @@ fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 service-owned password IPC closure:$r_s11b2"; rc=1; else
   echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux uses polkit/root-service commit; Windows uses pipe-client token elevation plus LocalSystem service commit; macOS uses AuthorizationExternalForm plus root-service commit; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
 
-# (3b-iii-d) R-S11b-3a: service-owned machine policy is not an ordinary Data::Options write.
-# Options writes use a typed daemon ACK/NACK; IPC callers persist only after an accepted ACK and never
-# fall back to hidden local persistence when the daemon is unreachable.
-echo "== (3b-iii-d) service-owned options writes reject ordinary IPC (R-S11b-3a) =="
+# (3b-iii-d) R-S11b-3a/R-S11b-3d: service-owned machine policy is not an ordinary
+# Data::Options write or a UI-side privileged registry write. Options writes use a typed daemon ACK/NACK;
+# IPC callers persist only after an accepted ACK and never fall back to hidden local persistence when the
+# daemon is unreachable. Windows share_rdp is a typed _service action committed by the LocalSystem service.
+echo "== (3b-iii-d) service-owned policy writes reject ordinary IPC (R-S11b-3a/R-S11b-3d) =="
 r_s11b3=
 grep -q 'allows_main_channel_options_write' src/ipc.rs                                || r_s11b3="$r_s11b3 options-policy-missing"
 grep -q 'Data::Options(Some(_)) => authority.allows_main_channel_options_write()' src/ipc.rs || r_s11b3="$r_s11b3 options-main-gate-missing"
@@ -316,6 +317,20 @@ grep -q 'Data::OptionsSetResult(false)' src/ipc.rs                              
 grep -q 'Some(Data::OptionsSetResult(true))' src/ipc.rs                               || r_s11b3="$r_s11b3 caller-accepted-ack-missing"
 grep -q 'Some(Data::OptionsSetResult(false))' src/ipc.rs                              || r_s11b3="$r_s11b3 caller-reject-nack-missing"
 grep -q 'Options write requires daemon ACK' src/ipc.rs                                || r_s11b3="$r_s11b3 local-fallback-not-blocked"
+grep -q 'RequestServiceOwnedShareRdp(bool)' src/ipc.rs                                || r_s11b3="$r_s11b3 windows-share-rdp-request-missing"
+grep -q 'ServiceOwnedShareRdpResult(bool)' src/ipc.rs                                 || r_s11b3="$r_s11b3 windows-share-rdp-result-missing"
+grep -q 'Data::RequestServiceOwnedShareRdp(_) => false' src/ipc.rs                    || r_s11b3="$r_s11b3 windows-share-rdp-main-gate-missing"
+grep -q 'Data::ServiceOwnedShareRdpResult(false)' src/ipc.rs                          || r_s11b3="$r_s11b3 windows-share-rdp-main-reject-nack-missing"
+grep -q 'windows_peer_is_authorized_for_service_owned_share_rdp_change' src/ipc.rs     || r_s11b3="$r_s11b3 windows-share-rdp-elevated-peer-gate-missing"
+grep -q 'Some(Data::ServiceOwnedShareRdpResult(ok))' src/ipc.rs                       || r_s11b3="$r_s11b3 windows-share-rdp-caller-ack-missing"
+grep -q 'RequestServiceOwnedShareRdp(enable)' src/platform/windows.rs                  || r_s11b3="$r_s11b3 windows-service-share-rdp-dispatch-missing"
+grep -q 'handle_windows_service_owned_share_rdp_request' src/platform/windows.rs       || r_s11b3="$r_s11b3 windows-service-share-rdp-handler-missing"
+grep -q 'open_subkey_with_flags(subkey, KEY_SET_VALUE)' src/platform/windows.rs        || r_s11b3="$r_s11b3 windows-share-rdp-direct-registry-write-missing"
+grep -q 'crate::ipc::set_service_owned_share_rdp(_enable)' src/ui_interface.rs         || r_s11b3="$r_s11b3 ui-share-rdp-not-service-typed"
+grep -q 'future: bind.mainIsRoot()' flutter/lib/desktop/pages/desktop_setting_page.dart || r_s11b3="$r_s11b3 ui-share-rdp-not-elevation-gated"
+if grep -Eq 'reg add .*share_rdp|run_cmds\([^)]*share_rdp|pub fn set_share_rdp' src/platform/windows.rs; then
+  r_s11b3="$r_s11b3 windows-share-rdp-direct-shell-writer-present"
+fi
 set_options_fn=$(awk '/pub async fn set_options/,/^}/' src/ipc.rs)
 if echo "$set_options_fn" | grep -q 'crate::platform::is_installed'; then
   r_s11b3="$r_s11b3 options-fallback-uses-install-heuristic"
@@ -325,8 +340,8 @@ if [ "$(echo "$set_options_fn" | grep -c 'Config::set_options(value)')" -ne 1 ];
 fi
 grep -q 'Ok(()) => \*OPTIONS.lock().unwrap() = m' src/ui_interface.rs                 || r_s11b3="$r_s11b3 ui-cache-accepted-branch-missing"
 grep -q 'Ok(()) => {' src/ui_interface.rs                                             || r_s11b3="$r_s11b3 ui-set-option-ack-branch-missing"
-if [ -n "$r_s11b3" ]; then echo "  FAIL R-S11b-3a service-owned options IPC closure:$r_s11b3"; rc=1; else
-  echo "  ok  R-S11b-3a service-owned --server rejects Data::Options(Some) before privacy/config side effects; IPC options writes require typed ACK before caller persistence and have no local fallback"; fi
+if [ -n "$r_s11b3" ]; then echo "  FAIL R-S11b-3 service-owned policy IPC closure:$r_s11b3"; rc=1; else
+  echo "  ok  R-S11b-3 service-owned --server rejects Data::Options(Some) before privacy/config side effects; IPC options writes require typed ACK before caller persistence and Windows share_rdp is a typed elevated _service action with no UI-side shell writer"; fi
 
 # (3b-iii-e) R-S11c-2/R-S11c-3: Windows `_service` is not a raw privileged-action bus.
 # Session switching and SAS/HKLM-touching actions require a receiver-authorized capability API; until that

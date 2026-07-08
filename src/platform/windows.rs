@@ -715,6 +715,13 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                                 )
                                 .await;
                             }
+                            ipc::Data::RequestServiceOwnedShareRdp(enable) => {
+                                ipc::handle_windows_service_owned_share_rdp_request(
+                                    enable,
+                                    &mut stream,
+                                )
+                                .await;
+                            }
                             _ => {
                                 log::warn!(
                                     "Rejected unauthorized data on protected Windows _service IPC channel: data_kind={:?}",
@@ -1034,14 +1041,14 @@ pub fn is_share_rdp() -> bool {
     share_rdp() == TRUE
 }
 
-pub fn set_share_rdp(enable: bool) {
+pub(crate) fn set_service_owned_share_rdp(enable: bool) -> ResultType<()> {
     let (subkey, _, _, _) = get_install_info();
-    let cmd = format!(
-        "reg add {} /f /v share_rdp /t REG_SZ /d \"{}\"",
-        subkey,
-        if enable { "true" } else { "false" }
-    );
-    run_cmds(cmd, false, "share_rdp").ok();
+    let subkey = subkey.replace("HKEY_LOCAL_MACHINE\\", "");
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let key = hklm.open_subkey_with_flags(subkey, KEY_SET_VALUE)?;
+    let value = (if enable { "true" } else { "false" }).to_owned();
+    key.set_value("share_rdp", &value)?;
+    Ok(())
 }
 
 pub fn get_current_process_session_id() -> Option<u32> {

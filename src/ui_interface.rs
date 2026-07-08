@@ -479,7 +479,9 @@ pub fn is_share_rdp() -> bool {
 #[inline]
 pub fn set_share_rdp(_enable: bool) {
     #[cfg(windows)]
-    crate::platform::windows::set_share_rdp(_enable);
+    if let Err(err) = crate::ipc::set_service_owned_share_rdp(_enable) {
+        log::warn!("Failed to set RDP session sharing through Windows service: {err}");
+    }
 }
 
 #[inline]

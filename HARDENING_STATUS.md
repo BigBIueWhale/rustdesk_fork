@@ -288,6 +288,19 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `is_option_can_save`-bypassing config-write count to the two typed password operations (user-owned direct
   commit and Linux/Windows service-owned service commit);
   `scripts/apple-conform-check.sh` mirrors the source absence assertions for macOS.
+- **R-S11b-3d — Windows service-owned RDP session-sharing policy — CLOSED 2026-07-09.** Platform:
+  Windows installed service. Endpoint/action: the desktop Security page's "Enable RDP session sharing" toggle,
+  Flutter `mainSetShareRdp`, `ui_interface::set_share_rdp`, and the historical direct `reg add ... share_rdp`
+  writer in `src/platform/windows.rs`. Boundary: active user-session UI ↔ LocalSystem service policy that
+  selects which Windows session the service-owned host serves. Attack surface closed: the UI/FFI path no
+  longer commits HKLM state directly or shells out to `cmd.exe`/`reg.exe`; it sends the typed
+  `Data::RequestServiceOwnedShareRdp(bool)` request to the protected Windows `_service` pipe. The service
+  validates the connected pipe client's elevated token at the receiver, writes the install registry value
+  directly as LocalSystem, and returns `Data::ServiceOwnedShareRdpResult(bool)`. The main IPC channel rejects
+  the same request with a negative typed ACK, and the settings toggle is writable only from an elevated
+  RustDesk process. Verification closure: `scripts/verify.sh` asserts the typed request/result, main-channel
+  denial, `_service` dispatch, receiver-side elevated-token gate, direct registry commit, absence of the
+  direct shell writer, UI service request, and UI elevation gate.
 - **R-S11c-2a/R-S11c-3a — Windows `_service` raw session/SAS commands removed — CLOSED 2026-07-08.**
   Platform: Windows installed service. Endpoint/action: `_service` named pipe messages formerly carrying
   `Data::UserSid(Some(_))` for service-owned session switching and `Data::SAS` for SYSTEM-mediated
@@ -362,16 +375,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows
   remains high risk because main IPC is same-session. Endpoints: `Data::Options`, trusted-device removals,
-  server/direct-listener/RDP/session-sharing policy writers, and any hidden UI/CLI/FFI path that persists
+  remaining server/direct-listener policy writers, and any hidden UI/CLI/FFI path that persists
   controlled-side policy. Boundary: user-session process ↔ privileged host policy. Attack surface: a local
   caller can alter who can reach the service, how it binds, which trust/identity state it uses, or which
   hardened policy pins are effective. Current state: ordinary whole-options IPC writes are closed for
   service-marked servers by R-S11b-3a, including typed daemon ACK/NACK and no local persistence fallback inside
   the IPC helper; user-owned `--server` option writes remain user-owned; whole user config is never imported
   over IPC after R-S11b-3b; generic config writes, generic config helpers, and the proxy IPC variant are absent
-  after R-S11b-3c. Remaining closure: privileged service policy writes are typed service actions with
-  receiver-side validation; trust-store writes, service-policy writes, and any future identity/salt/key/proxy
-  write are not reachable from ordinary IPC except through named approved operations with gates.
+  after R-S11b-3c; Windows `share_rdp` is no longer a UI-side shell/registry write after R-S11b-3d and is
+  committed only by the LocalSystem service through a typed elevated `_service` request. Remaining closure:
+  side-effectful service identity generation is split from read-shaped IPC/server metadata paths; trust-store
+  writes, remaining service-policy writes, and any future identity/salt/key/proxy write are not reachable from
+  ordinary IPC except through named approved operations with gates.
 **Contained hardening items from the same audit:**
 - **R-S11c-6 — Windows named-pipe endpoint hardening.** Platform: Windows desktop. Endpoint:
   predictable `\\.\pipe\<APP>\query{postfix}` names and broad create permissions for main/`_service`.

@@ -759,7 +759,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
   }
 
   Widget more(BuildContext context) {
-    // T2: the dead lock is gone (see build). These NON-pinned Security prefs — share-rdp,
+    // T2: the dead lock is gone (see build). These NON-pinned Security prefs —
     // allow-auto-disconnect (+ timeout), keep-awake-during-incoming-sessions — are legitimate,
     // writable, and now directly editable; they were only trapped behind the lock.
     // allow-only-conn-window-open IS pinned (R-S16 PINNED_SETTINGS => ""), so it is shown
@@ -768,7 +768,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
     // the removed elevation lock (R-G1: no dead/inert control survives; excise-don't-disable). The
     // whole local settings-PIN subsystem (Dart widget/dialogs, FFI, IPC, Config field, CLI) is gone.
     return _Card(title: 'Security', children: [
-      shareRdp(context, true),
+      shareRdp(context),
       ...autoDisconnect(context),
       _OptionCheckBox(context, 'keep-awake-during-incoming-sessions-label',
           kOptionKeepAwakeDuringIncomingSessions,
@@ -779,16 +779,21 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
     ]);
   }
 
-  shareRdp(BuildContext context, bool enabled) {
+  shareRdp(BuildContext context) {
     onChanged(bool b) async {
       await bind.mainSetShareRdp(enable: b);
       setState(() {});
     }
 
+    if (!(isWindows && bind.mainIsInstalled())) {
+      return const Offstage();
+    }
     bool value = bind.mainIsShareRdp();
-    return Offstage(
-      offstage: !(isWindows && bind.mainIsInstalled()),
-      child: GestureDetector(
+    return FutureBuilder<bool>(
+      future: bind.mainIsRoot(),
+      builder: (_, data) {
+        final enabled = data.data == true;
+        return GestureDetector(
           child: Row(
             children: [
               Checkbox(
@@ -802,7 +807,8 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
               )
             ],
           ).marginOnly(left: _kCheckBoxLeftMargin),
-          onTap: enabled ? () => onChanged(!value) : null),
+          onTap: enabled ? () => onChanged(!value) : null);
+      },
     );
   }
 

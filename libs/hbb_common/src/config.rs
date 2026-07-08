@@ -3013,7 +3013,6 @@ pub mod keys {
     pub const OPTION_FLUTTER_PEER_TAB_VISIBLE: &str = "peer-tab-visible";
     pub const OPTION_FLUTTER_PEER_CARD_UI_TYLE: &str = "peer-card-ui-type";
     pub const OPTION_FLUTTER_CURRENT_AB_NAME: &str = "current-ab-name";
-    pub const OPTION_ALLOW_REMOTE_CM_MODIFICATION: &str = "allow-remote-cm-modification";
 
     // android floating window options
     pub const OPTION_DISABLE_FLOATING_WINDOW: &str = "disable-floating-window";
@@ -3108,7 +3107,6 @@ pub mod keys {
         OPTION_DISABLE_GROUP_PANEL,
         OPTION_DISABLE_DISCOVERY_PANEL,
         OPTION_PRE_ELEVATE_SERVICE,
-        OPTION_ALLOW_REMOTE_CM_MODIFICATION,
         OPTION_ALLOW_AUTO_RECORD_OUTGOING,
         OPTION_VIDEO_SAVE_DIRECTORY,
         OPTION_TOUCH_MODE,

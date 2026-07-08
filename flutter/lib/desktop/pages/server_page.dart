@@ -110,11 +110,7 @@ class ConnectionManager extends StatefulWidget {
   State<StatefulWidget> createState() => ConnectionManagerState();
 }
 
-class ConnectionManagerState extends State<ConnectionManager>
-    with WidgetsBindingObserver {
-  final RxBool _controlPageBlock = false.obs;
-  final RxBool _sidePageBlock = false.obs;
-
+class ConnectionManagerState extends State<ConnectionManager> {
   ConnectionManagerState() {
     gFFI.serverModel.tabController.onSelected = (client_id_str) {
       final client_id = int.tryParse(client_id_str);
@@ -138,27 +134,9 @@ class ConnectionManagerState extends State<ConnectionManager>
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.resumed) {
-      if (!allowRemoteCMModification()) {
-        shouldBeBlocked(_controlPageBlock, null);
-        shouldBeBlocked(_sidePageBlock, null);
-      }
-    }
-  }
-
-  @override
   void initState() {
     gFFI.serverModel.updateClientState();
-    WidgetsBinding.instance.addObserver(this);
     super.initState();
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
   }
 
   @override
@@ -236,24 +214,13 @@ class ConnectionManagerState extends State<ConnectionManager>
                       Consumer<ChatModel>(
                           builder: (_, model, child) => SizedBox(
                                 width: realChatPageWidth,
-                                child: allowRemoteCMModification()
-                                    ? buildSidePage()
-                                    : buildRemoteBlock(
-                                        child: buildSidePage(),
-                                        block: _sidePageBlock,
-                                        mask: true),
+                                child: buildSidePage(),
                               )),
                     SizedBox(
                         width: realClosedWidth,
                         child: SizedBox(
                             width: realClosedWidth,
-                            child: allowRemoteCMModification()
-                                ? pageView
-                                : buildRemoteBlock(
-                                    child: _buildKeyEventBlock(pageView),
-                                    block: _controlPageBlock,
-                                    mask: false,
-                                  ))),
+                            child: pageView)),
                   ]);
                   return Container(
                     color: Theme.of(context).scaffoldBackgroundColor,
@@ -276,10 +243,6 @@ class ConnectionManagerState extends State<ConnectionManager>
     } else {
       return ChatPage(type: ChatPageType.desktopCM);
     }
-  }
-
-  Widget _buildKeyEventBlock(Widget child) {
-    return ExcludeFocus(child: child, excluding: true);
   }
 
   Widget buildTitleBar() {
@@ -545,14 +508,14 @@ class _CmHeaderState extends State<_CmHeader>
                     client.type_() != ClientType.file &&
                     client.type_() != ClientType.camera),
             child: IconButton(
-              onPressed: () => checkClickTime(client.id, () {
+              onPressed: () {
                 if (client.type_() == ClientType.file) {
                   gFFI.chatModel.toggleCMFilePage();
                 } else {
                   gFFI.chatModel
                       .toggleCMChatPage(MessageKey(client.peerId, client.id));
                 }
-              }),
+              },
               icon: SvgPicture.asset(client.type_() == ClientType.file
                   ? 'assets/file_transfer.svg'
                   : 'assets/chat2.svg'),
@@ -915,13 +878,11 @@ class _CmControlPanel extends StatelessWidget {
         borderRadius: borderRadius,
         onTap: () {
           if (onClick == null) return;
-          checkClickTime(client.id, onClick);
+          onClick();
         },
         onTapDown: (details) {
           if (onTapDown == null) return;
-          checkClickTime(client.id, () {
-            onTapDown.call(details);
-          });
+          onTapDown.call(details);
         },
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -962,24 +923,6 @@ class _CmControlPanel extends StatelessWidget {
   void closeVoiceCall() {
     bind.cmCloseVoiceCall(id: client.id);
   }
-}
-
-void checkClickTime(int id, Function() callback) async {
-  if (allowRemoteCMModification()) {
-    callback();
-    return;
-  }
-  var clickCallbackTime = DateTime.now().millisecondsSinceEpoch;
-  await bind.cmCheckClickTime(connId: id);
-  Timer(const Duration(milliseconds: 120), () async {
-    var d = clickCallbackTime - await bind.cmGetClickTime();
-    if (d > 120) callback();
-  });
-}
-
-bool allowRemoteCMModification() {
-  return option2bool(kOptionAllowRemoteCmModification,
-      bind.mainGetLocalOption(key: kOptionAllowRemoteCmModification));
 }
 
 class _FileTransferLogPage extends StatefulWidget {

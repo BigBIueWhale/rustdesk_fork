@@ -154,7 +154,6 @@ const String kOptionAllowAlwaysSoftwareRender = "allow-always-software-render";
 const String kOptionAllowRemoveWallpaper = "allow-remove-wallpaper";
 const String kOptionStopService = "stop-service";
 const String kOptionDirectxCapture = "enable-directx-capture";
-const String kOptionAllowRemoteCmModification = "allow-remote-cm-modification";
 const String kOptionShowVirtualMouse = "show-virtual-mouse";
 const String kOptionVirtualMouseScale = "virtual-mouse-scale";
 const String kOptionShowVirtualJoystick = "show-virtual-joystick";

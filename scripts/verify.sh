@@ -3147,6 +3147,12 @@ if grep -qE '\(OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION, *"Y"\)' libs/hbb_common/
 else
   echo "  FAIL R-S16(d): allow-remote-config-modification missing/mis-pinned in PINNED_SETTINGS (full-access policy expects 'Y')"; rc=1
 fi
+if rg -q 'allow-remote-[c]m-modification|AllowRemoteCm|allowRemoteCMModification' \
+  src libs flutter/lib; then
+  echo "  FAIL R-G1: hidden connection-manager remote-modification gate survived"; rc=1
+else
+  echo "  ok  R-G1 connection-manager remote modification follows the single remote-config policy; no hidden local gate"
+fi
 
 echo "== pending excisions =="
 # NONE remain (both former informational-TODO entries resolved 2026-06-25, confirmed by a full-spec

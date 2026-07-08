@@ -3319,7 +3319,6 @@ dependencies = [
  "libc",
  "libloading 0.8.4",
  "log",
- "mac_address",
  "machine-uid",
  "ntapi",
  "osascript",
@@ -4037,16 +4036,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 
 [[package]]
-name = "mac_address"
-version = "1.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8836fae9d0d4be2c8b4efcdd79e828a2faa058a90d005abf42f91cac5493a08e"
-dependencies = [
- "nix 0.28.0",
- "winapi 0.3.9",
-]
-
-[[package]]
 name = "mach2"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4468,7 +4457,6 @@ dependencies = [
  "cfg-if 1.0.0",
  "cfg_aliases 0.1.1",
  "libc",
- "memoffset 0.9.1",
 ]
 
 [[package]]
@@ -6297,7 +6285,6 @@ dependencies = [
  "libpulse-binding",
  "libpulse-simple-binding",
  "libxdo-sys",
- "mac_address",
  "magnum-opus",
  "nix 0.29.0",
  "num_cpus",

@@ -116,6 +116,14 @@ echo "== (3b-iv) trust-anchor get_key ignores a stored override (R-A4/R-X4) =="
 # POSITIVE. Whole-config IPC is not a gated variant: SyncConfig is absent.
 echo "== (3b-iii) IPC main-channel state-mutation positive allowlist (R-S11) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_channel_rejects_untyped_state_mutations --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_get_id_is_side_effect_free --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_get_salt_is_side_effect_free --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_does_not_generate_id_for_empty_config --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_reads_legacy_plaintext_id_without_storing --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_store_clears_empty_id_storage --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_store_preserves_existing_enc_id --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_store_does_not_rewrite_existing_enc_id --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_set_preserves_existing_id_fields --color never
 r_s11=
 grep -q 'if !main_channel_admits_state_mutation(' src/ipc.rs                            || r_s11="$r_s11 loop-not-wired"
 grep -q 'SyncConfig' src/ipc.rs && r_s11="$r_s11 whole-config-ipc-variant-present"
@@ -140,6 +148,47 @@ grep -q 'ConfigRequest(String)' src/ipc.rs                                      
 grep -q 'ConfigValue((String, Option<String>))' src/ipc.rs                             || r_s11="$r_s11 config-value-missing"
 grep -q 'Socks(Option' src/ipc.rs && r_s11="$r_s11 socks-ipc-variant-present"
 grep -q 'Data::Socks' src/ipc.rs && r_s11="$r_s11 socks-ipc-reference-present"
+config_get_id_body=$(awk '/pub fn get_id\(\) -> String \{/{flag=1} flag{print} flag && /^[[:space:]]{4}\}/{exit}' libs/hbb_common/src/config.rs)
+echo "$config_get_id_body" | grep -q 'CONFIG.read' || r_s11="$r_s11 config-get-id-not-reading-config"
+if echo "$config_get_id_body" | grep -qE 'Config::set_id|set_id\(|Config::gen_id|gen_id\(|CONFIG\.write|store\('; then
+  r_s11="$r_s11 config-get-id-mutates-identity"
+fi
+config_get_salt_body=$(awk '/pub fn get_salt\(\) -> String \{/{flag=1} flag{print} flag && /^[[:space:]]{4}\}/{exit}' libs/hbb_common/src/config.rs)
+echo "$config_get_salt_body" | grep -q 'CONFIG.read' || r_s11="$r_s11 config-get-salt-not-reading-config"
+if echo "$config_get_salt_body" | grep -qE 'Config::set_salt|set_salt\(|get_auto_password|CONFIG\.write|store\('; then
+  r_s11="$r_s11 config-get-salt-mutates-salt"
+fi
+config_load_body=$(awk '/fn load\(\) -> Config \{/{flag=1} flag{print} flag && /^[[:space:]]{4}\}/{exit}' libs/hbb_common/src/config.rs)
+if echo "$config_load_body" | grep -qE 'config\.store\(|Config::set_id|set_id\(|encrypt_str_or_original\(&config\.id'; then
+  r_s11="$r_s11 config-load-persists-identity"
+fi
+if grep -q 'encrypt_str_or_original(&config.id' libs/hbb_common/src/config.rs; then
+  r_s11="$r_s11 config-store-rewrites-numeric-id"
+fi
+config_set_body=$(awk '/pub fn set\(mut cfg: Config\) -> bool \{/{flag=1} flag{print} flag && /^[[:space:]]{4}\}/{exit}' libs/hbb_common/src/config.rs)
+echo "$config_set_body" | grep -q 'cfg.id = lock.id.clone();' || r_s11="$r_s11 config-set-imports-id"
+echo "$config_set_body" | grep -q 'cfg.enc_id = lock.enc_id.clone();' || r_s11="$r_s11 config-set-imports-enc-id"
+if grep -RInE 'set_id\(|fn gen_id\(|fn get_auto_id\(|update_id\(|is_disable_change_id|OPTION_ALLOW_HOSTNAME_AS_ID|OPTION_DISABLE_CHANGE_ID' src libs --include='*.rs' 2>/dev/null \
+  | grep -v '//' >/tmp/rd_verify_identity_writers.$$; then
+  r_s11="$r_s11 numeric-id-writer-or-generator-present"
+fi
+mac_address_hits=$({
+  grep -InE 'mac_address' Cargo.toml Cargo.lock libs/hbb_common/Cargo.toml libs/virtual_display/Cargo.lock 2>/dev/null || true
+  grep -RInE 'mac_address' libs/hbb_common/src src --include='*.rs' 2>/dev/null || true
+})
+if [ -n "$mac_address_hits" ]; then
+  printf '%s\n' "$mac_address_hits" >/tmp/rd_verify_mac_address.$$
+  r_s11="$r_s11 mac-address-id-dependency-present"
+fi
+ipc_get_id_body=$(awk '/^pub fn get_id\(\) -> String \{/{flag=1} flag{print} flag && /^\}/{exit}' src/ipc.rs)
+if echo "$ipc_get_id_body" | grep -qE 'Config::set_id|set_id\(|Config::set_salt|set_salt\(|get_config\("salt"\)'; then
+  r_s11="$r_s11 ipc-get-id-copies-id-or-salt"
+fi
+if awk '/if !hbb_common::is_ip_str\(&lr\.username\)/,/send_login_error/' src/server/connection.rs | grep -q 'Config::get_id'; then
+  r_s11="$r_s11 server-login-still-accepts-numeric-id"
+fi
+ipc_start_block=$(awk '/^pub async fn start\(postfix: &str\)/,/^}/' src/ipc.rs)
+echo "$ipc_start_block" | grep -q 'Config::ensure_loaded();' || r_s11="$r_s11 main-ipc-start-does-not-init-config"
 # R-S11 binds EVERY shipped artifact, not Linux/macOS alone (Windows .exe/.msi are shipped). The
 # allowlist MUST also guard the Windows main pipe (postfix == ""). Because the linux/macos gate logs
 # stream.peer_uid() (unix-only, SO_PEERCRED), Windows needs its OWN cfg(windows) gate calling the same
@@ -149,7 +198,8 @@ grep -q 'Data::Socks' src/ipc.rs && r_s11="$r_s11 socks-ipc-reference-present"
 [ "$(grep -c 'if !main_channel_admits_state_mutation(' src/ipc.rs)" -ge 2 ]            || r_s11="$r_s11 windows-main-pipe-gate-missing"
 grep -B1 'pub(crate) fn main_channel_admits_state_mutation' src/ipc.rs | grep -q 'windows' || r_s11="$r_s11 allowlist-fn-not-cfg-windows"
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel state-mutation allowlist:$r_s11"; rc=1; else
-  echo "  ok  R-S11/R-S11b main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, and Socks IPC are absent; typed voice/password/options remain scoped; gate binds Linux/macOS AND the Windows main pipe)"; fi
+  echo "  ok  R-S11/R-S11b main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options remain scoped; gate binds Linux/macOS AND the Windows main pipe)"; fi
+rm -f /tmp/rd_verify_identity_writers.$$ /tmp/rd_verify_mac_address.$$
 
 echo "== (3b-iii-a2) Windows named-pipe endpoints are DACL-bound (R-S11c-6) =="
 r_s11c6=

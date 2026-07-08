@@ -301,6 +301,25 @@ unreachable and a source/test/AST gate prevents reintroduction.
   RustDesk process. Verification closure: `scripts/verify.sh` asserts the typed request/result, main-channel
   denial, `_service` dispatch, receiver-side elevated-token gate, direct registry commit, absence of the
   direct shell writer, UI service request, and UI elevation gate.
+- **R-S11b-3e — service identity/salt reads are side-effect-free — CLOSED 2026-07-09.** Platforms: all
+  desktop installed-service paths. Endpoint/action: `Config::get_id()`, `Data::ConfigRequest("id")`,
+  `Data::ConfigRequest("salt")`, `ipc::get_id()`, login username validation, local recording metadata, and
+  startup ID logging. Boundary: read-shaped local/server metadata paths ↔ service-owned identity/salt
+  material. Attack surface closed:
+  `Config::get_id()` is a pure read; new direct-IP configs no longer auto-generate a numeric RustDesk ID
+  at load time; the old MAC-derived generator, Change-ID writer, and `mac_address` dependency are gone;
+  config load/store no longer migrates or rewrites legacy ID storage; whole-config `Config::set` preserves
+  existing ID fields instead of importing new ones; `Config::get_salt()` is a pure read and no longer
+  creates/persists a salt;
+  startup logging no longer reads the ID; and the server login gate no longer accepts a non-address
+  username by matching the local numeric ID. Existing stored `enc_id` values remain readable for
+  compatibility, but an empty ID is valid and stored as absent. The UI helper no longer copies daemon `id`
+  into local config and no longer fetches/copies `salt` as a side effect of asking for the ID.
+  Verification closure: `scripts/verify.sh` and config unit tests assert the getter body has no
+  generation/write/store path, fresh config load does not mint an ID, salt reads do not mint a salt,
+  empty IDs are stored absent, legacy IDs are not migrated or rewritten by load/store, whole-config set
+  does not import ID fields, the old ID generator/writer/key/dependency symbols are absent, the server
+  login fallback is absent, and the IPC helper cannot reintroduce id/salt copy-back.
 - **R-S11c-2a/R-S11c-3a — Windows `_service` raw session/SAS commands removed — CLOSED 2026-07-08.**
   Platform: Windows installed service. Endpoint/action: `_service` named pipe messages formerly carrying
   `Data::UserSid(Some(_))` for service-owned session switching and `Data::SAS` for SYSTEM-mediated
@@ -383,10 +402,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   the IPC helper; user-owned `--server` option writes remain user-owned; whole user config is never imported
   over IPC after R-S11b-3b; generic config writes, generic config helpers, and the proxy IPC variant are absent
   after R-S11b-3c; Windows `share_rdp` is no longer a UI-side shell/registry write after R-S11b-3d and is
-  committed only by the LocalSystem service through a typed elevated `_service` request. Remaining closure:
-  side-effectful service identity generation is split from read-shaped IPC/server metadata paths; trust-store
-  writes, remaining service-policy writes, and any future identity/salt/key/proxy write are not reachable from
-  ordinary IPC except through named approved operations with gates.
+  committed only by the LocalSystem service through a typed elevated `_service` request; service identity/salt
+  reads are side-effect-free after R-S11b-3e. Remaining closure: trust-store writes, remaining service-policy
+  writes, and any future identity/salt/key/proxy write are not reachable from ordinary IPC except through
+  named approved operations with gates.
 **Contained hardening items from the same audit:**
 - **R-S11c-6 — Windows named-pipe endpoint hardening.** Platform: Windows desktop. Endpoint:
   predictable `\\.\pipe\<APP>\query{postfix}` names and broad create permissions for main/`_service`.

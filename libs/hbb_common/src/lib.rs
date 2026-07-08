@@ -31,8 +31,6 @@ pub mod config;
 pub mod fs;
 pub mod mem;
 pub use lazy_static;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub use mac_address;
 pub use rand;
 pub use regex;
 pub use sodiumoxide;

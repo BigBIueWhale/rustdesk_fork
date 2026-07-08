@@ -629,8 +629,8 @@ pub fn load_path<T: serde::Serialize + serde::de::DeserializeOwned + Default + s
             // Read succeeded but the bytes will not parse: DEFINITE corruption (a valid
             // stored config always parses). Preserve the exact bytes for recovery so no
             // default+store can discard them, log loudly, and hand back a default so the
-            // process comes up fail-closed. The vacated path lets Config::load regenerate a
-            // clean identity (self-heal) without touching the preserved corrupt bytes.
+            // process comes up fail-closed. The vacated path lets later validated config
+            // changes self-heal without touching the preserved corrupt bytes.
             confy::ConfyError::BadTomlData(_) => {
                 log::error!(
                     "Config '{}' is present but unparseable (corruption): {err} — preserving \
@@ -642,8 +642,8 @@ pub fn load_path<T: serde::Serialize + serde::de::DeserializeOwned + Default + s
             }
             // Present but could not be read/opened THIS time (I/O or permission): this may be
             // a transient fault over intact bytes, so DO NOT move or destroy the file. Return
-            // a default; the identity-bearing Config::load refuses to overwrite a present file
-            // it read as default (below), so the loss is never finalized and it recovers on
+            // a default; the credential-bearing Config::load refuses to overwrite a present
+            // file it read as default (below), so the loss is never finalized and it recovers on
             // the next successful load.
             _ => {
                 log::error!(
@@ -696,14 +696,11 @@ impl Config {
     fn load() -> Config {
         let file = Self::file_("");
         let mut config = Config::load_::<Config>("");
-        // F1: a stored Config ALWAYS carries a key_pair (and an id/enc_id). So a STILL-PRESENT
-        // file that loads as an all-default Config is never a genuine first run (that has no
-        // file) and never a parse corruption (load_path already renamed those aside, vacating
-        // the path) — it is an empty power-loss torn write or a transient read failure. Never
-        // regenerate an identity and store() it OVER such a file while it still holds bytes (a
-        // possibly-recoverable credential): only a genuinely-empty file (nothing to lose)
-        // self-heals by regenerating below.
-        let mut preserve_present_file = false;
+        // F1: a stored Config always carries some persisted state. So a STILL-PRESENT file
+        // that loads as an all-default Config is never a genuine first run (that has no file)
+        // and never a parse corruption (load_path already renamed those aside, vacating the
+        // path) — it is an empty power-loss torn write or a transient read failure. Never
+        // store defaults OVER such a file while it still holds bytes.
         if config.key_pair.0.is_empty()
             && config.id.is_empty()
             && config.enc_id.is_empty()
@@ -713,11 +710,11 @@ impl Config {
             if len == 0 {
                 log::error!(
                     "Config '{}' is present but empty (power-loss torn write); the prior \
-                     key_pair/credential is unrecoverable. Regenerating a clean identity — the \
+                     key_pair/credential is unrecoverable. Starting from a clean default — the \
                      box is fail-closed until you re-provision with --password",
                     file.display()
                 );
-                // fall through: regenerate + store to self-heal over the empty file
+                // fall through: later validated config changes may self-heal over the empty file
             } else {
                 log::error!(
                     "Config '{}' is present ({len} bytes) but read as default (transient read \
@@ -725,47 +722,14 @@ impl Config {
                      unpersisted default — it recovers automatically once the file loads",
                     file.display()
                 );
-                preserve_present_file = true;
             }
         }
-        let mut store = false;
         if let Err(err) = Self::validate_or_decrypt_permanent_password_storage(&mut config) {
             log::error!("Failed to validate or decrypt permanent password storage: {err}");
         }
-        let mut id_valid = false;
-        let (id, encrypted, store2) = decrypt_str_or_original(&config.enc_id, PASSWORD_ENC_VERSION);
+        let (id, encrypted, _) = decrypt_str_or_original(&config.enc_id, PASSWORD_ENC_VERSION);
         if encrypted {
             config.id = id;
-            id_valid = true;
-            store |= store2;
-        } else if
-        // Comment out for forward compatible
-        // crate::get_modified_time(&Self::file_(""))
-        // .checked_sub(std::time::Duration::from_secs(30)) // allow modification during installation
-        // .unwrap_or_else(crate::get_exe_time)
-        // < crate::get_exe_time()
-        // &&
-        !config.id.is_empty()
-            && config.enc_id.is_empty()
-            && !decrypt_str_or_original(&config.id, PASSWORD_ENC_VERSION).1
-        {
-            id_valid = true;
-            store = true;
-        }
-        if !id_valid {
-            log::warn!("ID is invalid, generating new one");
-            for _ in 0..3 {
-                if let Some(id) = Config::gen_id() {
-                    config.id = id;
-                    store = true;
-                    break;
-                } else {
-                    log::error!("Failed to generate new id");
-                }
-            }
-        }
-        if store && !preserve_present_file {
-            config.store();
         }
         config
     }
@@ -867,11 +831,8 @@ impl Config {
             config.password =
                 keep_encrypted_storage_if_plaintext_unchanged(&config.password, &stored.password);
         }
-        let (stored_id, encrypted, _) =
-            decrypt_str_or_original(&config.enc_id, PASSWORD_ENC_VERSION);
-        if !encrypted || stored_id != config.id {
-            config.enc_id =
-                encrypt_str_or_original(&config.id, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
+        if config.id.is_empty() {
+            config.enc_id.clear();
         }
         config.id = "".to_owned();
         Config::store_(&config, "");
@@ -887,7 +848,12 @@ impl Config {
     }
 
     pub fn is_empty(&self) -> bool {
-        (self.id.is_empty() && self.enc_id.is_empty()) || self.key_pair.0.is_empty()
+        self.id.is_empty()
+            && self.enc_id.is_empty()
+            && self.key_pair.0.is_empty()
+            && self.password.is_empty()
+            && self.password_prs.is_empty()
+            && self.salt.is_empty()
     }
 
     /// Get the user's home directory for configuration purposes.
@@ -1097,15 +1063,6 @@ impl Config {
         return RENDEZVOUS_SERVERS.iter().map(|x| x.to_string()).collect();
     }
 
-    pub fn set_id(id: &str) {
-        let mut config = CONFIG.write().unwrap();
-        if id == config.id {
-            return;
-        }
-        config.id = id.into();
-        config.store();
-    }
-
     pub fn set_nat_type(nat_type: i32) {
         let mut config = CONFIG2.write().unwrap();
         if nat_type == config.nat_type {
@@ -1130,58 +1087,6 @@ impl Config {
 
     pub fn get_serial() -> i32 {
         std::cmp::max(CONFIG2.read().unwrap().serial, SERIAL)
-    }
-
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    fn gen_id() -> Option<String> {
-        Self::get_auto_id()
-    }
-
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn gen_id() -> Option<String> {
-        let hostname_as_id = BUILTIN_SETTINGS
-            .read()
-            .unwrap()
-            .get(keys::OPTION_ALLOW_HOSTNAME_AS_ID)
-            .map(|v| option2bool(keys::OPTION_ALLOW_HOSTNAME_AS_ID, v))
-            .unwrap_or(false);
-        if hostname_as_id {
-            match whoami::fallible::hostname() {
-                Ok(h) => Some(h.replace(" ", "-")),
-                Err(e) => {
-                    log::warn!("Failed to get hostname, \"{}\", fallback to auto id", e);
-                    Self::get_auto_id()
-                }
-            }
-        } else {
-            Self::get_auto_id()
-        }
-    }
-
-    fn get_auto_id() -> Option<String> {
-        #[cfg(any(target_os = "android", target_os = "ios"))]
-        {
-            return Some(
-                rand::thread_rng()
-                    .gen_range(1_000_000_000..2_000_000_000)
-                    .to_string(),
-            );
-        }
-
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        {
-            let mut id = 0u32;
-            if let Ok(Some(ma)) = mac_address::get_mac_address() {
-                for x in &ma.bytes()[2..] {
-                    id = (id << 8) | (*x as u32);
-                }
-                id &= 0x1FFFFFFF;
-                log::info!("Generated id {}", id);
-                Some(id.to_string())
-            } else {
-                None
-            }
-        }
     }
 
     pub fn get_auto_password(length: usize) -> String {
@@ -1261,24 +1166,8 @@ impl Config {
             .unwrap_or(false)
     }
 
-    pub fn is_disable_change_id() -> bool {
-        BUILTIN_SETTINGS
-            .read()
-            .unwrap()
-            .get(keys::OPTION_DISABLE_CHANGE_ID)
-            .map(|v| v == "Y")
-            .unwrap_or(false)
-    }
-
     pub fn get_id() -> String {
-        let mut id = CONFIG.read().unwrap().id.clone();
-        if id.is_empty() {
-            if let Some(tmp) = Config::gen_id() {
-                id = tmp;
-                Config::set_id(&id);
-            }
-        }
-        id
+        CONFIG.read().unwrap().id.clone()
     }
 
     pub fn get_id_or(b: String) -> String {
@@ -1355,15 +1244,6 @@ impl Config {
         }
     }
 
-    pub fn update_id() {
-        // to-do: how about if one ip register a lot of ids?
-        let id = Self::get_id();
-        let mut rng = rand::thread_rng();
-        let new_id = rng.gen_range(1_000_000_000..2_000_000_000).to_string();
-        Config::set_id(&new_id);
-        log::info!("id updated from {} to {}", id, new_id);
-    }
-
     /// Sets the local permanent password.
     ///
     /// Returns `true` when the password is accepted or already matches the effective
@@ -1428,9 +1308,7 @@ impl Config {
 
     /// Returns the locally persisted permanent password storage and salt (NOT the hard/preset one).
     ///
-    /// This function is side-effect free:
-    /// - It does NOT call `get_salt()` (which may auto-generate salt).
-    /// - It returns a consistent snapshot under a single lock.
+    /// This function is side-effect free and returns a consistent snapshot under a single lock.
     pub fn get_local_permanent_password_storage_and_salt() -> (String, String) {
         let config = CONFIG.read().unwrap();
         (config.password.clone(), config.salt.clone())
@@ -1588,14 +1466,7 @@ impl Config {
     }
 
     pub fn get_salt() -> String {
-        let config = CONFIG.read().unwrap();
-        let mut salt = config.salt.clone();
-        if salt.is_empty() {
-            drop(config);
-            salt = Config::get_auto_password(DEFAULT_SALT_LEN);
-            Config::set_salt(&salt);
-        }
-        salt
+        CONFIG.read().unwrap().salt.clone()
     }
 
     pub fn set_socks(socks: Option<Socks5Server>) {
@@ -1722,8 +1593,14 @@ impl Config {
         return CONFIG.read().unwrap().clone();
     }
 
-    pub fn set(cfg: Config) -> bool {
+    pub fn ensure_loaded() {
+        drop(CONFIG.read().unwrap());
+    }
+
+    pub fn set(mut cfg: Config) -> bool {
         let mut lock = CONFIG.write().unwrap();
+        cfg.id = lock.id.clone();
+        cfg.enc_id = lock.enc_id.clone();
         if *lock == cfg {
             return false;
         }
@@ -2999,11 +2876,9 @@ pub mod keys {
     pub const OPTION_ONE_WAY_FILE_TRANSFER: &str = "one-way-file-transfer";
     pub const OPTION_ALLOW_HTTPS_21114: &str = "allow-https-21114";
     pub const OPTION_USE_RAW_TCP_FOR_API: &str = "use-raw-tcp-for-api";
-    pub const OPTION_ALLOW_HOSTNAME_AS_ID: &str = "allow-hostname-as-id";
     pub const OPTION_HIDE_POWERED_BY_ME: &str = "hide-powered-by-me";
     pub const OPTION_MAIN_WINDOW_ALWAYS_ON_TOP: &str = "main-window-always-on-top";
     pub const OPTION_DISABLE_CHANGE_PERMANENT_PASSWORD: &str = "disable-change-permanent-password";
-    pub const OPTION_DISABLE_CHANGE_ID: &str = "disable-change-id";
 
     // flutter local options
     pub const OPTION_FLUTTER_REMOTE_MENUBAR_STATE: &str = "remoteMenubarState";
@@ -3250,13 +3125,11 @@ pub mod keys {
         OPTION_ALLOW_DEEP_LINK_SERVER_SETTINGS,
         OPTION_ONE_WAY_FILE_TRANSFER,
         OPTION_ALLOW_HTTPS_21114,
-        OPTION_ALLOW_HOSTNAME_AS_ID,
         OPTION_REGISTER_DEVICE,
         OPTION_HIDE_POWERED_BY_ME,
         OPTION_MAIN_WINDOW_ALWAYS_ON_TOP,
         OPTION_FILE_TRANSFER_MAX_FILES,
         OPTION_DISABLE_CHANGE_PERMANENT_PASSWORD,
-        OPTION_DISABLE_CHANGE_ID,
         OPTION_USE_RAW_TCP_FOR_API,
         OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW,
         OPTION_ALLOW_COMMAND_LINE_SETTINGS_WHEN_SETTINGS_DISABLED,
@@ -3678,6 +3551,75 @@ mod tests {
         });
     }
 
+    #[test]
+    fn test_get_id_is_side_effect_free() {
+        let mut config = Config::default();
+        config.id.clear();
+        config.enc_id.clear();
+
+        with_config_and_hard_settings(config, HashMap::new(), || {
+            assert_eq!(Config::get_id(), "");
+            assert!(Config::get().id.is_empty());
+        });
+    }
+
+    #[test]
+    fn test_load_does_not_generate_id_for_empty_config() {
+        let _lock = CONFIG_STATE_TEST_LOCK.lock().unwrap();
+        let file = Config::file_("");
+        let _file_guard = ConfigFileRestoreGuard::new(file.clone());
+        fs::remove_file(&file).ok();
+
+        let loaded = Config::load();
+
+        assert!(loaded.id.is_empty());
+        assert!(loaded.enc_id.is_empty());
+        assert!(
+            !file.exists(),
+            "loading a fresh config must not store a generated ID"
+        );
+    }
+
+    #[test]
+    fn test_store_clears_empty_id_storage() {
+        let _lock = CONFIG_STATE_TEST_LOCK.lock().unwrap();
+        let file = Config::file_("");
+        let _file_guard = ConfigFileRestoreGuard::new(file);
+        let mut cfg = Config::default();
+        cfg.enc_id = encrypt_str_or_original("123456789", PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
+
+        cfg.store();
+
+        let raw = Config::load_::<Config>("");
+        assert!(raw.id.is_empty());
+        assert!(raw.enc_id.is_empty());
+    }
+
+    #[test]
+    fn test_get_salt_is_side_effect_free() {
+        with_config_and_hard_settings(Config::default(), HashMap::new(), || {
+            assert_eq!(Config::get_salt(), "");
+            assert!(Config::get().salt.is_empty());
+        });
+    }
+
+    #[test]
+    fn test_load_reads_legacy_plaintext_id_without_storing() {
+        let _lock = CONFIG_STATE_TEST_LOCK.lock().unwrap();
+        let file = Config::file_("");
+        let _file_guard = ConfigFileRestoreGuard::new(file);
+        let mut raw = Config::default();
+        raw.id = "123456789".to_owned();
+        Config::store_(&raw, "");
+
+        let loaded = Config::load();
+
+        assert_eq!(loaded.id, "123456789");
+        let stored = Config::load_::<Config>("");
+        assert_eq!(stored.id, "123456789");
+        assert!(stored.enc_id.is_empty());
+    }
+
     fn unique_tmp_dir(tag: &str) -> PathBuf {
         use std::sync::atomic::{AtomicU64, Ordering};
         static SEQ: AtomicU64 = AtomicU64::new(0);
@@ -3794,7 +3736,6 @@ mod tests {
         let invalid_storage = PERMANENT_PASSWORD_ENC_VERSION.to_owned()
             + &base64::encode(invalid_payload, base64::Variant::Original);
         cfg.password = invalid_storage.clone();
-        cfg.id = "123456789".to_owned();
 
         with_config_and_hard_settings(Config::default(), HashMap::new(), || {
             assert!(Config::set(cfg));
@@ -3802,27 +3743,31 @@ mod tests {
             let updated = Config::get();
             assert_eq!(updated.password, invalid_storage);
             assert!(updated.salt.is_empty());
-            assert_eq!(updated.id, "123456789");
+            assert!(updated.id.is_empty());
         });
     }
 
     #[test]
-    fn test_store_keeps_existing_enc_id_when_id_is_unchanged() {
+    fn test_store_preserves_existing_enc_id() {
+        let _lock = CONFIG_STATE_TEST_LOCK.lock().unwrap();
+        let _file_guard = ConfigFileRestoreGuard::new(Config::file_(""));
         let mut cfg = Config::default();
         cfg.id = "123456789".to_owned();
         cfg.enc_id = encrypt_str_or_original(&cfg.id, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
         let original_enc_id = cfg.enc_id.clone();
 
-        with_config_and_hard_settings(Config::default(), HashMap::new(), || {
-            assert!(Config::set(cfg));
+        cfg.store();
 
-            assert_eq!(Config::load().enc_id, original_enc_id);
-            assert_eq!(Config::get().id, "123456789");
-        });
+        let raw = Config::load_::<Config>("");
+        assert!(raw.id.is_empty());
+        assert_eq!(raw.enc_id, original_enc_id);
+        assert_eq!(Config::load().id, "123456789");
     }
 
     #[test]
-    fn test_store_rewrites_enc_id_when_id_changes() {
+    fn test_store_does_not_rewrite_existing_enc_id() {
+        let _lock = CONFIG_STATE_TEST_LOCK.lock().unwrap();
+        let _file_guard = ConfigFileRestoreGuard::new(Config::file_(""));
         let original_id = "123456789";
         let updated_id = "987654321";
         let mut cfg = Config::default();
@@ -3831,15 +3776,37 @@ mod tests {
             encrypt_str_or_original(original_id, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
         cfg.enc_id = original_enc_id.clone();
 
-        with_config_and_hard_settings(Config::default(), HashMap::new(), || {
-            assert!(Config::set(cfg));
+        cfg.store();
 
-            let stored = Config::load().enc_id;
-            let (stored_id, encrypted, _) = decrypt_str_or_original(&stored, PASSWORD_ENC_VERSION);
-            assert_ne!(stored, original_enc_id);
-            assert!(encrypted);
-            assert_eq!(stored_id, updated_id);
-            assert_eq!(Config::get().id, updated_id);
+        let stored = Config::load_::<Config>("").enc_id;
+        let (stored_id, encrypted, _) = decrypt_str_or_original(&stored, PASSWORD_ENC_VERSION);
+        assert_eq!(stored, original_enc_id);
+        assert!(encrypted);
+        assert_eq!(stored_id, original_id);
+        assert_eq!(Config::load().id, original_id);
+    }
+
+    #[test]
+    fn test_set_preserves_existing_id_fields() {
+        let current_id = "123456789";
+        let current_enc_id =
+            encrypt_str_or_original(current_id, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
+        let mut current = Config::default();
+        current.id = current_id.to_owned();
+        current.enc_id = current_enc_id.clone();
+
+        let mut next = Config::default();
+        next.id = "987654321".to_owned();
+        next.enc_id = encrypt_str_or_original(&next.id, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
+        next.password = "legacy-secret".to_owned();
+
+        with_config_and_hard_settings(current, HashMap::new(), || {
+            assert!(Config::set(next));
+
+            let updated = Config::get();
+            assert_eq!(updated.id, current_id);
+            assert_eq!(updated.enc_id, current_enc_id);
+            assert_eq!(updated.password, "legacy-secret");
         });
     }
 

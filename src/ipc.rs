@@ -8,7 +8,6 @@ use crate::{
     common::{is_server, is_service_owned_server_process},
     privacy_mode,
     privacy_mode::PrivacyModeState,
-    ui_interface::{get_local_option, set_local_option},
 };
 use bytes::Bytes;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -508,6 +507,9 @@ pub enum Data {
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn start(postfix: &str) -> ResultType<()> {
+    if postfix.is_empty() {
+        Config::ensure_loaded();
+    }
     let mut incoming = new_listener(postfix).await?;
     loop {
         if let Some(result) = incoming.next().await {
@@ -2141,13 +2143,6 @@ async fn set_service_owned_share_rdp_with_ack(enable: bool) -> ResultType<bool> 
 
 pub fn get_id() -> String {
     if let Ok(Some(v)) = get_config("id") {
-        // update salt also, so that next time reinstallation not causing first-time auto-login failure
-        if let Ok(Some(v2)) = get_config("salt") {
-            Config::set_salt(&v2);
-        }
-        if v != Config::get_id() {
-            Config::set_id(&v);
-        }
         v
     } else {
         Config::get_id()

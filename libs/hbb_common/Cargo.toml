@@ -75,7 +75,6 @@ async-recursion = "1.1"
 libloading = "0.8"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-mac_address = "1.1"
 default_net = { git = "https://github.com/rustdesk-org/default_net" }
 machine-uid = { git = "https://github.com/rustdesk-org/machine-uid" }
 

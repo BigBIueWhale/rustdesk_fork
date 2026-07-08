@@ -5,6 +5,18 @@ All notable changes to the hardened fork, newest first. Each entry's heading is 
 truth for the exact code a release contains is the **commit** it was built from, linked in the GitHub
 release notes.
 
+## 1.4.7-hardened.3 — 2026-07-08
+
+### Remote control of RustDesk itself
+- Removed the separate connection-manager local gate that could still block remote interaction with
+  RustDesk's own CM window.
+- Kept `allow-remote-config-modification=Y` as the single policy: the authenticated owner can manage
+  RustDesk itself during a session, and the controlled-side config remains funnel-pinned rather than
+  operator-toggleable.
+
+### Verification
+- Added a gate that rejects any return of the hidden `allow-remote-cm-modification` path.
+
 ## 1.4.7-hardened.2 — 2026-07-08
 
 ### Linux service sandbox

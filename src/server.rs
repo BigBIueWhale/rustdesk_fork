@@ -8,8 +8,6 @@ use std::{
 use bytes::Bytes;
 
 pub use connection::*;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-use hbb_common::config::Config2;
 use hbb_common::{
     allow_err,
     anyhow::Context,
@@ -762,23 +760,7 @@ pub async fn start_server(is_server: bool) {
         crate::direct_service::start_direct_only(None).await;
     } else {
         match crate::ipc::connect(1000, "").await {
-            Ok(mut conn) => {
-                if conn.send(&Data::SyncConfig(None)).await.is_ok() {
-                    if let Ok(Some(data)) = conn.next_timeout(1000).await {
-                        match data {
-                            Data::SyncConfig(Some(configs)) => {
-                                let (config, config2) = *configs;
-                                if Config::set(config) {
-                                    log::info!("config synced");
-                                }
-                                if Config2::set(config2) {
-                                    log::info!("config2 synced");
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
+            Ok(_) => {
                 #[cfg(feature = "hwcodec")]
                 #[cfg(any(target_os = "windows", target_os = "linux"))]
                 crate::ipc::client_get_hwcodec_config_thread(0);
@@ -789,12 +771,12 @@ pub async fn start_server(is_server: bool) {
                 // the installed-service privilege model). The inherited `else { start_server(true) }`
                 // was a SECOND, non-installed-service way to run the controlled side (the portable /
                 // quick-support / run-from-terminal twin R-X10 excises). The GUI path now just retries
-                // the same-user main IPC read in case a controlled `--server` comes up later; the
+                // the same-user main IPC connection in case a controlled `--server` comes up later; the
                 // `--no-server` flag + its vestigial `no_server` param are removed too (R-X10). The
                 // standalone `--service`/`--server` entries (R-D8) are unaffected — `is_server == true`
                 // above.
                 log::info!(
-                    "no controlled --server main IPC to read config from yet (GUI viewer-only, R-X10): {err:?}"
+                    "no controlled --server main IPC to connect to yet (GUI viewer-only, R-X10): {err:?}"
                 );
                 hbb_common::sleep(1.0).await;
                 std::thread::spawn(|| start_server(false));

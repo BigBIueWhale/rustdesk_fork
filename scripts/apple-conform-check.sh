@@ -162,8 +162,14 @@ echo "$service_dispatch_block" | grep -q 'service_channel_admits_message(&data)'
 if echo "$service_dispatch_block" | grep -q 'Data::SyncConfig'; then
   r_s11b="$r_s11b service-loop-still-admits-syncconfig"
 fi
+if grep -q 'SyncConfig' "$REPO/src/ipc.rs"; then
+  r_s11b="$r_s11b whole-config-ipc-variant-present"
+fi
 if awk '/^async fn handle\(/,/^}/' "$REPO/src/ipc.rs" | grep -qE 'Data::SyncConfig\(Some\([^)]*\)\)[[:space:]]*=>'; then
   r_s11b="$r_s11b whole-config-write-handler-present"
+fi
+if grep -q 'SyncConfig' "$REPO/src/server.rs"; then
+  r_s11b="$r_s11b server-whole-config-import-present"
 fi
 if awk '/probe_existing_listener/,/^}/' "$REPO/src/ipc/fs.rs" | grep -q 'Data::SyncConfig'; then
   r_s11b="$r_s11b service-probe-reads-config"
@@ -179,7 +185,7 @@ if [ -n "$r_s11b" ]; then
   echo "  FAIL R-S11b-1 macOS _service whole-config bus removal:$r_s11b"
   rc=1
 else
-  note "ok  R-S11b-1 _service admits only Data::Test; service liveness does not read or write Config/Config2"
+  note "ok  R-S11b-1 _service admits only Data::Test; whole-config IPC and imports are absent"
 fi
 
 echo "== (2b-ii) R-S11b-2a/R-S11b-3a macOS service-owned password/options are not ordinary IPC =="
@@ -204,14 +210,15 @@ fi
 if [ "$(echo "$set_options_fn" | grep -c 'Config::set_options(value)')" -ne 1 ]; then
   r_s11b2="$r_s11b2 options-caller-persistence-not-ack-only"
 fi
-grep -q 'Rejected whole-config sync from service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 whole-config-sync-not-denied"
+grep -q 'SyncConfig' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 whole-config-ipc-variant-present"
+grep -q 'SyncConfig' "$REPO/src/server.rs" && r_s11b2="$r_s11b2 server-whole-config-import-present"
 grep -q 'Rejected permanent password storage sync from service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 storage-sync-not-denied"
 grep -q 'Rejected permanent password salt sync from service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 standalone-salt-sync-not-denied"
 if [ -n "$r_s11b2" ]; then
   echo "  FAIL R-S11b-2a/R-S11b-3a macOS service-owned IPC closure:$r_s11b2"
   rc=1
 else
-  note "ok  R-S11b-2a/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password config key and typed user-owned password/options writes + whole-config/storage/salt sync are denied by source policy"
+  note "ok  R-S11b-2a/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password config key and typed user-owned password/options writes are denied by source policy; whole-config IPC is absent; storage/salt sync is denied"
 fi
 
 echo "== (2b-iii) R-S11c-4a macOS CM pre-login filesystem IPC rejected =="

@@ -107,21 +107,22 @@ echo "== (3b-iv) trust-anchor get_key ignores a stored override (R-A4/R-X4) =="
 
 # (3b-iii) R-S11 / Appendix C #15: the MAIN IPC channel (UI⇄service, 0o0600 same-uid) is a config-
 # integrity boundary. main_channel_admits_state_mutation is a POSITIVE allowlist over mutating
-# arms, rejecting: (a) the whole-config SyncConfig(Some) push (Config::set overwrites the ENTIRE config
-# with NO is_option_can_save/pin check); (b) the Data::Config STRUCT-FIELD writes that bypass
+# arms, rejecting: (a) the Data::Config STRUCT-FIELD writes that bypass
 # is_option_can_save — `id` (+ set_key_confirmed(false)) and `salt` (set_salt's hashed-pw guard is a
 # no-op — the PRS is the host-key-salted Argon2id hash, not derived from this salt field), and the
-# old `permanent-password` key — which have NO legit main-channel writer; (c) Data::Socks(Some)
+# old `permanent-password` key — which have NO legit main-channel writer; (b) Data::Socks(Some)
 # (set_socks, the proxy/local-MITM primitive an Options-key allowlist would miss). The remaining writes
 # are authority-scoped: voice-call-input always, typed user-owned permanent password/options only for user-owned servers.
 # Service-owned servers reject typed user-owned password/options writes and storage/salt sync (R-S11b-2a/R-S11b-3a). Behavior-tested AND the
 # loop routes through the allowlist before handle() (R-A6 reachability), AND the allowlist is asserted
 # POSITIVE (not a one-arm denylist that would let id/salt/Socks through — the exact "missed sibling"
-# the 5th sweep found).
+# the 5th sweep found). Whole-config IPC is not a gated variant: SyncConfig is absent.
 echo "== (3b-iii) IPC main-channel state-mutation positive allowlist (R-S11) =="
-"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_channel_rejects_whole_config_sync_write --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_channel_rejects_untyped_state_mutations --color never
 r_s11=
 grep -q 'if !main_channel_admits_state_mutation(' src/ipc.rs                            || r_s11="$r_s11 loop-not-wired"
+grep -q 'SyncConfig' src/ipc.rs && r_s11="$r_s11 whole-config-ipc-variant-present"
+grep -q 'SyncConfig' src/server.rs && r_s11="$r_s11 server-whole-config-import-present"
 grep -q 'Data::SetUserOwnedPermanentPassword(_) => {' src/ipc.rs                    || r_s11="$r_s11 typed-user-owned-password-arm-missing"
 grep -A3 'Data::SetUserOwnedPermanentPassword(_) => {' src/ipc.rs | grep -q 'authority.allows_main_channel_user_owned_password_write()' || r_s11="$r_s11 typed-user-owned-password-not-authority-gated"
 grep -q 'SetUserOwnedPermanentPasswordResult(bool)' src/ipc.rs                          || r_s11="$r_s11 typed-user-owned-password-result-missing"
@@ -139,16 +140,16 @@ grep -q 'Data::Socks(Some(_)) => false' src/ipc.rs                              
 # allowlist MUST also guard the Windows main pipe (postfix == ""). Because the linux/macos gate logs
 # stream.peer_uid() (unix-only, SO_PEERCRED), Windows needs its OWN cfg(windows) gate calling the same
 # allowlist fn — so there must be >=2 gate call sites and the fn must be cfg'd for windows. Without this
-# a same-session/same-exe process could Data::SyncConfig(Some)/Config(id|salt) the host key_pair on the
+# a same-session/same-exe process could Config(id|salt) the host key_pair on the
 # Windows artifact (the linux-only gate + the linux-cfg unit test are blind to it).
 [ "$(grep -c 'if !main_channel_admits_state_mutation(' src/ipc.rs)" -ge 2 ]            || r_s11="$r_s11 windows-main-pipe-gate-missing"
 grep -B1 'pub(crate) fn main_channel_admits_state_mutation' src/ipc.rs | grep -q 'windows' || r_s11="$r_s11 allowlist-fn-not-cfg-windows"
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel state-mutation allowlist:$r_s11"; rc=1; else
-  echo "  ok  R-S11/R-S11b main-channel state-mutation POSITIVE allowlist (SyncConfig+Config id/salt/permanent-password+Socks rejected; typed user-owned password/options are user-owned only; gate binds Linux/macOS AND the Windows main pipe)"; fi
+  echo "  ok  R-S11/R-S11b main-channel state-mutation POSITIVE allowlist (whole-config IPC absent; Config id/salt/permanent-password+Socks rejected; typed user-owned password/options are user-owned only; gate binds Linux/macOS AND the Windows main pipe)"; fi
 
 # (3b-iii-b) R-S11b-1: Linux/macOS `_service` is a privileged service-control channel, not a
 # root<->user Config/Config2 bus. The world-connectable service socket may keep only narrow liveness
-# traffic here; it MUST NOT accept/return SyncConfig, and stale-socket probing must not read config.
+# traffic here; it MUST NOT accept/return whole config, and stale-socket probing must not read config.
 echo "== (3b-iii-b) IPC _service has no whole-config bus (R-S11b-1) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::service_channel_rejects_config_bus --color never
 r_s11b=
@@ -159,8 +160,14 @@ echo "$service_dispatch_block" | grep -q 'service_channel_admits_message(&data)'
 if echo "$service_dispatch_block" | grep -q 'Data::SyncConfig'; then
   r_s11b="$r_s11b service-loop-still-admits-syncconfig"
 fi
+if grep -q 'SyncConfig' src/ipc.rs; then
+  r_s11b="$r_s11b whole-config-ipc-variant-present"
+fi
 if awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -qE 'Data::SyncConfig\(Some\([^)]*\)\)[[:space:]]*=>'; then
   r_s11b="$r_s11b whole-config-write-handler-present"
+fi
+if grep -q 'SyncConfig' src/server.rs; then
+  r_s11b="$r_s11b server-whole-config-import-present"
 fi
 if awk '/probe_existing_listener/,/^}/' src/ipc/fs.rs | grep -q 'Data::SyncConfig'; then
   r_s11b="$r_s11b service-probe-reads-config"
@@ -173,7 +180,7 @@ if grep -qE 'wait_initial_config_sync|sync_and_watch_config_dir|CONFIG_SYNC_(INT
   r_s11b="$r_s11b service-config-sync-loop-present"
 fi
 if [ -n "$r_s11b" ]; then echo "  FAIL R-S11b-1 _service whole-config bus removal:$r_s11b"; rc=1; else
-  echo "  ok  R-S11b-1 _service admits only Data::Test; stale-socket probe uses Test; root/user whole-config sync loop and SyncConfig(Some) write handler are absent"; fi
+  echo "  ok  R-S11b-1 _service admits only Data::Test; stale-socket probe uses Test; root/user whole-config sync loop, SyncConfig IPC variant, and whole-config import are absent"; fi
 
 # (3b-iii-c) R-S11b-2a/R-S11c-1a: service-owned unattended passwords are not ordinary config IPC.
 # Service launch paths mark their --server child; the receiver uses that marker to deny
@@ -199,8 +206,8 @@ grep -q 'send_config("permanent-password"' src/ipc.rs && r_s11b2="$r_s11b2 passw
 ipc_main_authority=$(awk '/impl MainIpcAuthority/,/^}/' src/ipc.rs)
 echo "$ipc_main_authority" | grep -B1 'crate::platform::is_root()' | grep -q 'target_os = "windows"' || r_s11b2="$r_s11b2 windows-system-fallback-not-windows-cfg"
 awk '/pub fn is_root\(\)/,/^}/' src/platform/windows.rs | grep -q 'is_local_system'    || r_s11b2="$r_s11b2 windows-root-fallback-not-local-system"
-grep -q 'allows_main_channel_whole_config_sync' src/ipc.rs                           || r_s11b2="$r_s11b2 whole-config-sync-policy-missing"
-grep -q 'Rejected whole-config sync from service-owned server' src/ipc.rs             || r_s11b2="$r_s11b2 whole-config-sync-not-denied"
+grep -q 'SyncConfig' src/ipc.rs && r_s11b2="$r_s11b2 whole-config-ipc-variant-present"
+grep -q 'SyncConfig' src/server.rs && r_s11b2="$r_s11b2 server-whole-config-import-present"
 grep -q 'allows_main_channel_password_storage_sync' src/ipc.rs                        || r_s11b2="$r_s11b2 storage-sync-policy-missing"
 grep -q 'Rejected permanent password storage sync from service-owned server' src/ipc.rs || r_s11b2="$r_s11b2 handler-storage-sync-not-denied"
 grep -q 'Rejected permanent password salt sync from service-owned server' src/ipc.rs   || r_s11b2="$r_s11b2 handler-standalone-salt-sync-not-denied"
@@ -214,7 +221,7 @@ if echo "$user_scope_fn" | grep -q '"--password"'; then
   r_s11b2="$r_s11b2 password-still-root-routes-to-user-main-ipc"
 fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 service-owned password IPC closure:$r_s11b2"; rc=1; else
-  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config key + typed user-owned password write + whole-config/storage/salt sync are denied for service-owned receivers; --password remains typed user-owned IPC"; fi
+  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config key + typed user-owned password write are denied for service-owned receivers; whole-config IPC is absent; storage/salt sync is denied; --password remains typed user-owned IPC"; fi
 
 # (3b-iii-d) R-S11b-3a: service-owned machine policy is not an ordinary Data::Options write.
 # Options writes use a typed daemon ACK/NACK; IPC callers persist only after an accepted ACK and never
@@ -412,7 +419,7 @@ hb_cfg_writes=$(awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -cE '\bConfig:
 if [ "$hb_cfg_writes" != "5" ]; then
   echo "  FAIL R-S11/R-A6: handle() now has $hb_cfg_writes is_option_can_save-bypassing config-writes (expected 5). A config-write was added/removed — ensure any NEW one's Data variant is DENIED by main_channel_admits_state_mutation (never the _ => true default), then update this count."; rc=1
 else
-  echo "  ok  R-S11/R-A6 the 5 is_option_can_save-bypassing config-writes in handle() are all gated by main_channel_admits_state_mutation (Socks(Some)/Config id+salt/permanent-password denied; typed permanent-password user-owned only; whole-config SyncConfig(Some) write arm absent) — none reaches Config via the _ => true default"
+  echo "  ok  R-S11/R-A6 the 5 is_option_can_save-bypassing config-writes in handle() are all gated by main_channel_admits_state_mutation (Socks(Some)/Config id+salt/permanent-password denied; typed permanent-password user-owned only; whole-config IPC variant absent) — none reaches Config via the _ => true default"
 fi
 
 # R-D8: the --password CLI remains a typed user-owned headless automation path, but path/root checks are not

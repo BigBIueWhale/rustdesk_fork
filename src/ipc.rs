@@ -18,7 +18,7 @@ use hbb_common::anyhow;
 use hbb_common::{
     allow_err, bail, bytes,
     bytes_codec::BytesCodec,
-    config::{self, Config, Config2},
+    config::{self, Config},
     futures::StreamExt as _,
     futures_util::sink::SinkExt,
     log, timeout,
@@ -350,7 +350,6 @@ pub enum Data {
         result: Option<CmConnectionAuthority>,
     },
     Test,
-    SyncConfig(Option<Box<(Config, Config2)>>),
     #[cfg(target_os = "windows")]
     ClipboardFile(ClipboardFile),
     ClipboardFileEnabled(bool),
@@ -521,7 +520,7 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                         continue;
                                     }
                                     // R-S11 / R-S11b / Appendix C #15/#25: the main channel is a
-                                    // state-mutation boundary. Reject whole-config writes and service-owned
+                                    // state-mutation boundary. Reject ordinary service-owned
                                     // policy/credential mutations before the handler reaches Config setters.
                                     #[cfg(any(target_os = "linux", target_os = "macos"))]
                                     if !main_channel_admits_state_mutation(
@@ -543,8 +542,8 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                     // R-S11: the SAME per-arm state-mutation allowlist binds the WINDOWS
                                     // main pipe (postfix == ""; the only postfix `start()` is ever called
                                     // with on Windows). Windows has no `_service` channel and no
-                                    // SO_PEERCRED peer_uid, but the same Data variants (whole-config
-                                    // SyncConfig(Some), id/salt struct-field writes, Socks(Some) proxy)
+                                    // SO_PEERCRED peer_uid, but the same Data variants (id/salt
+                                    // struct-field writes, Socks(Some) proxy)
                                     // MUST be rejected here so that even a same-session, same-executable
                                     // process (already the only peer admitted by
                                     // authorize_windows_main_ipc_connection) cannot re-pin the host
@@ -742,10 +741,6 @@ impl MainIpcAuthority {
     fn allows_main_channel_password_storage_sync(self) -> bool {
         matches!(self, Self::UserOwned)
     }
-
-    fn allows_main_channel_whole_config_sync(self) -> bool {
-        matches!(self, Self::UserOwned)
-    }
 }
 
 #[inline]
@@ -784,24 +779,9 @@ fn current_process_allows_main_channel_permanent_password_storage_sync() -> bool
     }
 }
 
-#[inline]
-fn current_process_allows_main_channel_whole_config_sync() -> bool {
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-    {
-        MainIpcAuthority::for_current_process().allows_main_channel_whole_config_sync()
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    {
-        true
-    }
-}
-
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) fn main_channel_admits_state_mutation(data: &Data, authority: MainIpcAuthority) -> bool {
     match data {
-        // Whole-config push: no IPC channel may write a whole Config/Config2 object; on the main
-        // channel only the SyncConfig(None) read-request is.
-        Data::SyncConfig(Some(_)) => false,
         // Struct-field writes: allow only the remaining legitimate operator-owned keys.
         Data::Config((name, Some(_))) => match name.as_str() {
             "voice-call-input" => true,
@@ -1057,20 +1037,6 @@ async fn handle(data: Data, stream: &mut Connection) {
         }
         Data::Test => {
             allow_err!(stream.send(&Data::Test).await);
-        }
-        Data::SyncConfig(None) => {
-            if current_process_allows_main_channel_whole_config_sync() {
-                allow_err!(
-                    stream
-                        .send(&Data::SyncConfig(Some(
-                            (Config::get(), Config2::get()).into()
-                        )))
-                        .await
-                );
-            } else {
-                log::warn!("Rejected whole-config sync from service-owned server");
-                allow_err!(stream.send(&Data::SyncConfig(None)).await);
-            }
         }
         #[cfg(windows)]
         Data::SyncWinCpuUsage(None) => {
@@ -1910,27 +1876,17 @@ mod test {
         assert!(std::mem::size_of::<Data>() <= 120);
     }
 
-    // R-S11 / Appendix C #15: the MAIN-channel config-write allowlist MUST reject a whole-config
-    // SyncConfig(Some) push while admitting the SyncConfig(None) read-request + the per-key writes that
-    // legitimately stay. R-S11b adds that ordinary password and options writes are user-owned only;
-    // service-owned unattended credentials and machine policy are denied over ordinary config IPC.
+    // R-S11 / Appendix C #15: the MAIN-channel config-write allowlist MUST reject generic
+    // struct-field/proxy writes while admitting the per-key writes that legitimately stay. R-S11b adds
+    // that ordinary password and options writes are user-owned only; service-owned unattended
+    // credentials and machine policy are denied over ordinary config IPC.
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
-    fn main_channel_rejects_whole_config_sync_write() {
+    fn main_channel_rejects_untyped_state_mutations() {
         use std::collections::HashMap;
 
-        use hbb_common::config::{Config, Config2};
         let user_owned = MainIpcAuthority::UserOwned;
         let service_owned = MainIpcAuthority::ServiceOwned;
-        let write = Data::SyncConfig(Some(Box::new((Config::default(), Config2::default()))));
-        assert!(
-            !main_channel_admits_state_mutation(&write, user_owned),
-            "R-S11: a whole-config SyncConfig(Some) write MUST be rejected on the main channel"
-        );
-        assert!(main_channel_admits_state_mutation(
-            &Data::SyncConfig(None),
-            user_owned
-        ));
         assert!(main_channel_admits_state_mutation(
             &Data::Options(None),
             user_owned
@@ -1997,11 +1953,6 @@ mod test {
             !MainIpcAuthority::ServiceOwned.allows_main_channel_password_storage_sync(),
             "R-S11b-2: service-owned password storage/salt snapshots MUST NOT sync over ordinary IPC"
         );
-        assert!(MainIpcAuthority::UserOwned.allows_main_channel_whole_config_sync());
-        assert!(
-            !MainIpcAuthority::ServiceOwned.allows_main_channel_whole_config_sync(),
-            "R-S11b-2: service-owned Config/Config2 snapshots MUST NOT sync over ordinary IPC"
-        );
         assert!(
             main_channel_admits_state_mutation(&cfg("id", None), user_owned),
             "a Data::Config id READ (value=None) must be allowed"
@@ -2024,22 +1975,9 @@ mod test {
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
     fn service_channel_rejects_config_bus() {
-        use hbb_common::config::{Config, Config2};
-
         assert!(
             service_channel_admits_message(&Data::Test),
             "R-S11b-1: _service keeps only the narrow liveness ping"
-        );
-        assert!(
-            !service_channel_admits_message(&Data::SyncConfig(None)),
-            "R-S11b-1: _service must not return whole Config/Config2 as a liveness probe"
-        );
-        assert!(
-            !service_channel_admits_message(&Data::SyncConfig(Some(Box::new((
-                Config::default(),
-                Config2::default()
-            ))))),
-            "R-S11b-1: _service must not import whole Config/Config2 from a user process"
         );
         assert!(
             !service_channel_admits_message(&Data::Options(None)),

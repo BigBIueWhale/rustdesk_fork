@@ -2780,8 +2780,8 @@ fn is_option_can_save(
     v: &str,
 ) -> bool {
     // R-S16(c): pin the write funnel. A pinned policy key is never writable — by
-    // a local set, an IPC Options/SyncConfig write (R-S11), or a server-pushed
-    // config merge (R-X3) — so the persisted file cannot shadow or disable the
+    // a local set, an IPC Options write (R-S11), or a server-pushed config
+    // merge (R-X3) — so the persisted file cannot shadow or disable the
     // compile-time policy. The callers already drop-and-purge it from the file.
     // Pinned keys are Config server-settings keys only, so the LocalConfig /
     // DisplaySettings callers of this shared guard are unaffected (no collision).
@@ -3168,8 +3168,8 @@ pub mod keys {
     /// time — one auditable source of truth. `Config::get_option` returns these
     /// verbatim (R-S16(b)) and `is_option_can_save` rejects any write to them
     /// (R-S16(c)), so no key here can be defaulted-permissive or written back on
-    /// — by a local process, an IPC `Options`/`SyncConfig` write, or a
-    /// server-pushed config merge. Pins only `Config` server-settings keys; the
+    /// — by a local process, an IPC `Options` write, or a server-pushed config
+    /// merge. Pins only `Config` server-settings keys; the
     /// parallel `LocalConfig` viewer-UI map is untouched.
     ///
     /// UNCONDITIONAL: this table is the controlled-side security policy on every

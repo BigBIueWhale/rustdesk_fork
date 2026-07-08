@@ -156,7 +156,7 @@ fi
 echo "== (2b-i) R-S11b-1 macOS _service has no whole-config bus =="
 r_s11b=
 grep -q 'pub(crate) fn service_channel_admits_message' "$REPO/src/ipc.rs" || r_s11b="$r_s11b no-service-message-gate"
-grep -q 'matches!(data, Data::Test)' "$REPO/src/ipc.rs" || r_s11b="$r_s11b service-gate-not-test-only"
+grep -q 'Data::Test => true' "$REPO/src/ipc.rs" || r_s11b="$r_s11b service-gate-misses-test"
 service_dispatch_block=$(awk '/service_channel_admits_message\(&data\)/,/continue;/' "$REPO/src/ipc.rs")
 echo "$service_dispatch_block" | grep -q 'service_channel_admits_message(&data)' || r_s11b="$r_s11b service-loop-not-wired"
 if echo "$service_dispatch_block" | grep -q 'Data::SyncConfig'; then
@@ -185,7 +185,7 @@ if [ -n "$r_s11b" ]; then
   echo "  FAIL R-S11b-1 macOS _service whole-config bus removal:$r_s11b"
   rc=1
 else
-  note "ok  R-S11b-1 _service admits only Data::Test; whole-config IPC and imports are absent"
+  note "ok  R-S11b-1 macOS _service admits liveness only; whole-config IPC and imports are absent"
 fi
 
 echo "== (2b-ii) R-S11b-2a/R-S11b-3a macOS service-owned password/options are not ordinary IPC =="

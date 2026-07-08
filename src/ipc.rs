@@ -14,7 +14,7 @@ use bytes::Bytes;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use clipboard::ClipboardFile;
 #[cfg(target_os = "linux")]
-use hbb_common::anyhow;
+use hbb_common::anyhow::{self, anyhow};
 use hbb_common::{
     allow_err, bail, bytes,
     bytes_codec::BytesCodec,
@@ -335,6 +335,12 @@ pub enum Data {
     SetVoiceCallInput(String),
     SetUserOwnedPermanentPassword(String),
     SetUserOwnedPermanentPasswordResult(bool),
+    #[cfg(target_os = "linux")]
+    RequestServiceOwnedUnattendedPasswordChange(String),
+    #[cfg(target_os = "linux")]
+    CommitServiceOwnedUnattendedPasswordChange(String),
+    #[cfg(target_os = "linux")]
+    ServiceOwnedUnattendedPasswordChangeResult(bool),
     NatType(Option<i32>),
     RawMessage(Vec<u8>),
     #[cfg(target_os = "linux")]
@@ -508,7 +514,7 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                     #[cfg(any(target_os = "linux", target_os = "macos"))]
                                     if postfix == crate::POSTFIX_SERVICE {
                                         if service_channel_admits_message(&data) {
-                                            handle(data, &mut stream).await;
+                                            handle(data, &mut stream, IpcChannel::Service).await;
                                         } else {
                                             log::warn!(
                                                 "Rejected unauthorized data on protected _service IPC channel: postfix={}, data_kind={:?}, peer_uid={:?}",
@@ -529,6 +535,7 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                     if !main_channel_admits_state_mutation(
                                         &data,
                                         MainIpcAuthority::for_current_process(),
+                                        MainIpcPeerAuthority::for_stream(&stream),
                                     ) {
                                         log::warn!(
                                             "Rejected a state mutation on the main IPC channel (R-S11/R-S11b): data_kind={:?}, peer_uid={:?}",
@@ -555,6 +562,7 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                     if !main_channel_admits_state_mutation(
                                         &data,
                                         MainIpcAuthority::for_current_process(),
+                                        MainIpcPeerAuthority::for_windows_main_pipe(),
                                     ) {
                                         log::warn!(
                                             "Rejected a state mutation on the main IPC channel (R-S11/R-S11b): data_kind={:?}",
@@ -567,7 +575,7 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                         .await;
                                         continue;
                                     }
-                                    handle(data, &mut stream).await;
+                                    handle(data, &mut stream, IpcChannel::Main).await;
                                 }
                                 Ok(None) => {
                                     // `Ok(None)` means a complete frame arrived but did not
@@ -718,6 +726,35 @@ pub(crate) enum MainIpcAuthority {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MainIpcPeerAuthority {
+    Ordinary,
+    RootUnixPeer,
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+impl MainIpcPeerAuthority {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn for_stream(stream: &Connection) -> Self {
+        if stream.peer_uid() == Some(0) {
+            Self::RootUnixPeer
+        } else {
+            Self::Ordinary
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn for_windows_main_pipe() -> Self {
+        Self::Ordinary
+    }
+
+    #[cfg(target_os = "linux")]
+    fn allows_service_owned_unattended_password_commit(self) -> bool {
+        matches!(self, Self::RootUnixPeer)
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 impl MainIpcAuthority {
     fn for_current_process() -> Self {
         #[cfg(target_os = "windows")]
@@ -741,6 +778,11 @@ impl MainIpcAuthority {
 
     fn allows_main_channel_password_storage_sync(self) -> bool {
         matches!(self, Self::UserOwned)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn allows_service_owned_unattended_password_commit(self) -> bool {
+        matches!(self, Self::ServiceOwned)
     }
 }
 
@@ -780,13 +822,31 @@ fn current_process_allows_main_channel_permanent_password_storage_sync() -> bool
     }
 }
 
+#[cfg(target_os = "linux")]
+#[inline]
+fn current_process_allows_service_owned_unattended_password_commit(stream: &Connection) -> bool {
+    MainIpcAuthority::for_current_process().allows_service_owned_unattended_password_commit()
+        && MainIpcPeerAuthority::for_stream(stream).allows_service_owned_unattended_password_commit()
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-pub(crate) fn main_channel_admits_state_mutation(data: &Data, authority: MainIpcAuthority) -> bool {
+pub(crate) fn main_channel_admits_state_mutation(
+    data: &Data,
+    authority: MainIpcAuthority,
+    peer_authority: MainIpcPeerAuthority,
+) -> bool {
     match data {
         Data::SetVoiceCallInput(_) => true,
         Data::SetUserOwnedPermanentPassword(_) => {
             authority.allows_main_channel_user_owned_password_write()
         }
+        #[cfg(target_os = "linux")]
+        Data::CommitServiceOwnedUnattendedPasswordChange(_) => {
+            authority.allows_service_owned_unattended_password_commit()
+                && peer_authority.allows_service_owned_unattended_password_commit()
+        }
+        #[cfg(target_os = "linux")]
+        Data::RequestServiceOwnedUnattendedPasswordChange(_) => false,
         // Whole-options writes are ordinary user-owned configuration writes. A service-owned server
         // enforces machine policy and must not accept them over the generic main IPC config bus.
         Data::Options(Some(_)) => authority.allows_main_channel_options_write(),
@@ -803,6 +863,15 @@ async fn send_main_channel_mutation_rejection_ack(data: &Data, stream: &mut Conn
                     .await
             );
         }
+        #[cfg(target_os = "linux")]
+        Data::RequestServiceOwnedUnattendedPasswordChange(_)
+        | Data::CommitServiceOwnedUnattendedPasswordChange(_) => {
+            allow_err!(
+                stream
+                    .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(false))
+                    .await
+            );
+        }
         Data::Options(Some(_)) => {
             allow_err!(stream.send(&Data::OptionsSetResult(false)).await);
         }
@@ -812,10 +881,154 @@ async fn send_main_channel_mutation_rejection_ack(data: &Data, stream: &mut Conn
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) fn service_channel_admits_message(data: &Data) -> bool {
-    matches!(data, Data::Test)
+    match data {
+        Data::Test => true,
+        #[cfg(target_os = "linux")]
+        Data::RequestServiceOwnedUnattendedPasswordChange(_) => true,
+        _ => false,
+    }
 }
 
-async fn handle(data: Data, stream: &mut Connection) {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum IpcChannel {
+    Main,
+    Service,
+}
+
+#[cfg(target_os = "linux")]
+const SET_UNATTENDED_PASSWORD_POLKIT_ACTION: &str =
+    "com.carriez.RustDesk.set-unattended-password";
+
+#[cfg(target_os = "linux")]
+fn linux_proc_stat_start_time(pid: u32, stat: &str) -> ResultType<String> {
+    let Some((_, after_comm)) = stat.rsplit_once(") ") else {
+        bail!("Failed to parse /proc/{pid}/stat: missing command terminator");
+    };
+    let fields: Vec<_> = after_comm.split_whitespace().collect();
+    let Some(start_time) = fields.get(19) else {
+        bail!("Failed to parse /proc/{pid}/stat: missing start time");
+    };
+    Ok((*start_time).to_owned())
+}
+
+#[cfg(target_os = "linux")]
+fn linux_proc_start_time(pid: u32) -> ResultType<String> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat"))?;
+    linux_proc_stat_start_time(pid, &stat)
+}
+
+#[cfg(target_os = "linux")]
+fn linux_polkit_subject_for_peer(stream: &Connection) -> ResultType<String> {
+    let peer_pid = stream
+        .peer_pid()
+        .ok_or_else(|| anyhow!("Failed to resolve peer pid for service-owned password change"))?;
+    let peer_uid = stream
+        .peer_uid()
+        .ok_or_else(|| anyhow!("Failed to resolve peer uid for service-owned password change"))?;
+    let start_time = linux_proc_start_time(peer_pid)?;
+    Ok(format!("{peer_pid},{start_time},{peer_uid}"))
+}
+
+#[cfg(target_os = "linux")]
+fn linux_pkcheck_authorizes_service_owned_password_change(subject: String) -> bool {
+    let status = std::process::Command::new("/usr/bin/pkcheck")
+        .arg("--action-id")
+        .arg(SET_UNATTENDED_PASSWORD_POLKIT_ACTION)
+        .arg("--process")
+        .arg(&subject)
+        .arg("--allow-user-interaction")
+        .status();
+    match status {
+        Ok(status) if status.success() => true,
+        Ok(status) => {
+            log::warn!(
+                "Rejected service-owned unattended password change: polkit denied action={}, subject={}, status={}",
+                SET_UNATTENDED_PASSWORD_POLKIT_ACTION,
+                subject,
+                status
+            );
+            false
+        }
+        Err(err) => {
+            log::warn!(
+                "Rejected service-owned unattended password change: failed to run pkcheck for action={}, subject={}, err={}",
+                SET_UNATTENDED_PASSWORD_POLKIT_ACTION,
+                subject,
+                err
+            );
+            false
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+async fn linux_peer_is_authorized_for_service_owned_password_change(stream: &Connection) -> bool {
+    let subject = match linux_polkit_subject_for_peer(stream) {
+        Ok(subject) => subject,
+        Err(err) => {
+            log::warn!("Rejected service-owned unattended password change: {err}");
+            return false;
+        }
+    };
+    match tokio::task::spawn_blocking(move || {
+        linux_pkcheck_authorizes_service_owned_password_change(subject)
+    })
+    .await
+    {
+        Ok(authorized) => authorized,
+        Err(err) => {
+            log::warn!(
+                "Rejected service-owned unattended password change: pkcheck task failed: {err}"
+            );
+            false
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+async fn commit_service_owned_unattended_password_change(value: String) -> ResultType<bool> {
+    let _scope = UserMainIpcScope::new();
+    let ms_timeout = 1_000;
+    let mut c = connect(ms_timeout, "").await?;
+    c.send(&Data::CommitServiceOwnedUnattendedPasswordChange(value))
+        .await?;
+    if let Some(Data::ServiceOwnedUnattendedPasswordChangeResult(ok)) =
+        c.next_timeout(ms_timeout).await?
+    {
+        Ok(ok)
+    } else {
+        Ok(false)
+    }
+}
+
+#[cfg(target_os = "linux")]
+async fn handle_linux_service_owned_unattended_password_request(
+    channel: IpcChannel,
+    value: String,
+    stream: &mut Connection,
+) {
+    let accepted = channel == IpcChannel::Service
+        && linux_peer_is_authorized_for_service_owned_password_change(stream).await
+        && match commit_service_owned_unattended_password_change(value).await {
+            Ok(committed) => committed,
+            Err(err) => {
+                log::warn!(
+                    "Rejected service-owned unattended password change: service-to-server commit failed: {err}"
+                );
+                false
+            }
+        };
+    if !accepted {
+        log::warn!("Rejected service-owned unattended password change");
+    }
+    allow_err!(
+        stream
+            .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(accepted))
+            .await
+    );
+}
+
+async fn handle(data: Data, stream: &mut Connection, channel: IpcChannel) {
     match data {
         Data::SystemInfo(_) => {
             let info = format!(
@@ -970,6 +1183,25 @@ async fn handle(data: Data, stream: &mut Connection) {
                 stream
                     .send(&Data::SetUserOwnedPermanentPasswordResult(accepted))
                     .await
+                );
+        }
+        #[cfg(target_os = "linux")]
+        Data::RequestServiceOwnedUnattendedPasswordChange(value) => {
+            handle_linux_service_owned_unattended_password_request(channel, value, stream).await;
+        }
+        #[cfg(target_os = "linux")]
+        Data::CommitServiceOwnedUnattendedPasswordChange(value) => {
+            let accepted = channel == IpcChannel::Main
+                && current_process_allows_service_owned_unattended_password_commit(stream)
+                && !Config::is_disable_change_permanent_password()
+                && Config::set_permanent_password(&value);
+            if !accepted {
+                log::warn!("Rejected service-owned unattended password commit");
+            }
+            allow_err!(
+                stream
+                    .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(accepted))
+                    .await
             );
         }
         Data::Options(value) => match value {
@@ -995,6 +1227,8 @@ async fn handle(data: Data, stream: &mut Connection) {
         },
         Data::OptionsSetResult(_) => {}
         Data::SetUserOwnedPermanentPasswordResult(_) => {}
+        #[cfg(target_os = "linux")]
+        Data::ServiceOwnedUnattendedPasswordChangeResult(_) => {}
         Data::NatType(_) => {
             let t = Config::get_nat_type();
             allow_err!(stream.send(&Data::NatType(Some(t))).await);
@@ -1498,6 +1732,37 @@ pub fn set_user_owned_permanent_password(v: String) -> ResultType<()> {
     }
 }
 
+#[cfg(target_os = "linux")]
+pub fn can_request_service_owned_unattended_password_change() -> bool {
+    crate::platform::is_installed()
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn can_request_service_owned_unattended_password_change() -> bool {
+    false
+}
+
+pub fn can_set_permanent_password() -> bool {
+    can_set_user_owned_permanent_password() || can_request_service_owned_unattended_password_change()
+}
+
+pub fn set_permanent_password(v: String) -> ResultType<()> {
+    if Config::is_disable_change_permanent_password() {
+        bail!("Changing permanent password is disabled");
+    }
+    if can_set_user_owned_permanent_password() {
+        return set_user_owned_permanent_password(v);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        return set_service_owned_unattended_password(v);
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        bail!("Changing service-owned unattended password requires administrator authorization that is not implemented on this platform");
+    }
+}
+
 #[tokio::main(flavor = "current_thread")]
 pub async fn set_user_owned_permanent_password_with_ack(v: String) -> ResultType<bool> {
     set_user_owned_permanent_password_with_ack_async(v).await
@@ -1516,6 +1781,30 @@ async fn set_user_owned_permanent_password_with_ack_async(v: String) -> ResultTy
                 log::warn!("Failed to sync permanent password storage from daemon: {err}");
             }
         }
+        return Ok(ok);
+    }
+    Ok(false)
+}
+
+#[cfg(target_os = "linux")]
+pub fn set_service_owned_unattended_password(v: String) -> ResultType<()> {
+    if set_service_owned_unattended_password_with_ack(v)? {
+        Ok(())
+    } else {
+        bail!("Changing service-owned unattended password was rejected by service");
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::main(flavor = "current_thread")]
+async fn set_service_owned_unattended_password_with_ack(v: String) -> ResultType<bool> {
+    let ms_timeout = 1_000;
+    let mut c = connect_service(ms_timeout).await?;
+    c.send(&Data::RequestServiceOwnedUnattendedPasswordChange(v))
+        .await?;
+    if let Some(Data::ServiceOwnedUnattendedPasswordChangeResult(ok)) =
+        c.next_timeout(ms_timeout).await?
+    {
         return Ok(ok);
     }
     Ok(false)
@@ -1845,9 +2134,11 @@ mod test {
 
         let user_owned = MainIpcAuthority::UserOwned;
         let service_owned = MainIpcAuthority::ServiceOwned;
+        let ordinary_peer = MainIpcPeerAuthority::Ordinary;
         assert!(main_channel_admits_state_mutation(
             &Data::Options(None),
-            user_owned
+            user_owned,
+            ordinary_peer
         ));
         assert!(
             main_channel_admits_state_mutation(
@@ -1855,7 +2146,8 @@ mod test {
                     "direct-server".to_owned(),
                     "Y".to_owned()
                 )]))),
-                user_owned
+                user_owned,
+                ordinary_peer
             ),
             "a user-owned options write stays legitimate"
         );
@@ -1865,44 +2157,89 @@ mod test {
                     "direct-server".to_owned(),
                     "Y".to_owned()
                 )]))),
-                service_owned
+                service_owned,
+                ordinary_peer
             ),
             "R-S11b-3: service-owned machine policy MUST NOT be changed over ordinary options IPC"
         );
         // R-S11 (Appendix C #15): the legacy Data::Config write shape is deleted. Config IPC is
         // request/value only; legitimate mutations use named operations.
         assert!(
-            main_channel_admits_state_mutation(&Data::ConfigRequest("id".to_owned()), user_owned),
+            main_channel_admits_state_mutation(
+                &Data::ConfigRequest("id".to_owned()),
+                user_owned,
+                ordinary_peer
+            ),
             "a ConfigRequest id read must be allowed"
         );
         assert!(
             main_channel_admits_state_mutation(
                 &Data::SetVoiceCallInput("mic".to_owned()),
-                user_owned
+                user_owned,
+                ordinary_peer
             ),
             "voice-call-input stays as a typed non-config local operation"
         );
         assert!(
             main_channel_admits_state_mutation(
                 &Data::ConfigValue(("id".to_owned(), Some("value".to_owned()))),
-                user_owned
+                user_owned,
+                ordinary_peer
             ),
             "a ConfigValue response is not a write operation"
         );
         assert!(
             main_channel_admits_state_mutation(
                 &Data::SetUserOwnedPermanentPassword("pw".to_owned()),
-                user_owned
+                user_owned,
+                ordinary_peer
             ),
             "the typed user-owned permanent-password operation stays legitimate"
         );
         assert!(
             !main_channel_admits_state_mutation(
                 &Data::SetUserOwnedPermanentPassword("pw".to_owned()),
-                service_owned
+                service_owned,
+                ordinary_peer
             ),
             "R-S11b-2: the user-owned password operation MUST NOT mutate a service-owned credential"
         );
+        #[cfg(target_os = "linux")]
+        {
+            let root_peer = MainIpcPeerAuthority::RootUnixPeer;
+            assert!(
+                !main_channel_admits_state_mutation(
+                    &Data::RequestServiceOwnedUnattendedPasswordChange("pw".to_owned()),
+                    service_owned,
+                    root_peer
+                ),
+                "R-S11b-2: service-owned password requests go to _service, not main IPC"
+            );
+            assert!(
+                !main_channel_admits_state_mutation(
+                    &Data::CommitServiceOwnedUnattendedPasswordChange("pw".to_owned()),
+                    user_owned,
+                    root_peer
+                ),
+                "R-S11b-2: a root peer cannot commit into a user-owned server as a service credential"
+            );
+            assert!(
+                !main_channel_admits_state_mutation(
+                    &Data::CommitServiceOwnedUnattendedPasswordChange("pw".to_owned()),
+                    service_owned,
+                    ordinary_peer
+                ),
+                "R-S11b-2: service-owned password commits require the root service peer"
+            );
+            assert!(
+                main_channel_admits_state_mutation(
+                    &Data::CommitServiceOwnedUnattendedPasswordChange("pw".to_owned()),
+                    service_owned,
+                    root_peer
+                ),
+                "R-S11b-2: only the root service may commit the service-owned password into the service-owned server"
+            );
+        }
         assert!(MainIpcAuthority::UserOwned.allows_main_channel_password_storage_sync());
         assert!(
             !MainIpcAuthority::ServiceOwned.allows_main_channel_password_storage_sync(),
@@ -1915,7 +2252,14 @@ mod test {
     fn service_channel_rejects_config_bus() {
         assert!(
             service_channel_admits_message(&Data::Test),
-            "R-S11b-1: _service keeps only the narrow liveness ping"
+            "R-S11b-1: _service keeps a narrow liveness ping"
+        );
+        #[cfg(target_os = "linux")]
+        assert!(
+            service_channel_admits_message(&Data::RequestServiceOwnedUnattendedPasswordChange(
+                "pw".to_owned()
+            )),
+            "R-S11b-2: Linux _service accepts only the typed admin-authorized password request in addition to liveness"
         );
         assert!(
             !service_channel_admits_message(&Data::Options(None)),
@@ -1933,6 +2277,23 @@ mod test {
             !service_channel_admits_message(&Data::SetUserOwnedPermanentPassword("pw".to_owned())),
             "R-S11b-2: _service does not accept user-owned credential writes"
         );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_proc_stat_start_time_parses_comm_with_spaces() {
+        let stat = "123 (name with spaces) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 424242 20 21";
+        assert_eq!(
+            linux_proc_stat_start_time(123, stat).unwrap(),
+            "424242".to_owned()
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_proc_stat_start_time_rejects_missing_start_time() {
+        let stat = "123 (rustdesk) S 1 2 3";
+        assert!(linux_proc_stat_start_time(123, stat).is_err());
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]

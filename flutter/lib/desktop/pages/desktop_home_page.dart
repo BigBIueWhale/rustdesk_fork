@@ -237,7 +237,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                       ),
                       if (!bind.isDisableSettings())
                         FutureBuilder<bool>(
-                          future: canSetUserOwnedPermanentPassword(),
+                          future: canSetPermanentPassword(),
                           builder: (_, data) {
                             if (data.data != true) {
                               return const Offstage();
@@ -735,14 +735,13 @@ class _DesktopHomePageState extends State<DesktopHomePage>
 
 }
 
-Future<bool> canSetUserOwnedPermanentPassword() async {
-  return (await bind.mainGetCommon(
-          key: "permanent-password-user-owned-writable")) ==
+Future<bool> canSetPermanentPassword() async {
+  return (await bind.mainGetCommon(key: "permanent-password-writable")) ==
       "true";
 }
 
 void setPasswordDialog({VoidCallback? notEmptyCallback}) async {
-  if (!await canSetUserOwnedPermanentPassword()) {
+  if (!await canSetPermanentPassword()) {
     return;
   }
   final p0 = TextEditingController(text: "");

@@ -745,7 +745,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
             return const Offstage();
           }
           return FutureBuilder<bool>(
-            future: canSetUserOwnedPermanentPassword(),
+            future: canSetPermanentPassword(),
             builder: (_, data) {
               if (data.data != true) {
                 return const Offstage();

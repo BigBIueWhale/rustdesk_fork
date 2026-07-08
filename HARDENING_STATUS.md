@@ -155,7 +155,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `Data::SyncConfig(None)` and `Data::SyncConfig(Some(_))`, including stale-socket probes that read config.
   Boundary: active user ↔ root/LaunchDaemon service. Attack surface closed: a local active-user process no
   longer receives or replaces whole service `Config`/`Config2` over `_service`. Source closure:
-  `src/ipc.rs` admits only `Data::Test` on Linux/macOS `_service` via `service_channel_admits_message`;
+  `src/ipc.rs` admits only narrow typed messages on `_service` via `service_channel_admits_message`
+  (`Data::Test`, plus Linux's R-S11b-2c service-owned unattended-password request);
   `src/ipc.rs` deletes the `Data::SyncConfig` IPC variant; `src/ipc/fs.rs` probes `_service`
   liveness with `Data::Test`, not config reads; `src/server.rs` deletes
   `wait_initial_config_sync`/`sync_and_watch_config_dir` and the root↔user service-config watch loop.
@@ -195,6 +196,26 @@ unreachable and a source/test/AST gate prevents reintroduction.
   old generic password config-key send/gate, and checks the desktop writability query;
   `scripts/apple-conform-check.sh` mirrors the macOS source assertions; `scripts/smoke-server.sh` exercises
   the typed user-owned CLI path.
+- **R-S11b-2c/R-S11c-1d — Linux service-owned unattended password provisioning — CLOSED 2026-07-09.**
+  Platform: Linux installed service. Endpoint/action:
+  `Data::RequestServiceOwnedUnattendedPasswordChange(String)` over `_service`, followed by
+  `Data::CommitServiceOwnedUnattendedPasswordChange(String)` from the root service into the service-owned
+  main server. Boundary: active user process ↔ root `_service` ↔ service-owned `--server` process that honors
+  the unattended credential. Attack surface closed: the desktop UI, FFI, and `--password` CLI no longer need the
+  old RustDesk password and do not write a service-owned credential over ordinary main IPC. In installed Linux
+  mode they request the narrow `_service` operation; the root service authorizes the caller with polkit action
+  `com.carriez.RustDesk.set-unattended-password`, deriving the subject from SO_PEERCRED
+  `(pid, uid)` plus `/proc/<pid>/stat` start time and invoking `pkcheck --process pid,start-time,uid
+  --allow-user-interaction`; only after that does it forward a separate commit message. The service-owned main
+  server accepts that commit only when the receiver is `MainIpcAuthority::ServiceOwned` and the committing peer
+  is root. Main-channel service-owned password requests are denied, ordinary user-owned password writes remain
+  denied for service-owned receivers, and rejection ACKs fail closed. Packaging closure: the `.deb` build paths
+  install `res/com.carriez.RustDesk.policy` under `/usr/share/polkit-1/actions/` with `auth_admin` defaults.
+  Verification closure: `scripts/verify.sh` asserts the request/commit/result variants, service-channel
+  allowlist, main-channel denial/commit gates, peer pid/uid/start-time subject construction, `pkcheck` arguments,
+  polkit policy packaging, owner-aware UI/FFI/CLI routing, and the updated two-write handler reachability count;
+  `ipc::test::main_channel_rejects_untyped_state_mutations`,
+  `ipc::test::service_channel_rejects_config_bus`, and Linux `/proc` parser tests cover the source policy.
 - **R-S11b-3a — service-marked server rejects ordinary options IPC — CLOSED 2026-07-08.** Platforms:
   Windows installed service-launched `--server`, Linux root-service-launched root or active-user `--server`,
   and macOS LaunchAgent `--server` source path. Endpoint/action: main IPC `Data::Options(Some(_))`.
@@ -230,7 +251,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   typed `PulseAudioSource`; and the proxy IPC variant is absent rather than denied. Verification closure:
   `scripts/verify.sh` runs the main-channel mutation test, asserts absence of the legacy generic config write
   shape, generic config helpers, and proxy IPC variant, and pins the handler's
-  `is_option_can_save`-bypassing config-write count to the single typed user-owned password operation;
+  `is_option_can_save`-bypassing config-write count to the two typed password operations (user-owned direct
+  commit and Linux service-owned root-service commit);
   `scripts/apple-conform-check.sh` mirrors the source absence assertions for macOS.
 - **R-S11c-2a/R-S11c-3a — Windows `_service` raw session/SAS commands removed — CLOSED 2026-07-08.**
   Platform: Windows installed service. Endpoint/action: `_service` named pipe messages formerly carrying
@@ -294,10 +316,12 @@ unreachable and a source/test/AST gate prevents reintroduction.
   are accepted only by user-owned receivers; service-marked receivers reject typed user-owned writes, the
   whole-config IPC variant is absent, and standalone salt read/storage-salt sync are denied by
   R-S11b-2a/R-S11c-1a. User-owned `--server` paths remain
-  user-owned. Remaining closure: add a typed `SetUnattendedPassword` service operation; commit only inside
-  the privileged service after OS admin authorization (Linux polkit; Windows UAC/service-admin proof; macOS
-  Authorization Services/privileged helper); the service derives/stores the PRS itself; tests cover
-  installed service-owned provisioning vs user-mode behavior.
+  user-owned. Linux installed-service provisioning is closed by R-S11b-2c/R-S11c-1d: a polkit-authorized
+  `_service` request is the only enabled service-owned password path, and the final commit is accepted only
+  by a service-owned server from a root peer. Remaining closure: Windows needs UAC/service-admin proof before
+  any service-owned PRS write; macOS needs the Authorization Services/privileged-helper path before any
+  service-owned PRS write; tests must cover those platform-native service-owned provisioning paths vs user-mode
+  behavior.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows

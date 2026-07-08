@@ -542,8 +542,22 @@ pub fn can_set_user_owned_permanent_password() -> bool {
     }
 }
 
-pub fn set_user_owned_permanent_password_with_result(password: String) -> bool {
-    if !can_set_user_owned_permanent_password() {
+pub fn can_set_permanent_password() -> bool {
+    if config::Config::is_disable_change_permanent_password() {
+        return false;
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        return true;
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        crate::ipc::can_set_permanent_password()
+    }
+}
+
+pub fn set_permanent_password_with_result(password: String) -> bool {
+    if !can_set_permanent_password() {
         return false;
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -552,10 +566,10 @@ pub fn set_user_owned_permanent_password_with_result(password: String) -> bool {
     }
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        match crate::ipc::set_user_owned_permanent_password_with_ack(password) {
-            Ok(ok) => ok,
+        match crate::ipc::set_permanent_password(password) {
+            Ok(()) => true,
             Err(err) => {
-                log::warn!("Failed to set permanent password via IPC: {err}");
+                log::warn!("Failed to set permanent password: {err}");
                 false
             }
         }

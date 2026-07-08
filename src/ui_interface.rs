@@ -332,7 +332,6 @@ pub fn get_options() -> String {
     serde_json::to_string(&m).unwrap_or_default()
 }
 
-
 #[inline]
 #[cfg(feature = "flutter")]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -387,8 +386,10 @@ pub fn get_sound_inputs() -> Vec<String> {
 pub fn set_options(m: HashMap<String, String>) {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        *OPTIONS.lock().unwrap() = m.clone();
-        ipc::set_options(m).ok();
+        match ipc::set_options(m.clone()) {
+            Ok(()) => *OPTIONS.lock().unwrap() = m,
+            Err(err) => log::warn!("Failed to set options via IPC: {err}"),
+        }
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     Config::set_options(m);
@@ -406,22 +407,30 @@ pub fn set_option(key: String, value: String) {
     // controlled-side stop is the OS foreground-service lifecycle (MainService.onDestroy -> the JNI
     // stopServer, which drives the direct listener's service-owned-generation teardown, R-D7a), not
     // a Config write — so no option-write path reaches the Android listener either.
-    if &key == "audio-input" {
-        #[cfg(not(target_os = "ios"))]
-        crate::audio_service::restart();
-    }
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        let mut options = OPTIONS.lock().unwrap();
+        let mut options = OPTIONS.lock().unwrap().clone();
         if value.is_empty() {
             options.remove(&key);
         } else {
             options.insert(key.clone(), value.clone());
         }
-        ipc::set_options(options.clone()).ok();
+        match ipc::set_options(options.clone()) {
+            Ok(()) => {
+                *OPTIONS.lock().unwrap() = options;
+                if &key == "audio-input" {
+                    crate::audio_service::restart();
+                }
+            }
+            Err(err) => log::warn!("Failed to set option via IPC: key={}, err={}", key, err),
+        }
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
+        if &key == "audio-input" {
+            #[cfg(not(target_os = "ios"))]
+            crate::audio_service::restart();
+        }
         Config::set_option(key, value);
     }
 }

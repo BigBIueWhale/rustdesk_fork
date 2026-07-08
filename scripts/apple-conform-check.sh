@@ -182,19 +182,31 @@ else
   note "ok  R-S11b-1 _service admits only Data::Test; service liveness does not read or write Config/Config2"
 fi
 
-echo "== (2b-ii) R-S11b-2a macOS service-owned password is not ordinary IPC =="
+echo "== (2b-ii) R-S11b-2a/R-S11b-3a macOS service-owned password/options are not ordinary IPC =="
 r_s11b2=
 grep -q -- '<string>--service-owned-server</string>' "$REPO/src/platform/privileges_scripts/agent.plist" || r_s11b2="$r_s11b2 agent-server-not-marked"
-grep -q 'UnattendedPasswordIpcAuthority::ServiceOwned' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 service-owned-authority-missing"
-grep -q '"permanent-password" => password_authority.allows_main_channel_password_write()' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 password-write-not-authority-gated"
+grep -q 'MainIpcAuthority::ServiceOwned' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 service-owned-authority-missing"
+grep -q '"permanent-password" => authority.allows_main_channel_password_write()' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 password-write-not-authority-gated"
+grep -q 'Data::Options(Some(_)) => authority.allows_main_channel_options_write()' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-write-not-authority-gated"
+grep -q 'Rejected options write over ordinary IPC for service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-write-not-denied"
+grep -q 'OptionsSetResult(bool)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-typed-result-missing"
+grep -q 'Data::OptionsSetResult(false)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-reject-nack-missing"
+grep -q 'Options write requires daemon ACK' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 local-fallback-not-blocked"
+set_options_fn=$(awk '/pub async fn set_options/,/^}/' "$REPO/src/ipc.rs")
+if echo "$set_options_fn" | grep -q 'crate::platform::is_installed'; then
+  r_s11b2="$r_s11b2 options-fallback-uses-install-heuristic"
+fi
+if [ "$(echo "$set_options_fn" | grep -c 'Config::set_options(value)')" -ne 1 ]; then
+  r_s11b2="$r_s11b2 options-caller-persistence-not-ack-only"
+fi
 grep -q 'Rejected whole-config sync from service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 whole-config-sync-not-denied"
 grep -q 'Rejected permanent password storage sync from service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 storage-sync-not-denied"
 grep -q 'Rejected permanent password salt sync from service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 standalone-salt-sync-not-denied"
 if [ -n "$r_s11b2" ]; then
-  echo "  FAIL R-S11b-2a macOS service-owned password IPC closure:$r_s11b2"
+  echo "  FAIL R-S11b-2a/R-S11b-3a macOS service-owned IPC closure:$r_s11b2"
   rc=1
 else
-  note "ok  R-S11b-2a LaunchAgent marks service-owned --server; ordinary password write + whole-config/storage/salt sync are denied by source policy"
+  note "ok  R-S11b-2a/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password/options writes + whole-config/storage/salt sync are denied by source policy"
 fi
 
 # (2c) Appendix C #2b is an ACCEPTED, documented residual: the fork SHOULD (not MUST) sandbox the decode

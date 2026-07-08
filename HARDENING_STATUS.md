@@ -168,14 +168,27 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `Data::Config(("permanent-password", Some(_)))` and `Data::Config(("permanent-password-storage-and-salt",
   None))`. Boundary: user-owned IPC caller ↔ service-owned unattended credential. Attack surface closed:
   the service-launched server is marked with `--service-owned-server`; `src/ipc.rs` classifies that receiver
-  as `UnattendedPasswordIpcAuthority::ServiceOwned` (with a Windows LocalSystem fallback); main-channel allowlisting rejects ordinary password
-  writes and returns an explicit NACK; the handler also rejects password writes and refuses whole-config,
-  standalone salt, and storage/salt sync snapshots if reached directly. Linux `--password` is no longer routed through
-  `UserMainIpcScope`, so root does not cross-write a service-owned user server through the legacy CLI path.
+  as `MainIpcAuthority::ServiceOwned` (with a Windows LocalSystem fallback); main-channel allowlisting rejects
+  ordinary password writes and returns an explicit NACK; the handler also rejects password writes and refuses
+  whole-config, standalone salt, and storage/salt sync snapshots if reached directly. Linux `--password` is no
+  longer routed through `UserMainIpcScope`, so root does not cross-write a service-owned user server through the
+  legacy CLI path.
   Verification closure: `scripts/verify.sh` asserts user-owned vs service-owned IPC policy, service launch
   markers on Linux/Windows/macOS, no `--password` root-to-user routing, and handler-level whole-config,
   standalone salt, and storage-sync denial; `scripts/apple-conform-check.sh` asserts the macOS LaunchAgent marker and
   source policy.
+- **R-S11b-3a — service-marked server rejects ordinary options IPC — CLOSED 2026-07-08.** Platforms:
+  Windows installed service-launched `--server`, Linux root-service-launched root or active-user `--server`,
+  and macOS LaunchAgent `--server` source path. Endpoint/action: main IPC `Data::Options(Some(_))`.
+  Boundary: user-owned IPC caller ↔ service-owned remote-access policy. Attack surface closed: service-owned
+  receivers reject whole-options writes in the main-channel allowlist and in the handler before
+  `privacy_mode::switch` or `Config::set_options`; the daemon returns `Data::OptionsSetResult(false)` rather
+  than the old overloaded `Data::Options(None)` sentinel; IPC callers persist/cache option writes only after
+  `Data::OptionsSetResult(true)` and do not locally persist options when the daemon is unreachable. User-owned
+  `--server` option writes remain user-owned through the same typed ACK path. Verification
+  closure: `scripts/verify.sh` tests the user-owned vs service-owned allowlist and asserts the typed ACK/NACK,
+  no-local-fallback rule, receiver gate, and UI cache ordering; `scripts/apple-conform-check.sh` mirrors
+  the macOS source assertions.
 
 **Release-blocking items:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,
@@ -198,10 +211,12 @@ unreachable and a source/test/AST gate prevents reintroduction.
   server/direct-listener/RDP/session-sharing policy writers, and any hidden UI/CLI/FFI path that persists
   controlled-side policy. Boundary: user-session process ↔ privileged host policy. Attack surface: a local
   caller can alter who can reach the service, how it binds, which trust/identity state it uses, or which
-  hardened policy pins are effective. Closure: privileged service policy writes are typed service actions
-  with receiver-side validation; whole user config is never imported; `Config::set*`, `set_socks`,
-  trust-store writes, identity/salt/key writes, and service-policy writes are not reachable from ordinary IPC
-  except through named approved operations with gates.
+  hardened policy pins are effective. Current state: ordinary whole-options IPC writes are closed for
+  service-marked servers by R-S11b-3a, including typed daemon ACK/NACK and no local persistence fallback inside
+  the IPC helper; user-owned `--server` option writes remain user-owned. Remaining closure: privileged service
+  policy writes are typed service actions with receiver-side validation; whole user config is never imported;
+  `Config::set*`, `set_socks`, trust-store writes, identity/salt/key writes, and service-policy writes are not
+  reachable from ordinary IPC except through named approved operations with gates.
 - **R-S11c-1 — Windows main IPC credential write into a SYSTEM/winlogon-launched server.** Platform:
   Windows installed service. Endpoint: main named pipe `\\.\pipe\<APP>\query` accepting same-session genuine
   executable peers; action: `Data::Config(("permanent-password", value))`. Boundary: same-session desktop

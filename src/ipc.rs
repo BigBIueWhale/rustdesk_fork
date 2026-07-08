@@ -307,6 +307,7 @@ pub enum Data {
     UserSid(Option<u32>),
     Config((String, Option<String>)),
     Options(Option<HashMap<String, String>>),
+    OptionsSetResult(bool),
     NatType(Option<i32>),
     RawMessage(Vec<u8>),
     Socks(Option<config::Socks5Server>),
@@ -488,7 +489,7 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                     #[cfg(any(target_os = "linux", target_os = "macos"))]
                                     if !main_channel_admits_config_write(
                                         &data,
-                                        UnattendedPasswordIpcAuthority::for_current_process(),
+                                        MainIpcAuthority::for_current_process(),
                                     ) {
                                         log::warn!(
                                             "Rejected a config write on the main IPC channel (R-S11/R-S11b): data_kind={:?}, peer_uid={:?}",
@@ -516,7 +517,7 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                     #[cfg(target_os = "windows")]
                                     if !main_channel_admits_config_write(
                                         &data,
-                                        UnattendedPasswordIpcAuthority::for_current_process(),
+                                        MainIpcAuthority::for_current_process(),
                                     ) {
                                         log::warn!(
                                             "Rejected a config write on the main IPC channel (R-S11/R-S11b): data_kind={:?}",
@@ -670,18 +671,17 @@ impl Drop for CheckIfRestart {
     }
 }
 
-/// Main-channel config-write policy. Whole-config writes, identity/salt field writes, and proxy writes
-/// stay denied. `permanent-password` is user-owned only; a service-marked `--server` owns its unattended
-/// credential and ordinary `Data::Config` IPC cannot mutate or mirror it.
+/// Main-channel config-write policy. Whole-config writes, identity/salt field writes, proxy writes,
+/// service-owned passwords, and service-owned options stay out of ordinary IPC.
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum UnattendedPasswordIpcAuthority {
+pub(crate) enum MainIpcAuthority {
     UserOwned,
     ServiceOwned,
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-impl UnattendedPasswordIpcAuthority {
+impl MainIpcAuthority {
     fn for_current_process() -> Self {
         #[cfg(target_os = "windows")]
         if crate::platform::is_root() {
@@ -698,6 +698,10 @@ impl UnattendedPasswordIpcAuthority {
         matches!(self, Self::UserOwned)
     }
 
+    fn allows_main_channel_options_write(self) -> bool {
+        matches!(self, Self::UserOwned)
+    }
+
     fn allows_main_channel_password_storage_sync(self) -> bool {
         matches!(self, Self::UserOwned)
     }
@@ -711,7 +715,19 @@ impl UnattendedPasswordIpcAuthority {
 fn current_process_allows_main_channel_permanent_password_write() -> bool {
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
-        UnattendedPasswordIpcAuthority::for_current_process().allows_main_channel_password_write()
+        MainIpcAuthority::for_current_process().allows_main_channel_password_write()
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        true
+    }
+}
+
+#[inline]
+fn current_process_allows_main_channel_options_write() -> bool {
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    {
+        MainIpcAuthority::for_current_process().allows_main_channel_options_write()
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
@@ -723,8 +739,7 @@ fn current_process_allows_main_channel_permanent_password_write() -> bool {
 fn current_process_allows_main_channel_permanent_password_storage_sync() -> bool {
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
-        UnattendedPasswordIpcAuthority::for_current_process()
-            .allows_main_channel_password_storage_sync()
+        MainIpcAuthority::for_current_process().allows_main_channel_password_storage_sync()
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
@@ -736,8 +751,7 @@ fn current_process_allows_main_channel_permanent_password_storage_sync() -> bool
 fn current_process_allows_main_channel_whole_config_sync() -> bool {
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
-        UnattendedPasswordIpcAuthority::for_current_process()
-            .allows_main_channel_whole_config_sync()
+        MainIpcAuthority::for_current_process().allows_main_channel_whole_config_sync()
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
@@ -746,10 +760,7 @@ fn current_process_allows_main_channel_whole_config_sync() -> bool {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-pub(crate) fn main_channel_admits_config_write(
-    data: &Data,
-    password_authority: UnattendedPasswordIpcAuthority,
-) -> bool {
+pub(crate) fn main_channel_admits_config_write(data: &Data, authority: MainIpcAuthority) -> bool {
     match data {
         // Whole-config push: no IPC channel may write a whole Config/Config2 object; on the main
         // channel only the SyncConfig(None) read-request is.
@@ -758,10 +769,13 @@ pub(crate) fn main_channel_admits_config_write(
         // In installed service-owned mode the unattended credential is not operator-owned
         // config; it must not be mutated over ordinary Data::Config IPC.
         Data::Config((name, Some(_))) => match name.as_str() {
-            "permanent-password" => password_authority.allows_main_channel_password_write(),
+            "permanent-password" => authority.allows_main_channel_password_write(),
             "voice-call-input" => true,
             _ => false,
         },
+        // Whole-options writes are ordinary user-owned configuration writes. A service-owned server
+        // enforces machine policy and must not accept them over the generic main IPC config bus.
+        Data::Options(Some(_)) => authority.allows_main_channel_options_write(),
         // set_socks: the proxy / local-MITM primitive an Options-key allowlist would miss.
         Data::Socks(Some(_)) => false,
         _ => true,
@@ -769,14 +783,18 @@ pub(crate) fn main_channel_admits_config_write(
 }
 
 async fn send_main_channel_config_write_rejection_ack(data: &Data, stream: &mut Connection) {
-    if let Data::Config((name, Some(_))) = data {
-        if name == "permanent-password" {
+    match data {
+        Data::Config((name, Some(_))) if name == "permanent-password" => {
             allow_err!(
                 stream
                     .send(&Data::Config((name.clone(), Some("N".to_owned()))))
                     .await
             );
         }
+        Data::Options(Some(_)) => {
+            allow_err!(stream.send(&Data::OptionsSetResult(false)).await);
+        }
+        _ => {}
     }
 }
 
@@ -954,16 +972,22 @@ async fn handle(data: Data, stream: &mut Connection) {
                 allow_err!(stream.send(&Data::Options(Some(v))).await);
             }
             Some(value) => {
-                let _chk = CheckIfRestart::new();
-                // R-A6/R-S11: CheckTestNatType Drop guard removed here too — is_direct is constant
-                // (socks inert, R-D6(d)(iii)), so it never fired; severs the service-entry probe reach.
-                if let Some(v) = value.get("privacy-mode-impl-key") {
-                    crate::privacy_mode::switch(v);
+                let accepted = current_process_allows_main_channel_options_write();
+                if accepted {
+                    let _chk = CheckIfRestart::new();
+                    // R-A6/R-S11: CheckTestNatType Drop guard removed here too — is_direct is constant
+                    // (socks inert, R-D6(d)(iii)), so it never fired; severs the service-entry probe reach.
+                    if let Some(v) = value.get("privacy-mode-impl-key") {
+                        crate::privacy_mode::switch(v);
+                    }
+                    Config::set_options(value);
+                } else {
+                    log::warn!("Rejected options write over ordinary IPC for service-owned server");
                 }
-                Config::set_options(value);
-                allow_err!(stream.send(&Data::Options(None)).await);
+                allow_err!(stream.send(&Data::OptionsSetResult(accepted)).await);
             }
         },
+        Data::OptionsSetResult(_) => {}
         Data::NatType(_) => {
             let t = Config::get_nat_type();
             allow_err!(stream.send(&Data::NatType(Some(t))).await);
@@ -1524,18 +1548,34 @@ pub fn set_option(key: &str, value: &str) {
     } else {
         options.insert(key.to_owned(), value.to_owned());
     }
-    set_options(options).ok();
+    if let Err(err) = set_options(options) {
+        log::warn!("Failed to set option via IPC: key={}, err={}", key, err);
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn set_options(value: HashMap<String, String>) -> ResultType<()> {
-    if let Ok(mut c) = connect(1000, "").await {
-        c.send(&Data::Options(Some(value.clone()))).await?;
-        // do not put below before connect, because we need to check should_exit
-        c.next_timeout(1000).await.ok();
+    match connect(1000, "").await {
+        Ok(mut c) => {
+            c.send(&Data::Options(Some(value.clone()))).await?;
+            match c.next_timeout(1000).await? {
+                Some(Data::OptionsSetResult(true)) => {
+                    Config::set_options(value);
+                    Ok(())
+                }
+                Some(Data::OptionsSetResult(false)) => {
+                    bail!("Options write was rejected by daemon")
+                }
+                Some(other) => {
+                    bail!("Unexpected options write response: {:?}", other)
+                }
+                None => {
+                    bail!("Missing options write response")
+                }
+            }
+        }
+        Err(err) => bail!("Options write requires daemon ACK: {}", err),
     }
-    Config::set_options(value);
-    Ok(())
 }
 
 #[inline]
@@ -1782,14 +1822,16 @@ mod test {
 
     // R-S11 / Appendix C #15: the MAIN-channel config-write allowlist MUST reject a whole-config
     // SyncConfig(Some) push while admitting the SyncConfig(None) read-request + the per-key writes that
-    // legitimately stay. R-S11b adds that permanent-password is user-owned only; service-owned
-    // unattended credentials are denied over ordinary Data::Config IPC.
+    // legitimately stay. R-S11b adds that ordinary password and options writes are user-owned only;
+    // service-owned unattended credentials and machine policy are denied over ordinary config IPC.
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
     fn main_channel_rejects_whole_config_sync_write() {
+        use std::collections::HashMap;
+
         use hbb_common::config::{Config, Config2};
-        let user_owned = UnattendedPasswordIpcAuthority::UserOwned;
-        let service_owned = UnattendedPasswordIpcAuthority::ServiceOwned;
+        let user_owned = MainIpcAuthority::UserOwned;
+        let service_owned = MainIpcAuthority::ServiceOwned;
         let write = Data::SyncConfig(Some(Box::new((Config::default(), Config2::default()))));
         assert!(
             !main_channel_admits_config_write(&write, user_owned),
@@ -1803,6 +1845,26 @@ mod test {
             &Data::Options(None),
             user_owned
         ));
+        assert!(
+            main_channel_admits_config_write(
+                &Data::Options(Some(HashMap::from([(
+                    "direct-server".to_owned(),
+                    "Y".to_owned()
+                )]))),
+                user_owned
+            ),
+            "a user-owned options write stays legitimate"
+        );
+        assert!(
+            !main_channel_admits_config_write(
+                &Data::Options(Some(HashMap::from([(
+                    "direct-server".to_owned(),
+                    "Y".to_owned()
+                )]))),
+                service_owned
+            ),
+            "R-S11b-3: service-owned machine policy MUST NOT be changed over ordinary options IPC"
+        );
         // R-S11 (Appendix C #15): the Data::Config STRUCT-FIELD writes bypass is_option_can_save — the
         // identity (id) + credential (salt) fields have NO legitimate main-channel writer and MUST be
         // rejected; permanent-password is admitted only while user-owned; a value=None is a READ and stays.
@@ -1826,17 +1888,14 @@ mod test {
             ),
             "R-S11b-2: a service-owned unattended password MUST NOT be set over ordinary IPC"
         );
+        assert!(MainIpcAuthority::UserOwned.allows_main_channel_password_storage_sync());
         assert!(
-            UnattendedPasswordIpcAuthority::UserOwned.allows_main_channel_password_storage_sync()
-        );
-        assert!(
-            !UnattendedPasswordIpcAuthority::ServiceOwned
-                .allows_main_channel_password_storage_sync(),
+            !MainIpcAuthority::ServiceOwned.allows_main_channel_password_storage_sync(),
             "R-S11b-2: service-owned password storage/salt snapshots MUST NOT sync over ordinary IPC"
         );
-        assert!(UnattendedPasswordIpcAuthority::UserOwned.allows_main_channel_whole_config_sync());
+        assert!(MainIpcAuthority::UserOwned.allows_main_channel_whole_config_sync());
         assert!(
-            !UnattendedPasswordIpcAuthority::ServiceOwned.allows_main_channel_whole_config_sync(),
+            !MainIpcAuthority::ServiceOwned.allows_main_channel_whole_config_sync(),
             "R-S11b-2: service-owned Config/Config2 snapshots MUST NOT sync over ordinary IPC"
         );
         assert!(

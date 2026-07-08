@@ -112,8 +112,8 @@ echo "== (3b-iv) trust-anchor get_key ignores a stored override (R-A4/R-X4) =="
 # is_option_can_save — `id` (+ set_key_confirmed(false)) and `salt` (set_salt's hashed-pw guard is a
 # no-op — the PRS is the host-key-salted Argon2id hash, not derived from this salt field) — which have NO legit main-channel writer; (c) Data::Socks(Some)
 # (set_socks, the proxy/local-MITM primitive an Options-key allowlist would miss). The remaining operator
-# writes are authority-scoped: voice-call-input always, permanent-password only for user-owned servers.
-# Service-owned servers reject ordinary password writes and storage/salt sync (R-S11b-2a). Behavior-tested AND the
+# writes are authority-scoped: voice-call-input always, permanent-password/options only for user-owned servers.
+# Service-owned servers reject ordinary password/options writes and storage/salt sync (R-S11b-2a/R-S11b-3a). Behavior-tested AND the
 # loop routes through the allowlist before handle() (R-A6 reachability), AND the allowlist is asserted
 # POSITIVE (not a one-arm denylist that would let id/salt/Socks through — the exact "missed sibling"
 # the 5th sweep found).
@@ -121,7 +121,8 @@ echo "== (3b-iii) IPC main-channel config-write positive allowlist (R-S11) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_channel_rejects_whole_config_sync_write --color never
 r_s11=
 grep -q 'if !main_channel_admits_config_write(' src/ipc.rs                             || r_s11="$r_s11 loop-not-wired"
-grep -q '"permanent-password" => password_authority.allows_main_channel_password_write()' src/ipc.rs || r_s11="$r_s11 password-authority-not-gated"
+grep -q '"permanent-password" => authority.allows_main_channel_password_write()' src/ipc.rs || r_s11="$r_s11 password-authority-not-gated"
+grep -q 'Data::Options(Some(_)) => authority.allows_main_channel_options_write()' src/ipc.rs || r_s11="$r_s11 options-authority-not-gated"
 grep -q '"voice-call-input" => true' src/ipc.rs                                        || r_s11="$r_s11 voice-input-not-allowlisted"
 grep -q 'Data::Socks(Some(_)) => false' src/ipc.rs                                     || r_s11="$r_s11 socks-not-rejected"
 # R-S11 binds EVERY shipped artifact, not Linux/macOS alone (Windows .exe/.msi are shipped). The
@@ -133,7 +134,7 @@ grep -q 'Data::Socks(Some(_)) => false' src/ipc.rs                              
 [ "$(grep -c 'if !main_channel_admits_config_write(' src/ipc.rs)" -ge 2 ]              || r_s11="$r_s11 windows-main-pipe-gate-missing"
 grep -B1 'pub(crate) fn main_channel_admits_config_write' src/ipc.rs | grep -q 'windows' || r_s11="$r_s11 allowlist-fn-not-cfg-windows"
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel config-write allowlist:$r_s11"; rc=1; else
-  echo "  ok  R-S11/R-S11b main-channel config-write POSITIVE allowlist (SyncConfig+id+salt+Socks rejected; permanent-password is user-owned only; gate binds Linux/macOS AND the Windows main pipe)"; fi
+  echo "  ok  R-S11/R-S11b main-channel config-write POSITIVE allowlist (SyncConfig+id+salt+Socks rejected; permanent-password/options are user-owned only; gate binds Linux/macOS AND the Windows main pipe)"; fi
 
 # (3b-iii-b) R-S11b-1: Linux/macOS `_service` is a privileged service-control channel, not a
 # root<->user Config/Config2 bus. The world-connectable service socket may keep only narrow liveness
@@ -178,9 +179,9 @@ echo "$linux_service_start" | grep -A4 'crate::run_me(vec!\[' | grep -q 'SERVICE
 windows_launch_server=$(awk '/async fn launch_server/,/^}/' src/platform/windows.rs)
 echo "$windows_launch_server" | grep -q 'SERVICE_OWNED_SERVER_ARG'                    || r_s11b2="$r_s11b2 windows-service-server-not-marked"
 grep -q -- '<string>--service-owned-server</string>' src/platform/privileges_scripts/agent.plist || r_s11b2="$r_s11b2 macos-agent-server-not-marked"
-grep -q 'UnattendedPasswordIpcAuthority::ServiceOwned' src/ipc.rs                     || r_s11b2="$r_s11b2 service-owned-authority-missing"
-ipc_password_authority=$(awk '/impl UnattendedPasswordIpcAuthority/,/^}/' src/ipc.rs)
-echo "$ipc_password_authority" | grep -B1 'crate::platform::is_root()' | grep -q 'target_os = "windows"' || r_s11b2="$r_s11b2 windows-system-fallback-not-windows-cfg"
+grep -q 'MainIpcAuthority::ServiceOwned' src/ipc.rs                                  || r_s11b2="$r_s11b2 service-owned-authority-missing"
+ipc_main_authority=$(awk '/impl MainIpcAuthority/,/^}/' src/ipc.rs)
+echo "$ipc_main_authority" | grep -B1 'crate::platform::is_root()' | grep -q 'target_os = "windows"' || r_s11b2="$r_s11b2 windows-system-fallback-not-windows-cfg"
 awk '/pub fn is_root\(\)/,/^}/' src/platform/windows.rs | grep -q 'is_local_system'    || r_s11b2="$r_s11b2 windows-root-fallback-not-local-system"
 grep -q 'allows_main_channel_whole_config_sync' src/ipc.rs                           || r_s11b2="$r_s11b2 whole-config-sync-policy-missing"
 grep -q 'Rejected whole-config sync from service-owned server' src/ipc.rs             || r_s11b2="$r_s11b2 whole-config-sync-not-denied"
@@ -194,6 +195,32 @@ if echo "$user_scope_fn" | grep -q '"--password"'; then
 fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2a service-owned password IPC closure:$r_s11b2"; rc=1; else
   echo "  ok  R-S11b-2a service-launched --server is marked; ordinary password write + whole-config/storage/salt sync are denied; --password no longer root-routes into user main IPC"; fi
+
+# (3b-iii-d) R-S11b-3a: service-owned machine policy is not an ordinary Data::Options write.
+# Options writes use a typed daemon ACK/NACK; IPC callers persist only after an accepted ACK and never
+# fall back to hidden local persistence when the daemon is unreachable.
+echo "== (3b-iii-d) service-owned options writes reject ordinary IPC (R-S11b-3a) =="
+r_s11b3=
+grep -q 'allows_main_channel_options_write' src/ipc.rs                                || r_s11b3="$r_s11b3 options-policy-missing"
+grep -q 'Data::Options(Some(_)) => authority.allows_main_channel_options_write()' src/ipc.rs || r_s11b3="$r_s11b3 options-main-gate-missing"
+grep -q 'current_process_allows_main_channel_options_write()' src/ipc.rs              || r_s11b3="$r_s11b3 options-handler-gate-missing"
+grep -q 'Rejected options write over ordinary IPC for service-owned server' src/ipc.rs || r_s11b3="$r_s11b3 options-handler-reject-log-missing"
+grep -q 'OptionsSetResult(bool)' src/ipc.rs                                           || r_s11b3="$r_s11b3 options-typed-result-missing"
+grep -q 'Data::OptionsSetResult(false)' src/ipc.rs                                    || r_s11b3="$r_s11b3 options-reject-nack-missing"
+grep -q 'Some(Data::OptionsSetResult(true))' src/ipc.rs                               || r_s11b3="$r_s11b3 caller-accepted-ack-missing"
+grep -q 'Some(Data::OptionsSetResult(false))' src/ipc.rs                              || r_s11b3="$r_s11b3 caller-reject-nack-missing"
+grep -q 'Options write requires daemon ACK' src/ipc.rs                                || r_s11b3="$r_s11b3 local-fallback-not-blocked"
+set_options_fn=$(awk '/pub async fn set_options/,/^}/' src/ipc.rs)
+if echo "$set_options_fn" | grep -q 'crate::platform::is_installed'; then
+  r_s11b3="$r_s11b3 options-fallback-uses-install-heuristic"
+fi
+if [ "$(echo "$set_options_fn" | grep -c 'Config::set_options(value)')" -ne 1 ]; then
+  r_s11b3="$r_s11b3 options-caller-persistence-not-ack-only"
+fi
+grep -q 'Ok(()) => \*OPTIONS.lock().unwrap() = m' src/ui_interface.rs                 || r_s11b3="$r_s11b3 ui-cache-accepted-branch-missing"
+grep -q 'Ok(()) => {' src/ui_interface.rs                                             || r_s11b3="$r_s11b3 ui-set-option-ack-branch-missing"
+if [ -n "$r_s11b3" ]; then echo "  FAIL R-S11b-3a service-owned options IPC closure:$r_s11b3"; rc=1; else
+  echo "  ok  R-S11b-3a service-owned --server rejects Data::Options(Some) before privacy/config side effects; IPC options writes require typed ACK before caller persistence and have no local fallback"; fi
 
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() — set_socks / set_permanent_password /

@@ -5,6 +5,18 @@ All notable changes to the hardened fork, newest first. Each entry's heading is 
 truth for the exact code a release contains is the **commit** it was built from, linked in the GitHub
 release notes.
 
+## 1.4.7-hardened.4 — 2026-07-08
+
+### Remote control of RustDesk itself
+- Removed the remote-configuration UI blocker completely: no `allow-remote-config-modification` option,
+  Flutter click-absorbing wrapper, mouse-time/video-count probe, or remote-modify IPC override remains.
+- Removed the obsolete setting text from all localization files.
+
+### Verification
+- Regenerated the Flutter Rust Bridge bindings from the reduced FFI surface.
+- Added a verifier gate that rejects the removed option, UI helpers, IPC variants, FFI methods, and
+  server mouse-move timestamp if they return.
+
 ## 1.4.7-hardened.3 — 2026-07-08
 
 ### Remote control of RustDesk itself

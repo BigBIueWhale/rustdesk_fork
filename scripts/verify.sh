@@ -1554,20 +1554,17 @@ if [ -n "$r_sv10" ]; then
 else
   echo "  ok  R-SV10 LocalConfig funnel clean (enable-check-update excised; pre-elevate-service windows-gated)"
 fi
-# R-D3a (§17): the root service unit MUST carry the kernel sandbox (the upstream unit had none),
-# shrinking the blast radius of any memory-corruption bug missed by the §8 excisions. MemoryDenyWriteExecute
-# (W^X) is the code-injection-primitive blocker, ENABLED after examples/mdwe_codec_probe empirically
-# proved the software VP9 codec path maps no W+X under the exact PR_SET_MDWE primitive systemd applies
-# (run by smoke-server.sh). This gate asserts the sandbox directives + the validated MDWE line are present
-# (uncommented) so a regression that drops them fails closed.
+# R-D3a (§17): the root service unit carries the launcher sandbox. Linux file
+# clipboard is shipped and uses FUSE, so the syscall policy admits only the
+# legacy FUSE mount calls and keeps denied syscalls fail-closed.
 r_d3a_missing=
 grep -qE '^CapabilityBoundingSet='      res/rustdesk.service || r_d3a_missing="$r_d3a_missing CapabilityBoundingSet"
 grep -qE '^RestrictAddressFamilies=AF_UNIX AF_INET$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing RestrictAddressFamilies-v4only"
-grep -qE '^SystemCallFilter=@system-service' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter"
-# The 6 kernel-sandbox directives that were PRESENT but ungated (gap-analysis-3): a regression dropping
-# any silently strips a confinement layer off the internet-exposed root box. Value-anchored (^…=…$) so a
-# weakened value (e.g. RestrictRealtime=no) also fails, not just a deletion.
-grep -qE '^SystemCallFilter=~@mount @reboot @swap$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter-subtraction"
+grep -qE '^SystemCallFilter=@system-service mount umount umount2$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter-fuse-mounts"
+grep -qE '^SystemCallFilter=~@reboot @swap$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter-subtraction"
+grep -qE '^SystemCallErrorNumber=' res/rustdesk.service && r_d3a_missing="$r_d3a_missing SystemCallErrorNumber-fallback"
+grep -qE '^SystemCallFilter=.*@mount' res/rustdesk.service && r_d3a_missing="$r_d3a_missing broad-mount-group"
+grep -qE '^SystemCallFilter=.*\b(chroot|pivot_root|open_tree|move_mount|fsconfig|fsopen|fsmount|fspick|mount_setattr)\b' res/rustdesk.service && r_d3a_missing="$r_d3a_missing broad-mount-syscall"
 grep -qE '^ProtectKernelModules=yes$'       res/rustdesk.service || r_d3a_missing="$r_d3a_missing ProtectKernelModules"
 grep -qE '^ProtectKernelTunables=yes$'      res/rustdesk.service || r_d3a_missing="$r_d3a_missing ProtectKernelTunables"
 grep -qE '^RestrictRealtime=yes$'           res/rustdesk.service || r_d3a_missing="$r_d3a_missing RestrictRealtime"
@@ -1578,7 +1575,7 @@ grep -q 'PR_SET_MDWE' examples/mdwe_codec_probe.rs           || r_d3a_missing="$
 if [ -n "$r_d3a_missing" ]; then
   echo "  FAIL R-D3a: systemd sandbox / validated-MDWE incomplete:$r_d3a_missing"; rc=1
 else
-  echo "  ok  R-D3a systemd sandbox + MemoryDenyWriteExecute (W^X, codec-validated by mdwe_codec_probe) present"
+  echo "  ok  R-D3a systemd sandbox + FUSE-only mount exception + MemoryDenyWriteExecute present"
 fi
 # R-T7 (§20): every frame on a KEYED (Dual) stream MUST be AEAD-authenticated — the ≤1-byte
 # decrypt bypass is removed (the one path by which a byte could reach the application parser

@@ -59,7 +59,7 @@ ignore = [
   { id = "RUSTSEC-2024-0384", reason = "instant unmaintained (wasm-era Instant shim). Transitive; native build uses std::time. No exploitable path." },
   { id = "RUSTSEC-2024-0388", reason = "derivative unmaintained. Compile-time derive macro, no runtime surface." },
   { id = "RUSTSEC-2017-0008", reason = "serial unmaintained. Transitive; no reachable use on the controlled box. Radio-silence class." },
-  { id = "RUSTSEC-2021-0154", reason = "fuser unsound. FUSE binding; not mounted by the controlled box. Transitive, no reachable path." },
+  { id = "RUSTSEC-2021-0154", reason = "fuser unsound. Retained for shipped Linux CLIPRDR file clipboard; service unit admits only mount/umount/umount2 and FUSE mount-point/queue bounds cover the reachable path." },
   { id = "RUSTSEC-2025-0124", reason = "rand_os unmaintained (legacy rand 0.6 OS-RNG shim). Transitive; the live CSPRNG path is rand 0.8.6 (fixed above)." },
 
   # ── gtk-rs 0.18 cluster: GUI bindings, unmaintained (gtk3 EOL). All build/UI ──

@@ -32,8 +32,9 @@ the controlled-side security options; the §19 Flutter GUI conformance and the
 implemented. The §4.2/§20 post-key DoS bounds are in place: bounded peer video
 display/decode queues, Opus/zstd input caps and the R-S7 decompressed-output
 ceiling, bounded peer screenshot/PeerInfo/UI-text/file-transfer admission,
-display-control validation, FUSE mount-point no-follow setup and bounded
-FileContents response queue, and the FILEDESCRIPTOR path-traversal sanitizer
+display-control validation, FUSE mount-point no-follow setup, the service
+unit's FUSE-only `mount`/`umount` syscall exception, bounded FileContents
+response queue, and the FILEDESCRIPTOR path-traversal sanitizer
 (`sanitize_relative_names`) with its count cap (`MAX_FILE_DESCRIPTORS`). The
 file-clipboard serve/confirm paths are additionally arithmetic/index-safe — the
 peer-supplied `file_num` is bounded before indexing in `set_stream_offset`, the

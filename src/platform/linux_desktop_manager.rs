@@ -5,6 +5,7 @@ use crate::client::{
 };
 use hbb_common::{log, tokio::time};
 use std::{
+    ffi::OsStr,
     path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -28,6 +29,15 @@ lazy_static::lazy_static! {
     static ref DESKTOP_RUNNING: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
     static ref DESKTOP_MANAGER: Arc<Mutex<Option<DesktopManager>>> = Arc::new(Mutex::new(None));
 }
+
+const XORG_CANDIDATE_PATHS: [&str; 5] = [
+    "/usr/libexec/Xorg",
+    "/usr/lib/xorg/Xorg",
+    "/usr/lib/xorg-server/Xorg",
+    "/usr/lib/Xorg",
+    "/usr/bin/Xorg",
+];
+const XSESSIONS_DIR: &str = "/usr/share/xsessions";
 
 #[derive(Debug)]
 struct DesktopManager {
@@ -57,29 +67,43 @@ pub fn stop_xdesktop() {
 }
 
 fn detect_headless() -> Option<&'static str> {
-    match run_cmds(&format!("which {}", DesktopManager::get_xorg())) {
-        Ok(output) => {
-            if output.trim().is_empty() {
-                return Some(LOGIN_MSG_DESKTOP_XORG_NOT_FOUND);
-            }
-        }
-        _ => {
-            return Some(LOGIN_MSG_DESKTOP_XORG_NOT_FOUND);
-        }
+    if find_xorg_path().is_none() {
+        return Some(LOGIN_MSG_DESKTOP_XORG_NOT_FOUND);
     }
 
-    match run_cmds("ls /usr/share/xsessions/") {
-        Ok(output) => {
-            if output.trim().is_empty() {
-                return Some(LOGIN_MSG_DESKTOP_NO_DESKTOP);
-            }
-        }
-        _ => {
-            return Some(LOGIN_MSG_DESKTOP_NO_DESKTOP);
-        }
+    if !has_xsession_desktop_entry() {
+        return Some(LOGIN_MSG_DESKTOP_NO_DESKTOP);
     }
 
     None
+}
+
+fn find_xorg_path() -> Option<&'static str> {
+    XORG_CANDIDATE_PATHS
+        .iter()
+        .copied()
+        .find(|path| Path::new(path).is_file())
+}
+
+fn has_xsession_desktop_entry() -> bool {
+    has_xsession_desktop_entry_in(Path::new(XSESSIONS_DIR))
+}
+
+fn has_xsession_desktop_entry_in(dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_file()
+            && entry.path().extension() == Some(OsStr::new("desktop"))
+        {
+            return true;
+        }
+    }
+    false
 }
 
 // R-X14: collapsed to existing-session-DISCOVERY only. The peer-supplied os_login is ignored (never
@@ -145,32 +169,35 @@ impl DesktopManager {
             Some(self.seat0_username.clone())
         }
     }
+}
 
-    // Kept for the headless/no-desktop detection above (detect_headless `which Xorg`); never used to
-    // spawn an X server (that path is excised, R-X14).
-    fn get_xorg() -> &'static str {
-        // Fedora 26 or later
-        let xorg = "/usr/libexec/Xorg";
-        if Path::new(xorg).is_file() {
-            return xorg;
-        }
-        // Debian 9 or later
-        let xorg = "/usr/lib/xorg/Xorg";
-        if Path::new(xorg).is_file() {
-            return xorg;
-        }
-        // Arch Linux
-        let xorg = "/usr/lib/xorg-server/Xorg";
-        if Path::new(xorg).is_file() {
-            return xorg;
-        }
-        // Arch Linux
-        let xorg = "/usr/lib/Xorg";
-        if Path::new(xorg).is_file() {
-            return xorg;
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        log::warn!("Failed to find xorg, use default Xorg.\n Please add \"allowed_users=anybody\" to \"/etc/X11/Xwrapper.config\".");
-        "Xorg"
+    #[test]
+    fn r_s11c10_desktop_manager_xorg_candidates_are_absolute() {
+        assert!(XORG_CANDIDATE_PATHS
+            .iter()
+            .all(|path| Path::new(path).is_absolute()));
+        assert!(!XORG_CANDIDATE_PATHS.iter().any(|path| *path == "Xorg"));
+    }
+
+    #[test]
+    fn r_s11c10_desktop_manager_xsession_entries_are_desktop_files() {
+        let dir = std::env::temp_dir().join(format!(
+            "rustdesk_xsessions_test_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir(&dir).unwrap();
+
+        std::fs::write(dir.join("README"), "").unwrap();
+        assert!(!has_xsession_desktop_entry_in(&dir));
+
+        std::fs::write(dir.join("test.desktop"), "[Desktop Entry]\n").unwrap();
+        assert!(has_xsession_desktop_entry_in(&dir));
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -881,6 +881,30 @@ fi
 if [ -n "$r_s11c10e" ]; then echo "  FAIL R-S11c-10e Linux os-release parsing:$r_s11c10e"; rc=1; else
   echo "  ok  R-S11c-10e Linux distro metadata is parsed from os-release files as data, with no awk/cat/grep shell path"; fi
 
+echo "== (3b-iii-h6) Linux desktop-manager headless detection avoids shell probes (R-S11c-10f) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_desktop_manager --color never
+r_s11c10f=
+grep -q 'const XORG_CANDIDATE_PATHS' src/platform/linux_desktop_manager.rs || r_s11c10f="$r_s11c10f no-fixed-xorg-candidates"
+grep -q 'fn find_xorg_path() -> Option' src/platform/linux_desktop_manager.rs || r_s11c10f="$r_s11c10f no-direct-xorg-path-check"
+grep -q 'fn has_xsession_desktop_entry_in' src/platform/linux_desktop_manager.rs || r_s11c10f="$r_s11c10f no-direct-xsession-dir-check"
+desktop_manager_blocks=$(
+  awk '/fn detect_headless/,/pub fn try_start_desktop/' src/platform/linux_desktop_manager.rs
+  awk '/fn find_xorg_path/,/fn has_xsession_desktop_entry_in/' src/platform/linux_desktop_manager.rs
+  awk '/fn has_xsession_desktop_entry_in/,/^}/' src/platform/linux_desktop_manager.rs
+)
+if echo "$desktop_manager_blocks" | grep -Eq 'run_cmds|run_cmds_trim_newline|CMD_SH|sh -c|ls /usr/share/xsessions|Command::new\("(which|ls|grep|awk|sed|xargs)"'; then
+  r_s11c10f="$r_s11c10f shell-shaped-desktop-manager-probe-regressed"
+fi
+if grep -RInE 'run_cmds\([^)]*(which|/usr/share/xsessions)|which[[:space:]]+Xorg|ls[[:space:]]+/usr/share/xsessions|DesktopManager::get_xorg|fn get_xorg\(' src/platform/linux_desktop_manager.rs >/tmp/rd_verify_r_s11c10f.$$; then
+  cat /tmp/rd_verify_r_s11c10f.$$
+  rm -f /tmp/rd_verify_r_s11c10f.$$
+  r_s11c10f="$r_s11c10f stale-shell-desktop-manager-probe"
+else
+  rm -f /tmp/rd_verify_r_s11c10f.$$
+fi
+if [ -n "$r_s11c10f" ]; then echo "  FAIL R-S11c-10f Linux desktop-manager headless detection:$r_s11c10f"; rc=1; else
+  echo "  ok  R-S11c-10f Linux desktop-manager headless detection uses fixed Xorg paths and direct xsession directory reads, with no shell command probe"; fi
+
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() are now only typed password
 # operations: user-owned direct commit and Linux/Windows service-owned service commit. set_socks /

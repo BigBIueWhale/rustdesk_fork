@@ -598,11 +598,16 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `/usr/lib/os-release` directly and parses shell-compatible assignments as data; the dormant OpenSUSE
   elevation helper that used `cat /etc/os-release | grep opensuse` is deleted with the commented elevation
   scaffold. `scripts/verify.sh` runs the parser tests and source gate for this closure.
+  R-S11c-10f closes `linux_desktop_manager` headless detection: the remaining existing-session discovery path
+  now checks a fixed set of absolute Xorg paths and reads `/usr/share/xsessions` directly for `.desktop`
+  entries; it no longer shells through `which` or `ls`, and the bare `Xorg` PATH fallback is gone.
+  `scripts/verify.sh` runs the focused desktop-manager tests and source gate.
   Remaining closure:
-  replace the still-live service/display helper shell sites such as SELinux probes and
-  `linux_desktop_manager` probes with direct `/proc`, file parsing, or argv-only commands; no shell
+  replace the still-live service/display helper shell sites such as SELinux probes with direct kernel/file
+  APIs or argv-only commands; no shell
   pipeline/string interpolation in root-context helpers. `xrandr|tr` is closed by R-S11c-10c; `pgrep` and
-  whiteboard Xwayland discovery are closed by R-S11c-10d; `os-release` parsing is closed by R-S11c-10e.
+  whiteboard Xwayland discovery are closed by R-S11c-10d; `os-release` parsing is closed by R-S11c-10e;
+  `linux_desktop_manager` probing is closed by R-S11c-10f.
 - **R-S11b-4 — config secrecy statement after IPC closure.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary

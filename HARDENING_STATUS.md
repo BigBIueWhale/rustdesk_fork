@@ -320,6 +320,23 @@ unreachable and a source/test/AST gate prevents reintroduction.
   empty IDs are stored absent, legacy IDs are not migrated or rewritten by load/store, whole-config set
   does not import ID fields, the old ID generator/writer/key/dependency symbols are absent, the server
   login fallback is absent, and the IPC helper cannot reintroduce id/salt copy-back.
+- **R-S11b-3f — desktop at-rest wrapper no longer creates service identity/key material — CLOSED 2026-07-09.**
+  Platforms: Windows/Linux/macOS desktop installed-service and user-owned desktop paths. Endpoint/action:
+  `hbb_common::get_uuid()`, `password_security::symmetric_crypt`, and legacy `Config.key_pair` access.
+  Boundary: read-shaped metadata / at-rest-secret wrapping ↔ service-owned identity/trust material. Attack
+  surface closed: desktop reads and at-rest encryption no longer fall back to generating or storing a
+  signing key when `machine_uid` is unavailable; `get_uuid()` is now a UI/device-metadata read that returns
+  the machine UID or empty on failure, while `at_rest_storage_key()` is the explicit fallible secret-wrapper
+  key source. `symmetric_crypt` fails closed on an unavailable or empty desktop wrapper key instead of
+  zero-padding it into an all-zero secretbox key or storing current-version secrets as plaintext. Existing
+  legacy desktop blobs encrypted under a previously stored keypair public key remain decryptable through
+  `Config::get_existing_key_pair()`, which is read-only and never generates. Mobile `key_pair` generation is
+  cfg-isolated to Android/iOS because that remains the documented mobile at-rest wrapper residual pending the
+  Keychain/Keystore replacement. Verification closure: `scripts/verify.sh` runs the pk-fallback tests and
+  asserts desktop `get_uuid()` does not call the keypair generator, the generator is mobile-cfg-only,
+  `get_cached_pk` is absent, `symmetric_crypt` uses the fallible at-rest key API rather than `get_uuid()`,
+  empty wrapper keys are rejected, and current-version encryption failures return empty values rather than
+  plaintext.
 - **R-S11c-2a/R-S11c-3a — Windows `_service` raw session/SAS commands removed — CLOSED 2026-07-08.**
   Platform: Windows installed service. Endpoint/action: `_service` named pipe messages formerly carrying
   `Data::UserSid(Some(_))` for service-owned session switching and `Data::SAS` for SYSTEM-mediated
@@ -414,9 +431,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   over IPC after R-S11b-3b; generic config writes, generic config helpers, and the proxy IPC variant are absent
   after R-S11b-3c; Windows `share_rdp` is no longer a UI-side shell/registry write after R-S11b-3d and is
   committed only by the LocalSystem service through a typed elevated `_service` request; service identity/salt
-  reads are side-effect-free after R-S11b-3e. Remaining closure: trust-store writes, remaining service-policy
-  writes, and any future identity/salt/key/proxy write are not reachable from ordinary IPC except through
-  named approved operations with gates.
+  reads are side-effect-free after R-S11b-3e; desktop at-rest wrapper reads no longer mint key material after
+  R-S11b-3f. Remaining closure: trust-store writes, remaining service-policy writes, and any future
+  identity/salt/key/proxy write are not reachable from ordinary IPC except through named approved operations
+  with gates.
 **Contained hardening items from the same audit:**
 - **R-S11c-6 — Windows named-pipe endpoint hardening.** Platform: Windows desktop. Endpoint:
   predictable `\\.\pipe\<APP>\query{postfix}` names and broad create permissions for main/`_service`.
@@ -712,7 +730,7 @@ Every `--service`-death trigger, ranked (from source):
 
 **DRILL C — exact worst-case reap per session type (from constants).** Remote/view-camera/file-transfer/terminal/pre-auth: **≤~31 s** (`test_delay` `SEC30`+`ThrottledInterval`, `connection.rs:357-358,867-871`); pre-key handshake stall ≤~23 s (CPace steps `cpace.rs:36,47`); **port-forward ≤~60 s** (no `test_delay` → TCP keepalive `direct_service.rs:604-608` kills the idle socket; the 3600 s idle-timer is a rarely-reached fallback). FIN/RST → immediate. Improvement over upstream's removed 12–120 s `SEND_TIMEOUT`.
 
-**DRILL D — machine-UUID PRS decrypt-fail → empty → silent park (CONFIRMED trigger; reboot-proof).** `get_permanent_password_prs()` = `decrypt(...).unwrap_or_default()` (`config.rs:1437-1440`) → **any** decrypt failure silently yields empty → `direct_server` **parks, binds nothing** (`direct_service.rs:492-508`) while the GUI shows green "Listening." Park triggers: (1) machine GUID changed (MachineGuid / `/etc/machine-id` / IOPlatformUUID differs from set-time); (2) `machine_uid::get()` fails at read-time → `get_uuid()` caches the pk fallback for the whole `--server` (`lib.rs:330-388`) → the GUID-sealed PRS can't open **and** the `pk!=uuid` fallback is also skipped → empty for that process lifetime; (3) corrupted `password_prs` bytes. **Survives a restart** (stored bytes unchanged). Windows/Linux/macOS only (Android/iOS use the stable persisted pk, `machine_uid` cfg-excluded). NEEDS-RUNTIME (justified): whether the GUID changed / `machine_uid` failed on the operator's box — the code fully determines the *consequence*.
+**DRILL D — machine-UUID PRS decrypt-fail → empty → silent park (CONFIRMED trigger; reboot-proof).** `get_permanent_password_prs()` = `decrypt(...).unwrap_or_default()` (`config.rs`) → **any** decrypt failure silently yields empty → `direct_server` **parks, binds nothing** while the GUI shows green "Listening." Park triggers: (1) machine GUID changed (MachineGuid / `/etc/machine-id` / IOPlatformUUID differs from set-time); (2) `machine_uid::get()` fails at read-time, so the desktop at-rest key is unavailable and the machine-UUID-sealed PRS cannot open; (3) corrupted `password_prs` bytes. **Survives a restart** (stored bytes unchanged). Windows/Linux/macOS only for the machine-UID failure case; Android/iOS use the documented mobile persisted-key wrapper. NEEDS-RUNTIME (justified): whether the GUID changed / `machine_uid` failed on the operator's box — the code fully determines the *consequence*.
 
 **DRILL E — platform supervision matrix (each cell from its own cfg-gated source) — this IS BR-12.**
 | | Listener owner | Respawns `--server` | Supervises the service tier | Permanent wedge on service death |
@@ -1297,8 +1315,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 > CPace PRS is now derived from the password alone (fixed salt, R-P1); there is no host identity,
 > host-proof, or local pin (R-P5). So the fingerprint boards, the pin/known-hosts dialogs, the
 > `HostIdentity` frame, and the `--get-fingerprint`/`--pin-host`/`--forget-host` CLI are **removed, not
-> fixed** — those I-items are retained below only as the historical record. The non-pin items in this
-> backlog (the dead-scaffolding excisions) stand.
+> fixed**. The detailed obsolete pin-item fixes are not retained as live implementation guidance. The
+> non-pin items in this backlog (the dead-scaffolding excisions) stand.
 
 **✅ STATUS: ALL CLOSED — 2026-07-04.** The backlog enumerated below was IMPLEMENTED in full by a
 single coherent excision pass (36 files, **+441 / −1790**) and reviewed to standard: all source gates
@@ -1331,57 +1349,9 @@ does not exist. That entire stratum is now gone — the tiers below record each 
 
 ### Tier 1 — user-visible correctness defects ✅ DONE (a user SAW these)
 
-- **[I-1] The box's own R-S17 fingerprint renders BLANK on every GUI screen — the worst item in
-  this document.** `ui_interface::get_fingerprint` gates the value on `Config::get_key_confirmed()`
-  (desktop via `src/ipc.rs:847`, mobile via `src/ui_interface.rs:1090`), but
-  `Config::set_key_confirmed(true)` is called **nowhere in the entire tree** — the only thing that
-  ever flipped it true was the *excised* rendezvous `register_pk` acknowledgement (only
-  `set_key_confirmed(false)` survives: `ipc.rs:870`, `ipc.rs:1519`, `ui_interface.rs:1299`; `= true`
-  appears solely in a config-parser unit test). The flag is therefore permanently false and the
-  fingerprint shows **empty** on the desktop home board
-  (`flutter/lib/desktop/pages/desktop_home_page.dart:214`), the mobile server page
-  (`flutter/lib/mobile/pages/server_page.dart:357`), and mobile settings
-  (`flutter/lib/mobile/pages/settings_page.dart:459`). This guts the trust model in the one place it
-  matters most: R-S17 is "the operator reads the box's fingerprint out-of-band and the viewer pins
-  it," and the screen meant to *show* that fingerprint shows nothing. Only the headless
-  `--get-fingerprint` still works (it computes the fp directly, ungated) — which is exactly why the
-  deployed `--server` box appears fine while every GUI is broken. **FIX (opinionated):** DELETE the
-  gate; do NOT "set the flag true." A direct-IP fork with no rendezvous has nothing to confirm, and
-  the self-generated Ed25519 key is *always* present (`Config::get_key_pair()` generates it on first
-  read). Return `pk_to_fingerprint(get_key_pair().1)` unconditionally at both sites, and excise the
-  whole `key_confirmed`/`keys_confirmed` concept (also `OnlineStatus.confirmed`/`ConfirmedKey`, Tier 4).
-
-- **[I-2] The first-contact pin dialog HANGS; on mobile it means the app connects to NOTHING, ever.**
-  Because the CPace password (PRS) is Argon2id-salted with the pinned host key (R-P1), the viewer
-  bails *before keying* when there is no pin (`src/client.rs:347`) — the host key is never received,
-  so `pending_host_pk` stays `None`. The shared Flutter first-contact dialog `hostNotPinnedDialog`
-  (`flutter/lib/common/widgets/dialog.dart:586`, desktop+mobile) then shows a **"Trust"** button
-  whose `bind.sessionPinHost` → `set_pin_host_and_reconnect` (`src/ui_session_interface.rs:1319`)
-  finds `pending_host_pk == None`, logs "refusing," and returns **without reconnecting** — while the
-  dialog has already thrown up a `showLoading("Connecting…")` spinner. Net: the spinner hangs forever,
-  no fingerprint is shown, and there is no field to type one into. The dialog is a vestige of the
-  pre-R-P1 trust-on-first-use design; its own comment ("the box keyed… show the fingerprint")
-  describes a flow that can no longer happen. Desktop users can escape via the `--pin-host` CLI;
-  **Android/iOS have no CLI and no deep-link/QR/import pin channel, so a fresh mobile install
-  literally cannot connect to any host.** **FIX:** replace the dead "Trust" with a fingerprint-ENTRY
-  dialog (paste the out-of-band fingerprint → a new FFI `session_pin_host_by_fingerprint(session_id,
-  hex)` → `host_pin::set_pinned_pk` → reconnect), mirroring the working `hostMismatchDialog`
-  text-field pattern (`dialog.dart:641`). That is the only honest UI for a no-TOFU design.
-
-- **[I-3] A legitimately re-keyed host dead-ends the viewer in an eternal "Password Required" loop.**
-  If the box is wiped and re-provisioned (new Ed25519 key, password re-set → `password_prs`
-  re-derived under the new key, read at `src/server.rs:426`), a viewer still pinned to the OLD key
-  derives a PRS under the old key → the salts differ → **CPace fails first** (`src/client.rs:370`),
-  and that failure is routed to the pre-keying password prompt (`src/client.rs:3074`, "Password
-  Required"). Re-typing the correct password re-derives the same non-matching PRS → identical failure
-  → infinite loop, with **no hint** the real cause is a changed host key. The elaborate
-  `hostMismatchDialog` re-pin UI is **unreachable** here (it requires CPace to *succeed* yet the proof
-  key to differ — a contrived stale-PRS corruption, never a normal re-key), and even when reached it
-  does **not** restore connectivity (re-pinning rewrites known_hosts but does not re-derive the host's
-  PRS — only a host-side `--password` heals it). **FIX:** route "CPace handshake failed" to a message
-  naming BOTH causes ("wrong password OR the box's host key changed — re-verify the fingerprint
-  out-of-band and re-pin"), and delete the near-dead mismatch machinery (`client.rs:400` branch +
-  `hostMismatchDialog`) or make a key change genuinely distinguishable.
+- **[I-1/I-2/I-3] Retired host-key/fingerprint/pin GUI defects.** Closed by deleting the host-key
+  identity, pin store, fingerprint surfaces, first-contact/mismatch dialogs, and related CLI/FFI
+  rather than repairing them. The live design is pure password-PAKE with no per-box identity.
 
 - **[I-4] A dead "Sort by → Status" option in the peer menu.** `PeerSortType.status = 'Status'`
   (`flutter/lib/common/widgets/peers_view.dart:28`) is offered in the Favorites sort menu; its
@@ -1411,18 +1381,9 @@ does not exist. That entire stratum is now gone — the tiers below record each 
 
 ### Tier 2 — a LIVE latent bug ✅ DONE (not merely dead code)
 
-- **[I-8] `--get-fingerprint` on a keyless box can make the operator pin a PHANTOM key.**
-  `Config::get_key_pair()` persists a freshly-generated key via a **detached** background thread
-  (`libs/hbb_common/src/config.rs:1160`); `--get-fingerprint` (`src/core_main.rs:390`) prints the
-  fingerprint and immediately exits — potentially **before** that store commits. The next process then
-  generates a *different* key and the box uses it, while the operator has pinned the printed
-  (never-persisted) key → CPace fails forever. `set_permanent_password` is immune (it force-commits
-  the key synchronously, `config.rs:1357-1370`); `--get-fingerprint` is not. The window is narrow
-  (only on a brand-new box, before `--service`/a password exists — the deployed haggai box is
-  unaffected because the server comes up first), but the documented onboarding order is exactly "read
-  the fingerprint, then pin it," so this is a real footgun. **FIX:** have `--get-fingerprint`
-  synchronously commit the key if it just generated one (or refuse on a keyless box with an actionable
-  "set the password / start the service first" error).
+- **[I-8] Retired `--get-fingerprint` phantom-key race.** Closed by deleting the fingerprint/pin
+  workflow with R-S17/R-P5. Desktop no longer mints a host key while answering metadata; mobile's
+  legacy `key_pair` remains only as its documented at-rest wrapper key pending Keychain/Keystore work.
 
 ### Tier 3 — "live-looking dead" code ✅ DONE (deleted — it had lied to the next auditor)
 

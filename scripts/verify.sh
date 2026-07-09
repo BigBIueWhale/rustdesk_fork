@@ -201,6 +201,30 @@ if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel state-mutation allowlis
   echo "  ok  R-S11/R-S11b main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options remain scoped; gate binds Linux/macOS AND the Windows main pipe)"; fi
 rm -f /tmp/rd_verify_identity_writers.$$ /tmp/rd_verify_mac_address.$$
 
+echo "== (3b-iii-a1) desktop at-rest wrapper does not mint service identity material (R-S11b-3f) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config pk_fallback --color never
+r_s11b3f=
+get_uuid_body=$(awk '/^pub fn get_uuid\(\) -> Vec<u8> \{/{flag=1} flag{print} flag && /^}/{exit}' libs/hbb_common/src/lib.rs)
+echo "$get_uuid_body" | grep -q 'machine_uuid()' || r_s11b3f="$r_s11b3f desktop-uuid-not-machine-uid"
+if echo "$get_uuid_body" | grep -q 'Config::get_key_pair'; then
+  r_s11b3f="$r_s11b3f desktop-uuid-mints-keypair"
+fi
+grep -B1 'pub fn get_key_pair' libs/hbb_common/src/config.rs | grep -q 'target_os = "android".*target_os = "ios"' || r_s11b3f="$r_s11b3f keypair-generator-not-mobile-cfg"
+if grep -q 'pub fn get_cached_pk' libs/hbb_common/src/config.rs; then
+  r_s11b3f="$r_s11b3f cached-pk-api-present"
+fi
+if awk '/^mod test /{exit} /crate::get_uuid\(\)/ {print}' libs/hbb_common/src/password_security.rs | grep -q .; then
+  r_s11b3f="$r_s11b3f symmetric-crypt-still-uses-get-uuid"
+fi
+grep -q 'pub fn at_rest_storage_key() -> ResultType<Vec<u8>>' libs/hbb_common/src/lib.rs || r_s11b3f="$r_s11b3f fallible-at-rest-key-api-missing"
+grep -q 'let storage_key = crate::at_rest_storage_key()' libs/hbb_common/src/password_security.rs || r_s11b3f="$r_s11b3f symmetric-crypt-not-using-fallible-key"
+grep -q 'fn secretbox_key_from_storage_key' libs/hbb_common/src/password_security.rs || r_s11b3f="$r_s11b3f key-derivation-helper-missing"
+grep -A4 'fn secretbox_key_from_storage_key' libs/hbb_common/src/password_security.rs | grep -q 'storage_key.is_empty()' || r_s11b3f="$r_s11b3f empty-at-rest-key-not-rejected"
+grep -A14 'pub fn encrypt_str_or_original' libs/hbb_common/src/password_security.rs | grep -q 'return String::default()' || r_s11b3f="$r_s11b3f string-encrypt-failure-not-fail-closed"
+grep -A18 'pub fn encrypt_vec_or_original' libs/hbb_common/src/password_security.rs | grep -q 'return Vec::new()' || r_s11b3f="$r_s11b3f vec-encrypt-failure-not-fail-closed"
+if [ -n "$r_s11b3f" ]; then echo "  FAIL R-S11b-3f desktop at-rest key/identity boundary:$r_s11b3f"; rc=1; else
+  echo "  ok  R-S11b-3f desktop at-rest wrapping uses a fallible machine-UID key, never get_uuid/keypair generation; legacy keypair decrypt remains read-only and mobile-only generation is cfg-isolated"; fi
+
 echo "== (3b-iii-a2) Windows named-pipe endpoints are DACL-bound (R-S11c-6) =="
 r_s11c6=
 grep -q 'windows_ipc_listener_security_attributes(postfix)' src/ipc.rs              || r_s11c6="$r_s11c6 listener-not-dacl-routed"

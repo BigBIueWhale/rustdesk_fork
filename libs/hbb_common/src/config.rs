@@ -16,6 +16,7 @@ use serde as de;
 use serde_derive::{Deserialize, Serialize};
 use serde_json;
 use sodiumoxide::base64;
+#[cfg(any(target_os = "android", target_os = "ios"))]
 use sodiumoxide::crypto::sign;
 
 mod permanent_password;
@@ -1100,6 +1101,7 @@ impl Config {
             .collect()
     }
 
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     pub fn get_key_pair() -> KeyPair {
         // lock here to make sure no gen_keypair more than once
         // no use of CONFIG directly here to ensure no recursive calling in Config::load because of password dec which calling this function
@@ -1109,7 +1111,7 @@ impl Config {
         }
         let mut config = Config::load_::<Config>("");
         if config.key_pair.0.is_empty() {
-            log::info!("Generated new keypair for id: {}", config.id);
+            log::info!("Generated mobile at-rest keypair");
             let (pk, sk) = sign::gen_keypair();
             let key_pair = (sk.0.to_vec(), pk.0.into());
             config.key_pair = key_pair.clone();
@@ -1123,12 +1125,7 @@ impl Config {
         config.key_pair
     }
 
-    pub fn get_cached_pk() -> Option<Vec<u8>> {
-        KEY_PAIR.lock().unwrap().clone().map(|k| k.1)
-    }
-
-    /// Get existing key pair without generating a new one.
-    /// Returns None if no key pair exists in cache or config file.
+    /// Get an existing legacy key pair without generating a new one.
     pub fn get_existing_key_pair() -> Option<KeyPair> {
         let mut lock = KEY_PAIR.lock().unwrap();
         if let Some(p) = lock.as_ref() {
@@ -1146,6 +1143,11 @@ impl Config {
         } else {
             None
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_existing_key_pair_cache_for_test(key_pair: Option<(Vec<u8>, Vec<u8>)>) {
+        *KEY_PAIR.lock().unwrap() = key_pair;
     }
 
     pub fn no_register_device() -> bool {
@@ -1607,20 +1609,13 @@ impl Config {
         *lock = cfg;
         lock.store();
         // Drop CONFIG lock before acquiring KEY_PAIR lock to avoid potential deadlock.
-        #[cfg(target_os = "macos")]
         let new_key_pair = lock.key_pair.clone();
         drop(lock);
-        #[cfg(target_os = "macos")]
         Self::invalidate_key_pair_cache_if_changed(&new_key_pair);
         true
     }
 
     /// Invalidate KEY_PAIR cache if it differs from the new key_pair.
-    /// Use None to invalidate the cache instead of Some(key_pair).
-    /// If we use Some with an empty key_pair, get_key_pair() would always return
-    /// the empty key_pair from cache without regenerating.
-    /// By clearing the cache, get_key_pair() will reload and regenerate if needed.
-    #[cfg(target_os = "macos")]
     fn invalidate_key_pair_cache_if_changed(new_key_pair: &KeyPair) {
         let mut key_pair_cache = KEY_PAIR.lock().unwrap();
         if let Some(cached) = key_pair_cache.as_ref() {

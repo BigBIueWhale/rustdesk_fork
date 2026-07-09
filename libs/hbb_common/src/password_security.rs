@@ -98,6 +98,8 @@ pub fn encrypt_str_or_original(s: &str, version: &str, max_len: usize) -> String
         if let Ok(s) = encrypt(s.as_bytes()) {
             return version.to_owned() + &s;
         }
+        log::error!("At-rest string encryption failed");
+        return String::default();
     }
     s.to_owned()
 }
@@ -143,6 +145,8 @@ pub fn encrypt_vec_or_original(v: &[u8], version: &str, max_len: usize) -> Vec<u
             version.append(&mut s.into_bytes());
             return version;
         }
+        log::error!("At-rest vector encryption failed");
+        return Vec::new();
     }
     v.to_owned()
 }
@@ -182,15 +186,11 @@ fn decrypt(v: &[u8]) -> Result<Vec<u8>, ()> {
 }
 
 pub fn symmetric_crypt(data: &[u8], encrypt: bool) -> Result<Vec<u8>, ()> {
-    use sodiumoxide::crypto::secretbox;
-    use std::convert::TryInto;
-
-    let uuid = crate::get_uuid();
-    let mut keybuf = uuid.clone();
-    keybuf.resize(secretbox::KEYBYTES, 0);
-    let key = secretbox::Key(keybuf.try_into().map_err(|_| ())?);
-
     if encrypt {
+        let storage_key = crate::at_rest_storage_key().map_err(|err| {
+            log::error!("At-rest storage key unavailable for encryption: {err}");
+        })?;
+        let key = secretbox_key_from_storage_key(storage_key)?;
         let nonce = secretbox::gen_nonce();
         let encrypted = secretbox::seal(data, &nonce, &key);
         let mut output = Vec::with_capacity(1 + nonce.0.len() + encrypted.len());
@@ -199,22 +199,48 @@ pub fn symmetric_crypt(data: &[u8], encrypt: bool) -> Result<Vec<u8>, ()> {
         output.extend(encrypted);
         Ok(output)
     } else {
-        let res = open_secretbox_payload(data, &key);
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        if res.is_err() {
-            // Fallback: try pk if uuid decryption failed (in case encryption used pk due to machine_uid failure)
-            if let Some(key_pair) = Config::get_existing_key_pair() {
-                let pk = key_pair.1;
-                if pk != uuid {
-                    let mut keybuf = pk;
-                    keybuf.resize(secretbox::KEYBYTES, 0);
-                    let pk_key = secretbox::Key(keybuf.try_into().map_err(|_| ())?);
-                    return open_secretbox_payload(data, &pk_key);
+        match crate::at_rest_storage_key() {
+            Ok(storage_key) => {
+                let key = secretbox_key_from_storage_key(storage_key.clone())?;
+                match open_secretbox_payload(data, &key) {
+                    Ok(v) => Ok(v),
+                    Err(_) => open_with_existing_key_pair(data, Some(&storage_key)),
                 }
             }
+            Err(err) => {
+                log::error!("At-rest storage key unavailable for decryption: {err}");
+                open_with_existing_key_pair(data, None)
+            }
         }
-        res
     }
+}
+
+fn secretbox_key_from_storage_key(mut storage_key: Vec<u8>) -> Result<secretbox::Key, ()> {
+    use std::convert::TryInto;
+
+    if storage_key.is_empty() {
+        return Err(());
+    }
+    storage_key.resize(secretbox::KEYBYTES, 0);
+    Ok(secretbox::Key(storage_key.try_into().map_err(|_| ())?))
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn open_with_existing_key_pair(data: &[u8], primary_key: Option<&[u8]>) -> Result<Vec<u8>, ()> {
+    let Some(key_pair) = Config::get_existing_key_pair() else {
+        return Err(());
+    };
+    let pk = key_pair.1;
+    if primary_key == Some(pk.as_slice()) {
+        return Err(());
+    }
+    let key = secretbox_key_from_storage_key(pk)?;
+    open_secretbox_payload(data, &key)
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn open_with_existing_key_pair(_data: &[u8], _primary_key: Option<&[u8]>) -> Result<Vec<u8>, ()> {
+    Err(())
 }
 
 fn open_secretbox_payload(data: &[u8], key: &secretbox::Key) -> Result<Vec<u8>, ()> {
@@ -233,7 +259,33 @@ fn open_secretbox_payload(data: &[u8], key: &secretbox::Key) -> Result<Vec<u8>, 
     secretbox::open(data, &legacy_nonce, key)
 }
 
+#[cfg(test)]
 mod test {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    static LEGACY_KEY_PAIR_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    struct LegacyKeyPairCacheGuard;
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    impl Drop for LegacyKeyPairCacheGuard {
+        fn drop(&mut self) {
+            crate::config::Config::set_existing_key_pair_cache_for_test(None);
+        }
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    fn install_legacy_key_pair_for_test(primary_key: &[u8]) -> (Vec<u8>, LegacyKeyPairCacheGuard) {
+        let mut pk = vec![0x42; sodiumoxide::crypto::secretbox::KEYBYTES];
+        if pk.as_slice() == primary_key {
+            pk[0] ^= 1;
+        }
+        crate::config::Config::set_existing_key_pair_cache_for_test(Some((
+            vec![0x24; sodiumoxide::crypto::secretbox::KEYBYTES],
+            pk.clone(),
+        )));
+        (pk, LegacyKeyPairCacheGuard)
+    }
 
     #[test]
     fn test() {
@@ -458,7 +510,7 @@ mod test {
         use std::convert::TryInto;
 
         let data = b"test password 123";
-        let uuid = crate::get_uuid();
+        let uuid = crate::at_rest_storage_key().unwrap();
         let mut keybuf = uuid.clone();
         keybuf.resize(secretbox::KEYBYTES, 0);
         let key = secretbox::Key(keybuf.try_into().unwrap());
@@ -473,7 +525,7 @@ mod test {
         use super::*;
         use std::convert::TryInto;
 
-        let mut keybuf = crate::get_uuid();
+        let mut keybuf = crate::at_rest_storage_key().unwrap();
         keybuf.resize(secretbox::KEYBYTES, 0);
         let key = secretbox::Key(keybuf.try_into().unwrap());
         let nonce = secretbox::Nonce([0; secretbox::NONCEBYTES]);
@@ -500,13 +552,20 @@ mod test {
     }
 
     #[test]
+    fn test_empty_at_rest_storage_key_is_rejected() {
+        use super::*;
+
+        assert!(secretbox_key_from_storage_key(Vec::new()).is_err());
+    }
+
+    #[test]
     fn test_decrypt_legacy_string_does_not_request_store() {
         use super::*;
         use sodiumoxide::base64::{encode, Variant};
         use std::convert::TryInto;
 
         let data = "test password 123";
-        let uuid = crate::get_uuid();
+        let uuid = crate::at_rest_storage_key().unwrap();
         let mut keybuf = uuid.clone();
         keybuf.resize(secretbox::KEYBYTES, 0);
         let key = secretbox::Key(keybuf.try_into().unwrap());
@@ -528,7 +587,7 @@ mod test {
         use std::convert::TryInto;
 
         let data = b"test password 123";
-        let uuid = crate::get_uuid();
+        let uuid = crate::at_rest_storage_key().unwrap();
         let mut keybuf = uuid.clone();
         keybuf.resize(secretbox::KEYBYTES, 0);
         let key = secretbox::Key(keybuf.try_into().unwrap());
@@ -550,14 +609,9 @@ mod test {
         use sodiumoxide::crypto::secretbox;
         use std::convert::TryInto;
 
-        let uuid = crate::get_uuid();
-        let pk = crate::config::Config::get_key_pair().1;
-
-        // Ensure uuid != pk, otherwise fallback branch won't be tested
-        if uuid == pk {
-            eprintln!("skip: uuid == pk, fallback branch won't be tested");
-            return;
-        }
+        let _lock = LEGACY_KEY_PAIR_TEST_LOCK.lock().unwrap();
+        let uuid = crate::at_rest_storage_key().unwrap();
+        let (pk, _cache_guard) = install_legacy_key_pair_for_test(&uuid);
 
         let data = b"test password 123";
         let nonce = secretbox::Nonce([0; secretbox::NONCEBYTES]);
@@ -568,7 +622,7 @@ mod test {
         let pk_key = secretbox::Key(pk_keybuf.try_into().unwrap());
         let encrypted = secretbox::seal(data, &nonce, &pk_key);
 
-        // Decrypt using symmetric_crypt (should fallback to pk since uuid differs)
+        // Decrypt using symmetric_crypt (should fallback to pk since the storage key differs)
         let decrypted = super::symmetric_crypt(&encrypted, false);
         assert!(
             decrypted.is_ok(),
@@ -585,13 +639,9 @@ mod test {
         use sodiumoxide::crypto::secretbox;
         use std::convert::TryInto;
 
-        let uuid = crate::get_uuid();
-        let pk = crate::config::Config::get_key_pair().1;
-
-        if uuid == pk {
-            eprintln!("skip: uuid == pk, fallback branch won't be tested");
-            return;
-        }
+        let _lock = LEGACY_KEY_PAIR_TEST_LOCK.lock().unwrap();
+        let uuid = crate::at_rest_storage_key().unwrap();
+        let (pk, _cache_guard) = install_legacy_key_pair_for_test(&uuid);
 
         let data = b"test password 123";
         let nonce = secretbox::gen_nonce();

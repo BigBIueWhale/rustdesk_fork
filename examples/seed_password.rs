@@ -8,10 +8,9 @@
 //!
 //! Usage: `cargo run --example seed_password --features linux-pkg-config -- <password>`
 //!
-//! R-P1 note: the permanent-password PRS is a memory-hard Argon2id hash SALTED with the box's own
-//! Ed25519 host PUBLIC key. set_permanent_password co-persists that key SYNCHRONOUSLY (the lazy
-//! get_key_pair() background flush would otherwise race a short-lived seeder), so the separate
-//! `--server` process reads the SAME key the PRS binds to.
+//! R-P1 note: the permanent-password PRS is a memory-hard Argon2id hash derived from the password
+//! and the fork's fixed domain-separation salt. The at-rest wrapper is local-machine storage only;
+//! it is not a host identity and is not part of the PAKE input.
 fn main() {
     use hbb_common::config::Config;
     let a: Vec<String> = std::env::args().collect();

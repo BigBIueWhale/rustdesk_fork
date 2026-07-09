@@ -6,7 +6,11 @@ use hbb_common::{
     libc,
     tokio::io::{AsyncRead, AsyncWrite},
 };
-#[cfg(target_os = "macos")]
+#[cfg(target_os = "linux")]
+use serde_derive::{Deserialize, Serialize};
+#[cfg(target_os = "linux")]
+use std::fmt;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::fs::MetadataExt;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::io::RawFd;
@@ -525,6 +529,275 @@ fn peer_cred_from_fd(fd: RawFd) -> Option<libc::ucred> {
     }
 }
 
+#[cfg(target_os = "linux")]
+#[derive(Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct PeerProcessIdentity {
+    pid: u32,
+    uid: u32,
+    start_time: String,
+    first_arg: String,
+    cm_launch_token: String,
+    cm_launch_parent: u32,
+}
+
+#[cfg(target_os = "linux")]
+impl fmt::Debug for PeerProcessIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PeerProcessIdentity")
+            .field("pid", &self.pid)
+            .field("uid", &self.uid)
+            .field("start_time", &self.start_time)
+            .field("first_arg", &self.first_arg)
+            .field("cm_launch_token", &"<redacted>")
+            .field("cm_launch_parent", &self.cm_launch_parent)
+            .finish()
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl PeerProcessIdentity {
+    pub(crate) fn pid(&self) -> u32 {
+        self.pid
+    }
+
+    pub(crate) fn uid(&self) -> u32 {
+        self.uid
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(pid: u32, uid: u32, start_time: String, first_arg: String) -> Self {
+        Self {
+            pid,
+            uid,
+            start_time,
+            first_arg,
+            cm_launch_token: String::new(),
+            cm_launch_parent: 0,
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn linux_proc_stat_start_time(pid: u32, stat: &str) -> ResultType<String> {
+    let Some((_, after_comm)) = stat.rsplit_once(") ") else {
+        bail!("Failed to parse /proc/{pid}/stat: missing command terminator");
+    };
+    let fields: Vec<_> = after_comm.split_whitespace().collect();
+    let Some(start_time) = fields.get(19) else {
+        bail!("Failed to parse /proc/{pid}/stat: missing start time");
+    };
+    Ok((*start_time).to_owned())
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn linux_proc_start_time(pid: u32) -> ResultType<String> {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat"))?;
+    linux_proc_stat_start_time(pid, &stat)
+}
+
+#[cfg(target_os = "linux")]
+fn linux_proc_parent_pid(pid: u32) -> ResultType<u32> {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat"))?;
+    let Some((_, after_comm)) = stat.rsplit_once(") ") else {
+        bail!("Failed to parse /proc/{pid}/stat: missing command terminator");
+    };
+    let fields: Vec<_> = after_comm.split_whitespace().collect();
+    let Some(ppid) = fields.get(1) else {
+        bail!("Failed to parse /proc/{pid}/stat: missing parent pid");
+    };
+    ppid.parse::<u32>()
+        .map_err(|err| anyhow::anyhow!("Failed to parse /proc/{pid}/stat parent pid: {err}"))
+}
+
+#[cfg(target_os = "linux")]
+fn linux_process_has_ancestor(pid: u32, ancestor_pid: u32) -> bool {
+    if pid == 0 || ancestor_pid == 0 {
+        return false;
+    }
+    let mut current = pid;
+    for _ in 0..128 {
+        let Ok(parent) = linux_proc_parent_pid(current) else {
+            return false;
+        };
+        if parent == ancestor_pid {
+            return true;
+        }
+        if parent == 0 || parent == 1 || parent == current {
+            return false;
+        }
+        current = parent;
+    }
+    false
+}
+
+#[cfg(target_os = "linux")]
+fn linux_proc_cmdline_args(pid: u32) -> ResultType<Vec<String>> {
+    let cmdline = fs::read(format!("/proc/{pid}/cmdline"))?;
+    Ok(cmdline
+        .split(|byte| *byte == 0)
+        .filter(|part| !part.is_empty())
+        .map(|part| String::from_utf8_lossy(part).into_owned())
+        .collect())
+}
+
+#[cfg(target_os = "linux")]
+fn linux_proc_environ_value(pid: u32, name: &str) -> ResultType<String> {
+    if name.is_empty() || name.as_bytes().contains(&b'=') {
+        bail!("invalid environment key");
+    }
+    let environ = fs::read(format!("/proc/{pid}/environ"))?;
+    let prefix = format!("{name}=");
+    for part in environ.split(|byte| *byte == 0) {
+        if part.starts_with(prefix.as_bytes()) {
+            return Ok(String::from_utf8_lossy(&part[prefix.len()..]).into_owned());
+        }
+    }
+    Ok(String::new())
+}
+
+#[cfg(target_os = "linux")]
+fn linux_proc_uid(pid: u32) -> ResultType<u32> {
+    let metadata = fs::metadata(format!("/proc/{pid}"))?;
+    Ok(metadata.uid())
+}
+
+#[cfg(target_os = "linux")]
+fn linux_proc_u32_env(pid: u32, name: &str) -> ResultType<u32> {
+    let value = linux_proc_environ_value(pid, name)?;
+    if value.is_empty() {
+        return Ok(0);
+    }
+    value
+        .parse::<u32>()
+        .map_err(|err| anyhow::anyhow!("Failed to parse environment key {name}: {err}"))
+}
+
+#[cfg(target_os = "linux")]
+fn linux_process_identity_by_pid(pid: u32, postfix: &str) -> ResultType<PeerProcessIdentity> {
+    if pid == 0 {
+        bail!("invalid pid 0 on ipc channel '{}'", postfix);
+    }
+    ensure_peer_executable_matches_current_by_pid(pid, postfix)?;
+    let args = linux_proc_cmdline_args(pid)?;
+    Ok(PeerProcessIdentity {
+        pid,
+        uid: linux_proc_uid(pid)?,
+        start_time: linux_proc_start_time(pid)?,
+        first_arg: args.get(1).cloned().unwrap_or_default(),
+        cm_launch_token: linux_proc_environ_value(pid, crate::common::CM_LAUNCH_TOKEN_ENV)?,
+        cm_launch_parent: linux_proc_u32_env(pid, crate::common::CM_LAUNCH_PARENT_ENV)?,
+    })
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn current_process_identity(postfix: &str) -> ResultType<PeerProcessIdentity> {
+    linux_process_identity_by_pid(std::process::id(), postfix)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn peer_process_identity<T>(
+    stream: &ConnectionTmpl<T>,
+    postfix: &str,
+) -> ResultType<PeerProcessIdentity>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
+{
+    let peer_pid = stream.peer_pid().ok_or_else(|| {
+        anyhow::anyhow!("Failed to resolve peer pid on ipc channel '{}'", postfix)
+    })?;
+    let peer_uid = stream.peer_uid().ok_or_else(|| {
+        anyhow::anyhow!("Failed to resolve peer uid on ipc channel '{}'", postfix)
+    })?;
+    let identity = linux_process_identity_by_pid(peer_pid, postfix)?;
+    if identity.uid != peer_uid {
+        bail!(
+            "Peer uid changed while authenticating ipc channel '{}': pid={}, socket_uid={}, proc_uid={}",
+            postfix,
+            peer_pid,
+            peer_uid,
+            identity.uid
+        );
+    }
+    Ok(identity)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn authenticate_cm_endpoint<T>(
+    stream: &ConnectionTmpl<T>,
+    expected_uid: u32,
+    expected_arg: &str,
+    expected_launch_token: &str,
+    expected_launch_parent: u32,
+) -> ResultType<PeerProcessIdentity>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
+{
+    let identity = peer_process_identity(stream, "_cm")?;
+    if identity.uid != expected_uid {
+        bail!(
+            "_cm endpoint uid mismatch: expected {}, got {}",
+            expected_uid,
+            identity.uid
+        );
+    }
+    if identity.first_arg != expected_arg {
+        bail!(
+            "_cm endpoint mode mismatch: expected {}, got {}",
+            expected_arg,
+            identity.first_arg
+        );
+    }
+    if expected_launch_token.is_empty() {
+        if !identity.cm_launch_token.is_empty() {
+            bail!("_cm endpoint launch token mismatch");
+        }
+    } else if identity.cm_launch_token != expected_launch_token {
+        bail!("_cm endpoint launch token mismatch");
+    }
+    if expected_launch_parent == 0 {
+        if identity.cm_launch_parent != 0 {
+            bail!("_cm endpoint launch parent mismatch");
+        }
+    } else if identity.cm_launch_parent != expected_launch_parent
+        || !linux_process_has_ancestor(identity.pid, expected_launch_parent)
+    {
+        bail!("_cm endpoint launch parent mismatch");
+    }
+    Ok(identity)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn peer_process_identity_is_live(identity: &PeerProcessIdentity, postfix: &str) -> bool {
+    linux_process_identity_by_pid(identity.pid, postfix)
+        .map(|live| {
+            live == *identity
+                && (identity.cm_launch_parent == 0
+                    || linux_process_has_ancestor(identity.pid, identity.cm_launch_parent))
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn ensure_peer_process_identity_matches<T>(
+    stream: &ConnectionTmpl<T>,
+    expected: &PeerProcessIdentity,
+    postfix: &str,
+) -> ResultType<()>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
+{
+    let observed = peer_process_identity(stream, postfix)?;
+    if &observed != expected {
+        bail!(
+            "IPC peer identity mismatch on '{}': expected {:?}, got {:?}",
+            postfix,
+            expected,
+            observed
+        );
+    }
+    Ok(())
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 #[inline]
 fn current_exe_canonical_path() -> ResultType<PathBuf> {
@@ -913,7 +1186,7 @@ where
         (authorized, peer_uid, active_uid)
     }
 
-    pub(super) fn peer_pid(&self) -> Option<u32> {
+    pub(crate) fn peer_pid(&self) -> Option<u32> {
         peer_pid_from_fd(self.inner.get_ref().as_raw_fd())
     }
 }
@@ -1087,6 +1360,33 @@ mod tests {
         assert!(super::is_allowed_service_peer_uid(501, Some(501)));
         assert!(!super::is_allowed_service_peer_uid(502, Some(501)));
         assert!(!super::is_allowed_service_peer_uid(501, None));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_linux_process_has_ancestor_requires_parent_chain() {
+        let pid = std::process::id();
+        let parent = super::linux_proc_parent_pid(pid).unwrap();
+        assert!(!super::linux_process_has_ancestor(0, parent));
+        assert!(!super::linux_process_has_ancestor(pid, 0));
+        assert!(!super::linux_process_has_ancestor(pid, pid));
+        if parent > 1 {
+            assert!(super::linux_process_has_ancestor(pid, parent));
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_peer_process_identity_debug_redacts_launch_token() {
+        let mut identity =
+            super::PeerProcessIdentity::for_test(10, 20, "30".to_owned(), "--cm".to_owned());
+        identity.cm_launch_token = "secret-token".to_owned();
+        identity.cm_launch_parent = 40;
+
+        let formatted = format!("{identity:?}");
+        assert!(!formatted.contains("secret-token"));
+        assert!(formatted.contains("<redacted>"));
+        assert!(formatted.contains("cm_launch_parent"));
     }
 
     #[test]

@@ -1,5 +1,8 @@
 #[cfg(target_os = "linux")]
-use super::ipc_auth::active_uid;
+use super::ipc_auth::{
+    active_uid, authenticate_cm_endpoint, current_process_identity,
+    ensure_peer_process_identity_matches,
+};
 use crate::ipc::{connect, Data};
 use hbb_common::{config, log, ResultType};
 use std::{
@@ -749,6 +752,35 @@ async fn probe_existing_listener(postfix: &str) -> bool {
     let Ok(mut stream) = connect(1000, postfix).await else {
         return false;
     };
+    #[cfg(target_os = "linux")]
+    {
+        if postfix == "_cm" {
+            let expected_arg = std::env::args().nth(1).unwrap_or_default();
+            if expected_arg != "--cm" && expected_arg != "--cm-no-ui" {
+                return false;
+            }
+            let expected_launch_token =
+                std::env::var(crate::common::CM_LAUNCH_TOKEN_ENV).unwrap_or_default();
+            let expected_launch_parent = std::env::var(crate::common::CM_LAUNCH_PARENT_ENV)
+                .ok()
+                .and_then(|value| value.parse::<u32>().ok())
+                .unwrap_or(0);
+            return authenticate_cm_endpoint(
+                &stream,
+                current_euid(),
+                &expected_arg,
+                &expected_launch_token,
+                expected_launch_parent,
+            )
+            .is_ok();
+        }
+        if postfix == "_pa" {
+            let Ok(expected) = current_process_identity("_pa") else {
+                return false;
+            };
+            return ensure_peer_process_identity_matches(&stream, &expected, "_pa").is_ok();
+        }
+    }
     if postfix != crate::POSTFIX_SERVICE {
         return true;
     }
@@ -756,6 +788,11 @@ async fn probe_existing_listener(postfix: &str) -> bool {
         return false;
     }
     matches!(stream.next_timeout(1000).await, Ok(Some(Data::Test)))
+}
+
+#[cfg(target_os = "linux")]
+fn current_euid() -> u32 {
+    unsafe { hbb_common::libc::geteuid() as u32 }
 }
 
 pub(crate) async fn check_pid(postfix: &str) -> bool {

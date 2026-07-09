@@ -281,8 +281,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   bootstrap that reused the generic config write payload. Boundary: same-session IPC caller ↔ daemon identity,
   salt, proxy, and local operator preference state. Attack surface closed: config IPC is request/value only
   (`ConfigRequest`/`ConfigValue`); the handler has no `Config::set_id`, `Config::set_salt`, or
-  `Config::set_socks` reach; voice-call input is the typed `SetVoiceCallInput` operation; `_pa` receives a
-  typed `PulseAudioSource`; and the proxy IPC variant is absent rather than denied. Verification closure:
+  `Config::set_socks` reach; voice-call input is the typed `SetVoiceCallInput` operation; `_pa` no longer
+  reuses any generic config write payload; and the proxy IPC variant is absent rather than denied. Verification closure:
   `scripts/verify.sh` runs the main-channel mutation test, asserts absence of the legacy generic config write
   shape, generic config helpers, and proxy IPC variant, and pins the handler's
   `is_option_can_save`-bypassing config-write count to the two typed password operations (user-owned direct
@@ -397,6 +397,35 @@ unreachable and a source/test/AST gate prevents reintroduction.
   environment lookup reads `/proc/<pid>/environ` with exact key matching. Verification closure:
   `scripts/verify.sh` runs the `r_s11c10_` Linux unit tests and asserts that the touched discovery function
   bodies contain no shell-shaped passwd/proc/process pipeline.
+- **R-S11c-7 — Linux `_pa` audio helper capability — CLOSED 2026-07-09.** Platform: Linux desktop while the
+  `_pa` helper is running for local audio capture. Endpoint/action: `_pa` IPC stream formerly accepted a
+  bare PulseAudio source request and then streamed raw monitor/input frames. Boundary: same-UID local process
+  ↔ active audio capture helper. Attack surface closed: `_pa` now requires the first frame to be
+  `Data::PulseAudioStart { owner, token, source }`; the audio service mints a 32-byte in-memory capture
+  lease from its active subscriber-id set immediately before connecting to `_pa`; controlled-side `--server`
+  leases are bound to the authenticated live process identity of the server's connected `_cm` stream for those
+  subscriber ids (`pid`, `uid`, Linux `/proc` start time, current executable, expected `--cm`/`--cm-no-ui`
+  mode, server-scoped CM launch token, and server-parent ancestry), while viewer-side `CLIENT_SERVER` voice-call capture is bound to
+  the current process identity. The server accepts a Linux `_cm` endpoint only after that identity check, stores
+  it only for the lifetime of the CM IPC bridge, and rejects stale/reused, launch-tokenless, or non-descendant identities before
+  minting a downstream audio lease. The audio service verifies the connected `_pa` endpoint identity before
+  disclosing the token; `_pa` validates locally only when the serialized owner identity is its own process and
+  otherwise connects to the owner's UID-scoped main IPC, authenticates that endpoint against the serialized owner
+  identity, and sends `ValidatePulseAudioStart`. The owner server then checks both token and validation peer
+  identity before any source resolution, default-monitor lookup, PulseAudio open, or raw audio frame streaming.
+  The token is cleared when the audio service run exits, and missing, wrong, wrong-peer, and stale tokens fail
+  closed. The old
+  `PulseAudioSource(String)` message is absent, so a local same-UID process can no longer connect directly to
+  `_pa` and start audio capture by naming a source, nor can a fixed-path `_cm`/`_pa` squatter feed the Linux
+  audio authority unless it is the authenticated live token-launched CM process identity selected for that server.
+  Linux stale-socket probing for `_cm` and `_pa` is identity-bound, so arbitrary same-UID listeners are not kept
+  as valid incumbents. Verification closure:
+  `scripts/verify.sh` runs the Linux `pa_capture_authority_*` unit tests and asserts the owner-identity start
+  message, owner-UID-routed and owner-identity-authenticated helper validation, endpoint identity check before
+  token send, subscriber-bound authority installation, authenticated live CM identity registration/cleanup,
+  CM launch-token and launch-parent ancestry checks, stale `_cm`/`_pa` socket probe checks, old message absence, and the service-layer
+  subscriber-id snapshot. The remaining fixed-path CM endpoint-selection work is tracked separately below for
+  macOS and for non-audio helper consumers.
 
 **Release-blocking items:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,
@@ -448,11 +477,24 @@ unreachable and a source/test/AST gate prevents reintroduction.
   verify the connected server PID/executable, with `_service` additionally requiring a LocalSystem server.
   The long-lived `_service` listener is recreated on active-session changes so its DACL and the runtime
   expected-session check do not drift. Status: closed for the named-pipe endpoint boundary.
-- **R-S11c-7 — Linux `_pa` audio helper ambient same-UID trust.** Platform: Linux desktop while `_pa` is
-  running. Endpoint: `_pa` IPC streams PulseAudio/default-monitor frames. Boundary: same-UID local process ↔
-  active audio capture helper. Attack surface: same-UID local audio capture/spoofing outside the owning
-  connection. Closure: require a per-connection capability/nonce tied to the active authorized session; reject
-  arbitrary same-UID clients; test wrong/missing/stale capability.
+- **R-S11c-7 — Linux `_pa` audio helper ambient same-UID trust.** Status: closed by the completed
+  R-S11c-7 slice above. `_pa` capture requires an owner-identity/token lease minted from the active audio
+  subscriber set and bound to the authenticated live `_cm`/`_pa` process identity plus the server-scoped CM
+  launch token and server-parent ancestry; missing, wrong, wrong-peer, launch-tokenless, non-descendant, and stale capabilities are rejected before
+  PulseAudio capture starts.
+- **R-S11c-11 — Unix `_cm` endpoint-selection identity.** Platforms: macOS desktop CM paths and any future
+  non-audio Linux helper consumer not covered by R-S11c-7's audio-specific identity lease.
+  Endpoint: the server-side client connection to the fixed `_cm` listener. Boundary: same-UID local process ↔
+  the connection-manager process selected to receive `Data::Login`, `cm_auth_token`, file-authority messages,
+  and chat/voice-call state. Attack surface: pre-binding or replacing the fixed `_cm` endpoint can make the
+  server select an unintended local CM peer. Linux audio no longer uses a bare `_cm` pid as authority: the
+  selected CM endpoint must be same uid, current executable, expected CM mode, live `pid`/start-time identity,
+  the server-scoped launch token, and server-parent ancestry before `_pa` receives a lease. The remaining class is the general
+  fixed-path CM protocol boundary:
+  before disclosing `cm_auth_token` or file/chat/non-audio helper authority, macOS and any future helper path
+  should make CM endpoint selection itself authority-bearing, e.g. a launch-bound nonce/unguessable
+  per-connection socket or equivalent mutual endpoint proof; reject stale/preexisting unproven `_cm`
+  listeners; test direct fixed-path squatting and CM restart/reuse.
 - **R-S11c-8 — `_whiteboard` helper ambient same-UID trust.** Platforms: desktop whiteboard helper paths.
   Endpoint: `_whiteboard` IPC accepts drawing/input events and `Exit`. Boundary: same-UID local process ↔
   active overlay helper. Attack surface: local spoof/DoS of whiteboard overlay. Closure: require an owning

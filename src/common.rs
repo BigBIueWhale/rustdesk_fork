@@ -94,6 +94,10 @@ lazy_static::lazy_static! {
 }
 
 pub const SERVICE_OWNED_SERVER_ARG: &str = "--service-owned-server";
+#[cfg(target_os = "linux")]
+pub const CM_LAUNCH_TOKEN_ENV: &str = "RUSTDESK_CM_LAUNCH_TOKEN";
+#[cfg(target_os = "linux")]
+pub const CM_LAUNCH_PARENT_ENV: &str = "RUSTDESK_CM_LAUNCH_PARENT";
 
 pub fn is_service_owned_server_process() -> bool {
     std::env::args_os().any(|arg| arg == std::ffi::OsStr::new(SERVICE_OWNED_SERVER_ARG))
@@ -586,16 +590,39 @@ pub async fn get_nat_type(ms_timeout: u64) -> i32 {
 // R-SV10 grep is sound (no startup phone-home a config-write could ever revive).
 
 pub fn run_me<T: AsRef<std::ffi::OsStr>>(args: Vec<T>) -> std::io::Result<std::process::Child> {
+    run_me_with_env(args, std::iter::empty::<(&str, &str)>())
+}
+
+pub fn run_me_with_env<T, I, K, V>(args: Vec<T>, envs: I) -> std::io::Result<std::process::Child>
+where
+    T: AsRef<std::ffi::OsStr>,
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<std::ffi::OsStr>,
+    V: AsRef<std::ffi::OsStr>,
+{
+    let envs = envs
+        .into_iter()
+        .map(|(k, v)| {
+            (
+                std::ffi::OsString::from(k.as_ref()),
+                std::ffi::OsString::from(v.as_ref()),
+            )
+        })
+        .collect::<Vec<_>>();
     #[cfg(target_os = "linux")]
     if let Ok(appdir) = std::env::var("APPDIR") {
         let appimage_cmd = std::path::Path::new(&appdir).join("AppRun");
         if appimage_cmd.exists() {
             log::info!("path: {:?}", appimage_cmd);
-            return std::process::Command::new(appimage_cmd).args(&args).spawn();
+            return std::process::Command::new(appimage_cmd)
+                .envs(envs.iter().map(|(k, v)| (k, v)))
+                .args(&args)
+                .spawn();
         }
     }
     let cmd = std::env::current_exe()?;
     let mut cmd = std::process::Command::new(cmd);
+    cmd.envs(envs.iter().map(|(k, v)| (k, v)));
     #[cfg(windows)]
     let mut force_foreground = false;
     #[cfg(windows)]
@@ -1076,7 +1103,6 @@ pub fn get_rs_pk(str_base64: &str) -> Option<sign::PublicKey> {
         None
     }
 }
-
 
 pub struct ThrottledInterval {
     interval: Interval,

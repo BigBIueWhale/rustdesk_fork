@@ -188,6 +188,19 @@ impl<T: Subscriber + From<ConnInner>> ServiceTmpl<T> {
         self.0.read().unwrap().has_subscribes()
     }
 
+    pub fn subscriber_ids(&self) -> Vec<i32> {
+        let lock = self.0.read().unwrap();
+        let mut ids = lock
+            .subscribes
+            .keys()
+            .chain(lock.new_subscribes.keys())
+            .copied()
+            .collect::<Vec<_>>();
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    }
+
     pub fn snapshot<F>(&self, callback: F) -> ResultType<()>
     where
         F: FnMut(ServiceSwap<T>) -> ResultType<()>,

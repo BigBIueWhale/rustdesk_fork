@@ -104,9 +104,89 @@ lazy_static::lazy_static! {
     // an unbounded/never-decaying/full-IPv6-keyed map on dead paths; CPace's GUESS_FAILURES is live.
     static ref ALIVE_CONNS: Arc::<Mutex<Vec<i32>>> = Default::default();
     pub static ref AUTHED_CONNS: Arc::<Mutex<Vec<AuthedConn>>> = Default::default();
+    #[cfg(target_os = "linux")]
+    static ref CM_PEER_IDENTITIES: Arc::<Mutex<Vec<(i32, crate::ipc::PeerProcessIdentity)>>> = Default::default();
+    #[cfg(target_os = "linux")]
+    static ref CM_LAUNCH_TOKEN: String = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
     pub static ref CONTROL_PERMISSIONS_ARRAY: Arc::<Mutex<Vec<(i32, ControlPermissions)>>> = Default::default();
     static ref WAKELOCK_SENDER: Arc::<Mutex<std::sync::mpsc::Sender<(usize, usize)>>> = Arc::new(Mutex::new(start_wakelock_thread()));
     static ref WAKELOCK_KEEP_AWAKE_OPTION: Arc::<Mutex<Option<bool>>> = Default::default();
+}
+
+#[cfg(target_os = "linux")]
+struct CmPeerIdentityRegistration {
+    conn_id: i32,
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for CmPeerIdentityRegistration {
+    fn drop(&mut self) {
+        clear_cm_peer_identity_for_conn(self.conn_id);
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn register_cm_peer_identity_for_conn(
+    conn_id: i32,
+    cm_peer_identity: crate::ipc::PeerProcessIdentity,
+) -> ResultType<CmPeerIdentityRegistration> {
+    if conn_id <= 0 || cm_peer_identity.pid() == 0 {
+        bail!("invalid connection-manager peer identity");
+    }
+    let mut peer_identities = CM_PEER_IDENTITIES.lock().unwrap();
+    if let Some((_, peer_identity)) = peer_identities.iter_mut().find(|(id, _)| *id == conn_id) {
+        *peer_identity = cm_peer_identity;
+    } else {
+        peer_identities.push((conn_id, cm_peer_identity));
+    }
+    Ok(CmPeerIdentityRegistration { conn_id })
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn clear_cm_peer_identity_for_conn(conn_id: i32) {
+    CM_PEER_IDENTITIES
+        .lock()
+        .unwrap()
+        .retain(|(id, _)| *id != conn_id);
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn expected_cm_peer_identity_for_conn_ids(
+    conn_ids: &[i32],
+) -> ResultType<crate::ipc::PeerProcessIdentity> {
+    if conn_ids.is_empty() {
+        bail!("no active audio subscriber");
+    }
+
+    let peer_identities = CM_PEER_IDENTITIES.lock().unwrap();
+    let mut expected_peer_identity = None;
+    for conn_id in conn_ids {
+        let Some((_, cm_peer_identity)) = peer_identities.iter().find(|(id, _)| id == conn_id)
+        else {
+            bail!(
+                "missing connection-manager peer identity for audio subscriber {}",
+                conn_id
+            );
+        };
+        if !crate::ipc::peer_process_identity_is_live(cm_peer_identity, "_cm") {
+            bail!(
+                "stale connection-manager peer identity for audio subscriber {}",
+                conn_id
+            );
+        }
+        match &expected_peer_identity {
+            Some(expected) if expected != cm_peer_identity => {
+                bail!("audio subscribers span multiple connection-manager processes")
+            }
+            Some(_) => {}
+            None => expected_peer_identity = Some(cm_peer_identity.clone()),
+        }
+    }
+
+    let Some(expected_peer_identity) = expected_peer_identity else {
+        bail!("missing connection-manager peer identity for audio subscribers");
+    };
+    Ok(expected_peer_identity)
 }
 
 #[cfg(target_os = "windows")]
@@ -175,6 +255,7 @@ pub struct SessionKey {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct StartCmIpcPara {
+    conn_id: i32,
     rx_to_cm: mpsc::UnboundedReceiver<ipc::Data>,
     tx_from_cm: mpsc::UnboundedSender<ipc::Data>,
     rx_desktop_ready: mpsc::Receiver<()>,
@@ -451,6 +532,7 @@ impl Connection {
             closed: false,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             start_cm_ipc_para: Some(StartCmIpcPara {
+                conn_id: id,
                 rx_to_cm,
                 tx_from_cm,
                 rx_desktop_ready,
@@ -1813,6 +1895,7 @@ impl Connection {
                     p.tx_from_cm,
                     p.rx_desktop_ready,
                     p.tx_cm_stream_ready,
+                    p.conn_id,
                 )
                 .await
                 {
@@ -4708,6 +4791,50 @@ impl Connection {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn current_euid() -> u32 {
+    unsafe { hbb_common::libc::geteuid() as u32 }
+}
+
+#[cfg(target_os = "linux")]
+fn cm_launch_token() -> &'static str {
+    &CM_LAUNCH_TOKEN
+}
+
+#[cfg(target_os = "linux")]
+fn cm_launch_env() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            crate::common::CM_LAUNCH_TOKEN_ENV,
+            cm_launch_token().to_owned(),
+        ),
+        (
+            crate::common::CM_LAUNCH_PARENT_ENV,
+            std::process::id().to_string(),
+        ),
+    ]
+}
+
+#[cfg(target_os = "linux")]
+async fn connect_authenticated_cm(
+    ms_timeout: u64,
+    uid: u32,
+    expected_arg: &str,
+) -> ResultType<(
+    ipc::ConnectionTmpl<parity_tokio_ipc::ConnectionClient>,
+    crate::ipc::PeerProcessIdentity,
+)> {
+    let stream = crate::ipc::connect_for_uid(ms_timeout, uid, "_cm").await?;
+    let identity = crate::ipc::authenticate_cm_endpoint(
+        &stream,
+        uid,
+        expected_arg,
+        cm_launch_token(),
+        std::process::id(),
+    )?;
+    Ok((stream, identity))
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 // IPC bootstrap summary:
 // - Resolve target CM socket (headless/non-headless, optional UID-scoped path on Linux).
@@ -4717,6 +4844,7 @@ async fn start_ipc(
     tx_from_cm: mpsc::UnboundedSender<ipc::Data>,
     mut _rx_desktop_ready: mpsc::Receiver<()>,
     tx_stream_ready: mpsc::Sender<()>,
+    conn_id: i32,
 ) -> ResultType<()> {
     use hbb_common::anyhow::anyhow;
 
@@ -4744,7 +4872,22 @@ async fn start_ipc(
     #[cfg(not(target_os = "linux"))]
     let headless_cm = false;
     let mut stream = None;
+    #[cfg(target_os = "linux")]
+    let mut cm_peer_identity = None;
     if !headless_cm {
+        #[cfg(target_os = "linux")]
+        {
+            match connect_authenticated_cm(1000, current_euid(), "--cm").await {
+                Ok((s, identity)) => {
+                    stream = Some(s);
+                    cm_peer_identity = Some(identity);
+                }
+                Err(err) => {
+                    log::debug!("No trusted existing _cm endpoint: {}", err);
+                }
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
         if let Ok(s) = crate::ipc::connect(1000, "_cm").await {
             stream = Some(s);
         }
@@ -4811,8 +4954,14 @@ async fn start_ipc(
         };
         #[cfg(target_os = "linux")]
         if let Some(uid) = cm_uid {
-            if let Ok(s) = crate::ipc::connect_for_uid(1000, uid, "_cm").await {
-                stream = Some(s);
+            match connect_authenticated_cm(1000, uid, "--cm-no-ui").await {
+                Ok((s, identity)) => {
+                    stream = Some(s);
+                    cm_peer_identity = Some(identity);
+                }
+                Err(err) => {
+                    log::debug!("No trusted existing uid-scoped _cm endpoint: {}", err);
+                }
             }
         }
         if stream.is_none() {
@@ -4837,7 +4986,7 @@ async fn start_ipc(
                         res = crate::platform::run_as_user(
                             args.clone(),
                             user.clone(),
-                            None::<(&str, &str)>,
+                            cm_launch_env(),
                         );
                     }
                     if res.is_ok() {
@@ -4858,20 +5007,41 @@ async fn start_ipc(
                 super::CHILD_PROCESS
                     .lock()
                     .unwrap()
-                    .push(crate::run_me(args)?);
+                    .push(crate::run_me_with_env(args, cm_launch_env())?);
             }
             for _ in 0..20 {
                 sleep(0.3).await;
                 #[cfg(target_os = "linux")]
                 {
                     if let Some(uid) = cm_uid {
-                        if let Ok(s) = crate::ipc::connect_for_uid(1000, uid, "_cm").await {
-                            stream = Some(s);
-                            break;
+                        match connect_authenticated_cm(1000, uid, "--cm-no-ui").await {
+                            Ok((s, identity)) => {
+                                stream = Some(s);
+                                cm_peer_identity = Some(identity);
+                                break;
+                            }
+                            Err(err) => {
+                                log::debug!("Waiting for trusted uid-scoped _cm endpoint: {}", err);
+                            }
                         }
                         continue;
                     }
                 }
+                #[cfg(target_os = "linux")]
+                {
+                    match connect_authenticated_cm(1000, current_euid(), "--cm").await {
+                        Ok((s, identity)) => {
+                            stream = Some(s);
+                            cm_peer_identity = Some(identity);
+                            break;
+                        }
+                        Err(err) => {
+                            log::debug!("Waiting for trusted _cm endpoint: {}", err);
+                        }
+                    }
+                    continue;
+                }
+                #[cfg(not(target_os = "linux"))]
                 if let Ok(s) = crate::ipc::connect(1000, "_cm").await {
                     stream = Some(s);
                     break;
@@ -4883,8 +5053,13 @@ async fn start_ipc(
         bail!("Failed to connect to connection manager");
     }
 
-    let _res = tx_stream_ready.send(()).await;
     let mut stream = stream.ok_or(anyhow!("none stream"))?;
+    #[cfg(target_os = "linux")]
+    let _cm_peer_identity_registration = register_cm_peer_identity_for_conn(
+        conn_id,
+        cm_peer_identity.ok_or_else(|| anyhow!("missing authenticated _cm peer identity"))?,
+    )?;
+    let _res = tx_stream_ready.send(()).await;
     loop {
         tokio::select! {
             res = stream.next() => {
@@ -5400,6 +5575,8 @@ mod raii {
 
     impl Drop for ConnectionID {
         fn drop(&mut self) {
+            #[cfg(target_os = "linux")]
+            clear_cm_peer_identity_for_conn(self.0);
             let mut active_conns_lock = ALIVE_CONNS.lock().unwrap();
             active_conns_lock.retain(|&c| c != self.0);
         }

@@ -26,6 +26,130 @@ lazy_static::lazy_static! {
     static ref VOICE_CALL_INPUT_DEVICE: Arc::<Mutex::<Option<String>>> = Default::default();
 }
 
+#[cfg(target_os = "linux")]
+#[derive(Clone)]
+struct PaCaptureAuthority {
+    token: String,
+    conn_ids: Vec<i32>,
+    expected_peer: crate::ipc::PeerProcessIdentity,
+}
+
+#[cfg(target_os = "linux")]
+lazy_static::lazy_static! {
+    static ref PA_CAPTURE_AUTHORITY: Arc<Mutex<Option<PaCaptureAuthority>>> = Default::default();
+}
+
+#[cfg(target_os = "linux")]
+struct PaCaptureAuthorityGuard {
+    token: String,
+    expected_peer: crate::ipc::PeerProcessIdentity,
+}
+
+#[cfg(target_os = "linux")]
+impl PaCaptureAuthorityGuard {
+    fn token(&self) -> &str {
+        &self.token
+    }
+
+    fn expected_peer(&self) -> &crate::ipc::PeerProcessIdentity {
+        &self.expected_peer
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for PaCaptureAuthorityGuard {
+    fn drop(&mut self) {
+        let mut authority = PA_CAPTURE_AUTHORITY.lock().unwrap();
+        if authority
+            .as_ref()
+            .map(|authority| authority.token == self.token)
+            .unwrap_or(false)
+        {
+            *authority = None;
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn token_eq(left: &str, right: &str) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    left.as_bytes()
+        .iter()
+        .zip(right.as_bytes())
+        .fold(0u8, |acc, (left, right)| acc | (*left ^ *right))
+        == 0
+}
+
+#[cfg(target_os = "linux")]
+fn expected_pa_peer(conn_ids: &[i32]) -> ResultType<crate::ipc::PeerProcessIdentity> {
+    if crate::is_server() {
+        crate::server::expected_cm_peer_identity_for_conn_ids(conn_ids)
+    } else {
+        crate::ipc::current_process_identity("_pa")
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn install_pa_capture_authority(conn_ids: Vec<i32>) -> ResultType<PaCaptureAuthorityGuard> {
+    let conn_ids = conn_ids
+        .into_iter()
+        .filter(|conn_id| *conn_id > 0)
+        .collect::<Vec<_>>();
+    if conn_ids.is_empty() {
+        *PA_CAPTURE_AUTHORITY.lock().unwrap() = None;
+        bail!("no active audio subscriber");
+    }
+
+    let expected_peer = expected_pa_peer(&conn_ids)?;
+    let token = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
+    *PA_CAPTURE_AUTHORITY.lock().unwrap() = Some(PaCaptureAuthority {
+        token: token.clone(),
+        conn_ids,
+        expected_peer: expected_peer.clone(),
+    });
+    Ok(PaCaptureAuthorityGuard {
+        token,
+        expected_peer,
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn ensure_pa_endpoint_matches_authority<T>(
+    stream: &crate::ipc::ConnectionTmpl<T>,
+    authority: &PaCaptureAuthorityGuard,
+) -> ResultType<()>
+where
+    T: hbb_common::tokio::io::AsyncRead
+        + hbb_common::tokio::io::AsyncWrite
+        + std::marker::Unpin
+        + std::os::unix::io::AsRawFd,
+{
+    crate::ipc::ensure_peer_process_identity_matches(stream, authority.expected_peer(), "_pa")
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn validate_pa_capture_authority(
+    token: &str,
+    peer: &crate::ipc::PeerProcessIdentity,
+) -> bool {
+    if token.is_empty() {
+        return false;
+    }
+    PA_CAPTURE_AUTHORITY
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|authority| {
+            token_eq(&authority.token, token)
+                && authority.expected_peer == *peer
+                && crate::ipc::peer_process_identity_is_live(peer, "_pa")
+                && !authority.conn_ids.is_empty()
+        })
+        .unwrap_or(false)
+}
+
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
 pub fn new() -> GenericService {
     let svc = EmptyExtraFieldService::new(NAME.to_owned(), true);
@@ -96,7 +220,13 @@ mod pa_impl {
         hbb_common::sleep(0.1).await; // one moment to wait for _pa ipc
         RESTARTING.store(false, Ordering::SeqCst);
         #[cfg(target_os = "linux")]
+        let pa_authority = super::install_pa_capture_authority(sp.subscriber_ids())?;
+        #[cfg(target_os = "linux")]
+        let owner = crate::ipc::current_process_identity("_pa")?;
+        #[cfg(target_os = "linux")]
         let mut stream = crate::ipc::connect(1000, "_pa").await?;
+        #[cfg(target_os = "linux")]
+        super::ensure_pa_endpoint_matches_authority(&stream, &pa_authority)?;
         unsafe {
             AUDIO_ZERO_COUNT = 0;
         }
@@ -104,7 +234,11 @@ mod pa_impl {
         #[cfg(target_os = "linux")]
         allow_err!(
             stream
-                .send(&crate::ipc::Data::PulseAudioSource(super::get_audio_input()))
+                .send(&crate::ipc::Data::PulseAudioStart {
+                    owner,
+                    token: pa_authority.token().to_owned(),
+                    source: super::get_audio_input(),
+                })
                 .await
         );
         #[cfg(target_os = "linux")]
@@ -454,6 +588,48 @@ fn create_format_msg(sample_rate: u32, channels: u16) -> Message {
     let mut msg = Message::new();
     msg.set_misc(misc);
     msg
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod test {
+    use super::*;
+
+    static PA_CAPTURE_AUTHORITY_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn pa_capture_authority_rejects_missing_wrong_and_stale_tokens() {
+        let _lock = PA_CAPTURE_AUTHORITY_TEST_LOCK.lock().unwrap();
+        *PA_CAPTURE_AUTHORITY.lock().unwrap() = None;
+
+        let expected_peer = crate::ipc::current_process_identity("_pa").unwrap();
+        assert!(!validate_pa_capture_authority("", &expected_peer));
+        assert!(!validate_pa_capture_authority("wrong", &expected_peer));
+
+        let authority = install_pa_capture_authority(vec![42]).unwrap();
+        let token = authority.token().to_owned();
+
+        assert!(validate_pa_capture_authority(&token, &expected_peer));
+        let wrong_peer = crate::ipc::PeerProcessIdentity::for_test(
+            expected_peer.pid().saturating_add(1).max(1),
+            0,
+            "wrong-start-time".to_owned(),
+            "--cm".to_owned(),
+        );
+        assert!(!validate_pa_capture_authority(&token, &wrong_peer));
+        assert!(!validate_pa_capture_authority("wrong", &expected_peer));
+
+        drop(authority);
+        assert!(!validate_pa_capture_authority(&token, &expected_peer));
+    }
+
+    #[test]
+    fn pa_capture_authority_requires_a_positive_subscriber_id() {
+        let _lock = PA_CAPTURE_AUTHORITY_TEST_LOCK.lock().unwrap();
+        *PA_CAPTURE_AUTHORITY.lock().unwrap() = None;
+
+        assert!(install_pa_capture_authority(Vec::new()).is_err());
+        assert!(install_pa_capture_authority(vec![0, -7]).is_err());
+    }
 }
 
 // use AUDIO_ZERO_COUNT for the Noise(Zero) Gate Attack Time

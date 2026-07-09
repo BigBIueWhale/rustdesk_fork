@@ -38,6 +38,12 @@ pub(crate) use ipc_auth::ensure_peer_executable_matches_current_by_pid_opt;
 pub(crate) use ipc_auth::log_rejected_windows_ipc_connection;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use ipc_auth::{active_uid, authorize_service_scoped_ipc_connection};
+#[cfg(target_os = "linux")]
+pub(crate) use ipc_auth::{
+    authenticate_cm_endpoint, current_process_identity, ensure_peer_process_identity_matches,
+    linux_proc_start_time, linux_proc_stat_start_time, peer_process_identity,
+    peer_process_identity_is_live, PeerProcessIdentity,
+};
 #[cfg(windows)]
 use ipc_auth::{
     ensure_windows_ipc_server_matches_current, windows_ipc_listener_security_attributes,
@@ -373,7 +379,16 @@ pub enum Data {
     NatType(Option<i32>),
     RawMessage(Vec<u8>),
     #[cfg(target_os = "linux")]
-    PulseAudioSource(String),
+    PulseAudioStart {
+        owner: PeerProcessIdentity,
+        token: String,
+        source: String,
+    },
+    #[cfg(target_os = "linux")]
+    ValidatePulseAudioStart {
+        token: String,
+        result: Option<bool>,
+    },
     FS(FS),
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     AuthorizedFS {
@@ -982,24 +997,6 @@ enum IpcChannel {
 const SET_UNATTENDED_PASSWORD_POLKIT_ACTION: &str = "com.carriez.RustDesk.set-unattended-password";
 
 #[cfg(target_os = "linux")]
-fn linux_proc_stat_start_time(pid: u32, stat: &str) -> ResultType<String> {
-    let Some((_, after_comm)) = stat.rsplit_once(") ") else {
-        bail!("Failed to parse /proc/{pid}/stat: missing command terminator");
-    };
-    let fields: Vec<_> = after_comm.split_whitespace().collect();
-    let Some(start_time) = fields.get(19) else {
-        bail!("Failed to parse /proc/{pid}/stat: missing start time");
-    };
-    Ok((*start_time).to_owned())
-}
-
-#[cfg(target_os = "linux")]
-fn linux_proc_start_time(pid: u32) -> ResultType<String> {
-    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat"))?;
-    linux_proc_stat_start_time(pid, &stat)
-}
-
-#[cfg(target_os = "linux")]
 fn linux_polkit_subject_for_peer(stream: &Connection) -> ResultType<String> {
     let peer_pid = stream
         .peer_pid()
@@ -1304,6 +1301,25 @@ async fn handle(data: Data, stream: &mut Connection, channel: IpcChannel) {
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         Data::ValidateCmConnection { .. } => {}
+        #[cfg(target_os = "linux")]
+        Data::ValidatePulseAudioStart {
+            token,
+            result: None,
+        } => {
+            let result = peer_process_identity(stream, "")
+                .map(|peer| crate::audio_service::validate_pa_capture_authority(&token, &peer))
+                .unwrap_or(false);
+            allow_err!(
+                stream
+                    .send(&Data::ValidatePulseAudioStart {
+                        token: String::new(),
+                        result: Some(result),
+                    })
+                    .await
+            );
+        }
+        #[cfg(target_os = "linux")]
+        Data::ValidatePulseAudioStart { .. } => {}
         Data::ConfigRequest(name) => {
             let value = if name == "id" {
                 Some(Config::get_id())
@@ -1745,6 +1761,44 @@ pub(crate) async fn validate_cm_connection_authority(
 }
 
 #[cfg(target_os = "linux")]
+async fn validate_pulse_audio_start_authority(
+    owner: &PeerProcessIdentity,
+    token: &str,
+) -> ResultType<()> {
+    if token.is_empty() {
+        bail!("missing pulse audio capture authority token");
+    }
+    if owner.pid() == std::process::id() {
+        if let Ok(peer) = current_process_identity("_pa") {
+            if &peer == owner && crate::audio_service::validate_pa_capture_authority(token, &peer) {
+                return Ok(());
+            }
+        }
+        bail!("local pulse audio capture authority rejected");
+    }
+
+    let mut stream = connect_for_uid(1_000, owner.uid(), "").await?;
+    ensure_peer_process_identity_matches(&stream, owner, "")?;
+    stream
+        .send(&Data::ValidatePulseAudioStart {
+            token: token.to_owned(),
+            result: None,
+        })
+        .await?;
+
+    match stream.next_timeout(1_000).await? {
+        Some(Data::ValidatePulseAudioStart {
+            result: Some(true), ..
+        }) => Ok(()),
+        Some(Data::ValidatePulseAudioStart {
+            result: Some(false),
+            ..
+        }) => bail!("pulse audio capture authority rejected"),
+        _ => bail!("invalid pulse audio capture authority validation response"),
+    }
+}
+
+#[cfg(target_os = "linux")]
 pub async fn connect_for_uid(
     ms_timeout: u64,
     uid: u32,
@@ -1766,12 +1820,25 @@ pub async fn start_pa() {
                     match result {
                         Ok(stream) => {
                             let mut stream = Connection::new(stream);
-                            let mut device: String = "".to_owned();
-                            if let Some(Ok(Some(Data::PulseAudioSource(x)))) =
-                                stream.next_timeout2(1000).await
+                            let Some(Ok(Some(Data::PulseAudioStart {
+                                owner,
+                                token,
+                                source,
+                            }))) = stream.next_timeout2(1000).await
+                            else {
+                                log::warn!("Rejected _pa client without audio capture authority");
+                                continue;
+                            };
+                            if let Err(err) =
+                                validate_pulse_audio_start_authority(&owner, &token).await
                             {
-                                device = x;
+                                log::warn!(
+                                    "Rejected _pa client with invalid audio capture authority: {}",
+                                    err
+                                );
+                                continue;
                             }
+                            let mut device = source;
                             if !device.is_empty() {
                                 device = crate::platform::linux::get_pa_source_name(&device);
                             }
@@ -1830,7 +1897,6 @@ pub async fn start_pa() {
         }
     }
 }
-
 pub struct ConnectionTmpl<T> {
     inner: Framed<T, BytesCodec>,
 }

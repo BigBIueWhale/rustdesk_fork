@@ -1,7 +1,6 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
 #include <tchar.h>
-#include <uni_links_desktop/uni_links_desktop_plugin.h>
 #include <windows.h>
 
 #include <algorithm>
@@ -14,6 +13,7 @@
 typedef char** (*FUNC_RUSTDESK_CORE_MAIN)(int*);
 typedef void (*FUNC_RUSTDESK_FREE_ARGS)( char**, int);
 typedef int (*FUNC_RUSTDESK_GET_APP_NAME)(wchar_t*, int);
+typedef bool (*FUNC_RUSTDESK_SEND_URL_SCHEME)(const char*);
 /// Note: `--server`, `--service` are already handled in [core_main.rs].
 const std::vector<std::string> parameters_white_list = {"--install", "--cm"};
 
@@ -71,6 +71,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
       app_name = std::wstring(app_name_buffer);
     }
   }
+  FUNC_RUSTDESK_SEND_URL_SCHEME send_rustdesk_url_scheme =
+      (FUNC_RUSTDESK_SEND_URL_SCHEME)GetProcAddress(hInstance, "rustdesk_send_url_scheme");
 
   // Uri links dispatch
   HWND hwnd = ::FindWindowW(getWindowClassName(), app_name.c_str());
@@ -85,16 +87,19 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                     command_line_arguments.end(),
                     whitelist_param) != command_line_arguments.end();
     }
-    if (!allow_multiple_instances) {
-      if (!command_line_arguments.empty()) {
-        // Dispatch command line arguments
-        DispatchToUniLinksDesktop(hwnd);
-      } else {
-        // Not called with arguments, or just open the app shortcut on desktop.
-        // So we just show the main window instead.
-        ::ShowWindow(hwnd, SW_NORMAL);
-        ::SetForegroundWindow(hwnd);
+    if (!allow_multiple_instances && !command_line_arguments.empty() &&
+        send_rustdesk_url_scheme) {
+      for (const auto& argument : command_line_arguments) {
+        if (send_rustdesk_url_scheme(argument.c_str())) {
+          return EXIT_FAILURE;
+        }
       }
+    }
+    if (!allow_multiple_instances && command_line_arguments.empty()) {
+      // Not called with arguments, or just open the app shortcut on desktop.
+      // So we just show the main window instead.
+      ::ShowWindow(hwnd, SW_NORMAL);
+      ::SetForegroundWindow(hwnd);
       return EXIT_FAILURE;
     }
   }

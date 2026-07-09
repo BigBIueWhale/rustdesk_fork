@@ -526,12 +526,11 @@ fn core_main_invoke_new_connection(mut args: std::env::Args) -> Option<Vec<Strin
             "--password" => {
                 // R-X6 (stricter): NEVER fold an embedded credential into the connect URI. A
                 // password on argv or in a rustdesk:// link is a footgun — it leaks into shell
-                // history, logs, and (were it folded here) the WM_USER+2 / _url IPC delivery
-                // message that carries the link to a running instance. Consume-and-drop it: the
-                // connect proceeds to the address only, and the operator authenticates via the
-                // normal password prompt (the CPace secret). The strip holds in BOTH layers —
-                // this Rust core AND the Dart handleUriLink parser (spec R-X6; a Dart-only strip
-                // is bypassable since the raw URI reaches the core via bind.sendUrlScheme).
+                // history, logs, and URL handoff. Consume-and-drop it: the connect proceeds to the
+                // address only, and the operator authenticates via the normal password prompt (the
+                // CPace secret). The strip holds in BOTH layers — this Rust core AND the Dart
+                // handleUriLink parser (spec R-X6; a Dart-only strip is bypassable since the raw URI
+                // reaches the core via bind.sendUrlScheme).
                 let _ = args.next();
             }
             "--relay" => {
@@ -555,7 +554,7 @@ fn core_main_invoke_new_connection(mut args: std::env::Args) -> Option<Vec<Strin
             // R-X6 (stricter): the connect URI carries the ADDRESS ONLY — no embedded
             // password/key/relay query params (they are consumed-and-dropped / rejected
             // above), so a link or CLI arg can never convey a credential or trust anchor
-            // into the WM_USER+2 / _url IPC delivery, nor into the connect it triggers.
+            // into URL handoff, nor into the connect it triggers.
             uni_links = format!("{}{}/{}", crate::get_uri_prefix(), authority, id);
         }
     }
@@ -572,15 +571,11 @@ fn core_main_invoke_new_connection(mut args: std::env::Args) -> Option<Vec<Strin
 
     #[cfg(windows)]
     {
-        use winapi::um::winuser::WM_USER;
-        let res = crate::platform::send_message_to_hnwd(
-            &crate::platform::FLUTTER_RUNNER_WIN32_WINDOW_CLASS,
-            &crate::get_app_name(),
-            (WM_USER + 2) as _, // referred from unilinks desktop pub
-            uni_links.as_str(),
-            false,
-        );
-        return if res { None } else { Some(Vec::new()) };
+        return if let Err(_) = crate::ipc::send_url_scheme(uni_links) {
+            Some(Vec::new())
+        } else {
+            None
+        };
     }
     #[cfg(target_os = "macos")]
     {

@@ -1379,14 +1379,40 @@ ra6_clean 'crate::dbus|org\.rustdesk\.rustdesk|\bstart_dbus_server' 'R-X6 D-Bus 
 # excised dbus.rs — zero crossroads:: usage remains, so the dep is dropped. Assert it stays gone (the
 # base `dbus` crate stays for the legit platform/linux.rs session-bus call — do NOT gate that out).
 grep -qE '^dbus-crossroads = ' Cargo.toml && { echo "  FAIL R-X6: the dead dbus-crossroads dep (only the excised dbus.rs used it) is back in Cargo.toml"; rc=1; }
-# R-X6 (macOS _url sender-auth): the SEPARATE _url deep-link IPC listener (server::start_ipc_url_server)
-# bypasses the main handle() service-accept gate, so it MUST authenticate its sender (peer-uid + peer-exe)
-# like the protected _service channel — else any same-uid process injects a rustdesk:// connect/relay/key.
+# R-X6/R-S11c-9 (_url sender-auth): the SEPARATE _url deep-link IPC listener (server::start_ipc_url_server)
+# bypasses the main handle() service-accept gate, so it MUST authenticate its sender identity and
+# executable path — else a local process can inject a rustdesk:// connect/relay/key.
 if grep -qE 'fn start_ipc_url_server' src/server.rs && ! grep -qE 'authorize_url_ipc_sender' src/server.rs; then
-  echo "  FAIL R-X6: macOS start_ipc_url_server does not authenticate its _url IPC sender (peer-uid+exe)"; rc=1
+  echo "  FAIL R-X6/R-S11c-9: start_ipc_url_server does not authenticate its _url IPC sender"; rc=1
 else
-  echo "  ok  R-X6 macOS _url IPC listener authenticates its sender (authorize_url_ipc_sender)"
+  echo "  ok  R-X6/R-S11c-9 _url IPC listener authenticates its sender (authorize_url_ipc_sender)"
 fi
+# R-S11c-9: Windows URL forwarding must not use public HWND messages. Existing-instance URL handoff
+# goes through the same authenticated _url IPC receiver as macOS, with a restricted Windows named-pipe
+# DACL and receiver-side same-session/current-executable checks.
+r_s11c9_win_url=""
+r_s11c9_tmp="${TMPDIR:-/tmp}/rd_verify_r_s11c9_winmsg.$$"
+if grep -RInE 'WM_COPYDATA|COPYDATASTRUCT|DispatchToUniLinksDesktop|send_message_to_hnwd|WM_USER[[:space:]]*\+[[:space:]]*2' \
+    src/core_main.rs src/platform/windows.rs flutter/windows/runner/main.cpp 2>/dev/null >"$r_s11c9_tmp"; then
+  r_s11c9_win_url="$r_s11c9_win_url window-message-forwarder"
+fi
+grep -qF 'return if let Err(_) = crate::ipc::send_url_scheme(uni_links)' src/core_main.rs || r_s11c9_win_url="$r_s11c9_win_url core-main-no-url-ipc"
+grep -qF 'authorize_windows_url_ipc_connection' src/ipc.rs || r_s11c9_win_url="$r_s11c9_win_url ipc-no-windows-url-auth"
+grep -qF 'postfix == WINDOWS_URL_IPC_POSTFIX' src/ipc/auth.rs || r_s11c9_win_url="$r_s11c9_win_url url-pipe-not-restricted"
+grep -qF 'assert!(super::windows_privileged_ipc_uses_restricted_dacl("_url"))' src/ipc/auth.rs || r_s11c9_win_url="$r_s11c9_win_url no-url-dacl-test"
+grep -qF '#[cfg(any(target_os = "windows", target_os = "macos"))]' src/server.rs || r_s11c9_win_url="$r_s11c9_win_url server-not-windows"
+grep -qF 'rustdesk_send_url_scheme' src/flutter.rs || r_s11c9_win_url="$r_s11c9_win_url c-abi-url-bridge-missing"
+grep -qF 'url.starts_with(&crate::get_uri_prefix())' src/flutter.rs || r_s11c9_win_url="$r_s11c9_win_url c-abi-url-prefix-not-checked"
+grep -qF 'send_rustdesk_url_scheme(argument.c_str())' flutter/windows/runner/main.cpp || r_s11c9_win_url="$r_s11c9_win_url runner-not-calling-url-bridge"
+grep -qF '(isWindows || isMacOS) && isMain' flutter/lib/models/native_model.dart || r_s11c9_win_url="$r_s11c9_win_url dart-does-not-start-url-server"
+if [ -n "$r_s11c9_win_url" ]; then
+  echo "  FAIL R-S11c-9: Windows URL forwarding is not provably off HWND messages and onto authenticated _url IPC:$r_s11c9_win_url"
+  [ -s "$r_s11c9_tmp" ] && sed 's/^/      /' "$r_s11c9_tmp"
+  rc=1
+else
+  echo "  ok  R-S11c-9 Windows URL forwarding uses authenticated _url IPC and no HWND message dispatcher"
+fi
+rm -f "$r_s11c9_tmp"
 # R-X6 deep-link embedded-credential strip — BOTH layers (a Dart-only strip is bypassable, since the raw
 # URI reaches the Rust core via bind.sendUrlScheme). (1) The Dart parser urlLinkToCmdArgs
 # (flutter/lib/common.dart) MUST NOT fold an embedded ?key= into the id, nor propagate ?password=/?relay=
@@ -1416,8 +1442,8 @@ else
 fi
 # R-X6 (stricter, Rust layer) — core_main_invoke_new_connection MUST NOT fold an embedded --password into
 # the connect URI. It used to `param_array.push(format!("password={password}"))`, folding it as ?password=
-# into the uni-link then delivered over the WM_USER+2 (Windows) / _url IPC (macOS) transports — leaking the
-# credential into that IPC message even before any consumer read it. The strip MUST hold in BOTH layers,
+# into the uni-link then delivered through desktop URL handoff — leaking the credential into that IPC
+# message even before any consumer read it. The strip MUST hold in BOTH layers,
 # because the raw URI reaches the Rust core via bind.sendUrlScheme, bypassing a Dart-only fix (spec R-X6).
 r_x6_rustcli=""
 grep -qE 'param_array\.push\(format!\("password=' src/core_main.rs && r_x6_rustcli="$r_x6_rustcli fold:password="

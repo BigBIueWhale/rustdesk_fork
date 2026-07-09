@@ -15,6 +15,8 @@ use hbb_common::{
 };
 use serde::Serialize;
 use serde_json::json;
+#[cfg(windows)]
+use std::ffi::CStr;
 #[cfg(target_os = "windows")]
 use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 use std::{
@@ -167,6 +169,31 @@ pub extern "C" fn rustdesk_core_main_args(args_len: *mut c_int) -> *mut *mut c_c
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     return std::ptr::null_mut() as _;
+}
+
+#[cfg(windows)]
+#[no_mangle]
+pub unsafe extern "C" fn rustdesk_send_url_scheme(url: *const c_char) -> bool {
+    if url.is_null() {
+        return false;
+    }
+    let url = match CStr::from_ptr(url).to_str() {
+        Ok(url) => url.trim(),
+        Err(err) => {
+            log::warn!("Rejected non-UTF-8 Windows URL IPC handoff: {}", err);
+            return false;
+        }
+    };
+    if url.is_empty() || !url.starts_with(&crate::get_uri_prefix()) {
+        return false;
+    }
+    match crate::ipc::send_url_scheme(url.to_owned()) {
+        Ok(()) => true,
+        Err(err) => {
+            log::debug!("Windows URL IPC handoff failed: {}", err);
+            false
+        }
+    }
 }
 
 // https://gist.github.com/iskakaushik/1c5b8aa75c77479c33c4320913eebef6

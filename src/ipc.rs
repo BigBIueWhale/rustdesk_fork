@@ -31,8 +31,6 @@ use hbb_common::{
 #[cfg(target_os = "macos")]
 pub(crate) use ipc_auth::authenticate_macos_cm_endpoint;
 #[cfg(windows)]
-use ipc_auth::authorize_windows_main_ipc_connection;
-#[cfg(windows)]
 pub(crate) use ipc_auth::ensure_peer_executable_matches_current_by_pid_opt;
 #[cfg(windows)]
 pub(crate) use ipc_auth::log_rejected_windows_ipc_connection;
@@ -47,6 +45,8 @@ pub(crate) use ipc_auth::{
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) use ipc_auth::{authorize_cm_ipc_connection, authorize_whiteboard_ipc_connection};
 #[cfg(windows)]
+use ipc_auth::{authorize_windows_main_ipc_connection, authorize_windows_url_ipc_connection};
+#[cfg(windows)]
 use ipc_auth::{
     ensure_windows_ipc_server_matches_current, windows_ipc_listener_security_attributes,
     windows_named_pipe_client_access_mask,
@@ -55,15 +55,15 @@ use ipc_auth::{
 // is_allowed_service_peer_uid / log_rejected_uinput_connection / peer_uid_from_fd) were the uinput
 // peer-authorization accessors, removed with the uinput module. The _service-channel authorization
 // keeps using is_allowed_service_peer_uid / peer_uid_from_fd INTERNALLY inside ipc_auth.
-// R-X6 (macOS): the `_url` deep-link IPC listener (server::start_ipc_url_server) is a SEPARATE
-// listener that BYPASSES the main handle() service-accept gate, so it MUST authenticate its sender
-// (peer-uid + peer-exe) before honoring a rustdesk:// URL — otherwise any same-uid process could
-// inject a deep-link connect/relay/key. The only legitimate sender is the rustdesk binary itself
-// (ipc::send_url_scheme, from core_main's uni-link self-handler), so the same peer-uid + same-exe
-// policy the protected `_service` channel enforces is exactly the right gate.
+// R-X6/R-S11c-9: the `_url` deep-link IPC listener is separate from the main handle() service-accept
+// gate, so it authenticates its sender before honoring a rustdesk:// URL.
 #[cfg(target_os = "macos")]
 pub(crate) fn authorize_url_ipc_sender(stream: &Connection) -> bool {
     authorize_service_scoped_ipc_connection(stream, "_url")
+}
+#[cfg(target_os = "windows")]
+pub(crate) fn authorize_url_ipc_sender(stream: &Connection) -> bool {
+    authorize_windows_url_ipc_connection(stream, "_url")
 }
 #[cfg(target_os = "linux")]
 use ipc_fs::terminal_count_candidate_uids;

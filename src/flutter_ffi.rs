@@ -2061,9 +2061,8 @@ pub fn cm_init() {
 /// Start an ipc server for receiving the url scheme.
 ///
 /// * Should only be called in the main flutter window.
-/// * macOS only
 pub fn main_start_ipc_url_server() {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     std::thread::spawn(move || crate::server::start_ipc_url_server());
 }
 
@@ -2126,11 +2125,9 @@ pub fn is_preset_password_mobile_only() -> SyncReturn<bool> {
 }
 
 /// Send a url scheme through the ipc.
-///
-/// * macOS only
 #[allow(unused_variables)]
 pub fn send_url_scheme(_url: String) {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     std::thread::spawn(move || crate::handle_url_scheme(_url));
 }
 

@@ -45,9 +45,14 @@ use windows::{
 };
 
 #[cfg(windows)]
+const WINDOWS_URL_IPC_POSTFIX: &str = "_url";
+
+#[cfg(windows)]
 #[inline]
 pub(crate) fn windows_privileged_ipc_uses_restricted_dacl(postfix: &str) -> bool {
-    postfix.is_empty() || hbb_common::config::is_service_ipc_postfix(postfix)
+    postfix.is_empty()
+        || hbb_common::config::is_service_ipc_postfix(postfix)
+        || postfix == WINDOWS_URL_IPC_POSTFIX
 }
 
 #[cfg(windows)]
@@ -1091,7 +1096,11 @@ pub(crate) fn authorize_service_scoped_ipc_connection(stream: &Connection, postf
 }
 
 #[cfg(windows)]
-pub(crate) fn authorize_windows_main_ipc_connection(stream: &Connection, postfix: &str) -> bool {
+fn authorize_windows_session_current_exe_ipc_connection(
+    stream: &Connection,
+    postfix: &str,
+    channel: &str,
+) -> bool {
     let (
         authorized,
         peer_pid,
@@ -1113,7 +1122,8 @@ pub(crate) fn authorize_windows_main_ipc_connection(stream: &Connection, postfix
     }
     if let Err(err) = ensure_peer_executable_matches_current_by_pid_opt(peer_pid, postfix) {
         log::warn!(
-            "Rejected unauthorized connection on ipc channel due to executable mismatch: postfix={}, peer_pid={:?}, err={}",
+            "Rejected unauthorized connection on {} due to executable mismatch: postfix={}, peer_pid={:?}, err={}",
+            channel,
             postfix,
             peer_pid,
             err
@@ -1121,6 +1131,20 @@ pub(crate) fn authorize_windows_main_ipc_connection(stream: &Connection, postfix
         return false;
     }
     true
+}
+
+#[cfg(windows)]
+pub(crate) fn authorize_windows_main_ipc_connection(stream: &Connection, postfix: &str) -> bool {
+    authorize_windows_session_current_exe_ipc_connection(stream, postfix, "ipc channel")
+}
+
+#[cfg(windows)]
+pub(crate) fn authorize_windows_url_ipc_connection(stream: &Connection, postfix: &str) -> bool {
+    authorize_windows_session_current_exe_ipc_connection(
+        stream,
+        postfix,
+        "protected _url IPC channel",
+    )
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -1478,6 +1502,7 @@ mod tests {
         assert!(super::windows_privileged_ipc_uses_restricted_dacl(
             "_service"
         ));
+        assert!(super::windows_privileged_ipc_uses_restricted_dacl("_url"));
         assert!(!super::windows_privileged_ipc_uses_restricted_dacl(
             "_portable_service"
         ));

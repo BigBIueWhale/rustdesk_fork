@@ -591,12 +591,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   proof, parent-pid admission, and per-connection event tokens; arbitrary same-UID clients, fixed-path
   squatters, caller-supplied render keys, wrong-token events, and stale `Exit` are rejected before overlay
   state changes.
-- **R-S11c-9 — Windows URL forwarding via unauthenticated window messages.** Platform: Windows desktop.
-  Endpoint: `WM_COPYDATA` / `WM_USER+2` URL forwarding to an existing UI window. Boundary: local process ↔
-  URL/deep-link dispatcher. Current impact: prompt/DoS only because password/config/import deep-link writes
-  are excised. Closure: keep credential/config authorities rejected; if URL handling ever becomes sensitive,
-  move forwarding to authenticated local IPC or add sender validation; gate to prevent credential/config
-  writes from reappearing behind window messages.
+- **R-S11c-9 — Windows URL forwarding via unauthenticated window messages — CLOSED 2026-07-09.**
+  Platform: Windows desktop. Endpoint: `WM_COPYDATA` / `WM_USER+2` URL forwarding to an existing UI
+  window. Boundary: local process ↔ URL/deep-link dispatcher. Closure: the Rust helper
+  `send_message_to_hnwd` is deleted, `core_main` forwards Windows URL handoff through
+  `ipc::send_url_scheme`, and the Flutter Windows runner no longer calls
+  `DispatchToUniLinksDesktop(hwnd)`. Raw Windows URL launches are handed to the same path through the
+  `rustdesk_send_url_scheme` C ABI bridge. The main Windows Flutter process starts the `_url` IPC
+  listener; `_url` uses a restricted named-pipe DACL and receiver-side same-session/current-executable
+  peer authorization before delivering `Data::UrlLink`. If IPC is unavailable, the process launched by
+  the OS/CLI handles its own arguments instead of sending them by public window message.
+  Credential/config authorities remain ignored and embedded password/key/relay material remains
+  stripped/rejected.
 - **R-S11c-10 — Linux root-context shell interpolation.** Platform: Linux service/helper discovery.
   Surfaces: root-side env/home/session discovery commands that interpolate UID/process/user fields into shell
   strings. Boundary: discovered local names/metadata ↔ root shell. Current impact: lower probability than the

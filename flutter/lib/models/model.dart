@@ -396,7 +396,7 @@ class FfiModel with ChangeNotifier {
       } else if (name == 'cancel_msgbox') {
         cancelMsgBox(evt, sessionId);
       } else if (name == 'on_url_scheme_received') {
-        // currently comes from "_url" ipc of mac and dbus of linux
+        // currently comes from desktop URL IPC
         onUrlSchemeReceived(evt);
       } else if (name == 'on_voice_call_waiting') {
         // Waiting for the response from the peer.

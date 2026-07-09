@@ -784,7 +784,6 @@ UINT __stdcall RemoveAmyuniIdd(
     HRESULT hr = S_OK;
     DWORD er = ERROR_SUCCESS;
 
-    int nResult = 0;
     LPWSTR installFolder = NULL;
     LPWSTR pwz = NULL;
     LPWSTR pwzData = NULL;
@@ -820,7 +819,7 @@ UINT __stdcall RemoveAmyuniIdd(
     hr = StringCchPrintfW(workDir, 1024, L"%lsusbmmidd_v2", installFolder);
     ExitOnFailure(hr, "Failed to compose a resource identifier string");
     fileAttributes = GetFileAttributesW(workDir);
-    if (fileAttributes == INVALID_FILE_ATTRIBUTES) {
+    if (fileAttributes == INVALID_FILE_ATTRIBUTES || !(fileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
         WcaLog(LOGMSG_STANDARD, "Amyuni idd dir \"%ls\" is not found, %d", workDir, fileAttributes);
         goto LExit;
     }
@@ -828,12 +827,12 @@ UINT __stdcall RemoveAmyuniIdd(
     hr = StringCchPrintfW(exePath, 1024, L"%ls\\%ls", workDir, exe);
     ExitOnFailure(hr, "Failed to compose a resource identifier string");
     fileAttributes = GetFileAttributesW(exePath);
-    if (fileAttributes == INVALID_FILE_ATTRIBUTES) {
+    if (fileAttributes == INVALID_FILE_ATTRIBUTES || (fileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
         goto LExit;
     }
 
-    WcaLog(LOGMSG_STANDARD, "Remove amyuni idd %ls in %ls", exe, workDir);
-    hi = ShellExecuteW(NULL, L"open", exe, L"remove usbmmidd", workDir, SW_HIDE);
+    WcaLog(LOGMSG_STANDARD, "Remove amyuni idd %ls", exePath);
+    hi = ShellExecuteW(NULL, L"open", exePath, L"remove usbmmidd", workDir, SW_HIDE);
     // https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew
     if ((int)hi <= 32) {
         WcaLog(LOGMSG_STANDARD, "Failed to remove amyuni idd : %d, last error: %d", (int)hi, GetLastError());

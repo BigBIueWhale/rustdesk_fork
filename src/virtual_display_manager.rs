@@ -386,13 +386,15 @@ pub mod amyuni_idd {
     use crate::platform::{reg_display_settings, win_device};
     use hbb_common::{bail, lazy_static, log, tokio::time::Instant, ResultType};
     use std::{
+        ffi::OsStr,
+        os::windows::ffi::OsStrExt,
         ptr::null_mut,
         sync::{atomic, Arc, Mutex},
         time::Duration,
     };
     use winapi::{
         shared::{guiddef::GUID, winerror::ERROR_NO_MORE_ITEMS},
-        um::shellapi::ShellExecuteA,
+        um::shellapi::ShellExecuteW,
     };
 
     const INF_PATH: &str = r#"usbmmidd_v2\usbmmIdd.inf"#;
@@ -405,6 +407,11 @@ pub mod amyuni_idd {
     const HARDWARE_ID: &str = "usbmmidd";
     const PLUG_MONITOR_IO_CONTROL_CDOE: u32 = 2307084;
     const INSTALLER_EXE_FILE: &str = "deviceinstaller64.exe";
+
+    struct DeviceInstaller64Paths {
+        work_dir: Vec<u16>,
+        exe_path: Vec<u16>,
+    }
 
     lazy_static::lazy_static! {
         static ref LOCK: Arc<Mutex<()>> = Default::default();
@@ -419,33 +426,39 @@ pub mod amyuni_idd {
     // to-do: Maybe a better way is to add an option asking the user if plug out all virtual displays on disconnect.
     static VIRTUAL_DISPLAY_COUNT: atomic::AtomicUsize = atomic::AtomicUsize::new(0);
 
-    fn get_deviceinstaller64_work_dir() -> ResultType<Option<Vec<u8>>> {
+    fn wide_null(value: &OsStr) -> Vec<u16> {
+        value.encode_wide().chain(std::iter::once(0)).collect()
+    }
+
+    fn str_wide_null(value: &str) -> Vec<u16> {
+        wide_null(OsStr::new(value))
+    }
+
+    fn get_deviceinstaller64_paths() -> ResultType<Option<DeviceInstaller64Paths>> {
         let cur_exe = std::env::current_exe()?;
         let Some(cur_dir) = cur_exe.parent() else {
             bail!("Cannot get parent of current exe file.");
         };
         let work_dir = cur_dir.join("usbmmidd_v2");
-        if !work_dir.exists() {
+        if !work_dir.is_dir() {
             return Ok(None);
         }
         let exe_path = work_dir.join(INSTALLER_EXE_FILE);
-        if !exe_path.exists() {
+        if !exe_path.is_file() {
             return Ok(None);
         }
 
-        let Some(work_dir) = work_dir.to_str() else {
-            bail!("Cannot convert work_dir to string.");
-        };
-        let mut work_dir2 = work_dir.as_bytes().to_vec();
-        work_dir2.push(0);
-        Ok(Some(work_dir2))
+        Ok(Some(DeviceInstaller64Paths {
+            work_dir: wide_null(work_dir.as_os_str()),
+            exe_path: wide_null(exe_path.as_os_str()),
+        }))
     }
 
     pub fn uninstall_driver() -> ResultType<()> {
-        if let Ok(Some(work_dir)) = get_deviceinstaller64_work_dir() {
+        if let Ok(Some(paths)) = get_deviceinstaller64_paths() {
             if crate::platform::windows::is_x64() {
                 log::info!("Uninstalling driver by deviceinstaller64.exe");
-                install_if_x86_on_x64(&work_dir, "remove usbmmidd")?;
+                install_if_x86_on_x64(&paths, "remove usbmmidd")?;
                 // Sleep some time to wait for the driver to be uninstalled.
                 std::thread::sleep(Duration::from_secs(2));
                 return Ok(());
@@ -460,19 +473,17 @@ pub mod amyuni_idd {
 
     // SetupDiCallClassInstaller() will always fail if current_exe() is built as x86 and running on x64.
     // So we need to call another x64 version exe to install and uninstall the driver.
-    fn install_if_x86_on_x64(work_dir: &[u8], args: &str) -> ResultType<()> {
+    fn install_if_x86_on_x64(paths: &DeviceInstaller64Paths, args: &str) -> ResultType<()> {
         const SW_HIDE: i32 = 0;
-        let mut args = args.bytes().collect::<Vec<_>>();
-        args.push(0);
-        let mut exe_file = INSTALLER_EXE_FILE.bytes().collect::<Vec<_>>();
-        exe_file.push(0);
+        let args = str_wide_null(args);
+        let operation = str_wide_null("open");
         let hi = unsafe {
-            ShellExecuteA(
+            ShellExecuteW(
                 null_mut(),
-                "open\0".as_ptr() as _,
-                exe_file.as_ptr() as _,
+                operation.as_ptr(),
+                paths.exe_path.as_ptr(),
                 args.as_ptr() as _,
-                work_dir.as_ptr() as _,
+                paths.work_dir.as_ptr(),
                 SW_HIDE,
             ) as i32
         };
@@ -496,10 +507,10 @@ pub mod amyuni_idd {
             return Ok(());
         }
 
-        if let Ok(Some(work_dir)) = get_deviceinstaller64_work_dir() {
+        if let Ok(Some(paths)) = get_deviceinstaller64_paths() {
             if crate::platform::windows::is_x64() {
                 log::info!("Installing driver by deviceinstaller64.exe");
-                install_if_x86_on_x64(&work_dir, "install usbmmidd.inf usbmmidd")?;
+                install_if_x86_on_x64(&paths, "install usbmmidd.inf usbmmidd")?;
                 *is_async = true;
                 return Ok(());
             }

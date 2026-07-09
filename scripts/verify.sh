@@ -419,10 +419,22 @@ grep -q 'HRESULT_FROM_WIN32(lastErrorCode)' res/msi/CustomActions/CustomActions.
 grep -Fq 'reinterpret_cast<const BYTE*>(&valueData)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:sas-registry-value-pointer-wrong"
 grep -q 'HRESULT_FROM_WIN32(result)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:sas-registry-errors-not-propagated"
 grep -q 'if (!QueryServiceStatusExW(serviceName, &serviceStatus))' res/msi/CustomActions/ServiceUtils.cpp || r_s11d="$r_s11d msi:service-status-query-not-guarded"
+grep -q 'ShellExecuteW(NULL, L"open", exePath, L"remove usbmmidd", workDir, SW_HIDE)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-not-absolute"
+if grep -q 'ShellExecuteW(NULL, L"open", exe, L"remove usbmmidd"' res/msi/CustomActions/CustomActions.cpp; then
+  r_s11d="$r_s11d msi:amyuni-helper-bare-name-launch"
+fi
+grep -q 'struct DeviceInstaller64Paths' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-path-struct-missing"
+grep -q 'fn get_deviceinstaller64_paths' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-absolute-path-helper-missing"
+grep -q 'paths.exe_path.as_ptr()' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-helper-not-absolute"
+if grep -qE 'ShellExecuteA|let mut exe_file = INSTALLER_EXE_FILE\.bytes|ShellExecuteW\([^;]*INSTALLER_EXE_FILE' src/virtual_display_manager.rs; then
+  r_s11d="$r_s11d runtime:amyuni-helper-bare-name-launch"
+fi
 grep -q 'Windows installer service-binary root and elevated script authority' requirements.html || r_s11d="$r_s11d requirements-disposition-missing"
 grep -q 'R-S11d — Windows installer service-root authority' HARDENING_STATUS.md || r_s11d="$r_s11d hardening-ledger-missing"
+grep -q 'Windows Amyuni IDD helper launch provenance' requirements.html || r_s11d="$r_s11d amyuni-requirements-disposition-missing"
+grep -q 'R-S11d-1 — Windows Amyuni IDD helper launch provenance' HARDENING_STATUS.md || r_s11d="$r_s11d amyuni-hardening-ledger-missing"
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else
-  echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service/SAS custom actions are native, checked, and fail closed"; fi
+  echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service/SAS custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path"; fi
 
 # (3b-iii-b) R-S11b-1/R-S11b-2c/R-S11c-1f: Linux/macOS `_service` is a privileged service-control channel,
 # not a root<->user Config/Config2 bus. The world-connectable service socket may keep only narrow,

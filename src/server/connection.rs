@@ -4798,6 +4798,21 @@ fn current_euid() -> u32 {
     unsafe { hbb_common::libc::geteuid() as u32 }
 }
 
+#[cfg(target_os = "linux")]
+async fn uid_for_username(username: &str) -> ResultType<String> {
+    if username.is_empty() {
+        bail!("Cannot resolve uid for empty username");
+    }
+    let lookup_name = username.to_owned();
+    let uid = hbb_common::tokio::task::spawn_blocking(move || {
+        hbb_common::users::get_user_by_name(&lookup_name).map(|user| user.uid())
+    })
+    .await
+    .map_err(|err| hbb_common::anyhow::anyhow!("Failed to join uid lookup: {}", err))?
+    .ok_or_else(|| hbb_common::anyhow::anyhow!("Failed to resolve uid for {}", username))?;
+    Ok(uid.to_string())
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn cm_launch_token() -> &'static str {
     &CM_LAUNCH_TOKEN
@@ -4941,29 +4956,7 @@ async fn start_ipc(
                 let _res = timeout(1_000, _rx_desktop_ready.recv()).await;
                 username = linux_desktop_manager::get_username();
             }
-            let uid = {
-                let username_for_cmd = username.clone();
-                let mut uid_cmd = hbb_common::tokio::process::Command::new("id");
-                // TODO:
-                // Keep current behavior for now to minimize change risk.
-                // If usernames starting with '-' are observed in the field, prefer:
-                // `id -u -- <username>` to avoid option-parsing ambiguity.
-                // Already verified that `id -u -- <username>` works as expected on macOS and Ubuntu 24.04.
-                uid_cmd.arg("-u").arg(&username_for_cmd).kill_on_drop(true);
-                let output = timeout(10_000, uid_cmd.output())
-                    .await
-                    .map_err(|_| anyhow!("Timed out querying uid for {}", username))?
-                    .map_err(|e| anyhow!("Failed to run `id -u {}`: {}", username, e))?;
-                if !output.status.success() {
-                    bail!("Failed to query uid for {}", username);
-                }
-                let output = String::from_utf8_lossy(&output.stdout);
-                let output = output.trim();
-                if output.parse::<u32>().is_err() {
-                    bail!("Invalid uid {}", output);
-                }
-                output.to_string()
-            };
+            let uid = uid_for_username(&username).await?;
             user = Some((uid, username));
             args = vec!["--cm-no-ui"];
         }

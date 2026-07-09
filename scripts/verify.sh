@@ -1303,6 +1303,32 @@ fi
 if [ -n "$r_s11c10m" ]; then echo "  FAIL R-S11c-10m Linux shared helper command provenance:$r_s11c10m"; rc=1; else
   echo "  ok  R-S11c-10m Linux shared helpers use trusted fixed command paths and delayed reopen is argv-only"; fi
 
+echo "== (3b-iii-h9c2) Linux headless CM uid lookup avoids PATH-selected id (R-S11c-10n) =="
+r_s11c10n=
+grep -q 'async fn uid_for_username(username: &str) -> ResultType<String>' src/server/connection.rs || r_s11c10n="$r_s11c10n no-headless-cm-uid-helper"
+grep -q 'hbb_common::tokio::task::spawn_blocking' src/server/connection.rs || r_s11c10n="$r_s11c10n uid-lookup-not-spawn-blocking"
+grep -q 'hbb_common::users::get_user_by_name(&lookup_name)' src/server/connection.rs || r_s11c10n="$r_s11c10n uid-lookup-not-structured-account-data"
+grep -q 'user.uid()' src/server/connection.rs || r_s11c10n="$r_s11c10n uid-lookup-not-user-uid"
+grep -q 'uid_for_username(&username).await?' src/server/connection.rs || r_s11c10n="$r_s11c10n headless-cm-not-using-uid-helper"
+grep -q 'Linux headless CM uid lookup' requirements.html || r_s11c10n="$r_s11c10n requirements-disposition-missing"
+grep -q 'R-S11c-10n closes the Linux headless CM uid lookup' HARDENING_STATUS.md || r_s11c10n="$r_s11c10n hardening-ledger-missing"
+headless_cm_uid_blocks=$(
+  awk '/async fn uid_for_username/,/fn cm_launch_token/' src/server/connection.rs
+  awk '/if headless_cm/,/user = Some/' src/server/connection.rs
+)
+if echo "$headless_cm_uid_blocks" | grep -Eq 'Command::new\("id"\)|id -u|uid_cmd|timeout\(10_000, uid_cmd\.output'; then
+  r_s11c10n="$r_s11c10n headless-cm-id-command-regressed"
+fi
+if grep -RInE 'Command::new\("id"\)|id -u|uid_cmd' src/server/connection.rs >/tmp/rd_verify_r_s11c10n.$$; then
+  cat /tmp/rd_verify_r_s11c10n.$$
+  rm -f /tmp/rd_verify_r_s11c10n.$$
+  r_s11c10n="$r_s11c10n stale-headless-cm-id-command"
+else
+  rm -f /tmp/rd_verify_r_s11c10n.$$
+fi
+if [ -n "$r_s11c10n" ]; then echo "  FAIL R-S11c-10n Linux headless CM uid lookup:$r_s11c10n"; rc=1; else
+  echo "  ok  R-S11c-10n Linux headless CM uid lookup uses structured account data, not PATH-selected id"; fi
+
 echo "== (3b-iii-h10) Debian package lifecycle uses service-manager helpers (R-S11c-10j/R-T9) =="
 r_s11c10j=
 for maintscript in res/DEBIAN/preinst res/DEBIAN/postinst res/DEBIAN/prerm res/DEBIAN/postrm; do

@@ -791,6 +791,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Linux service uninstall no longer sequences delayed reopen through `sh -c "sleep ...; exec ..."`; it spawns
   the current executable in an internal argv-only `--reopen-after-service-stop <seconds>` mode, whose receiver
   fails closed on malformed or out-of-range delay values before reopening the GUI.
+  R-S11c-10n closes the Linux headless CM uid lookup in `src/server/connection.rs`: the headless
+  `--cm-no-ui` branch no longer runs a PATH-selected `id -u <username>` subprocess to derive the
+  uid for the discovered seat user. It resolves the user through `hbb_common::users::get_user_by_name`
+  on a blocking worker and carries the returned uid into the existing CM launcher shape.
   Remaining closure:
   no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
   root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
@@ -800,7 +804,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   is closed by R-S11c-10i; Debian package lifecycle and systemd stop semantics are closed by R-S11c-10j;
   root/service helper command provenance is closed by R-S11c-10k; Linux `--server` tray cleanup is closed
   by R-S11c-10l; shared Linux helper command provenance and delayed reopen shell removal are closed by
-  R-S11c-10m.
+  R-S11c-10m; Linux headless CM uid lookup is closed by R-S11c-10n.
 - **R-S11b-4 — config secrecy statement after IPC closure — CLOSED 2026-07-09.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary

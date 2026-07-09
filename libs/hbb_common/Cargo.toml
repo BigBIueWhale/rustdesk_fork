@@ -94,9 +94,13 @@ clap = "4.5.51"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = [
+    "aclapi",
+    "accctrl",
+    "errhandlingapi",
     "handleapi",
     "jobapi2",
     "processthreadsapi",
+    "sddl",
     "securitybaseapi",
     "winbase",
     "winnt",

@@ -604,6 +604,242 @@ fn preserve_corrupt_config(file: &Path) {
     }
 }
 
+#[cfg(any(windows, test))]
+fn windows_config_acl_sddl(user_sid: &str, inherit_to_children: bool) -> String {
+    let inherit = if inherit_to_children { "OICI" } else { "" };
+    let ace = |sid: &str| format!("(A;{inherit};FA;;;{sid})");
+    if user_sid.eq_ignore_ascii_case("S-1-5-18") {
+        format!("D:P{}", ace("SY"))
+    } else {
+        format!("D:P{}{}", ace("SY"), ace(user_sid))
+    }
+}
+
+#[cfg(windows)]
+mod windows_config_acl {
+    use super::windows_config_acl_sddl;
+    use anyhow::{anyhow, Result};
+    use std::{
+        fs,
+        os::windows::ffi::OsStrExt,
+        path::Path,
+        ptr,
+    };
+    use winapi::{
+        shared::{
+            minwindef::{DWORD, FALSE, HLOCAL, LPVOID},
+            ntdef::LPWSTR,
+            sddl::{
+                ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
+                SDDL_REVISION_1,
+            },
+            winerror::ERROR_SUCCESS,
+        },
+        um::{
+            accctrl::SE_FILE_OBJECT,
+            aclapi::SetNamedSecurityInfoW,
+            errhandlingapi::GetLastError,
+            handleapi::CloseHandle,
+            processthreadsapi::{GetCurrentProcess, OpenProcessToken},
+            securitybaseapi::{GetSecurityDescriptorDacl, GetTokenInformation},
+            winbase::LocalFree,
+            winnt::{
+                TokenUser, DACL_SECURITY_INFORMATION, PACL, PROTECTED_DACL_SECURITY_INFORMATION,
+                PSECURITY_DESCRIPTOR, PSID, TOKEN_QUERY, TOKEN_USER,
+            },
+        },
+    };
+
+    struct LocalFreeGuard(HLOCAL);
+
+    impl Drop for LocalFreeGuard {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                unsafe {
+                    let _ = LocalFree(self.0);
+                }
+            }
+        }
+    }
+
+    struct HandleGuard(winapi::um::winnt::HANDLE);
+
+    impl Drop for HandleGuard {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                unsafe {
+                    CloseHandle(self.0);
+                }
+            }
+        }
+    }
+
+    pub(super) fn prepare_config_path_for_load(path: &Path) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            if parent.exists() {
+                harden_path(parent, true)?;
+            }
+        }
+        if path.exists() {
+            harden_path(path, false)?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn prepare_config_path_for_store(path: &Path) -> Result<()> {
+        let parent = path
+            .parent()
+            .ok_or_else(|| anyhow!("Config path '{}' has no parent directory", path.display()))?;
+        fs::create_dir_all(parent).map_err(|err| {
+            anyhow!(
+                "Failed to create config directory '{}': {err}",
+                parent.display()
+            )
+        })?;
+        harden_path(parent, true)
+    }
+
+    pub(super) fn harden_config_file(path: &Path) -> Result<()> {
+        harden_path(path, false)
+    }
+
+    fn harden_path(path: &Path, inherit_to_children: bool) -> Result<()> {
+        let user_sid = current_user_sid_string()?;
+        let sddl = windows_config_acl_sddl(&user_sid, inherit_to_children);
+        let mut sd: PSECURITY_DESCRIPTOR = ptr::null_mut();
+        let mut sddl_w = wide_null(&sddl);
+        let converted = unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                sddl_w.as_mut_ptr(),
+                SDDL_REVISION_1 as DWORD,
+                &mut sd,
+                ptr::null_mut(),
+            )
+        };
+        if converted == FALSE || sd.is_null() {
+            return Err(anyhow!(
+                "ConvertStringSecurityDescriptorToSecurityDescriptorW failed for config ACL '{}': win32_error={}",
+                path.display(),
+                unsafe { GetLastError() }
+            ));
+        }
+        let _sd_guard = LocalFreeGuard(sd as HLOCAL);
+
+        let mut dacl_present = FALSE;
+        let mut dacl_defaulted = FALSE;
+        let mut dacl: PACL = ptr::null_mut();
+        let got_dacl = unsafe {
+            GetSecurityDescriptorDacl(sd, &mut dacl_present, &mut dacl, &mut dacl_defaulted)
+        };
+        if got_dacl == FALSE || dacl_present == FALSE || dacl.is_null() {
+            return Err(anyhow!(
+                "Converted config ACL has no DACL for '{}': win32_error={}",
+                path.display(),
+                unsafe { GetLastError() }
+            ));
+        }
+
+        let mut path_w = wide_path(path);
+        let result = unsafe {
+            SetNamedSecurityInfoW(
+                path_w.as_mut_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                dacl,
+                ptr::null_mut(),
+            )
+        };
+        if result != ERROR_SUCCESS {
+            return Err(anyhow!(
+                "SetNamedSecurityInfoW failed for config path '{}': win32_error={result}",
+                path.display()
+            ));
+        }
+        Ok(())
+    }
+
+    fn current_user_sid_string() -> Result<String> {
+        let mut token = ptr::null_mut();
+        let opened = unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) };
+        if opened == FALSE || token.is_null() {
+            return Err(anyhow!(
+                "OpenProcessToken failed while securing config ACL: win32_error={}",
+                unsafe { GetLastError() }
+            ));
+        }
+        let _token_guard = HandleGuard(token);
+
+        let mut len: DWORD = 0;
+        unsafe {
+            GetTokenInformation(token, TokenUser, ptr::null_mut(), 0, &mut len);
+        }
+        if len == 0 {
+            return Err(anyhow!(
+                "GetTokenInformation(TokenUser) returned no buffer length while securing config ACL: win32_error={}",
+                unsafe { GetLastError() }
+            ));
+        }
+
+        let mut buf = vec![0u8; len as usize];
+        let read = unsafe {
+            GetTokenInformation(
+                token,
+                TokenUser,
+                buf.as_mut_ptr() as LPVOID,
+                len,
+                &mut len,
+            )
+        };
+        if read == FALSE {
+            return Err(anyhow!(
+                "GetTokenInformation(TokenUser) failed while securing config ACL: win32_error={}",
+                unsafe { GetLastError() }
+            ));
+        }
+
+        let token_user = unsafe { &*(buf.as_ptr() as *const TOKEN_USER) };
+        let sid = token_user.User.Sid;
+        if sid.is_null() {
+            return Err(anyhow!(
+                "Current process token has no user SID while securing config ACL"
+            ));
+        }
+        sid_to_string(sid)
+    }
+
+    fn sid_to_string(sid: PSID) -> Result<String> {
+        let mut sid_w: LPWSTR = ptr::null_mut();
+        let converted = unsafe { ConvertSidToStringSidW(sid, &mut sid_w) };
+        if converted == FALSE || sid_w.is_null() {
+            return Err(anyhow!(
+                "ConvertSidToStringSidW failed while securing config ACL: win32_error={}",
+                unsafe { GetLastError() }
+            ));
+        }
+        let _sid_guard = LocalFreeGuard(sid_w as HLOCAL);
+        let mut len = 0usize;
+        while unsafe { *sid_w.add(len) } != 0 {
+            len += 1;
+        }
+        let sid_slice = unsafe { std::slice::from_raw_parts(sid_w, len) };
+        String::from_utf16(sid_slice)
+            .map_err(|err| anyhow!("ConvertSidToStringSidW returned invalid UTF-16: {err}"))
+    }
+
+    fn wide_null(value: &str) -> Vec<u16> {
+        value.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    fn wide_path(path: &Path) -> Vec<u16> {
+        path.as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect()
+    }
+}
+
 pub fn load_path<T: serde::Serialize + serde::de::DeserializeOwned + Default + std::fmt::Debug>(
     file: PathBuf,
 ) -> T {
@@ -612,6 +848,15 @@ pub fn load_path<T: serde::Serialize + serde::de::DeserializeOwned + Default + s
     // regenerated default stored back over it would discard the key_pair/permanent credential
     // (F1). confy stores via an atomic rename, so a present file is never a partial
     // application write; one that will not parse is a power-loss torn write or bit-rot.
+    #[cfg(windows)]
+    if let Err(err) = windows_config_acl::prepare_config_path_for_load(&file) {
+        log::error!(
+            "Config '{}' could not be secured before load: {err} - starting from defaults",
+            file.display()
+        );
+        return T::default();
+    }
+
     match confy::load_path(&file) {
         Ok(config) => config,
         Err(err) => match &err {
@@ -665,7 +910,10 @@ pub fn store_path<T: serde::Serialize>(path: PathBuf, cfg: T) -> crate::ResultTy
     }
     #[cfg(windows)]
     {
-        Ok(confy::store_path(path, cfg)?)
+        windows_config_acl::prepare_config_path_for_store(&path)?;
+        confy::store_path(&path, cfg)?;
+        windows_config_acl::harden_config_file(&path)?;
+        Ok(())
     }
 }
 
@@ -3651,6 +3899,23 @@ mod tests {
         let mode = fs::metadata(&file).unwrap().permissions().mode() & 0o777;
         fs::remove_dir_all(&dir).ok();
         assert_eq!(mode, 0o600);
+    }
+
+    #[test]
+    fn windows_config_acl_sddl_is_protected_owner_system_only() {
+        let user_sid = "S-1-5-21-1-2-3-1001";
+        assert_eq!(
+            windows_config_acl_sddl(user_sid, false),
+            "D:P(A;;FA;;;SY)(A;;FA;;;S-1-5-21-1-2-3-1001)"
+        );
+        assert_eq!(
+            windows_config_acl_sddl(user_sid, true),
+            "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;S-1-5-21-1-2-3-1001)"
+        );
+        assert_eq!(
+            windows_config_acl_sddl("S-1-5-18", true),
+            "D:P(A;OICI;FA;;;SY)"
+        );
     }
 
     #[test]

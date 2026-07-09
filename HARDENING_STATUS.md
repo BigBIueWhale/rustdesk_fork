@@ -651,7 +651,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `pgrep` and whiteboard Xwayland discovery are closed by R-S11c-10d; `os-release` parsing is closed by
   R-S11c-10e; `linux_desktop_manager` probing is closed by R-S11c-10f; SELinux status probing is closed by
   R-S11c-10g; config-home correction is closed by R-S11c-10h.
-- **R-S11b-4 — config secrecy statement after IPC closure.** Platforms: all. Surface: at-rest password/PRS
+- **R-S11b-4 — config secrecy statement after IPC closure — CLOSED 2026-07-09.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary
   and not a substitute for IPC secrecy. Current state: R-S11b-4a closes the service-IPC export half for the
@@ -660,13 +660,16 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `current_process_allows_main_channel_permanent_password_storage_sync()` authority gate used by
   R-S11b-2. R-S11b-4b closes the Unix at-rest file-mode half: `libs/hbb_common/src/config.rs::store_path`
   routes non-Windows writes through `confy::store_path_perms(..., 0o600)`, and
-  `config::tests::store_path_writes_owner_only_permissions` behavior-tests the resulting mode.
-  Verification closure so far: `scripts/verify.sh` runs that test and asserts no IPC PRS/key export, service-owned
-  storage/salt denial, and the Unix 0600 writer shape. Remaining closure: Windows config files still rely on the
-  profile/AppData ACL inherited by `confy::store_path`; close this item only after either adding an explicit
-  owner/SYSTEM-only DACL for the config writer or adding a Windows source/CI proof that the inherited profile ACL
-  is the intended owner/root-only boundary. Any future stronger storage (TPM/OS keychain) is defense-in-depth,
-  not the cure for the IPC class.
+  `config::tests::store_path_writes_owner_only_permissions` behavior-tests the resulting mode. R-S11b-4c closes
+  the Windows at-rest file-mode half: `libs/hbb_common/src/config.rs` now protects config directories before
+  storing, protects final files after the `confy` temp-file rename, and refuses to load an existing Windows config
+  file that cannot first be secured. The Windows DACL is explicit and protected, grants full access only to
+  LocalSystem and the current process user SID, deduplicates the LocalSystem case, and does not rely on inherited
+  `%APPDATA%`/profile ACLs. Verification closure: `scripts/verify.sh` runs the Unix mode test and the Windows SDDL
+  shape test, asserts no IPC PRS/key export, service-owned storage/salt denial, Unix 0600 writer shape, Windows
+  protected-DACL API wiring, Windows load/store fail-closed hooks, and the absence of broad Windows principals in
+  the config DACL source. Any future stronger storage (TPM/OS keychain) is defense-in-depth, not the cure for the
+  IPC class.
 
 **Checked during this audit and not opened under R-S11b/R-S11c:** Android exported components/service
 surfaces remain contained by manifest/exported-permission shape; iOS has no controlled-side/root IPC surface

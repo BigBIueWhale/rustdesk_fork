@@ -470,12 +470,16 @@ if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 service-owned password IPC clos
 # connect-equivalent at rest, so the code-owned boundary is:
 #   * no PRS/key material is exported over main IPC;
 #   * service-owned receivers deny password-storage/salt snapshots;
-#   * Unix config writes create owner-only files.
+#   * Unix config writes create owner-only files;
+#   * Windows config paths get a protected current-user/SYSTEM DACL instead of inheriting broad parent ACLs.
 echo "== R-S11b-4 config/PRS secrecy boundary =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::store_path_writes_owner_only_permissions --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::windows_config_acl_sddl_is_protected_owner_system_only --color never
 r_s11b4=""
 r_s11b4_storage_block=$(awk '/name == "permanent-password-storage-and-salt"/,/name == "permanent-password-set"/' src/ipc.rs)
 r_s11b4_salt_block=$(awk '/name == "salt"/,/name == "hide_cm"/' src/ipc.rs)
+r_s11b4_store_path=$(awk '/pub fn store_path/,/^impl Config/' libs/hbb_common/src/config.rs)
+r_s11b4_load_path=$(awk '/pub fn load_path/,/match confy::load_path/' libs/hbb_common/src/config.rs)
 grep -q 'current_process_allows_main_channel_permanent_password_storage_sync()' <<<"$r_s11b4_storage_block" || r_s11b4="$r_s11b4 storage-sync-not-authority-gated"
 grep -q 'Rejected permanent password storage sync from service-owned server' <<<"$r_s11b4_storage_block" || r_s11b4="$r_s11b4 storage-sync-service-deny-log-missing"
 grep -q 'current_process_allows_main_channel_permanent_password_storage_sync()' <<<"$r_s11b4_salt_block" || r_s11b4="$r_s11b4 salt-read-not-authority-gated"
@@ -487,8 +491,25 @@ rm -f /tmp/rd_verify_r_s11b4.$$
 grep -q 'confy::store_path_perms' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 unix-store-path-perms-wrapper-missing"
 grep -q 'fs::Permissions::from_mode(0o600)' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 unix-store-mode-0600-missing"
 grep -q 'store_path_writes_owner_only_permissions' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 unix-store-mode-test-missing"
+grep -q 'windows_config_acl::prepare_config_path_for_load(&file)' <<<"$r_s11b4_load_path" || r_s11b4="$r_s11b4 windows-load-acl-gate-missing"
+grep -q 'windows_config_acl::prepare_config_path_for_store(&path)' <<<"$r_s11b4_store_path" || r_s11b4="$r_s11b4 windows-store-acl-prep-missing"
+grep -q 'windows_config_acl::harden_config_file(&path)' <<<"$r_s11b4_store_path" || r_s11b4="$r_s11b4 windows-store-final-file-acl-missing"
+grep -q 'ConvertStringSecurityDescriptorToSecurityDescriptorW' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 windows-sddl-conversion-missing"
+grep -q 'SetNamedSecurityInfoW' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 windows-setnamedsecurityinfo-missing"
+grep -q 'DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 windows-protected-dacl-missing"
+grep -q 'OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 windows-current-user-sid-missing"
+grep -q 'format!("D:P{}{}", ace("SY"), ace(user_sid))' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 windows-owner-system-sddl-missing"
+grep -q 'user_sid.eq_ignore_ascii_case("S-1-5-18")' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 windows-system-sddl-dedupe-missing"
+grep -q 'windows_config_acl_sddl_is_protected_owner_system_only' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 windows-acl-sddl-test-missing"
+for feature in aclapi accctrl errhandlingapi sddl; do
+  grep -q "\"$feature\"" libs/hbb_common/Cargo.toml || r_s11b4="$r_s11b4 windows-winapi-feature-$feature-missing"
+done
+if grep -InE ';;;(BA|BU|AU|WD|CO)' libs/hbb_common/src/config.rs >/tmp/rd_verify_r_s11b4_acl.$$; then
+  r_s11b4="$r_s11b4 windows-config-acl-grants-broad-or-inherited-principal"
+fi
+rm -f /tmp/rd_verify_r_s11b4_acl.$$
 if [ -n "$r_s11b4" ]; then echo "  FAIL R-S11b-4 config/PRS secrecy boundary:$r_s11b4"; rc=1; else
-  echo "  ok  R-S11b-4 IPC exports no PRS/key material, service-owned storage/salt sync is denied, and Unix config writes are behavior-tested owner-only"; fi
+  echo "  ok  R-S11b-4 IPC exports no PRS/key material, service-owned storage/salt sync is denied, Unix config writes are behavior-tested owner-only, and Windows config paths use an explicit protected current-user/SYSTEM DACL"; fi
 
 # (3b-iii-d) R-S11b-3a/R-S11b-3d: service-owned machine policy is not an ordinary
 # Data::Options write or a UI-side privileged registry write. Options writes use a typed daemon ACK/NACK;

@@ -98,6 +98,10 @@ pub const SERVICE_OWNED_SERVER_ARG: &str = "--service-owned-server";
 pub const CM_LAUNCH_TOKEN_ENV: &str = "RUSTDESK_CM_LAUNCH_TOKEN";
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub const CM_LAUNCH_PARENT_ENV: &str = "RUSTDESK_CM_LAUNCH_PARENT";
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub const WHITEBOARD_LAUNCH_TOKEN_ENV: &str = "RUSTDESK_WHITEBOARD_LAUNCH_TOKEN";
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub const WHITEBOARD_LAUNCH_PARENT_ENV: &str = "RUSTDESK_WHITEBOARD_LAUNCH_PARENT";
 
 pub fn is_service_owned_server_process() -> bool {
     std::env::args_os().any(|arg| arg == std::ffi::OsStr::new(SERVICE_OWNED_SERVER_ARG))

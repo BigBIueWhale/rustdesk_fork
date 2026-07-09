@@ -636,6 +636,57 @@ done
 if [ -n "$r_s11c11" ]; then echo "  FAIL R-S11c-11 Unix CM endpoint-selection authority:$r_s11c11"; rc=1; else
   echo "  ok  R-S11c-11 Unix CM selection proves launch-bound endpoint authority before disclosing CM connection tokens; raw fixed-path _cm connects remain Windows-only"; fi
 
+# (3b-iii-f3) R-S11c-8: whiteboard is a helper authority boundary. It must not accept
+# bare same-UID events, stale fixed-path listeners, caller-supplied display keys, or arbitrary Exit.
+echo "== (3b-iii-f3) Whiteboard helper IPC requires launch and connection authority (R-S11c-8) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config whiteboard_endpoint_proof --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config whiteboard_authority --color never
+r_s11c8=
+grep -q 'WhiteboardEndpointChallenge {' src/ipc.rs || r_s11c8="$r_s11c8 no-whiteboard-endpoint-challenge"
+grep -q 'WhiteboardEndpointProof {' src/ipc.rs || r_s11c8="$r_s11c8 no-whiteboard-endpoint-proof"
+grep -q 'WhiteboardServerChallenge {' src/ipc.rs || r_s11c8="$r_s11c8 no-whiteboard-server-challenge"
+grep -q 'WhiteboardServerProof {' src/ipc.rs || r_s11c8="$r_s11c8 no-whiteboard-server-proof"
+grep -q 'WhiteboardBind {' src/ipc.rs || r_s11c8="$r_s11c8 no-whiteboard-bind-message"
+grep -q 'WhiteboardEvent {' src/ipc.rs || r_s11c8="$r_s11c8 no-whiteboard-event-message"
+grep -q 'WhiteboardClose {' src/ipc.rs || r_s11c8="$r_s11c8 no-whiteboard-close-message"
+grep -q 'WhiteboardShutdown' src/ipc.rs || r_s11c8="$r_s11c8 no-whiteboard-shutdown-message"
+grep -q 'WHITEBOARD_LAUNCH_TOKEN_ENV' src/common.rs || r_s11c8="$r_s11c8 no-whiteboard-launch-token-env"
+grep -q 'WHITEBOARD_LAUNCH_PARENT_ENV' src/common.rs || r_s11c8="$r_s11c8 no-whiteboard-launch-parent-env"
+grep -q 'whiteboard_endpoint_postfix(&launch_token)' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-does-not-use-launch-scoped-endpoint"
+grep -q 'authenticate_whiteboard_endpoint_launch_proof(&mut stream, launch_token)' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-does-not-authenticate-whiteboard-endpoint"
+grep -q 'authorize_whiteboard_ipc_connection(&stream, expected_parent_pid)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-does-not-check-parent-pid"
+grep -q 'answer_whiteboard_endpoint_challenge(&mut stream).await' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-does-not-prove-launch-token"
+grep -q 'WhiteboardIpcState' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-state-machine-missing"
+grep -q 'super::client::get_key_cursor(conn_id)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-does-not-derive-render-key"
+grep -q 'register_whiteboard(self.inner.id)' src/server/connection.rs || r_s11c8="$r_s11c8 connection-register-not-id-based"
+grep -q 'unregister_whiteboard(self.inner.id)' src/server/connection.rs || r_s11c8="$r_s11c8 connection-unregister-not-id-based"
+grep -q 'run_as_user_with_env' src/whiteboard/client.rs || r_s11c8="$r_s11c8 whiteboard-launch-env-not-wired"
+grep -q 'pub fn run_as_user_with_env' src/platform/windows.rs || r_s11c8="$r_s11c8 windows-env-launcher-missing"
+grep -q 'LPCWSTR extraEnvironment' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-createprocess-env-missing"
+if grep -RIn 'Whiteboard((String' src/ipc.rs src/whiteboard 2>/dev/null | grep -v 'grep' >/tmp/rd_verify_whiteboard_tuple.$$; then
+  r_s11c8="$r_s11c8 legacy-whiteboard-tuple-message-present"
+fi
+if grep -RIn 'Data::Whiteboard((' src/whiteboard src/server 2>/dev/null >/tmp/rd_verify_whiteboard_tuple_send.$$; then
+  r_s11c8="$r_s11c8 legacy-whiteboard-tuple-send-present"
+fi
+if grep -q 'ipc::connect(1000, "_whiteboard")' src/whiteboard/client.rs; then
+  r_s11c8="$r_s11c8 raw-fixed-whiteboard-connect-present"
+fi
+if grep -q 'new_listener("_whiteboard")' src/whiteboard/server.rs; then
+  r_s11c8="$r_s11c8 fixed-whiteboard-listener-present"
+fi
+if grep -q 'send_event(("".to_string(), CustomEvent::Exit))' src/whiteboard/server.rs; then
+  r_s11c8="$r_s11c8 unconditional-whiteboard-global-exit-present"
+fi
+if grep -RIn 'get_key_cursor(conn)' src/server src/whiteboard/client.rs 2>/dev/null >/tmp/rd_verify_whiteboard_keys.$$; then
+  r_s11c8="$r_s11c8 caller-derived-whiteboard-key-present"
+fi
+whiteboard_register_context=$(grep -B4 -A2 'register_whiteboard(self.inner.id)' src/server/connection.rs || true)
+echo "$whiteboard_register_context" | grep -q 'if self.is_authed_remote_conn()' || r_s11c8="$r_s11c8 register-not-remote-auth-type-gated"
+if [ -n "$r_s11c8" ]; then echo "  FAIL R-S11c-8 whiteboard helper authority:$r_s11c8"; rc=1; else
+  echo "  ok  R-S11c-8 whiteboard helper uses launch-scoped endpoint proof plus parent-pid admission and per-connection event tokens; fixed-path tuple events and arbitrary Exit are absent"; fi
+rm -f /tmp/rd_verify_whiteboard_tuple.$$ /tmp/rd_verify_whiteboard_tuple_send.$$ /tmp/rd_verify_whiteboard_keys.$$
+
 # (3b-iii-g) R-S11c-5: macOS source-conformance for the privileged LaunchDaemon packaging.
 # The daemon may not shell-launch root code, write logs through /tmp, or execute from an active-user-owned
 # app bundle. Install/update must leave the bundle, plists, support dirs, and logs root-owned and

@@ -30,8 +30,6 @@ use hbb_common::{
 };
 #[cfg(target_os = "macos")]
 pub(crate) use ipc_auth::authenticate_macos_cm_endpoint;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub(crate) use ipc_auth::authorize_cm_ipc_connection;
 #[cfg(windows)]
 use ipc_auth::authorize_windows_main_ipc_connection;
 #[cfg(windows)]
@@ -46,6 +44,8 @@ pub(crate) use ipc_auth::{
     linux_proc_start_time, linux_proc_stat_start_time, peer_process_identity,
     peer_process_identity_is_live, PeerProcessIdentity,
 };
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) use ipc_auth::{authorize_cm_ipc_connection, authorize_whiteboard_ipc_connection};
 #[cfg(windows)]
 use ipc_auth::{
     ensure_windows_ipc_server_matches_current, windows_ipc_listener_security_attributes,
@@ -366,6 +366,22 @@ pub enum Data {
     CmServerProof {
         proof: String,
     },
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    WhiteboardEndpointChallenge {
+        challenge: String,
+    },
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    WhiteboardEndpointProof {
+        proof: String,
+    },
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    WhiteboardServerChallenge {
+        challenge: String,
+    },
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    WhiteboardServerProof {
+        proof: String,
+    },
     ChatMessage {
         text: String,
     },
@@ -533,7 +549,23 @@ pub enum Data {
     #[cfg(target_os = "windows")]
     PortForwardSessionCount(Option<usize>),
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    Whiteboard((String, crate::whiteboard::CustomEvent)),
+    WhiteboardBind {
+        conn_id: i32,
+        token: String,
+    },
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    WhiteboardEvent {
+        conn_id: i32,
+        token: String,
+        event: crate::whiteboard::CustomEvent,
+    },
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    WhiteboardClose {
+        conn_id: i32,
+        token: String,
+    },
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    WhiteboardShutdown,
     #[cfg(target_os = "windows")]
     FileTransferEnabledState(Option<bool>),
 }
@@ -1014,29 +1046,46 @@ const CM_SERVER_PROOF_CONTEXT: &[u8] = b"rustdesk.cm.server-proof.v1";
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 const CM_ENDPOINT_AUTH_TIMEOUT_MS: u64 = 1_000;
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-fn cm_endpoint_hmac_key(
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const WHITEBOARD_ENDPOINT_PROOF_CONTEXT: &[u8] = b"rustdesk.whiteboard.endpoint-proof.v1";
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const WHITEBOARD_SERVER_PROOF_CONTEXT: &[u8] = b"rustdesk.whiteboard.server-proof.v1";
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const WHITEBOARD_ENDPOINT_NAME_CONTEXT: &[u8] = b"rustdesk.whiteboard.endpoint-name.v1";
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS: u64 = 1_000;
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn helper_endpoint_hmac_key(
+    helper_name: &str,
     launch_token: &str,
 ) -> ResultType<hbb_common::sodiumoxide::crypto::auth::hmacsha256::Key> {
     if launch_token.is_empty() {
-        bail!("missing connection-manager launch token");
+        bail!("missing {helper_name} launch token");
     }
     let token = match crate::decode64(launch_token) {
         Ok(token) => token,
-        Err(err) => bail!("invalid connection-manager launch token: {err}"),
+        Err(err) => bail!("invalid {helper_name} launch token: {err}"),
     };
     if token.len() != hbb_common::sodiumoxide::crypto::auth::hmacsha256::KEYBYTES {
-        bail!("invalid connection-manager launch token length");
+        bail!("invalid {helper_name} launch token length");
     }
     let mut key = [0u8; hbb_common::sodiumoxide::crypto::auth::hmacsha256::KEYBYTES];
     key.copy_from_slice(&token);
     Ok(hbb_common::sodiumoxide::crypto::auth::hmacsha256::Key(key))
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-fn cm_launch_proof_message(context: &[u8], challenge: &str) -> ResultType<Vec<u8>> {
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn helper_launch_proof_message(
+    helper_name: &str,
+    context: &[u8],
+    challenge: &str,
+) -> ResultType<Vec<u8>> {
     if challenge.is_empty() {
-        bail!("missing connection-manager endpoint challenge");
+        bail!("missing {helper_name} endpoint challenge");
     }
     let mut message = Vec::with_capacity(context.len() + 1 + challenge.len());
     message.extend_from_slice(context);
@@ -1045,16 +1094,50 @@ fn cm_launch_proof_message(context: &[u8], challenge: &str) -> ResultType<Vec<u8
     Ok(message)
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn helper_launch_proof_for_challenge(
+    helper_name: &str,
+    context: &[u8],
+    challenge: &str,
+    launch_token: &str,
+) -> ResultType<String> {
+    let key = helper_endpoint_hmac_key(helper_name, launch_token)?;
+    let message = helper_launch_proof_message(helper_name, context, challenge)?;
+    let proof = hbb_common::sodiumoxide::crypto::auth::hmacsha256::authenticate(&message, &key);
+    Ok(crate::encode64(proof.as_ref()))
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn verify_helper_launch_proof(
+    helper_name: &str,
+    context: &[u8],
+    challenge: &str,
+    proof: &str,
+    launch_token: &str,
+) -> ResultType<()> {
+    let key = helper_endpoint_hmac_key(helper_name, launch_token)?;
+    let message = helper_launch_proof_message(helper_name, context, challenge)?;
+    let proof = match crate::decode64(proof) {
+        Ok(proof) => proof,
+        Err(err) => bail!("invalid {helper_name} endpoint proof: {err}"),
+    };
+    let Some(proof) = hbb_common::sodiumoxide::crypto::auth::hmacsha256::Tag::from_slice(&proof)
+    else {
+        bail!("invalid {helper_name} endpoint proof length");
+    };
+    if !hbb_common::sodiumoxide::crypto::auth::hmacsha256::verify(&proof, &message, &key) {
+        bail!("{helper_name} endpoint proof rejected");
+    }
+    Ok(())
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn cm_launch_proof_for_challenge(
     context: &[u8],
     challenge: &str,
     launch_token: &str,
 ) -> ResultType<String> {
-    let key = cm_endpoint_hmac_key(launch_token)?;
-    let message = cm_launch_proof_message(context, challenge)?;
-    let proof = hbb_common::sodiumoxide::crypto::auth::hmacsha256::authenticate(&message, &key);
-    Ok(crate::encode64(proof.as_ref()))
+    helper_launch_proof_for_challenge("connection-manager", context, challenge, launch_token)
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -1064,20 +1147,13 @@ fn verify_cm_launch_proof(
     proof: &str,
     launch_token: &str,
 ) -> ResultType<()> {
-    let key = cm_endpoint_hmac_key(launch_token)?;
-    let message = cm_launch_proof_message(context, challenge)?;
-    let proof = match crate::decode64(proof) {
-        Ok(proof) => proof,
-        Err(err) => bail!("invalid connection-manager endpoint proof: {err}"),
-    };
-    let Some(proof) = hbb_common::sodiumoxide::crypto::auth::hmacsha256::Tag::from_slice(&proof)
-    else {
-        bail!("invalid connection-manager endpoint proof length");
-    };
-    if !hbb_common::sodiumoxide::crypto::auth::hmacsha256::verify(&proof, &message, &key) {
-        bail!("connection-manager endpoint proof rejected");
-    }
-    Ok(())
+    verify_helper_launch_proof(
+        "connection-manager",
+        context,
+        challenge,
+        proof,
+        launch_token,
+    )
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -1105,6 +1181,93 @@ fn cm_server_proof_for_challenge(challenge: &str, launch_token: &str) -> ResultT
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn verify_cm_server_proof(challenge: &str, proof: &str, launch_token: &str) -> ResultType<()> {
     verify_cm_launch_proof(CM_SERVER_PROOF_CONTEXT, challenge, proof, launch_token)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn whiteboard_endpoint_name_suffix(launch_token: &str) -> ResultType<String> {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let key = helper_endpoint_hmac_key("whiteboard", launch_token)?;
+    let tag = hbb_common::sodiumoxide::crypto::auth::hmacsha256::authenticate(
+        WHITEBOARD_ENDPOINT_NAME_CONTEXT,
+        &key,
+    );
+    let mut out = String::with_capacity(32);
+    for byte in tag.as_ref().iter().take(16) {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    Ok(out)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) fn whiteboard_endpoint_postfix(launch_token: &str) -> ResultType<String> {
+    Ok(format!(
+        "_whiteboard_{}",
+        whiteboard_endpoint_name_suffix(launch_token)?
+    ))
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) fn whiteboard_endpoint_postfix_from_env() -> ResultType<String> {
+    let launch_token = std::env::var(crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV)
+        .map_err(|err| hbb_common::anyhow::anyhow!("missing whiteboard launch token: {err}"))?;
+    whiteboard_endpoint_postfix(&launch_token)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) fn whiteboard_endpoint_proof_for_challenge(
+    challenge: &str,
+    launch_token: &str,
+) -> ResultType<String> {
+    helper_launch_proof_for_challenge(
+        "whiteboard",
+        WHITEBOARD_ENDPOINT_PROOF_CONTEXT,
+        challenge,
+        launch_token,
+    )
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) fn verify_whiteboard_endpoint_proof(
+    challenge: &str,
+    proof: &str,
+    launch_token: &str,
+) -> ResultType<()> {
+    verify_helper_launch_proof(
+        "whiteboard",
+        WHITEBOARD_ENDPOINT_PROOF_CONTEXT,
+        challenge,
+        proof,
+        launch_token,
+    )
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn whiteboard_server_proof_for_challenge(
+    challenge: &str,
+    launch_token: &str,
+) -> ResultType<String> {
+    helper_launch_proof_for_challenge(
+        "whiteboard",
+        WHITEBOARD_SERVER_PROOF_CONTEXT,
+        challenge,
+        launch_token,
+    )
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn verify_whiteboard_server_proof(
+    challenge: &str,
+    proof: &str,
+    launch_token: &str,
+) -> ResultType<()> {
+    verify_helper_launch_proof(
+        "whiteboard",
+        WHITEBOARD_SERVER_PROOF_CONTEXT,
+        challenge,
+        proof,
+        launch_token,
+    )
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -1167,6 +1330,79 @@ where
             stream.send(&Data::CmEndpointProof { proof }).await
         }
         _ => bail!("connection-manager endpoint challenge missing"),
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) async fn authenticate_whiteboard_endpoint_launch_proof<T>(
+    stream: &mut ConnectionTmpl<T>,
+    launch_token: &str,
+) -> ResultType<()>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin,
+{
+    match stream
+        .next_timeout(WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS)
+        .await?
+    {
+        Some(Data::WhiteboardServerChallenge { challenge }) => {
+            let proof = whiteboard_server_proof_for_challenge(&challenge, launch_token)?;
+            stream.send(&Data::WhiteboardServerProof { proof }).await?;
+        }
+        _ => bail!("whiteboard server launch challenge missing"),
+    }
+
+    let challenge = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
+    stream
+        .send(&Data::WhiteboardEndpointChallenge {
+            challenge: challenge.clone(),
+        })
+        .await?;
+    match stream
+        .next_timeout(WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS)
+        .await?
+    {
+        Some(Data::WhiteboardEndpointProof { proof }) => {
+            verify_whiteboard_endpoint_proof(&challenge, &proof, launch_token)
+        }
+        _ => bail!("whiteboard endpoint did not prove launch authority"),
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) async fn answer_whiteboard_endpoint_challenge<T>(
+    stream: &mut ConnectionTmpl<T>,
+) -> ResultType<()>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin,
+{
+    let launch_token = std::env::var(crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV)
+        .map_err(|err| hbb_common::anyhow::anyhow!("missing whiteboard launch token: {err}"))?;
+    let server_challenge = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
+    stream
+        .send(&Data::WhiteboardServerChallenge {
+            challenge: server_challenge.clone(),
+        })
+        .await?;
+    match stream
+        .next_timeout(WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS)
+        .await?
+    {
+        Some(Data::WhiteboardServerProof { proof }) => {
+            verify_whiteboard_server_proof(&server_challenge, &proof, &launch_token)?;
+        }
+        _ => bail!("whiteboard server launch proof missing"),
+    }
+
+    match stream
+        .next_timeout(WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS)
+        .await?
+    {
+        Some(Data::WhiteboardEndpointChallenge { challenge }) => {
+            let proof = whiteboard_endpoint_proof_for_challenge(&challenge, &launch_token)?;
+            stream.send(&Data::WhiteboardEndpointProof { proof }).await
+        }
+        _ => bail!("whiteboard endpoint challenge missing"),
     }
 }
 
@@ -2952,6 +3188,50 @@ mod test {
         assert!(cm_endpoint_proof_for_challenge(&challenge, "").is_err());
         assert!(cm_server_proof_for_challenge("", &launch_token).is_err());
         assert!(cm_server_proof_for_challenge(&challenge, "").is_err());
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[test]
+    fn whiteboard_endpoint_proof_is_launch_token_bound() {
+        let challenge = crate::encode64([11u8; 32]);
+        let other_challenge = crate::encode64([12u8; 32]);
+        let launch_token = crate::encode64([13u8; 32]);
+        let other_launch_token = crate::encode64([14u8; 32]);
+        let endpoint_proof =
+            whiteboard_endpoint_proof_for_challenge(&challenge, &launch_token).unwrap();
+        let server_proof =
+            whiteboard_server_proof_for_challenge(&challenge, &launch_token).unwrap();
+        let endpoint = whiteboard_endpoint_postfix(&launch_token).unwrap();
+        let other_endpoint = whiteboard_endpoint_postfix(&other_launch_token).unwrap();
+
+        assert!(endpoint.starts_with("_whiteboard_"));
+        assert_ne!(endpoint, other_endpoint);
+        assert!(
+            verify_whiteboard_endpoint_proof(&challenge, &endpoint_proof, &launch_token).is_ok()
+        );
+        assert!(
+            verify_whiteboard_endpoint_proof(&other_challenge, &endpoint_proof, &launch_token)
+                .is_err()
+        );
+        assert!(
+            verify_whiteboard_endpoint_proof(&challenge, &endpoint_proof, &other_launch_token)
+                .is_err()
+        );
+        assert!(verify_whiteboard_server_proof(&challenge, &server_proof, &launch_token).is_ok());
+        assert!(
+            verify_whiteboard_server_proof(&other_challenge, &server_proof, &launch_token).is_err()
+        );
+        assert!(
+            verify_whiteboard_server_proof(&challenge, &endpoint_proof, &launch_token).is_err()
+        );
+        assert!(
+            verify_whiteboard_endpoint_proof(&challenge, &server_proof, &launch_token).is_err()
+        );
+        assert!(whiteboard_endpoint_proof_for_challenge("", &launch_token).is_err());
+        assert!(whiteboard_endpoint_proof_for_challenge(&challenge, "").is_err());
+        assert!(whiteboard_server_proof_for_challenge("", &launch_token).is_err());
+        assert!(whiteboard_server_proof_for_challenge(&challenge, "").is_err());
+        assert!(whiteboard_endpoint_postfix("").is_err());
     }
 
     #[cfg(target_os = "linux")]

@@ -1,5 +1,5 @@
 use super::CustomEvent;
-use crate::ipc::{new_listener, Connection, Data};
+use crate::ipc::{self, new_listener, Connection, Data};
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use hbb_common::tokio::sync::mpsc::unbounded_channel;
 #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -9,8 +9,8 @@ use hbb_common::{
     tokio::{self, sync::mpsc::UnboundedReceiver},
 };
 use lazy_static::lazy_static;
-use std::sync::RwLock;
 use std::time::{Duration, Instant};
+use std::{collections::HashMap, sync::RwLock};
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use tao::event_loop::EventLoopProxy;
@@ -46,7 +46,24 @@ pub fn run() {
 
 #[tokio::main(flavor = "current_thread")]
 pub(super) async fn start_ipc(mut rx_exit: UnboundedReceiver<()>) {
-    match new_listener("_whiteboard").await {
+    let postfix = match ipc::whiteboard_endpoint_postfix_from_env() {
+        Ok(postfix) => postfix,
+        Err(err) => {
+            log::error!("Failed to resolve whiteboard IPC endpoint: {}", err);
+            return;
+        }
+    };
+    let expected_parent_pid = match std::env::var(crate::common::WHITEBOARD_LAUNCH_PARENT_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u32>().ok())
+    {
+        Some(pid) if pid != 0 => pid,
+        _ => {
+            log::error!("Failed to resolve whiteboard launch parent");
+            return;
+        }
+    };
+    match new_listener(&postfix).await {
         Ok(mut incoming) => loop {
             tokio::select! {
                 _ = rx_exit.recv() => {
@@ -57,7 +74,18 @@ pub(super) async fn start_ipc(mut rx_exit: UnboundedReceiver<()>) {
                     Some(result) => match result {
                         Ok(stream) => {
                             log::debug!("Got new connection");
-                            tokio::spawn(handle_new_stream(Connection::new(stream)));
+                            let mut stream = Connection::new(stream);
+                            if !ipc::authorize_whiteboard_ipc_connection(&stream, expected_parent_pid) {
+                                continue;
+                            }
+                            if let Err(err) = ipc::answer_whiteboard_endpoint_challenge(&mut stream).await {
+                                log::warn!(
+                                    "Rejected _whiteboard IPC peer without launch-bound endpoint proof: {}",
+                                    err
+                                );
+                                continue;
+                            }
+                            tokio::spawn(handle_new_stream(stream));
                         }
                         Err(err) => {
                             log::error!("Couldn't get whiteboard client: {:?}", err);
@@ -75,41 +103,202 @@ pub(super) async fn start_ipc(mut rx_exit: UnboundedReceiver<()>) {
     }
 }
 
+enum WhiteboardIpcAction {
+    Event(String, CustomEvent),
+    Shutdown,
+}
+
+#[derive(Default)]
+struct WhiteboardIpcState {
+    active: HashMap<i32, String>,
+}
+
+impl WhiteboardIpcState {
+    fn apply(&mut self, data: Data) -> Option<WhiteboardIpcAction> {
+        match data {
+            Data::WhiteboardBind { conn_id, token } => {
+                if conn_id > 0 && !token.is_empty() {
+                    self.active.insert(conn_id, token);
+                }
+                None
+            }
+            Data::WhiteboardEvent {
+                conn_id,
+                token,
+                event,
+            } => {
+                if matches!(event, CustomEvent::Exit) {
+                    return None;
+                }
+                if self
+                    .active
+                    .get(&conn_id)
+                    .is_some_and(|expected| expected == &token)
+                {
+                    Some(WhiteboardIpcAction::Event(
+                        super::client::get_key_cursor(conn_id),
+                        event,
+                    ))
+                } else {
+                    None
+                }
+            }
+            Data::WhiteboardClose { conn_id, token } => {
+                let authorized = self
+                    .active
+                    .get(&conn_id)
+                    .is_some_and(|expected| expected == &token);
+                if authorized {
+                    self.active.remove(&conn_id);
+                    Some(WhiteboardIpcAction::Event(
+                        super::client::get_key_cursor(conn_id),
+                        CustomEvent::Clear,
+                    ))
+                } else {
+                    None
+                }
+            }
+            Data::WhiteboardShutdown => {
+                if self.active.is_empty() {
+                    Some(WhiteboardIpcAction::Shutdown)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
+fn send_whiteboard_event(k: String, evt: CustomEvent) {
+    EVENT_PROXY.read().unwrap().as_ref().map(|ep| {
+        allow_err!(ep.send_event((k, evt)));
+    });
+}
+
 async fn handle_new_stream(mut conn: Connection) {
-    loop {
+    let mut state = WhiteboardIpcState::default();
+    let shutdown_overlay = loop {
         tokio::select! {
             res = conn.next() => {
                 match res {
                     Err(err) => {
                         log::info!("whiteboard ipc connection closed: {}", err);
-                        break;
+                        break !state.active.is_empty();
                     }
                     Ok(Some(data)) => {
-                        match data {
-                            Data::Whiteboard((k, evt)) => {
-                                if matches!(evt, CustomEvent::Exit) {
-                                    log::info!("whiteboard ipc connection closed");
-                                    break;
-                                } else {
-                                    EVENT_PROXY.read().unwrap().as_ref().map(|ep| {
-                                        allow_err!(ep.send_event((k, evt)));
-                                    });
-                                }
+                        match state.apply(data) {
+                            Some(WhiteboardIpcAction::Event(k, evt)) => send_whiteboard_event(k, evt),
+                            Some(WhiteboardIpcAction::Shutdown) => {
+                                break true;
                             }
-                            _ => {}
+                            None => {}
                         }
                     }
                     Ok(None) => {
                         log::info!("whiteboard ipc connection closed");
-                        break;
+                        break !state.active.is_empty();
                     }
                 }
             }
         }
+    };
+    if shutdown_overlay {
+        send_whiteboard_event("".to_string(), CustomEvent::Exit);
     }
-    EVENT_PROXY.read().unwrap().as_ref().map(|ep| {
-        allow_err!(ep.send_event(("".to_string(), CustomEvent::Exit)));
-    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn whiteboard_authority_rejects_unbound_events_and_exit() {
+        let mut state = WhiteboardIpcState::default();
+        assert!(state
+            .apply(Data::WhiteboardEvent {
+                conn_id: 7,
+                token: "token".to_owned(),
+                event: CustomEvent::Clear,
+            })
+            .is_none());
+        assert!(state
+            .apply(Data::WhiteboardClose {
+                conn_id: 7,
+                token: "token".to_owned(),
+            })
+            .is_none());
+        assert!(state
+            .apply(Data::WhiteboardBind {
+                conn_id: 7,
+                token: "token".to_owned(),
+            })
+            .is_none());
+        assert!(state
+            .apply(Data::WhiteboardEvent {
+                conn_id: 7,
+                token: "token".to_owned(),
+                event: CustomEvent::Exit,
+            })
+            .is_none());
+    }
+
+    #[test]
+    fn whiteboard_authority_is_per_connection_token() {
+        let mut state = WhiteboardIpcState::default();
+        state.apply(Data::WhiteboardBind {
+            conn_id: 7,
+            token: "alpha".to_owned(),
+        });
+        state.apply(Data::WhiteboardBind {
+            conn_id: 8,
+            token: "beta".to_owned(),
+        });
+
+        match state.apply(Data::WhiteboardEvent {
+            conn_id: 7,
+            token: "alpha".to_owned(),
+            event: CustomEvent::Clear,
+        }) {
+            Some(WhiteboardIpcAction::Event(k, CustomEvent::Clear)) => {
+                assert_eq!(k, super::super::client::get_key_cursor(7));
+            }
+            _ => panic!("authorized whiteboard event was not forwarded"),
+        }
+
+        assert!(state
+            .apply(Data::WhiteboardClose {
+                conn_id: 7,
+                token: "beta".to_owned(),
+            })
+            .is_none());
+        assert!(state.apply(Data::WhiteboardShutdown).is_none());
+
+        match state.apply(Data::WhiteboardClose {
+            conn_id: 7,
+            token: "alpha".to_owned(),
+        }) {
+            Some(WhiteboardIpcAction::Event(k, CustomEvent::Clear)) => {
+                assert_eq!(k, super::super::client::get_key_cursor(7));
+            }
+            _ => panic!("authorized whiteboard close was not forwarded"),
+        }
+        assert!(state.apply(Data::WhiteboardShutdown).is_none());
+
+        match state.apply(Data::WhiteboardClose {
+            conn_id: 8,
+            token: "beta".to_owned(),
+        }) {
+            Some(WhiteboardIpcAction::Event(k, CustomEvent::Clear)) => {
+                assert_eq!(k, super::super::client::get_key_cursor(8));
+            }
+            _ => panic!("second whiteboard close was not forwarded"),
+        }
+        assert!(matches!(
+            state.apply(Data::WhiteboardShutdown),
+            Some(WhiteboardIpcAction::Shutdown)
+        ));
+    }
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]

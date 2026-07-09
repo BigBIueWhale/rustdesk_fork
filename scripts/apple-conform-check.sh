@@ -326,6 +326,52 @@ else
   note "ok  R-S11c-11 macOS CM endpoint selection requires launch-bound proof before token-bearing CM login"
 fi
 
+echo "== (2b-iii-c) R-S11c-8 macOS whiteboard helper authority =="
+r_s11c8=
+grep -q 'WhiteboardEndpointChallenge {' "$REPO/src/ipc.rs" || r_s11c8="$r_s11c8 no-whiteboard-endpoint-challenge"
+grep -q 'WhiteboardEndpointProof {' "$REPO/src/ipc.rs" || r_s11c8="$r_s11c8 no-whiteboard-endpoint-proof"
+grep -q 'WhiteboardServerChallenge {' "$REPO/src/ipc.rs" || r_s11c8="$r_s11c8 no-whiteboard-server-challenge"
+grep -q 'WhiteboardServerProof {' "$REPO/src/ipc.rs" || r_s11c8="$r_s11c8 no-whiteboard-server-proof"
+grep -q 'WhiteboardBind {' "$REPO/src/ipc.rs" || r_s11c8="$r_s11c8 no-whiteboard-bind-message"
+grep -q 'WhiteboardEvent {' "$REPO/src/ipc.rs" || r_s11c8="$r_s11c8 no-whiteboard-event-message"
+grep -q 'WhiteboardClose {' "$REPO/src/ipc.rs" || r_s11c8="$r_s11c8 no-whiteboard-close-message"
+grep -q 'WhiteboardShutdown' "$REPO/src/ipc.rs" || r_s11c8="$r_s11c8 no-whiteboard-shutdown-message"
+grep -q 'WHITEBOARD_LAUNCH_TOKEN_ENV' "$REPO/src/common.rs" || r_s11c8="$r_s11c8 no-whiteboard-launch-token-env"
+grep -q 'WHITEBOARD_LAUNCH_PARENT_ENV' "$REPO/src/common.rs" || r_s11c8="$r_s11c8 no-whiteboard-launch-parent-env"
+grep -q 'whiteboard_endpoint_postfix(&launch_token)' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 client-does-not-use-launch-scoped-endpoint"
+grep -q 'authenticate_whiteboard_endpoint_launch_proof(&mut stream, launch_token)' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 client-does-not-authenticate-whiteboard-endpoint"
+grep -q 'authorize_whiteboard_ipc_connection(&stream, expected_parent_pid)' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 helper-does-not-check-parent-pid"
+grep -q 'answer_whiteboard_endpoint_challenge(&mut stream).await' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 helper-does-not-prove-launch-token"
+grep -q 'WhiteboardIpcState' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 helper-state-machine-missing"
+grep -q 'super::client::get_key_cursor(conn_id)' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 helper-does-not-derive-render-key"
+grep -q 'register_whiteboard(self.inner.id)' "$REPO/src/server/connection.rs" || r_s11c8="$r_s11c8 connection-register-not-id-based"
+whiteboard_register_context=$(grep -B4 -A2 'register_whiteboard(self.inner.id)' "$REPO/src/server/connection.rs" || true)
+echo "$whiteboard_register_context" | grep -q 'if self.is_authed_remote_conn()' || r_s11c8="$r_s11c8 register-not-remote-auth-type-gated"
+grep -q 'run_as_user_with_env(' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 macos-whiteboard-launch-env-not-wired"
+grep -q 'pub fn run_as_user_with_env' "$REPO/src/platform/macos.rs" || r_s11c8="$r_s11c8 macos-env-launcher-missing"
+if grep -RIn 'Whiteboard((String' "$REPO/src/ipc.rs" "$REPO/src/whiteboard" 2>/dev/null >/tmp/rd_apple_whiteboard_tuple.$$; then
+  r_s11c8="$r_s11c8 legacy-whiteboard-tuple-message-present"
+fi
+if grep -RIn 'Data::Whiteboard((' "$REPO/src/whiteboard" "$REPO/src/server" 2>/dev/null >/tmp/rd_apple_whiteboard_tuple_send.$$; then
+  r_s11c8="$r_s11c8 legacy-whiteboard-tuple-send-present"
+fi
+if grep -q 'ipc::connect(1000, "_whiteboard")' "$REPO/src/whiteboard/client.rs"; then
+  r_s11c8="$r_s11c8 raw-fixed-whiteboard-connect-present"
+fi
+if grep -q 'new_listener("_whiteboard")' "$REPO/src/whiteboard/server.rs"; then
+  r_s11c8="$r_s11c8 fixed-whiteboard-listener-present"
+fi
+if grep -q 'send_event(("".to_string(), CustomEvent::Exit))' "$REPO/src/whiteboard/server.rs"; then
+  r_s11c8="$r_s11c8 unconditional-whiteboard-global-exit-present"
+fi
+if [ -n "$r_s11c8" ]; then
+  echo "  FAIL R-S11c-8 macOS whiteboard helper authority:$r_s11c8"
+  rc=1
+else
+  note "ok  R-S11c-8 macOS whiteboard helper uses launch-scoped endpoint proof, parent-pid admission, and per-connection event tokens"
+fi
+rm -f /tmp/rd_apple_whiteboard_tuple.$$ /tmp/rd_apple_whiteboard_tuple_send.$$
+
 echo "== (2b-iv) R-S11c-5 macOS privileged-service packaging =="
 r_s11c5=
 daemon_plist="$REPO/src/platform/privileges_scripts/daemon.plist"

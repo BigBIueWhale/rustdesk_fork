@@ -3924,9 +3924,7 @@ impl Connection {
                         // R-S19: the whiteboard cursor overlay is a Remote-only screen-interaction
                         // feature; do not spawn the --whiteboard overlay process for other types.
                         if self.is_authed_remote_conn() {
-                            whiteboard::register_whiteboard(whiteboard::get_key_cursor(
-                                self.inner.id,
-                            ));
+                            whiteboard::register_whiteboard(self.inner.id);
                         }
                     } else {
                         let mut msg_out = Message::new();
@@ -3942,9 +3940,7 @@ impl Connection {
                     }
                 } else {
                     if not_support_msg.is_empty() {
-                        whiteboard::unregister_whiteboard(whiteboard::get_key_cursor(
-                            self.inner.id,
-                        ));
+                        whiteboard::unregister_whiteboard(self.inner.id);
                     }
                 }
             }
@@ -5734,7 +5730,7 @@ mod raii {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
                 use crate::whiteboard;
-                whiteboard::unregister_whiteboard(whiteboard::get_key_cursor(self.0));
+                whiteboard::unregister_whiteboard(self.0);
             }
         }
     }

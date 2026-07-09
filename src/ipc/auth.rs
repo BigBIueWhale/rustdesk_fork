@@ -1188,6 +1188,42 @@ pub(crate) fn authorize_cm_ipc_connection(stream: &Connection) -> bool {
     true
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) fn authorize_whiteboard_ipc_connection(
+    stream: &Connection,
+    expected_parent_pid: u32,
+) -> bool {
+    if expected_parent_pid == 0 {
+        log::warn!("Rejected _whiteboard IPC peer: missing launch parent pid");
+        return false;
+    }
+    let peer_pid = stream.peer_pid();
+    if peer_pid != Some(expected_parent_pid) {
+        log::warn!(
+            "Rejected _whiteboard IPC peer: expected parent pid {}, got {:?}",
+            expected_parent_pid,
+            peer_pid
+        );
+        return false;
+    }
+    if let Err(err) = ensure_peer_executable_matches_current_by_pid_opt(peer_pid, "_whiteboard") {
+        log::warn!(
+            "Rejected _whiteboard IPC peer due to executable mismatch: peer_pid={:?}, err={}",
+            peer_pid,
+            err
+        );
+        return false;
+    }
+    if !peer_process_is_current_exe_server(expected_parent_pid) {
+        log::warn!(
+            "Rejected _whiteboard IPC peer: launch parent is not the current executable's --server process, peer_pid={}",
+            expected_parent_pid
+        );
+        return false;
+    }
+    true
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 impl<T> ConnectionTmpl<T>
 where

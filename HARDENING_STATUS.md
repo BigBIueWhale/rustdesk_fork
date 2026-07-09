@@ -456,6 +456,29 @@ unreachable and a source/test/AST gate prevents reintroduction.
   CM stream use, CM listener server-proof verification before endpoint proof and before spawning the normal
   IPC loop, macOS process-shape check, macOS launch-token environment propagation, and absence of raw Unix
   `_cm` connects; `scripts/apple-conform-check.sh` mirrors the macOS source assertions.
+- **R-S11c-8 — `_whiteboard` helper ambient same-UID trust — CLOSED 2026-07-09.** Platforms: Windows,
+  Linux, and macOS desktop whiteboard helper paths. Endpoint/action: `_whiteboard` overlay helper IPC formerly
+  accepted `Data::Whiteboard((String, CustomEvent))` drawing events and `Exit` on a fixed endpoint.
+  Boundary: local same-UID/same-session process ↔ active whiteboard overlay helper. Attack surface closed:
+  `src/ipc.rs` deletes the bare tuple message and replaces it with typed
+  `WhiteboardBind`, tokenized `WhiteboardEvent`, tokenized `WhiteboardClose`, and authenticated-stream
+  `WhiteboardShutdown` messages plus whiteboard-specific server/endpoint HMAC proof variants. The server-side
+  producer in `src/whiteboard/client.rs` now creates a fresh 32-byte launch token per helper start, derives a
+  launch-scoped `_whiteboard_<hmac>` endpoint from that token, passes the token and parent pid through the
+  helper environment, authenticates the endpoint proof before binding any connection, and sends only
+  per-connection tokens minted when a Remote-authenticated `Connection` registers `show_my_cursor`.
+  `src/whiteboard/server.rs` reads the launch-scoped endpoint, admits only the recorded parent pid through
+  `ipc::authorize_whiteboard_ipc_connection`, completes the whiteboard launch proof before spawning the stream
+  loop, derives the render key from the validated `conn_id`, rejects unbound/wrong-token/`Exit` events, and no
+  longer sends a global overlay `Exit` on arbitrary stream close. Windows service-session whiteboard launch is
+  covered by `src/platform/windows.rs`/`src/platform/windows.cc`, which now pass caller-specified child
+  environment entries through `CreateProcessAsUserW` without putting the token on the command line.
+  Verification closure: `scripts/verify.sh` runs `whiteboard_endpoint_proof_*` and `whiteboard_authority_*`
+  tests, asserts the typed protocol, launch-token/parent environment, launch-scoped endpoint, endpoint proof,
+  parent-pid admission, per-connection token state machine, Remote-only registration by `conn_id`, Windows
+  environment launcher, absence of the legacy tuple message/sends, absence of raw fixed `_whiteboard`
+  connect/listen, absence of caller-derived render keys outside the helper, and absence of unconditional
+  global `Exit`; `scripts/apple-conform-check.sh` mirrors the macOS source assertions.
 
 **Release-blocking items:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,
@@ -517,10 +540,11 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `cm_auth_token`, file/chat/voice-call state, or future downstream helper leases: macOS requires mutual
   server/endpoint launch-token proof via separate HMAC-SHA256 contexts after process-shape checks, and Linux
   keeps its live process identity checks plus the same mutual pre-disclosure proof.
-- **R-S11c-8 — `_whiteboard` helper ambient same-UID trust.** Platforms: desktop whiteboard helper paths.
-  Endpoint: `_whiteboard` IPC accepts drawing/input events and `Exit`. Boundary: same-UID local process ↔
-  active overlay helper. Attack surface: local spoof/DoS of whiteboard overlay. Closure: require an owning
-  connection capability/nonce; reject arbitrary same-UID clients and stale `Exit`.
+- **R-S11c-8 — `_whiteboard` helper ambient same-UID trust.** Status: closed by the completed R-S11c-8
+  slice above. Whiteboard helper IPC now uses a launch-scoped endpoint, mutual whiteboard-specific launch
+  proof, parent-pid admission, and per-connection event tokens; arbitrary same-UID clients, fixed-path
+  squatters, caller-supplied render keys, wrong-token events, and stale `Exit` are rejected before overlay
+  state changes.
 - **R-S11c-9 — Windows URL forwarding via unauthenticated window messages.** Platform: Windows desktop.
   Endpoint: `WM_COPYDATA` / `WM_USER+2` URL forwarding to an existing UI window. Boundary: local process ↔
   URL/deep-link dispatcher. Current impact: prompt/DoS only because password/config/import deep-link writes
@@ -941,9 +965,9 @@ pinned/non-pinned controls, not a relaxation of the service-owned credential bou
 
 **Cavity 5 UNDER-COUNTED — the headless CM-spawn hang breaks a CLUSTER, not just file-transfer (CONFIRMED).** The `is_prelogin()`-gated `--cm` dependency also kills, on a logind-less Linux box:
 - **F2 — Host audio** (`audio_service.rs:98-99` → `ipc::connect("_pa")`; the `_pa` server is CM-spawned only, `flutter.rs:1588`) → host→viewer audio breaks on headless Linux via the SAME hang. (Clipboard-text stays clean — in-process `arboard`.)
-- **F3 — Whiteboard carries a SECOND, INDEPENDENT copy of the hang:** `whiteboard/client.rs:144-149` `loop { if !is_prelogin() break; sleep(1) }` before `ipc::connect("_whiteboard")`. **Any headless-CM fix (T5) must patch BOTH sites** (this + `connection.rs:4783-4788`).
+- **F3 — Whiteboard is no longer part of this hang cluster:** R-S11c-8 removed the prelogin wait and fixed `_whiteboard` connect/listen path; the helper now uses a launch-scoped endpoint and per-connection authority.
 - **F4 — Chat + voice-call** are CM-hosted (`connection.rs:2782` `send_to_cm(ChatMessage)`; voice-accept via `rx_from_cm`) → non-functional with no CM.
-So T5 fixes more than BR-1 (file-transfer + audio + whiteboard + chat/voice) and must patch both hang sites.
+So T5 fixes more than BR-1 (file-transfer + audio + chat/voice) without counting whiteboard as a remaining CM-spawn hang site.
 
 **Cavity 4 consent-on-connect DOWNGRADED to TAP-TO-CONSENT-ONLY (CONFIRMED).** A foreground service does not grant background-activity-launch; `SYSTEM_ALERT_WINDOW` is dropped; `USE_FULL_SCREEN_INTENT` is **absent from the manifest** and FSI is restricted to calling/alarm apps on 14+; the hold+resume edge doesn't exist. **Net: consent-on-connect is achievable only as a notification the user must TAP** — not the auto-surfacing full-screen-intent the cavity floated (it hedged, so this sharpens). T4 scopes to tap-to-consent (or accept adding `USE_FULL_SCREEN_INTENT` + its 14+ limits). BR-17 nuance: on API≥29 the boot-path speculative dialog is itself BAL-restricted (may not surface on modern devices; operator's device = API 22–28 or an OEM allowance) — either way the fix (honor `EXT_INIT_FROM_BOOT`) is robust.
 

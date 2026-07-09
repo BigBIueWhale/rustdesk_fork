@@ -15,13 +15,13 @@ use hbb_common::{
 };
 use std::{
     collections::HashMap,
-    ffi::{CString, OsString},
+    ffi::{CString, OsStr, OsString},
     fs,
     io::{self, prelude::*},
     mem,
     os::{
         raw::c_ulong,
-        windows::{ffi::OsStringExt, process::CommandExt},
+        windows::{ffi::OsStrExt, ffi::OsStringExt, process::CommandExt},
     },
     path::*,
     ptr::null_mut,
@@ -531,6 +531,7 @@ extern "C" {
         session_id: DWORD,
         as_user: BOOL,
         show: BOOL,
+        extra_env: *const u16,
         token_pid: &mut DWORD,
     ) -> HANDLE;
     fn GetSessionUserTokenWin(
@@ -810,7 +811,16 @@ pub fn launch_privileged_process(session_id: DWORD, cmd: &str) -> ResultType<HAN
         .collect();
     let wstr = wstr.as_ptr();
     let mut token_pid = 0;
-    let h = unsafe { LaunchProcessWin(wstr, session_id, FALSE, FALSE, &mut token_pid) };
+    let h = unsafe {
+        LaunchProcessWin(
+            wstr,
+            session_id,
+            FALSE,
+            FALSE,
+            std::ptr::null(),
+            &mut token_pid,
+        )
+    };
     if h.is_null() {
         log::error!(
             "Failed to launch privileged process: {}",
@@ -824,7 +834,24 @@ pub fn launch_privileged_process(session_id: DWORD, cmd: &str) -> ResultType<HAN
 }
 
 pub fn run_as_user(arg: Vec<&str>) -> ResultType<Option<std::process::Child>> {
-    run_exe_in_cur_session(std::env::current_exe()?.to_str().unwrap_or(""), arg, false)
+    run_as_user_with_env(arg, std::iter::empty::<(&str, &str)>())
+}
+
+pub fn run_as_user_with_env<I, K, V>(
+    arg: Vec<&str>,
+    envs: I,
+) -> ResultType<Option<std::process::Child>>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+{
+    run_exe_in_cur_session_with_env(
+        std::env::current_exe()?.to_str().unwrap_or(""),
+        arg,
+        false,
+        envs,
+    )
 }
 
 pub fn run_exe_direct(
@@ -832,7 +859,22 @@ pub fn run_exe_direct(
     arg: Vec<&str>,
     show: bool,
 ) -> ResultType<Option<std::process::Child>> {
+    run_exe_direct_with_env(exe, arg, show, std::iter::empty::<(&str, &str)>())
+}
+
+pub fn run_exe_direct_with_env<I, K, V>(
+    exe: &str,
+    arg: Vec<&str>,
+    show: bool,
+    envs: I,
+) -> ResultType<Option<std::process::Child>>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+{
     let mut cmd = std::process::Command::new(exe);
+    cmd.envs(envs);
     for a in arg {
         cmd.arg(a);
     }
@@ -850,13 +892,27 @@ pub fn run_exe_in_cur_session(
     arg: Vec<&str>,
     show: bool,
 ) -> ResultType<Option<std::process::Child>> {
+    run_exe_in_cur_session_with_env(exe, arg, show, std::iter::empty::<(&str, &str)>())
+}
+
+pub fn run_exe_in_cur_session_with_env<I, K, V>(
+    exe: &str,
+    arg: Vec<&str>,
+    show: bool,
+    envs: I,
+) -> ResultType<Option<std::process::Child>>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+{
     if is_root() {
         let Some(session_id) = get_current_process_session_id() else {
             bail!("Failed to get current process session id");
         };
-        run_exe_in_session(exe, arg, session_id, show)
+        run_exe_in_session_with_env(exe, arg, session_id, show, envs)
     } else {
-        run_exe_direct(exe, arg, show)
+        run_exe_direct_with_env(exe, arg, show, envs)
     }
 }
 
@@ -866,6 +922,52 @@ pub fn run_exe_in_session(
     session_id: DWORD,
     show: bool,
 ) -> ResultType<Option<std::process::Child>> {
+    run_exe_in_session_with_env(
+        exe,
+        arg,
+        session_id,
+        show,
+        std::iter::empty::<(&str, &str)>(),
+    )
+}
+
+fn windows_env_block<I, K, V>(envs: I) -> ResultType<Vec<u16>>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+{
+    let mut block = Vec::new();
+    for (key, value) in envs {
+        let key = key.as_ref().encode_wide().collect::<Vec<_>>();
+        if key.is_empty() || key.iter().any(|value| *value == 0 || *value == b'=' as u16) {
+            bail!("invalid Windows environment key");
+        }
+        let value = value.as_ref().encode_wide().collect::<Vec<_>>();
+        if value.iter().any(|value| *value == 0) {
+            bail!("invalid Windows environment value");
+        }
+        block.extend_from_slice(&key);
+        block.push(b'=' as u16);
+        block.extend_from_slice(&value);
+        block.push(0);
+    }
+    block.push(0);
+    Ok(block)
+}
+
+pub fn run_exe_in_session_with_env<I, K, V>(
+    exe: &str,
+    arg: Vec<&str>,
+    session_id: DWORD,
+    show: bool,
+    envs: I,
+) -> ResultType<Option<std::process::Child>>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+{
     use std::os::windows::ffi::OsStrExt;
     let cmd = format!("\"{}\" {}", exe, arg.join(" "),);
     let wstr: Vec<u16> = std::ffi::OsStr::new(&cmd)
@@ -873,6 +975,7 @@ pub fn run_exe_in_session(
         .chain(Some(0).into_iter())
         .collect();
     let wstr = wstr.as_ptr();
+    let extra_env = windows_env_block(envs)?;
     let mut token_pid = 0;
     let h = unsafe {
         LaunchProcessWin(
@@ -880,6 +983,7 @@ pub fn run_exe_in_session(
             session_id,
             TRUE,
             if show { TRUE } else { FALSE },
+            extra_env.as_ptr(),
             &mut token_pid,
         )
     };
@@ -1682,11 +1786,7 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
 
 pub fn run_after_install() -> ResultType<()> {
     let (_, _, _, exe) = get_install_info();
-    run_cmds(
-        get_after_install(&exe, None, None),
-        true,
-        "after_install",
-    )
+    run_cmds(get_after_install(&exe, None, None), true, "after_install")
 }
 
 pub fn run_before_uninstall() -> ResultType<()> {

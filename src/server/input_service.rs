@@ -1132,7 +1132,7 @@ pub fn handle_mouse_show_cursor_(evt: &MouseEvent, conn: i32, username: String, 
     match evt_type {
         MOUSE_TYPE_MOVE => {
             whiteboard::update_whiteboard(
-                whiteboard::get_key_cursor(conn),
+                conn,
                 whiteboard::CustomEvent::Cursor(whiteboard::Cursor {
                     x: evt.x as _,
                     y: evt.y as _,
@@ -1156,7 +1156,7 @@ pub fn handle_mouse_show_cursor_(evt: &MouseEvent, conn: i32, username: String, 
                     (evt.x, evt.y)
                 };
                 whiteboard::update_whiteboard(
-                    whiteboard::get_key_cursor(conn),
+                    conn,
                     whiteboard::CustomEvent::Cursor(whiteboard::Cursor {
                         x: x as _,
                         y: y as _,

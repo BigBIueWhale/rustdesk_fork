@@ -1329,6 +1329,29 @@ fi
 if [ -n "$r_s11c10n" ]; then echo "  FAIL R-S11c-10n Linux headless CM uid lookup:$r_s11c10n"; rc=1; else
   echo "  ok  R-S11c-10n Linux headless CM uid lookup uses structured account data, not PATH-selected id"; fi
 
+echo "== (3b-iii-h9c3) Linux clipboard FUSE stale unmount avoids PATH-selected umount (R-S11c-10o) =="
+r_s11c10o=
+grep -qF 'fn unmount_stale_fuse_mount(mount_point: &Path)' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="$r_s11c10o no-stale-unmount-helper"
+grep -qF 'fn fuse_mount_path_cstring(mount_point: &Path) -> Result<CString, CliprdrError>' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="$r_s11c10o no-mount-path-cstring-helper"
+grep -qF 'CString::new(mount_point.as_os_str().as_bytes())' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="$r_s11c10o mount-path-not-cstring-checked"
+grep -qF 'libc::umount2(mount_c.as_ptr(), libc::UMOUNT_NOFOLLOW)' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="$r_s11c10o stale-unmount-not-syscall-nofollow"
+grep -qF 'unmount_stale_fuse_mount(mount_point);' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="$r_s11c10o prepare-does-not-use-stale-unmount-helper"
+grep -qF 'fuse_mount_path_cstring_rejects_nul' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="$r_s11c10o no-nul-path-regression-test"
+grep -q 'Linux clipboard FUSE stale unmount provenance' requirements.html || r_s11c10o="$r_s11c10o requirements-disposition-missing"
+grep -q 'R-A6 helper-provenance companion' requirements.html || r_s11c10o="$r_s11c10o requirements-helper-provenance-missing"
+grep -q 'R-S11c-10o closes the Linux clipboard FUSE stale-unmount provenance path' HARDENING_STATUS.md || r_s11c10o="$r_s11c10o hardening-ledger-missing"
+grep -qF 'direct no-follow' libs/clipboard/README.md || r_s11c10o="$r_s11c10o clipboard-readme-not-updated"
+grep -qF 'umount2()' libs/clipboard/README.md || r_s11c10o="$r_s11c10o clipboard-readme-not-updated"
+if grep -RInE 'Command::new\("umount"\)|std::process::Command::new\("umount"\)|process::Command::new\("umount"\)' libs/clipboard/src/platform/unix/fuse/mod.rs >/tmp/rd_verify_r_s11c10o.$$; then
+  cat /tmp/rd_verify_r_s11c10o.$$
+  rm -f /tmp/rd_verify_r_s11c10o.$$
+  r_s11c10o="$r_s11c10o stale-path-selected-umount-command"
+else
+  rm -f /tmp/rd_verify_r_s11c10o.$$
+fi
+if [ -n "$r_s11c10o" ]; then echo "  FAIL R-S11c-10o Linux clipboard FUSE stale unmount provenance:$r_s11c10o"; rc=1; else
+  echo "  ok  R-S11c-10o Linux clipboard FUSE stale unmount uses direct umount2(UMOUNT_NOFOLLOW), not PATH-selected umount"; fi
+
 echo "== (3b-iii-h10) Debian package lifecycle uses service-manager helpers (R-S11c-10j/R-T9) =="
 r_s11c10j=
 for maintscript in res/DEBIAN/preinst res/DEBIAN/postinst res/DEBIAN/prerm res/DEBIAN/postrm; do
@@ -2818,12 +2841,17 @@ else
 fi
 # R-D3a (§17): the root service unit carries the launcher sandbox. Linux file
 # clipboard is shipped and uses FUSE, so the syscall policy admits only the
-# legacy FUSE mount calls and keeps denied syscalls fail-closed.
+# direct FUSE mount/unmount calls and keeps denied syscalls fail-closed.
 r_d3a_missing=
 grep -qE '^CapabilityBoundingSet='      res/rustdesk.service || r_d3a_missing="$r_d3a_missing CapabilityBoundingSet"
 grep -qE '^RestrictAddressFamilies=AF_UNIX AF_INET$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing RestrictAddressFamilies-v4only"
 grep -qE '^SystemCallFilter=@system-service mount umount umount2$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter-fuse-mounts"
 grep -qE '^SystemCallFilter=~@reboot @swap$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter-subtraction"
+grep -qF 'direct FUSE mount/unmount syscalls' res/rustdesk.service || r_d3a_missing="$r_d3a_missing unit-fuse-syscall-comment"
+grep -qF 'direct native <code>mount</code>/<code>umount</code>/<code>umount2</code> syscalls' requirements.html || r_d3a_missing="$r_d3a_missing requirements-fuse-syscall-scope"
+grep -RInE 'legacy FUSE mount (path|calls|syscalls)' res/rustdesk.service scripts/verify.sh requirements.html >/tmp/rd_verify_r_d3a_fuse_legacy.$$ &&
+  r_d3a_missing="$r_d3a_missing stale-legacy-fuse-mount-wording"
+rm -f /tmp/rd_verify_r_d3a_fuse_legacy.$$
 grep -qE '^SystemCallErrorNumber=' res/rustdesk.service && r_d3a_missing="$r_d3a_missing SystemCallErrorNumber-fallback"
 grep -qE '^SystemCallFilter=.*@mount' res/rustdesk.service && r_d3a_missing="$r_d3a_missing broad-mount-group"
 grep -qE '^SystemCallFilter=.*\b(chroot|pivot_root|open_tree|move_mount|fsconfig|fsopen|fsmount|fspick|mount_setattr)\b' res/rustdesk.service && r_d3a_missing="$r_d3a_missing broad-mount-syscall"

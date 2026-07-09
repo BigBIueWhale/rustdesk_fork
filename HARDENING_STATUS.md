@@ -795,6 +795,12 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `--cm-no-ui` branch no longer runs a PATH-selected `id -u <username>` subprocess to derive the
   uid for the discovered seat user. It resolves the user through `hbb_common::users::get_user_by_name`
   on a blocking worker and carries the returned uid into the existing CM launcher shape.
+  R-S11c-10o closes the Linux clipboard FUSE stale-unmount provenance path in
+  `libs/clipboard/src/platform/unix/fuse/mod.rs`: the `unix-file-copy-paste` mount setup no longer runs a
+  PATH-selected `umount` program before `spawn_mount2`. After the existing no-follow, current-euid-owned
+  `/tmp/<app>/cliprdr-*` directory setup, stale cleanup uses a checked mount-path C string and direct
+  `umount2(..., UMOUNT_NOFOLLOW)` syscall; "not mounted" remains best-effort cleanup, and `spawn_mount2`
+  stays the operation that fails closed if a stale mount still blocks the mount point.
   Remaining closure:
   no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
   root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
@@ -804,7 +810,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   is closed by R-S11c-10i; Debian package lifecycle and systemd stop semantics are closed by R-S11c-10j;
   root/service helper command provenance is closed by R-S11c-10k; Linux `--server` tray cleanup is closed
   by R-S11c-10l; shared Linux helper command provenance and delayed reopen shell removal are closed by
-  R-S11c-10m; Linux headless CM uid lookup is closed by R-S11c-10n.
+  R-S11c-10m; Linux headless CM uid lookup is closed by R-S11c-10n; Linux clipboard FUSE stale unmount is
+  closed by R-S11c-10o.
 - **R-S11b-4 — config secrecy statement after IPC closure — CLOSED 2026-07-09.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary

@@ -155,7 +155,6 @@ the FUSE server will figure out the file system tree and rearrange its content.
   - `AUTO_UNMOUNT` was not enabled by default and requires enable
     `user_allow_other` in configure. Letting users edit such global
     configuration to use this feature might not be a good idea.
-  - use [`umount()`](https://man7.org/linux/man-pages/man2/umount.2.html)
-    syscall to unmount will also require that option.
-  - we currently directly call [`umount`](https://man7.org/linux/man-pages/man8/umount.8.html)
-    program to unmount dangling FUSE server. It worked perfectly for now.
+  - stale clipboard FUSE mounts are cleared with a direct no-follow
+    [`umount2()`](https://man7.org/linux/man-pages/man2/umount.2.html)
+    syscall before mounting again.

@@ -281,6 +281,46 @@ fn ensure_trusted_child_dir(
     Ok(guard)
 }
 
+fn fuse_mount_path_cstring(mount_point: &Path) -> Result<CString, CliprdrError> {
+    CString::new(mount_point.as_os_str().as_bytes()).map_err(|e| {
+        fuse_common_error(format!(
+            "unsafe FUSE mount path contains NUL {}: {e}",
+            mount_point.display()
+        ))
+    })
+}
+
+fn unmount_stale_fuse_mount(mount_point: &Path) {
+    let mount_c = match fuse_mount_path_cstring(mount_point) {
+        Ok(mount_c) => mount_c,
+        Err(e) => {
+            log::warn!("refusing to unmount stale clipboard FUSE mount: {e}");
+            return;
+        }
+    };
+    if unsafe { libc::umount2(mount_c.as_ptr(), libc::UMOUNT_NOFOLLOW) } == 0 {
+        return;
+    }
+
+    let err = std::io::Error::last_os_error();
+    match err.raw_os_error() {
+        Some(libc::EINVAL) | Some(libc::ENOENT) => {
+            log::debug!(
+                "no stale clipboard FUSE mount at {}: {}",
+                mount_point.display(),
+                err
+            );
+        }
+        _ => {
+            log::warn!(
+                "failed to unmount stale clipboard FUSE mount at {}: {}",
+                mount_point.display(),
+                err
+            );
+        }
+    }
+}
+
 // this function must be called after the main IPC is up
 fn prepare_fuse_mount_point(mount_point: &Path) -> Result<(), CliprdrError> {
     let parent = mount_point.parent().ok_or_else(|| {
@@ -322,12 +362,7 @@ fn prepare_fuse_mount_point(mount_point: &Path) -> Result<(), CliprdrError> {
     let mount_dir = ensure_trusted_child_dir(app_dir.0, &mount_c, mount_point)?;
     drop(mount_dir);
 
-    if let Err(e) = std::process::Command::new("umount")
-        .arg(mount_point)
-        .status()
-    {
-        log::warn!("umount {:?} may fail: {:?}", mount_point, e);
-    }
+    unmount_stale_fuse_mount(mount_point);
     Ok(())
 }
 
@@ -406,5 +441,11 @@ mod tests {
         let component = OsString::from("cliprdr-client");
         let c_string = fuse_component_cstring(&component, "test").unwrap();
         assert_eq!(c_string.as_bytes(), b"cliprdr-client");
+    }
+
+    #[test]
+    fn fuse_mount_path_cstring_rejects_nul() {
+        let path = PathBuf::from(OsString::from_vec(b"/tmp/rustdesk/bad\0name".to_vec()));
+        assert!(fuse_mount_path_cstring(&path).is_err());
     }
 }

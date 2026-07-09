@@ -60,7 +60,7 @@ ProtectKernelTunables=yes
 RestrictRealtime=yes
 LockPersonality=yes
 SystemCallArchitectures=native
-# @system-service plus the legacy FUSE mount syscalls used by Linux file clipboard;
+# @system-service plus direct FUSE mount/unmount syscalls used by Linux file clipboard;
 # keep reboot/swap and the broader @mount namespace/root-changing set out.
 SystemCallFilter=@system-service mount umount umount2
 SystemCallFilter=~@reboot @swap

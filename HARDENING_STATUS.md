@@ -735,14 +735,19 @@ unreachable and a source/test/AST gate prevents reintroduction.
   config migration is native symlink-checked filesystem copying with `0700`/`0600` modes. R-S11c-10j closes the
   Debian package lifecycle and unit stop layer: maintainer scripts use `deb-systemd-helper`/`deb-systemd-invoke`
   instead of raw init/systemctl/process-table probes, and the unit/supervisor stop path is cgroup/SIGTERM-first
-  with a bounded forced-stop backstop.
+  with a bounded forced-stop backstop. R-S11c-10k closes Linux root/service helper command provenance:
+  the root-to-user `sudo` transition, `env` fallback, delayed restart shell, `w`, `xrandr`, `xdg-screensaver`,
+  and `systemctl` resolve only trusted fixed `/usr/bin`/`/bin` candidates that are root-owned and not
+  group/world-writable; `--cm` detection is `/proc`/current-exe/argv-backed instead of `ps`; and the X11
+  socket fallback reads `/tmp/.X11-unix` socket metadata plus passwd ownership instead of parsing `ls`.
   Remaining closure:
   no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
   root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
   `pgrep` and whiteboard Xwayland discovery are closed by R-S11c-10d; `os-release` parsing is closed by
   R-S11c-10e; `linux_desktop_manager` probing is closed by R-S11c-10f; SELinux status probing is closed by
   R-S11c-10g; config-home correction is closed by R-S11c-10h; runtime lifecycle `systemctl` command construction
-  is closed by R-S11c-10i; Debian package lifecycle and systemd stop semantics are closed by R-S11c-10j.
+  is closed by R-S11c-10i; Debian package lifecycle and systemd stop semantics are closed by R-S11c-10j;
+  root/service helper command provenance is closed by R-S11c-10k.
 - **R-S11b-4 — config secrecy statement after IPC closure — CLOSED 2026-07-09.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary

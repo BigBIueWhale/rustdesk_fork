@@ -1033,7 +1033,9 @@ echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
 r_s11c10c=
 grep -q 'fn xrandr_query() -> ResultType<String>' src/platform/linux.rs || r_s11c10c="$r_s11c10c no-xrandr-query-helper"
-grep -q 'Command::new("xrandr").arg("--query").output()' src/platform/linux.rs || r_s11c10c="$r_s11c10c xrandr-query-not-argv-only"
+grep -q 'const XRANDR_PATHS' src/platform/linux.rs || r_s11c10c="$r_s11c10c no-fixed-xrandr-paths"
+grep -q 'let Some(xrandr) = xrandr_path()' src/platform/linux.rs || r_s11c10c="$r_s11c10c xrandr-not-fixed-path-resolved"
+grep -q 'Command::new(xrandr).arg("--query").output()' src/platform/linux.rs || r_s11c10c="$r_s11c10c xrandr-query-not-argv-only"
 grep -q 'normalize_xrandr_query_output' src/platform/linux.rs || r_s11c10c="$r_s11c10c no-rust-space-normalizer"
 grep -q 'match xrandr_query()' src/platform/linux.rs || r_s11c10c="$r_s11c10c resolutions-not-using-helper"
 grep -q 'let xrandr_output = xrandr_query()?' src/platform/linux.rs || r_s11c10c="$r_s11c10c current-resolution-not-using-helper"
@@ -1041,11 +1043,11 @@ xrandr_blocks=$(
   awk '/fn xrandr_query\(\)/,/^}/' src/platform/linux.rs
   awk '/pub fn resolutions\(name: &str\)/,/pub fn change_resolution_directly/' src/platform/linux.rs
 )
-if echo "$xrandr_blocks" | grep -Eq 'run_cmds|CMD_SH|sh -c|xrandr --query[[:space:]]*\||tr -s'; then
+if echo "$xrandr_blocks" | grep -Eq 'run_cmds|CMD_SH|sh -c|Command::new\("xrandr"\)|xrandr --query[[:space:]]*\||tr -s'; then
   r_s11c10c="$r_s11c10c shell-shaped-xrandr-query-regressed"
 fi
 if [ -n "$r_s11c10c" ]; then echo "  FAIL R-S11c-10c Linux xrandr resolution discovery:$r_s11c10c"; rc=1; else
-  echo "  ok  R-S11c-10c Linux xrandr resolution discovery executes fixed argv and normalizes whitespace in Rust, with no shell pipeline"; fi
+  echo "  ok  R-S11c-10c Linux xrandr resolution discovery executes a trusted fixed xrandr path with argv and normalizes whitespace in Rust, with no shell pipeline"; fi
 
 echo "== (3b-iii-h4) Linux process discovery avoids pgrep shell probes (R-S11c-10d) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_process_discovery --color never
@@ -1189,6 +1191,30 @@ if echo "$service_lifecycle_blocks" | grep -Eq 'run_cmds|CMD_SH|sh -c|cp -f|Comm
 fi
 if [ -n "$r_s11c10i" ]; then echo "  FAIL R-S11c-10i Linux service lifecycle systemctl/config-copy:$r_s11c10i"; rc=1; else
   echo "  ok  R-S11c-10i Linux service lifecycle uses fixed systemctl paths, argv-only start/stop/enable/disable, and native owner-only config copies"; fi
+
+echo "== (3b-iii-h9b) Linux privileged helper command provenance is fixed-path (R-S11c-10k) =="
+r_s11c10k=
+grep -q 'const SUDO_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-sudo-paths"
+grep -q 'const ENV_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-env-paths"
+grep -q 'const SH_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-sh-paths"
+grep -q 'const W_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-w-paths"
+grep -q 'const XDG_SCREENSAVER_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-xdg-screensaver-paths"
+grep -q 'fn trusted_command_path' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-trusted-command-resolver"
+grep -q 'fn sudo_path() -> Option' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-sudo-resolver"
+grep -q 'fn valid_sudo_envs' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-sudo-env-validator"
+grep -q 'Command::new(sudo_path)' src/platform/linux.rs || r_s11c10k="$r_s11c10k sudo-not-fixed-path"
+grep -q 'Command::new(w).arg(user).output()' src/platform/linux.rs || r_s11c10k="$r_s11c10k w-not-fixed-path"
+grep -q 'display_from_x11_socket_dir_for_user(user, Path::new("/tmp/.X11-unix"))' src/platform/linux.rs || r_s11c10k="$r_s11c10k x11-socket-fallback-not-native"
+grep -q 'current_exe_process_cmdlines()' src/platform/linux.rs || r_s11c10k="$r_s11c10k cm-detection-not-proc-backed"
+if grep -RInE 'Command::new\("(sudo|ps|w|ls|xrandr|xdg-screensaver)"\)|Command::new\(CMD_(PS|SH)\.as_str\(\)\)|Command::new\("which"\)' src/platform/linux.rs >/tmp/rd_verify_r_s11c10k.$$; then
+  cat /tmp/rd_verify_r_s11c10k.$$
+  rm -f /tmp/rd_verify_r_s11c10k.$$
+  r_s11c10k="$r_s11c10k path-selected-linux-helper-command"
+else
+  rm -f /tmp/rd_verify_r_s11c10k.$$
+fi
+if [ -n "$r_s11c10k" ]; then echo "  FAIL R-S11c-10k Linux privileged helper command provenance:$r_s11c10k"; rc=1; else
+  echo "  ok  R-S11c-10k Linux root/service helper commands use trusted fixed paths or native /proc/filesystem reads"; fi
 
 echo "== (3b-iii-h10) Debian package lifecycle uses service-manager helpers (R-S11c-10j/R-T9) =="
 r_s11c10j=

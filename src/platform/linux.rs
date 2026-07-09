@@ -10,14 +10,14 @@ use hbb_common::{
     log,
     message_proto::{DisplayInfo, Resolution},
     regex::{Captures, Regex},
-    users::{get_user_by_name, os::unix::UserExt},
+    users::{get_user_by_name, get_user_by_uid, os::unix::UserExt},
 };
 use libxdo_sys::{self, xdo_t, Window};
 use std::{
     cell::RefCell,
     ffi::{OsStr, OsString},
     fs,
-    os::unix::fs::{MetadataExt, PermissionsExt},
+    os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt},
     path::{Path, PathBuf},
     process::{Child, Command},
     string::String,
@@ -40,6 +40,12 @@ struct ActiveUserLookupCache {
 const INVALID_TERM_VALUES: [&str; 3] = ["", "unknown", "dumb"];
 const SHELL_PROCESSES: [&str; 4] = ["bash", "zsh", "fish", "sh"];
 const SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(8);
+const SUDO_PATHS: [&str; 2] = ["/usr/bin/sudo", "/bin/sudo"];
+const ENV_PATHS: [&str; 2] = ["/usr/bin/env", "/bin/env"];
+const SH_PATHS: [&str; 2] = ["/bin/sh", "/usr/bin/sh"];
+const W_PATHS: [&str; 2] = ["/usr/bin/w", "/bin/w"];
+const XRANDR_PATHS: [&str; 2] = ["/usr/bin/xrandr", "/bin/xrandr"];
+const XDG_SCREENSAVER_PATHS: [&str; 2] = ["/usr/bin/xdg-screensaver", "/bin/xdg-screensaver"];
 
 // Terminal type constants
 const TERM_XTERM_256COLOR: &str = "xterm-256color";
@@ -79,16 +85,22 @@ lazy_static::lazy_static! {
             let key = format!("__RUSTDESK_SUDO_E_TEST_{}", std::process::id());
             let val = "1";
             let expected = format!("{key}={val}");
-            Command::new("sudo")
-                // -n for non-interactive to avoid password prompt
-                .env(&key, val)
-                .args(["-n", "-E", "env"])
-                .output()
-                .map(|o| {
-                    o.status.success()
-                        && String::from_utf8_lossy(&o.stdout).contains(expected.as_str())
-                })
-                .unwrap_or(false)
+            match (sudo_path(), env_path()) {
+                (Some(sudo), Some(env)) => Command::new(sudo)
+                    // -n for non-interactive to avoid password prompt
+                    .env(&key, val)
+                    .args(["-n", "-E", env])
+                    .output()
+                    .map(|o| {
+                        o.status.success()
+                            && String::from_utf8_lossy(&o.stdout).contains(expected.as_str())
+                    })
+                    .unwrap_or(false),
+                _ => {
+                    log::warn!("Trusted sudo/env path not found, SUDO_E_PRESERVES_ENV check skipped");
+                    false
+                }
+            }
         }
     };
 }
@@ -949,20 +961,9 @@ pub fn get_active_userid_fresh() -> String {
 }
 
 fn get_cm() -> bool {
-    // We use `CMD_PS` instead of `ps` to suppress some audit messages on some systems.
-    if let Ok(output) = Command::new(CMD_PS.as_str()).args(vec!["aux"]).output() {
-        for line in String::from_utf8_lossy(&output.stdout).lines() {
-            if line.contains(&format!(
-                "{} --cm",
-                std::env::current_exe()
-                    .unwrap_or("".into())
-                    .to_string_lossy()
-            )) {
-                return true;
-            }
-        }
-    }
-    false
+    current_exe_process_cmdlines()
+        .iter()
+        .any(|process| process_has_exact_arg(&process.args, "--cm"))
 }
 
 pub fn is_login_wayland() -> bool {
@@ -1099,6 +1100,39 @@ pub fn is_root() -> bool {
     crate::username() == "root"
 }
 
+fn is_valid_sudo_env_key(key: &OsStr) -> bool {
+    let Some(key) = key.to_str() else {
+        return false;
+    };
+    let mut it = key.chars();
+    match it.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    it.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+fn valid_sudo_envs<I, K, V>(envs: I) -> Vec<(OsString, OsString)>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+{
+    let mut valid = Vec::new();
+    for (k, v) in envs {
+        let key = k.as_ref();
+        if !is_valid_sudo_env_key(key) {
+            log::warn!(
+                "Skipping environment variable with invalid key: '{}'. Only [A-Za-z_][A-Za-z0-9_]* are allowed in sudo context.",
+                key.to_string_lossy()
+            );
+            continue;
+        }
+        valid.push((key.to_os_string(), v.as_ref().to_os_string()));
+    }
+    valid
+}
+
 pub fn run_as_user<I, K, V>(
     arg: Vec<&str>,
     user: Option<(String, String)>,
@@ -1118,54 +1152,46 @@ where
         bail!("No valid uid");
     }
 
-    let xdg = &format!("XDG_RUNTIME_DIR=/run/user/{uid}");
+    let Some(sudo_path) = sudo_path() else {
+        bail!("sudo was not found at a trusted fixed path");
+    };
+    let valid_envs = valid_sudo_envs(envs);
+    let xdg_runtime_dir = format!("/run/user/{uid}");
     if *SUDO_E_PRESERVES_ENV {
-        // Original logic: use sudo -E to preserve environment
-        let mut args = vec![xdg, "-u", &username, cmd.to_str().unwrap_or("")];
-        args.append(&mut arg.clone());
-        // -E is required to preserve env
-        args.insert(0, "-E");
-        let task = Command::new("sudo").envs(envs).args(args).spawn()?;
+        let task = Command::new(sudo_path)
+            .env("XDG_RUNTIME_DIR", &xdg_runtime_dir)
+            .envs(
+                valid_envs
+                    .iter()
+                    .map(|(k, v)| (k.as_os_str(), v.as_os_str())),
+            )
+            .arg("-E")
+            .arg("-u")
+            .arg(&username)
+            .arg("--")
+            .arg(&cmd)
+            .args(arg)
+            .spawn()?;
         Ok(Some(task))
     } else {
-        // Fallback: sudo -u username env VAR=VALUE ... cmd args
-        // For systems where sudo -E is not supported (e.g., Ubuntu 25.10+)
-        //
-        // SECURITY: No shell is involved here (we use execve-style argv).
-        // Environment is passed via `env` arguments,
-        // so there is no shell injection vector.
-        //
-        // Only accept portable env var names (POSIX portable character set for shells).
-        // Most legitimate env vars follow [A-Za-z_][A-Za-z0-9_]* convention.
-        // Variables with dots (e.g., "java.home") are Java system properties, not env vars.
-        // Being restrictive here is intentional for security in this sudo context.
-        fn is_valid_env_key(key: &str) -> bool {
-            let mut it = key.chars();
-            match it.next() {
-                Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
-                _ => return false,
-            }
-            it.all(|c| c.is_ascii_alphanumeric() || c == '_')
+        let Some(env_path) = env_path() else {
+            bail!("env was not found at a trusted fixed path");
+        };
+        let mut sudo = Command::new(sudo_path);
+        sudo.arg("-u")
+            .arg(&username)
+            .arg("--")
+            .arg(env_path)
+            .arg(format!("XDG_RUNTIME_DIR={xdg_runtime_dir}"));
+
+        for (k, v) in valid_envs {
+            let mut assignment = k;
+            assignment.push("=");
+            assignment.push(v);
+            sudo.arg(assignment);
         }
 
-        let mut sudo = Command::new("sudo");
-        sudo.arg("-u").arg(&username).arg("--").arg("env").arg(xdg);
-
-        for (k, v) in envs {
-            let key = k.as_ref().to_string_lossy();
-            if !is_valid_env_key(&key) {
-                log::warn!("Skipping environment variable with invalid key: '{}'. Only [A-Za-z_][A-Za-z0-9_]* are allowed in sudo context.", key);
-                continue;
-            }
-            // IMPORTANT: do NOT add shell quotes here; `Command` does not invoke a shell.
-            // Passing KEY=VALUE as a single argv element is safe and preserves spaces.
-            let mut arg = OsString::from(&*key);
-            arg.push("=");
-            arg.push(v.as_ref());
-            sudo.arg(arg);
-        }
-
-        sudo.arg(cmd).args(arg);
+        sudo.arg(&cmd).args(arg);
         let task = sudo.spawn()?;
         Ok(Some(task))
     }
@@ -1229,7 +1255,11 @@ pub fn get_default_pa_source() -> Option<(String, String)> {
 }
 
 pub fn lock_screen() {
-    Command::new("xdg-screensaver").arg("lock").spawn().ok();
+    let Some(xdg_screensaver) = xdg_screensaver_path() else {
+        log::warn!("xdg-screensaver was not found at a trusted fixed path");
+        return;
+    };
+    Command::new(xdg_screensaver).arg("lock").spawn().ok();
 }
 
 pub fn toggle_blank_screen(_v: bool) {
@@ -1461,6 +1491,51 @@ pub(crate) fn xwayland_display_from_proc() -> Option<String> {
         }
     }
     None
+}
+
+fn x11_socket_display_name(name: &OsStr) -> Option<(u32, String)> {
+    let name = name.to_str()?;
+    let display = name.strip_prefix('X')?;
+    if !is_ascii_digit_string(display) {
+        return None;
+    }
+    let display_num = display.parse::<u32>().ok()?;
+    Some((display_num, format!(":{display}")))
+}
+
+fn x11_socket_owner_matches_user(path: &Path, user: &str) -> Option<bool> {
+    let metadata = fs::symlink_metadata(path).ok()?;
+    if !metadata.file_type().is_socket() {
+        return None;
+    }
+    let owner = get_user_by_uid(metadata.uid())?;
+    Some(owner.name() == OsStr::new(user))
+}
+
+fn display_from_x11_socket_dir_for_user(user: &str, dir: &Path) -> String {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return String::new();
+    };
+    let mut displays = Vec::new();
+    for entry in entries.flatten() {
+        let Some((display_num, display)) = x11_socket_display_name(&entry.file_name()) else {
+            continue;
+        };
+        let Some(owner_matches) = x11_socket_owner_matches_user(&entry.path(), user) else {
+            continue;
+        };
+        displays.push((display_num, display, owner_matches));
+    }
+    displays.sort_by_key(|(display_num, _, _)| *display_num);
+
+    let mut last = String::new();
+    for (_, display, owner_matches) in displays {
+        if owner_matches {
+            return display;
+        }
+        last = display;
+    }
+    last
 }
 
 fn kill_process(pid: u32, label: &str) {
@@ -1712,6 +1787,40 @@ mod process_cleanup_tests {
         assert!(!is_local_x_display_arg(":abc"));
         assert!(!is_local_x_display_arg("localhost:0"));
     }
+
+    #[test]
+    fn r_s11c10_x11_socket_display_discovery_reads_metadata() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = PathBuf::from(format!(
+            "/tmp/rd-x11-{}-{}",
+            std::process::id(),
+            nonce
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+
+        let socket_path = root.join("X7");
+        let _listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+        fs::write(root.join("X9"), "not a socket").unwrap();
+        fs::write(root.join("not-x"), "ignored").unwrap();
+
+        let uid = unsafe { hbb_common::libc::geteuid() };
+        let username = get_user_by_uid(uid)
+            .unwrap()
+            .name()
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(display_from_x11_socket_dir_for_user(&username, &root), ":7");
+        assert_eq!(
+            display_from_x11_socket_dir_for_user("__missing__", &root),
+            ":7"
+        );
+
+        fs::remove_dir_all(root).unwrap();
+    }
 }
 
 #[cfg(test)]
@@ -1825,7 +1934,10 @@ fn normalize_xrandr_query_output(output: &str) -> String {
 }
 
 fn xrandr_query() -> ResultType<String> {
-    let output = Command::new("xrandr").arg("--query").output()?;
+    let Some(xrandr) = xrandr_path() else {
+        bail!("xrandr was not found at a trusted fixed path");
+    };
+    let output = Command::new(xrandr).arg("--query").output()?;
     Ok(normalize_xrandr_query_output(&String::from_utf8_lossy(
         &output.stdout,
     )))
@@ -1909,7 +2021,10 @@ pub fn current_resolution(name: &str) -> ResultType<Resolution> {
 }
 
 pub fn change_resolution_directly(name: &str, width: usize, height: usize) -> ResultType<()> {
-    Command::new("xrandr")
+    let Some(xrandr) = xrandr_path() else {
+        bail!("xrandr was not found at a trusted fixed path");
+    };
+    Command::new(xrandr)
         .args(vec![
             "--output",
             name,
@@ -2169,38 +2284,20 @@ mod desktop {
 
         fn get_display_by_user(user: &str) -> String {
             // log::debug!("w {}", &user);
-            if let Ok(output) = std::process::Command::new("w").arg(&user).output() {
-                for line in String::from_utf8_lossy(&output.stdout).lines() {
-                    let mut iter = line.split_whitespace();
-                    let b = iter.nth(2);
-                    if let Some(b) = b {
-                        if b.starts_with(":") {
-                            return b.to_owned();
-                        }
-                    }
-                }
-            }
-            // above not work for gdm user
-            //log::debug!("ls -l /tmp/.X11-unix/");
-            let mut last = "".to_owned();
-            if let Ok(output) = std::process::Command::new("ls")
-                .args(vec!["-l", "/tmp/.X11-unix/"])
-                .output()
-            {
-                for line in String::from_utf8_lossy(&output.stdout).lines() {
-                    let mut iter = line.split_whitespace();
-                    let user_field = iter.nth(2);
-                    if let Some(x) = iter.last() {
-                        if x.starts_with("X") {
-                            last = x.replace("X", ":").to_owned();
-                            if user_field == Some(&user) {
-                                return last;
+            if let Some(w) = w_path() {
+                if let Ok(output) = Command::new(w).arg(user).output() {
+                    for line in String::from_utf8_lossy(&output.stdout).lines() {
+                        let mut iter = line.split_whitespace();
+                        let b = iter.nth(2);
+                        if let Some(b) = b {
+                            if b.starts_with(":") {
+                                return b.to_owned();
                             }
                         }
                     }
                 }
             }
-            last
+            display_from_x11_socket_dir_for_user(user, Path::new("/tmp/.X11-unix"))
         }
 
         fn set_is_subprocess(&mut self) {
@@ -2345,11 +2442,17 @@ pub fn run_me_with(secs: u32) {
     // Spawn a background process that sleeps and then executes.
     // The child process is automatically orphaned when parent exits,
     // and will be adopted by init (PID 1).
-    Command::new(CMD_SH.as_str())
+    let Some(sh) = sh_path() else {
+        log::error!("sh was not found at a trusted fixed path");
+        return;
+    };
+    if let Err(err) = Command::new(sh)
         .arg("-c")
-        .arg(&format!("sleep {secs}; exec {exe_quoted}"))
+        .arg(format!("sleep {secs}; exec {exe_quoted}"))
         .spawn()
-        .ok();
+    {
+        log::warn!("Failed to schedule RustDesk restart: {}", err);
+    }
 }
 
 fn trusted_fixed_executable(path: &Path) -> bool {
@@ -2359,10 +2462,39 @@ fn trusted_fixed_executable(path: &Path) -> bool {
     metadata.is_file() && metadata.uid() == 0 && metadata.mode() & 0o022 == 0
 }
 
-fn systemctl_path() -> Option<&'static str> {
-    SYSTEMCTL_PATHS
-        .into_iter()
+fn trusted_command_path(paths: &'static [&'static str]) -> Option<&'static str> {
+    paths
+        .iter()
+        .copied()
         .find(|path| trusted_fixed_executable(Path::new(path)))
+}
+
+fn sudo_path() -> Option<&'static str> {
+    trusted_command_path(&SUDO_PATHS)
+}
+
+fn env_path() -> Option<&'static str> {
+    trusted_command_path(&ENV_PATHS)
+}
+
+fn sh_path() -> Option<&'static str> {
+    trusted_command_path(&SH_PATHS)
+}
+
+fn w_path() -> Option<&'static str> {
+    trusted_command_path(&W_PATHS)
+}
+
+fn xrandr_path() -> Option<&'static str> {
+    trusted_command_path(&XRANDR_PATHS)
+}
+
+fn xdg_screensaver_path() -> Option<&'static str> {
+    trusted_command_path(&XDG_SCREENSAVER_PATHS)
+}
+
+fn systemctl_path() -> Option<&'static str> {
+    trusted_command_path(&SYSTEMCTL_PATHS)
 }
 
 fn systemctl_service(action: &str, app_name: &str) -> bool {
@@ -2525,6 +2657,40 @@ mod service_lifecycle_tests {
             assert!(Path::new(path).is_absolute());
             assert!(path.ends_with("/systemctl"));
         }
+    }
+
+    #[test]
+    fn r_s11c10_privileged_command_candidates_are_fixed_system_paths() {
+        let command_sets: [&[&str]; 7] = [
+            &SUDO_PATHS,
+            &ENV_PATHS,
+            &SH_PATHS,
+            &W_PATHS,
+            &XRANDR_PATHS,
+            &XDG_SCREENSAVER_PATHS,
+            &SYSTEMCTL_PATHS,
+        ];
+        for paths in command_sets {
+            for path in paths {
+                assert!(Path::new(path).is_absolute());
+                assert!(path.starts_with("/usr/bin/") || path.starts_with("/bin/"));
+            }
+        }
+    }
+
+    #[test]
+    fn r_s11c10_sudo_env_validation_is_portable_key_only() {
+        assert!(is_valid_sudo_env_key(OsStr::new("DISPLAY")));
+        assert!(is_valid_sudo_env_key(OsStr::new("_RUSTDESK_TEST")));
+        assert!(!is_valid_sudo_env_key(OsStr::new("1BAD")));
+        assert!(!is_valid_sudo_env_key(OsStr::new("BAD-NAME")));
+
+        let envs = valid_sudo_envs([
+            (OsString::from("DISPLAY"), OsString::from(":1")),
+            (OsString::from("BAD-NAME"), OsString::from("ignored")),
+        ]);
+        assert_eq!(envs.len(), 1);
+        assert_eq!(envs[0].0, OsString::from("DISPLAY"));
     }
 
     #[test]

@@ -829,6 +829,36 @@ fi
 if [ -n "$r_s11c10c" ]; then echo "  FAIL R-S11c-10c Linux xrandr resolution discovery:$r_s11c10c"; rc=1; else
   echo "  ok  R-S11c-10c Linux xrandr resolution discovery executes fixed argv and normalizes whitespace in Rust, with no shell pipeline"; fi
 
+echo "== (3b-iii-h4) Linux process discovery avoids pgrep shell probes (R-S11c-10d) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_process_discovery --color never
+"${RUN[@]}" cargo test -p hbb_common --lib r_s11c10_kde_session --color never
+r_s11c10d=
+grep -q 'fn process_is_xwayland(args: \&\[String\]) -> bool' src/platform/linux.rs || r_s11c10d="$r_s11c10d no-xwayland-argv-matcher"
+grep -q 'pub(crate) fn xwayland_display_from_proc() -> Option<String>' src/platform/linux.rs || r_s11c10d="$r_s11c10d no-xwayland-proc-display-helper"
+grep -q 'crate::platform::linux::xwayland_display_from_proc()' src/whiteboard/linux.rs || r_s11c10d="$r_s11c10d whiteboard-not-using-proc-helper"
+grep -q 'fn process_basename_is_kded(args: \&\[String\]) -> bool' libs/hbb_common/src/platform/linux.rs || r_s11c10d="$r_s11c10d no-kded-basename-matcher"
+process_discovery_blocks=$(
+  awk '/fn process_is_xwayland/,/^}/' src/platform/linux.rs
+  awk '/fn xwayland_display_arg/,/^}/' src/platform/linux.rs
+  awk '/xwayland_display_from_proc/,/^}/' src/platform/linux.rs
+  awk '/pub fn is_xwayland_running/,/^}/' src/platform/linux.rs
+  awk '/fn get_display_from_xwayland/,/^}/' src/whiteboard/linux.rs
+  awk '/fn process_basename_is_kded/,/^}/' libs/hbb_common/src/platform/linux.rs
+  awk '/pub fn is_kde_session/,/^}/' libs/hbb_common/src/platform/linux.rs
+)
+if echo "$process_discovery_blocks" | grep -Eq 'run_cmds|CMD_SH|sh -c|pgrep|grep '; then
+  r_s11c10d="$r_s11c10d shell-shaped-process-discovery-regressed"
+fi
+if grep -RInE 'pgrep[[:space:]-].*(Xwayland|kded)|run_cmds\("pgrep' src/platform/linux.rs src/whiteboard/linux.rs libs/hbb_common/src/platform/linux.rs >/tmp/rd_verify_r_s11c10d.$$; then
+  cat /tmp/rd_verify_r_s11c10d.$$
+  rm -f /tmp/rd_verify_r_s11c10d.$$
+  r_s11c10d="$r_s11c10d pgrep-shell-probe-present"
+else
+  rm -f /tmp/rd_verify_r_s11c10d.$$
+fi
+if [ -n "$r_s11c10d" ]; then echo "  FAIL R-S11c-10d Linux process discovery:$r_s11c10d"; rc=1; else
+  echo "  ok  R-S11c-10d Linux Xwayland/whiteboard/KDE process discovery reads /proc argv and avoids pgrep/sh -c"; fi
+
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() are now only typed password
 # operations: user-owned direct commit and Linux/Windows service-owned service commit. set_socks /

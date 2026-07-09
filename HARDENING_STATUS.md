@@ -431,6 +431,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Verification closure: `scripts/verify.sh` runs the `r_s11c10_xrandr_*` unit test and asserts both resolution
   query call sites use the argv-only helper, no shell/pipeline tokens remain in the xrandr query block, and
   Rust-side normalization preserves the parser's expected shape.
+- **R-S11c-10d — Linux process-discovery `pgrep` shell probes — CLOSED 2026-07-09.**
+  Platform: Linux service/helper process discovery. Surfaces: Xwayland presence detection in
+  `src/platform/linux.rs`, whiteboard Xwayland display discovery in `src/whiteboard/linux.rs`, and KDE session
+  detection in `libs/hbb_common/src/platform/linux.rs`. Boundary: local process-table metadata ↔
+  root/service/helper process decisions. Attack surface closed: these paths no longer invoke `pgrep` or
+  `sh -c "pgrep ..."`. Xwayland discovery enumerates `/proc/<pid>/cmdline`, matches argv[0] basename
+  `Xwayland`, and extracts only local display arguments such as `:0`/`:1.0`; whiteboard uses that same typed
+  helper instead of parsing whitespace output; KDE detection matches only process basenames of the form
+  `kded` plus digits, not arbitrary command-line text containing `kded5`. Empty, unreadable, or disappearing
+  `/proc` entries are skipped. Verification closure: `scripts/verify.sh` runs the
+  `r_s11c10_process_discovery_*` and `r_s11c10_kde_session_*` unit tests and asserts the touched discovery
+  blocks contain no `run_cmds`, `CMD_SH`, `sh -c`, `pgrep`, or grep-shaped process probe.
 - **R-S11c-7 — Linux `_pa` audio helper capability — CLOSED 2026-07-09.** Platform: Linux desktop while the
   `_pa` helper is running for local audio capture. Endpoint/action: `_pa` IPC stream formerly accepted a
   bare PulseAudio source request and then streamed raw monitor/input frames. Boundary: same-UID local process
@@ -583,10 +595,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   service lifecycle process-kill pipelines with `/proc/<pid>/exe` identity, direct `/proc/<pid>/cmdline`
   argv matching, and `kill(2)`.
   Remaining closure:
-  replace the still-live service/display helper shell sites such as
-  `pgrep`, `os-release`/SELinux probes, `linux_desktop_manager` probes, and whiteboard Xwayland
-  discovery with direct `/proc`, file parsing, or argv-only commands; no shell pipeline/string interpolation in
-  root-context helpers. `xrandr|tr` is closed by R-S11c-10c.
+  replace the still-live service/display helper shell sites such as `os-release`/SELinux probes and
+  `linux_desktop_manager` probes with direct `/proc`, file parsing, or argv-only commands; no shell
+  pipeline/string interpolation in root-context helpers. `xrandr|tr` is closed by R-S11c-10c; `pgrep` and
+  whiteboard Xwayland discovery are closed by R-S11c-10d.
 - **R-S11b-4 — config secrecy statement after IPC closure.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary

@@ -101,16 +101,63 @@ pub fn is_kde() -> bool {
     }
 }
 
+fn proc_entry_pid(entry: &std::fs::DirEntry) -> Option<u32> {
+    let file_name = entry.file_name();
+    let pid_str = file_name.to_str()?;
+    if !pid_str.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    pid_str.parse::<u32>().ok()
+}
+
+fn read_proc_cmdline_args(proc_path: &Path) -> Option<Vec<String>> {
+    let cmdline = std::fs::read(proc_path.join("cmdline")).ok()?;
+    let args = cmdline
+        .split(|&b| b == 0)
+        .filter(|part| !part.is_empty())
+        .map(|part| String::from_utf8_lossy(part).into_owned())
+        .collect::<Vec<_>>();
+    if args.is_empty() {
+        None
+    } else {
+        Some(args)
+    }
+}
+
+fn process_basename(args: &[String]) -> Option<&str> {
+    args.first()
+        .and_then(|arg0| Path::new(arg0).file_name())
+        .and_then(|name| name.to_str())
+}
+
+fn process_basename_is_kded(args: &[String]) -> bool {
+    let Some(name) = process_basename(args) else {
+        return false;
+    };
+    let Some(suffix) = name.strip_prefix("kded") else {
+        return false;
+    };
+    !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit())
+}
+
 // Don't use `hbb_common::platform::linux::is_kde()` here.
 // It's not correct in the server process.
 pub fn is_kde_session() -> bool {
-    std::process::Command::new(CMD_SH.as_str())
-        .arg("-c")
-        .arg("pgrep -f kded[0-9]+")
-        .stdout(std::process::Stdio::piped())
-        .output()
-        .map(|o| !o.stdout.is_empty())
-        .unwrap_or(false)
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        if proc_entry_pid(&entry).is_none() {
+            continue;
+        }
+        let Some(args) = read_proc_cmdline_args(&entry.path()) else {
+            continue;
+        };
+        if process_basename_is_kded(&args) {
+            return true;
+        }
+    }
+    false
 }
 
 #[inline]
@@ -493,6 +540,23 @@ mod tests {
             run_cmds_trim_newline("whoami").unwrap() + "\n",
             run_cmds("whoami").unwrap()
         );
+    }
+
+    #[test]
+    fn r_s11c10_kde_session_matcher_is_process_basename_only() {
+        let kded5 = vec!["/usr/bin/kded5".to_owned()];
+        let kded6 = vec!["kded6".to_owned(), "--replace".to_owned()];
+        assert!(process_basename_is_kded(&kded5));
+        assert!(process_basename_is_kded(&kded6));
+
+        let bare = vec!["/usr/bin/kded".to_owned()];
+        let non_numeric = vec!["/usr/bin/kdedx".to_owned()];
+        let helper = vec!["/usr/bin/kded5-helper".to_owned()];
+        let grep = vec!["/usr/bin/grep".to_owned(), "kded5".to_owned()];
+        assert!(!process_basename_is_kded(&bare));
+        assert!(!process_basename_is_kded(&non_numeric));
+        assert!(!process_basename_is_kded(&helper));
+        assert!(!process_basename_is_kded(&grep));
     }
 
     /// Test get_home_dir_trusted: returns valid path and ignores HOME env var

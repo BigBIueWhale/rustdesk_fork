@@ -1358,16 +1358,71 @@ fn process_has_exact_arg(args: &[String], expected: &str) -> bool {
     args.iter().any(|arg| arg == expected)
 }
 
-fn process_basename_eq_ignore_ascii_case(args: &[String], expected: &str) -> bool {
+fn process_basename(args: &[String]) -> Option<&str> {
     args.first()
         .and_then(|arg0| Path::new(arg0).file_name())
         .and_then(|name| name.to_str())
+}
+
+fn process_basename_eq(args: &[String], expected: &str) -> bool {
+    process_basename(args)
+        .map(|name| name == expected)
+        .unwrap_or(false)
+}
+
+fn process_basename_eq_ignore_ascii_case(args: &[String], expected: &str) -> bool {
+    process_basename(args)
         .map(|name| name.eq_ignore_ascii_case(expected))
         .unwrap_or(false)
 }
 
 fn process_is_xorg_with_config(args: &[String], xorg_config: &str) -> bool {
     process_basename_eq_ignore_ascii_case(args, "Xorg") && process_has_exact_arg(args, xorg_config)
+}
+
+fn process_is_xwayland(args: &[String]) -> bool {
+    process_basename_eq(args, "Xwayland")
+}
+
+fn is_ascii_digit_string(value: &str) -> bool {
+    !value.is_empty() && value.chars().all(|c| c.is_ascii_digit())
+}
+
+fn is_local_x_display_arg(arg: &str) -> bool {
+    let Some(rest) = arg.strip_prefix(':') else {
+        return false;
+    };
+    let mut parts = rest.split('.');
+    let Some(display) = parts.next() else {
+        return false;
+    };
+    if !is_ascii_digit_string(display) {
+        return false;
+    }
+    match (parts.next(), parts.next()) {
+        (None, None) => true,
+        (Some(screen), None) => is_ascii_digit_string(screen),
+        _ => false,
+    }
+}
+
+fn xwayland_display_arg(args: &[String]) -> Option<&str> {
+    if !process_is_xwayland(args) {
+        return None;
+    }
+    args.iter()
+        .skip(1)
+        .find(|arg| is_local_x_display_arg(arg))
+        .map(String::as_str)
+}
+
+pub(crate) fn xwayland_display_from_proc() -> Option<String> {
+    for process in all_process_cmdlines() {
+        if let Some(display) = xwayland_display_arg(&process.args) {
+            return Some(display.to_owned());
+        }
+    }
+    None
 }
 
 fn kill_process(pid: u32, label: &str) {
@@ -1579,6 +1634,45 @@ mod process_cleanup_tests {
             format!("{xorg_config}.old"),
         ];
         assert!(!process_is_xorg_with_config(&partial, xorg_config));
+    }
+
+    #[test]
+    fn r_s11c10_process_discovery_matches_xwayland_by_argv() {
+        let xwayland = vec![
+            "/usr/bin/Xwayland".to_owned(),
+            ":1".to_owned(),
+            "-auth".to_owned(),
+            "/run/user/1000/xauth_RoDZey".to_owned(),
+        ];
+        assert!(process_is_xwayland(&xwayland));
+        assert_eq!(xwayland_display_arg(&xwayland), Some(":1"));
+
+        let no_display = vec![
+            "/usr/bin/Xwayland".to_owned(),
+            "-displayfd".to_owned(),
+            "76".to_owned(),
+        ];
+        assert!(process_is_xwayland(&no_display));
+        assert_eq!(xwayland_display_arg(&no_display), None);
+
+        let grep = vec![
+            "/usr/bin/grep".to_owned(),
+            "Xwayland".to_owned(),
+            ":2".to_owned(),
+        ];
+        assert!(!process_is_xwayland(&grep));
+        assert_eq!(xwayland_display_arg(&grep), None);
+
+        let lower_case = vec!["/usr/bin/xwayland".to_owned(), ":3".to_owned()];
+        assert!(!process_is_xwayland(&lower_case));
+
+        assert!(is_local_x_display_arg(":0"));
+        assert!(is_local_x_display_arg(":1.0"));
+        assert!(!is_local_x_display_arg(":"));
+        assert!(!is_local_x_display_arg(":1."));
+        assert!(!is_local_x_display_arg(":1.0.2"));
+        assert!(!is_local_x_display_arg(":abc"));
+        assert!(!is_local_x_display_arg("localhost:0"));
     }
 }
 
@@ -1833,10 +1927,9 @@ pub fn change_resolution_directly(name: &str, width: usize, height: usize) -> Re
 
 #[inline]
 pub fn is_xwayland_running() -> bool {
-    if let Ok(output) = run_cmds("pgrep -a Xwayland") {
-        return output.contains("Xwayland");
-    }
-    false
+    all_process_cmdlines()
+        .iter()
+        .any(|process| process_is_xwayland(&process.args))
 }
 
 mod desktop {

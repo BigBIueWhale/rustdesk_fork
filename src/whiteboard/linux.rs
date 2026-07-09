@@ -62,17 +62,7 @@ extern "C" {
 const SHAPE_INPUT: std::ffi::c_int = 2;
 
 fn get_display_from_xwayland() -> Option<String> {
-    if let Ok(output) = crate::platform::run_cmds("pgrep -a Xwayland") {
-        // 1410 /usr/bin/Xwayland :1 -auth /run/user/1000/xauth_RoDZey -listenfd 8 -listenfd 9 -displayfd 76 -wm 78 -rootless -enable-ei-portal
-        if output.contains("Xwayland") {
-            if let Some(display) = output.split_whitespace().nth(2) {
-                if display.starts_with(':') {
-                    return Some(display.to_string());
-                }
-            }
-        }
-    }
-    None
+    crate::platform::linux::xwayland_display_from_proc()
 }
 
 fn preset_env() -> bool {

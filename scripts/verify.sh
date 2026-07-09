@@ -367,6 +367,49 @@ grep -q 'R-S11c-12 closes the Windows terminal helper pipe-binding class' requir
 if [ -n "$r_s11c12" ]; then echo "  FAIL R-S11c-12 Windows terminal helper pipe binding:$r_s11c12"; rc=1; else
   echo "  ok  R-S11c-12 Windows terminal helper pipes are first-instance/local-only and accept only the helper PID returned by CreateProcessAsUserW"; fi
 
+echo "== (3b-iii-a5) Windows installer service root is fixed and shell fallbacks are absent (R-S11d) =="
+r_s11d=
+grep -q 'SHGetKnownFolderPath(folder, KF_FLAG_DEFAULT, None)' src/platform/windows.rs || r_s11d="$r_s11d exe:no-known-folder-program-files"
+grep -q 'fn fixed_service_install_path(requested_path: &str) -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d="$r_s11d exe:no-fixed-install-path-gate"
+grep -q 'fn fixed_service_install_dir_and_exe() -> ResultType<(String, String)>' src/platform/windows.rs || r_s11d="$r_s11d exe:no-fixed-service-exe-helper"
+grep -q 'let (_, exe) = fixed_service_install_dir_and_exe()?' src/platform/windows.rs || r_s11d="$r_s11d exe:after-install-bypasses-fixed-service-root"
+grep -q 'let (path, exe) = match fixed_service_install_dir_and_exe()' src/platform/windows.rs || r_s11d="$r_s11d exe:install-service-bypasses-fixed-service-root"
+grep -q 'custom Windows install paths are not supported for the installed service' src/platform/windows.rs || r_s11d="$r_s11d exe:custom-path-not-rejected"
+grep -q 'GetSystemDirectoryW(Some(&mut buffer))' src/platform/windows.rs || r_s11d="$r_s11d exe:no-trusted-cmd-path"
+grep -q 'runas::Command::new(cmd)' src/platform/windows.rs || r_s11d="$r_s11d exe:elevated-cmd-not-absolute"
+grep -q 'share_mode(FILE_SHARE_READ)' src/platform/windows.rs || r_s11d="$r_s11d exe:command-file-write-sharing-not-denied"
+grep -Fq 'if not exist \"{exe}\" exit /b 1' src/platform/windows.rs || r_s11d="$r_s11d exe:service-binary-existence-not-checked"
+grep -q 'if errorlevel 1 exit /b 1' src/platform/windows.rs || r_s11d="$r_s11d exe:sc-errors-not-fatal"
+grep -q "bind.installInstallMe(options: args, path: '')" flutter/lib/desktop/pages/install_page.dart || r_s11d="$r_s11d flutter:fixed-install-entry-not-used"
+if grep -qE 'std::env::var\("ProgramFiles"\)|runas::Command::new\("cmd\.exe"\)|Change Path|selectInstallPath|file_picker|package:path/path' src/platform/windows.rs flutter/lib/desktop/pages/install_page.dart; then
+  r_s11d="$r_s11d exe-or-flutter:custom-path-or-path-selected-cmd"
+fi
+if grep -RInE 'INSTALLFOLDER_INNER|WIXUI_INSTALLDIR|ChangeFolder|BrowseDlg|InstallFolderSearch|SavedInstallFolder|RestoreSavedInstallFolder|SetInstallFolder' res/msi >/tmp/rd_verify_r_s11d_msi.$$; then
+  cat /tmp/rd_verify_r_s11d_msi.$$
+  r_s11d="$r_s11d msi:public-install-folder-or-browse-surface"
+fi
+rm -f /tmp/rd_verify_r_s11d_msi.$$
+if grep -RInE 'TryCreateStartServiceByShell|TryStopDeleteServiceByShell|ShellExecuteW\(NULL, L"open", L"(sc|cmd\.exe|reg)"' res/msi/CustomActions >/tmp/rd_verify_r_s11d_msi_shell.$$; then
+  cat /tmp/rd_verify_r_s11d_msi_shell.$$
+  r_s11d="$r_s11d msi:service-or-registry-shell-fallback"
+fi
+rm -f /tmp/rd_verify_r_s11d_msi_shell.$$
+grep -q 'Id="CreateStartService".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:create-service-return-not-checked"
+grep -q 'Id="TryStopDeleteService".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:delete-service-return-not-checked"
+grep -q 'Id="AddRegSoftwareSASGeneration".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:sas-registry-return-not-checked"
+if grep -qE 'Id="(CreateStartService|TryStopDeleteService|AddRegSoftwareSASGeneration)".*Return="ignore"' res/msi/Package/Fragments/CustomActions.wxs; then
+  r_s11d="$r_s11d msi:privileged-custom-action-return-ignored"
+fi
+grep -q 'Service still exists after deletion' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-not-verified"
+grep -q 'HRESULT_FROM_WIN32(lastErrorCode)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-errors-not-propagated"
+grep -Fq 'reinterpret_cast<const BYTE*>(&valueData)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:sas-registry-value-pointer-wrong"
+grep -q 'HRESULT_FROM_WIN32(result)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:sas-registry-errors-not-propagated"
+grep -q 'if (!QueryServiceStatusExW(serviceName, &serviceStatus))' res/msi/CustomActions/ServiceUtils.cpp || r_s11d="$r_s11d msi:service-status-query-not-guarded"
+grep -q 'Windows installer service-binary root and elevated script authority' requirements.html || r_s11d="$r_s11d requirements-disposition-missing"
+grep -q 'R-S11d — Windows installer service-root authority' HARDENING_STATUS.md || r_s11d="$r_s11d hardening-ledger-missing"
+if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else
+  echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service/SAS custom actions are native, checked, and fail closed"; fi
+
 # (3b-iii-b) R-S11b-1/R-S11b-2c/R-S11c-1f: Linux/macOS `_service` is a privileged service-control channel,
 # not a root<->user Config/Config2 bus. The world-connectable service socket may keep only narrow,
 # typed receiver-authorized traffic; it MUST NOT accept/return whole config, and stale-socket probing

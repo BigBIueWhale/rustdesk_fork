@@ -605,6 +605,25 @@ unreachable and a source/test/AST gate prevents reintroduction.
   the client-PID query/gate, expected helper PID parameter, both service-side pipe waits passing the launched
   helper PID, first-instance and remote-client rejection flags, absence of the old pipe-name logging strings,
   and this ledger/requirements disposition.
+- **R-S11d — Windows installer service-root authority — CLOSED 2026-07-09.** Platform: Windows EXE and MSI
+  install/update service creation paths. Endpoint/action: choosing or carrying the installed service binary
+  directory, staging elevated EXE command files, and MSI service/registry privileged custom actions. Boundary:
+  local unelevated install UI/CLI/MSI properties and caller-writable staging ↔ elevated installer/LocalSystem
+  service binary authority. Attack surface closed: a caller-selected or registry-restored install folder no
+  longer becomes the LocalSystem service root. The EXE installer resolves Program Files with
+  `SHGetKnownFolderPath`, rejects non-default paths, removes Flutter path selection, resolves elevated `cmd.exe`
+  with `GetSystemDirectoryW`, keeps generated command files open read-only with `FILE_SHARE_READ` only while the
+  elevated child consumes them, uses the same fixed-root helper from `install_me`, `install_service`, and
+  `run_after_install`, and makes `sc` service-creation failures leave the elevated command marker intact so the
+  caller sees failure. MSI uses private `App.InstallFolder` under `ProgramFiles6432Folder`, has no public
+  `INSTALLFOLDER`/`INSTALLFOLDER_INNER`/`WIXUI_INSTALLDIR`/browse surface, and has no service/registry shell
+  fallback; service creation/start/stop/delete and `SoftwareSASGeneration` registry setup use checked native APIs
+  and fail closed on native API failure or stale service deletion. Verification closure: `scripts/verify.sh`
+  asserts known-folder Program Files resolution, custom-path rejection, trusted system `cmd.exe` resolution,
+  write/delete sharing denial on EXE command staging, fixed Flutter install entry, fixed-root EXE service entry
+  points, fatal EXE `sc` errors, MSI private install root, absence of MSI browse/public install-folder routing,
+  checked MSI privileged custom-action returns, native service-delete verification, absence of MSI
+  `sc`/`cmd.exe`/`reg` shell fallbacks, and this ledger/requirements disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

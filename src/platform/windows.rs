@@ -21,7 +21,7 @@ use std::{
     mem,
     os::{
         raw::c_ulong,
-        windows::{ffi::OsStrExt, ffi::OsStringExt, process::CommandExt},
+        windows::{ffi::OsStrExt, ffi::OsStringExt, fs::OpenOptionsExt, process::CommandExt},
     },
     path::*,
     ptr::null_mut,
@@ -52,9 +52,9 @@ use winapi::{
         wingdi::*,
         winnt::{
             SecurityImpersonation, TokenElevation, TokenImpersonation, TokenType,
-            ES_AWAYMODE_REQUIRED, ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED, HANDLE,
-            PROCESS_ALL_ACCESS, PROCESS_QUERY_LIMITED_INFORMATION, TOKEN_ELEVATION, TOKEN_QUERY,
-            TOKEN_TYPE,
+            ES_AWAYMODE_REQUIRED, ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED,
+            FILE_ATTRIBUTE_TEMPORARY, FILE_SHARE_READ, HANDLE, PROCESS_ALL_ACCESS,
+            PROCESS_QUERY_LIMITED_INFORMATION, TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_TYPE,
         },
         winreg::HKEY_CURRENT_USER,
         winuser::*,
@@ -66,14 +66,19 @@ use windows::Win32::{
         GetTokenInformation as WinGetTokenInformation, IsWellKnownSid, TokenUser,
         WinLocalSystemSid, TOKEN_QUERY as WIN_TOKEN_QUERY, TOKEN_USER,
     },
+    System::Com::CoTaskMemFree,
     System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
     },
+    System::SystemInformation::GetSystemDirectoryW,
     System::Threading::{
         OpenProcess as WinOpenProcess, OpenProcessToken as WinOpenProcessToken,
         QueryFullProcessImageNameW as WinQueryFullProcessImageNameW,
         PROCESS_QUERY_LIMITED_INFORMATION as WIN_PROCESS_QUERY_LIMITED_INFORMATION,
+    },
+    UI::Shell::{
+        FOLDERID_ProgramFiles, FOLDERID_ProgramFilesX86, SHGetKnownFolderPath, KF_FLAG_DEFAULT,
     },
 };
 use windows_service::{
@@ -1423,21 +1428,83 @@ fn get_default_install_info() -> (String, String, String, String) {
     get_install_info_with_subkey(get_subkey(&crate::get_app_name(), false))
 }
 
+fn path_from_cotaskmem_pwstr(path: windows::core::PWSTR, label: &str) -> ResultType<PathBuf> {
+    let ptr = path.0;
+    if ptr.is_null() {
+        bail!("{label} returned a null path");
+    }
+    let mut len = 0usize;
+    unsafe {
+        while *ptr.add(len) != 0 {
+            len += 1;
+        }
+        let value = OsString::from_wide(std::slice::from_raw_parts(ptr, len));
+        CoTaskMemFree(Some(ptr as _));
+        Ok(PathBuf::from(value))
+    }
+}
+
+fn program_files_dir() -> ResultType<PathBuf> {
+    let folder = if cfg!(target_pointer_width = "32") {
+        &FOLDERID_ProgramFilesX86
+    } else {
+        &FOLDERID_ProgramFiles
+    };
+    let path = unsafe { SHGetKnownFolderPath(folder, KF_FLAG_DEFAULT, None) }
+        .map_err(|e| anyhow!("SHGetKnownFolderPath(Program Files) failed: {e}"))?;
+    path_from_cotaskmem_pwstr(path, "SHGetKnownFolderPath(Program Files)")
+}
+
+fn default_install_path_buf() -> ResultType<PathBuf> {
+    Ok(program_files_dir()?.join(crate::get_app_name()))
+}
+
 fn get_default_install_path() -> String {
-    let mut pf = "C:\\Program Files".to_owned();
-    if let Ok(x) = std::env::var("ProgramFiles") {
-        if std::path::Path::new(&x).exists() {
-            pf = x;
-        }
+    default_install_path_buf()
+        .unwrap_or_else(|err| {
+            log::error!("Failed to resolve Program Files install path: {err}");
+            PathBuf::from("C:\\Program Files").join(crate::get_app_name())
+        })
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn normalized_windows_path_text(path: &Path) -> String {
+    path.to_string_lossy()
+        .trim_end_matches(['\\', '/'])
+        .to_ascii_lowercase()
+}
+
+fn fixed_service_install_path(requested_path: &str) -> ResultType<PathBuf> {
+    let default = default_install_path_buf()?;
+    if requested_path.trim().is_empty() {
+        return Ok(default);
     }
-    #[cfg(target_pointer_width = "32")]
-    {
-        let tmp = pf.replace("Program Files", "Program Files (x86)");
-        if std::path::Path::new(&tmp).exists() {
-            pf = tmp;
-        }
+    let requested = PathBuf::from(requested_path.trim().trim_end_matches(['\\', '/']));
+    if normalized_windows_path_text(&requested) == normalized_windows_path_text(&default) {
+        return Ok(default);
     }
-    format!("{}\\{}", pf, crate::get_app_name())
+    bail!("custom Windows install paths are not supported for the installed service")
+}
+
+fn fixed_service_install_dir_and_exe() -> ResultType<(String, String)> {
+    let path = fixed_service_install_path("")?
+        .to_string_lossy()
+        .into_owned();
+    let exe = format!("{}\\{}.exe", path, crate::get_app_name());
+    Ok((path, exe))
+}
+
+fn trusted_system_cmd_path() -> ResultType<PathBuf> {
+    let mut buffer = vec![0u16; 32768];
+    let len = unsafe { GetSystemDirectoryW(Some(&mut buffer)) } as usize;
+    if len == 0 {
+        bail!("GetSystemDirectoryW failed: {}", io::Error::last_os_error());
+    }
+    if len >= buffer.len() {
+        bail!("GetSystemDirectoryW returned an oversized path");
+    }
+    Ok(PathBuf::from(OsString::from_wide(&buffer[..len])).join("cmd.exe"))
 }
 
 pub fn check_update_broker_process() -> ResultType<()> {
@@ -1610,14 +1677,12 @@ fn get_after_install(
 
 pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> ResultType<()> {
     let uninstall_str = get_uninstall(false);
-    let mut path = path.trim_end_matches('\\').to_owned();
+    let path = fixed_service_install_path(&path)?
+        .to_string_lossy()
+        .into_owned();
     let (subkey, _path, start_menu, exe) = get_default_install_info();
     let mut exe = exe;
-    if path.is_empty() {
-        path = _path;
-    } else {
-        exe = exe.replace(&_path, &path);
-    }
+    exe = exe.replace(&_path, &path);
     let mut version_major = "0";
     let mut version_minor = "0";
     let mut version_build = "0";
@@ -1652,10 +1717,8 @@ oLink.Save
         ),
         "vbs",
         "mk_shortcut",
-    )?
-    .to_str()
-    .unwrap_or("")
-    .to_owned();
+    )?;
+    let mk_shortcut_path = mk_shortcut.path_str()?.to_owned();
     // https://superuser.com/questions/392061/how-to-make-a-shortcut-from-cmd
     let uninstall_shortcut = write_cmds(
         format!(
@@ -1671,11 +1734,10 @@ oLink.Save
         ),
         "vbs",
         "uninstall_shortcut",
-    )?
-    .to_str()
-    .unwrap_or("")
-    .to_owned();
+    )?;
+    let uninstall_shortcut_path = uninstall_shortcut.path_str()?.to_owned();
     let tray_shortcut = get_tray_shortcut(&path, &exe, &cur_exe, &tmp_path)?;
+    let tray_shortcut_path = tray_shortcut.path_str()?.to_owned();
     let mut reg_value_desktop_shortcuts = "0".to_owned();
     let mut reg_value_start_menu_shortcuts = "0".to_owned();
     let mut shortcuts = Default::default();
@@ -1711,12 +1773,12 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{start_menu}\\\"
     // Note: without if exist, the bat may exit in advance on some Windows7 https://github.com/rustdesk/rustdesk/issues/895
     let dels = format!(
         "
-if exist \"{mk_shortcut}\" del /f /q \"{mk_shortcut}\"
-if exist \"{uninstall_shortcut}\" del /f /q \"{uninstall_shortcut}\"
-if exist \"{tray_shortcut}\" del /f /q \"{tray_shortcut}\"
-if exist \"{tmp_path}\\{app_name}.lnk\" del /f /q \"{tmp_path}\\{app_name}.lnk\"
-if exist \"{tmp_path}\\Uninstall {app_name}.lnk\" del /f /q \"{tmp_path}\\Uninstall {app_name}.lnk\"
-if exist \"{tmp_path}\\{app_name} Tray.lnk\" del /f /q \"{tmp_path}\\{app_name} Tray.lnk\"
+	if exist \"{mk_shortcut_path}\" del /f /q \"{mk_shortcut_path}\"
+	if exist \"{uninstall_shortcut_path}\" del /f /q \"{uninstall_shortcut_path}\"
+	if exist \"{tray_shortcut_path}\" del /f /q \"{tray_shortcut_path}\"
+	if exist \"{tmp_path}\\{app_name}.lnk\" del /f /q \"{tmp_path}\\{app_name}.lnk\"
+	if exist \"{tmp_path}\\Uninstall {app_name}.lnk\" del /f /q \"{tmp_path}\\Uninstall {app_name}.lnk\"
+	if exist \"{tmp_path}\\{app_name} Tray.lnk\" del /f /q \"{tmp_path}\\{app_name} Tray.lnk\"
         "
     );
     let src_exe = std::env::current_exe()?.to_str().unwrap_or("").to_string();
@@ -1728,9 +1790,9 @@ if exist \"{tmp_path}\\{app_name} Tray.lnk\" del /f /q \"{tmp_path}\\{app_name} 
         "".to_owned()
     } else {
         format!("
-cscript \"{tray_shortcut}\"
-copy /Y \"{tmp_path}\\{app_name} Tray.lnk\" \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\\"
-")
+	cscript \"{tray_shortcut_path}\"
+	copy /Y \"{tmp_path}\\{app_name} Tray.lnk\" \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\\"
+	")
     };
 
     // Remember to check if `update_me` need to be changed if changing the `cmds`.
@@ -1756,9 +1818,9 @@ reg add {subkey} /f /v VersionBuild /t REG_DWORD /d {version_build}
 reg add {subkey} /f /v UninstallString /t REG_SZ /d \"\\\"{exe}\\\" --uninstall\"
 reg add {subkey} /f /v EstimatedSize /t REG_DWORD /d {size}
 reg add {subkey} /f /v WindowsInstaller /t REG_DWORD /d 0
-cscript \"{mk_shortcut}\"
-cscript \"{uninstall_shortcut}\"
-{tray_shortcuts}
+	cscript \"{mk_shortcut}\"
+	cscript \"{uninstall_shortcut}\"
+	{tray_shortcuts}
 {shortcuts}
 copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
 {dels}
@@ -1778,6 +1840,8 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
         dels = if debug { "" } else { &dels },
         copy_exe = copy_exe_cmd(&src_exe, &exe, &path)?,
         import_config = get_import_config(&exe),
+        mk_shortcut = mk_shortcut_path,
+        uninstall_shortcut = uninstall_shortcut_path,
     );
     run_cmds(cmds, debug, "install")?;
     run_after_run_cmds(silent);
@@ -1785,7 +1849,7 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
 }
 
 pub fn run_after_install() -> ResultType<()> {
-    let (_, _, _, exe) = get_install_info();
+    let (_, exe) = fixed_service_install_dir_and_exe()?;
     run_cmds(get_after_install(&exe, None, None), true, "after_install")
 }
 
@@ -1856,23 +1920,79 @@ pub fn uninstall_me(kill_self: bool) -> ResultType<()> {
     run_cmds(get_uninstall(kill_self), true, "uninstall")
 }
 
-fn write_cmds(cmds: String, ext: &str, tip: &str) -> ResultType<std::path::PathBuf> {
-    let mut cmds = cmds;
-    let mut tmp = std::env::temp_dir();
-    // When dir contains these characters, the bat file will not execute in elevated mode.
-    if vec!["&", "@", "^"]
-        .drain(..)
-        .any(|s| tmp.to_string_lossy().to_string().contains(s))
+struct InstallerCommandFile {
+    path: PathBuf,
+    file: Option<fs::File>,
+}
+
+impl InstallerCommandFile {
+    fn path_str(&self) -> ResultType<&str> {
+        self.path
+            .to_str()
+            .ok_or_else(|| anyhow!("installer command path is not valid UTF-8: {:?}", self.path))
+    }
+}
+
+impl Drop for InstallerCommandFile {
+    fn drop(&mut self) {
+        self.file.take();
+        allow_err!(fs::remove_file(&self.path));
+    }
+}
+
+fn installer_command_dir() -> PathBuf {
+    let tmp = std::env::temp_dir();
+    if ["&", "@", "^"]
+        .iter()
+        .any(|s| tmp.to_string_lossy().contains(s))
     {
         if let Ok(dir) = user_accessible_folder() {
-            tmp = dir;
+            return dir;
         }
     }
-    tmp.push(format!("{}_{}.{}", crate::get_app_name(), tip, ext));
-    let mut file = std::fs::File::create(&tmp)?;
+    tmp
+}
+
+fn create_installer_command_file(ext: &str, tip: &str) -> ResultType<InstallerCommandFile> {
+    let dir = installer_command_dir();
+    for _ in 0..16 {
+        let path = dir.join(format!(
+            "{}_{}_{}.{}",
+            crate::get_app_name(),
+            tip,
+            uuid::Uuid::new_v4(),
+            ext
+        ));
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .share_mode(FILE_SHARE_READ)
+            .custom_flags(FILE_ATTRIBUTE_TEMPORARY)
+            .open(&path)
+        {
+            Ok(file) => {
+                return Ok(InstallerCommandFile {
+                    path,
+                    file: Some(file),
+                });
+            }
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(err.into()),
+        }
+    }
+    bail!("failed to create a unique installer command file")
+}
+
+fn write_cmds(cmds: String, ext: &str, tip: &str) -> ResultType<InstallerCommandFile> {
+    let mut cmds = cmds;
+    let mut command_file = create_installer_command_file(ext, tip)?;
     if ext == "bat" {
-        let tmp2 = get_undone_file(&tmp)?;
-        std::fs::File::create(&tmp2).ok();
+        let tmp2 = get_undone_file(&command_file.path)?;
+        fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp2)
+            .ok();
         cmds = format!(
             "
 {cmds}
@@ -1887,12 +2007,31 @@ if exist \"{path}\" del /f /q \"{path}\"
     if ext == "vbs" {
         let mut v: Vec<u16> = cmds.encode_utf16().collect();
         // utf8 -> utf16le which vbs support it only
-        file.write_all(to_le(&mut v))?;
+        command_file
+            .file
+            .as_mut()
+            .ok_or_else(|| anyhow!("installer command file closed before write"))?
+            .write_all(to_le(&mut v))?;
     } else {
-        file.write_all(cmds.as_bytes())?;
+        command_file
+            .file
+            .as_mut()
+            .ok_or_else(|| anyhow!("installer command file closed before write"))?
+            .write_all(cmds.as_bytes())?;
     }
-    file.sync_all()?;
-    return Ok(tmp);
+    command_file
+        .file
+        .as_mut()
+        .ok_or_else(|| anyhow!("installer command file closed before sync"))?
+        .sync_all()?;
+    command_file.file.take();
+    command_file.file = Some(
+        fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(&command_file.path)?,
+    );
+    Ok(command_file)
 }
 
 fn to_le(v: &mut [u16]) -> &[u8] {
@@ -1913,18 +2052,14 @@ fn get_undone_file(tmp: &Path) -> ResultType<PathBuf> {
 
 fn run_cmds(cmds: String, show: bool, tip: &str) -> ResultType<()> {
     let tmp = write_cmds(cmds, "bat", tip)?;
-    let tmp2 = get_undone_file(&tmp)?;
-    let tmp_fn = tmp.to_str().unwrap_or("");
-    // https://github.com/rustdesk/rustdesk/issues/6786#issuecomment-1879655410
-    // Specify cmd.exe explicitly to avoid the replacement of cmd commands.
-    let res = runas::Command::new("cmd.exe")
+    let tmp2 = get_undone_file(&tmp.path)?;
+    let tmp_fn = tmp.path_str()?;
+    let cmd = trusted_system_cmd_path()?;
+    let res = runas::Command::new(cmd)
         .args(&["/C", &tmp_fn])
         .show(show)
         .force_prompt(true)
         .status();
-    if !show {
-        allow_err!(std::fs::remove_file(tmp));
-    }
     let _ = res?;
     if tmp2.exists() {
         allow_err!(std::fs::remove_file(tmp2));
@@ -2280,7 +2415,7 @@ pub fn create_shortcut(id: &str) -> ResultType<()> {
     let shortcut = write_cmds(
         format!(
             "
-Set oWS = WScript.CreateObject(\"WScript.Shell\")
+	Set oWS = WScript.CreateObject(\"WScript.Shell\")
 strDesktop = oWS.SpecialFolders(\"Desktop\")
 Set objFSO = CreateObject(\"Scripting.FileSystemObject\")
 sLinkFile = objFSO.BuildPath(strDesktop, \"{filename}.lnk\")
@@ -2293,15 +2428,11 @@ oLink.Save
         ),
         "vbs",
         "connect_shortcut",
-    )?
-    .to_str()
-    .unwrap_or("")
-    .to_owned();
+    )?;
     std::process::Command::new("cscript")
-        .arg(&shortcut)
+        .arg(shortcut.path_str()?)
         .creation_flags(CREATE_NO_WINDOW)
         .output()?;
-    allow_err!(std::fs::remove_file(shortcut));
     Ok(())
 }
 
@@ -2859,21 +2990,44 @@ pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
 pub fn install_service() -> bool {
     log::info!("Installing service...");
     let _installing = crate::platform::InstallingService::new();
-    let (_, path, _, exe) = get_install_info();
+    let (path, exe) = match fixed_service_install_dir_and_exe() {
+        Ok(info) => info,
+        Err(err) => {
+            log::error!("Failed to resolve fixed Windows service install path: {err}");
+            return false;
+        }
+    };
+    if !Path::new(&exe).exists() {
+        log::error!("Fixed Windows service executable does not exist: {exe}");
+        return false;
+    }
     let tmp_path = std::env::temp_dir().to_string_lossy().to_string();
-    let tray_shortcut = get_tray_shortcut(&path, &exe, &exe, &tmp_path).unwrap_or_default();
+    let tray_shortcut = match get_tray_shortcut(&path, &exe, &exe, &tmp_path) {
+        Ok(shortcut) => shortcut,
+        Err(err) => {
+            log::error!("Failed to create tray shortcut command file: {err}");
+            return false;
+        }
+    };
+    let tray_shortcut_path = match tray_shortcut.path_str() {
+        Ok(path) => path.to_owned(),
+        Err(err) => {
+            log::error!("Failed to resolve tray shortcut command path: {err}");
+            return false;
+        }
+    };
     let filter = format!(" /FI \"PID ne {}\"", get_current_pid());
     crate::ipc::EXIT_RECV_CLOSE.store(false, Ordering::Relaxed);
     let cmds = format!(
         "
-chcp 65001
-taskkill /F /IM {app_name}.exe{filter}
-cscript \"{tray_shortcut}\"
-copy /Y \"{tmp_path}\\{app_name} Tray.lnk\" \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\\"
-{import_config}
-{create_service}
-if exist \"{tray_shortcut}\" del /f /q \"{tray_shortcut}\"
-    ",
+	chcp 65001
+	taskkill /F /IM {app_name}.exe{filter}
+	cscript \"{tray_shortcut_path}\"
+	copy /Y \"{tmp_path}\\{app_name} Tray.lnk\" \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\\"
+	{import_config}
+	{create_service}
+	if exist \"{tray_shortcut_path}\" del /f /q \"{tray_shortcut_path}\"
+	    ",
         app_name = crate::get_app_name(),
         import_config = get_import_config(&exe),
         create_service = get_create_service(&exe),
@@ -2929,17 +3083,17 @@ fn get_directory_size_kb(path: &str) -> u64 {
 // update_me_msi, handle_custom_client_staging_dir_before_update, plus the updater-only helpers
 // get_reg_msi_key / kill_process_by_pids (the run_uac "--update" MSI re-install) — is excised,
 // not disabled. The fork ships signed releases (§12); there is no fetch-and-run path.
-pub fn get_tray_shortcut(
+fn get_tray_shortcut(
     install_dir: &str,
     exe: &str,
     icon_source_exe: &str,
     tmp_path: &str,
-) -> ResultType<String> {
+) -> ResultType<InstallerCommandFile> {
     let shortcut_icon_location = get_shortcut_icon_location(install_dir, icon_source_exe);
-    Ok(write_cmds(
+    write_cmds(
         format!(
             "
-Set oWS = WScript.CreateObject(\"WScript.Shell\")
+	Set oWS = WScript.CreateObject(\"WScript.Shell\")
 sLinkFile = \"{tmp_path}\\{app_name} Tray.lnk\"
 
 Set oLink = oWS.CreateShortcut(sLinkFile)
@@ -2952,10 +3106,7 @@ oLink.Save
         ),
         "vbs",
         "tray_shortcut",
-    )?
-    .to_str()
-    .unwrap_or("")
-    .to_owned())
+    )
 }
 
 fn get_import_config(_exe: &str) -> String {
@@ -2991,10 +3142,14 @@ fn get_create_service(exe: &str) -> String {
     // up → "always recover", the N3 twin of the systemd start-limit fix); the failure counter resets
     // after a day of uptime so a genuine one-off does not inherit a stale 30s delay.
     format!("
-sc create {app_name} binpath= \"\\\"{exe}\\\" --service\" start= auto DisplayName= \"{app_name} Service\"
-sc failure {app_name} reset= 86400 actions= restart/5000/restart/10000/restart/30000
-sc start {app_name}
-",
+	if not exist \"{exe}\" exit /b 1
+	sc create {app_name} binpath= \"\\\"{exe}\\\" --service\" start= auto DisplayName= \"{app_name} Service\"
+	if errorlevel 1 exit /b 1
+	sc failure {app_name} reset= 86400 actions= restart/5000/restart/10000/restart/30000
+	if errorlevel 1 exit /b 1
+	sc start {app_name}
+	if errorlevel 1 exit /b 1
+	",
     app_name = crate::get_app_name())
 }
 
@@ -3002,10 +3157,7 @@ fn run_after_run_cmds(silent: bool) {
     let (_, _, _, exe) = get_install_info();
     if !silent {
         log::debug!("Spawn new window");
-        allow_err!(std::process::Command::new("cmd")
-            .args(&["/c", "timeout", "/t", "2", "&", &format!("{exe}")])
-            .creation_flags(winapi::um::winbase::CREATE_NO_WINDOW)
-            .spawn());
+        allow_err!(std::process::Command::new(&exe).spawn());
     }
     // R-X9: the stop-service toggle is excised — the tray (re)spawns with the always-present service.
     allow_err!(std::process::Command::new(&exe).arg("--tray").spawn());

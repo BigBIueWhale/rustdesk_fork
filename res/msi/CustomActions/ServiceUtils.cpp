@@ -169,7 +169,9 @@ bool QueryServiceStatusExW(LPCWSTR serviceName, SERVICE_STATUS_PROCESS* status)
 
 bool IsServiceRunningW(LPCWSTR serviceName)
 {
-    SERVICE_STATUS_PROCESS serviceStatus;
-    QueryServiceStatusExW(serviceName, &serviceStatus);
+    SERVICE_STATUS_PROCESS serviceStatus = { 0 };
+    if (!QueryServiceStatusExW(serviceName, &serviceStatus)) {
+        return false;
+    }
     return (serviceStatus.dwCurrentState == SERVICE_RUNNING);
 }

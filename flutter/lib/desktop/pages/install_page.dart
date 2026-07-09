@@ -1,13 +1,11 @@
 import 'dart:convert';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:get/get.dart';
-import 'package:path/path.dart';
 // R-G8 / §19 (de-brand): the url_launcher import is dropped — the rustdesk.com EULA/privacy link
 // it opened on the install page was already removed (a sovereign fork links to no upstream).
 import 'package:window_manager/window_manager.dart';
@@ -148,16 +146,8 @@ class _InstallPageBodyState extends State<_InstallPageBody>
                       decoration: InputDecoration(
                         contentPadding: EdgeInsets.all(0.75 * em),
                       ),
-                    ).workaroundFreezeLinuxMint().marginOnly(right: 10),
+                    ).workaroundFreezeLinuxMint(),
                   ),
-                  Obx(
-                    () => OutlinedButton.icon(
-                      icon: Icon(Icons.folder_outlined, size: 16),
-                      onPressed: btnEnabled.value ? selectInstallPath : null,
-                      style: buttonStyle,
-                      label: Text(translate('Change Path')),
-                    ),
-                  )
                 ],
               ).marginSymmetric(vertical: 2 * em),
               Option(startmenu, label: 'Create start menu shortcuts')
@@ -240,17 +230,9 @@ class _InstallPageBodyState extends State<_InstallPageBody>
       String args = '';
       if (startmenu.value) args += ' startmenu';
       if (desktopicon.value) args += ' desktopicon';
-      bind.installInstallMe(options: args, path: controller.text);
+      bind.installInstallMe(options: args, path: '');
     }
 
     do_install();
-  }
-
-  void selectInstallPath() async {
-    String? install_path = await FilePicker.platform
-        .getDirectoryPath(initialDirectory: controller.text);
-    if (install_path != null) {
-      controller.text = join(install_path, await bind.mainGetAppName());
-    }
   }
 }

@@ -25,7 +25,7 @@
 		</Property>
 
 		<!-- Component that persists the property values to the registry so they are available during an upgrade/modify -->
-		<DirectoryRef Id="INSTALLFOLDER_INNER">
+		<DirectoryRef Id="App.InstallFolder">
 			<Component Id="Product.Registry.PersistedStartMenuShortcutProperties1" Guid="62F79BCF-3367-4ACF-950F-F8BCABACDDC0" Condition="STARTMENUSHORTCUTS = 1 OR STARTMENUSHORTCUTS = &quot;Y&quot; OR STARTMENUSHORTCUTS = &quot;y&quot;">
 				<RegistryKey Root="HKCR" Key="$(var.RegKeyRoot)">
 					<RegistryValue Type="string" Name="STARTMENUSHORTCUTS" Value="1" KeyPath="yes" />

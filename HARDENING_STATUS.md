@@ -337,6 +337,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `get_cached_pk` is absent, `symmetric_crypt` uses the fallible at-rest key API rather than `get_uuid()`,
   empty wrapper keys are rejected, and current-version encryption failures return empty values rather than
   plaintext.
+- **R-S11b-3g — trust-anchor/proxy-shaped option writes are pinned empty — CLOSED 2026-07-09.**
+  Platforms: all desktop main IPC and every shared `Config` option write path. Endpoint/action:
+  `Config::set_option`, `Config::set_options`, `Data::Options(Some(_))`, and callers that sync or cache
+  the shared options map. Boundary: local option writers ↔ trust-anchor and proxy credential material.
+  Attack surface closed: the legacy `key` option cannot persist a rendezvous trust-anchor override, and
+  `proxy-username`/`proxy-password` cannot persist proxy credential material through ordinary options IPC,
+  UI/FFI setters, or server-pushed option maps. The existing `proxy-url` pin and the direct `set_socks` /
+  `get_socks` / `get_network_type` accessor checks keep the structured SOCKS store inert; this closure adds
+  the missing string-map pins for the credential-shaped companions and the trust-anchor override. `get_key`
+  continues to return the baked `RS_PUB_KEY`, now with no stored override to ignore. Verification closure:
+  `config_it` asserts the pins read empty and reject both single-key and whole-map writes; the `get_key`
+  unit test asserts rejected persistence plus constant anchor reads; `scripts/verify.sh` and
+  `scripts/apple-conform-check.sh` assert the source pins and the absence of trusted-device/key-confirmation
+  writer symbols.
 - **R-S11c-2a/R-S11c-3a — Windows `_service` raw session/SAS commands removed — CLOSED 2026-07-08.**
   Platform: Windows installed service. Endpoint/action: `_service` named pipe messages formerly carrying
   `Data::UserSid(Some(_))` for service-owned session switching and `Data::SAS` for SYSTEM-mediated
@@ -514,9 +528,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   after R-S11b-3c; Windows `share_rdp` is no longer a UI-side shell/registry write after R-S11b-3d and is
   committed only by the LocalSystem service through a typed elevated `_service` request; service identity/salt
   reads are side-effect-free after R-S11b-3e; desktop at-rest wrapper reads no longer mint key material after
-  R-S11b-3f. Remaining closure: trust-store writes, remaining service-policy writes, and any future
-  identity/salt/key/proxy write are not reachable from ordinary IPC except through named approved operations
-  with gates.
+  R-S11b-3f; and trust-anchor/proxy-shaped option keys are pinned empty after R-S11b-3g. Remaining closure:
+  any future identity/salt/key/proxy/trust-store write must be a named approved operation with an explicit
+  gate; the current source gate asserts the old trusted-device/key-confirmation writer symbols remain absent.
 **Contained hardening items from the same audit:**
 - **R-S11c-6 — Windows named-pipe endpoint hardening.** Platform: Windows desktop. Endpoint:
   predictable `\\.\pipe\<APP>\query{postfix}` names and broad create permissions for main/`_service`.

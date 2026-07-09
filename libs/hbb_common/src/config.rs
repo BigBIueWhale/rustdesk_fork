@@ -3081,12 +3081,16 @@ pub mod keys {
         // No TOTP, no Telegram-bot push (R-X7, R-D6); trusted-devices is fully excised, not just pinned.
         ("2fa", ""),
         ("bot", ""),
-        // Egress-silent: no rendezvous / relay / api / proxy (R-D6); the proxy
-        // pin uses the proxy-url key.
+        // Egress-silent: no rendezvous / relay / api / proxy (R-D6). The structured
+        // SOCKS accessors are pinned inert below; these option pins close the string map.
         (OPTION_API_SERVER, ""),
         (OPTION_CUSTOM_RENDEZVOUS_SERVER, ""),
         (OPTION_RELAY_SERVER, ""),
         (OPTION_PROXY_URL, ""),
+        (OPTION_PROXY_USERNAME, ""),
+        (OPTION_PROXY_PASSWORD, ""),
+        // The trust anchor is the baked RS_PUB_KEY; no stored override exists.
+        (OPTION_KEY, ""),
         // Transport / fallback hardening (R-D6, R-X14).
         (OPTION_ALLOW_WEBSOCKET, "N"),
         (OPTION_ALLOW_INSECURE_TLS_FALLBACK, "N"),

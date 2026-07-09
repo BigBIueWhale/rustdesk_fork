@@ -1453,41 +1453,37 @@ mod tests {
         );
     }
 
-    // R-A4 / R-X4 / §18: the rendezvous trust anchor is the baked RS_PUB_KEY, UNCONDITIONALLY.
-    // Upstream's get_key read an override — Config::get_option("key") (sync), the async IPC options
-    // blob (a local Data::Options write), or the Windows license/renamed-exe — so a malicious "config
-    // string" / installer name could re-point the client at attacker infra under the attacker's key.
-    // The fork's get_key reads NO override and collapsed both upstream sync paths to the constant.
-    // "key" is NOT a pinned option, so this set_option ACTUALLY persists the attacker value (asserted
-    // below, else the test would be vacuous) — proving get_key ignores a *stored* override. This is
-    // the runtime half of R-X4: the CLI gadgets that wrote the override are gone (verify.sh R-X4) AND
-    // the read itself is inert here.
+    // R-A4 / R-X4 / §18: the rendezvous trust anchor is the baked RS_PUB_KEY, unconditionally.
+    // Upstream's get_key read an override from Config::get_option("key"), the async IPC options blob,
+    // or the Windows license/renamed-exe. The fork has no stored override: the option is pinned empty
+    // at the config funnel, and both get_key paths return the constant.
     #[tokio::test]
-    async fn get_key_is_the_pinned_anchor_ignoring_overrides() {
+    async fn get_key_uses_pinned_anchor_and_rejects_option_override() {
         use hbb_common::config::{Config, RS_PUB_KEY};
-        // a local config/IPC write installs an attacker "key" override
         Config::set_option(
             "key".to_owned(),
             "ATTACKER-REPOINTED-TRUST-ANCHOR=".to_owned(),
         );
         assert_eq!(
             Config::get_option("key"),
-            "ATTACKER-REPOINTED-TRUST-ANCHOR=",
-            "precondition: 'key' is unpinned, so the override really is stored (else this test is vacuous)"
+            "",
+            "R-S16/R-S11b-3: the trust-anchor option must be pinned empty"
+        );
+        assert!(
+            !Config::get_options().contains_key("key"),
+            "R-S16/R-S11b-3: a rejected trust-anchor override must not be persisted"
         );
         // both invocations (the upstream sync=true Config path and sync=false IPC path) yield the anchor
         assert_eq!(
             get_key(true).await,
             RS_PUB_KEY,
-            "R-A4: the trust anchor must be the pinned RS_PUB_KEY, never the stored override"
+            "R-A4: the trust anchor must be the pinned RS_PUB_KEY, never an option override"
         );
         assert_eq!(
             get_key(false).await,
             RS_PUB_KEY,
             "R-A4: the anchor is constant across the sync flag"
         );
-        // restore the shared CONFIG singleton so the override does not leak into sibling lib tests
-        Config::set_option("key".to_owned(), String::new());
     }
 
     #[inline]

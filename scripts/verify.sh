@@ -96,14 +96,12 @@ echo "== (3b-i-r) relay-route suffix identity test (R-G6/R-SV4) =="
 echo "== (3b-ii) api-server resolution dials-nobody behavior test (R-SV6(d)) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config common::tests::api_server_resolution_defaults_to_sovereign_empty --color never
 
-# (3b-iv) R-A4/R-X4: the rendezvous trust anchor (get_key) must return the baked RS_PUB_KEY and IGNORE
-# a stored "key" override. Upstream re-pointed the client via Config::get_option("key") / the async IPC
-# options blob / the Windows license; the fork reads NO override. "key" is unpinned so the override
-# actually persists, so this proves the READ is inert (the runtime half of R-X4 — the CLI gadgets that
-# wrote it are gone, gated separately at R-X4). A regression reverting get_key to the override read
-# would pass the CLI-gadget gate but FAIL here.
-echo "== (3b-iv) trust-anchor get_key ignores a stored override (R-A4/R-X4) =="
-"${RUN[@]}" cargo test --lib --features linux-pkg-config common::tests::get_key_is_the_pinned_anchor_ignoring_overrides --color never
+# (3b-iv) R-A4/R-X4/R-S11b-3: the rendezvous trust anchor (get_key) must return the baked RS_PUB_KEY,
+# and the legacy "key" option must not persist at all. Upstream re-pointed the client via
+# Config::get_option("key") / the async IPC options blob / the Windows license; the fork pins the option
+# empty and reads NO override.
+echo "== (3b-iv) trust-anchor option is pinned empty and get_key is constant (R-A4/R-X4/R-S11b-3) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config common::tests::get_key_uses_pinned_anchor_and_rejects_option_override --color never
 
 # (3b-iii) R-S11 / Appendix C #15: the MAIN IPC channel (UI⇄service, 0o0600 same-uid) is a config-
 # integrity boundary. main_channel_admits_state_mutation is a POSITIVE allowlist over mutating
@@ -472,6 +470,12 @@ grep -q 'allows_main_channel_options_write' src/ipc.rs                          
 grep -q 'Data::Options(Some(_)) => authority.allows_main_channel_options_write()' src/ipc.rs || r_s11b3="$r_s11b3 options-main-gate-missing"
 grep -q 'current_process_allows_main_channel_options_write()' src/ipc.rs              || r_s11b3="$r_s11b3 options-handler-gate-missing"
 grep -q 'Rejected options write over ordinary IPC for service-owned server' src/ipc.rs || r_s11b3="$r_s11b3 options-handler-reject-log-missing"
+grep -qF '(OPTION_KEY, "")' libs/hbb_common/src/config.rs                             || r_s11b3="$r_s11b3 trust-anchor-option-not-pinned-empty"
+grep -qF '(OPTION_PROXY_USERNAME, "")' libs/hbb_common/src/config.rs                  || r_s11b3="$r_s11b3 proxy-username-not-pinned-empty"
+grep -qF '(OPTION_PROXY_PASSWORD, "")' libs/hbb_common/src/config.rs                  || r_s11b3="$r_s11b3 proxy-password-not-pinned-empty"
+if rg -n 'RemoveTrustedDevices|ClearTrustedDevices|main(Get|Remove|Clear)TrustedDevices|add_trusted_device|set_key_confirmed\(' src libs --glob '*.rs' >/tmp/r_s11b3_trust_writers.$$; then
+  r_s11b3="$r_s11b3 trusted-device-or-key-confirmation-writer-present:$(tr '\n' ';' </tmp/r_s11b3_trust_writers.$$)"
+fi
 grep -q 'OptionsSetResult(bool)' src/ipc.rs                                           || r_s11b3="$r_s11b3 options-typed-result-missing"
 grep -q 'Data::OptionsSetResult(false)' src/ipc.rs                                    || r_s11b3="$r_s11b3 options-reject-nack-missing"
 grep -q 'Some(Data::OptionsSetResult(true))' src/ipc.rs                               || r_s11b3="$r_s11b3 caller-accepted-ack-missing"
@@ -500,8 +504,9 @@ if [ "$(echo "$set_options_fn" | grep -c 'Config::set_options(value)')" -ne 1 ];
 fi
 grep -q 'Ok(()) => \*OPTIONS.lock().unwrap() = m' src/ui_interface.rs                 || r_s11b3="$r_s11b3 ui-cache-accepted-branch-missing"
 grep -q 'Ok(()) => {' src/ui_interface.rs                                             || r_s11b3="$r_s11b3 ui-set-option-ack-branch-missing"
+rm -f /tmp/r_s11b3_trust_writers.$$
 if [ -n "$r_s11b3" ]; then echo "  FAIL R-S11b-3 service-owned policy IPC closure:$r_s11b3"; rc=1; else
-  echo "  ok  R-S11b-3 service-owned --server rejects Data::Options(Some) before privacy/config side effects; IPC options writes require typed ACK before caller persistence and Windows share_rdp is a typed elevated _service action with no UI-side shell writer"; fi
+  echo "  ok  R-S11b-3 service-owned --server rejects Data::Options(Some) before privacy/config side effects; IPC options writes require typed ACK before caller persistence; trust-anchor/proxy credential option keys are pinned empty; trusted-device/key-confirmation writers are absent; Windows share_rdp is a typed elevated _service action with no UI-side shell writer"; fi
 
 # (3b-iii-e) R-S11c-2/R-S11c-3: Windows `_service` is not a raw privileged-action bus.
 # Session switching and SAS/HKLM-touching actions require a receiver-authorized capability API; until that
@@ -811,8 +816,9 @@ if [ -n "$r_s11c10b" ]; then echo "  FAIL R-S11c-10b Linux service lifecycle pro
 # operations: user-owned direct commit and Linux/Windows service-owned service commit. set_socks /
 # set_id / set_salt and generic Config writes are absent, not denied. The `_ => true` catch-all would let a NEW
 # bypassing write (a new Data arm) reach Config unguarded on the main channel — the exact regression.
-# set_options is EXCLUDED (it self-filters via is_option_can_save, R-S16); HwCodecConfig::set is a
-# separate hwcodec store (compiled out, R-R2b), excluded by the \b before Config. Pin the count: a new
+# set_options is EXCLUDED (it self-filters via is_option_can_save, R-S16, including trust-anchor/proxy
+# credential option keys); HwCodecConfig::set is a separate hwcodec store (compiled out, R-R2b), excluded by
+# the \b before Config. Pin the count: a new
 # bypassing write trips this, forcing the author to deny its Data variant in main_channel_admits.
 hb_cfg_writes=$(awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -cE '\bConfig::set_socks|\bConfig::set_permanent_password|\bConfig::set_id|\bConfig::set_salt|\bConfig::set\(|\bConfig2::set\(')
 # I-1 (2026-07-03): was 9; the id-write arm's set_key_confirmed(false) was excised with the dead

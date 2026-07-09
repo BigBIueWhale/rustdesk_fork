@@ -218,6 +218,12 @@ grep -q 'Socks(Option' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 socks-ipc-variant
 grep -q 'Data::Socks' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 socks-ipc-reference-present"
 grep -q 'Data::Options(Some(_)) => authority.allows_main_channel_options_write()' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-write-not-authority-gated"
 grep -q 'Rejected options write over ordinary IPC for service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-write-not-denied"
+grep -qF '(OPTION_KEY, "")' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 trust-anchor-option-not-pinned-empty"
+grep -qF '(OPTION_PROXY_USERNAME, "")' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 proxy-username-not-pinned-empty"
+grep -qF '(OPTION_PROXY_PASSWORD, "")' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 proxy-password-not-pinned-empty"
+if rg -n 'RemoveTrustedDevices|ClearTrustedDevices|main(Get|Remove|Clear)TrustedDevices|add_trusted_device|set_key_confirmed\(' "$REPO/src" "$REPO/libs" --glob '*.rs' >/tmp/r_s11b3_apple_trust_writers.$$; then
+  r_s11b2="$r_s11b2 trusted-device-or-key-confirmation-writer-present:$(tr '\n' ';' </tmp/r_s11b3_apple_trust_writers.$$)"
+fi
 grep -q 'OptionsSetResult(bool)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-typed-result-missing"
 grep -q 'Data::OptionsSetResult(false)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-reject-nack-missing"
 grep -q 'Options write requires daemon ACK' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 local-fallback-not-blocked"
@@ -232,11 +238,12 @@ grep -q 'SyncConfig' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 whole-config-ipc-va
 grep -q 'SyncConfig' "$REPO/src/server.rs" && r_s11b2="$r_s11b2 server-whole-config-import-present"
 grep -q 'Rejected permanent password storage sync from service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 storage-sync-not-denied"
 grep -q 'Rejected permanent password salt sync from service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 standalone-salt-sync-not-denied"
+rm -f /tmp/r_s11b3_apple_trust_writers.$$
 if [ -n "$r_s11b2" ]; then
   echo "  FAIL R-S11b-2a/R-S11b-3a macOS service-owned IPC closure:$r_s11b2"
   rc=1
 else
-  note "ok  R-S11b-2/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password config writes are absent; typed user-owned password/options writes are denied by source policy; macOS service-owned password provisioning uses AuthorizationExternalForm plus root-service commit; whole-config IPC is absent; storage/salt sync is denied"
+  note "ok  R-S11b-2/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password config writes are absent; typed user-owned password/options writes are denied by source policy; trust-anchor/proxy credential option keys are pinned empty; trusted-device/key-confirmation writers are absent; macOS service-owned password provisioning uses AuthorizationExternalForm plus root-service commit; whole-config IPC is absent; storage/salt sync is denied"
 fi
 
 echo "== (2b-iii) R-S11c-4a macOS CM pre-login filesystem IPC rejected =="

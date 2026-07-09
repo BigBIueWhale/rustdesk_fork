@@ -47,12 +47,16 @@ fn pinned_policy_is_the_single_source_of_truth() {
     ] {
         assert_eq!(Config::get_option(k), "N", "{k} must be pinned N");
     }
-    // Egress-silent: no rendezvous/relay/api/proxy, no 2FA/bot (empty).
+    // Egress-silent and no trust-anchor override: no rendezvous/relay/api/proxy,
+    // no stored key override, no 2FA/bot (empty).
     for k in [
         "api-server",
         "custom-rendezvous-server",
         "relay-server",
         "proxy-url",
+        "proxy-username",
+        "proxy-password",
+        "key",
         "2fa",
         "bot",
         "allow-only-conn-window-open",
@@ -72,16 +76,37 @@ fn pinned_policy_is_the_single_source_of_truth() {
     Config::set_option("access-mode".into(), "view".into()); // try to narrow to view-only
     Config::set_option("approve-mode".into(), "click".into()); // silent click-to-accept
     Config::set_option("api-server".into(), "https://evil.example".into()); // egress
+    Config::set_option("proxy-username".into(), "mitm-user".into()); // proxy credential
+    Config::set_option("proxy-password".into(), "mitm-pass".into()); // proxy credential
+    Config::set_option("key".into(), "ATTACKER-REPOINTED-TRUST-ANCHOR=".into()); // trust anchor
     Config::set_option("enable-terminal".into(), "N".into()); // try to disable the terminal
     Config::set_option("stop-service".into(), "Y".into()); // kill the service
     assert_eq!(Config::get_option("access-mode"), "full");
     assert_eq!(Config::get_option("approve-mode"), "password");
     assert_eq!(Config::get_option("api-server"), "");
+    assert_eq!(Config::get_option("proxy-username"), "");
+    assert_eq!(Config::get_option("proxy-password"), "");
+    assert_eq!(Config::get_option("key"), "");
     assert_eq!(Config::get_option("enable-terminal"), "Y");
     assert_eq!(Config::get_option("stop-service"), "N");
+
+    let mut whole_options_write = std::collections::HashMap::new();
+    whole_options_write.insert("proxy-username".to_owned(), "mitm-user".to_owned());
+    whole_options_write.insert("proxy-password".to_owned(), "mitm-pass".to_owned());
+    whole_options_write.insert("key".to_owned(), "ATTACKER-REPOINTED-TRUST-ANCHOR=".to_owned());
+    Config::set_options(whole_options_write);
+
     // The rejected writes never reach the persisted options map.
     let opts = Config::get_options();
-    for k in ["access-mode", "approve-mode", "api-server", "enable-terminal"] {
+    for k in [
+        "access-mode",
+        "approve-mode",
+        "api-server",
+        "proxy-username",
+        "proxy-password",
+        "key",
+        "enable-terminal",
+    ] {
         assert!(!opts.contains_key(k), "{k} must not be persisted");
     }
 

@@ -59,18 +59,65 @@ pub struct Distro {
 
 impl Distro {
     fn new() -> Self {
-        let name = run_cmds("awk -F'=' '/^NAME=/ {print $2}' /etc/os-release")
-            .unwrap_or_default()
-            .trim()
-            .trim_matches('"')
-            .to_string();
-        let version_id = run_cmds("awk -F'=' '/^VERSION_ID=/ {print $2}' /etc/os-release")
-            .unwrap_or_default()
-            .trim()
-            .trim_matches('"')
-            .to_string();
+        let os_release = std::fs::read_to_string("/etc/os-release")
+            .or_else(|_| std::fs::read_to_string("/usr/lib/os-release"))
+            .unwrap_or_default();
+        let name = parse_os_release_field(&os_release, "NAME").unwrap_or_default();
+        let version_id = parse_os_release_field(&os_release, "VERSION_ID").unwrap_or_default();
         Self { name, version_id }
     }
+}
+
+fn parse_os_release_field(contents: &str, key: &str) -> Option<String> {
+    let mut value = None;
+    for line in contents.lines() {
+        if let Some(parsed) = parse_os_release_line(line, key) {
+            value = Some(parsed);
+        }
+    }
+    value
+}
+
+fn parse_os_release_line(line: &str, key: &str) -> Option<String> {
+    let line = line.trim_start();
+    if line.is_empty() || line.starts_with('#') {
+        return None;
+    }
+    let (line_key, raw_value) = line.split_once('=')?;
+    if line_key != key {
+        return None;
+    }
+    Some(unquote_os_release_value(raw_value.trim()))
+}
+
+fn unquote_os_release_value(raw: &str) -> String {
+    let Some(quote) = raw.chars().next() else {
+        return String::new();
+    };
+    if !matches!(quote, '"' | '\'') || !raw.ends_with(quote) || raw.len() < 2 {
+        return raw.to_string();
+    }
+    unescape_os_release_quoted_value(&raw[1..raw.len() - 1])
+}
+
+fn unescape_os_release_quoted_value(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut chars = value.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            match chars.next() {
+                Some(next @ ('$' | '"' | '\'' | '\\' | '`')) => out.push(next),
+                Some(next) => {
+                    out.push(ch);
+                    out.push(next);
+                }
+                None => out.push(ch),
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 fn find_cmd_path(cmd: &'static str) -> String {
@@ -557,6 +604,54 @@ mod tests {
         assert!(!process_basename_is_kded(&non_numeric));
         assert!(!process_basename_is_kded(&helper));
         assert!(!process_basename_is_kded(&grep));
+    }
+
+    #[test]
+    fn r_s11c10_os_release_parser_handles_shell_compatible_assignments() {
+        let contents = r#"
+# ignored
+NAME="Ubuntu"
+VERSION_ID='24.04'
+PRETTY_NAME="Ubuntu 24.04 LTS"
+NAME="Debian GNU/Linux"
+ESCAPED="quote \" dollar \$ slash \\ tick \`"
+"#;
+
+        assert_eq!(
+            parse_os_release_field(contents, "NAME").as_deref(),
+            Some("Debian GNU/Linux")
+        );
+        assert_eq!(
+            parse_os_release_field(contents, "VERSION_ID").as_deref(),
+            Some("24.04")
+        );
+        assert_eq!(
+            parse_os_release_field(contents, "PRETTY_NAME").as_deref(),
+            Some("Ubuntu 24.04 LTS")
+        );
+        assert_eq!(
+            parse_os_release_field(contents, "ESCAPED").as_deref(),
+            Some("quote \" dollar $ slash \\ tick `")
+        );
+        assert_eq!(parse_os_release_field(contents, "ID"), None);
+    }
+
+    #[test]
+    fn r_s11c10_os_release_parser_leaves_unquoted_values_as_data() {
+        let contents = "ID=ubuntu\nVERSION_ID=24.04\nBAD LINE\nHASH=value#not-comment\n";
+
+        assert_eq!(
+            parse_os_release_field(contents, "ID").as_deref(),
+            Some("ubuntu")
+        );
+        assert_eq!(
+            parse_os_release_field(contents, "VERSION_ID").as_deref(),
+            Some("24.04")
+        );
+        assert_eq!(
+            parse_os_release_field(contents, "HASH").as_deref(),
+            Some("value#not-comment")
+        );
     }
 
     /// Test get_home_dir_trusted: returns valid path and ignores HOME env var

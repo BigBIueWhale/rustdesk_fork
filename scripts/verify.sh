@@ -859,6 +859,28 @@ fi
 if [ -n "$r_s11c10d" ]; then echo "  FAIL R-S11c-10d Linux process discovery:$r_s11c10d"; rc=1; else
   echo "  ok  R-S11c-10d Linux Xwayland/whiteboard/KDE process discovery reads /proc argv and avoids pgrep/sh -c"; fi
 
+echo "== (3b-iii-h5) Linux os-release parsing avoids shell probes (R-S11c-10e) =="
+"${RUN[@]}" cargo test -p hbb_common --lib r_s11c10_os_release --color never
+r_s11c10e=
+grep -q 'fn parse_os_release_field' libs/hbb_common/src/platform/linux.rs || r_s11c10e="$r_s11c10e no-os-release-parser"
+grep -q 'std::fs::read_to_string("/etc/os-release")' libs/hbb_common/src/platform/linux.rs || r_s11c10e="$r_s11c10e no-etc-os-release-read"
+grep -q 'std::fs::read_to_string("/usr/lib/os-release")' libs/hbb_common/src/platform/linux.rs || r_s11c10e="$r_s11c10e no-usr-lib-os-release-fallback"
+os_release_blocks=$(
+  awk '/impl Distro/,/fn find_cmd_path/' libs/hbb_common/src/platform/linux.rs
+)
+if echo "$os_release_blocks" | grep -Eq 'run_cmds|run_cmds_trim_newline|CMD_SH|sh -c|awk|grep |cat /etc/os-release'; then
+  r_s11c10e="$r_s11c10e shell-shaped-os-release-parser-regressed"
+fi
+if grep -RInE 'cat /etc/os-release|awk .* /etc/os-release|run_cmds\(".*os-release|is_opensuse|fn elevate|fn exec_privileged' src/platform/linux.rs libs/hbb_common/src/platform/linux.rs >/tmp/rd_verify_r_s11c10e.$$; then
+  cat /tmp/rd_verify_r_s11c10e.$$
+  rm -f /tmp/rd_verify_r_s11c10e.$$
+  r_s11c10e="$r_s11c10e stale-os-release-shell-or-elevation-residue"
+else
+  rm -f /tmp/rd_verify_r_s11c10e.$$
+fi
+if [ -n "$r_s11c10e" ]; then echo "  FAIL R-S11c-10e Linux os-release parsing:$r_s11c10e"; rc=1; else
+  echo "  ok  R-S11c-10e Linux distro metadata is parsed from os-release files as data, with no awk/cat/grep shell path"; fi
+
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() are now only typed password
 # operations: user-owned direct commit and Linux/Windows service-owned service commit. set_socks /

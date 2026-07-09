@@ -594,11 +594,15 @@ unreachable and a source/test/AST gate prevents reintroduction.
   desktop-discovery cluster with `users` + direct `/proc` reads and a source gate; R-S11c-10b closes the
   service lifecycle process-kill pipelines with `/proc/<pid>/exe` identity, direct `/proc/<pid>/cmdline`
   argv matching, and `kill(2)`.
+  R-S11c-10e closes Linux distro metadata parsing: `Distro::new()` now reads `/etc/os-release` or
+  `/usr/lib/os-release` directly and parses shell-compatible assignments as data; the dormant OpenSUSE
+  elevation helper that used `cat /etc/os-release | grep opensuse` is deleted with the commented elevation
+  scaffold. `scripts/verify.sh` runs the parser tests and source gate for this closure.
   Remaining closure:
-  replace the still-live service/display helper shell sites such as `os-release`/SELinux probes and
+  replace the still-live service/display helper shell sites such as SELinux probes and
   `linux_desktop_manager` probes with direct `/proc`, file parsing, or argv-only commands; no shell
   pipeline/string interpolation in root-context helpers. `xrandr|tr` is closed by R-S11c-10c; `pgrep` and
-  whiteboard Xwayland discovery are closed by R-S11c-10d.
+  whiteboard Xwayland discovery are closed by R-S11c-10d; `os-release` parsing is closed by R-S11c-10e.
 - **R-S11b-4 — config secrecy statement after IPC closure.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary

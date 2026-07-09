@@ -385,6 +385,7 @@ daemon_plist="$REPO/src/platform/privileges_scripts/daemon.plist"
 install_scpt="$REPO/src/platform/privileges_scripts/install.scpt"
 update_scpt="$REPO/src/platform/privileges_scripts/update.scpt"
 uninstall_scpt="$REPO/src/platform/privileges_scripts/uninstall.scpt"
+macos_rs="$REPO/src/platform/macos.rs"
 daemon_args_block=$(awk '/<key>ProgramArguments<\/key>/,/<\/array>/' "$daemon_plist")
 echo "$daemon_args_block" | grep -q '<string>/Applications/RustDesk.app/Contents/MacOS/service</string>' || r_s11c5="$r_s11c5 daemon-not-direct-service-exec"
 if echo "$daemon_args_block" | grep -qE '<string>/(bin|usr/bin)/(sh|bash)</string>|<string>-c</string>'; then
@@ -392,6 +393,21 @@ if echo "$daemon_args_block" | grep -qE '<string>/(bin|usr/bin)/(sh|bash)</strin
 fi
 grep -q '<string>/Library/Logs/RustDesk/rustdesk_service.err</string>' "$daemon_plist" || r_s11c5="$r_s11c5 daemon-stderr-not-library-log"
 grep -q '<string>/Library/Logs/RustDesk/rustdesk_service.out</string>' "$daemon_plist" || r_s11c5="$r_s11c5 daemon-stdout-not-library-log"
+for command in osascript launchctl open ls ioreg; do
+  if grep -Fq "Command::new(\"$command\")" "$macos_rs"; then
+    r_s11c5="$r_s11c5 macos-path-selected-$command"
+  fi
+done
+for system_path in /usr/bin/osascript /bin/launchctl /usr/bin/open /usr/sbin/ioreg; do
+  grep -Fq "\"$system_path\"" "$macos_rs" || r_s11c5="$r_s11c5 macos-absolute-${system_path##*/}-missing"
+done
+grep -q 'pub(crate) fn console_owner_uid' "$macos_rs" || r_s11c5="$r_s11c5 macos-console-owner-uid-missing"
+grep -Fq 'std::fs::metadata("/dev/console")' "$macos_rs" || r_s11c5="$r_s11c5 macos-console-owner-not-dev-console-backed"
+grep -q 'hbb_common::libc::getpwuid_r' "$macos_rs" || r_s11c5="$r_s11c5 macos-active-user-not-passwd-r-backed"
+grep -Fq 'bail!("No valid active console uid")' "$macos_rs" || r_s11c5="$r_s11c5 macos-launch-asuser-no-empty-uid-gate"
+if grep -q 'fn get_active_user(t: &str)' "$macos_rs" || grep -q 'split_whitespace().nth(2)' "$macos_rs"; then
+  r_s11c5="$r_s11c5 macos-active-user-ls-parser-present"
+fi
 if grep -q '/tmp/rustdesk_service' "$daemon_plist" "$install_scpt" "$update_scpt" "$uninstall_scpt"; then
   r_s11c5="$r_s11c5 tmp-daemon-log-path"
 fi
@@ -448,7 +464,7 @@ if [ -n "$r_s11c5" ]; then
   echo "  FAIL R-S11c-5 macOS privileged-service packaging:$r_s11c5"
   rc=1
 else
-  note "ok  R-S11c-5 LaunchDaemon uses direct argv; daemon logs live under /Library/Logs/RustDesk; install/update keep app bundle, plists, support dirs, and logs root-owned/non-user-writable"
+  note "ok  R-S11c-5 LaunchDaemon uses direct argv; local helper launchers use absolute system paths; active-console identity is /dev/console/passwd-backed"
 fi
 
 # (2c) Appendix C #2b is an ACCEPTED, documented residual: the fork SHOULD (not MUST) sandbox the decode

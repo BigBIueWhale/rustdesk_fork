@@ -406,11 +406,16 @@ unreachable and a source/test/AST gate prevents reintroduction.
   require the root-launched service executable to be a non-symlink executable file, reject source and
   destination preference symlinks, clear ACLs from app/plist/log/support/preference artifacts, recreate daemon
   log files before launchd opens them, and no longer build preference-copy paths from `/Users/` plus an
-  unquoted user name. Verification closure: `scripts/verify.sh` and
+  unquoted user name. The Rust-side launcher path is also closed against caller-controlled `PATH`: local
+  install/update/uninstall/asuser helpers invoke fixed system paths for `osascript`, `launchctl`, `open`, and
+  `ioreg`, and active-console identity no longer parses `ls /dev/console`; it reads `/dev/console` ownership
+  and resolves the username/home through `getpwuid_r`, with `launchctl asuser` failing closed on an unresolved
+  console UID. Verification closure: `scripts/verify.sh` and
   `scripts/apple-conform-check.sh` assert direct daemon `ProgramArguments`, `/Library/Logs/RustDesk` daemon
   logs, absence of `/tmp/rustdesk_service`, absence of active-user `:staff` bundle ownership, root-owned
   directory setup, ACL clearing, bundle-symlink escape rejection, preference symlink rejection, log recreation,
-  quoted plist writes, and quoted privileged plist paths.
+  quoted plist writes, quoted privileged plist paths, absolute local helper tool paths, and the
+  `/dev/console`/`getpwuid_r` active-user lookup.
 - **R-S11c-10a — Linux root-context desktop discovery shell interpolation — CLOSED 2026-07-09.**
   Platform: Linux installed service/helper discovery. Surfaces: active-user prelogin shell lookup,
   process-environment discovery for `DISPLAY`/`XAUTHORITY`/Wayland/DBus variables, direct PID environment

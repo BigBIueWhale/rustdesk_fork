@@ -29,8 +29,8 @@ use objc::{class, msg_send, sel, sel_impl};
 use scrap::{libc::c_void, quartz::ffi::*};
 use std::{
     collections::HashMap,
-    ffi::{OsStr, OsString},
-    os::unix::process::CommandExt,
+    ffi::{CStr, OsStr, OsString},
+    os::unix::{ffi::OsStringExt, fs::MetadataExt, process::CommandExt},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::Mutex,
@@ -38,6 +38,11 @@ use std::{
 
 // macOS boolean_t is defined as `int` in <mach/boolean.h>
 type BooleanT = hbb_common::libc::c_int;
+
+const MACOS_LAUNCHCTL: &str = "/bin/launchctl";
+const MACOS_OPEN: &str = "/usr/bin/open";
+const MACOS_OSASCRIPT: &str = "/usr/bin/osascript";
+const MACOS_IOREG: &str = "/usr/sbin/ioreg";
 
 static PRIVILEGES_SCRIPTS_DIR: Dir =
     include_dir!("$CARGO_MANIFEST_DIR/src/platform/privileges_scripts");
@@ -231,7 +236,7 @@ pub fn is_installed_daemon(prompt: bool) -> bool {
         .unwrap_or_default();
 
     std::thread::spawn(move || {
-        match std::process::Command::new("osascript")
+        match std::process::Command::new(MACOS_OSASCRIPT)
             .arg("-e")
             .arg(install_script_body)
             .arg(daemon_plist_body)
@@ -247,7 +252,7 @@ pub fn is_installed_daemon(prompt: bool) -> bool {
                 log::info!("Agent file {} installed: {}", agent_plist_file, installed);
                 if installed {
                     log::info!("launch server");
-                    std::process::Command::new("launchctl")
+                    std::process::Command::new(MACOS_LAUNCHCTL)
                         .args(&["load", "-w", &agent_plist_file])
                         .status()
                         .ok();
@@ -286,7 +291,7 @@ fn update_daemon_agent(agent_plist_file: String, update_source_dir: String, sync
         .unwrap_or_default();
 
     let func = move || {
-        let mut binding = std::process::Command::new("osascript");
+        let mut binding = std::process::Command::new(MACOS_OSASCRIPT);
         let cmd = binding
             .arg("-e")
             .arg(update_script_body)
@@ -340,7 +345,7 @@ pub fn uninstall_service(show_new_window: bool, sync: bool) -> bool {
     };
 
     let func = move || {
-        match std::process::Command::new("osascript")
+        match std::process::Command::new(MACOS_OSASCRIPT)
             .arg("-e")
             .arg(script_body)
             .status()
@@ -364,12 +369,12 @@ pub fn uninstall_service(show_new_window: bool, sync: bool) -> bool {
                         std::thread::sleep(std::time::Duration::from_millis(300));
                     }
                     crate::ipc::set_option("stop-service", "Y");
-                    std::process::Command::new("launchctl")
+                    std::process::Command::new(MACOS_LAUNCHCTL)
                         .args(&["remove", &format!("{}_server", crate::get_full_name())])
                         .status()
                         .ok();
                     if show_new_window {
-                        std::process::Command::new("open")
+                        std::process::Command::new(MACOS_OPEN)
                             .arg("-n")
                             .arg(&format!("/Applications/{}.app", crate::get_app_name()))
                             .spawn()
@@ -651,37 +656,75 @@ fn unsafe_get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
     }
 }
 
-fn get_active_user(t: &str) -> String {
-    if let Ok(output) = std::process::Command::new("ls")
-        .args(vec![t, "/dev/console"])
-        .output()
-    {
-        for line in String::from_utf8_lossy(&output.stdout).lines() {
-            if let Some(n) = line.split_whitespace().nth(2) {
-                return n.to_owned();
+pub(crate) fn console_owner_uid() -> Option<u32> {
+    std::fs::metadata("/dev/console")
+        .ok()
+        .map(|metadata| metadata.uid())
+}
+
+fn active_console_passwd_entry() -> Option<(String, PathBuf)> {
+    passwd_entry_for_uid(console_owner_uid()?)
+}
+
+fn passwd_entry_for_uid(uid: u32) -> Option<(String, PathBuf)> {
+    let mut buffer_len = 16 * 1024;
+    for _ in 0..4 {
+        let mut passwd = unsafe { std::mem::zeroed::<hbb_common::libc::passwd>() };
+        let mut result: *mut hbb_common::libc::passwd = std::ptr::null_mut();
+        let mut buffer = vec![0u8; buffer_len];
+        let rc = unsafe {
+            hbb_common::libc::getpwuid_r(
+                uid as hbb_common::libc::uid_t,
+                &mut passwd,
+                buffer.as_mut_ptr() as *mut hbb_common::libc::c_char,
+                buffer.len(),
+                &mut result,
+            )
+        };
+        if rc == 0 {
+            if result.is_null() {
+                return None;
             }
+            return passwd_name_home(&passwd);
         }
+        if rc != hbb_common::libc::ERANGE {
+            return None;
+        }
+        buffer_len *= 2;
     }
-    "".to_owned()
+    None
+}
+
+fn passwd_name_home(passwd: &hbb_common::libc::passwd) -> Option<(String, PathBuf)> {
+    if passwd.pw_name.is_null() || passwd.pw_dir.is_null() {
+        return None;
+    }
+    let name = unsafe { CStr::from_ptr(passwd.pw_name) }
+        .to_string_lossy()
+        .into_owned();
+    let home_bytes = unsafe { CStr::from_ptr(passwd.pw_dir) }.to_bytes().to_vec();
+    if name.is_empty() || home_bytes.is_empty() {
+        return None;
+    }
+    Some((name, PathBuf::from(OsString::from_vec(home_bytes))))
 }
 
 pub fn get_active_username() -> String {
-    get_active_user("-l")
+    active_console_passwd_entry()
+        .map(|(username, _)| username)
+        .unwrap_or_default()
 }
 
 pub fn get_active_userid() -> String {
-    get_active_user("-n")
+    console_owner_uid()
+        .map(|uid| uid.to_string())
+        .unwrap_or_default()
 }
 
 pub fn get_active_user_home() -> Option<PathBuf> {
-    let username = get_active_username();
-    if !username.is_empty() {
-        let home = PathBuf::from(format!("/Users/{}", username));
-        if home.exists() {
-            return Some(home);
-        }
-    }
-    None
+    active_console_passwd_entry()
+        .map(|(_, home)| home)
+        .filter(|home| home.is_absolute() && home.exists())
 }
 
 pub fn is_prelogin() -> bool {
@@ -700,7 +743,7 @@ pub fn is_prelogin() -> bool {
 // ...
 // ```
 pub fn is_locked() -> bool {
-    match std::process::Command::new("ioreg")
+    match std::process::Command::new(MACOS_IOREG)
         .arg("-n")
         .arg("Root")
         .arg("-d1")
@@ -738,6 +781,9 @@ where
     V: AsRef<OsStr>,
 {
     let uid = get_active_userid();
+    if uid.is_empty() {
+        bail!("No valid active console uid");
+    }
     let cmd = std::env::current_exe()?;
     let mut args = vec![
         OsString::from("asuser"),
@@ -752,7 +798,9 @@ where
     }
     args.push(cmd.into_os_string());
     args.extend(arg.iter().map(|value| OsString::from(*value)));
-    let task = std::process::Command::new("launchctl").args(args).spawn()?;
+    let task = std::process::Command::new(MACOS_LAUNCHCTL)
+        .args(args)
+        .spawn()?;
     Ok(Some(task))
 }
 

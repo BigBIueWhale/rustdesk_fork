@@ -905,6 +905,34 @@ fi
 if [ -n "$r_s11c10f" ]; then echo "  FAIL R-S11c-10f Linux desktop-manager headless detection:$r_s11c10f"; rc=1; else
   echo "  ok  R-S11c-10f Linux desktop-manager headless detection uses fixed Xorg paths and direct xsession directory reads, with no shell command probe"; fi
 
+echo "== (3b-iii-h7) Linux SELinux status avoids shell probes (R-S11c-10g) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_selinux --color never
+r_s11c10g=
+grep -q 'const SELINUX_ENFORCE_PATHS' src/platform/linux.rs || r_s11c10g="$r_s11c10g no-fixed-selinux-enforce-paths"
+grep -q '"/sys/fs/selinux/enforce"' src/platform/linux.rs || r_s11c10g="$r_s11c10g no-sysfs-selinux-enforce-read"
+grep -q '"/selinux/enforce"' src/platform/linux.rs || r_s11c10g="$r_s11c10g no-legacy-selinux-enforce-read"
+grep -q 'selinux_enforcing_from_paths(&SELINUX_ENFORCE_PATHS)' src/platform/linux.rs || r_s11c10g="$r_s11c10g no-ordered-selinux-path-reader"
+grep -q 'fn selinux_enforce_file_is_enforcing(path: &Path) -> bool' src/platform/linux.rs || r_s11c10g="$r_s11c10g no-selinux-file-reader"
+grep -q 'fn parse_selinux_enforce(contents: &str) -> Option<bool>' src/platform/linux.rs || r_s11c10g="$r_s11c10g no-selinux-enforce-parser"
+grep -q '"1" => Some(true)' src/platform/linux.rs || r_s11c10g="$r_s11c10g parser-missing-enforcing-value"
+grep -q '"0" => Some(false)' src/platform/linux.rs || r_s11c10g="$r_s11c10g parser-missing-permissive-value"
+selinux_status_blocks=$(
+  awk '/const SELINUX_ENFORCE_PATHS/,/fn parse_selinux_enforce/' src/platform/linux.rs
+  awk '/fn parse_selinux_enforce/,/^}/' src/platform/linux.rs
+)
+if echo "$selinux_status_blocks" | grep -Eq 'run_cmds|run_cmds_trim_newline|CMD_SH|sh -c|Command::new\("(getenforce|sestatus)"'; then
+  r_s11c10g="$r_s11c10g shell-shaped-selinux-status-regressed"
+fi
+if grep -RInE 'getenforce|sestatus|run_cmds\("getenforce"|run_cmds\("sestatus"' src/platform/linux.rs >/tmp/rd_verify_r_s11c10g.$$; then
+  cat /tmp/rd_verify_r_s11c10g.$$
+  rm -f /tmp/rd_verify_r_s11c10g.$$
+  r_s11c10g="$r_s11c10g stale-selinux-shell-probe"
+else
+  rm -f /tmp/rd_verify_r_s11c10g.$$
+fi
+if [ -n "$r_s11c10g" ]; then echo "  FAIL R-S11c-10g Linux SELinux status probing:$r_s11c10g"; rc=1; else
+  echo "  ok  R-S11c-10g Linux SELinux status reads selinuxfs enforce files as data, with no getenforce/sestatus shell probe"; fi
+
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() are now only typed password
 # operations: user-owned direct commit and Linux/Windows service-owned service commit. set_socks /

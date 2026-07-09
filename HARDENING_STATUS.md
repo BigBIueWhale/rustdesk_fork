@@ -443,6 +443,17 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `/proc` entries are skipped. Verification closure: `scripts/verify.sh` runs the
   `r_s11c10_process_discovery_*` and `r_s11c10_kde_session_*` unit tests and asserts the touched discovery
   blocks contain no `run_cmds`, `CMD_SH`, `sh -c`, `pgrep`, or grep-shaped process probe.
+- **R-S11c-10g — Linux SELinux status shell probes — CLOSED 2026-07-09.**
+  Platform: Linux service/display helper status path. Surface: `is_selinux_enforcing()` in
+  `src/platform/linux.rs`. Boundary: root/service helper status lookup ↔ local shell command execution.
+  Attack surface closed: SELinux status no longer invokes `getenforce` or parses `sestatus` through
+  `run_cmds`. The helper reads the fixed selinuxfs runtime enforcement files `/sys/fs/selinux/enforce` and
+  legacy `/selinux/enforce` as ordered data, uses the first readable valid state, treats only the kernel
+  boolean value `1` as enforcing, and treats
+  missing, unreadable, malformed, disabled, or permissive state as not enforcing for the UI status check.
+  Verification closure: `scripts/verify.sh` runs the `r_s11c10_selinux_*` unit tests and asserts the fixed
+  selinuxfs paths, parser, file reader, absence of `getenforce`/`sestatus`, and absence of shell-shaped
+  SELinux status probing in the touched block.
 - **R-S11c-7 — Linux `_pa` audio helper capability — CLOSED 2026-07-09.** Platform: Linux desktop while the
   `_pa` helper is running for local audio capture. Endpoint/action: `_pa` IPC stream formerly accepted a
   bare PulseAudio source request and then streamed raw monitor/input frames. Boundary: same-UID local process
@@ -602,12 +613,15 @@ unreachable and a source/test/AST gate prevents reintroduction.
   now checks a fixed set of absolute Xorg paths and reads `/usr/share/xsessions` directly for `.desktop`
   entries; it no longer shells through `which` or `ls`, and the bare `Xorg` PATH fallback is gone.
   `scripts/verify.sh` runs the focused desktop-manager tests and source gate.
+  R-S11c-10g closes Linux SELinux status probing: `is_selinux_enforcing()` reads selinuxfs `enforce` files
+  directly, treats only `1` as enforcing, and no longer shells through `getenforce` or parses `sestatus`.
+  `scripts/verify.sh` runs the focused parser tests and source gate.
   Remaining closure:
-  replace the still-live service/display helper shell sites such as SELinux probes with direct kernel/file
-  APIs or argv-only commands; no shell
-  pipeline/string interpolation in root-context helpers. `xrandr|tr` is closed by R-S11c-10c; `pgrep` and
-  whiteboard Xwayland discovery are closed by R-S11c-10d; `os-release` parsing is closed by R-S11c-10e;
-  `linux_desktop_manager` probing is closed by R-S11c-10f.
+  no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
+  root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
+  `pgrep` and whiteboard Xwayland discovery are closed by R-S11c-10d; `os-release` parsing is closed by
+  R-S11c-10e; `linux_desktop_manager` probing is closed by R-S11c-10f; SELinux status probing is closed by
+  R-S11c-10g.
 - **R-S11b-4 — config secrecy statement after IPC closure.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary

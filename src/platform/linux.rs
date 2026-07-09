@@ -2479,21 +2479,89 @@ pub fn is_x11() -> bool {
     true
 }
 
+const SELINUX_ENFORCE_PATHS: [&str; 2] = ["/sys/fs/selinux/enforce", "/selinux/enforce"];
+
 #[inline]
 pub fn is_selinux_enforcing() -> bool {
-    match run_cmds("getenforce") {
-        Ok(output) => output.trim() == "Enforcing",
-        Err(_) => match run_cmds("sestatus") {
-            Ok(output) => {
-                for line in output.lines() {
-                    if line.contains("Current mode:") {
-                        return line.contains("enforcing");
-                    }
-                }
-                false
-            }
-            Err(_) => false,
-        },
+    selinux_enforcing_from_paths(&SELINUX_ENFORCE_PATHS)
+}
+
+fn selinux_enforcing_from_paths(paths: &[&str]) -> bool {
+    for path in paths {
+        if let Some(enforcing) = selinux_enforce_file_state(Path::new(path)) {
+            return enforcing;
+        }
+    }
+    false
+}
+
+fn selinux_enforce_file_state(path: &Path) -> Option<bool> {
+    std::fs::read_to_string(path)
+        .map(|contents| parse_selinux_enforce(&contents))
+        .ok()
+        .flatten()
+}
+
+fn selinux_enforce_file_is_enforcing(path: &Path) -> bool {
+    selinux_enforce_file_state(path).unwrap_or(false)
+}
+
+fn parse_selinux_enforce(contents: &str) -> Option<bool> {
+    match contents.trim() {
+        "1" => Some(true),
+        "0" => Some(false),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod selinux_tests {
+    use super::*;
+
+    #[test]
+    fn r_s11c10_selinux_enforce_parser_accepts_only_kernel_enforcing_value() {
+        assert_eq!(parse_selinux_enforce("1\n"), Some(true));
+        assert_eq!(parse_selinux_enforce(" 1 "), Some(true));
+        assert_eq!(parse_selinux_enforce("0\n"), Some(false));
+        assert_eq!(parse_selinux_enforce("Enforcing\n"), None);
+        assert_eq!(parse_selinux_enforce("Current mode: enforcing\n"), None);
+        assert_eq!(parse_selinux_enforce("1 0\n"), None);
+        assert_eq!(parse_selinux_enforce(""), None);
+    }
+
+    #[test]
+    fn r_s11c10_selinux_enforce_file_read_fails_closed() {
+        let missing = std::env::temp_dir().join(format!(
+            "rustdesk-missing-selinux-enforce-{}",
+            std::process::id()
+        ));
+        assert!(!selinux_enforce_file_is_enforcing(&missing));
+    }
+
+    #[test]
+    fn r_s11c10_selinux_enforce_paths_use_first_valid_state() {
+        let root = std::env::temp_dir().join(format!(
+            "rustdesk-selinux-enforce-{}",
+            std::process::id()
+        ));
+        let primary = root.join("primary");
+        let fallback = root.join("fallback");
+        std::fs::create_dir_all(&root).unwrap();
+
+        std::fs::write(&primary, "0\n").unwrap();
+        std::fs::write(&fallback, "1\n").unwrap();
+        assert!(!selinux_enforcing_from_paths(&[
+            primary.to_str().unwrap(),
+            fallback.to_str().unwrap()
+        ]));
+
+        std::fs::write(&primary, "unknown\n").unwrap();
+        assert!(selinux_enforcing_from_paths(&[
+            primary.to_str().unwrap(),
+            fallback.to_str().unwrap()
+        ]));
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
 

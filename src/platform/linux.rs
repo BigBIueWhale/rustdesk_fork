@@ -16,6 +16,7 @@ use libxdo_sys::{self, xdo_t, Window};
 use std::{
     cell::RefCell,
     ffi::{OsStr, OsString},
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     process::{Child, Command},
     string::String,
@@ -557,7 +558,6 @@ fn get_all_term_values(uid: &str) -> Vec<String> {
 
         // Check if process belongs to the specified uid
         if let Ok(meta) = std::fs::metadata(&proc_path) {
-            use std::os::unix::fs::MetadataExt;
             if meta.uid() != uid_num {
                 continue;
             }
@@ -970,17 +970,14 @@ pub fn get_active_username() -> String {
 }
 
 pub fn get_user_home_by_name(username: &str) -> Option<PathBuf> {
-    return match get_user_by_name(username) {
-        None => None,
-        Some(user) => {
-            let home = user.home_dir();
-            if Path::is_dir(home) {
-                Some(PathBuf::from(home))
-            } else {
-                None
-            }
+    get_user_by_name(username).and_then(|user| {
+        let home = user.home_dir();
+        if Path::is_dir(home) {
+            Some(PathBuf::from(home))
+        } else {
+            None
         }
-    };
+    })
 }
 
 pub fn get_active_user_home() -> Option<PathBuf> {
@@ -1021,10 +1018,17 @@ pub fn is_prelogin() -> bool {
         return false;
     }
     let name = get_active_username();
-    if let Ok(res) = run_cmds(&format!("getent passwd {}", name)) {
-        return res.contains("/bin/false") || res.contains("/usr/sbin/nologin");
-    }
-    false
+    get_user_by_name(&name)
+        .map(|user| is_non_login_shell(user.shell()))
+        .unwrap_or(false)
+}
+
+fn is_non_login_shell(shell: &Path) -> bool {
+    shell == Path::new("/bin/false")
+        || shell
+            .file_name()
+            .map(|name| name == OsStr::new("nologin"))
+            .unwrap_or(false)
 }
 
 // Check "Lock".
@@ -1230,6 +1234,121 @@ pub fn is_installed() -> bool {
 /// # Implementation notes
 /// - Returns values from a *single* best-matching process_pat (for consistency).
 /// - Avoids repeated scanning by parsing `environ` once per process.
+#[derive(Debug)]
+struct ProcCommand {
+    pid: u32,
+    args: Vec<String>,
+}
+
+fn proc_dir_is_owned_by_uid(proc_path: &Path, uid: u32) -> bool {
+    std::fs::metadata(proc_path)
+        .map(|meta| meta.uid() == uid)
+        .unwrap_or(false)
+}
+
+fn proc_entry_pid(entry: &std::fs::DirEntry) -> Option<u32> {
+    let file_name = entry.file_name();
+    let pid_str = file_name.to_str()?;
+    if !pid_str.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    pid_str.parse::<u32>().ok()
+}
+
+fn read_proc_cmdline_args(proc_path: &Path) -> Option<Vec<String>> {
+    let cmdline = std::fs::read(proc_path.join("cmdline")).ok()?;
+    let args = cmdline
+        .split(|&b| b == 0)
+        .filter(|part| !part.is_empty())
+        .map(|part| String::from_utf8_lossy(part).into_owned())
+        .collect::<Vec<_>>();
+    if args.is_empty() {
+        None
+    } else {
+        Some(args)
+    }
+}
+
+fn proc_cmdline_string(args: &[String]) -> String {
+    args.join(" ")
+}
+
+fn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {
+    let Ok(uid_num) = uid.parse::<u32>() else {
+        return Vec::new();
+    };
+    let Ok(re) = Regex::new(process_pat) else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+
+    let mut processes = Vec::new();
+    for entry in entries.flatten() {
+        let Some(pid) = proc_entry_pid(&entry) else {
+            continue;
+        };
+        let proc_path = entry.path();
+        if !proc_dir_is_owned_by_uid(&proc_path, uid_num) {
+            continue;
+        }
+        let Some(args) = read_proc_cmdline_args(&proc_path) else {
+            continue;
+        };
+        if re.is_match(&proc_cmdline_string(&args)) {
+            processes.push(ProcCommand { pid, args });
+        }
+    }
+
+    processes.sort_by_key(|process| process.pid);
+    processes
+}
+
+fn any_process_cmdline_contains(needle: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let Some(_) = proc_entry_pid(&entry) else {
+            continue;
+        };
+        let Some(args) = read_proc_cmdline_args(&entry.path()) else {
+            continue;
+        };
+        if proc_cmdline_string(&args).contains(needle) {
+            return true;
+        }
+    }
+    false
+}
+
+fn proc_env_name_is_valid(name: &str) -> bool {
+    !name.is_empty() && !name.as_bytes().contains(&b'=') && !name.as_bytes().contains(&0)
+}
+
+fn proc_environ_value(environ: &[u8], name: &str) -> Option<String> {
+    if !proc_env_name_is_valid(name) {
+        return None;
+    }
+    let name = name.as_bytes();
+    for part in environ.split(|&b| b == 0) {
+        if part.len() <= name.len() || !part.starts_with(name) || part[name.len()] != b'=' {
+            continue;
+        }
+        return Some(String::from_utf8_lossy(&part[name.len() + 1..]).into_owned());
+    }
+    None
+}
+
+fn read_proc_environ_value(pid: u32, name: &str) -> Option<String> {
+    let environ = std::fs::read(PathBuf::from(format!("/proc/{pid}/environ"))).ok()?;
+    proc_environ_value(&environ, name)
+}
+
 fn get_envs<'a>(
     uid: &str,
     process_pat: &str,
@@ -1245,12 +1364,9 @@ fn get_envs<'a>(
     let empty: std::collections::HashMap<&'a str, String> =
         names.iter().map(|&n| (n, String::new())).collect();
 
-    let Ok(uid_num) = uid.parse::<u32>() else {
+    if names.iter().any(|name| !proc_env_name_is_valid(name)) {
         return empty;
-    };
-    let Ok(re) = Regex::new(process_pat) else {
-        return empty;
-    };
+    }
 
     // Used for stable tie-breaking when multiple processes match.
     // Higher bits correspond to earlier entries in `names`.
@@ -1260,46 +1376,11 @@ fn get_envs<'a>(
     let mut best = empty.clone();
     let mut best_count = 0usize;
     let mut best_mask: u64 = 0;
+    let mut best_pid: u32 = 0;
 
-    // Iterate /proc to find matching processes
-    let Ok(entries) = std::fs::read_dir("/proc") else {
-        return best;
-    };
-
-    for entry in entries.flatten() {
-        let file_name = entry.file_name();
-        let Some(pid_str) = file_name.to_str() else {
-            continue;
-        };
-        if !pid_str.chars().all(|c| c.is_ascii_digit()) {
-            continue;
-        }
-
-        let proc_path = entry.path();
-
-        // Check if process belongs to the specified uid
-        if let Ok(meta) = std::fs::metadata(&proc_path) {
-            use std::os::unix::fs::MetadataExt;
-            if meta.uid() != uid_num {
-                continue;
-            }
-        } else {
-            continue;
-        }
-
-        // Check cmdline matches process pattern
-        let cmdline_path = proc_path.join("cmdline");
-        let Ok(cmdline) = std::fs::read(&cmdline_path) else {
-            continue;
-        };
-        let cmdline_str = String::from_utf8_lossy(&cmdline).replace('\0', " ");
-        if !re.is_match(&cmdline_str) {
-            continue;
-        }
-
-        // Read environ and extract matching variables
-        let environ_path = proc_path.join("environ");
-        let Ok(environ) = std::fs::read(&environ_path) else {
+    for process in matching_process_cmdlines(uid, process_pat) {
+        let Ok(environ) = std::fs::read(PathBuf::from(format!("/proc/{}/environ", process.pid)))
+        else {
             continue;
         };
 
@@ -1332,57 +1413,37 @@ fn get_envs<'a>(
                             found_mask |= bit;
                         }
                     }
-
-                    if found_count == names.len() {
-                        return found;
-                    }
                 }
             }
         }
 
-        if found_count > best_count || (found_count == best_count && found_mask > best_mask) {
+        if found_count > best_count
+            || (found_count == best_count && found_mask > best_mask)
+            || (found_count == best_count && found_mask == best_mask && process.pid > best_pid)
+        {
             best = found;
             best_count = found_count;
             best_mask = found_mask;
+            best_pid = process.pid;
         }
     }
 
     best
 }
 
-/// Deprecated: Use `get_envs` instead.
-///
-/// https://github.com/rustdesk/rustdesk/discussions/11959
-///
-/// **Note**: This function is retained for conservative migration. The plan is to gradually
-/// transition all callers to `get_envs` after it proves stable and reliable. Once `get_envs`
-/// is confirmed to work correctly across all use cases, this function will be removed entirely.
-///
-/// # Arguments
-/// * `name` - Environment variable name to retrieve
-/// * `uid` - User ID to filter processes
-/// * `process` - Process name pattern to match
-///
-/// # Returns
-/// The environment variable value, or empty string if not found
 #[inline]
 fn get_env(name: &str, uid: &str, process: &str) -> String {
-    let cmd = format!("ps -u {} -f | grep -E '{}' | grep -v 'grep' | tail -1 | awk '{{print $2}}' | xargs -I__ cat /proc/__/environ 2>/dev/null | tr '\\0' '\\n' | grep '^{}=' | tail -1 | sed 's/{}=//g'", uid, process, name, name);
-    if let Ok(x) = run_cmds(&cmd) {
-        x.trim_end().to_string()
-    } else {
-        "".to_owned()
-    }
+    get_envs(uid, process, &[name])
+        .remove(name)
+        .unwrap_or_default()
 }
 
 #[inline]
 fn get_env_from_pid(name: &str, pid: &str) -> String {
-    let cmd = format!("cat /proc/{}/environ 2>/dev/null | tr '\\0' '\\n' | grep '^{}=' | tail -1 | sed 's/{}=//g'", pid, name, name);
-    if let Ok(x) = run_cmds(&cmd) {
-        x.trim_end().to_string()
-    } else {
-        "".to_owned()
-    }
+    pid.parse::<u32>()
+        .ok()
+        .and_then(|pid| read_proc_environ_value(pid, name))
+        .unwrap_or_default()
 }
 
 #[link(name = "gtk-3")]
@@ -1739,52 +1800,43 @@ mod desktop {
         }
 
         fn get_home(&mut self) {
-            self.home = "".to_string();
-
-            let cmd = format!(
-                "getent passwd '{}' | awk -F':' '{{print $6}}'",
-                &self.username
-            );
-            self.home = run_cmds_trim_newline(&cmd).unwrap_or(format!("/home/{}", &self.username));
+            self.home = get_user_home_by_name(&self.username)
+                .map(|home| home.to_string_lossy().to_string())
+                .unwrap_or_else(|| format!("/home/{}", &self.username));
         }
 
         fn get_xauth_from_xorg(&mut self) {
-            if let Ok(output) = run_cmds(&format!(
-                "ps -u {} -f | grep 'Xorg' | grep -v 'grep'",
-                &self.uid
-            )) {
-                for line in output.lines() {
-                    let mut auth_found = false;
-
-                    for v in line.split_whitespace() {
-                        if v == "-auth" {
-                            auth_found = true;
-                        } else if auth_found {
-                            if std::path::Path::new(v).is_absolute()
-                                && std::path::Path::new(v).exists()
-                            {
-                                self.xauth = v.to_string();
-                            } else {
-                                if let Some(pid) = line.split_whitespace().nth(1) {
-                                    let mut base_dir: String = String::from("/home"); // default pattern
-                                    let home_dir = get_env_from_pid("HOME", pid);
-                                    if home_dir.is_empty() {
-                                        if let Some(home) = get_user_home_by_name(&self.username) {
-                                            base_dir = home.as_path().to_string_lossy().to_string();
-                                        };
-                                    } else {
-                                        base_dir = home_dir;
-                                    }
-                                    if Path::new(&base_dir).exists() {
-                                        self.xauth = format!("{}/{}", base_dir, v);
-                                    };
-                                } else {
-                                    // unreachable!
-                                }
-                            }
-                            return;
-                        }
+            for process in matching_process_cmdlines(&self.uid, "Xorg") {
+                let mut args = process.args.iter();
+                while let Some(arg) = args.next() {
+                    if arg != "-auth" {
+                        continue;
                     }
+                    let Some(auth) = args.next() else {
+                        continue;
+                    };
+                    let auth_path = Path::new(auth);
+                    if auth_path.is_absolute() {
+                        if auth_path.exists() {
+                            self.xauth = auth.to_string();
+                        }
+                        return;
+                    }
+                    let home_dir = get_env_from_pid("HOME", &process.pid.to_string());
+                    let base_dir = if home_dir.is_empty() {
+                        get_user_home_by_name(&self.username)
+                            .map(|home| home.to_string_lossy().to_string())
+                            .unwrap_or_else(|| "/home".to_string())
+                    } else {
+                        home_dir
+                    };
+                    if Path::new(&base_dir).exists() {
+                        self.xauth = Path::new(&base_dir)
+                            .join(auth)
+                            .to_string_lossy()
+                            .to_string();
+                    }
+                    return;
                 }
             }
         }
@@ -1887,16 +1939,10 @@ mod desktop {
         }
 
         fn set_is_subprocess(&mut self) {
-            self.is_rustdesk_subprocess = false;
-            let cmd = format!(
-                "ps -ef | grep '{}/xorg.conf' | grep -v grep | wc -l",
+            self.is_rustdesk_subprocess = any_process_cmdline_contains(&format!(
+                "/etc/{}/xorg.conf",
                 crate::get_app_name().to_lowercase()
-            );
-            if let Ok(res) = run_cmds(&cmd) {
-                if res.trim() != "0" {
-                    self.is_rustdesk_subprocess = true;
-                }
-            }
+            ));
         }
 
         pub fn refresh(&mut self) {
@@ -1965,6 +2011,29 @@ mod desktop {
                     }
                 }
             }
+        }
+
+        #[test]
+        fn r_s11c10_proc_environ_value_matches_exact_key() {
+            let environ = b"DISPLAY=:1\0DISPLAY_SUFFIX=bad\0XAUTHORITY=/tmp/auth\0";
+            assert_eq!(
+                proc_environ_value(environ, "DISPLAY"),
+                Some(":1".to_string())
+            );
+            assert_eq!(
+                proc_environ_value(environ, "XAUTHORITY"),
+                Some("/tmp/auth".to_string())
+            );
+            assert_eq!(proc_environ_value(environ, "MISSING"), None);
+            assert_eq!(proc_environ_value(environ, "BAD=KEY"), None);
+        }
+
+        #[test]
+        fn r_s11c10_non_login_shell_detection_is_path_based() {
+            assert!(is_non_login_shell(Path::new("/bin/false")));
+            assert!(is_non_login_shell(Path::new("/usr/sbin/nologin")));
+            assert!(is_non_login_shell(Path::new("/sbin/nologin")));
+            assert!(!is_non_login_shell(Path::new("/bin/bash")));
         }
     }
 }

@@ -544,6 +544,31 @@ grep -q 'arg(&active_user_home)' src/platform/macos.rs || r_s11c5="$r_s11c5 upda
 if [ -n "$r_s11c5" ]; then echo "  FAIL R-S11c-5 macOS privileged service packaging:$r_s11c5"; rc=1; else
   echo "  ok  R-S11c-5 macOS LaunchDaemon is direct-argv; daemon logs are under /Library/Logs/RustDesk; install/update keep root-owned non-user-writable service artifacts"; fi
 
+# (3b-iii-h) R-S11c-10a: Linux root-context desktop discovery must not build passwd/proc
+# lookups through a shell. This is a narrow sub-slice: env/home/Xorg/subprocess discovery
+# only. Lifecycle kill/service commands and display-tool invocations remain separate R-S11c-10 work.
+echo "== (3b-iii-h) Linux desktop discovery avoids root shell interpolation (R-S11c-10a) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_ --color never
+r_s11c10a=
+grep -q 'fn matching_process_cmdlines' src/platform/linux.rs || r_s11c10a="$r_s11c10a no-proc-cmdline-helper"
+grep -q 'fn proc_environ_value' src/platform/linux.rs || r_s11c10a="$r_s11c10a no-proc-environ-parser"
+grep -q 'is_non_login_shell(user.shell())' src/platform/linux.rs || r_s11c10a="$r_s11c10a prelogin-not-passwd-api-backed"
+grep -q 'matching_process_cmdlines(&self.uid, "Xorg")' src/platform/linux.rs || r_s11c10a="$r_s11c10a xorg-discovery-not-proc-backed"
+grep -q 'any_process_cmdline_contains(&format!' src/platform/linux.rs || r_s11c10a="$r_s11c10a subprocess-discovery-not-proc-backed"
+linux_discovery_blocks=$(
+  awk '/pub fn is_prelogin/,/fn is_non_login_shell/' src/platform/linux.rs
+  awk '/fn get_env\(/,/fn get_env_from_pid/' src/platform/linux.rs
+  awk '/fn get_env_from_pid/,/#\[link/' src/platform/linux.rs
+  awk '/fn get_home\(&mut self\)/,/fn get_xauth_from_xorg/' src/platform/linux.rs
+  awk '/fn get_xauth_from_xorg/,/fn get_xauth_x11/' src/platform/linux.rs
+  awk '/fn set_is_subprocess/,/pub fn refresh/' src/platform/linux.rs
+)
+if echo "$linux_discovery_blocks" | grep -Eq 'run_cmds|run_cmds_trim_newline|getent passwd|ps -[uef]|cat /proc|grep |awk |sed |xargs|CMD_SH'; then
+  r_s11c10a="$r_s11c10a shell-shaped-discovery-regressed"
+fi
+if [ -n "$r_s11c10a" ]; then echo "  FAIL R-S11c-10a Linux desktop discovery shell interpolation:$r_s11c10a"; rc=1; else
+  echo "  ok  R-S11c-10a Linux prelogin/home/env/Xorg/subprocess discovery uses users+/proc helpers, not shell pipelines"; fi
+
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() are now only typed password
 # operations: user-owned direct commit and Linux/Windows service-owned service commit. set_socks /

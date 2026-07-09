@@ -369,6 +369,17 @@ unreachable and a source/test/AST gate prevents reintroduction.
   logs, absence of `/tmp/rustdesk_service`, absence of active-user `:staff` bundle ownership, root-owned
   directory setup, ACL clearing, bundle-symlink escape rejection, preference symlink rejection, log recreation,
   quoted plist writes, and quoted privileged plist paths.
+- **R-S11c-10a — Linux root-context desktop discovery shell interpolation — CLOSED 2026-07-09.**
+  Platform: Linux installed service/helper discovery. Surfaces: active-user prelogin shell lookup,
+  process-environment discovery for `DISPLAY`/`XAUTHORITY`/Wayland/DBus variables, direct PID environment
+  lookup, Xorg `-auth` discovery, active-user home lookup, and RustDesk Xorg-subprocess detection.
+  Boundary: local seat/user/process metadata ↔ root-context discovery helpers. Attack surface closed:
+  these paths no longer build `getent passwd`, `ps|grep|awk`, or `/proc/<pid>/environ|grep|sed`
+  pipelines. Prelogin state uses the `users` passwd API and path-based non-login-shell detection; home lookup
+  uses `get_user_home_by_name`; process selection reads `/proc/<pid>/cmdline` and filters by UID in Rust; and
+  environment lookup reads `/proc/<pid>/environ` with exact key matching. Verification closure:
+  `scripts/verify.sh` runs the `r_s11c10_` Linux unit tests and asserts that the touched discovery function
+  bodies contain no shell-shaped passwd/proc/process pipeline.
 
 **Release-blocking items:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,
@@ -438,8 +449,12 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Surfaces: root-side env/home/session discovery commands that interpolate UID/process/user fields into shell
   strings. Boundary: discovered local names/metadata ↔ root shell. Current impact: lower probability than the
   primary IPC findings because the main spawn path is argv-based and inputs are mostly OS-discovered, but root
-  shell strings are not acceptable. Closure: replace with direct `/proc`, `getpwnam`/`getpwuid`, or argv-only
-  commands; no shell pipeline/string interpolation in root-context helpers.
+  shell strings are not acceptable. Current state: R-S11c-10a closes the prelogin/home/env/Xorg/subprocess
+  desktop-discovery cluster with `users` + direct `/proc` reads and a source gate. Remaining closure:
+  replace the still-live lifecycle/service/display helper shell sites such as process-kill pipelines,
+  `xrandr|tr`, `pgrep`, `os-release`/SELinux probes, `linux_desktop_manager` probes, and whiteboard Xwayland
+  discovery with direct `/proc`, file parsing, or argv-only commands; no shell pipeline/string interpolation in
+  root-context helpers.
 - **R-S11b-4 — config secrecy statement after IPC closure.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary

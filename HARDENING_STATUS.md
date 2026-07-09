@@ -9,7 +9,7 @@ history remains the traceability record for that intermediate work.
 
 ## Current Verdict
 
-> ⚠️ **Qualified by live QA (2026-07-06) and service-boundary audit (2026-07-08) — see the _Live acceptance-testing regressions_ and _R-S11b/R-S11c service-owned IPC authority_ sections below.** Hands-on acceptance testing of the deployed `v1.4.7-hardened.1` prerelease surfaced connection-lifecycle, settings-control, desktop-shutdown, and UI↔excision-coherence regressions this verdict does not yet reflect. The follow-on IPC audit reclassified service-owned unattended credentials and privileged service actions as a blocking authority-boundary item. The cryptographic / transport core and the direct-IP posture hold; the build is **not release-ready**, and the prerelease is not to be promoted. Investigation in progress — damage-control, not implementation.
+> ⚠️ **Qualified by live QA (2026-07-06), with the service-boundary audit now closed and gated (2026-07-09) — see the _Live acceptance-testing regressions_ and _R-S11b/R-S11c service-owned IPC authority_ sections below.** Hands-on acceptance testing of the deployed `v1.4.7-hardened.1` prerelease surfaced connection-lifecycle, settings-control, desktop-shutdown, and UI↔excision-coherence regressions this verdict does not yet reflect. The follow-on IPC audit reclassified service-owned unattended credentials and privileged service actions as a blocking authority-boundary item; those R-S11b/R-S11c items are now implemented and verifier-gated. The cryptographic / transport core and the direct-IP posture hold; the build is **not release-ready**, and the prerelease is not to be promoted until the separate live-QA/build/release items below are closed.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
 place and gated.** The single mandatory CPace PAKE runs at the `create_tcp_connection`
@@ -136,7 +136,7 @@ Accepted low-severity residual (no host action/capability): the video-QoS metada
 re-prove at this HEAD (a background build loop is handling it; the connection.rs/video_service.rs changes
 are in all builds, and the Windows/Kotlin edges are validated by the win-exe/apk builds).
 
-**R-S11b/R-S11c — service-owned IPC authority — status: OPEN / RELEASE-BLOCKING.**
+**R-S11b/R-S11c — service-owned IPC authority — status: CLOSED / GATED (2026-07-09).**
 The 2026-07-08 service-boundary audit supersedes the earlier narrow "IPC transport is local and
 write-allowlisted" conclusion for installed-service mode. The issue is not socket locality; it is authority
 ownership. In installed mode the unattended password/PRS and machine remote-access policy are owned by the
@@ -547,7 +547,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   connect/listen, absence of caller-derived render keys outside the helper, and absence of unconditional
   global `Exit`; `scripts/apple-conform-check.sh` mirrors the macOS source assertions.
 
-**Release-blocking items:**
+**Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,
   Linux installed service, macOS LaunchDaemon/source path. Android is app-UID/service-owned rather than
   root/SYSTEM, and non-installed/portable user-mode remains user-owned. Endpoints: any service-owned password
@@ -679,8 +679,9 @@ OS-login/PAM/LogonUser, deep-link password/config/import, and Windows terminal-h
 are tracked by their existing requirements/fixes, not reopened here. Dependency advisories remain the
 separate R-R3/Appendix D open item.
 
-Current implementation is **not yet compliant** with this stronger requirement. No release or prerelease
-should be promoted until the release-blocking items above are implemented and gated.
+Current implementation is compliant with this R-S11b/R-S11c stronger requirement as of 2026-07-09. No
+release or prerelease should be promoted on that fact alone; the separate live-QA, build, dependency, and
+release-readiness items below still govern promotion.
 
 **R-B2 — the reproducible release is produced + published by DEFAULT script runs, no manual step.** The
 whole flow is opinionated + self-validating end to end, so an operator (not an AI agent) produces AND
@@ -1306,7 +1307,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   sufficient when the receiver is the root/SYSTEM/LaunchDaemon service and the message
   can read/write connect-equivalent credentials, rewrite service policy, select a
   privileged target session, invoke SAS/HKLM behavior, or drive pre-login helper file
-  operations. The service-owned credential/action class is now tracked as OPEN under
+  operations. The service-owned credential/action class is now tracked and gated under
   R-S11b/R-S11c above. Any future IPC audit must distinguish transport admission from
   message authority and must treat the process that enforces a credential/action as
   the owner of that credential/action.

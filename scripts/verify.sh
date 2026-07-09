@@ -692,6 +692,21 @@ done
 if [ -n "$r_s11c11" ]; then echo "  FAIL R-S11c-11 Unix CM endpoint-selection authority:$r_s11c11"; rc=1; else
   echo "  ok  R-S11c-11 Unix CM selection proves launch-bound endpoint authority before disclosing CM connection tokens; raw fixed-path _cm connects remain Windows-only"; fi
 
+echo "== R-S11b/R-S11c ledger consistency =="
+r_s11_docs=
+grep -q 'status: CLOSED / GATED (2026-07-09)' HARDENING_STATUS.md || r_s11_docs="$r_s11_docs hardening-status-not-closed"
+grep -q 'Release-blocking items .*closed' HARDENING_STATUS.md || r_s11_docs="$r_s11_docs release-blocking-heading-not-closed"
+grep -q 'Current implementation is compliant with this R-S11b/R-S11c stronger requirement' HARDENING_STATUS.md || r_s11_docs="$r_s11_docs compliance-summary-missing"
+grep -q 'R-S11c-11 closes the remaining fixed-path <code>_cm</code> endpoint-selection class' requirements.html || r_s11_docs="$r_s11_docs appendix-c28-r-s11c11-closure-missing"
+if grep -q 'status: OPEN / RELEASE-BLOCKING' HARDENING_STATUS.md; then
+  r_s11_docs="$r_s11_docs stale-open-status"
+fi
+if grep -q 'p-block">OPEN</span> R-S11c-11' requirements.html; then
+  r_s11_docs="$r_s11_docs stale-r-s11c11-open-in-requirements"
+fi
+if [ -n "$r_s11_docs" ]; then echo "  FAIL R-S11b/R-S11c ledger consistency:$r_s11_docs"; rc=1; else
+  echo "  ok  R-S11b/R-S11c ledger and Appendix C match the gated service-authority closure"; fi
+
 # (3b-iii-f3) R-S11c-8: whiteboard is a helper authority boundary. It must not accept
 # bare same-UID events, stale fixed-path listeners, caller-supplied display keys, or arbitrary Exit.
 echo "== (3b-iii-f3) Whiteboard helper IPC requires launch and connection authority (R-S11c-8) =="

@@ -687,22 +687,14 @@ fn set_x11_env(desktop: &Desktop) {
 
 #[inline]
 fn stop_rustdesk_servers() {
-    let _ = run_cmds(&format!(
-        r##"ps -ef | grep -E '{} +--server' | awk '{{print $2}}' | xargs -r kill -9"##,
-        crate::get_app_name().to_lowercase(),
-    ));
+    kill_current_exe_processes_with_arg("--server", "--server");
 }
 
 #[inline]
 fn stop_subprocess() {
-    let _ = run_cmds(&format!(
-        r##"ps -ef | grep '/etc/{}/xorg.conf' | grep -v grep | awk '{{print $2}}' | xargs -r kill -9"##,
-        crate::get_app_name().to_lowercase(),
-    ));
-    let _ = run_cmds(&format!(
-        r##"ps -ef | grep -E '{} +--cm-no-ui' | grep -v grep | awk '{{print $2}}' | xargs -r kill -9"##,
-        crate::get_app_name().to_lowercase(),
-    ));
+    let xorg_config = format!("/etc/{}/xorg.conf", crate::get_app_name().to_lowercase());
+    kill_xorg_processes_with_config(&xorg_config);
+    kill_current_exe_processes_with_arg("--cm-no-ui", "--cm-no-ui");
 }
 
 fn should_start_server(
@@ -1273,6 +1265,63 @@ fn proc_cmdline_string(args: &[String]) -> String {
     args.join(" ")
 }
 
+fn all_process_cmdlines() -> Vec<ProcCommand> {
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+
+    let mut processes = Vec::new();
+    for entry in entries.flatten() {
+        let Some(pid) = proc_entry_pid(&entry) else {
+            continue;
+        };
+        let Some(args) = read_proc_cmdline_args(&entry.path()) else {
+            continue;
+        };
+        processes.push(ProcCommand { pid, args });
+    }
+
+    processes.sort_by_key(|process| process.pid);
+    processes
+}
+
+fn current_executable_path() -> Option<PathBuf> {
+    std::env::current_exe().ok()
+}
+
+fn proc_exe_matches_path(proc_path: &Path, expected: &Path) -> bool {
+    std::fs::read_link(proc_path.join("exe"))
+        .map(|path| path == expected)
+        .unwrap_or(false)
+}
+
+fn current_exe_process_cmdlines() -> Vec<ProcCommand> {
+    let Some(current_exe) = current_executable_path() else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+
+    let mut processes = Vec::new();
+    for entry in entries.flatten() {
+        let Some(pid) = proc_entry_pid(&entry) else {
+            continue;
+        };
+        let proc_path = entry.path();
+        if !proc_exe_matches_path(&proc_path, &current_exe) {
+            continue;
+        }
+        let Some(args) = read_proc_cmdline_args(&proc_path) else {
+            continue;
+        };
+        processes.push(ProcCommand { pid, args });
+    }
+
+    processes.sort_by_key(|process| process.pid);
+    processes
+}
+
 fn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {
     let Ok(uid_num) = uid.parse::<u32>() else {
         return Vec::new();
@@ -1303,6 +1352,54 @@ fn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {
 
     processes.sort_by_key(|process| process.pid);
     processes
+}
+
+fn process_has_exact_arg(args: &[String], expected: &str) -> bool {
+    args.iter().any(|arg| arg == expected)
+}
+
+fn process_basename_eq_ignore_ascii_case(args: &[String], expected: &str) -> bool {
+    args.first()
+        .and_then(|arg0| Path::new(arg0).file_name())
+        .and_then(|name| name.to_str())
+        .map(|name| name.eq_ignore_ascii_case(expected))
+        .unwrap_or(false)
+}
+
+fn process_is_xorg_with_config(args: &[String], xorg_config: &str) -> bool {
+    process_basename_eq_ignore_ascii_case(args, "Xorg") && process_has_exact_arg(args, xorg_config)
+}
+
+fn kill_process(pid: u32, label: &str) {
+    if pid == 0 || pid == std::process::id() {
+        return;
+    }
+    let rc = unsafe {
+        hbb_common::libc::kill(pid as hbb_common::libc::pid_t, hbb_common::libc::SIGKILL)
+    };
+    if rc == 0 {
+        return;
+    }
+    let err = std::io::Error::last_os_error();
+    if err.raw_os_error() != Some(hbb_common::libc::ESRCH) {
+        log::warn!("Failed to stop {label} process pid={pid}: {err}");
+    }
+}
+
+fn kill_current_exe_processes_with_arg(arg: &str, label: &str) {
+    for process in current_exe_process_cmdlines() {
+        if process_has_exact_arg(&process.args, arg) {
+            kill_process(process.pid, label);
+        }
+    }
+}
+
+fn kill_xorg_processes_with_config(xorg_config: &str) {
+    for process in all_process_cmdlines() {
+        if process_is_xorg_with_config(&process.args, xorg_config) {
+            kill_process(process.pid, "Xorg");
+        }
+    }
 }
 
 fn any_process_cmdline_contains(needle: &str) -> bool {
@@ -1449,6 +1546,40 @@ fn get_env_from_pid(name: &str, pid: &str) -> String {
 #[link(name = "gtk-3")]
 extern "C" {
     fn gtk_main_quit();
+}
+
+#[cfg(test)]
+mod process_cleanup_tests {
+    use super::*;
+
+    #[test]
+    fn r_s11c10_process_kill_matchers_are_exact_argv_based() {
+        let server = vec!["/usr/bin/rustdesk".to_owned(), "--server".to_owned()];
+        assert!(process_has_exact_arg(&server, "--server"));
+        assert!(!process_has_exact_arg(&server, "--serverless"));
+
+        let current_processes = current_exe_process_cmdlines();
+        assert!(current_processes
+            .iter()
+            .any(|process| process.pid == std::process::id()));
+
+        let xorg_config = "/etc/rustdesk/xorg.conf";
+        let xorg = vec![
+            "/usr/lib/xorg/Xorg".to_owned(),
+            "-config".to_owned(),
+            xorg_config.to_owned(),
+        ];
+        assert!(process_is_xorg_with_config(&xorg, xorg_config));
+
+        let other_process = vec!["/bin/grep".to_owned(), xorg_config.to_owned()];
+        assert!(!process_is_xorg_with_config(&other_process, xorg_config));
+
+        let partial = vec![
+            "/usr/lib/xorg/Xorg".to_owned(),
+            format!("{xorg_config}.old"),
+        ];
+        assert!(!process_is_xorg_with_config(&partial, xorg_config));
+    }
 }
 
 pub fn quit_gui() {

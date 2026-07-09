@@ -677,6 +677,28 @@ fi
 if [ -n "$r_s11c10a" ]; then echo "  FAIL R-S11c-10a Linux desktop discovery shell interpolation:$r_s11c10a"; rc=1; else
   echo "  ok  R-S11c-10a Linux prelogin/home/env/Xorg/subprocess discovery uses users+/proc helpers, not shell pipelines"; fi
 
+echo "== (3b-iii-h2) Linux service lifecycle process cleanup avoids shell pipelines (R-S11c-10b) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_process_kill --color never
+r_s11c10b=
+grep -q 'fn all_process_cmdlines' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-proc-process-enumerator"
+grep -q 'fn current_exe_process_cmdlines' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-current-exe-process-enumerator"
+grep -q 'fn proc_exe_matches_path' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-proc-exe-identity-check"
+grep -q 'fn process_has_exact_arg' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-exact-argv-matcher"
+grep -q 'fn kill_process' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-direct-kill-helper"
+grep -q 'hbb_common::libc::kill' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-kill-syscall"
+grep -q 'kill_current_exe_processes_with_arg("--server", "--server")' src/platform/linux.rs || r_s11c10b="$r_s11c10b server-cleanup-not-argv-backed"
+grep -q 'kill_xorg_processes_with_config(&xorg_config)' src/platform/linux.rs || r_s11c10b="$r_s11c10b xorg-cleanup-not-argv-backed"
+grep -q 'kill_current_exe_processes_with_arg("--cm-no-ui", "--cm-no-ui")' src/platform/linux.rs || r_s11c10b="$r_s11c10b cm-cleanup-not-argv-backed"
+linux_process_cleanup_blocks=$(
+  awk '/fn stop_rustdesk_servers/,/fn should_start_server/' src/platform/linux.rs
+  awk '/fn all_process_cmdlines/,/fn any_process_cmdline_contains/' src/platform/linux.rs
+)
+if echo "$linux_process_cleanup_blocks" | grep -Eq 'run_cmds|ps -[ef]|grep |awk |sed |xargs|kill -9|CMD_SH'; then
+  r_s11c10b="$r_s11c10b shell-shaped-process-cleanup-regressed"
+fi
+if [ -n "$r_s11c10b" ]; then echo "  FAIL R-S11c-10b Linux service lifecycle process cleanup:$r_s11c10b"; rc=1; else
+  echo "  ok  R-S11c-10b Linux service lifecycle cleanup verifies /proc exe identity, uses exact argv matches plus kill(2), and avoids ps/grep/awk/xargs shell pipelines"; fi
+
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() are now only typed password
 # operations: user-owned direct commit and Linux/Windows service-owned service commit. set_socks /

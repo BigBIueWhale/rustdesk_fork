@@ -397,6 +397,17 @@ unreachable and a source/test/AST gate prevents reintroduction.
   environment lookup reads `/proc/<pid>/environ` with exact key matching. Verification closure:
   `scripts/verify.sh` runs the `r_s11c10_` Linux unit tests and asserts that the touched discovery function
   bodies contain no shell-shaped passwd/proc/process pipeline.
+- **R-S11c-10b — Linux service lifecycle process cleanup shell pipelines — CLOSED 2026-07-09.**
+  Platform: Linux installed service lifecycle cleanup. Surfaces: `stop_rustdesk_servers()` and
+  `stop_subprocess()` in `src/platform/linux.rs`. Boundary: root service lifecycle management ↔ local
+  process table. Attack surface closed: root-context cleanup no longer interpolates the app name into
+  `ps | grep | awk | xargs kill -9` shell pipelines. It enumerates `/proc/<pid>/cmdline` directly, matches
+  RustDesk `--server` and `--cm-no-ui` processes by `/proc/<pid>/exe` equality to the current executable
+  plus exact argv, matches Xorg cleanup by basename `Xorg` plus the exact `/etc/<app>/xorg.conf` argv, and sends `SIGKILL` with
+  `kill(2)` only to positive, non-current pids. Verification closure: `scripts/verify.sh` runs the
+  `r_s11c10_process_kill_*` unit test and asserts the lifecycle cleanup block uses the `/proc` argv helpers
+  and `hbb_common::libc::kill`, with no `run_cmds`, `ps`, `grep`, `awk`, `sed`, `xargs`, or `kill -9`
+  shell-shaped cleanup path.
 - **R-S11c-7 — Linux `_pa` audio helper capability — CLOSED 2026-07-09.** Platform: Linux desktop while the
   `_pa` helper is running for local audio capture. Endpoint/action: `_pa` IPC stream formerly accepted a
   bare PulseAudio source request and then streamed raw monitor/input frames. Boundary: same-UID local process
@@ -510,8 +521,11 @@ unreachable and a source/test/AST gate prevents reintroduction.
   strings. Boundary: discovered local names/metadata ↔ root shell. Current impact: lower probability than the
   primary IPC findings because the main spawn path is argv-based and inputs are mostly OS-discovered, but root
   shell strings are not acceptable. Current state: R-S11c-10a closes the prelogin/home/env/Xorg/subprocess
-  desktop-discovery cluster with `users` + direct `/proc` reads and a source gate. Remaining closure:
-  replace the still-live lifecycle/service/display helper shell sites such as process-kill pipelines,
+  desktop-discovery cluster with `users` + direct `/proc` reads and a source gate; R-S11c-10b closes the
+  service lifecycle process-kill pipelines with `/proc/<pid>/exe` identity, direct `/proc/<pid>/cmdline`
+  argv matching, and `kill(2)`.
+  Remaining closure:
+  replace the still-live service/display helper shell sites such as
   `xrandr|tr`, `pgrep`, `os-release`/SELinux probes, `linux_desktop_manager` probes, and whiteboard Xwayland
   discovery with direct `/proc`, file parsing, or argv-only commands; no shell pipeline/string interpolation in
   root-context helpers.

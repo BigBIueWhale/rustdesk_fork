@@ -422,6 +422,15 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `r_s11c10_process_kill_*` unit test and asserts the lifecycle cleanup block uses the `/proc` argv helpers
   and `hbb_common::libc::kill`, with no `run_cmds`, `ps`, `grep`, `awk`, `sed`, `xargs`, or `kill -9`
   shell-shaped cleanup path.
+- **R-S11c-10c — Linux xrandr resolution discovery shell pipeline — CLOSED 2026-07-09.**
+  Platform: Linux installed service/display helper path. Surfaces: supported-resolution discovery and current
+  resolution lookup in `src/platform/linux.rs`. Boundary: display metadata lookup ↔ root-context process
+  execution. Attack surface closed: resolution discovery no longer invokes `sh -c "xrandr --query | tr -s ' '"`
+  from a service/helper process. The fixed query is now `Command::new("xrandr").arg("--query")`, and the old
+  `tr -s ' '` behavior is implemented by a Rust-side whitespace normalizer before the existing parser runs.
+  Verification closure: `scripts/verify.sh` runs the `r_s11c10_xrandr_*` unit test and asserts both resolution
+  query call sites use the argv-only helper, no shell/pipeline tokens remain in the xrandr query block, and
+  Rust-side normalization preserves the parser's expected shape.
 - **R-S11c-7 — Linux `_pa` audio helper capability — CLOSED 2026-07-09.** Platform: Linux desktop while the
   `_pa` helper is running for local audio capture. Endpoint/action: `_pa` IPC stream formerly accepted a
   bare PulseAudio source request and then streamed raw monitor/input frames. Boundary: same-UID local process
@@ -575,9 +584,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   argv matching, and `kill(2)`.
   Remaining closure:
   replace the still-live service/display helper shell sites such as
-  `xrandr|tr`, `pgrep`, `os-release`/SELinux probes, `linux_desktop_manager` probes, and whiteboard Xwayland
+  `pgrep`, `os-release`/SELinux probes, `linux_desktop_manager` probes, and whiteboard Xwayland
   discovery with direct `/proc`, file parsing, or argv-only commands; no shell pipeline/string interpolation in
-  root-context helpers.
+  root-context helpers. `xrandr|tr` is closed by R-S11c-10c.
 - **R-S11b-4 — config secrecy statement after IPC closure.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary

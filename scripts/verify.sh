@@ -811,6 +811,24 @@ fi
 if [ -n "$r_s11c10b" ]; then echo "  FAIL R-S11c-10b Linux service lifecycle process cleanup:$r_s11c10b"; rc=1; else
   echo "  ok  R-S11c-10b Linux service lifecycle cleanup verifies /proc exe identity, uses exact argv matches plus kill(2), and avoids ps/grep/awk/xargs shell pipelines"; fi
 
+echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
+r_s11c10c=
+grep -q 'fn xrandr_query() -> ResultType<String>' src/platform/linux.rs || r_s11c10c="$r_s11c10c no-xrandr-query-helper"
+grep -q 'Command::new("xrandr").arg("--query").output()' src/platform/linux.rs || r_s11c10c="$r_s11c10c xrandr-query-not-argv-only"
+grep -q 'normalize_xrandr_query_output' src/platform/linux.rs || r_s11c10c="$r_s11c10c no-rust-space-normalizer"
+grep -q 'match xrandr_query()' src/platform/linux.rs || r_s11c10c="$r_s11c10c resolutions-not-using-helper"
+grep -q 'let xrandr_output = xrandr_query()?' src/platform/linux.rs || r_s11c10c="$r_s11c10c current-resolution-not-using-helper"
+xrandr_blocks=$(
+  awk '/fn xrandr_query\(\)/,/^}/' src/platform/linux.rs
+  awk '/pub fn resolutions\(name: &str\)/,/pub fn change_resolution_directly/' src/platform/linux.rs
+)
+if echo "$xrandr_blocks" | grep -Eq 'run_cmds|CMD_SH|sh -c|xrandr --query[[:space:]]*\||tr -s'; then
+  r_s11c10c="$r_s11c10c shell-shaped-xrandr-query-regressed"
+fi
+if [ -n "$r_s11c10c" ]; then echo "  FAIL R-S11c-10c Linux xrandr resolution discovery:$r_s11c10c"; rc=1; else
+  echo "  ok  R-S11c-10c Linux xrandr resolution discovery executes fixed argv and normalizes whitespace in Rust, with no shell pipeline"; fi
+
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() are now only typed password
 # operations: user-owned direct commit and Linux/Windows service-owned service commit. set_socks /

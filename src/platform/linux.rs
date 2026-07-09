@@ -39,6 +39,7 @@ struct ActiveUserLookupCache {
 
 const INVALID_TERM_VALUES: [&str; 3] = ["", "unknown", "dumb"];
 const SHELL_PROCESSES: [&str; 4] = ["bash", "zsh", "fish", "sh"];
+const SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(8);
 
 // Terminal type constants
 const TERM_XTERM_256COLOR: &str = "xterm-256color";
@@ -661,17 +662,65 @@ fn start_server(desktop: Option<&Desktop>, server: &mut Option<Child>) {
     }
 }
 
-fn stop_server(server: &mut Option<Child>) {
-    if let Some(mut ps) = server.take() {
-        allow_err!(ps.kill());
-        sleep_millis(30);
-        match ps.try_wait() {
-            Ok(Some(_status)) => {}
-            Ok(None) => {
-                let _res = ps.wait();
-            }
-            Err(e) => log::error!("error attempting to wait: {e}"),
+fn child_pid(child: &Child, label: &str) -> Option<hbb_common::libc::pid_t> {
+    match hbb_common::libc::pid_t::try_from(child.id()) {
+        Ok(pid) if pid > 0 => Some(pid),
+        _ => {
+            log::warn!("Refusing to signal {label} child with invalid pid {}", child.id());
+            None
         }
+    }
+}
+
+fn signal_child(child: &Child, signal: c_int, label: &str) -> bool {
+    let Some(pid) = child_pid(child, label) else {
+        return false;
+    };
+    let rc = unsafe { hbb_common::libc::kill(pid, signal) };
+    if rc == 0 {
+        return true;
+    }
+    let err = std::io::Error::last_os_error();
+    if err.raw_os_error() == Some(hbb_common::libc::ESRCH) {
+        return true;
+    }
+    log::warn!("Failed to signal {label} child pid={pid}: {err}");
+    false
+}
+
+fn wait_child_exit(child: &mut Child, timeout: Duration, label: &str) -> bool {
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                log::info!("{label} child exited with {status}");
+                return true;
+            }
+            Ok(None) if started.elapsed() < timeout => sleep_millis(50),
+            Ok(None) => return false,
+            Err(err) => {
+                log::warn!("Failed waiting for {label} child: {err}");
+                return false;
+            }
+        }
+    }
+}
+
+fn terminate_child(mut child: Child, label: &str) {
+    if signal_child(&child, hbb_common::libc::SIGTERM, label)
+        && wait_child_exit(&mut child, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT, label)
+    {
+        return;
+    }
+
+    log::warn!("{label} child did not exit after SIGTERM; forcing stop");
+    allow_err!(child.kill());
+    allow_err!(child.wait());
+}
+
+fn stop_server(server: &mut Option<Child>) {
+    if let Some(ps) = server.take() {
+        terminate_child(ps, "--server");
     }
 }
 
@@ -744,9 +793,8 @@ fn should_start_server(
     }
 
     if should_kill {
-        if let Some(ps) = server.as_mut() {
-            allow_err!(ps.kill());
-            sleep_millis(30);
+        if let Some(ps) = server.take() {
+            terminate_child(ps, "--server");
             *last_restart = Instant::now();
         }
     }
@@ -766,8 +814,6 @@ fn should_start_server(
     start_new
 }
 
-// to-do: stop_server(&mut user_server); may not stop child correctly
-// stop_rustdesk_servers() is just a temp solution here.
 fn force_stop_server() {
     stop_rustdesk_servers();
     sleep_millis(super::SERVICE_INTERVAL);
@@ -866,11 +912,11 @@ pub fn start_os_service() {
         }
     }
 
-    if let Some(ps) = user_server.take().as_mut() {
-        allow_err!(ps.kill());
+    if let Some(ps) = user_server.take() {
+        terminate_child(ps, "--server");
     }
-    if let Some(ps) = server.take().as_mut() {
-        allow_err!(ps.kill());
+    if let Some(ps) = server.take() {
+        terminate_child(ps, "--server");
     }
     log::info!("Exit");
 }

@@ -398,9 +398,8 @@ pub async fn start_direct_only(android_generation: Option<u64>) {
     });
     // R-T9 (§20): install the graceful-shutdown handler. SIGTERM (what `systemctl stop` / an
     // upgrade sends) or SIGINT stops the accept loop and drains live sessions with a bounded
-    // deadline before exiting — so an upgrade mid-session does not SIGKILL a connection mid-write
-    // and truncate an in-flight transfer on the peer. The unit's pkill / KillMode=mixed /
-    // TimeoutStopSec=30 remain the hard backstop for a hung process.
+    // deadline before exiting — so an upgrade mid-session does not truncate an in-flight transfer.
+    // The unit cgroup's TimeoutStopSec/SIGKILL path remains the backstop for a hung process.
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     tokio::spawn(async {
         // The drain is initiated only from inside an actual signal branch (so a target with no

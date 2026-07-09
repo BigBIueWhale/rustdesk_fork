@@ -1038,6 +1038,42 @@ fi
 if [ -n "$r_s11c10i" ]; then echo "  FAIL R-S11c-10i Linux service lifecycle systemctl/config-copy:$r_s11c10i"; rc=1; else
   echo "  ok  R-S11c-10i Linux service lifecycle uses fixed systemctl paths, argv-only start/stop/enable/disable, and native owner-only config copies"; fi
 
+echo "== (3b-iii-h10) Debian package lifecycle uses service-manager helpers (R-S11c-10j/R-T9) =="
+r_s11c10j=
+for maintscript in res/DEBIAN/preinst res/DEBIAN/postinst res/DEBIAN/prerm res/DEBIAN/postrm; do
+  grep -qE '^#!/bin/sh$' "$maintscript" || r_s11c10j="$r_s11c10j ${maintscript##*/}:not-posix-sh"
+done
+grep -q 'deb-systemd-invoke stop "$unit"' res/DEBIAN/preinst  || r_s11c10j="$r_s11c10j preinst:no-helper-stop"
+grep -q 'deb-systemd-helper enable "$unit"' res/DEBIAN/postinst || r_s11c10j="$r_s11c10j postinst:no-helper-enable"
+grep -q 'deb-systemd-invoke start "$unit"' res/DEBIAN/postinst || r_s11c10j="$r_s11c10j postinst:no-helper-start"
+grep -q 'deb-systemd-invoke stop "$unit"' res/DEBIAN/prerm     || r_s11c10j="$r_s11c10j prerm:no-helper-stop"
+grep -q 'deb-systemd-helper disable "$unit"' res/DEBIAN/prerm  || r_s11c10j="$r_s11c10j prerm:no-helper-disable"
+grep -q 'deb-systemd-helper purge "$unit"' res/DEBIAN/postrm   || r_s11c10j="$r_s11c10j postrm:no-helper-purge"
+grep -q 'init-system-helpers' build.py                         || r_s11c10j="$r_s11c10j deb-control:no-init-system-helpers-dep"
+grep -qE '^KillMode=control-group$' res/rustdesk.service       || r_s11c10j="$r_s11c10j unit:not-control-group"
+if grep -qE '^ExecStop=|pkill|KillMode=mixed' res/rustdesk.service; then
+  r_s11c10j="$r_s11c10j unit:legacy-execstop-or-mixed-killmode"
+fi
+if grep -RInE 'INITSYS|/proc/1/exe|ps -ef|grep -E|awk|sed -i|service rustdesk|systemctl|--machine=' res/DEBIAN >/tmp/rd_verify_r_s11c10j_pkg.$$; then
+  cat /tmp/rd_verify_r_s11c10j_pkg.$$
+  r_s11c10j="$r_s11c10j maintscript:raw-service-discovery-or-systemctl"
+fi
+rm -f /tmp/rd_verify_r_s11c10j_pkg.$$
+grep -q 'const SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(8)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-drain-timeout"
+grep -q 'fn terminate_child(mut child: Child, label: &str)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-terminate-helper"
+grep -q 'hbb_common::libc::SIGTERM' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-sigterm"
+grep -q 'wait_child_exit(&mut child, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT, label)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-bounded-child-wait"
+linux_child_stop_block=$(
+  awk '/fn stop_server/,/fn set_x11_env/' src/platform/linux.rs
+  awk '/if should_kill/,/if let Some\(ps\) = server.as_mut/' src/platform/linux.rs
+  awk '/if let Some\(ps\) = user_server.take/,/log::info!\("Exit"\)/' src/platform/linux.rs
+)
+if echo "$linux_child_stop_block" | grep -q 'allow_err!(ps.kill())'; then
+  r_s11c10j="$r_s11c10j linux:managed-server-child-sigkill-regressed"
+fi
+if [ -n "$r_s11c10j" ]; then echo "  FAIL R-S11c-10j/R-T9 Debian package lifecycle/systemd stop:$r_s11c10j"; rc=1; else
+  echo "  ok  R-S11c-10j/R-T9 Debian scripts use deb-systemd helpers; unit has cgroup-scoped SIGTERM/TimeoutStopSec with no pkill ExecStop; Linux supervisor SIGTERMs child servers before forced stop"; fi
+
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() are now only typed password
 # operations: user-owned direct commit and Linux/Windows service-owned service commit. set_socks /
@@ -2604,7 +2640,7 @@ fi
 # cancelled by the signal handler (direct_service.rs); the accept loop then stops accepting and
 # drops its listener, every live session's run-loop drains via its `cancelled()` select-arm
 # (CloseReason -> flush -> CM Close), and a BOUNDED drain deadline — shorter than the unit's
-# TimeoutStopSec — precedes a force-exit(0). The pkill/KillMode=mixed path stays the backstop.
+# TimeoutStopSec — precedes a force-exit(0). The unit cgroup's TimeoutStopSec/SIGKILL path stays the backstop.
 # Presence gate across the three layers (server primitive, connection drain arm, mediator handler).
 r_t9_missing=
 grep -q 'fn begin_graceful_shutdown' src/server.rs         || r_t9_missing="$r_t9_missing begin_graceful_shutdown"
@@ -2617,6 +2653,10 @@ grep -q 'self.stream.flush_writer().await' src/server/connection.rs || r_t9_miss
 grep -q 'SignalKind::terminate' src/direct_service.rs || r_t9_missing="$r_t9_missing sigterm-handler"
 grep -q 'is_shutting_down()' src/direct_service.rs    || r_t9_missing="$r_t9_missing accept-stop"
 grep -qE '^TimeoutStopSec=[1-9][0-9]*$' res/rustdesk.service || r_t9_missing="$r_t9_missing service-TimeoutStopSec(must be a positive drain backstop, =0 is infinite)"
+grep -qE '^KillMode=control-group$' res/rustdesk.service || r_t9_missing="$r_t9_missing service-KillMode-control-group"
+if grep -qE '^ExecStop=|pkill|KillMode=mixed' res/rustdesk.service; then
+  r_t9_missing="$r_t9_missing legacy-pkill-or-mixed-stop"
+fi
 if [ -n "$r_t9_missing" ]; then
   echo "  FAIL R-T9: graceful-shutdown machinery incomplete:$r_t9_missing"; rc=1
 else

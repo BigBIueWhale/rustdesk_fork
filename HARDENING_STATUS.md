@@ -489,6 +489,23 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `scripts/verify.sh` runs the `r_s11c10_service_*` unit tests and asserts the lifecycle block uses fixed
   `systemctl` paths, the argv helper, native symlink-checked config copying, owner-only destination modes,
   and no stale `run_cmds_status`, `has_cmd`, `which`, `cp -f`, shell, or inline `systemctl ...` command text.
+- **R-S11c-10j — Debian package lifecycle and systemd stop semantics — CLOSED 2026-07-09.**
+  Platform: Debian/Linux `.deb` install, upgrade, remove, and purge lifecycle. Surfaces:
+  `res/DEBIAN/preinst`, `postinst`, `prerm`, `postrm`, `res/rustdesk.service`, generated `.deb`
+  dependencies in `build.py`, and the Linux service parent that supervises the managed `--server` child.
+  Boundary: privileged package-maintainer scripts and systemd stop semantics ↔ local process table and
+  service-owned listener process. Attack surface closed: package scripts no longer parse `/proc/1/exe` with
+  `ls|awk`, call `service`/`systemctl` directly, sed-patch the installed unit, discover old user services with
+  `ps|grep|awk`, or interpolate a discovered user into `systemctl --machine=...`. Maintainer scripts use
+  `deb-systemd-helper` for enable/disable/purge state and `deb-systemd-invoke` for stop/start/daemon-reload,
+  with `init-system-helpers` declared in the generated Debian control file. The unit no longer carries
+  `ExecStop=pkill -f "rustdesk --"` or `KillMode=mixed`; shutdown is cgroup-scoped `SIGTERM` with
+  `TimeoutStopSec=30`/SIGKILL as the fixed backstop. The Linux service parent no longer uses
+  `Child::kill()` as the first stop action for the managed `--server` child; it sends `SIGTERM`, waits a bounded
+  eight seconds for the existing R-T9 drain, and only then forces the child. Verification closure:
+  `scripts/verify.sh` asserts the helper-layer package scripts, the `.deb` dependency, absence of legacy raw
+  process/systemctl/pkill stop shapes, the cgroup-scoped unit stop mode, and the SIGTERM-first managed-child
+  supervisor path.
 - **R-S11c-7 — Linux `_pa` audio helper capability — CLOSED 2026-07-09.** Platform: Linux desktop while the
   `_pa` helper is running for local audio capture. Endpoint/action: `_pa` IPC stream formerly accepted a
   bare PulseAudio source request and then streamed raw monitor/input frames. Boundary: same-UID local process
@@ -658,16 +675,19 @@ unreachable and a source/test/AST gate prevents reintroduction.
   directly, treats only `1` as enforcing, and no longer shells through `getenforce` or parses `sestatus`.
   `scripts/verify.sh` runs the focused parser tests and source gate. R-S11c-10h closes config-home correction
   in `libs/hbb_common/src/config.rs`: `patch(PathBuf)` uses the `getpwuid`-backed trusted home helper instead
-  of `whoami` plus `getent|awk`. R-S11c-10i closes Linux service lifecycle command construction: service
-  start/stop/enable/disable now invoke fixed trusted `systemctl` paths with direct argv, and root-service
-  config migration is native symlink-checked filesystem copying with `0700`/`0600` modes.
+  of `whoami` plus `getent|awk`. R-S11c-10i closes Linux runtime service lifecycle command construction:
+  service start/stop/enable/disable now invoke fixed trusted `systemctl` paths with direct argv, and root-service
+  config migration is native symlink-checked filesystem copying with `0700`/`0600` modes. R-S11c-10j closes the
+  Debian package lifecycle and unit stop layer: maintainer scripts use `deb-systemd-helper`/`deb-systemd-invoke`
+  instead of raw init/systemctl/process-table probes, and the unit/supervisor stop path is cgroup/SIGTERM-first
+  with a bounded forced-stop backstop.
   Remaining closure:
   no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
   root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
   `pgrep` and whiteboard Xwayland discovery are closed by R-S11c-10d; `os-release` parsing is closed by
   R-S11c-10e; `linux_desktop_manager` probing is closed by R-S11c-10f; SELinux status probing is closed by
-  R-S11c-10g; config-home correction is closed by R-S11c-10h; lifecycle `systemctl` command construction is
-  closed by R-S11c-10i.
+  R-S11c-10g; config-home correction is closed by R-S11c-10h; runtime lifecycle `systemctl` command construction
+  is closed by R-S11c-10i; Debian package lifecycle and systemd stop semantics are closed by R-S11c-10j.
 - **R-S11b-4 — config secrecy statement after IPC closure — CLOSED 2026-07-09.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary

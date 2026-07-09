@@ -708,8 +708,22 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                     if let Ok(Some(data)) = stream.next_timeout(1000).await {
                         match data {
                             ipc::Data::Close => {
-                                log::info!("close received");
-                                break;
+                                match stream.windows_pipe_client_token_is_local_system() {
+                                    Ok(true) => {
+                                        log::info!("close received");
+                                        break;
+                                    }
+                                    Ok(false) => {
+                                        log::warn!(
+                                            "Rejected Windows _service close: caller is not LocalSystem"
+                                        );
+                                    }
+                                    Err(err) => {
+                                        log::warn!(
+                                            "Rejected Windows _service close: failed to verify caller token: {err}"
+                                        );
+                                    }
+                                }
                             }
                             ipc::Data::Test => {
                                 allow_err!(stream.send(&ipc::Data::Test).await);

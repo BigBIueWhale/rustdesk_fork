@@ -834,8 +834,6 @@ pub async fn start_ipc_url_server() {
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn stop_main_window_process() {
-    // this may also kill another --server process,
-    // but --server usually can be auto restarted by --service, so it is ok
     if let Ok(mut conn) = crate::ipc::connect(1000, "").await {
         conn.send(&crate::ipc::Data::Close).await.ok();
     }

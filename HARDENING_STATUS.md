@@ -373,6 +373,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   existing handle-level config-write count remains pinned to the two typed permanent-password writers, so a
   newly classified identity/salt/key/proxy/trust-store writer must be introduced as an explicit
   receiver-authorized operation with its own gate rather than as an ordinary IPC write.
+- **R-S11c-13 — service-owned IPC close is receiver-authorized — CLOSED 2026-07-09.**
+  Platforms: Windows installed service-owned main server and `_service`; Linux/macOS main-channel policy covered
+  by the same source rule. Endpoint/action: `Data::Close` on desktop main IPC and Windows `_service`.
+  Boundary: same-session/same-executable IPC peer ↔ service-owned process-control action. Attack surface
+  closed: `Data::Close` is no longer classified as an unconditional main-channel message. User-owned receivers
+  still accept user-owned close, but service-owned receivers accept main-channel close only from the owning
+  root/LocalSystem service peer. On Windows the main IPC loop resolves the named-pipe client token for
+  `Data::Close` before calling `main_channel_admits_state_mutation`, so a normal same-session installed
+  executable cannot trigger service-owned server exit/restart through transport identity alone. The Windows
+  `_service` receiver also checks the pipe client token and stops the service loop only for LocalSystem.
+  Verification closure: `scripts/verify.sh` runs the main-channel mutation policy test, asserts the close
+  authority helper, the `Data::Close => authority.allows_main_channel_close(peer_authority)` policy arm, the
+  Windows main-pipe token resolution path, the Windows `_service` LocalSystem close gate, absence of an
+  unconditional close bucket, and the Appendix C #31 disposition.
 - **R-S11c-2a/R-S11c-3a — Windows `_service` raw session/SAS commands removed — CLOSED 2026-07-08.**
   Platform: Windows installed service. Endpoint/action: `_service` named pipe messages formerly carrying
   `Data::UserSid(Some(_))` for service-owned session switching and `Data::SAS` for SYSTEM-mediated

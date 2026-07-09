@@ -142,6 +142,11 @@ grep -q 'set_config_async' src/ipc.rs && r_s11="$r_s11 generic-set-config-async-
 grep -q 'pub async fn set_config' src/ipc.rs && r_s11="$r_s11 generic-set-config-present"
 grep -q 'Data::Options(Some(_)) => authority.allows_main_channel_options_write()' src/ipc.rs || r_s11="$r_s11 options-authority-not-gated"
 grep -q 'Data::SetVoiceCallInput(_) => true' src/ipc.rs                                || r_s11="$r_s11 voice-input-typed-arm-missing"
+grep -q 'fn allows_service_owned_main_channel_close' src/ipc.rs                        || r_s11="$r_s11 service-owned-close-peer-authority-missing"
+grep -q 'fn allows_main_channel_close' src/ipc.rs                                      || r_s11="$r_s11 close-receiver-authority-missing"
+grep -q 'Data::Close => authority.allows_main_channel_close(peer_authority)' src/ipc.rs || r_s11="$r_s11 close-not-authority-gated"
+grep -q 'Windows service-owned IPC process-close actions' requirements.html           || r_s11="$r_s11 close-requirements-disposition-missing"
+grep -q 'R-S11c-13 — service-owned IPC close is receiver-authorized' HARDENING_STATUS.md || r_s11="$r_s11 close-hardening-ledger-missing"
 grep -q 'ConfigRequest(String)' src/ipc.rs                                             || r_s11="$r_s11 config-request-missing"
 grep -q 'ConfigValue((String, Option<String>))' src/ipc.rs                             || r_s11="$r_s11 config-value-missing"
 grep -q 'Socks(Option' src/ipc.rs && r_s11="$r_s11 socks-ipc-variant-present"
@@ -149,6 +154,9 @@ grep -q 'Data::Socks' src/ipc.rs && r_s11="$r_s11 socks-ipc-reference-present"
 main_policy_body=$(sed -n '/pub(crate) fn main_channel_admits_state_mutation/,/^async fn send_main_channel_mutation_rejection_ack/p' src/ipc.rs)
 echo "$main_policy_body" | grep -q 'Data::Login { .. }' || r_s11="$r_s11 main-policy-explicit-nonmutating-classification-missing"
 echo "$main_policy_body" | grep -q 'Data::HwCodecConfig(_) => true' || r_s11="$r_s11 main-policy-explicit-handler-write-classification-missing"
+if echo "$main_policy_body" | grep -qE '^[[:space:]]*\| Data::Close([[:space:]]|$)'; then
+  r_s11="$r_s11 close-in-unconditional-main-policy-bucket"
+fi
 if echo "$main_policy_body" | grep -qE '^[[:space:]]*_ =>'; then
   r_s11="$r_s11 main-policy-wildcard-fallback-present"
 fi
@@ -201,8 +209,14 @@ echo "$ipc_start_block" | grep -q 'Config::ensure_loaded();' || r_s11="$r_s11 ma
 # Windows artifact (the linux-only gate + the linux-cfg unit test are blind to it).
 [ "$(grep -c 'if !main_channel_admits_state_mutation(' src/ipc.rs)" -ge 2 ]            || r_s11="$r_s11 windows-main-pipe-gate-missing"
 grep -B1 'pub(crate) fn main_channel_admits_state_mutation' src/ipc.rs | grep -q 'windows' || r_s11="$r_s11 allowlist-fn-not-cfg-windows"
+windows_main_peer_authority_block=$(awk '/let peer_authority = match &data/,/_ => MainIpcPeerAuthority::Ordinary/' src/ipc.rs)
+echo "$windows_main_peer_authority_block" | grep -q 'Data::Close' || r_s11="$r_s11 windows-close-peer-token-not-resolved"
+echo "$windows_main_peer_authority_block" | grep -q 'MainIpcPeerAuthority::for_windows_main_pipe(&stream)' || r_s11="$r_s11 windows-main-peer-token-helper-not-used"
+windows_service_close_block=$(awk '/ipc::Data::Close => \{/,/ipc::Data::Test =>/' src/platform/windows.rs)
+echo "$windows_service_close_block" | grep -q 'windows_pipe_client_token_is_local_system' || r_s11="$r_s11 windows-service-close-not-localsystem-gated"
+echo "$windows_service_close_block" | grep -q 'Rejected Windows _service close: caller is not LocalSystem' || r_s11="$r_s11 windows-service-close-rejection-missing"
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel state-mutation allowlist:$r_s11"; rc=1; else
-  echo "  ok  R-S11/R-S11b main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options remain scoped; the policy table is exhaustive with no wildcard fallback; gate binds Linux/macOS AND the Windows main pipe)"; fi
+  echo "  ok  R-S11/R-S11b/R-S11c main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options remain scoped; service-owned close is root/LocalSystem-gated on main IPC and Windows _service; the policy table is exhaustive with no wildcard fallback; gate binds Linux/macOS AND the Windows main pipe)"; fi
 rm -f /tmp/rd_verify_identity_writers.$$ /tmp/rd_verify_mac_address.$$
 
 echo "== (3b-iii-a1) desktop at-rest wrapper does not mint service identity material (R-S11b-3f) =="

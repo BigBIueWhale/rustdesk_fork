@@ -672,7 +672,8 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                     // "per write-arm", on every shipped artifact, not Linux/macOS alone.
                                     #[cfg(target_os = "windows")]
                                     let peer_authority = match &data {
-                                        Data::CommitServiceOwnedUnattendedPasswordChange(_) => {
+                                        Data::Close
+                                        | Data::CommitServiceOwnedUnattendedPasswordChange(_) => {
                                             MainIpcPeerAuthority::for_windows_main_pipe(&stream)
                                         }
                                         _ => MainIpcPeerAuthority::Ordinary,
@@ -865,7 +866,7 @@ impl MainIpcPeerAuthority {
             Ok(false) => Self::Ordinary,
             Err(err) => {
                 log::warn!(
-                    "Failed to resolve Windows main IPC peer token for service-owned commit: {err}"
+                    "Failed to resolve Windows main IPC peer token for service-owned action: {err}"
                 );
                 Self::Ordinary
             }
@@ -874,6 +875,17 @@ impl MainIpcPeerAuthority {
 
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     fn allows_service_owned_unattended_password_commit(self) -> bool {
+        match self {
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            Self::RootUnixPeer => true,
+            #[cfg(target_os = "windows")]
+            Self::WindowsLocalSystemPeer => true,
+            _ => false,
+        }
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    fn allows_service_owned_main_channel_close(self) -> bool {
         match self {
             #[cfg(any(target_os = "linux", target_os = "macos"))]
             Self::RootUnixPeer => true,
@@ -913,6 +925,13 @@ impl MainIpcAuthority {
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     fn allows_service_owned_unattended_password_commit(self) -> bool {
         matches!(self, Self::ServiceOwned)
+    }
+
+    fn allows_main_channel_close(self, peer_authority: MainIpcPeerAuthority) -> bool {
+        match self {
+            Self::UserOwned => true,
+            Self::ServiceOwned => peer_authority.allows_service_owned_main_channel_close(),
+        }
     }
 }
 
@@ -996,11 +1015,11 @@ pub(crate) fn main_channel_admits_state_mutation(
         // Whole-options writes are ordinary user-owned configuration writes. A service-owned server
         // enforces machine policy and must not accept them over the generic main IPC config bus.
         Data::Options(Some(_)) => authority.allows_main_channel_options_write(),
+        Data::Close => authority.allows_main_channel_close(peer_authority),
         Data::Login { .. }
         | Data::ChatMessage { .. }
         | Data::SystemInfo(_)
         | Data::ClickTime(_)
-        | Data::Close
         | Data::ConfigRequest(_)
         | Data::ConfigValue(_)
         | Data::Options(None)
@@ -3407,16 +3426,44 @@ mod test {
             !MainIpcAuthority::ServiceOwned.allows_main_channel_password_storage_sync(),
             "R-S11b-2: service-owned password storage/salt snapshots MUST NOT sync over ordinary IPC"
         );
+        assert!(
+            main_channel_admits_state_mutation(&Data::Close, user_owned, ordinary_peer),
+            "a user-owned main IPC close stays a user-owned process-control action"
+        );
+        assert!(
+            !main_channel_admits_state_mutation(&Data::Close, service_owned, ordinary_peer),
+            "R-S11c: an ordinary peer cannot close a service-owned main IPC receiver"
+        );
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        {
+            let root_peer = MainIpcPeerAuthority::RootUnixPeer;
+            assert!(
+                main_channel_admits_state_mutation(&Data::Close, service_owned, root_peer),
+                "R-S11c: only the owning root service peer may close a service-owned main IPC receiver"
+            );
+        }
     }
 
     #[cfg(target_os = "windows")]
     #[test]
-    fn windows_service_owned_password_commit_requires_localsystem_peer() {
+    fn windows_service_owned_main_ipc_actions_require_localsystem_peer() {
         let user_owned = MainIpcAuthority::UserOwned;
         let service_owned = MainIpcAuthority::ServiceOwned;
         let ordinary_peer = MainIpcPeerAuthority::Ordinary;
         let system_peer = MainIpcPeerAuthority::WindowsLocalSystemPeer;
 
+        assert!(
+            main_channel_admits_state_mutation(&Data::Close, user_owned, ordinary_peer),
+            "a user-owned main IPC close stays a user-owned process-control action"
+        );
+        assert!(
+            !main_channel_admits_state_mutation(&Data::Close, service_owned, ordinary_peer),
+            "R-S11c: an ordinary same-session peer cannot close a service-owned Windows main server"
+        );
+        assert!(
+            main_channel_admits_state_mutation(&Data::Close, service_owned, system_peer),
+            "R-S11c: only the LocalSystem service peer may close a service-owned Windows main server"
+        );
         assert!(
             !main_channel_admits_state_mutation(
                 &Data::RequestServiceOwnedUnattendedPasswordChange("pw".to_owned()),

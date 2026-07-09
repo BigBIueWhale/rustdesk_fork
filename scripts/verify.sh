@@ -146,6 +146,12 @@ grep -q 'ConfigRequest(String)' src/ipc.rs                                      
 grep -q 'ConfigValue((String, Option<String>))' src/ipc.rs                             || r_s11="$r_s11 config-value-missing"
 grep -q 'Socks(Option' src/ipc.rs && r_s11="$r_s11 socks-ipc-variant-present"
 grep -q 'Data::Socks' src/ipc.rs && r_s11="$r_s11 socks-ipc-reference-present"
+main_policy_body=$(sed -n '/pub(crate) fn main_channel_admits_state_mutation/,/^async fn send_main_channel_mutation_rejection_ack/p' src/ipc.rs)
+echo "$main_policy_body" | grep -q 'Data::Login { .. }' || r_s11="$r_s11 main-policy-explicit-nonmutating-classification-missing"
+echo "$main_policy_body" | grep -q 'Data::HwCodecConfig(_) => true' || r_s11="$r_s11 main-policy-explicit-handler-write-classification-missing"
+if echo "$main_policy_body" | grep -qE '^[[:space:]]*_ =>'; then
+  r_s11="$r_s11 main-policy-wildcard-fallback-present"
+fi
 config_get_id_body=$(awk '/pub fn get_id\(\) -> String \{/{flag=1} flag{print} flag && /^[[:space:]]{4}\}/{exit}' libs/hbb_common/src/config.rs)
 echo "$config_get_id_body" | grep -q 'CONFIG.read' || r_s11="$r_s11 config-get-id-not-reading-config"
 if echo "$config_get_id_body" | grep -qE 'Config::set_id|set_id\(|Config::gen_id|gen_id\(|CONFIG\.write|store\('; then
@@ -196,7 +202,7 @@ echo "$ipc_start_block" | grep -q 'Config::ensure_loaded();' || r_s11="$r_s11 ma
 [ "$(grep -c 'if !main_channel_admits_state_mutation(' src/ipc.rs)" -ge 2 ]            || r_s11="$r_s11 windows-main-pipe-gate-missing"
 grep -B1 'pub(crate) fn main_channel_admits_state_mutation' src/ipc.rs | grep -q 'windows' || r_s11="$r_s11 allowlist-fn-not-cfg-windows"
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel state-mutation allowlist:$r_s11"; rc=1; else
-  echo "  ok  R-S11/R-S11b main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options remain scoped; gate binds Linux/macOS AND the Windows main pipe)"; fi
+  echo "  ok  R-S11/R-S11b main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options remain scoped; the policy table is exhaustive with no wildcard fallback; gate binds Linux/macOS AND the Windows main pipe)"; fi
 rm -f /tmp/rd_verify_identity_writers.$$ /tmp/rd_verify_mac_address.$$
 
 echo "== (3b-iii-a1) desktop at-rest wrapper does not mint service identity material (R-S11b-3f) =="
@@ -936,8 +942,9 @@ if [ -n "$r_s11c10g" ]; then echo "  FAIL R-S11c-10g Linux SELinux status probin
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() are now only typed password
 # operations: user-owned direct commit and Linux/Windows service-owned service commit. set_socks /
-# set_id / set_salt and generic Config writes are absent, not denied. The `_ => true` catch-all would let a NEW
-# bypassing write (a new Data arm) reach Config unguarded on the main channel — the exact regression.
+# set_id / set_salt and generic Config writes are absent, not denied. The main-channel policy table has no
+# wildcard arm, so any NEW Data variant must be classified before the code compiles; this count catches a
+# newly classified bypassing write that reaches Config unguarded on the main channel — the exact regression.
 # set_options is EXCLUDED (it self-filters via is_option_can_save, R-S16, including trust-anchor/proxy
 # credential option keys); HwCodecConfig::set is a separate hwcodec store (compiled out, R-R2b), excluded by
 # the \b before Config. Pin the count: a new

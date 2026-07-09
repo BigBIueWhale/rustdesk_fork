@@ -351,6 +351,17 @@ unreachable and a source/test/AST gate prevents reintroduction.
   unit test asserts rejected persistence plus constant anchor reads; `scripts/verify.sh` and
   `scripts/apple-conform-check.sh` assert the source pins and the absence of trusted-device/key-confirmation
   writer symbols.
+- **R-S11b-3h — main IPC mutation policy has no permissive fallback — CLOSED 2026-07-09.**
+  Platforms: Linux, Windows, and macOS desktop main IPC. Endpoint/action:
+  `main_channel_admits_state_mutation` over every `Data` variant. Boundary: local IPC caller ↔ daemon-owned
+  credential, identity, proxy, trust-anchor, and machine-policy state. Attack surface closed: adding a future
+  IPC message can no longer inherit ordinary main-channel authority through `_ => true`; the policy match is
+  exhaustive and classifies every current message as a named typed mutation, a denied service-owned request,
+  an authority-gated options/password write, or a non-mutating message. Any new `Data` variant now fails
+  compilation until it is classified, and `scripts/verify.sh` fails if a wildcard arm is reintroduced. The
+  existing handle-level config-write count remains pinned to the two typed permanent-password writers, so a
+  newly classified identity/salt/key/proxy/trust-store writer must be introduced as an explicit
+  receiver-authorized operation with its own gate rather than as an ordinary IPC write.
 - **R-S11c-2a/R-S11c-3a — Windows `_service` raw session/SAS commands removed — CLOSED 2026-07-08.**
   Platform: Windows installed service. Endpoint/action: `_service` named pipe messages formerly carrying
   `Data::UserSid(Some(_))` for service-owned session switching and `Data::SAS` for SYSTEM-mediated
@@ -560,9 +571,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   after R-S11b-3c; Windows `share_rdp` is no longer a UI-side shell/registry write after R-S11b-3d and is
   committed only by the LocalSystem service through a typed elevated `_service` request; service identity/salt
   reads are side-effect-free after R-S11b-3e; desktop at-rest wrapper reads no longer mint key material after
-  R-S11b-3f; and trust-anchor/proxy-shaped option keys are pinned empty after R-S11b-3g. Remaining closure:
-  any future identity/salt/key/proxy/trust-store write must be a named approved operation with an explicit
-  gate; the current source gate asserts the old trusted-device/key-confirmation writer symbols remain absent.
+  R-S11b-3f; trust-anchor/proxy-shaped option keys are pinned empty after R-S11b-3g; and the main IPC mutation
+  policy is exhaustive after R-S11b-3h, with no wildcard arm that could admit a future
+  identity/salt/key/proxy/trust-store write without an explicit receiver-authorized gate.
 **Contained hardening items from the same audit:**
 - **R-S11c-6 — Windows named-pipe endpoint hardening.** Platform: Windows desktop. Endpoint:
   predictable `\\.\pipe\<APP>\query{postfix}` names and broad create permissions for main/`_service`.

@@ -813,6 +813,8 @@ impl Drop for CheckIfRestart {
 
 /// Main-channel mutation policy. Whole-config writes, identity/salt field writes, proxy writes,
 /// service-owned credentials, and service-owned options stay out of ordinary IPC.
+/// This match is intentionally exhaustive: adding an IPC message requires classifying it here
+/// instead of falling through to a permissive default.
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum MainIpcAuthority {
@@ -977,7 +979,81 @@ pub(crate) fn main_channel_admits_state_mutation(
         // Whole-options writes are ordinary user-owned configuration writes. A service-owned server
         // enforces machine policy and must not accept them over the generic main IPC config bus.
         Data::Options(Some(_)) => authority.allows_main_channel_options_write(),
-        _ => true,
+        Data::Login { .. }
+        | Data::ChatMessage { .. }
+        | Data::SystemInfo(_)
+        | Data::ClickTime(_)
+        | Data::Close
+        | Data::ConfigRequest(_)
+        | Data::ConfigValue(_)
+        | Data::Options(None)
+        | Data::OptionsSetResult(_)
+        | Data::SetUserOwnedPermanentPasswordResult(_)
+        | Data::NatType(_)
+        | Data::RawMessage(_)
+        | Data::FS(_)
+        | Data::Test
+        | Data::ClipboardFileEnabled(_)
+        | Data::PrivacyModeState(_)
+        | Data::Control(_)
+        | Data::Theme(_)
+        | Data::Language(_)
+        | Data::Empty
+        | Data::Disconnected
+        | Data::UrlLink(_)
+        | Data::VoiceCallIncoming
+        | Data::StartVoiceCall
+        | Data::VoiceCallResponse(_)
+        | Data::CloseVoiceCall(_)
+        | Data::FileTransferLog(_)
+        | Data::CmErr(_)
+        | Data::ReadJobInitResult { .. }
+        | Data::FileBlockFromCM { .. }
+        | Data::FileReadDone { .. }
+        | Data::FileReadError { .. }
+        | Data::FileDigestFromCM { .. }
+        | Data::AllFilesResult { .. }
+        | Data::WriteJobRejected { .. }
+        | Data::CheckHwcodec
+        | Data::HwCodecConfig(_) => true,
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        Data::CmEndpointChallenge { .. }
+        | Data::CmEndpointProof { .. }
+        | Data::CmServerChallenge { .. }
+        | Data::CmServerProof { .. } => true,
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        Data::WhiteboardEndpointChallenge { .. }
+        | Data::WhiteboardEndpointProof { .. }
+        | Data::WhiteboardServerChallenge { .. }
+        | Data::WhiteboardServerProof { .. }
+        | Data::AuthorizedFS { .. }
+        | Data::ValidateCmConnection { .. }
+        | Data::Keyboard(_)
+        | Data::KeyboardResponse(_)
+        | Data::Mouse(_)
+        | Data::WhiteboardBind { .. }
+        | Data::WhiteboardEvent { .. }
+        | Data::WhiteboardClose { .. }
+        | Data::WhiteboardShutdown => true,
+        #[cfg(target_os = "linux")]
+        Data::PulseAudioStart { .. }
+        | Data::ValidatePulseAudioStart { .. }
+        | Data::TerminalSessionCount(_) => true,
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+        Data::ServiceOwnedUnattendedPasswordChangeResult(_) => true,
+        #[cfg(target_os = "windows")]
+        Data::ServiceOwnedShareRdpResult(_)
+        | Data::ClipboardFile(_)
+        | Data::ClipboardNonFile(_)
+        | Data::SyncWinCpuUsage(_)
+        | Data::ControlledSessionCount(_)
+        | Data::PortForwardSessionCount(_)
+        | Data::FileTransferEnabledState(_) => true,
+        #[cfg(all(
+            feature = "flutter",
+            not(any(target_os = "android", target_os = "ios"))
+        ))]
+        Data::ControllingSessionCount(_) => true,
     }
 }
 

@@ -740,6 +740,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   and `systemctl` resolve only trusted fixed `/usr/bin`/`/bin` candidates that are root-owned and not
   group/world-writable; `--cm` detection is `/proc`/current-exe/argv-backed instead of `ps`; and the X11
   socket fallback reads `/tmp/.X11-unix` socket metadata plus passwd ownership instead of parsing `ls`.
+  R-S11c-10l closes the Linux `--server` tray cleanup: `src/core_main.rs` no longer launches PATH-selected
+  `pkill -f`; it calls `platform::stop_tray_processes()`, which selects only current-executable processes
+  with an exact `--tray` argv through `/proc` and sends SIGTERM.
   Remaining closure:
   no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
   root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
@@ -747,7 +750,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   R-S11c-10e; `linux_desktop_manager` probing is closed by R-S11c-10f; SELinux status probing is closed by
   R-S11c-10g; config-home correction is closed by R-S11c-10h; runtime lifecycle `systemctl` command construction
   is closed by R-S11c-10i; Debian package lifecycle and systemd stop semantics are closed by R-S11c-10j;
-  root/service helper command provenance is closed by R-S11c-10k.
+  root/service helper command provenance is closed by R-S11c-10k; Linux `--server` tray cleanup is closed
+  by R-S11c-10l.
 - **R-S11b-4 — config secrecy statement after IPC closure — CLOSED 2026-07-09.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary

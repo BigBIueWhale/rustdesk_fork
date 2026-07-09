@@ -1538,20 +1538,24 @@ fn display_from_x11_socket_dir_for_user(user: &str, dir: &Path) -> String {
     last
 }
 
-fn kill_process(pid: u32, label: &str) {
+fn signal_process(pid: u32, label: &str, signal: i32) {
     if pid == 0 || pid == std::process::id() {
         return;
     }
     let rc = unsafe {
-        hbb_common::libc::kill(pid as hbb_common::libc::pid_t, hbb_common::libc::SIGKILL)
+        hbb_common::libc::kill(pid as hbb_common::libc::pid_t, signal)
     };
     if rc == 0 {
         return;
     }
     let err = std::io::Error::last_os_error();
     if err.raw_os_error() != Some(hbb_common::libc::ESRCH) {
-        log::warn!("Failed to stop {label} process pid={pid}: {err}");
+        log::warn!("Failed to signal {label} process pid={pid} signal={signal}: {err}");
     }
+}
+
+fn kill_process(pid: u32, label: &str) {
+    signal_process(pid, label, hbb_common::libc::SIGKILL);
 }
 
 fn kill_current_exe_processes_with_arg(arg: &str, label: &str) {
@@ -1560,6 +1564,22 @@ fn kill_current_exe_processes_with_arg(arg: &str, label: &str) {
             kill_process(process.pid, label);
         }
     }
+}
+
+fn signal_current_exe_processes_with_arg(arg: &str, label: &str, signal: i32) {
+    for process in current_exe_process_cmdlines() {
+        if process_has_exact_arg(&process.args, arg) {
+            signal_process(process.pid, label, signal);
+        }
+    }
+}
+
+pub fn stop_tray_processes() {
+    signal_current_exe_processes_with_arg(
+        "--tray",
+        "--tray",
+        hbb_common::libc::SIGTERM,
+    );
 }
 
 fn kill_xorg_processes_with_config(xorg_config: &str) {
@@ -1725,6 +1745,11 @@ mod process_cleanup_tests {
         let server = vec!["/usr/bin/rustdesk".to_owned(), "--server".to_owned()];
         assert!(process_has_exact_arg(&server, "--server"));
         assert!(!process_has_exact_arg(&server, "--serverless"));
+
+        let tray = vec!["/usr/bin/rustdesk".to_owned(), "--tray".to_owned()];
+        assert!(process_has_exact_arg(&tray, "--tray"));
+        assert!(!process_has_exact_arg(&tray, "rustdesk --tray"));
+        assert!(!process_has_exact_arg(&tray, "--tray-extra"));
 
         let current_processes = current_exe_process_cmdlines();
         assert!(current_processes

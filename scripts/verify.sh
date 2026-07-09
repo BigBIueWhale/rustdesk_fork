@@ -1019,6 +1019,19 @@ grep -q 'hbb_common::libc::kill' src/platform/linux.rs || r_s11c10b="$r_s11c10b 
 grep -q 'kill_current_exe_processes_with_arg("--server", "--server")' src/platform/linux.rs || r_s11c10b="$r_s11c10b server-cleanup-not-argv-backed"
 grep -q 'kill_xorg_processes_with_config(&xorg_config)' src/platform/linux.rs || r_s11c10b="$r_s11c10b xorg-cleanup-not-argv-backed"
 grep -q 'kill_current_exe_processes_with_arg("--cm-no-ui", "--cm-no-ui")' src/platform/linux.rs || r_s11c10b="$r_s11c10b cm-cleanup-not-argv-backed"
+grep -q 'fn signal_current_exe_processes_with_arg' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-direct-signal-helper"
+grep -q 'pub fn stop_tray_processes()' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-tray-cleanup-helper"
+grep -q 'crate::platform::stop_tray_processes();' src/core_main.rs || r_s11c10b="$r_s11c10b core-server-not-using-tray-cleanup-helper"
+tray_cleanup_block=$(awk '/pub fn stop_tray_processes\(\)/,/^}/' src/platform/linux.rs)
+if ! echo "$tray_cleanup_block" | grep -q 'signal_current_exe_processes_with_arg'; then
+  r_s11c10b="$r_s11c10b tray-cleanup-not-proc-helper-backed"
+fi
+if ! echo "$tray_cleanup_block" | grep -q 'hbb_common::libc::SIGTERM'; then
+  r_s11c10b="$r_s11c10b tray-cleanup-not-sigterm"
+fi
+if [ "$(echo "$tray_cleanup_block" | grep -c '"--tray"')" -lt 2 ]; then
+  r_s11c10b="$r_s11c10b tray-cleanup-not-exact-tray-argv"
+fi
 linux_process_cleanup_blocks=$(
   awk '/fn stop_rustdesk_servers/,/fn should_start_server/' src/platform/linux.rs
   awk '/fn all_process_cmdlines/,/fn any_process_cmdline_contains/' src/platform/linux.rs
@@ -1026,8 +1039,15 @@ linux_process_cleanup_blocks=$(
 if echo "$linux_process_cleanup_blocks" | grep -Eq 'run_cmds|ps -[ef]|grep |awk |sed |xargs|kill -9|CMD_SH'; then
   r_s11c10b="$r_s11c10b shell-shaped-process-cleanup-regressed"
 fi
+if grep -RInE 'Command::new\("pkill"\)|pkill -f' src/core_main.rs src/platform/linux.rs >/tmp/rd_verify_r_s11c10b_tray.$$; then
+  cat /tmp/rd_verify_r_s11c10b_tray.$$
+  rm -f /tmp/rd_verify_r_s11c10b_tray.$$
+  r_s11c10b="$r_s11c10b pkill-tray-cleanup-regressed"
+else
+  rm -f /tmp/rd_verify_r_s11c10b_tray.$$
+fi
 if [ -n "$r_s11c10b" ]; then echo "  FAIL R-S11c-10b Linux service lifecycle process cleanup:$r_s11c10b"; rc=1; else
-  echo "  ok  R-S11c-10b Linux service lifecycle cleanup verifies /proc exe identity, uses exact argv matches plus kill(2), and avoids ps/grep/awk/xargs shell pipelines"; fi
+  echo "  ok  R-S11c-10b Linux service/tray cleanup verifies /proc exe identity, uses exact argv matches plus kill(2), and avoids ps/grep/awk/xargs/pkill shell pipelines"; fi
 
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never

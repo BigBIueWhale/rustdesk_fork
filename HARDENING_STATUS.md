@@ -475,6 +475,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   executes shell commands or derives a fallback home from shell output. Verification closure:
   `scripts/verify.sh` runs `config_patch_root_home_uses_passwd_home` and asserts the `patch`
   block contains no `run_cmds`, `whoami`, `getent`, `awk`, or shell-shaped probe tokens.
+- **R-S11c-10i — Linux service lifecycle `systemctl` command construction — CLOSED 2026-07-09.**
+  Platform: Linux installed-service lifecycle commands from `src/platform/linux.rs`. Surface:
+  `install_service()` / `uninstall_service()` and the user-config migration they run before service
+  start/stop. Boundary: local service lifecycle action ↔ root-context process execution and root-owned
+  service config files. Attack surface closed: lifecycle commands no longer build a single `sh -c`
+  string containing `cp -f ...; systemctl enable/disable/start/stop ...`, and they no longer discover
+  `systemctl` through `which`/`PATH`. The service helper selects only fixed root-owned non-group/world-writable
+  `/usr/bin/systemctl` or `/bin/systemctl` candidates and invokes `enable`, `disable`, `start`, and `stop`
+  as direct argv. Config migration is native filesystem work: source config files are inspected with
+  `symlink_metadata`, symlink/non-regular sources and destinations are rejected, the service config directory
+  is kept `0700`, and copied service config files are hardened to `0600`. Verification closure:
+  `scripts/verify.sh` runs the `r_s11c10_service_*` unit tests and asserts the lifecycle block uses fixed
+  `systemctl` paths, the argv helper, native symlink-checked config copying, owner-only destination modes,
+  and no stale `run_cmds_status`, `has_cmd`, `which`, `cp -f`, shell, or inline `systemctl ...` command text.
 - **R-S11c-7 — Linux `_pa` audio helper capability — CLOSED 2026-07-09.** Platform: Linux desktop while the
   `_pa` helper is running for local audio capture. Endpoint/action: `_pa` IPC stream formerly accepted a
   bare PulseAudio source request and then streamed raw monitor/input frames. Boundary: same-UID local process
@@ -644,13 +658,16 @@ unreachable and a source/test/AST gate prevents reintroduction.
   directly, treats only `1` as enforcing, and no longer shells through `getenforce` or parses `sestatus`.
   `scripts/verify.sh` runs the focused parser tests and source gate. R-S11c-10h closes config-home correction
   in `libs/hbb_common/src/config.rs`: `patch(PathBuf)` uses the `getpwuid`-backed trusted home helper instead
-  of `whoami` plus `getent|awk`.
+  of `whoami` plus `getent|awk`. R-S11c-10i closes Linux service lifecycle command construction: service
+  start/stop/enable/disable now invoke fixed trusted `systemctl` paths with direct argv, and root-service
+  config migration is native symlink-checked filesystem copying with `0700`/`0600` modes.
   Remaining closure:
   no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
   root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
   `pgrep` and whiteboard Xwayland discovery are closed by R-S11c-10d; `os-release` parsing is closed by
   R-S11c-10e; `linux_desktop_manager` probing is closed by R-S11c-10f; SELinux status probing is closed by
-  R-S11c-10g; config-home correction is closed by R-S11c-10h.
+  R-S11c-10g; config-home correction is closed by R-S11c-10h; lifecycle `systemctl` command construction is
+  closed by R-S11c-10i.
 - **R-S11b-4 — config secrecy statement after IPC closure — CLOSED 2026-07-09.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary

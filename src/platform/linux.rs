@@ -16,7 +16,8 @@ use libxdo_sys::{self, xdo_t, Window};
 use std::{
     cell::RefCell,
     ffi::{OsStr, OsString},
-    os::unix::fs::MetadataExt,
+    fs,
+    os::unix::fs::{MetadataExt, PermissionsExt},
     path::{Path, PathBuf},
     process::{Child, Command},
     string::String,
@@ -2271,28 +2272,7 @@ impl WakeLock {
     }
 }
 
-fn has_cmd(cmd: &str) -> bool {
-    std::process::Command::new("which")
-        .arg(cmd)
-        .status()
-        .map(|x| x.success())
-        .unwrap_or_default()
-}
-
-// R-X11: the non-elevated, status-aware replacement for the excised
-// privileged-command runner. The interactive GTK sudo/su password-driver is
-// gone; the sanctioned privilege model is the installed root systemd service plus the
-// single `sudo -u` drop (R-D3a/R-X10), so a lifecycle command runs as the
-// CURRENT user — effective only in the root service context, a no-op on the
-// per-user UI, where the .deb postinst/prerm + systemctl own the service
-// lifecycle (R-X11/R-D1). Returns whether the command exited 0.
-fn run_cmds_status(cmds: &str) -> bool {
-    Command::new(CMD_SH.as_str())
-        .args(["-c", cmds])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
+const SYSTEMCTL_PATHS: [&str; 2] = ["/usr/bin/systemctl", "/bin/systemctl"];
 
 /// Spawn the current executable after a delay.
 ///
@@ -2326,47 +2306,140 @@ pub fn run_me_with(secs: u32) {
         .ok();
 }
 
-fn switch_service() -> String {
-    // SECURITY: Use trusted home directory lookup via getpwuid instead of $HOME env var
-    // to prevent confused-deputy attacks where an attacker manipulates environment variables.
-    let home = get_home_dir_trusted()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
-    // R-X9/R-X10: the stop-service runtime toggle is excised (pinned "N", R-S16); this now only
-    // migrates the user config to the root service account's tree (R-D2). The installed service is
-    // always present + auto-start — no local --option/IPC write can disable it.
-    if !home.is_empty() && home != "/root" && !Config::get().is_empty() {
-        let app_name_lower = crate::get_app_name().to_lowercase();
-        let app_name0 = crate::get_app_name();
-        let config_subdir = format!(".config/{}", app_name_lower);
+fn trusted_fixed_executable(path: &Path) -> bool {
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    metadata.is_file() && metadata.uid() == 0 && metadata.mode() & 0o022 == 0
+}
 
-        // SECURITY: Quote all paths to prevent shell injection from paths containing
-        // spaces, semicolons, or other special characters.
-        let src1 = shell_quote(&format!("{}/{}/{}.toml", home, config_subdir, app_name0));
-        let src2 = shell_quote(&format!("{}/{}/{}2.toml", home, config_subdir, app_name0));
-        let dst = shell_quote(&format!("/root/{}/", config_subdir));
+fn systemctl_path() -> Option<&'static str> {
+    SYSTEMCTL_PATHS
+        .into_iter()
+        .find(|path| trusted_fixed_executable(Path::new(path)))
+}
 
-        format!("cp -f {} {}; cp -f {} {};", src1, dst, src2, dst)
-    } else {
-        "".to_owned()
+fn systemctl_service(action: &str, app_name: &str) -> bool {
+    let Some(systemctl) = systemctl_path() else {
+        log::error!("systemctl was not found at a trusted fixed path");
+        return false;
+    };
+    Command::new(systemctl)
+        .arg(action)
+        .arg(app_name)
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+fn copy_user_config_to_root_service_config() -> bool {
+    let Some(home) = get_home_dir_trusted() else {
+        return true;
+    };
+    if home == Path::new("/root") || Config::get().is_empty() {
+        return true;
     }
+
+    let app_name = crate::get_app_name();
+    let app_name_lower = app_name.to_lowercase();
+    let src_dir = home.join(".config").join(&app_name_lower);
+    let dst_dir = Path::new("/root/.config").join(&app_name_lower);
+    copy_service_config_files(&src_dir, &dst_dir, &app_name)
+}
+
+fn copy_service_config_files(src_dir: &Path, dst_dir: &Path, app_name: &str) -> bool {
+    if !prepare_service_config_dir(dst_dir) {
+        return false;
+    }
+
+    let mut ok = true;
+    for file_name in [format!("{app_name}.toml"), format!("{app_name}2.toml")] {
+        if !copy_service_config_file(&src_dir.join(&file_name), &dst_dir.join(&file_name)) {
+            ok = false;
+        }
+    }
+    ok
+}
+
+fn prepare_service_config_dir(path: &Path) -> bool {
+    if let Err(err) = fs::create_dir_all(path) {
+        log::warn!(
+            "Failed to create service config directory {}: {}",
+            path.display(),
+            err
+        );
+        return false;
+    }
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        log::warn!("Failed to inspect service config directory {}", path.display());
+        return false;
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        log::warn!(
+            "Refusing non-directory service config path {}",
+            path.display()
+        );
+        return false;
+    }
+    if let Err(err) = fs::set_permissions(path, fs::Permissions::from_mode(0o700)) {
+        log::warn!(
+            "Failed to harden service config directory {}: {}",
+            path.display(),
+            err
+        );
+        return false;
+    }
+    true
+}
+
+fn copy_service_config_file(src: &Path, dst: &Path) -> bool {
+    let metadata = match fs::symlink_metadata(src) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return true,
+        Err(err) => {
+            log::warn!("Failed to inspect config file {}: {}", src.display(), err);
+            return false;
+        }
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        log::warn!("Refusing non-regular config file {}", src.display());
+        return false;
+    }
+    if let Ok(metadata) = fs::symlink_metadata(dst) {
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            log::warn!("Refusing non-regular destination config file {}", dst.display());
+            return false;
+        }
+    }
+    if let Err(err) = fs::copy(src, dst) {
+        log::warn!(
+            "Failed to copy service config {} to {}: {}",
+            src.display(),
+            dst.display(),
+            err
+        );
+        return false;
+    }
+    if let Err(err) = fs::set_permissions(dst, fs::Permissions::from_mode(0o600)) {
+        log::warn!("Failed to harden service config file {}: {}", dst.display(), err);
+        return false;
+    }
+    true
 }
 
 pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
-    if !has_cmd("systemctl") {
+    if systemctl_path().is_none() {
         // Failed when installed + flutter run + started by `show_new_window`.
         return false;
     }
     log::info!("Uninstalling service...");
-    let cp = switch_service();
+    let _ = copy_user_config_to_root_service_config();
     let app_name = crate::get_app_name().to_lowercase();
-    // systemctl kill rustdesk --tray, execute cp first
-    if !run_cmds_status(&format!(
-        "{cp} systemctl disable {app_name}; systemctl stop {app_name};"
-    )) {
+    let _ = systemctl_service("disable", &app_name);
+    if !systemctl_service("stop", &app_name) {
         return true;
     }
-    // systemctl stop will kill child processes, below may not be executed.
+    // Stopping the service can terminate child processes before this branch runs.
     if show_new_window {
         run_me_with(2);
     }
@@ -2375,18 +2448,78 @@ pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
 
 pub fn install_service() -> bool {
     let _installing = crate::platform::InstallingService::new();
-    if !has_cmd("systemctl") {
+    if systemctl_path().is_none() {
         return false;
     }
     log::info!("Installing service...");
-    let cp = switch_service();
+    let _ = copy_user_config_to_root_service_config();
     let app_name = crate::get_app_name().to_lowercase();
-    if !run_cmds_status(&format!(
-        "{cp} systemctl enable {app_name}; systemctl start {app_name};"
-    )) {
+    let _ = systemctl_service("enable", &app_name);
+    if !systemctl_service("start", &app_name) {
         log::error!("Failed to enable/start the {app_name} service");
     }
     true
+}
+
+#[cfg(test)]
+mod service_lifecycle_tests {
+    use super::*;
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "rustdesk-{name}-{}-{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ))
+    }
+
+    #[test]
+    fn r_s11c10_service_lifecycle_uses_absolute_systemctl_candidates() {
+        for path in SYSTEMCTL_PATHS {
+            assert!(Path::new(path).is_absolute());
+            assert!(path.ends_with("/systemctl"));
+        }
+    }
+
+    #[test]
+    fn r_s11c10_service_config_copy_hardens_destination_file() {
+        let root = unique_temp_dir("service-config-copy");
+        let src_dir = root.join("src");
+        let dst_dir = root.join("dst");
+        let src = src_dir.join("RustDesk.toml");
+        let dst = dst_dir.join("RustDesk.toml");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::create_dir_all(&dst_dir).unwrap();
+        fs::write(&src, "key = 'value'\n").unwrap();
+
+        assert!(copy_service_config_file(&src, &dst));
+        assert_eq!(fs::read_to_string(&dst).unwrap(), "key = 'value'\n");
+        assert_eq!(
+            fs::symlink_metadata(&dst).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn r_s11c10_service_config_copy_rejects_symlink_source() {
+        let root = unique_temp_dir("service-config-symlink");
+        let src_dir = root.join("src");
+        let dst_dir = root.join("dst");
+        let real = src_dir.join("real.toml");
+        let link = src_dir.join("RustDesk.toml");
+        let dst = dst_dir.join("RustDesk.toml");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::create_dir_all(&dst_dir).unwrap();
+        fs::write(&real, "key = 'value'\n").unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        assert!(!copy_service_config_file(&link, &dst));
+        assert!(!dst.exists());
+
+        fs::remove_dir_all(root).unwrap();
+    }
 }
 
 pub fn check_autostart_config() -> ResultType<()> {

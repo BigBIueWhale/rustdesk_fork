@@ -1017,6 +1017,27 @@ fi
 if [ -n "$r_s11c10h" ]; then echo "  FAIL R-S11c-10h Linux config home correction:$r_s11c10h"; rc=1; else
   echo "  ok  R-S11c-10h Linux config home correction uses getpwuid-backed home lookup and avoids whoami/getent/awk shell probes"; fi
 
+echo "== (3b-iii-h9) Linux service lifecycle systemctl avoids shell command construction (R-S11c-10i) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_service --color never
+r_s11c10i=
+grep -q 'const SYSTEMCTL_PATHS' src/platform/linux.rs || r_s11c10i="$r_s11c10i no-fixed-systemctl-paths"
+grep -q 'fn systemctl_service(action: &str, app_name: &str) -> bool' src/platform/linux.rs || r_s11c10i="$r_s11c10i no-systemctl-argv-helper"
+grep -q 'Command::new(systemctl)' src/platform/linux.rs || r_s11c10i="$r_s11c10i systemctl-not-argv-only"
+grep -q 'fn copy_user_config_to_root_service_config() -> bool' src/platform/linux.rs || r_s11c10i="$r_s11c10i no-native-service-config-copy"
+grep -q 'fs::symlink_metadata(src)' src/platform/linux.rs || r_s11c10i="$r_s11c10i service-config-source-not-symlink-checked"
+grep -q 'fs::Permissions::from_mode(0o600)' src/platform/linux.rs || r_s11c10i="$r_s11c10i service-config-copy-not-owner-only"
+if grep -qE 'fn run_cmds_status|fn has_cmd' src/platform/linux.rs; then
+  r_s11c10i="$r_s11c10i stale-shell-lifecycle-helper"
+fi
+service_lifecycle_blocks=$(
+  awk '/fn trusted_fixed_executable/,/pub fn check_autostart_config/' src/platform/linux.rs
+)
+if echo "$service_lifecycle_blocks" | grep -Eq 'run_cmds|CMD_SH|sh -c|cp -f|Command::new\("which"\)|systemctl (enable|disable|start|stop)'; then
+  r_s11c10i="$r_s11c10i shell-shaped-service-lifecycle-regressed"
+fi
+if [ -n "$r_s11c10i" ]; then echo "  FAIL R-S11c-10i Linux service lifecycle systemctl/config-copy:$r_s11c10i"; rc=1; else
+  echo "  ok  R-S11c-10i Linux service lifecycle uses fixed systemctl paths, argv-only start/stop/enable/disable, and native owner-only config copies"; fi
+
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() are now only typed password
 # operations: user-owned direct commit and Linux/Windows service-owned service commit. set_socks /

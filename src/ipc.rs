@@ -84,6 +84,10 @@ use std::{
     collections::HashMap,
     sync::atomic::{AtomicBool, Ordering},
 };
+
+#[cfg(target_os = "macos")]
+const MACOS_OPEN: &str = "/usr/bin/open";
+
 #[cfg(windows)]
 use std::{
     ffi::OsStr,
@@ -1760,7 +1764,7 @@ async fn handle(data: Data, stream: &mut Connection, channel: IpcChannel) {
                     {
                         // our launchagent interval is 1 second
                         hbb_common::sleep(1.5).await;
-                        std::process::Command::new("open")
+                        std::process::Command::new(MACOS_OPEN)
                             .arg("-n")
                             .arg(&format!("/Applications/{}.app", crate::get_app_name()))
                             .spawn()

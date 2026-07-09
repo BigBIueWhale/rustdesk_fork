@@ -802,6 +802,7 @@ install_scpt=src/platform/privileges_scripts/install.scpt
 update_scpt=src/platform/privileges_scripts/update.scpt
 uninstall_scpt=src/platform/privileges_scripts/uninstall.scpt
 macos_rs=src/platform/macos.rs
+macos_helper_command_sources=(src/platform/macos.rs src/ipc.rs)
 daemon_args_block=$(awk '/<key>ProgramArguments<\/key>/,/<\/array>/' "$daemon_plist")
 echo "$daemon_args_block" | grep -q '<string>/Applications/RustDesk.app/Contents/MacOS/service</string>' || r_s11c5="$r_s11c5 daemon-not-direct-service-exec"
 if echo "$daemon_args_block" | grep -qE '<string>/(bin|usr/bin)/(sh|bash)</string>|<string>-c</string>'; then
@@ -810,13 +811,15 @@ fi
 grep -q '<string>/Library/Logs/RustDesk/rustdesk_service.err</string>' "$daemon_plist" || r_s11c5="$r_s11c5 daemon-stderr-not-library-log"
 grep -q '<string>/Library/Logs/RustDesk/rustdesk_service.out</string>' "$daemon_plist" || r_s11c5="$r_s11c5 daemon-stdout-not-library-log"
 for command in osascript launchctl open ls ioreg; do
-  if grep -Fq "Command::new(\"$command\")" "$macos_rs"; then
+  if grep -F "Command::new(\"$command\")" "${macos_helper_command_sources[@]}" >/dev/null; then
     r_s11c5="$r_s11c5 macos-path-selected-$command"
   fi
 done
 for system_path in /usr/bin/osascript /bin/launchctl /usr/bin/open /usr/sbin/ioreg; do
-  grep -Fq "\"$system_path\"" "$macos_rs" || r_s11c5="$r_s11c5 macos-absolute-${system_path##*/}-missing"
+  grep -F "\"$system_path\"" "${macos_helper_command_sources[@]}" >/dev/null || r_s11c5="$r_s11c5 macos-absolute-${system_path##*/}-missing"
 done
+grep -Fq 'const MACOS_OPEN: &str = "/usr/bin/open";' src/ipc.rs || r_s11c5="$r_s11c5 macos-ipc-open-absolute-missing"
+grep -Fq 'Command::new(MACOS_OPEN)' src/ipc.rs || r_s11c5="$r_s11c5 macos-ipc-reopen-not-absolute"
 grep -q 'pub(crate) fn console_owner_uid' "$macos_rs" || r_s11c5="$r_s11c5 macos-console-owner-uid-missing"
 grep -Fq 'std::fs::metadata("/dev/console")' "$macos_rs" || r_s11c5="$r_s11c5 macos-console-owner-not-dev-console-backed"
 grep -q 'hbb_common::libc::getpwuid_r' "$macos_rs" || r_s11c5="$r_s11c5 macos-active-user-not-passwd-r-backed"

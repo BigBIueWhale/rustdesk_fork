@@ -407,10 +407,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   destination preference symlinks, clear ACLs from app/plist/log/support/preference artifacts, recreate daemon
   log files before launchd opens them, and no longer build preference-copy paths from `/Users/` plus an
   unquoted user name. The Rust-side launcher path is also closed against caller-controlled `PATH`: local
-  install/update/uninstall/asuser helpers invoke fixed system paths for `osascript`, `launchctl`, `open`, and
-  `ioreg`, and active-console identity no longer parses `ls /dev/console`; it reads `/dev/console` ownership
-  and resolves the username/home through `getpwuid_r`, with `launchctl asuser` failing closed on an unresolved
-  console UID. Verification closure: `scripts/verify.sh` and
+  install/update/uninstall/asuser/reopen helpers invoke fixed system paths for `osascript`, `launchctl`, `open`,
+  and `ioreg`, and active-console identity no longer parses `ls /dev/console`; it reads `/dev/console`
+  ownership and resolves the username/home through `getpwuid_r`, with `launchctl asuser` failing closed on an
+  unresolved console UID. Verification closure: `scripts/verify.sh` and
   `scripts/apple-conform-check.sh` assert direct daemon `ProgramArguments`, `/Library/Logs/RustDesk` daemon
   logs, absence of `/tmp/rustdesk_service`, absence of active-user `:staff` bundle ownership, root-owned
   directory setup, ACL clearing, bundle-symlink escape rejection, preference symlink rejection, log recreation,

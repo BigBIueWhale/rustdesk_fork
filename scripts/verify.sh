@@ -939,6 +939,24 @@ fi
 if [ -n "$r_s11c10g" ]; then echo "  FAIL R-S11c-10g Linux SELinux status probing:$r_s11c10g"; rc=1; else
   echo "  ok  R-S11c-10g Linux SELinux status reads selinuxfs enforce files as data, with no getenforce/sestatus shell probe"; fi
 
+echo "== (3b-iii-h8) Linux config home correction avoids shell probes (R-S11c-10h) =="
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::config_patch_root_home_uses_passwd_home --color never
+r_s11c10h=
+grep -q 'crate::platform::linux::get_home_dir_trusted()' libs/hbb_common/src/config.rs || r_s11c10h="$r_s11c10h config-patch-not-passwd-api-backed"
+config_patch_block=$(awk '/^fn patch\(/,/^}/' libs/hbb_common/src/config.rs)
+if echo "$config_patch_block" | grep -Eq 'run_cmds|run_cmds_trim_newline|whoami|getent passwd|awk |grep |sed |xargs|CMD_SH'; then
+  r_s11c10h="$r_s11c10h shell-shaped-config-home-correction-regressed"
+fi
+if grep -RInE 'run_cmds_trim_newline\("whoami"\)|getent passwd.*awk|run_cmds_trim_newline\(&cmd\)' libs/hbb_common/src/config.rs >/tmp/rd_verify_r_s11c10h.$$; then
+  cat /tmp/rd_verify_r_s11c10h.$$
+  rm -f /tmp/rd_verify_r_s11c10h.$$
+  r_s11c10h="$r_s11c10h stale-config-home-shell-probe"
+else
+  rm -f /tmp/rd_verify_r_s11c10h.$$
+fi
+if [ -n "$r_s11c10h" ]; then echo "  FAIL R-S11c-10h Linux config home correction:$r_s11c10h"; rc=1; else
+  echo "  ok  R-S11c-10h Linux config home correction uses getpwuid-backed home lookup and avoids whoami/getent/awk shell probes"; fi
+
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() are now only typed password
 # operations: user-owned direct commit and Linux/Windows service-owned service commit. set_socks /

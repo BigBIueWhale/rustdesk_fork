@@ -465,6 +465,16 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Verification closure: `scripts/verify.sh` runs the `r_s11c10_selinux_*` unit tests and asserts the fixed
   selinuxfs paths, parser, file reader, absence of `getenforce`/`sestatus`, and absence of shell-shaped
   SELinux status probing in the touched block.
+- **R-S11c-10h — Linux config-home correction shell probes — CLOSED 2026-07-09.**
+  Platform: Linux config path resolution when `ProjectDirs` resolves through `/root`. Surface:
+  `libs/hbb_common/src/config.rs` `patch(PathBuf)`, which formerly invoked `whoami` and then interpolated the
+  discovered user into `getent passwd ... | awk` to recover a non-root home. Boundary: current process identity
+  / account database lookup ↔ service/root-context config filesystem decision. Attack surface closed: config
+  home correction now calls the existing `getpwuid`-backed `crate::platform::linux::get_home_dir_trusted()`
+  helper and falls back to the original path if the typed lookup cannot resolve a directory; it no longer
+  executes shell commands or derives a fallback home from shell output. Verification closure:
+  `scripts/verify.sh` runs `config_patch_root_home_uses_passwd_home` and asserts the `patch`
+  block contains no `run_cmds`, `whoami`, `getent`, `awk`, or shell-shaped probe tokens.
 - **R-S11c-7 — Linux `_pa` audio helper capability — CLOSED 2026-07-09.** Platform: Linux desktop while the
   `_pa` helper is running for local audio capture. Endpoint/action: `_pa` IPC stream formerly accepted a
   bare PulseAudio source request and then streamed raw monitor/input frames. Boundary: same-UID local process
@@ -632,13 +642,15 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `scripts/verify.sh` runs the focused desktop-manager tests and source gate.
   R-S11c-10g closes Linux SELinux status probing: `is_selinux_enforcing()` reads selinuxfs `enforce` files
   directly, treats only `1` as enforcing, and no longer shells through `getenforce` or parses `sestatus`.
-  `scripts/verify.sh` runs the focused parser tests and source gate.
+  `scripts/verify.sh` runs the focused parser tests and source gate. R-S11c-10h closes config-home correction
+  in `libs/hbb_common/src/config.rs`: `patch(PathBuf)` uses the `getpwuid`-backed trusted home helper instead
+  of `whoami` plus `getent|awk`.
   Remaining closure:
   no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
   root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
   `pgrep` and whiteboard Xwayland discovery are closed by R-S11c-10d; `os-release` parsing is closed by
   R-S11c-10e; `linux_desktop_manager` probing is closed by R-S11c-10f; SELinux status probing is closed by
-  R-S11c-10g.
+  R-S11c-10g; config-home correction is closed by R-S11c-10h.
 - **R-S11b-4 — config secrecy statement after IPC closure.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary

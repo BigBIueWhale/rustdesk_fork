@@ -505,14 +505,8 @@ fn patch(path: PathBuf) -> PathBuf {
         #[cfg(target_os = "linux")]
         {
             if _tmp == "/root" {
-                if let Ok(user) = crate::platform::linux::run_cmds_trim_newline("whoami") {
-                    if user != "root" {
-                        let cmd = format!("getent passwd '{}' | awk -F':' '{{print $6}}'", user);
-                        if let Ok(output) = crate::platform::linux::run_cmds_trim_newline(&cmd) {
-                            return output.into();
-                        }
-                        return format!("/home/{user}").into();
-                    }
+                if let Some(home) = crate::platform::linux::get_home_dir_trusted() {
+                    return home;
                 }
             }
         }
@@ -3228,6 +3222,16 @@ mod tests {
             config.password_prs.is_empty(),
             "clearing the credential must clear password_prs (not leave it live)"
         );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn config_patch_root_home_uses_passwd_home() {
+        let expected = crate::platform::linux::get_home_dir_trusted()
+            .unwrap_or_else(|| PathBuf::from("/root"));
+        let patched = patch(PathBuf::from("/root"));
+
+        assert_eq!(patched, expected);
     }
 
     static CONFIG_STATE_TEST_LOCK: Mutex<()> = Mutex::new(());

@@ -404,29 +404,32 @@ unreachable and a source/test/AST gate prevents reintroduction.
   before `add_connection`, desktop `AuthorizedFS` token matching, desktop legacy `Data::FS` rejection,
   and Android pre-`handle_fs` gating; `scripts/apple-conform-check.sh` mirrors the desktop source
   assertion for macOS.
-- **R-S11c-5 — macOS privileged service packaging — CLOSED 2026-07-08.** Platform: macOS
+- **R-S11c-5 — macOS privileged service packaging — CLOSED 2026-07-09.** Platform: macOS
   source-conformance and any future macOS artifact. Surfaces: `src/platform/privileges_scripts/daemon.plist`,
-  `install.scpt`, `update.scpt`, `uninstall.scpt`, and their `osascript` call sites in
-  `src/platform/macos.rs`. Boundary: active-user update/install flow ↔ root LaunchDaemon. Attack surface
-  closed: the LaunchDaemon no longer uses `/bin/sh -c`, and its stdout/stderr paths no longer point under
-  predictable `/tmp`; install/update create `/Library/Logs/RustDesk`, `/Library/Application Support/RustDesk`,
-  and the root preferences directory as root-owned, non-user-writable directories; install/update write plists
-  with quoted content/path handling and explicit root:wheel ownership plus non-writable modes; install/update
-  leave `/Applications/RustDesk.app` root:wheel and group/world non-writable instead of active-user-owned; the
-  privileged scripts reject symlinked service-owned paths, reject bundle symlinks that escape the app tree,
-  require the root-launched service executable to be a non-symlink executable file, reject source and
-  destination preference symlinks, clear ACLs from app/plist/log/support/preference artifacts, recreate daemon
-  log files before launchd opens them, and no longer build preference-copy paths from `/Users/` plus an
-  unquoted user name. The Rust-side launcher path is also closed against caller-controlled `PATH`: local
-  install/update/uninstall/asuser/reopen helpers invoke fixed system paths for `osascript`, `launchctl`, `open`,
+  `install.scpt`, deleted `update.scpt`, `uninstall.scpt`, and their `osascript` call sites in
+  `src/platform/macos.rs`. Boundary: active-user install/update flow ↔ root LaunchDaemon. Attack surface
+  closed: the LaunchDaemon no longer uses `/bin/sh -c`, its stdout/stderr paths no longer point under
+  predictable `/tmp`, and its root service executable is no longer inside `/Applications/RustDesk.app`.
+  `daemon.plist` runs `/Library/PrivilegedHelperTools/com.carriez.rustdesk_service` directly with
+  `/Library/Application Support/RustDesk` as the root-owned working directory. `install.scpt` creates only
+  root-owned log/support/root-preference directories and quoted root-owned launchd plists; it no longer
+  chowns a mutable app bundle into a root service path, no longer accepts an active-user home argument, and no
+  longer copies active-user `RustDesk.toml`/`RustDesk2.toml` into root preferences. Instead it requires the
+  helper directory and helper executable to be non-symlinks, already `root:wheel`, non-group/world-writable,
+  ACL-free, and executable, and it re-verifies that helper after plist writes and immediately before
+  `launchctl load`. The dormant privileged updater is deleted rather than retained: `update.scpt`,
+  `update_daemon_agent`, `.rustdeskupdate-*` helpers, and the macOS startup cleanup for the old update temp
+  tree are absent. The Rust-side launcher path remains closed against caller-controlled `PATH`: local
+  install/uninstall/asuser/reopen helpers invoke fixed system paths for `osascript`, `launchctl`, `open`,
   and `ioreg`, and active-console identity no longer parses `ls /dev/console`; it reads `/dev/console`
-  ownership and resolves the username/home through `getpwuid_r`, with `launchctl asuser` failing closed on an
+  ownership and resolves the username through `getpwuid_r`, with `launchctl asuser` failing closed on an
   unresolved console UID. Verification closure: `scripts/verify.sh` and
-  `scripts/apple-conform-check.sh` assert direct daemon `ProgramArguments`, `/Library/Logs/RustDesk` daemon
-  logs, absence of `/tmp/rustdesk_service`, absence of active-user `:staff` bundle ownership, root-owned
-  directory setup, ACL clearing, bundle-symlink escape rejection, preference symlink rejection, log recreation,
-  quoted plist writes, quoted privileged plist paths, absolute local helper tool paths, and the
-  `/dev/console`/`getpwuid_r` active-user lookup.
+  `scripts/apple-conform-check.sh` assert the PrivilegedHelperTools daemon target and root-owned working
+  directory, absence of `update.scpt`/`update_daemon_agent`/`.rustdeskupdate-*`, absence of app-bundle root
+  service execution, absence of active-user config import, helper root ownership/mode/ACL checks, helper
+  re-verification before load, `/Library/Logs/RustDesk` daemon logs, root-owned directory setup, quoted plist
+  writes, quoted privileged plist paths, absolute local helper tool paths, and the `/dev/console`/`getpwuid_r`
+  active-user lookup.
 - **R-S11c-10a — Linux root-context desktop discovery shell interpolation — CLOSED 2026-07-09.**
   Platform: Linux installed service/helper discovery. Surfaces: active-user prelogin shell lookup,
   process-environment discovery for `DISPLAY`/`XAUTHORITY`/Wayland/DBus variables, direct PID environment

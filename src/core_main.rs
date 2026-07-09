@@ -172,11 +172,6 @@ pub fn core_main() -> Option<Vec<String>> {
     // installed-service fork the controlled side is reached only via `--service`
     // (launch_privileged_process / CreateProcessAsUserW -> `--server` -> `--tray`).
     if args.is_empty() || crate::common::is_empty_uni_link(&args[0]) {
-        #[cfg(target_os = "macos")]
-        {
-            crate::platform::macos::try_remove_temp_update_dir(None);
-        }
-
         #[cfg(windows)]
         {
             crate::platform::try_remove_temp_update_files();

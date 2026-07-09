@@ -48,17 +48,6 @@ static PRIVILEGES_SCRIPTS_DIR: Dir =
     include_dir!("$CARGO_MANIFEST_DIR/src/platform/privileges_scripts");
 static mut LATEST_SEED: i32 = 0;
 
-#[inline]
-fn get_update_temp_dir() -> PathBuf {
-    let euid = unsafe { hbb_common::libc::geteuid() };
-    Path::new("/tmp").join(format!(".rustdeskupdate-{}", euid))
-}
-
-#[inline]
-fn get_update_temp_dir_string() -> String {
-    get_update_temp_dir().to_string_lossy().into_owned()
-}
-
 /// Global mutex to serialize CoreGraphics cursor operations.
 /// This prevents race conditions between cursor visibility (hide depth tracking)
 /// and cursor positioning/clipping operations.
@@ -203,9 +192,6 @@ pub fn install_service() -> bool {
     is_installed_daemon(false)
 }
 
-// Remember to check if `update_daemon_agent()` need to be changed if changing `is_installed_daemon()`.
-// No need to merge the existing dup code, because the code in these two functions are too critical.
-// New code should be written in a common function.
 pub fn is_installed_daemon(prompt: bool) -> bool {
     let daemon = format!("{}_service.plist", crate::get_full_name());
     let agent = format!("{}_server.plist", crate::get_full_name());
@@ -242,17 +228,12 @@ pub fn is_installed_daemon(prompt: bool) -> bool {
         return false;
     };
 
-    let active_user_home = get_active_user_home()
-        .map(|path| path.to_string_lossy().into_owned())
-        .unwrap_or_default();
-
     std::thread::spawn(move || {
         match std::process::Command::new(MACOS_OSASCRIPT)
             .arg("-e")
             .arg(install_script_body)
             .arg(daemon_plist_body)
             .arg(agent_plist_body)
-            .arg(active_user_home)
             .status()
         {
             Err(e) => {
@@ -272,64 +253,6 @@ pub fn is_installed_daemon(prompt: bool) -> bool {
         }
     });
     false
-}
-
-fn update_daemon_agent(agent_plist_file: String, update_source_dir: String, sync: bool) {
-    let update_script_file = "update.scpt";
-    let Some(update_script) = PRIVILEGES_SCRIPTS_DIR.get_file(update_script_file) else {
-        return;
-    };
-    let Some(update_script_body) = update_script.contents_utf8().map(correct_app_name) else {
-        return;
-    };
-
-    let Some(daemon_plist) = PRIVILEGES_SCRIPTS_DIR.get_file("daemon.plist") else {
-        return;
-    };
-    let Some(daemon_plist_body) = daemon_plist.contents_utf8().map(correct_app_name) else {
-        return;
-    };
-    let Some(agent_plist) = PRIVILEGES_SCRIPTS_DIR.get_file("agent.plist") else {
-        return;
-    };
-    let Some(agent_plist_body) = agent_plist.contents_utf8().map(correct_app_name) else {
-        return;
-    };
-
-    let active_user = get_active_username();
-    let active_user_home = get_active_user_home()
-        .map(|path| path.to_string_lossy().into_owned())
-        .unwrap_or_default();
-
-    let func = move || {
-        let mut binding = std::process::Command::new(MACOS_OSASCRIPT);
-        let cmd = binding
-            .arg("-e")
-            .arg(update_script_body)
-            .arg(daemon_plist_body)
-            .arg(agent_plist_body)
-            .arg(&active_user)
-            .arg(&active_user_home)
-            .arg(std::process::id().to_string())
-            .arg(update_source_dir);
-        match cmd.status() {
-            Err(e) => {
-                log::error!("run osascript failed: {}", e);
-            }
-            Ok(status) if !status.success() => {
-                log::warn!("run osascript failed with status: {}", status);
-            }
-            _ => {
-                let installed = std::path::Path::new(&agent_plist_file).exists();
-                log::info!("Agent file {} installed: {}", &agent_plist_file, installed);
-            }
-        }
-    };
-    if sync {
-        func();
-    } else {
-        std::thread::spawn(func);
-    }
 }
 
 fn correct_app_name(s: &str) -> String {
@@ -720,12 +643,6 @@ fn passwd_name_home(passwd: &hbb_common::libc::passwd) -> Option<(String, PathBu
     Some((name, PathBuf::from(OsString::from_vec(home_bytes))))
 }
 
-pub fn get_active_username() -> String {
-    active_console_passwd_entry()
-        .map(|(username, _)| username)
-        .unwrap_or_default()
-}
-
 pub fn get_active_userid() -> String {
     console_owner_uid()
         .map(|uid| uid.to_string())
@@ -853,15 +770,6 @@ pub fn quit_gui() {
     unsafe {
         let () = msg_send!(NSApp(), terminate: nil);
     };
-}
-
-#[inline]
-pub fn try_remove_temp_update_dir(dir: Option<&str>) {
-    let target_path_buf = dir.map(PathBuf::from).unwrap_or_else(get_update_temp_dir);
-    let target_path = target_path_buf.as_path();
-    if target_path.exists() {
-        std::fs::remove_dir_all(target_path).ok();
-    }
 }
 
 // R-X1 / R-SV2 / R-A6 (§18): the macOS self-updater cluster — update_me, update_from_dmg,

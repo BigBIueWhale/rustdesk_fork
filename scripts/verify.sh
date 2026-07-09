@@ -1141,7 +1141,7 @@ grep -q 'fn parse_os_release_field' libs/hbb_common/src/platform/linux.rs || r_s
 grep -q 'std::fs::read_to_string("/etc/os-release")' libs/hbb_common/src/platform/linux.rs || r_s11c10e="$r_s11c10e no-etc-os-release-read"
 grep -q 'std::fs::read_to_string("/usr/lib/os-release")' libs/hbb_common/src/platform/linux.rs || r_s11c10e="$r_s11c10e no-usr-lib-os-release-fallback"
 os_release_blocks=$(
-  awk '/impl Distro/,/fn find_cmd_path/' libs/hbb_common/src/platform/linux.rs
+  awk '/impl Distro/,/fn trusted_fixed_executable/' libs/hbb_common/src/platform/linux.rs
 )
 if echo "$os_release_blocks" | grep -Eq 'run_cmds|run_cmds_trim_newline|CMD_SH|sh -c|awk|grep |cat /etc/os-release'; then
   r_s11c10e="$r_s11c10e shell-shaped-os-release-parser-regressed"
@@ -1251,7 +1251,6 @@ echo "== (3b-iii-h9b) Linux privileged helper command provenance is fixed-path (
 r_s11c10k=
 grep -q 'const SUDO_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-sudo-paths"
 grep -q 'const ENV_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-env-paths"
-grep -q 'const SH_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-sh-paths"
 grep -q 'const W_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-w-paths"
 grep -q 'const XDG_SCREENSAVER_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-xdg-screensaver-paths"
 grep -q 'fn trusted_command_path' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-trusted-command-resolver"
@@ -1270,6 +1269,39 @@ else
 fi
 if [ -n "$r_s11c10k" ]; then echo "  FAIL R-S11c-10k Linux privileged helper command provenance:$r_s11c10k"; rc=1; else
   echo "  ok  R-S11c-10k Linux root/service helper commands use trusted fixed paths or native /proc/filesystem reads"; fi
+
+echo "== (3b-iii-h9c) Linux shared helper command provenance has no shell/path fallback (R-S11c-10m) =="
+"${RUN[@]}" cargo test -p hbb_common --lib r_s11c10m --color never
+r_s11c10m=
+grep -q 'const LOGINCTL_PATHS' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m no-fixed-loginctl-paths"
+grep -q 'const NOTIFY_SEND_PATHS' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m no-fixed-notify-send-paths"
+grep -q 'fn trusted_fixed_executable(path: &Path) -> bool' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m no-shared-trusted-exec-check"
+grep -q 'path.is_absolute()' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-allows-relative"
+grep -q 'metadata.uid() == 0' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-not-root-owned"
+grep -q 'metadata.mode() & 0o022 == 0' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-allows-writable"
+grep -q 'Command::new(loginctl)' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m loginctl-not-fixed-path-argv"
+grep -q 'fn spawn_message_command' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m system-message-not-fixed-path-helper"
+grep -q 'pub const REOPEN_AFTER_SERVICE_STOP_ARG' src/platform/linux.rs || r_s11c10m="$r_s11c10m no-delayed-reopen-argv-mode"
+grep -q 'schedule_reopen_after_service_stop(2)' src/platform/linux.rs || r_s11c10m="$r_s11c10m uninstall-reopen-not-argv-mode"
+grep -q 'reopen_after_service_stop(secs)' src/core_main.rs || r_s11c10m="$r_s11c10m delayed-reopen-arg-not-handled"
+grep -q 'Linux shared helper command provenance' requirements.html || r_s11c10m="$r_s11c10m requirements-disposition-missing"
+grep -q 'R-S11c-10m closes the shared Linux helper command-provenance residue' HARDENING_STATUS.md || r_s11c10m="$r_s11c10m hardening-ledger-missing"
+shared_linux_helper_blocks=$(
+  awk '/const LOGINCTL_PATHS/,/pub fn get_wayland_displays/' libs/hbb_common/src/platform/linux.rs
+  awk '/pub fn schedule_reopen_after_service_stop/,/fn trusted_fixed_executable/' src/platform/linux.rs
+)
+if echo "$shared_linux_helper_blocks" | grep -Eq 'find_cmd_path|CMD_PS|CMD_SH|Command::new\("which"\)|flatpak-spawn|pub fn run_cmds|pub fn run_cmds_trim_newline|fn shell_quote|pub fn shell_quote|sh -c|sleep \{secs\}|exec \{exe'; then
+  r_s11c10m="$r_s11c10m shared-helper-shell-or-path-fallback-regressed"
+fi
+if grep -RInE 'find_cmd_path|CMD_PS|CMD_SH|Command::new\("which"\)|flatpak-spawn|pub fn run_cmds|pub fn run_cmds_trim_newline|fn shell_quote|pub fn shell_quote|sleep \{secs\}; exec' libs/hbb_common/src/platform/linux.rs src/platform/linux.rs >/tmp/rd_verify_r_s11c10m.$$; then
+  cat /tmp/rd_verify_r_s11c10m.$$
+  rm -f /tmp/rd_verify_r_s11c10m.$$
+  r_s11c10m="$r_s11c10m stale-shared-helper-shell-api"
+else
+  rm -f /tmp/rd_verify_r_s11c10m.$$
+fi
+if [ -n "$r_s11c10m" ]; then echo "  FAIL R-S11c-10m Linux shared helper command provenance:$r_s11c10m"; rc=1; else
+  echo "  ok  R-S11c-10m Linux shared helpers use trusted fixed command paths and delayed reopen is argv-only"; fi
 
 echo "== (3b-iii-h10) Debian package lifecycle uses service-manager helpers (R-S11c-10j/R-T9) =="
 r_s11c10j=

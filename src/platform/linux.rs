@@ -42,10 +42,10 @@ const SHELL_PROCESSES: [&str; 4] = ["bash", "zsh", "fish", "sh"];
 const SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(8);
 const SUDO_PATHS: [&str; 2] = ["/usr/bin/sudo", "/bin/sudo"];
 const ENV_PATHS: [&str; 2] = ["/usr/bin/env", "/bin/env"];
-const SH_PATHS: [&str; 2] = ["/bin/sh", "/usr/bin/sh"];
 const W_PATHS: [&str; 2] = ["/usr/bin/w", "/bin/w"];
 const XRANDR_PATHS: [&str; 2] = ["/usr/bin/xrandr", "/bin/xrandr"];
 const XDG_SCREENSAVER_PATHS: [&str; 2] = ["/usr/bin/xdg-screensaver", "/bin/xdg-screensaver"];
+pub const REOPEN_AFTER_SERVICE_STOP_ARG: &str = "--reopen-after-service-stop";
 
 // Terminal type constants
 const TERM_XTERM_256COLOR: &str = "xterm-256color";
@@ -2442,16 +2442,7 @@ impl WakeLock {
 
 const SYSTEMCTL_PATHS: [&str; 2] = ["/usr/bin/systemctl", "/bin/systemctl"];
 
-/// Spawn the current executable after a delay.
-///
-/// # Security
-/// The executable path is safely quoted using `shell_quote()` to prevent
-/// command injection vulnerabilities. The `secs` parameter is a u32, so it
-/// cannot contain malicious input.
-///
-/// # Arguments
-/// * `secs` - Number of seconds to wait before spawning
-pub fn run_me_with(secs: u32) {
+pub fn schedule_reopen_after_service_stop(secs: u32) {
     let exe = match std::env::current_exe() {
         Ok(path) => path,
         Err(e) => {
@@ -2460,23 +2451,26 @@ pub fn run_me_with(secs: u32) {
         }
     };
 
-    // SECURITY: Use shell_quote to safely escape the executable path,
-    // preventing command injection even if the path contains special characters.
-    let exe_quoted = shell_quote(&exe.to_string_lossy());
-
-    // Spawn a background process that sleeps and then executes.
-    // The child process is automatically orphaned when parent exits,
-    // and will be adopted by init (PID 1).
-    let Some(sh) = sh_path() else {
-        log::error!("sh was not found at a trusted fixed path");
-        return;
-    };
-    if let Err(err) = Command::new(sh)
-        .arg("-c")
-        .arg(format!("sleep {secs}; exec {exe_quoted}"))
+    if let Err(err) = Command::new(&exe)
+        .arg(REOPEN_AFTER_SERVICE_STOP_ARG)
+        .arg(secs.to_string())
         .spawn()
     {
-        log::warn!("Failed to schedule RustDesk restart: {}", err);
+        log::warn!("Failed to schedule RustDesk reopen: {}", err);
+    }
+}
+
+pub fn reopen_after_service_stop(secs: u32) {
+    std::thread::sleep(Duration::from_secs(secs as u64));
+    match std::env::current_exe() {
+        Ok(exe) => {
+            if let Err(err) = Command::new(exe).spawn() {
+                log::warn!("Failed to reopen RustDesk after service stop: {}", err);
+            }
+        }
+        Err(err) => {
+            log::warn!("Failed to resolve current executable for reopen: {}", err);
+        }
     }
 }
 
@@ -2500,10 +2494,6 @@ fn sudo_path() -> Option<&'static str> {
 
 fn env_path() -> Option<&'static str> {
     trusted_command_path(&ENV_PATHS)
-}
-
-fn sh_path() -> Option<&'static str> {
-    trusted_command_path(&SH_PATHS)
 }
 
 fn w_path() -> Option<&'static str> {
@@ -2644,7 +2634,7 @@ pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
     }
     // Stopping the service can terminate child processes before this branch runs.
     if show_new_window {
-        run_me_with(2);
+        schedule_reopen_after_service_stop(2);
     }
     std::process::exit(0);
 }
@@ -2686,10 +2676,9 @@ mod service_lifecycle_tests {
 
     #[test]
     fn r_s11c10_privileged_command_candidates_are_fixed_system_paths() {
-        let command_sets: [&[&str]; 7] = [
+        let command_sets: [&[&str]; 6] = [
             &SUDO_PATHS,
             &ENV_PATHS,
-            &SH_PATHS,
             &W_PATHS,
             &XRANDR_PATHS,
             &XDG_SCREENSAVER_PATHS,

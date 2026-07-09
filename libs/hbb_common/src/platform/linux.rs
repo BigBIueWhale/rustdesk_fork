@@ -1,6 +1,7 @@
 use crate::ResultType;
 use std::{
-    collections::HashMap,
+    io,
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -19,32 +20,11 @@ lazy_static::lazy_static! {
     pub static ref DISTRO: Distro = Distro::new();
 }
 
-// to-do: There seems to be some runtime issue that causes the audit logs to be generated.
-// We may need to fix this and remove this workaround in the future.
-//
-// We use the pre-search method to find the command path to avoid the audit logs on some systems.
-// No idea why the audit logs happen.
-// Though the audit logs may disappear after rebooting.
-//
-// See https://github.com/rustdesk/rustdesk/discussions/11959
-//
-// `ausearch -x /usr/share/rustdesk/rustdesk` will return
-// ...
-// time->Tue Jun 24 10:40:43 2025
-// type=PROCTITLE msg=audit(1750776043.446:192757): proctitle=2F7573722F62696E2F727573746465736B002D2D73657276696365
-// type=PATH msg=audit(1750776043.446:192757): item=0 name="/usr/local/bin/sh" nametype=UNKNOWN cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
-// type=CWD msg=audit(1750776043.446:192757): cwd="/"
-// type=SYSCALL msg=audit(1750776043.446:192757): arch=c000003e syscall=59 success=no exit=-2 a0=7fb7dbd22da0 a1=1d65f2c0 a2=7ffc25193360 a3=7ffc25194ec0 items=1 ppid=172208 pid=267565 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm="rustdesk" exe="/usr/share/rustdesk/rustdesk" subj=unconfined key="processos_criados"
-// ----
-// time->Tue Jun 24 10:40:43 2025
-// type=PROCTITLE msg=audit(1750776043.446:192758): proctitle=2F7573722F62696E2F727573746465736B002D2D73657276696365
-// type=PATH msg=audit(1750776043.446:192758): item=0 name="/usr/sbin/sh" nametype=UNKNOWN cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
-// ...
-lazy_static::lazy_static! {
-    pub static ref CMD_LOGINCTL: String = find_cmd_path("loginctl");
-    pub static ref CMD_PS: String = find_cmd_path("ps");
-    pub static ref CMD_SH: String = find_cmd_path("sh");
-}
+const LOGINCTL_PATHS: [&str; 2] = ["/usr/bin/loginctl", "/bin/loginctl"];
+const NOTIFY_SEND_PATHS: [&str; 2] = ["/usr/bin/notify-send", "/bin/notify-send"];
+const ZENITY_PATHS: [&str; 2] = ["/usr/bin/zenity", "/bin/zenity"];
+const KDIALOG_PATHS: [&str; 2] = ["/usr/bin/kdialog", "/bin/kdialog"];
+const XMESSAGE_PATHS: [&str; 2] = ["/usr/bin/xmessage", "/bin/xmessage"];
 
 pub const DISPLAY_SERVER_WAYLAND: &str = "wayland";
 pub const DISPLAY_SERVER_X11: &str = "x11";
@@ -120,21 +100,21 @@ fn unescape_os_release_quoted_value(value: &str) -> String {
     out
 }
 
-fn find_cmd_path(cmd: &'static str) -> String {
-    let test_cmd = format!("/bin/{}", cmd);
-    if std::path::Path::new(&test_cmd).exists() {
-        return test_cmd;
+fn trusted_fixed_executable(path: &Path) -> bool {
+    if !path.is_absolute() {
+        return false;
     }
-    let test_cmd = format!("/usr/bin/{}", cmd);
-    if std::path::Path::new(&test_cmd).exists() {
-        return test_cmd;
-    }
-    if let Ok(output) = Command::new("which").arg(cmd).output() {
-        if output.status.success() {
-            return String::from_utf8_lossy(&output.stdout).trim().to_string();
-        }
-    }
-    cmd.to_string()
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return false;
+    };
+    metadata.is_file() && metadata.uid() == 0 && metadata.mode() & 0o022 == 0
+}
+
+fn trusted_command_path(paths: &'static [&'static str]) -> Option<&'static str> {
+    paths
+        .iter()
+        .copied()
+        .find(|path| trusted_fixed_executable(Path::new(path)))
 }
 
 // Deprecated. Use `hbb_common::platform::linux::is_kde_session()` instead for now.
@@ -363,82 +343,51 @@ pub fn is_session_locked(sid: &str) -> bool {
     }
 }
 
-// **Note** that the return value here, the last character is '\n'.
-// Use `run_cmds_trim_newline()` if you want to remove '\n' at the end.
-pub fn run_cmds(cmds: &str) -> ResultType<String> {
-    let output = std::process::Command::new(CMD_SH.as_str())
-        .args(vec!["-c", cmds])
-        .output()?;
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
-}
-
-pub fn run_cmds_trim_newline(cmds: &str) -> ResultType<String> {
-    let output = std::process::Command::new(CMD_SH.as_str())
-        .args(vec!["-c", cmds])
-        .output()?;
-    let out = String::from_utf8_lossy(&output.stdout);
-    Ok(if out.ends_with('\n') {
-        out[..out.len() - 1].to_string()
-    } else {
-        out.to_string()
-    })
-}
-
 fn run_loginctl(args: Option<Vec<&str>>) -> std::io::Result<std::process::Output> {
-    if std::env::var("FLATPAK_ID").is_ok() {
-        let mut l_args = CMD_LOGINCTL.to_string();
-        if let Some(a) = args.as_ref() {
-            l_args = format!("{} {}", l_args, a.join(" "));
-        }
-        let res = std::process::Command::new("flatpak-spawn")
-            .args(vec![String::from("--host"), l_args])
-            .output();
-        if res.is_ok() {
-            return res;
-        }
-    }
-    let mut cmd = std::process::Command::new(CMD_LOGINCTL.as_str());
+    let Some(loginctl) = trusted_command_path(&LOGINCTL_PATHS) else {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "loginctl was not found at a trusted fixed path",
+        ));
+    };
+    let mut cmd = std::process::Command::new(loginctl);
     if let Some(a) = args {
         return cmd.args(a).output();
     }
     cmd.output()
 }
 
+fn spawn_message_command(paths: &'static [&'static str], args: &[&str]) -> bool {
+    let Some(command) = trusted_command_path(paths) else {
+        return false;
+    };
+    Command::new(command).args(args).spawn().is_ok()
+}
+
 /// forever: may not work
 #[cfg(target_os = "linux")]
 pub fn system_message(title: &str, msg: &str, forever: bool) -> ResultType<()> {
-    let cmds: HashMap<&str, Vec<&str>> = HashMap::from([
-        ("notify-send", [title, msg].to_vec()),
-        (
-            "zenity",
-            [
+    let timeout = if forever { "0" } else { "3" };
+    if spawn_message_command(&NOTIFY_SEND_PATHS, &[title, msg])
+        || spawn_message_command(
+            &ZENITY_PATHS,
+            &[
                 "--info",
                 "--timeout",
-                if forever { "0" } else { "3" },
+                timeout,
                 "--title",
                 title,
                 "--text",
                 msg,
-            ]
-            .to_vec(),
-        ),
-        ("kdialog", ["--title", title, "--msgbox", msg].to_vec()),
-        (
-            "xmessage",
-            [
-                "-center",
-                "-timeout",
-                if forever { "0" } else { "3" },
-                title,
-                msg,
-            ]
-            .to_vec(),
-        ),
-    ]);
-    for (k, v) in cmds {
-        if Command::new(k).args(v).spawn().is_ok() {
-            return Ok(());
-        }
+            ],
+        )
+        || spawn_message_command(&KDIALOG_PATHS, &["--title", title, "--msgbox", msg])
+        || spawn_message_command(
+            &XMESSAGE_PATHS,
+            &["-center", "-timeout", timeout, title, msg],
+        )
+    {
+        return Ok(());
     }
     crate::bail!("failed to post system message");
 }
@@ -525,19 +474,6 @@ pub fn get_wayland_displays() -> ResultType<Vec<WaylandDisplayInfo>> {
     Ok(display_infos)
 }
 
-/// Escape a string for safe use in shell commands by wrapping in single quotes.
-///
-/// This function handles the edge case of single quotes within the string by:
-/// 1. Ending the current single-quoted section
-/// 2. Adding an escaped single quote
-/// 3. Starting a new single-quoted section
-///
-/// Example: "it's here" -> "'it'\''s here'"
-#[inline]
-pub fn shell_quote(s: &str) -> String {
-    format!("'{}'", s.replace("'", "'\\''"))
-}
-
 /// Get the current user's home directory via getpwuid (trusted source).
 ///
 /// This function uses the system's password database (via `getpwuid`) to retrieve
@@ -580,12 +516,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_run_cmds_trim_newline() {
-        assert_eq!(run_cmds_trim_newline("echo -n 123").unwrap(), "123");
-        assert_eq!(run_cmds_trim_newline("echo 123").unwrap(), "123");
+    fn r_s11c10m_command_candidates_are_fixed_absolute_paths() {
+        for path in LOGINCTL_PATHS
+            .iter()
+            .chain(NOTIFY_SEND_PATHS.iter())
+            .chain(ZENITY_PATHS.iter())
+            .chain(KDIALOG_PATHS.iter())
+            .chain(XMESSAGE_PATHS.iter())
+        {
+            assert!(Path::new(path).is_absolute(), "{} is not absolute", path);
+            assert!(!path.contains(".."), "{} contains parent traversal", path);
+        }
+    }
+
+    #[test]
+    fn r_s11c10m_command_resolver_rejects_relative_and_missing_paths() {
+        assert_eq!(trusted_command_path(&["loginctl"]), None);
         assert_eq!(
-            run_cmds_trim_newline("whoami").unwrap() + "\n",
-            run_cmds("whoami").unwrap()
+            trusted_command_path(&["/definitely/not/rustdesk/loginctl"]),
+            None
         );
     }
 
@@ -679,37 +628,5 @@ ESCAPED="quote \" dollar \$ slash \\ tick \`"
                 "Should not use HOME env var"
             );
         }
-    }
-
-    /// Test shell_quote with normal strings
-    #[test]
-    fn test_shell_quote_normal() {
-        assert_eq!(shell_quote("hello"), "'hello'");
-        assert_eq!(shell_quote("/home/user"), "'/home/user'");
-    }
-
-    /// Test shell_quote with spaces
-    #[test]
-    fn test_shell_quote_spaces() {
-        assert_eq!(shell_quote("/home/my user/file"), "'/home/my user/file'");
-        assert_eq!(shell_quote("path with spaces"), "'path with spaces'");
-    }
-
-    /// Test shell_quote with single quotes (the tricky case)
-    #[test]
-    fn test_shell_quote_single_quotes() {
-        assert_eq!(shell_quote("it's"), "'it'\\''s'");
-        assert_eq!(shell_quote("don't stop"), "'don'\\''t stop'");
-    }
-
-    /// Test shell_quote with shell metacharacters
-    #[test]
-    fn test_shell_quote_metacharacters() {
-        // These should all be safely quoted
-        assert_eq!(shell_quote("test;rm -rf /"), "'test;rm -rf /'");
-        assert_eq!(shell_quote("$(whoami)"), "'$(whoami)'");
-        assert_eq!(shell_quote("`id`"), "'`id`'");
-        assert_eq!(shell_quote("a && b"), "'a && b'");
-        assert_eq!(shell_quote("a | b"), "'a | b'");
     }
 }

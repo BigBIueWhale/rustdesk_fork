@@ -155,6 +155,22 @@ pub fn core_main() -> Option<Vec<String>> {
     }
     hbb_common::init_log(false, &log_name);
 
+    #[cfg(target_os = "linux")]
+    if args.first().map(|arg| arg.as_str())
+        == Some(crate::platform::linux::REOPEN_AFTER_SERVICE_STOP_ARG)
+    {
+        let Some(secs) = args.get(1).and_then(|arg| arg.parse::<u32>().ok()) else {
+            log::error!("Invalid delayed reopen argument");
+            return None;
+        };
+        if secs > 30 {
+            log::error!("Delayed reopen argument is out of range");
+            return None;
+        }
+        crate::platform::linux::reopen_after_service_stop(secs);
+        return None;
+    }
+
     // linux uni (url) go here.
     // R-X6: the D-Bus deep-link transport (org.rustdesk.rustdesk `NewConnection`) is excised — a
     // co-installed same-session app could fire it (a local-IPC injection vector) and it claimed the

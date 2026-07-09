@@ -776,13 +776,21 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Debian package lifecycle and unit stop layer: maintainer scripts use `deb-systemd-helper`/`deb-systemd-invoke`
   instead of raw init/systemctl/process-table probes, and the unit/supervisor stop path is cgroup/SIGTERM-first
   with a bounded forced-stop backstop. R-S11c-10k closes Linux root/service helper command provenance:
-  the root-to-user `sudo` transition, `env` fallback, delayed restart shell, `w`, `xrandr`, `xdg-screensaver`,
-  and `systemctl` resolve only trusted fixed `/usr/bin`/`/bin` candidates that are root-owned and not
+  the root-to-user `sudo` transition, `env` fallback, `w`, `xrandr`, `xdg-screensaver`, and `systemctl`
+  resolve only trusted fixed `/usr/bin`/`/bin` candidates that are root-owned and not
   group/world-writable; `--cm` detection is `/proc`/current-exe/argv-backed instead of `ps`; and the X11
   socket fallback reads `/tmp/.X11-unix` socket metadata plus passwd ownership instead of parsing `ls`.
   R-S11c-10l closes the Linux `--server` tray cleanup: `src/core_main.rs` no longer launches PATH-selected
   `pkill -f`; it calls `platform::stop_tray_processes()`, which selects only current-executable processes
   with an exact `--tray` argv through `/proc` and sends SIGTERM.
+  R-S11c-10m closes the shared Linux helper command-provenance residue in
+  `libs/hbb_common/src/platform/linux.rs` plus the delayed service-reopen path: shared `loginctl` and
+  crash-notification helpers no longer use `which`, bare command names, or Flatpak host spawning; they select
+  fixed absolute candidates only when the target executable is root-owned and not group/world-writable.
+  The unused public `run_cmds`/`run_cmds_trim_newline` shell API and `shell_quote` helper are deleted.
+  Linux service uninstall no longer sequences delayed reopen through `sh -c "sleep ...; exec ..."`; it spawns
+  the current executable in an internal argv-only `--reopen-after-service-stop <seconds>` mode, whose receiver
+  fails closed on malformed or out-of-range delay values before reopening the GUI.
   Remaining closure:
   no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
   root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
@@ -791,7 +799,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   R-S11c-10g; config-home correction is closed by R-S11c-10h; runtime lifecycle `systemctl` command construction
   is closed by R-S11c-10i; Debian package lifecycle and systemd stop semantics are closed by R-S11c-10j;
   root/service helper command provenance is closed by R-S11c-10k; Linux `--server` tray cleanup is closed
-  by R-S11c-10l.
+  by R-S11c-10l; shared Linux helper command provenance and delayed reopen shell removal are closed by
+  R-S11c-10m.
 - **R-S11b-4 — config secrecy statement after IPC closure — CLOSED 2026-07-09.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary
@@ -1181,25 +1190,21 @@ pinned/non-pinned controls, not a relaxation of the service-owned credential bou
 
 **NEEDS-RUNTIME (minimal).** FSI auto-surface retention on the operator's specific 14+ OEM (doesn't block the design — the tap path works everywhere); whether consent auto-surfaced over the keyguard (cosmetic); BR-16's APK-provenance link (the tested prerelease carried `0.7`, git-confirmed).
 
-### Cavity 5 — File-transfer host session/user context (BR-1): FINDINGS (Opus 1M, read-only, 2026-07-07) ✅ EXHAUSTIVE — every claim proven from source
+### Cavity 5 — File-transfer host session/user context (BR-1): superseded Linux findings from 2026-07-07
 
-**BOTTOM LINE.** BR-1 is **only HALF-FIXED at HEAD.** The sole BR-1 commit (`8ec46d3`, in HEAD + the deployed prerelease `7c16d75`) removed the **"No active console user logged on"** refusal — but the **actual breakage ("no files / no path / create-folder does nothing") REMAINS**. Root cause (CONFIRMED): on a systemd-less/logind-less host, every file-transfer dir/create op is delegated to a separate **`--cm` process that NEVER STARTS**, because `start_ipc` hangs forever in `loop { if !is_prelogin() break }` and `is_prelogin()` is permanently **true** with no logind seat0. The commit's own premise ("file I/O runs in the CM process … independent of it") is exactly the bug: that CM process doesn't run. The operator's instinct ("broken on a system without systemd") is precisely correct.
+**Status.** The original finding was correct for the then-current Linux path: file transfer, host audio,
+chat, and voice depended on a desktop `--cm` process, while a headless/logind-less direct `--server`
+could wait forever on a console session that would not arrive. The current Linux bootstrap no longer
+uses `is_prelogin()` as that sole decision. `start_ipc` first recognizes `is_headless_no_console_user()`;
+when no console user exists, the CM is launched as the authenticated `--server` process owner instead
+of through `run_as_user(None)`.
 
-**"No active console user" origin (CONFIRMED — 4 sites; operator saw the VIEWER one).** Server-side sites are terminal-only + `cfg(windows)` (`connection.rs:1932-1940,3036-3040`). The one hit on Linux is the **viewer** gate (`ui_session_interface.rs:1711-1722,1521-1539`), which upstream fired whenever `pi.username.is_empty()` regardless of peer OS. **`8ec46d3` fixed it** (all at HEAD): server falls back to `whoami::username()` (the `--server` owner) when `get_active_username()` is empty (`connection.rs:1102-1110`, `cfg(linux,macos)`); the viewer gates now require `peer_is_windows` (`:1717,1525`). So the refusal is genuinely closed for a Linux peer — **but that is the ONLY thing 8ec46d3 changed; it did not touch the CM spawn.**
-
-**Where it breaks (CONFIRMED).** Dir-list/create flow: viewer → wire `ReadDir`/`CreateDir` → controlled `--server` (`connection.rs:4358,2605`) → `send_fs`→`tx_to_cm` → drained **only inside `start_ipc`** (`:4970`) → the **`--cm` process** (`ui_cm_interface.rs:918→1600/1659`, home = `Config::get_home()` for an empty path). **`start_ipc` never passes its first statement:** `connection.rs:4783-4788` `loop { if !is_prelogin() break; sleep(1) }` — `is_prelogin()==true` on headless → spins forever → the `--cm` is **never spawned**, `rx_to_cm` never drained → every `ReadDir`/`CreateDir` sits unread. Matches BR-1 exactly: "no files" (`FileResponse` never returns), "home = no path / back doesn't help" (Flutter remote home is `""`, `file_model.dart:495-502,380-419`; every remote `fetchDirectory` goes over the wire into the dead CM), "create-folder does nothing" (`CreateDir` never reaches `fs::create_dir`). The viewer's **local** pane works (in-process); only the **remote** pane depends on the dead CM. **Secondary blocker even if the loop passed:** with `is_headless_allowed()` pinned `N` (`config.rs:3278`), a **root** `--server` spawns the CM via `run_as_user(["--cm"], None)` → `get_active_user_id_name()` empty → `bail!("No valid uid")` (`linux.rs:1075-1082`); a **non-root** `--server` would `run_me(["--cm"])` and could start — but the `is_prelogin()` hang fires **first and regardless of root-ness**.
-
-**systemd/logind dependency (CONFIRMED — the fork's own smoke test asserts it).** `get_active_username()` → `get_values_of_seat0` → **`run_loginctl`** (the `loginctl` CLI). No systemd-logind → `loginctl` absent/errors → empty. `is_prelogin()`: empty name → `run_cmds("getent passwd ")` → the empty arg collapses to `getent passwd` (no arg) → lists **every** passwd entry → contains `/usr/sbin/nologin` → **true** (`smoke-server.sh:288-289` states this outright). Nothing consumes that fact to fix the CM-spawn hang.
-
-**Why screen-control + terminal work but file-transfer doesn't (differentiator, CONFIRMED).** Screen-control captures via X11 `DISPLAY` (no CM). Terminal runs **in the `--server` process** (`init_terminal_service`/`handle_terminal_action`, `connection.rs:4715-4735`; token `SelfUser`) — no CM, no `start_ipc`, no `is_prelogin`. **File transfer is the ONLY session type that delegates to the separate `--cm` process** — the one wedged behind the hang. The fork's smoke comment **mis-attributes** the missing dir response to "the CM needs a display this container lacks" (`smoke-server.sh:294-296`) — wrong twice: the CM's `read_dir` is pure filesystem (no display), and haggai HAS a display yet file-transfer is still broken. The fork validated the symptom it fixed, not the one that remained.
-
-**Correct-by-construction options (NOT-YET-DECIDED).** Consistent with §2/R-S8 (file transfer serves at the `--server`/service privilege for the CPace-authed owner) + R-F1 (the `SelfUser` the terminal reports): (1) **Mirror the terminal** — run the file-transfer CM as the `--server` owner unconditionally on a headless box (skip the `is_prelogin()` wait; take `run_me(["--cm"])` same-user when no console user, not `run_as_user(None)`). (2) **Short-circuit the `is_prelogin()` gate** in `start_ipc` for the direct `--server`/headless deployment. (3) **Resolve the browsing root from the process owner** (`getpwuid` of the `--server` uid / process `$HOME`) rather than `Config::get_home()`'s seat0 assumptions. Any makes the context the *service user's* — as terminal + capture already do.
-
-**Sweep 1 — siblings.** **`try_start_desktop` over-broad headless gate (latent):** `connection.rs:1949-1957` calls it for **all** session types (no `is_remote()` guard); on a box with **no Xorg / no `/usr/share/xsessions`**, `detect_headless` returns `DESKTOP_XORG_NOT_FOUND`/`NO_DESKTOP` (not tolerated) → the file-transfer/terminal **login is refused** even though neither needs a desktop. Doesn't bite haggai (XFCE → tolerated `SESSION_NOT_READY`); flag for a truly GUI-less server. `Config::get_home()` `$HOME`/`/root`-patch reliance (secondary). O_NOFOLLOW/symlink write path (R-S8/R-A5) orthogonal + clean; FUSE not in this path; `sanitize_relative_names` as named doesn't exist (validation inline in `fs.rs`).
-
-**Sweep 2 — platform matrix.** Linux headless (haggai): **BROKEN** (is_prelogin hang; root also bails `run_as_user(None)`). Linux desktop / Windows logged-in / macOS console-user: **work** (Windows pre-logon SYSTEM correctly refused by design). **macOS headless: SAME breakage class** (is_prelogin → hang). **Android: WORKS** — **in-process CM** (`start_channel`→`start_listen` thread, `connection.rs:490`, `flutter.rs:1610`; home = `APP_HOME_DIR`), no `--cm` subprocess, no `is_prelogin` — matching BR-1's "works between Windows and Android." **Decisive fact: Android does file ops IN-PROCESS; every desktop platform delegates to a `--cm` subprocess whose spawn depends on a console/logind session** → Android immune, headless Linux/macOS not.
-
-**Confidence.** All CONFIRMED-from-source. NEEDS-RUNTIME (narrow, moot): which downstream blocker fires *if* the is_prelogin loop were passed (root-dependent) — doesn't change the conclusion (the hang fires first, deployment-independent).
+**Current shape.** Linux still uses `loginctl` for seat0 discovery when logind exists, but the no-logind
+case is now an explicit headless service-user case rather than a CM-spawn deadlock. R-S11c-10m also
+removes the stale shared `run_cmds` shell API and keeps `loginctl` behind fixed, trusted executable
+candidates. Windows pre-logon file transfer remains refused by design. Android remains in-process for
+file operations. macOS headless is not converted by the Linux headless rule because `/dev/console`
+does not give the same cheap no-console signal without risking login-window behavior.
 
 ### Adversarial-verification + completeness pass: FINDINGS (Opus 1M, read-only, 2026-07-07) ✅ — investigation confidence HIGH
 

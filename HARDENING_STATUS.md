@@ -654,9 +654,19 @@ unreachable and a source/test/AST gate prevents reintroduction.
 - **R-S11b-4 — config secrecy statement after IPC closure.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary
-  and not a substitute for IPC secrecy. Closure condition for this block: no service IPC leaks PRS/key/salt,
-  config files remain owner/root-only, and docs/tests continue to treat PRS/config as remote credentials. Any
-  future stronger storage (TPM/OS keychain) is defense-in-depth, not the cure for the IPC class.
+  and not a substitute for IPC secrecy. Current state: R-S11b-4a closes the service-IPC export half for the
+  desktop main channel: `src/ipc.rs` exports no `password_prs` or key-pair material, and the remaining
+  password-storage/salt snapshot requests are denied for service-owned receivers by the same
+  `current_process_allows_main_channel_permanent_password_storage_sync()` authority gate used by
+  R-S11b-2. R-S11b-4b closes the Unix at-rest file-mode half: `libs/hbb_common/src/config.rs::store_path`
+  routes non-Windows writes through `confy::store_path_perms(..., 0o600)`, and
+  `config::tests::store_path_writes_owner_only_permissions` behavior-tests the resulting mode.
+  Verification closure so far: `scripts/verify.sh` runs that test and asserts no IPC PRS/key export, service-owned
+  storage/salt denial, and the Unix 0600 writer shape. Remaining closure: Windows config files still rely on the
+  profile/AppData ACL inherited by `confy::store_path`; close this item only after either adding an explicit
+  owner/SYSTEM-only DACL for the config writer or adding a Windows source/CI proof that the inherited profile ACL
+  is the intended owner/root-only boundary. Any future stronger storage (TPM/OS keychain) is defense-in-depth,
+  not the cure for the IPC class.
 
 **Checked during this audit and not opened under R-S11b/R-S11c:** Android exported components/service
 surfaces remain contained by manifest/exported-permission shape; iOS has no controlled-side/root IPC surface

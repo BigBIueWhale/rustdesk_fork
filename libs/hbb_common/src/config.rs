@@ -3639,6 +3639,20 @@ mod tests {
         dir
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn store_path_writes_owner_only_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = unique_tmp_dir("mode600");
+        let file = dir.join("config.toml");
+        store_path(file.clone(), Config2::default()).unwrap();
+
+        let mode = fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+        fs::remove_dir_all(&dir).ok();
+        assert_eq!(mode, 0o600);
+    }
+
     #[test]
     fn test_load_path_first_run_returns_default_without_creating_file() {
         // F1: a NON-existent file is a genuine first run → default, and NOTHING is created.

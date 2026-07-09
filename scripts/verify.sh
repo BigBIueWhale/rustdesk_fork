@@ -466,6 +466,30 @@ fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 service-owned password IPC closure:$r_s11b2"; rc=1; else
   echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux uses polkit/root-service commit; Windows uses pipe-client token elevation plus LocalSystem service commit; macOS uses AuthorizationExternalForm plus root-service commit; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
 
+# R-S11b-4: config/PRS secrecy after IPC closure. The balanced-PAKE PRS is
+# connect-equivalent at rest, so the code-owned boundary is:
+#   * no PRS/key material is exported over main IPC;
+#   * service-owned receivers deny password-storage/salt snapshots;
+#   * Unix config writes create owner-only files.
+echo "== R-S11b-4 config/PRS secrecy boundary =="
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::store_path_writes_owner_only_permissions --color never
+r_s11b4=""
+r_s11b4_storage_block=$(awk '/name == "permanent-password-storage-and-salt"/,/name == "permanent-password-set"/' src/ipc.rs)
+r_s11b4_salt_block=$(awk '/name == "salt"/,/name == "hide_cm"/' src/ipc.rs)
+grep -q 'current_process_allows_main_channel_permanent_password_storage_sync()' <<<"$r_s11b4_storage_block" || r_s11b4="$r_s11b4 storage-sync-not-authority-gated"
+grep -q 'Rejected permanent password storage sync from service-owned server' <<<"$r_s11b4_storage_block" || r_s11b4="$r_s11b4 storage-sync-service-deny-log-missing"
+grep -q 'current_process_allows_main_channel_permanent_password_storage_sync()' <<<"$r_s11b4_salt_block" || r_s11b4="$r_s11b4 salt-read-not-authority-gated"
+grep -q 'Rejected permanent password salt sync from service-owned server' <<<"$r_s11b4_salt_block" || r_s11b4="$r_s11b4 salt-read-service-deny-log-missing"
+if grep -InE 'password_prs|get_permanent_password_prs|get_existing_key_pair|get_key_pair|key_pair' src/ipc.rs >/tmp/rd_verify_r_s11b4.$$; then
+  r_s11b4="$r_s11b4 ipc-exports-prs-or-key-material"
+fi
+rm -f /tmp/rd_verify_r_s11b4.$$
+grep -q 'confy::store_path_perms' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 unix-store-path-perms-wrapper-missing"
+grep -q 'fs::Permissions::from_mode(0o600)' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 unix-store-mode-0600-missing"
+grep -q 'store_path_writes_owner_only_permissions' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 unix-store-mode-test-missing"
+if [ -n "$r_s11b4" ]; then echo "  FAIL R-S11b-4 config/PRS secrecy boundary:$r_s11b4"; rc=1; else
+  echo "  ok  R-S11b-4 IPC exports no PRS/key material, service-owned storage/salt sync is denied, and Unix config writes are behavior-tested owner-only"; fi
+
 # (3b-iii-d) R-S11b-3a/R-S11b-3d: service-owned machine policy is not an ordinary
 # Data::Options write or a UI-side privileged registry write. Options writes use a typed daemon ACK/NACK;
 # IPC callers persist only after an accepted ACK and never fall back to hidden local persistence when the

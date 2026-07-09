@@ -645,14 +645,28 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Windows MSI deferred custom action and runtime virtual-display helper path. Endpoint/action:
   `deviceinstaller64.exe` under `usbmmidd_v2`, launched to install/remove the Amyuni virtual-display driver.
   Boundary: installed Program Files helper payload ↔ privileged MSI/custom-action or service/runtime helper
-  execution. Attack surface closed: both launch paths now pass the checked absolute helper executable path to
-  `ShellExecuteW`. The MSI action checks that `usbmmidd_v2` is a directory, checks that the helper path is a
-  file, and executes `exePath` rather than the bare helper name. The runtime helper carries both the working
+  execution. Attack surface closed: both launch paths now execute the checked absolute helper executable path.
+  The MSI action checks that `usbmmidd_v2` is a directory, checks that the helper path is a
+  file, and passes `exePath` as the `CreateProcessW` application path rather than the bare helper name. The runtime helper carries both the working
   directory and absolute executable path as wide strings and executes `paths.exe_path`, with the old ANSI
   bare-name `ShellExecuteA` surface removed. Verification closure: `scripts/verify.sh` asserts the MSI
-  `exePath` ShellExecute call, rejects the old bare-name call, asserts the runtime absolute-path helper and
+  `exePath` CreateProcess call, rejects the old bare-name call, asserts the runtime absolute-path helper and
   `paths.exe_path` launch, rejects `ShellExecuteA`/bare `INSTALLER_EXE_FILE` launch, and checks this
   ledger/requirements disposition.
+- **R-S11d-2 — Windows Amyuni IDD cleanup completion authority — CLOSED 2026-07-10.** Platform:
+  Windows MSI deferred non-impersonated uninstall/update custom action. Endpoint/action:
+  `RemoveAmyuniIdd` running `usbmmidd_v2\deviceinstaller64.exe remove usbmmidd`. Boundary:
+  installed Program Files helper payload ↔ privileged MSI cleanup state. Attack surface closed: once the
+  optional helper directory and helper executable are present, cleanup is no longer an async best-effort launch
+  whose failure is hidden from MSI. The action launches the already checked absolute helper with
+  `CreateProcessW`, uses the helper directory only as working directory, waits for the process handle with a
+  bounded timeout, reads the exit code, treats launch failure, timeout, exit-code read failure, and nonzero exit
+  as MSI custom-action failure, closes process/thread handles on every path, and the WiX action is
+  `Return="check"`. The absent helper directory remains a no-op for installs without the optional Amyuni
+  payload. Stale bare-`netsh` `ShellExecuteW` firewall helper examples and their commented reactivation path are
+  deleted. Verification closure: `scripts/verify.sh` asserts checked `CreateProcessW`/wait/exit-code handling,
+  `RemoveAmyuniIdd` `Return="check"`, absence of the old `Return="ignore"` and stale bare-`netsh` shell helpers,
+  and this ledger/requirements disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

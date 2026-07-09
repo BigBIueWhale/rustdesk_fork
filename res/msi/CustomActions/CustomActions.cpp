@@ -2,7 +2,6 @@
 #include "pch.h"
 #include <stdlib.h>
 #include <strutil.h>
-#include <shellapi.h>
 #include <tlhelp32.h>
 #include <winternl.h>
 #include <netfw.h>
@@ -338,7 +337,6 @@ UINT __stdcall TerminateProcesses(
     HRESULT hr = S_OK;
     DWORD er = ERROR_SUCCESS;
 
-    int nResult = 0;
     wchar_t szProcess[256] = {0};
     DWORD cchProcess = sizeof(szProcess) / sizeof(szProcess[0]);
 
@@ -355,73 +353,12 @@ LExit:
     return WcaFinalize(er);
 }
 
-// No use for now, it can be refer as an example of ShellExecuteW.
-void AddFirewallRuleCmdline(LPWSTR exeName, LPWSTR exeFile, LPCWSTR dir)
-{
-    HRESULT hr = S_OK;
-    HINSTANCE hi = 0;
-    WCHAR cmdline[1024] = { 0, };
-    WCHAR rulename[500] = { 0, };
-
-    StringCchPrintfW(rulename, sizeof(rulename) / sizeof(rulename[0]), L"%ls Service", exeName);
-    if (FAILED(hr)) {
-        WcaLog(LOGMSG_STANDARD, "Failed to make rulename: %ls", exeName);
-        return;
-    }
-
-    StringCchPrintfW(cmdline, sizeof(cmdline) / sizeof(cmdline[0]), L"advfirewall firewall add rule name=\"%ls\" dir=%ls action=allow program=\"%ls\" enable=yes", rulename, dir, exeFile);
-    if (FAILED(hr)) {
-        WcaLog(LOGMSG_STANDARD, "Failed to make cmdline: %ls", exeName);
-        return;
-    }
-
-    hi = ShellExecuteW(NULL, L"open", L"netsh", cmdline, NULL, SW_HIDE);
-    // https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew
-    if ((int)hi <= 32) {
-        WcaLog(LOGMSG_STANDARD, "Failed to change firewall rule : %d, last error: %d", (int)hi, GetLastError());
-    }
-    else {
-        WcaLog(LOGMSG_STANDARD, "Firewall rule \"%ls\" (%ls) is added", rulename, dir);
-    }
-}
-
-// No use for now, it can be refer as an example of ShellExecuteW.
-void RemoveFirewallRuleCmdline(LPWSTR exeName)
-{
-    HRESULT hr = S_OK;
-    HINSTANCE hi = 0;
-    WCHAR cmdline[1024] = { 0, };
-    WCHAR rulename[500] = { 0, };
-
-    StringCchPrintfW(rulename, sizeof(rulename) / sizeof(rulename[0]), L"%ls Service", exeName);
-    if (FAILED(hr)) {
-        WcaLog(LOGMSG_STANDARD, "Failed to make rulename: %ls", exeName);
-        return;
-    }
-
-    StringCchPrintfW(cmdline, sizeof(cmdline) / sizeof(cmdline[0]), L"advfirewall firewall delete rule name=\"%ls\"", rulename);
-    if (FAILED(hr)) {
-        WcaLog(LOGMSG_STANDARD, "Failed to make cmdline: %ls", exeName);
-        return;
-    }
-
-    hi = ShellExecuteW(NULL, L"open", L"netsh", cmdline, NULL, SW_HIDE);
-    // https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew
-    if ((int)hi <= 32) {
-        WcaLog(LOGMSG_STANDARD, "Failed to change firewall rule \"%ls\" : %d, last error: %d", rulename, (int)hi, GetLastError());
-    }
-    else {
-        WcaLog(LOGMSG_STANDARD, "Firewall rule \"%ls\" is removed", rulename);
-    }
-}
-
 UINT __stdcall AddFirewallRules(
     __in MSIHANDLE hInstall)
 {
     HRESULT hr = S_OK;
     DWORD er = ERROR_SUCCESS;
 
-    int nResult = 0;
     LPWSTR exeFile = NULL;
     LPWSTR exeName = NULL;
     WCHAR exeNameNoExt[500] = { 0, };
@@ -447,14 +384,6 @@ UINT __stdcall AddFirewallRules(
     if (szNameLen >= 4 && wcscmp(exeNameNoExt + szNameLen - 4, L".exe") == 0) {
         exeNameNoExt[szNameLen - 4] = L'\0';
     }
-
-    //if (exeFile[0] == L'1') {
-    //    AddFirewallRuleCmdline(exeNameNoExt, exeFile, L"in");
-    //    AddFirewallRuleCmdline(exeNameNoExt, exeFile, L"out");
-    //}
-    //else {
-    //    RemoveFirewallRuleCmdline(exeNameNoExt);
-    //}
 
     AddFirewallRule(exeFile[0] == L'1', exeNameNoExt, exeFile + 1);
 
@@ -789,10 +718,14 @@ UINT __stdcall RemoveAmyuniIdd(
     LPWSTR pwzData = NULL;
 
     WCHAR workDir[1024] = L"";
+    WCHAR commandLine[2048] = L"";
     DWORD fileAttributes = 0;
-    HINSTANCE hi = 0;
+    STARTUPINFOW startupInfo = { 0 };
+    PROCESS_INFORMATION pi = { 0 };
+    DWORD waitResult = 0;
+    DWORD exitCode = 0;
 
-    SYSTEM_INFO si;
+    SYSTEM_INFO nativeSystemInfo;
     LPCWSTR exe = L"deviceinstaller64.exe";
     WCHAR exePath[1024] = L"";
 
@@ -804,8 +737,8 @@ UINT __stdcall RemoveAmyuniIdd(
     UninstallDriver(L"usbmmidd", rebootRequired);
 
     // Only for x86 app on x64
-    GetNativeSystemInfo(&si);
-    if (si.wProcessorArchitecture != PROCESSOR_ARCHITECTURE_AMD64) {
+    GetNativeSystemInfo(&nativeSystemInfo);
+    if (nativeSystemInfo.wProcessorArchitecture != PROCESSOR_ARCHITECTURE_AMD64) {
         goto LExit;
     }
 
@@ -832,16 +765,51 @@ UINT __stdcall RemoveAmyuniIdd(
     }
 
     WcaLog(LOGMSG_STANDARD, "Remove amyuni idd %ls", exePath);
-    hi = ShellExecuteW(NULL, L"open", exePath, L"remove usbmmidd", workDir, SW_HIDE);
-    // https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew
-    if ((int)hi <= 32) {
-        WcaLog(LOGMSG_STANDARD, "Failed to remove amyuni idd : %d, last error: %d", (int)hi, GetLastError());
-    }
-    else {
-        WcaLog(LOGMSG_STANDARD, "Amyuni idd is removed");
+    hr = StringCchPrintfW(commandLine, 2048, L"\"%ls\" remove usbmmidd", exePath);
+    ExitOnFailure(hr, "Failed to compose amyuni idd command line");
+
+    startupInfo.cb = sizeof(startupInfo);
+    startupInfo.dwFlags = STARTF_USESHOWWINDOW;
+    startupInfo.wShowWindow = SW_HIDE;
+
+    if (!CreateProcessW(exePath, commandLine, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, workDir, &startupInfo, &pi)) {
+        DWORD lastError = GetLastError();
+        WcaLog(LOGMSG_STANDARD, "Failed to launch amyuni idd removal helper: %lu", lastError);
+        hr = HRESULT_FROM_WIN32(lastError);
+        goto LExit;
     }
 
+    waitResult = WaitForSingleObject(pi.hProcess, 120000);
+    if (waitResult != WAIT_OBJECT_0) {
+        DWORD lastError = waitResult == WAIT_FAILED ? GetLastError() : waitResult;
+        WcaLog(LOGMSG_STANDARD, "Amyuni idd removal helper did not complete: wait result %lu, error %lu", waitResult, lastError);
+        TerminateProcess(pi.hProcess, ERROR_TIMEOUT);
+        hr = waitResult == WAIT_FAILED ? HRESULT_FROM_WIN32(lastError) : HRESULT_FROM_WIN32(ERROR_TIMEOUT);
+        goto LExit;
+    }
+
+    if (!GetExitCodeProcess(pi.hProcess, &exitCode)) {
+        DWORD lastError = GetLastError();
+        WcaLog(LOGMSG_STANDARD, "Failed to read amyuni idd removal helper exit code: %lu", lastError);
+        hr = HRESULT_FROM_WIN32(lastError);
+        goto LExit;
+    }
+
+    if (exitCode != 0) {
+        WcaLog(LOGMSG_STANDARD, "Amyuni idd removal helper failed with exit code %lu", exitCode);
+        hr = E_FAIL;
+        goto LExit;
+    }
+
+    WcaLog(LOGMSG_STANDARD, "Amyuni idd is removed");
+
 LExit:
+    if (pi.hThread) {
+        CloseHandle(pi.hThread);
+    }
+    if (pi.hProcess) {
+        CloseHandle(pi.hProcess);
+    }
     if (pwzData) {
         ReleaseStr(pwzData);
     }

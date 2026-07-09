@@ -29,6 +29,7 @@ use objc::{class, msg_send, sel, sel_impl};
 use scrap::{libc::c_void, quartz::ffi::*};
 use std::{
     collections::HashMap,
+    ffi::{OsStr, OsString},
     os::unix::process::CommandExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -724,10 +725,33 @@ pub fn is_root() -> bool {
 }
 
 pub fn run_as_user(arg: Vec<&str>) -> ResultType<Option<std::process::Child>> {
+    run_as_user_with_env(arg, std::iter::empty::<(&str, &str)>())
+}
+
+pub fn run_as_user_with_env<I, K, V>(
+    arg: Vec<&str>,
+    envs: I,
+) -> ResultType<Option<std::process::Child>>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+{
     let uid = get_active_userid();
     let cmd = std::env::current_exe()?;
-    let mut args = vec!["asuser", &uid, cmd.to_str().unwrap_or("")];
-    args.append(&mut arg.clone());
+    let mut args = vec![
+        OsString::from("asuser"),
+        OsString::from(uid.as_str()),
+        OsString::from("/usr/bin/env"),
+    ];
+    for (key, value) in envs {
+        let mut env = OsString::from(key.as_ref());
+        env.push("=");
+        env.push(value.as_ref());
+        args.push(env);
+    }
+    args.push(cmd.into_os_string());
+    args.extend(arg.iter().map(|value| OsString::from(*value)));
     let task = std::process::Command::new("launchctl").args(args).spawn()?;
     Ok(Some(task))
 }

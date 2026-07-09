@@ -28,6 +28,8 @@ use hbb_common::{
     tokio_util::codec::Framed,
     ResultType,
 };
+#[cfg(target_os = "macos")]
+pub(crate) use ipc_auth::authenticate_macos_cm_endpoint;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) use ipc_auth::authorize_cm_ipc_connection;
 #[cfg(windows)]
@@ -347,6 +349,22 @@ pub enum Data {
         privacy_mode: bool,
         from_switch: bool,
         cm_auth_token: String,
+    },
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    CmEndpointChallenge {
+        challenge: String,
+    },
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    CmEndpointProof {
+        proof: String,
+    },
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    CmServerChallenge {
+        challenge: String,
+    },
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    CmServerProof {
+        proof: String,
     },
     ChatMessage {
         text: String,
@@ -984,6 +1002,171 @@ pub(crate) fn service_channel_admits_message(data: &Data) -> bool {
         #[cfg(target_os = "macos")]
         Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. } => true,
         _ => false,
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+const CM_ENDPOINT_PROOF_CONTEXT: &[u8] = b"rustdesk.cm.endpoint-proof.v1";
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+const CM_SERVER_PROOF_CONTEXT: &[u8] = b"rustdesk.cm.server-proof.v1";
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+const CM_ENDPOINT_AUTH_TIMEOUT_MS: u64 = 1_000;
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn cm_endpoint_hmac_key(
+    launch_token: &str,
+) -> ResultType<hbb_common::sodiumoxide::crypto::auth::hmacsha256::Key> {
+    if launch_token.is_empty() {
+        bail!("missing connection-manager launch token");
+    }
+    let token = match crate::decode64(launch_token) {
+        Ok(token) => token,
+        Err(err) => bail!("invalid connection-manager launch token: {err}"),
+    };
+    if token.len() != hbb_common::sodiumoxide::crypto::auth::hmacsha256::KEYBYTES {
+        bail!("invalid connection-manager launch token length");
+    }
+    let mut key = [0u8; hbb_common::sodiumoxide::crypto::auth::hmacsha256::KEYBYTES];
+    key.copy_from_slice(&token);
+    Ok(hbb_common::sodiumoxide::crypto::auth::hmacsha256::Key(key))
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn cm_launch_proof_message(context: &[u8], challenge: &str) -> ResultType<Vec<u8>> {
+    if challenge.is_empty() {
+        bail!("missing connection-manager endpoint challenge");
+    }
+    let mut message = Vec::with_capacity(context.len() + 1 + challenge.len());
+    message.extend_from_slice(context);
+    message.push(0);
+    message.extend_from_slice(challenge.as_bytes());
+    Ok(message)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn cm_launch_proof_for_challenge(
+    context: &[u8],
+    challenge: &str,
+    launch_token: &str,
+) -> ResultType<String> {
+    let key = cm_endpoint_hmac_key(launch_token)?;
+    let message = cm_launch_proof_message(context, challenge)?;
+    let proof = hbb_common::sodiumoxide::crypto::auth::hmacsha256::authenticate(&message, &key);
+    Ok(crate::encode64(proof.as_ref()))
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn verify_cm_launch_proof(
+    context: &[u8],
+    challenge: &str,
+    proof: &str,
+    launch_token: &str,
+) -> ResultType<()> {
+    let key = cm_endpoint_hmac_key(launch_token)?;
+    let message = cm_launch_proof_message(context, challenge)?;
+    let proof = match crate::decode64(proof) {
+        Ok(proof) => proof,
+        Err(err) => bail!("invalid connection-manager endpoint proof: {err}"),
+    };
+    let Some(proof) = hbb_common::sodiumoxide::crypto::auth::hmacsha256::Tag::from_slice(&proof)
+    else {
+        bail!("invalid connection-manager endpoint proof length");
+    };
+    if !hbb_common::sodiumoxide::crypto::auth::hmacsha256::verify(&proof, &message, &key) {
+        bail!("connection-manager endpoint proof rejected");
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn cm_endpoint_proof_for_challenge(
+    challenge: &str,
+    launch_token: &str,
+) -> ResultType<String> {
+    cm_launch_proof_for_challenge(CM_ENDPOINT_PROOF_CONTEXT, challenge, launch_token)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn verify_cm_endpoint_proof(
+    challenge: &str,
+    proof: &str,
+    launch_token: &str,
+) -> ResultType<()> {
+    verify_cm_launch_proof(CM_ENDPOINT_PROOF_CONTEXT, challenge, proof, launch_token)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn cm_server_proof_for_challenge(challenge: &str, launch_token: &str) -> ResultType<String> {
+    cm_launch_proof_for_challenge(CM_SERVER_PROOF_CONTEXT, challenge, launch_token)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn verify_cm_server_proof(challenge: &str, proof: &str, launch_token: &str) -> ResultType<()> {
+    verify_cm_launch_proof(CM_SERVER_PROOF_CONTEXT, challenge, proof, launch_token)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) async fn authenticate_cm_endpoint_launch_proof<T>(
+    stream: &mut ConnectionTmpl<T>,
+    launch_token: &str,
+) -> ResultType<()>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin,
+{
+    match stream.next_timeout(CM_ENDPOINT_AUTH_TIMEOUT_MS).await? {
+        Some(Data::CmServerChallenge { challenge }) => {
+            let proof = cm_server_proof_for_challenge(&challenge, launch_token)?;
+            stream.send(&Data::CmServerProof { proof }).await?;
+        }
+        _ => bail!("connection-manager server launch challenge missing"),
+    }
+
+    let challenge = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
+    stream
+        .send(&Data::CmEndpointChallenge {
+            challenge: challenge.clone(),
+        })
+        .await?;
+    match stream.next_timeout(CM_ENDPOINT_AUTH_TIMEOUT_MS).await? {
+        Some(Data::CmEndpointProof { proof }) => {
+            verify_cm_endpoint_proof(&challenge, &proof, launch_token)
+        }
+        _ => bail!("connection-manager endpoint did not prove launch authority"),
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) async fn answer_cm_endpoint_challenge<T>(
+    stream: &mut ConnectionTmpl<T>,
+) -> ResultType<()>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin,
+{
+    let launch_token = match std::env::var(crate::common::CM_LAUNCH_TOKEN_ENV) {
+        Ok(token) => token,
+        Err(err) => bail!("missing connection-manager launch token: {err}"),
+    };
+    let server_challenge = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
+    stream
+        .send(&Data::CmServerChallenge {
+            challenge: server_challenge.clone(),
+        })
+        .await?;
+    match stream.next_timeout(CM_ENDPOINT_AUTH_TIMEOUT_MS).await? {
+        Some(Data::CmServerProof { proof }) => {
+            verify_cm_server_proof(&server_challenge, &proof, &launch_token)?;
+        }
+        _ => bail!("connection-manager server launch proof missing"),
+    }
+
+    match stream.next_timeout(CM_ENDPOINT_AUTH_TIMEOUT_MS).await? {
+        Some(Data::CmEndpointChallenge { challenge }) => {
+            let proof = cm_endpoint_proof_for_challenge(&challenge, &launch_token)?;
+            stream.send(&Data::CmEndpointProof { proof }).await
+        }
+        _ => bail!("connection-manager endpoint challenge missing"),
     }
 }
 
@@ -2746,6 +2929,29 @@ mod test {
             !service_channel_admits_message(&Data::SetUserOwnedPermanentPassword("pw".to_owned())),
             "R-S11b-2: _service does not accept user-owned credential writes"
         );
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn cm_endpoint_proof_is_launch_token_bound() {
+        let challenge = crate::encode64([7u8; 32]);
+        let other_challenge = crate::encode64([8u8; 32]);
+        let launch_token = crate::encode64([9u8; 32]);
+        let other_launch_token = crate::encode64([10u8; 32]);
+        let proof = cm_endpoint_proof_for_challenge(&challenge, &launch_token).unwrap();
+        let server_proof = cm_server_proof_for_challenge(&challenge, &launch_token).unwrap();
+
+        assert!(verify_cm_endpoint_proof(&challenge, &proof, &launch_token).is_ok());
+        assert!(verify_cm_endpoint_proof(&other_challenge, &proof, &launch_token).is_err());
+        assert!(verify_cm_endpoint_proof(&challenge, &proof, &other_launch_token).is_err());
+        assert!(verify_cm_server_proof(&challenge, &server_proof, &launch_token).is_ok());
+        assert!(verify_cm_server_proof(&other_challenge, &server_proof, &launch_token).is_err());
+        assert!(verify_cm_server_proof(&challenge, &proof, &launch_token).is_err());
+        assert!(verify_cm_endpoint_proof(&challenge, &server_proof, &launch_token).is_err());
+        assert!(cm_endpoint_proof_for_challenge("", &launch_token).is_err());
+        assert!(cm_endpoint_proof_for_challenge(&challenge, "").is_err());
+        assert!(cm_server_proof_for_challenge("", &launch_token).is_err());
+        assert!(cm_server_proof_for_challenge(&challenge, "").is_err());
     }
 
     #[cfg(target_os = "linux")]

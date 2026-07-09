@@ -106,7 +106,7 @@ lazy_static::lazy_static! {
     pub static ref AUTHED_CONNS: Arc::<Mutex<Vec<AuthedConn>>> = Default::default();
     #[cfg(target_os = "linux")]
     static ref CM_PEER_IDENTITIES: Arc::<Mutex<Vec<(i32, crate::ipc::PeerProcessIdentity)>>> = Default::default();
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     static ref CM_LAUNCH_TOKEN: String = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
     pub static ref CONTROL_PERMISSIONS_ARRAY: Arc::<Mutex<Vec<(i32, ControlPermissions)>>> = Default::default();
     static ref WAKELOCK_SENDER: Arc::<Mutex<std::sync::mpsc::Sender<(usize, usize)>>> = Arc::new(Mutex::new(start_wakelock_thread()));
@@ -4796,12 +4796,12 @@ fn current_euid() -> u32 {
     unsafe { hbb_common::libc::geteuid() as u32 }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn cm_launch_token() -> &'static str {
     &CM_LAUNCH_TOKEN
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn cm_launch_env() -> Vec<(&'static str, String)> {
     vec![
         (
@@ -4824,7 +4824,7 @@ async fn connect_authenticated_cm(
     ipc::ConnectionTmpl<parity_tokio_ipc::ConnectionClient>,
     crate::ipc::PeerProcessIdentity,
 )> {
-    let stream = crate::ipc::connect_for_uid(ms_timeout, uid, "_cm").await?;
+    let mut stream = crate::ipc::connect_for_uid(ms_timeout, uid, "_cm").await?;
     let identity = crate::ipc::authenticate_cm_endpoint(
         &stream,
         uid,
@@ -4832,7 +4832,19 @@ async fn connect_authenticated_cm(
         cm_launch_token(),
         std::process::id(),
     )?;
+    crate::ipc::authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token()).await?;
     Ok((stream, identity))
+}
+
+#[cfg(target_os = "macos")]
+async fn connect_authenticated_cm(
+    ms_timeout: u64,
+    expected_arg: &str,
+) -> ResultType<ipc::ConnectionTmpl<parity_tokio_ipc::ConnectionClient>> {
+    let mut stream = crate::ipc::connect(ms_timeout, "_cm").await?;
+    crate::ipc::authenticate_macos_cm_endpoint(&stream, expected_arg)?;
+    crate::ipc::authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token()).await?;
+    Ok(stream)
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -4887,7 +4899,16 @@ async fn start_ipc(
                 }
             }
         }
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(target_os = "macos")]
+        match connect_authenticated_cm(1000, "--cm").await {
+            Ok(s) => {
+                stream = Some(s);
+            }
+            Err(err) => {
+                log::debug!("No trusted existing _cm endpoint: {}", err);
+            }
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         if let Ok(s) = crate::ipc::connect(1000, "_cm").await {
             stream = Some(s);
         }
@@ -4975,10 +4996,15 @@ async fn start_ipc(
             if crate::platform::is_root() && !headless_service_user {
                 let mut res = Ok(None);
                 for _ in 0..10 {
-                    #[cfg(not(any(target_os = "linux")))]
+                    #[cfg(target_os = "windows")]
                     {
                         log::debug!("Start cm");
                         res = crate::platform::run_as_user(args.clone());
+                    }
+                    #[cfg(target_os = "macos")]
+                    {
+                        log::debug!("Start cm");
+                        res = crate::platform::run_as_user_with_env(args.clone(), cm_launch_env());
                     }
                     #[cfg(target_os = "linux")]
                     {
@@ -5004,10 +5030,16 @@ async fn start_ipc(
             }
             if !run_done {
                 log::debug!("Start cm");
+                #[cfg(any(target_os = "linux", target_os = "macos"))]
                 super::CHILD_PROCESS
                     .lock()
                     .unwrap()
                     .push(crate::run_me_with_env(args, cm_launch_env())?);
+                #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+                super::CHILD_PROCESS
+                    .lock()
+                    .unwrap()
+                    .push(crate::run_me(args)?);
             }
             for _ in 0..20 {
                 sleep(0.3).await;
@@ -5041,7 +5073,20 @@ async fn start_ipc(
                     }
                     continue;
                 }
-                #[cfg(not(target_os = "linux"))]
+                #[cfg(target_os = "macos")]
+                {
+                    match connect_authenticated_cm(1000, "--cm").await {
+                        Ok(s) => {
+                            stream = Some(s);
+                            break;
+                        }
+                        Err(err) => {
+                            log::debug!("Waiting for trusted _cm endpoint: {}", err);
+                        }
+                    }
+                    continue;
+                }
+                #[cfg(not(any(target_os = "linux", target_os = "macos")))]
                 if let Ok(s) = crate::ipc::connect(1000, "_cm").await {
                     stream = Some(s);
                     break;

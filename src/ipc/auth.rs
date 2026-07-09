@@ -1123,8 +1123,8 @@ pub(crate) fn authorize_windows_main_ipc_connection(stream: &Connection, postfix
     true
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-fn peer_process_is_current_exe_server(peer_pid: u32) -> bool {
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn peer_process_is_current_exe_with_first_arg(peer_pid: u32, expected_arg: &str) -> bool {
     let Some(exe_name) = std::env::current_exe()
         .ok()
         .and_then(|path| path.file_name().map(|name| name.to_owned()))
@@ -1132,9 +1132,32 @@ fn peer_process_is_current_exe_server(peer_pid: u32) -> bool {
         return false;
     };
     let exe_name = exe_name.to_string_lossy();
-    crate::platform::get_pids_of_process_with_first_arg(exe_name.as_ref(), "--server")
+    crate::platform::get_pids_of_process_with_first_arg(exe_name.as_ref(), expected_arg)
         .iter()
         .any(|pid| pid.as_u32() == peer_pid)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn peer_process_is_current_exe_server(peer_pid: u32) -> bool {
+    peer_process_is_current_exe_with_first_arg(peer_pid, "--server")
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn authenticate_macos_cm_endpoint<T>(
+    stream: &ConnectionTmpl<T>,
+    expected_arg: &str,
+) -> ResultType<()>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
+{
+    let peer_pid = stream
+        .peer_pid()
+        .ok_or_else(|| anyhow::anyhow!("Failed to resolve peer pid on ipc channel '_cm'"))?;
+    ensure_peer_executable_matches_current_by_pid(peer_pid, "_cm")?;
+    if !peer_process_is_current_exe_with_first_arg(peer_pid, expected_arg) {
+        bail!("_cm endpoint mode mismatch: expected {}", expected_arg);
+    }
+    Ok(())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1148,7 +1171,7 @@ pub(crate) fn authorize_cm_ipc_connection(stream: &Connection) -> bool {
         );
         return false;
     }
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
         let Some(peer_pid) = peer_pid else {
             log::warn!("Rejected unauthorized connection on _cm IPC channel: peer pid unavailable");

@@ -272,6 +272,60 @@ else
   note "ok  R-S11c-4a macOS CM rejects forged desktop login/plain FS unless the main server validates the active connection id/type/token"
 fi
 
+echo "== (2b-iii-b) R-S11c-11 macOS CM endpoint-selection proof =="
+r_s11c11=
+grep -q 'CmEndpointChallenge {' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-cm-endpoint-challenge"
+grep -q 'CmEndpointProof {' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-cm-endpoint-proof"
+grep -q 'CmServerChallenge {' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-cm-server-challenge"
+grep -q 'CmServerProof {' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-cm-server-proof"
+grep -q 'hmacsha256::authenticate' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-hmac-proof"
+grep -q 'hmacsha256::verify' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-hmac-verify"
+grep -q 'CM_SERVER_PROOF_CONTEXT' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-directional-server-proof-context"
+grep -q 'verify_cm_server_proof' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-cm-server-proof-verify"
+grep -q 'authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token()).await' "$REPO/src/server/connection.rs" || r_s11c11="$r_s11c11 server-does-not-authenticate-cm-launch-proof"
+grep -q 'answer_cm_endpoint_challenge(&mut stream).await' "$REPO/src/ui_cm_interface.rs" || r_s11c11="$r_s11c11 cm-listener-does-not-answer-launch-proof"
+grep -q 'authenticate_macos_cm_endpoint(&stream, expected_arg)' "$REPO/src/server/connection.rs" || r_s11c11="$r_s11c11 macos-cm-process-shape-not-checked"
+grep -q 'pub(crate) fn authenticate_macos_cm_endpoint' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 macos-cm-auth-helper-missing"
+grep -q 'peer_process_is_current_exe_with_first_arg(peer_pid, "--server")' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 cm-listener-peer-not-server-arg-bound"
+grep -q 'run_as_user_with_env(args.clone(), cm_launch_env())' "$REPO/src/server/connection.rs" || r_s11c11="$r_s11c11 macos-run-as-user-token-env-not-wired"
+grep -q 'pub fn run_as_user_with_env' "$REPO/src/platform/macos.rs" || r_s11c11="$r_s11c11 macos-token-env-launcher-missing"
+cm_listener_auth_block=$(awk '/authorize_cm_ipc_connection\(&stream\)/,/tokio::spawn/' "$REPO/src/ui_cm_interface.rs")
+cm_listener_proof_line=$(echo "$cm_listener_auth_block" | grep -n 'answer_cm_endpoint_challenge(&mut stream).await' | head -1 | cut -d: -f1 || true)
+cm_listener_spawn_line=$(echo "$cm_listener_auth_block" | grep -n 'tokio::spawn' | head -1 | cut -d: -f1 || true)
+if [ -z "$cm_listener_proof_line" ] || [ -z "$cm_listener_spawn_line" ] || [ "$cm_listener_proof_line" -ge "$cm_listener_spawn_line" ]; then
+  r_s11c11="$r_s11c11 cm-listener-proof-not-before-normal-ipc-loop"
+fi
+answer_fn_line=$(grep -n 'pub(crate) async fn answer_cm_endpoint_challenge' "$REPO/src/ipc.rs" | head -1 | cut -d: -f1 || true)
+cm_server_challenge_line=$(awk -v start="$answer_fn_line" 'NR > start && /Data::CmServerChallenge/ { print NR; exit }' "$REPO/src/ipc.rs")
+cm_server_verify_line=$(awk -v start="$answer_fn_line" 'NR > start && /verify_cm_server_proof/ { print NR; exit }' "$REPO/src/ipc.rs")
+cm_endpoint_challenge_line=$(awk -v start="$answer_fn_line" 'NR > start && /Data::CmEndpointChallenge/ { print NR; exit }' "$REPO/src/ipc.rs")
+if [ -z "$answer_fn_line" ] || [ -z "$cm_server_challenge_line" ] || [ -z "$cm_server_verify_line" ] || [ -z "$cm_endpoint_challenge_line" ] || [ "$cm_server_challenge_line" -ge "$cm_server_verify_line" ] || [ "$cm_server_verify_line" -ge "$cm_endpoint_challenge_line" ]; then
+  r_s11c11="$r_s11c11 cm-listener-server-proof-not-before-endpoint-proof"
+fi
+server_auth_fn_line=$(grep -n 'pub(crate) async fn authenticate_cm_endpoint_launch_proof' "$REPO/src/ipc.rs" | head -1 | cut -d: -f1 || true)
+server_proof_send_line=$(awk -v start="$server_auth_fn_line" 'NR > start && /Data::CmServerProof/ { print NR; exit }' "$REPO/src/ipc.rs")
+server_endpoint_challenge_line=$(awk -v start="$server_auth_fn_line" 'NR > start && /Data::CmEndpointChallenge/ { print NR; exit }' "$REPO/src/ipc.rs")
+if [ -z "$server_auth_fn_line" ] || [ -z "$server_proof_send_line" ] || [ -z "$server_endpoint_challenge_line" ] || [ "$server_proof_send_line" -ge "$server_endpoint_challenge_line" ]; then
+  r_s11c11="$r_s11c11 server-peer-proof-not-before-endpoint-challenge"
+fi
+macos_process_line=$(grep -n 'authenticate_macos_cm_endpoint(&stream, expected_arg)' "$REPO/src/server/connection.rs" | head -1 | cut -d: -f1 || true)
+macos_proof_line=$(awk -v start="$macos_process_line" 'NR > start && /authenticate_cm_endpoint_launch_proof\(&mut stream, cm_launch_token\(\)\)\.await/ { print NR; exit }' "$REPO/src/server/connection.rs")
+if [ -z "$macos_process_line" ] || [ -z "$macos_proof_line" ] || [ "$macos_process_line" -ge "$macos_proof_line" ]; then
+  r_s11c11="$r_s11c11 macos-cm-proof-not-after-process-shape-check"
+fi
+for line in $(grep -n 'crate::ipc::connect(1000, "_cm")' "$REPO/src/server/connection.rs" | cut -d: -f1); do
+  if ! sed -n "$((line-3)),$((line-1))p" "$REPO/src/server/connection.rs" | grep -q '#\[cfg(not(any(target_os = "linux", target_os = "macos")))\]'; then
+    r_s11c11="$r_s11c11 raw-macos-cm-connect-reintroduced"
+    break
+  fi
+done
+if [ -n "$r_s11c11" ]; then
+  echo "  FAIL R-S11c-11 macOS CM endpoint-selection proof:$r_s11c11"
+  rc=1
+else
+  note "ok  R-S11c-11 macOS CM endpoint selection requires launch-bound proof before token-bearing CM login"
+fi
+
 echo "== (2b-iv) R-S11c-5 macOS privileged-service packaging =="
 r_s11c5=
 daemon_plist="$REPO/src/platform/privileges_scripts/daemon.plist"

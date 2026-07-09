@@ -297,7 +297,9 @@ fi
 start_ipc_before_ready=$(awk '/^async fn start_ipc\(/,/tx_stream_ready\.send/' src/server/connection.rs)
 if echo "$start_ipc_before_ready" | awk '
   /#\[cfg\(target_os = "linux"\)\]/ { linux = 1; next }
+  /#\[cfg\(target_os = "macos"\)\]/ { linux = 0; next }
   /#\[cfg\(not\(target_os = "linux"\)\)\]/ { linux = 0; next }
+  /#\[cfg\(not\(any\(target_os = "linux", target_os = "macos"\)\)\)\]/ { linux = 0; next }
   linux && /crate::ipc::connect\(1000, "_cm"\)/ { found = 1 }
   END { exit found ? 0 : 1 }
 '; then
@@ -579,6 +581,60 @@ if [ -z "$android_gate_line" ] || [ -z "$android_handle_line" ] || [ "$android_g
 fi
 if [ -n "$r_s11c4" ]; then echo "  FAIL R-S11c-4 CM file IPC authority closure:$r_s11c4"; rc=1; else
   echo "  ok  R-S11c-4 CM rejects forged desktop login/FS unless the main server validates the active connection id/type/token; Android in-process FS remains login-gated"; fi
+
+# (3b-iii-f2) R-S11c-11: fixed-path Unix _cm selection must prove the endpoint before
+# Data::Login/cm_auth_token/file/chat/voice authority is disclosed.
+echo "== (3b-iii-f2) Unix CM endpoint selection requires launch-bound proof (R-S11c-11) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config cm_endpoint_proof --color never
+r_s11c11=
+grep -q 'CmEndpointChallenge {' src/ipc.rs || r_s11c11="$r_s11c11 no-cm-endpoint-challenge"
+grep -q 'CmEndpointProof {' src/ipc.rs || r_s11c11="$r_s11c11 no-cm-endpoint-proof"
+grep -q 'CmServerChallenge {' src/ipc.rs || r_s11c11="$r_s11c11 no-cm-server-challenge"
+grep -q 'CmServerProof {' src/ipc.rs || r_s11c11="$r_s11c11 no-cm-server-proof"
+grep -q 'hmacsha256::authenticate' src/ipc.rs || r_s11c11="$r_s11c11 no-hmac-proof"
+grep -q 'hmacsha256::verify' src/ipc.rs || r_s11c11="$r_s11c11 no-hmac-verify"
+grep -q 'CM_SERVER_PROOF_CONTEXT' src/ipc.rs || r_s11c11="$r_s11c11 no-directional-server-proof-context"
+grep -q 'verify_cm_server_proof' src/ipc.rs || r_s11c11="$r_s11c11 no-cm-server-proof-verify"
+grep -q 'authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token()).await' src/server/connection.rs || r_s11c11="$r_s11c11 server-does-not-authenticate-cm-launch-proof"
+grep -q 'answer_cm_endpoint_challenge(&mut stream).await' src/ui_cm_interface.rs || r_s11c11="$r_s11c11 cm-listener-does-not-answer-launch-proof"
+grep -q 'authenticate_macos_cm_endpoint(&stream, expected_arg)' src/server/connection.rs || r_s11c11="$r_s11c11 macos-cm-process-shape-not-checked"
+grep -q 'pub(crate) fn authenticate_macos_cm_endpoint' src/ipc/auth.rs || r_s11c11="$r_s11c11 macos-cm-auth-helper-missing"
+grep -q 'peer_process_is_current_exe_with_first_arg(peer_pid, "--server")' src/ipc/auth.rs || r_s11c11="$r_s11c11 cm-listener-peer-not-server-arg-bound"
+grep -q 'run_as_user_with_env(args.clone(), cm_launch_env())' src/server/connection.rs || r_s11c11="$r_s11c11 macos-run-as-user-token-env-not-wired"
+grep -q 'pub fn run_as_user_with_env' src/platform/macos.rs || r_s11c11="$r_s11c11 macos-token-env-launcher-missing"
+grep -q 'CM_LAUNCH_TOKEN_ENV' src/common.rs || r_s11c11="$r_s11c11 cm-launch-token-env-constant-missing"
+cm_listener_auth_block=$(awk '/authorize_cm_ipc_connection\(&stream\)/,/tokio::spawn/' src/ui_cm_interface.rs)
+cm_listener_proof_line=$(echo "$cm_listener_auth_block" | grep -n 'answer_cm_endpoint_challenge(&mut stream).await' | head -1 | cut -d: -f1)
+cm_listener_spawn_line=$(echo "$cm_listener_auth_block" | grep -n 'tokio::spawn' | head -1 | cut -d: -f1)
+if [ -z "$cm_listener_proof_line" ] || [ -z "$cm_listener_spawn_line" ] || [ "$cm_listener_proof_line" -ge "$cm_listener_spawn_line" ]; then
+  r_s11c11="$r_s11c11 cm-listener-proof-not-before-normal-ipc-loop"
+fi
+answer_fn_line=$(grep -n 'pub(crate) async fn answer_cm_endpoint_challenge' src/ipc.rs | head -1 | cut -d: -f1)
+cm_server_challenge_line=$(awk -v start="$answer_fn_line" 'NR > start && /Data::CmServerChallenge/ { print NR; exit }' src/ipc.rs)
+cm_server_verify_line=$(awk -v start="$answer_fn_line" 'NR > start && /verify_cm_server_proof/ { print NR; exit }' src/ipc.rs)
+cm_endpoint_challenge_line=$(awk -v start="$answer_fn_line" 'NR > start && /Data::CmEndpointChallenge/ { print NR; exit }' src/ipc.rs)
+if [ -z "$answer_fn_line" ] || [ -z "$cm_server_challenge_line" ] || [ -z "$cm_server_verify_line" ] || [ -z "$cm_endpoint_challenge_line" ] || [ "$cm_server_challenge_line" -ge "$cm_server_verify_line" ] || [ "$cm_server_verify_line" -ge "$cm_endpoint_challenge_line" ]; then
+  r_s11c11="$r_s11c11 cm-listener-server-proof-not-before-endpoint-proof"
+fi
+server_auth_fn_line=$(grep -n 'pub(crate) async fn authenticate_cm_endpoint_launch_proof' src/ipc.rs | head -1 | cut -d: -f1)
+server_proof_send_line=$(awk -v start="$server_auth_fn_line" 'NR > start && /Data::CmServerProof/ { print NR; exit }' src/ipc.rs)
+server_endpoint_challenge_line=$(awk -v start="$server_auth_fn_line" 'NR > start && /Data::CmEndpointChallenge/ { print NR; exit }' src/ipc.rs)
+if [ -z "$server_auth_fn_line" ] || [ -z "$server_proof_send_line" ] || [ -z "$server_endpoint_challenge_line" ] || [ "$server_proof_send_line" -ge "$server_endpoint_challenge_line" ]; then
+  r_s11c11="$r_s11c11 server-peer-proof-not-before-endpoint-challenge"
+fi
+macos_process_line=$(grep -n 'authenticate_macos_cm_endpoint(&stream, expected_arg)' src/server/connection.rs | head -1 | cut -d: -f1)
+macos_proof_line=$(awk -v start="$macos_process_line" 'NR > start && /authenticate_cm_endpoint_launch_proof\(&mut stream, cm_launch_token\(\)\)\.await/ { print NR; exit }' src/server/connection.rs)
+if [ -z "$macos_process_line" ] || [ -z "$macos_proof_line" ] || [ "$macos_process_line" -ge "$macos_proof_line" ]; then
+  r_s11c11="$r_s11c11 macos-cm-proof-not-after-process-shape-check"
+fi
+for line in $(grep -n 'crate::ipc::connect(1000, "_cm")' src/server/connection.rs | cut -d: -f1); do
+  if ! sed -n "$((line-3)),$((line-1))p" src/server/connection.rs | grep -q '#\[cfg(not(any(target_os = "linux", target_os = "macos")))\]'; then
+    r_s11c11="$r_s11c11 raw-unix-cm-connect-reintroduced"
+    break
+  fi
+done
+if [ -n "$r_s11c11" ]; then echo "  FAIL R-S11c-11 Unix CM endpoint-selection authority:$r_s11c11"; rc=1; else
+  echo "  ok  R-S11c-11 Unix CM selection proves launch-bound endpoint authority before disclosing CM connection tokens; raw fixed-path _cm connects remain Windows-only"; fi
 
 # (3b-iii-g) R-S11c-5: macOS source-conformance for the privileged LaunchDaemon packaging.
 # The daemon may not shell-launch root code, write logs through /tmp, or execute from an active-user-owned

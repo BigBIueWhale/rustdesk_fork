@@ -435,8 +435,27 @@ unreachable and a source/test/AST gate prevents reintroduction.
   message, owner-UID-routed and owner-identity-authenticated helper validation, endpoint identity check before
   token send, subscriber-bound authority installation, authenticated live CM identity registration/cleanup,
   CM launch-token and launch-parent ancestry checks, stale `_cm`/`_pa` socket probe checks, old message absence, and the service-layer
-  subscriber-id snapshot. The remaining fixed-path CM endpoint-selection work is tracked separately below for
-  macOS and for non-audio helper consumers.
+  subscriber-id snapshot. The fixed-path CM endpoint-selection class is closed separately below for macOS and
+  non-audio helper consumers.
+- **R-S11c-11 — Unix `_cm` endpoint-selection identity — CLOSED 2026-07-09.** Platforms: macOS desktop
+  CM paths and Linux desktop CM paths before any non-audio helper authority is disclosed. Endpoint/action:
+  server-side selection of the fixed `_cm` listener that receives `Data::Login`, `cm_auth_token`,
+  file-authority messages, chat, voice-call state, and future downstream helper leases. Boundary: same-UID
+  local process ↔ connection-manager endpoint. Attack surface closed: macOS no longer accepts a raw
+  fixed-path `_cm` connect as endpoint identity. The server authenticates the selected CM process shape
+  (`--cm`, current executable), proves the server launch token to the CM over a server-proof HMAC context,
+  and then sends a fresh endpoint challenge; the CM listener only answers after accepting a
+  current-executable `--server` peer and verifying that peer's launch-token proof, and answers with an
+  endpoint-proof HMAC keyed by the server-minted launch token inherited through the CM launch environment.
+  Linux keeps its stronger live process identity check (UID, current executable, expected CM mode, proc
+  start time, launch token, launch parent ancestry) and now also performs the same mutual pre-disclosure
+  proof. Stale, preexisting, launch-tokenless, wrong-mode, wrong-token, fixed-path squatting listeners, and
+  same-binary `--server` signing-oracle attempts fail before `Data::Login` or the per-connection CM token is
+  sent. Verification closure: `scripts/verify.sh` runs the `cm_endpoint_proof_*` unit test and asserts the
+  server/endpoint challenge/proof variants, directional HMAC proof/verify helpers, server-side proof before
+  CM stream use, CM listener server-proof verification before endpoint proof and before spawning the normal
+  IPC loop, macOS process-shape check, macOS launch-token environment propagation, and absence of raw Unix
+  `_cm` connects; `scripts/apple-conform-check.sh` mirrors the macOS source assertions.
 
 **Release-blocking items:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,
@@ -493,19 +512,11 @@ unreachable and a source/test/AST gate prevents reintroduction.
   subscriber set and bound to the authenticated live `_cm`/`_pa` process identity plus the server-scoped CM
   launch token and server-parent ancestry; missing, wrong, wrong-peer, launch-tokenless, non-descendant, and stale capabilities are rejected before
   PulseAudio capture starts.
-- **R-S11c-11 — Unix `_cm` endpoint-selection identity.** Platforms: macOS desktop CM paths and any future
-  non-audio Linux helper consumer not covered by R-S11c-7's audio-specific identity lease.
-  Endpoint: the server-side client connection to the fixed `_cm` listener. Boundary: same-UID local process ↔
-  the connection-manager process selected to receive `Data::Login`, `cm_auth_token`, file-authority messages,
-  and chat/voice-call state. Attack surface: pre-binding or replacing the fixed `_cm` endpoint can make the
-  server select an unintended local CM peer. Linux audio no longer uses a bare `_cm` pid as authority: the
-  selected CM endpoint must be same uid, current executable, expected CM mode, live `pid`/start-time identity,
-  the server-scoped launch token, and server-parent ancestry before `_pa` receives a lease. The remaining class is the general
-  fixed-path CM protocol boundary:
-  before disclosing `cm_auth_token` or file/chat/non-audio helper authority, macOS and any future helper path
-  should make CM endpoint selection itself authority-bearing, e.g. a launch-bound nonce/unguessable
-  per-connection socket or equivalent mutual endpoint proof; reject stale/preexisting unproven `_cm`
-  listeners; test direct fixed-path squatting and CM restart/reuse.
+- **R-S11c-11 — Unix `_cm` endpoint-selection identity.** Status: closed by the completed
+  R-S11c-11 slice above. Fixed-path `_cm` selection is now authority-bearing before the server discloses
+  `cm_auth_token`, file/chat/voice-call state, or future downstream helper leases: macOS requires mutual
+  server/endpoint launch-token proof via separate HMAC-SHA256 contexts after process-shape checks, and Linux
+  keeps its live process identity checks plus the same mutual pre-disclosure proof.
 - **R-S11c-8 — `_whiteboard` helper ambient same-UID trust.** Platforms: desktop whiteboard helper paths.
   Endpoint: `_whiteboard` IPC accepts drawing/input events and `Exit`. Boundary: same-UID local process ↔
   active overlay helper. Attack surface: local spoof/DoS of whiteboard overlay. Closure: require an owning

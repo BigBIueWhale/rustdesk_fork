@@ -855,9 +855,17 @@ pub async fn start_ipc<T: InvokeUiCM>(cm: ConnectionManager<T>) {
                 match result {
                     Ok(stream) => {
                         log::debug!("Got new connection");
-                        let stream = Connection::new(stream);
+                        let mut stream = Connection::new(stream);
                         if !ipc::authorize_cm_ipc_connection(&stream) {
                             log::warn!("Rejected unauthorized _cm IPC peer");
+                            continue;
+                        }
+                        #[cfg(any(target_os = "linux", target_os = "macos"))]
+                        if let Err(err) = ipc::answer_cm_endpoint_challenge(&mut stream).await {
+                            log::warn!(
+                                "Rejected _cm IPC peer without launch-bound endpoint proof: {}",
+                                err
+                            );
                             continue;
                         }
                         tokio::spawn(IpcTaskRunner::<T>::ipc_task(stream, cm.clone()));

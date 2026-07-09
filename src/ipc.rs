@@ -12,7 +12,7 @@ use crate::{
 use bytes::Bytes;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use clipboard::ClipboardFile;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use hbb_common::anyhow::{self, anyhow};
 use hbb_common::{
     allow_err, bail, bytes,
@@ -76,10 +76,14 @@ use parity_tokio_ipc::{
     Connection as Conn, ConnectionClient as ConnClient, Endpoint, Incoming, SecurityAttributes,
 };
 use serde_derive::{Deserialize, Serialize};
+#[cfg(any(target_os = "macos", test))]
+use sha2::{Digest as _, Sha256};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::cell::Cell;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(target_os = "macos")]
+use std::sync::{Mutex, OnceLock};
 use std::{
     collections::HashMap,
     sync::atomic::{AtomicBool, Ordering},
@@ -402,7 +406,14 @@ pub enum Data {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     RequestServiceOwnedUnattendedPasswordChange(String),
     #[cfg(target_os = "macos")]
-    RequestMacosServiceOwnedUnattendedPasswordChange {
+    BeginMacosServiceOwnedUnattendedPasswordChange,
+    #[cfg(target_os = "macos")]
+    MacosServiceOwnedUnattendedPasswordChallenge {
+        request_id: String,
+    },
+    #[cfg(target_os = "macos")]
+    FinishMacosServiceOwnedUnattendedPasswordChange {
+        request_id: String,
         password: String,
         authorization: Vec<u8>,
     },
@@ -979,7 +990,9 @@ pub(crate) fn main_channel_admits_state_mutation(
         #[cfg(any(target_os = "linux", target_os = "windows"))]
         Data::RequestServiceOwnedUnattendedPasswordChange(_) => false,
         #[cfg(target_os = "macos")]
-        Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. } => false,
+        Data::BeginMacosServiceOwnedUnattendedPasswordChange
+        | Data::MacosServiceOwnedUnattendedPasswordChallenge { .. }
+        | Data::FinishMacosServiceOwnedUnattendedPasswordChange { .. } => false,
         // Whole-options writes are ordinary user-owned configuration writes. A service-owned server
         // enforces machine policy and must not accept them over the generic main IPC config bus.
         Data::Options(Some(_)) => authority.allows_main_channel_options_write(),
@@ -1079,7 +1092,9 @@ async fn send_main_channel_mutation_rejection_ack(data: &Data, stream: &mut Conn
             );
         }
         #[cfg(target_os = "macos")]
-        Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. } => {
+        Data::BeginMacosServiceOwnedUnattendedPasswordChange
+        | Data::MacosServiceOwnedUnattendedPasswordChallenge { .. }
+        | Data::FinishMacosServiceOwnedUnattendedPasswordChange { .. } => {
             allow_err!(
                 stream
                     .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(false))
@@ -1112,7 +1127,8 @@ pub(crate) fn service_channel_admits_message(data: &Data) -> bool {
         #[cfg(target_os = "linux")]
         Data::RequestServiceOwnedUnattendedPasswordChange(_) => true,
         #[cfg(target_os = "macos")]
-        Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. } => true,
+        Data::BeginMacosServiceOwnedUnattendedPasswordChange
+        | Data::FinishMacosServiceOwnedUnattendedPasswordChange { .. } => true,
         _ => false,
     }
 }
@@ -1580,6 +1596,126 @@ async fn commit_service_owned_unattended_password_change(value: String) -> Resul
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
+const MACOS_SERVICE_OWNED_PASSWORD_REQUEST_CONTEXT: &[u8] =
+    b"rustdesk.macos.service-owned-unattended-password.v1";
+#[cfg(any(target_os = "macos", test))]
+const MACOS_SERVICE_OWNED_PASSWORD_DIGEST_LEN: usize = 32;
+#[cfg(target_os = "macos")]
+const MACOS_SERVICE_OWNED_PASSWORD_REQUEST_TTL: std::time::Duration =
+    std::time::Duration::from_secs(120);
+#[cfg(target_os = "macos")]
+const MACOS_SERVICE_OWNED_PASSWORD_MAX_PENDING: usize = 16;
+
+#[cfg(target_os = "macos")]
+struct MacosServiceOwnedPasswordRequest {
+    peer_pid: u32,
+    peer_uid: u32,
+    created_at: std::time::Instant,
+}
+
+#[cfg(target_os = "macos")]
+static MACOS_SERVICE_OWNED_PASSWORD_PENDING: OnceLock<
+    Mutex<HashMap<String, MacosServiceOwnedPasswordRequest>>,
+> = OnceLock::new();
+
+#[cfg(target_os = "macos")]
+fn macos_service_owned_password_pending(
+) -> &'static Mutex<HashMap<String, MacosServiceOwnedPasswordRequest>> {
+    MACOS_SERVICE_OWNED_PASSWORD_PENDING.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_service_owned_unattended_password_digest(
+    request_id: &str,
+    password: &str,
+) -> [u8; MACOS_SERVICE_OWNED_PASSWORD_DIGEST_LEN] {
+    let mut hasher = Sha256::new();
+    hasher.update(MACOS_SERVICE_OWNED_PASSWORD_REQUEST_CONTEXT);
+    hasher.update([0]);
+    hasher.update((request_id.len() as u64).to_be_bytes());
+    hasher.update(request_id.as_bytes());
+    hasher.update([0]);
+    hasher.update((password.len() as u64).to_be_bytes());
+    hasher.update(password.as_bytes());
+    let digest = hasher.finalize();
+    let mut out = [0u8; MACOS_SERVICE_OWNED_PASSWORD_DIGEST_LEN];
+    out.copy_from_slice(&digest);
+    out
+}
+
+#[cfg(target_os = "macos")]
+fn macos_service_owned_password_request_peer(stream: &Connection) -> ResultType<(u32, u32)> {
+    let peer_pid = stream
+        .peer_pid()
+        .ok_or_else(|| anyhow!("Failed to resolve macOS _service peer pid for password request"))?;
+    let peer_uid = stream
+        .peer_uid()
+        .ok_or_else(|| anyhow!("Failed to resolve macOS _service peer uid for password request"))?;
+    Ok((peer_pid, peer_uid))
+}
+
+#[cfg(target_os = "macos")]
+fn macos_retain_live_service_owned_password_requests(
+    requests: &mut HashMap<String, MacosServiceOwnedPasswordRequest>,
+    now: std::time::Instant,
+) {
+    requests.retain(|_, request| {
+        now.saturating_duration_since(request.created_at)
+            <= MACOS_SERVICE_OWNED_PASSWORD_REQUEST_TTL
+    });
+}
+
+#[cfg(target_os = "macos")]
+fn macos_store_service_owned_password_request(stream: &Connection) -> ResultType<String> {
+    let (peer_pid, peer_uid) = macos_service_owned_password_request_peer(stream)?;
+    let request_id = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
+    let now = std::time::Instant::now();
+    let mut requests = macos_service_owned_password_pending()
+        .lock()
+        .map_err(|_| anyhow!("macOS service-owned password pending map is poisoned"))?;
+    macos_retain_live_service_owned_password_requests(&mut requests, now);
+    if requests.len() >= MACOS_SERVICE_OWNED_PASSWORD_MAX_PENDING {
+        bail!("Too many pending macOS service-owned password requests");
+    }
+    requests.insert(
+        request_id.clone(),
+        MacosServiceOwnedPasswordRequest {
+            peer_pid,
+            peer_uid,
+            created_at: now,
+        },
+    );
+    Ok(request_id)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_take_service_owned_password_request(
+    stream: &Connection,
+    request_id: &str,
+) -> ResultType<()> {
+    if request_id.is_empty() {
+        bail!("Rejected macOS service-owned password finish with empty request id");
+    }
+    let (peer_pid, peer_uid) = macos_service_owned_password_request_peer(stream)?;
+    let now = std::time::Instant::now();
+    let mut requests = macos_service_owned_password_pending()
+        .lock()
+        .map_err(|_| anyhow!("macOS service-owned password pending map is poisoned"))?;
+    macos_retain_live_service_owned_password_requests(&mut requests, now);
+    let Some(request) = requests.remove(request_id) else {
+        bail!("Rejected unknown macOS service-owned password request id");
+    };
+    if now.saturating_duration_since(request.created_at) > MACOS_SERVICE_OWNED_PASSWORD_REQUEST_TTL
+    {
+        bail!("Rejected expired macOS service-owned password request id");
+    }
+    if request.peer_pid != peer_pid || request.peer_uid != peer_uid {
+        bail!("Rejected macOS service-owned password request from a different peer");
+    }
+    Ok(())
+}
+
 #[cfg(target_os = "linux")]
 async fn handle_linux_service_owned_unattended_password_request(
     channel: IpcChannel,
@@ -1608,8 +1744,14 @@ async fn handle_linux_service_owned_unattended_password_request(
 }
 
 #[cfg(target_os = "macos")]
-fn macos_peer_is_authorized_for_service_owned_password_change(authorization: &[u8]) -> bool {
-    if crate::platform::verify_service_owned_unattended_password_authorization(authorization) {
+fn macos_peer_is_authorized_for_service_owned_password_change(
+    authorization: &[u8],
+    request_digest: &[u8],
+) -> bool {
+    if crate::platform::verify_service_owned_unattended_password_authorization(
+        authorization,
+        request_digest,
+    ) {
         return true;
     }
     log::warn!("Rejected macOS service-owned unattended password change: authorization denied");
@@ -1617,14 +1759,68 @@ fn macos_peer_is_authorized_for_service_owned_password_change(authorization: &[u
 }
 
 #[cfg(target_os = "macos")]
-async fn handle_macos_service_owned_unattended_password_request(
+fn macos_service_owned_password_authorization_right_is_ready() -> bool {
+    if crate::platform::ensure_service_owned_unattended_password_authorization_right() {
+        return true;
+    }
+    log::warn!(
+        "Rejected macOS service-owned unattended password change: authorization right is unavailable"
+    );
+    false
+}
+
+#[cfg(target_os = "macos")]
+async fn handle_macos_service_owned_unattended_password_begin(
     channel: IpcChannel,
+    stream: &mut Connection,
+) {
+    let accepted = channel == IpcChannel::Service
+        && macos_service_owned_password_authorization_right_is_ready()
+        && match macos_store_service_owned_password_request(stream) {
+            Ok(request_id) => {
+                allow_err!(
+                    stream
+                        .send(&Data::MacosServiceOwnedUnattendedPasswordChallenge { request_id })
+                        .await
+                );
+                true
+            }
+            Err(err) => {
+                log::warn!("Rejected macOS service-owned unattended password change begin: {err}");
+                false
+            }
+        };
+    if !accepted {
+        allow_err!(
+            stream
+                .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(false))
+                .await
+        );
+    }
+}
+
+#[cfg(target_os = "macos")]
+async fn handle_macos_service_owned_unattended_password_finish(
+    channel: IpcChannel,
+    request_id: String,
     value: String,
     authorization: Vec<u8>,
     stream: &mut Connection,
 ) {
+    let request_digest = macos_service_owned_unattended_password_digest(&request_id, &value);
     let accepted = channel == IpcChannel::Service
-        && macos_peer_is_authorized_for_service_owned_password_change(&authorization)
+        && macos_service_owned_password_authorization_right_is_ready()
+        && match macos_take_service_owned_password_request(stream, &request_id) {
+            Ok(()) => true,
+            Err(err) => {
+                log::warn!("Rejected macOS service-owned unattended password change finish: {err}");
+                false
+            }
+        }
+        && macos_peer_is_authorized_for_service_owned_password_change(
+            &authorization,
+            &request_digest,
+        )
         && match commit_service_owned_unattended_password_change(value).await {
             Ok(committed) => committed,
             Err(err) => {
@@ -1635,7 +1831,7 @@ async fn handle_macos_service_owned_unattended_password_request(
             }
         };
     if !accepted {
-        log::warn!("Rejected macOS service-owned unattended password change");
+        log::warn!("Rejected macOS service-owned unattended password change finish");
     }
     allow_err!(
         stream
@@ -1904,12 +2100,18 @@ async fn handle(data: Data, stream: &mut Connection, channel: IpcChannel) {
             handle_linux_service_owned_unattended_password_request(channel, value, stream).await;
         }
         #[cfg(target_os = "macos")]
-        Data::RequestMacosServiceOwnedUnattendedPasswordChange {
+        Data::BeginMacosServiceOwnedUnattendedPasswordChange => {
+            handle_macos_service_owned_unattended_password_begin(channel, stream).await;
+        }
+        #[cfg(target_os = "macos")]
+        Data::FinishMacosServiceOwnedUnattendedPasswordChange {
+            request_id,
             password,
             authorization,
         } => {
-            handle_macos_service_owned_unattended_password_request(
+            handle_macos_service_owned_unattended_password_finish(
                 channel,
+                request_id,
                 password,
                 authorization,
                 stream,
@@ -2666,8 +2868,20 @@ async fn set_service_owned_unattended_password_with_ack(v: String) -> ResultType
     }
     #[cfg(target_os = "macos")]
     {
-        let authorization = crate::platform::service_owned_unattended_password_authorization()?;
-        c.send(&Data::RequestMacosServiceOwnedUnattendedPasswordChange {
+        c.send(&Data::BeginMacosServiceOwnedUnattendedPasswordChange)
+            .await?;
+        let request_id = match c.next_timeout(ms_timeout).await? {
+            Some(Data::MacosServiceOwnedUnattendedPasswordChallenge { request_id }) => request_id,
+            Some(Data::ServiceOwnedUnattendedPasswordChangeResult(false)) | None => {
+                return Ok(false);
+            }
+            _ => return Ok(false),
+        };
+        let password_digest = macos_service_owned_unattended_password_digest(&request_id, &v);
+        let authorization =
+            crate::platform::service_owned_unattended_password_authorization(&password_digest)?;
+        c.send(&Data::FinishMacosServiceOwnedUnattendedPasswordChange {
+            request_id,
             password: v,
             authorization,
         })
@@ -3012,6 +3226,37 @@ mod test {
         assert!(std::mem::size_of::<Data>() <= 120);
     }
 
+    #[test]
+    fn macos_service_owned_password_request_digest_is_bound() {
+        fn hex(bytes: &[u8]) -> String {
+            const HEX: &[u8; 16] = b"0123456789abcdef";
+            let mut out = String::with_capacity(bytes.len() * 2);
+            for byte in bytes {
+                out.push(HEX[(byte >> 4) as usize] as char);
+                out.push(HEX[(byte & 0x0f) as usize] as char);
+            }
+            out
+        }
+
+        let digest = macos_service_owned_unattended_password_digest("request-1", "secret");
+        assert_eq!(
+            hex(&digest),
+            "8d6d36630664635dd4aa64a4fc0a3639ac58f690d1aa16ef016b681628a5817f"
+        );
+        assert_eq!(
+            digest,
+            macos_service_owned_unattended_password_digest("request-1", "secret")
+        );
+        assert_ne!(
+            digest,
+            macos_service_owned_unattended_password_digest("request-2", "secret")
+        );
+        assert_ne!(
+            digest,
+            macos_service_owned_unattended_password_digest("request-1", "different")
+        );
+    }
+
     // R-S11 / Appendix C #15: the MAIN-channel config-write allowlist MUST reject generic
     // struct-field/proxy writes while admitting the per-key writes that legitimately stay. R-S11b adds
     // that ordinary password and options writes are user-owned only; service-owned unattended
@@ -3110,14 +3355,23 @@ mod test {
             let root_peer = MainIpcPeerAuthority::RootUnixPeer;
             assert!(
                 !main_channel_admits_state_mutation(
-                    &Data::RequestMacosServiceOwnedUnattendedPasswordChange {
+                    &Data::BeginMacosServiceOwnedUnattendedPasswordChange,
+                    service_owned,
+                    root_peer
+                ),
+                "R-S11c-1: macOS service-owned password begin requests go to _service, not main IPC"
+            );
+            assert!(
+                !main_channel_admits_state_mutation(
+                    &Data::FinishMacosServiceOwnedUnattendedPasswordChange {
+                        request_id: "request".to_owned(),
                         password: "pw".to_owned(),
                         authorization: vec![0; 32],
                     },
                     service_owned,
                     root_peer
                 ),
-                "R-S11c-1: macOS service-owned password requests go to _service, not main IPC"
+                "R-S11c-1: macOS service-owned password finish requests go to _service, not main IPC"
             );
         }
         #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -3221,13 +3475,19 @@ mod test {
         );
         #[cfg(target_os = "macos")]
         assert!(
+            service_channel_admits_message(&Data::BeginMacosServiceOwnedUnattendedPasswordChange),
+            "R-S11c-1: macOS _service accepts the typed password begin request in addition to liveness"
+        );
+        #[cfg(target_os = "macos")]
+        assert!(
             service_channel_admits_message(
-                &Data::RequestMacosServiceOwnedUnattendedPasswordChange {
+                &Data::FinishMacosServiceOwnedUnattendedPasswordChange {
+                    request_id: "request".to_owned(),
                     password: "pw".to_owned(),
                     authorization: vec![0; 32],
                 }
             ),
-            "R-S11c-1: macOS _service accepts only the typed Authorization Services password request in addition to liveness"
+            "R-S11c-1: macOS _service accepts the typed Authorization Services password finish request in addition to liveness"
         );
         assert!(
             !service_channel_admits_message(&Data::Options(None)),

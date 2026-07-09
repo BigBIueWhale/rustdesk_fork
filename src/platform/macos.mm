@@ -2,9 +2,11 @@
 #import <AppKit/AppKit.h>
 #import <IOKit/hidsystem/IOHIDLib.h>
 #include <Security/Authorization.h>
+#include <Security/AuthorizationDB.h>
 #include <Security/AuthorizationTags.h>
 
 #include <CoreGraphics/CoreGraphics.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <vector>
@@ -100,8 +102,81 @@ extern "C" size_t MacAuthorizationExternalFormLength() {
     return sizeof(AuthorizationExternalForm);
 }
 
-extern "C" bool MacCreateAdminAuthorizationExternalForm(uint8_t *buffer, size_t len) {
-    if (buffer == NULL || len != sizeof(AuthorizationExternalForm)) {
+static const size_t kRustDeskRequestDigestLength = 32;
+static const char *RustDeskSetUnattendedPasswordRight() {
+    return "com.carriez.RustDesk.set-unattended-password";
+}
+
+static bool RustDeskSetUnattendedPasswordRightExists() {
+    CFDictionaryRef rightDefinition = NULL;
+    OSStatus status = AuthorizationRightGet(RustDeskSetUnattendedPasswordRight(), &rightDefinition);
+    if (rightDefinition != NULL) {
+        CFRelease(rightDefinition);
+    }
+    return status == errAuthorizationSuccess;
+}
+
+static bool EnsureRustDeskSetUnattendedPasswordRight() {
+    const int32_t timeout = 0;
+    CFNumberRef timeoutNumber = CFNumberCreate(NULL, kCFNumberSInt32Type, &timeout);
+    if (timeoutNumber == NULL) {
+        return false;
+    }
+
+    const void *keys[] = {
+        CFSTR("class"),
+        CFSTR("group"),
+        CFSTR("shared"),
+        CFSTR("timeout"),
+    };
+    const void *values[] = {
+        CFSTR("user"),
+        CFSTR("admin"),
+        kCFBooleanFalse,
+        timeoutNumber,
+    };
+    CFDictionaryRef rightDefinition = CFDictionaryCreate(NULL, keys, values, 4,
+                                                         &kCFCopyStringDictionaryKeyCallBacks,
+                                                         &kCFTypeDictionaryValueCallBacks);
+    if (rightDefinition == NULL) {
+        CFRelease(timeoutNumber);
+        return false;
+    }
+
+    OSStatus status = AuthorizationRightSet(NULL,
+                                            RustDeskSetUnattendedPasswordRight(),
+                                            rightDefinition,
+                                            CFSTR("Authorize RustDesk unattended password changes"),
+                                            NULL,
+                                            NULL);
+    CFRelease(rightDefinition);
+    CFRelease(timeoutNumber);
+    return status == errAuthorizationSuccess;
+}
+
+static bool RequestDigestIsValid(const uint8_t *requestDigest, size_t requestDigestLen) {
+    return requestDigest != NULL && requestDigestLen == kRustDeskRequestDigestLength;
+}
+
+static void RequestPromptForDigest(const uint8_t *requestDigest, char *buffer, size_t len) {
+    snprintf(buffer, len,
+             "Authorize RustDesk unattended password change request %02x%02x%02x%02x",
+             requestDigest[0], requestDigest[1], requestDigest[2], requestDigest[3]);
+}
+
+extern "C" bool MacEnsureServiceOwnedUnattendedPasswordAuthorizationRight() {
+    return EnsureRustDeskSetUnattendedPasswordRight();
+}
+
+extern "C" bool MacCreateAdminAuthorizationExternalFormForRequest(const uint8_t *requestDigest,
+                                                                  size_t requestDigestLen,
+                                                                  uint8_t *buffer,
+                                                                  size_t len) {
+    if (!RequestDigestIsValid(requestDigest, requestDigestLen) ||
+        buffer == NULL || len != sizeof(AuthorizationExternalForm)) {
+        return false;
+    }
+    if (!RustDeskSetUnattendedPasswordRightExists()) {
         return false;
     }
 
@@ -112,13 +187,17 @@ extern "C" bool MacCreateAdminAuthorizationExternalForm(uint8_t *buffer, size_t 
         return false;
     }
 
-    AuthorizationItem authItem = {kAuthorizationRightExecute, 0, NULL, 0};
+    AuthorizationItem authItem = {RustDeskSetUnattendedPasswordRight(), 0, NULL, 0};
     AuthorizationRights authRights = {1, &authItem};
+    char prompt[96];
+    RequestPromptForDigest(requestDigest, prompt, sizeof(prompt));
+    AuthorizationItem envItem = {kAuthorizationEnvironmentPrompt, (UInt32)strlen(prompt), prompt, 0};
+    AuthorizationEnvironment environment = {1, &envItem};
     AuthorizationFlags flags = kAuthorizationFlagDefaults |
                                 kAuthorizationFlagInteractionAllowed |
                                 kAuthorizationFlagPreAuthorize |
                                 kAuthorizationFlagExtendRights;
-    status = AuthorizationCopyRights(authRef, &authRights, kAuthorizationEmptyEnvironment, flags, NULL);
+    status = AuthorizationCopyRights(authRef, &authRights, &environment, flags, NULL);
     if (status == errAuthorizationSuccess) {
         AuthorizationExternalForm externalForm;
         status = AuthorizationMakeExternalForm(authRef, &externalForm);
@@ -131,8 +210,15 @@ extern "C" bool MacCreateAdminAuthorizationExternalForm(uint8_t *buffer, size_t 
     return status == errAuthorizationSuccess;
 }
 
-extern "C" bool MacVerifyAdminAuthorizationExternalForm(const uint8_t *buffer, size_t len) {
-    if (buffer == NULL || len != sizeof(AuthorizationExternalForm)) {
+extern "C" bool MacVerifyAdminAuthorizationExternalFormForRequest(const uint8_t *buffer,
+                                                                  size_t len,
+                                                                  const uint8_t *requestDigest,
+                                                                  size_t requestDigestLen) {
+    if (buffer == NULL || len != sizeof(AuthorizationExternalForm) ||
+        !RequestDigestIsValid(requestDigest, requestDigestLen)) {
+        return false;
+    }
+    if (!EnsureRustDeskSetUnattendedPasswordRight()) {
         return false;
     }
 
@@ -145,7 +231,7 @@ extern "C" bool MacVerifyAdminAuthorizationExternalForm(const uint8_t *buffer, s
         return false;
     }
 
-    AuthorizationItem authItem = {kAuthorizationRightExecute, 0, NULL, 0};
+    AuthorizationItem authItem = {RustDeskSetUnattendedPasswordRight(), 0, NULL, 0};
     AuthorizationRights authRights = {1, &authItem};
     status = AuthorizationCopyRights(authRef, &authRights, kAuthorizationEmptyEnvironment,
                                      kAuthorizationFlagDefaults, NULL);

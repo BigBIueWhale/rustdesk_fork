@@ -56,14 +56,15 @@ use windows::{
             PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES, TOKEN_USER,
         },
         Storage::FileSystem::{
-            CreateFileW, FILE_ALL_ACCESS, FILE_FLAGS_AND_ATTRIBUTES, FILE_FLAG_OVERLAPPED,
-            FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_READ, FILE_SHARE_WRITE,
-            OPEN_EXISTING,
+            CreateFileW, FILE_ALL_ACCESS, FILE_FLAGS_AND_ATTRIBUTES, FILE_FLAG_FIRST_PIPE_INSTANCE,
+            FILE_FLAG_OVERLAPPED, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_READ,
+            FILE_SHARE_WRITE, OPEN_EXISTING,
         },
         System::{
             Environment::{CreateEnvironmentBlock, DestroyEnvironmentBlock},
             Pipes::{
-                ConnectNamedPipe, CreateNamedPipeW, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_WAIT,
+                ConnectNamedPipe, CreateNamedPipeW, GetNamedPipeClientProcessId,
+                PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_WAIT,
             },
             Threading::{
                 CreateEventW, CreateProcessAsUserW, WaitForSingleObject, CREATE_NO_WINDOW,
@@ -490,7 +491,7 @@ pub fn create_restricted_dacl(user_sid: &[u8]) -> Result<*mut c_void> {
 ///
 /// # Arguments
 /// * `pipe_name` - The name of the pipe to create
-/// * `for_input` - True if service writes to this pipe (helper reads), false otherwise
+/// * `for_input` - True when the service reads from the pipe (helper writes)
 /// * `user_token` - Required user token for creating restricted DACL
 ///
 /// # Security
@@ -528,7 +529,10 @@ pub fn create_named_pipe_server(
     let acl_ptr =
         create_restricted_dacl(&user_sid).context("Failed to create restricted DACL for pipe")?;
 
-    log::debug!("Created restricted DACL for pipe: {}", pipe_name);
+    log::debug!(
+        "Created restricted DACL for terminal helper pipe (for_input={})",
+        for_input
+    );
 
     // Set DACL on security descriptor
     unsafe {
@@ -552,14 +556,17 @@ pub fn create_named_pipe_server(
         .collect();
 
     let access_mode = if for_input {
-        FILE_FLAGS_AND_ATTRIBUTES(PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED.0)
+        FILE_FLAGS_AND_ATTRIBUTES(
+            PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED.0 | FILE_FLAG_FIRST_PIPE_INSTANCE.0,
+        )
     } else {
-        FILE_FLAGS_AND_ATTRIBUTES(PIPE_ACCESS_OUTBOUND | FILE_FLAG_OVERLAPPED.0)
+        FILE_FLAGS_AND_ATTRIBUTES(
+            PIPE_ACCESS_OUTBOUND | FILE_FLAG_OVERLAPPED.0 | FILE_FLAG_FIRST_PIPE_INSTANCE.0,
+        )
     };
 
     log::debug!(
-        "Creating named pipe: {} (for_input={}, restricted_dacl=true)",
-        pipe_name,
+        "Creating terminal helper pipe (for_input={}, restricted_dacl=true, first_instance=true, local_only=true)",
         for_input
     );
 
@@ -567,7 +574,7 @@ pub fn create_named_pipe_server(
         CreateNamedPipeW(
             PCWSTR::from_raw(wide_name.as_ptr()),
             access_mode,
-            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
             1, // max instances
             PIPE_BUFFER_SIZE,
             PIPE_BUFFER_SIZE,
@@ -584,14 +591,59 @@ pub fn create_named_pipe_server(
 
     if handle == INVALID_HANDLE_VALUE {
         return Err(anyhow!(
-            "Failed to create named pipe {}: {}",
-            pipe_name,
+            "Failed to create terminal helper pipe (for_input={}): {}",
+            for_input,
             std::io::Error::last_os_error()
         ));
     }
 
-    log::debug!("Named pipe created: {}", pipe_name);
+    log::debug!("Terminal helper pipe created (for_input={})", for_input);
     Ok(handle)
+}
+
+fn ensure_named_pipe_client_pid(
+    pipe_handle: HANDLE,
+    pipe_role: &str,
+    expected_client_pid: u32,
+) -> Result<()> {
+    if expected_client_pid == 0 {
+        return Err(anyhow!(
+            "Refusing {} terminal helper pipe connection without an expected client PID",
+            pipe_role
+        ));
+    }
+
+    let mut client_pid = 0u32;
+    unsafe {
+        GetNamedPipeClientProcessId(pipe_handle, &mut client_pid).map_err(|e| {
+            anyhow!(
+                "Failed to query {} terminal helper pipe client PID: {}",
+                pipe_role,
+                e
+            )
+        })?;
+    }
+    if client_pid == 0 {
+        return Err(anyhow!(
+            "{} terminal helper pipe client PID query returned pid 0",
+            pipe_role
+        ));
+    }
+    if client_pid != expected_client_pid {
+        return Err(anyhow!(
+            "Rejected {} terminal helper pipe client PID {} (expected {})",
+            pipe_role,
+            client_pid,
+            expected_client_pid
+        ));
+    }
+
+    log::debug!(
+        "Accepted {} terminal helper pipe client PID {}",
+        pipe_role,
+        client_pid
+    );
+    Ok(())
 }
 
 /// Wait for client to connect to named pipe with timeout.
@@ -602,10 +654,11 @@ pub fn create_named_pipe_server(
 /// - On failure: the handle is automatically closed when OwnedHandle drops.
 pub fn wait_for_pipe_connection(
     pipe_handle: OwnedHandle,
-    pipe_name: &str,
+    pipe_role: &str,
     timeout_ms: u32,
+    expected_client_pid: u32,
 ) -> Result<File> {
-    log::debug!("Waiting for pipe connection: {}", pipe_name);
+    log::debug!("Waiting for {} terminal helper pipe connection", pipe_role);
 
     // Create an event for overlapped I/O (also wrapped in OwnedHandle for RAII)
     let event = unsafe { CreateEventW(None, true, false, PCWSTR::null()) }
@@ -622,20 +675,22 @@ pub fn wait_for_pipe_connection(
 
         // ERROR_PIPE_CONNECTED means client already connected, which is OK
         if err_code == ERROR_PIPE_CONNECTED.0 as i32 {
-            log::debug!("Pipe already connected: {}", pipe_name);
-            return Ok(unsafe { File::from_raw_handle(pipe_handle.into_raw().0 as RawHandle) });
-        }
-
-        // ERROR_IO_PENDING means we need to wait
-        if err_code == ERROR_IO_PENDING.0 as i32 {
-            log::debug!("Pipe connection pending, waiting with timeout...");
+            log::debug!("{} terminal helper pipe was already connected", pipe_role);
+        } else if err_code == ERROR_IO_PENDING.0 as i32 {
+            log::debug!(
+                "{} terminal helper pipe connection pending, waiting with timeout",
+                pipe_role
+            );
             let wait_result = unsafe { WaitForSingleObject(event_handle.as_raw(), timeout_ms) };
 
             if wait_result != WAIT_OBJECT_0 {
-                log::error!("Timeout waiting for pipe connection: {}", pipe_name);
+                log::error!(
+                    "Timeout waiting for {} terminal helper pipe connection",
+                    pipe_role
+                );
                 return Err(anyhow!(
-                    "Timeout waiting for pipe connection: {}",
-                    pipe_name
+                    "Timeout waiting for {} terminal helper pipe connection",
+                    pipe_role
                 ));
             }
 
@@ -651,26 +706,36 @@ pub fn wait_for_pipe_connection(
             };
             if overlapped_result.is_err() {
                 let err = std::io::Error::last_os_error();
-                log::error!("Failed to complete pipe connection {}: {}", pipe_name, err);
+                log::error!(
+                    "Failed to complete {} terminal helper pipe connection: {}",
+                    pipe_role,
+                    err
+                );
                 return Err(anyhow!(
-                    "Failed to complete pipe connection {}: {}",
-                    pipe_name,
+                    "Failed to complete {} terminal helper pipe connection: {}",
+                    pipe_role,
                     err
                 ));
             }
 
-            log::debug!("Pipe connected: {}", pipe_name);
+            log::debug!("{} terminal helper pipe connected", pipe_role);
         } else {
-            log::error!("Failed to connect named pipe {}: {}", pipe_name, err);
+            log::error!(
+                "Failed to connect {} terminal helper pipe: {}",
+                pipe_role,
+                err
+            );
             return Err(anyhow!(
-                "Failed to connect named pipe {}: {}",
-                pipe_name,
+                "Failed to connect {} terminal helper pipe: {}",
+                pipe_role,
                 err
             ));
         }
     } else {
-        log::debug!("Pipe connected immediately: {}", pipe_name);
+        log::debug!("{} terminal helper pipe connected immediately", pipe_role);
     }
+
+    ensure_named_pipe_client_pid(pipe_handle.as_raw(), pipe_role, expected_client_pid)?;
 
     // Success: transfer pipe ownership to File, event_handle drops
     Ok(unsafe { File::from_raw_handle(pipe_handle.into_raw().0 as RawHandle) })

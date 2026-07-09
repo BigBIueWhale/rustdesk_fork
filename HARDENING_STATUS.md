@@ -577,6 +577,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   environment launcher, absence of the legacy tuple message/sends, absence of raw fixed `_whiteboard`
   connect/listen, absence of caller-derived render keys outside the helper, and absence of unconditional
   global `Exit`; `scripts/apple-conform-check.sh` mirrors the macOS source assertions.
+- **R-S11c-12 — Windows terminal helper pipe binding — CLOSED 2026-07-09.** Platform: Windows desktop
+  installed-service terminal helper path. Endpoint/action: the SYSTEM service launches a logged-in-user
+  terminal helper with `CreateProcessAsUserW`, then exchanges terminal input/output over per-terminal named
+  pipes. Boundary: local target-user process ↔ helper pipe endpoint selected by the privileged service.
+  Attack surface closed: a same-user local process that learns or races the UUID pipe names is not accepted
+  as the helper. The service creates each pipe as a first-instance, local-only named pipe with the existing
+  SYSTEM-plus-target-user DACL, launches the helper, and after `ConnectNamedPipe` accepts only a client PID
+  returned by `GetNamedPipeClientProcessId` that exactly matches the PID returned by `CreateProcessAsUserW`.
+  Service/helper debug logs no longer print the pipe names. Verification closure: `scripts/verify.sh` asserts
+  the client-PID query/gate, expected helper PID parameter, both service-side pipe waits passing the launched
+  helper PID, first-instance and remote-client rejection flags, absence of the old pipe-name logging strings,
+  and this ledger/requirements disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,
@@ -628,6 +640,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   verify the connected server PID/executable, with `_service` additionally requiring a LocalSystem server.
   The long-lived `_service` listener is recreated on active-session changes so its DACL and the runtime
   expected-session check do not drift. Status: closed for the named-pipe endpoint boundary.
+- **R-S11c-12 — Windows terminal helper pipe binding.** Status: closed by the completed R-S11c-12 slice above.
+  The Windows terminal helper pipes are transport only: they are first-instance, local-only, DACL-restricted,
+  and post-connect bound to the exact helper PID returned by `CreateProcessAsUserW`; same-user pipe-name
+  knowledge, log scraping, or first-client racing cannot select the terminal helper endpoint.
 - **R-S11c-7 — Linux `_pa` audio helper ambient same-UID trust.** Status: closed by the completed
   R-S11c-7 slice above. `_pa` capture requires an owner-identity/token lease minted from the active audio
   subscriber set and bound to the authenticated live `_cm`/`_pa` process identity plus the server-scoped CM

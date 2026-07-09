@@ -273,6 +273,12 @@ grep -q 'expected_launch_parent: u32' src/ipc/auth.rs || r_s11c7="$r_s11c7 cm-en
 grep -q 'identity.cm_launch_token != expected_launch_token' src/ipc/auth.rs || r_s11c7="$r_s11c7 cm-endpoint-launch-token-not-checked"
 grep -q 'linux_process_has_ancestor(identity.pid, expected_launch_parent)' src/ipc/auth.rs || r_s11c7="$r_s11c7 cm-endpoint-launch-parent-not-checked"
 grep -q 'static ref CM_LAUNCH_TOKEN' src/server/connection.rs || r_s11c7="$r_s11c7 cm-server-launch-token-missing"
+common_conn_lazy_static=$(awk '/lazy_static::lazy_static! \{/{flag=1} flag{print} flag && /^}/{exit}' src/server/connection.rs)
+if echo "$common_conn_lazy_static" | grep -Eq 'CM_PEER_IDENTITIES|CM_LAUNCH_TOKEN'; then
+  r_s11c7="$r_s11c7 platform-cm-state-inside-shared-lazy-static"
+fi
+grep -B2 'static ref CM_PEER_IDENTITIES' src/server/connection.rs | grep -Fq '#[cfg(target_os = "linux")]' || r_s11c7="$r_s11c7 cm-peer-identities-not-linux-outer-cfg"
+grep -B2 'static ref CM_LAUNCH_TOKEN' src/server/connection.rs | grep -Fq '#[cfg(any(target_os = "linux", target_os = "macos"))]' || r_s11c7="$r_s11c7 cm-launch-token-not-unix-outer-cfg"
 grep -q 'fn cm_launch_env()' src/server/connection.rs || r_s11c7="$r_s11c7 cm-launch-env-helper-missing"
 grep -q 'run_me_with_env(args, cm_launch_env())' src/server/connection.rs || r_s11c7="$r_s11c7 same-user-cm-launch-not-tokenized"
 grep -q 'cm_launch_env()' src/server/connection.rs || r_s11c7="$r_s11c7 cm-launch-env-not-used"
@@ -336,6 +342,30 @@ fi
 if [ -n "$r_s11c6" ]; then echo "  FAIL R-S11c-6 Windows named-pipe DACL hardening:$r_s11c6"; rc=1; else
   echo "  ok  R-S11c-6 Windows named pipes use SDDL DACLs, narrow client opens, server PID verification, and session-refreshed _service listeners"
 fi
+
+echo "== (3b-iii-a4) Windows terminal helper pipes bind to launched helper PID (R-S11c-12) =="
+r_s11c12=
+grep -q 'GetNamedPipeClientProcessId' src/server/terminal_helper.rs || r_s11c12="$r_s11c12 client-pid-query-missing"
+grep -q 'fn ensure_named_pipe_client_pid' src/server/terminal_helper.rs || r_s11c12="$r_s11c12 client-pid-gate-missing"
+grep -q 'expected_client_pid: u32' src/server/terminal_helper.rs || r_s11c12="$r_s11c12 expected-pid-parameter-missing"
+grep -q 'client_pid != expected_client_pid' src/server/terminal_helper.rs || r_s11c12="$r_s11c12 client-pid-match-missing"
+grep -q 'FILE_FLAG_FIRST_PIPE_INSTANCE' src/server/terminal_helper.rs || r_s11c12="$r_s11c12 first-pipe-instance-flag-missing"
+grep -q 'PIPE_REJECT_REMOTE_CLIENTS' src/server/terminal_helper.rs || r_s11c12="$r_s11c12 reject-remote-clients-flag-missing"
+grep -q 'HelperProcessGuard::new(helper_process_info.handle, helper_process_info.pid)' src/server/terminal_service.rs || r_s11c12="$r_s11c12 helper-pid-source-missing"
+terminal_helper_pipe_connects=$(awk '/wait_for_pipe_connection\(/,/\)\?;/' src/server/terminal_service.rs | grep -c 'helper_pid' || true)
+if [ "$terminal_helper_pipe_connects" -ne 2 ]; then
+  r_s11c12="$r_s11c12 helper-pid-not-passed-to-both-pipes"
+fi
+if grep -q 'Creating pipes: input={}, output={}' src/server/terminal_service.rs; then
+  r_s11c12="$r_s11c12 service-logs-terminal-pipe-names"
+fi
+if grep -q 'Created restricted DACL for pipe: {}\|Creating named pipe: {} (for_input={}, restricted_dacl=true)\|Named pipe created: {}\|Waiting for pipe connection: {}' src/server/terminal_helper.rs; then
+  r_s11c12="$r_s11c12 helper-logs-terminal-pipe-names"
+fi
+grep -q 'R-S11c-12 — Windows terminal helper pipe binding' HARDENING_STATUS.md || r_s11c12="$r_s11c12 hardening-ledger-missing"
+grep -q 'R-S11c-12 closes the Windows terminal helper pipe-binding class' requirements.html || r_s11c12="$r_s11c12 requirements-disposition-missing"
+if [ -n "$r_s11c12" ]; then echo "  FAIL R-S11c-12 Windows terminal helper pipe binding:$r_s11c12"; rc=1; else
+  echo "  ok  R-S11c-12 Windows terminal helper pipes are first-instance/local-only and accept only the helper PID returned by CreateProcessAsUserW"; fi
 
 # (3b-iii-b) R-S11b-1/R-S11b-2c/R-S11c-1f: Linux/macOS `_service` is a privileged service-control channel,
 # not a root<->user Config/Config2 bus. The world-connectable service socket may keep only narrow,
@@ -734,6 +764,9 @@ grep -q 'unregister_whiteboard(self.inner.id)' src/server/connection.rs || r_s11
 grep -q 'run_as_user_with_env' src/whiteboard/client.rs || r_s11c8="$r_s11c8 whiteboard-launch-env-not-wired"
 grep -q 'pub fn run_as_user_with_env' src/platform/windows.rs || r_s11c8="$r_s11c8 windows-env-launcher-missing"
 grep -q 'LPCWSTR extraEnvironment' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-createprocess-env-missing"
+if awk '/^extern "C"[[:space:]]*$/,/end of extern "C"/' src/platform/windows.cc | grep -q 'std::vector<wchar_t> merge_environment_blocks'; then
+  r_s11c8="$r_s11c8 windows-env-helper-has-c-linkage"
+fi
 if grep -RIn 'Whiteboard((String' src/ipc.rs src/whiteboard 2>/dev/null | grep -v 'grep' >/tmp/rd_verify_whiteboard_tuple.$$; then
   r_s11c8="$r_s11c8 legacy-whiteboard-tuple-message-present"
 fi

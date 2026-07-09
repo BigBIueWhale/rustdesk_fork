@@ -1388,9 +1388,8 @@ impl TerminalServiceProxy {
         let output_pipe_name = format!(r"\\.\pipe\rustdesk_term_out_{}", pipe_id);
 
         log::debug!(
-            "Creating pipes: input={}, output={}",
-            input_pipe_name,
-            output_pipe_name
+            "Creating terminal helper pipes for terminal {}",
+            open.terminal_id
         );
 
         // Get user_token early - needed for both DACL creation and helper launch
@@ -1430,17 +1429,19 @@ impl TerminalServiceProxy {
             HelperProcessGuard::new(helper_process_info.handle, helper_process_info.pid);
         let helper_pid = helper_process_guard.pid();
 
-        // Wait for helper to connect to pipes
+        // Wait for the launched helper process to connect to both pipes.
         // If this fails, HelperProcessGuard will terminate the helper process
         let mut input_pipe = wait_for_pipe_connection(
             input_pipe_handle,
-            &input_pipe_name,
+            "input",
             PIPE_CONNECTION_TIMEOUT_MS,
+            helper_pid,
         )?;
         let mut output_pipe = wait_for_pipe_connection(
             output_pipe_handle,
-            &output_pipe_name,
+            "output",
             PIPE_CONNECTION_TIMEOUT_MS,
+            helper_pid,
         )?;
 
         // Check if helper process is still running after pipe connection

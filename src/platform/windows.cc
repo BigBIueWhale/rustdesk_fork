@@ -196,6 +196,40 @@ static DWORD GetFallbackUserPid(DWORD dwSessionId)
     return dwFallbackPid;
 }
 
+static bool has_extra_environment(LPCWSTR extraEnvironment)
+{
+    return extraEnvironment && extraEnvironment[0] != L'\0';
+}
+
+static std::vector<wchar_t> merge_environment_blocks(LPVOID baseEnvironment, LPCWSTR extraEnvironment)
+{
+    std::vector<wchar_t> merged;
+    if (baseEnvironment)
+    {
+        LPCWSTR cursor = static_cast<LPCWSTR>(baseEnvironment);
+        while (*cursor)
+        {
+            size_t len = wcslen(cursor);
+            merged.insert(merged.end(), cursor, cursor + len + 1);
+            cursor += len + 1;
+        }
+    }
+    if (extraEnvironment)
+    {
+        LPCWSTR cursor = extraEnvironment;
+        while (*cursor)
+        {
+            size_t len = wcslen(cursor);
+            merged.insert(merged.end(), cursor, cursor + len + 1);
+            cursor += len + 1;
+        }
+    }
+    merged.push_back(L'\0');
+    if (merged.size() == 1)
+        merged.push_back(L'\0');
+    return merged;
+}
+
 // START the app as system
 extern "C"
 {
@@ -227,40 +261,6 @@ extern "C"
     bool is_windows_10_or_greater()
     {
         return IsWindows10OrGreater();
-    }
-
-    static bool has_extra_environment(LPCWSTR extraEnvironment)
-    {
-        return extraEnvironment && extraEnvironment[0] != L'\0';
-    }
-
-    static std::vector<wchar_t> merge_environment_blocks(LPVOID baseEnvironment, LPCWSTR extraEnvironment)
-    {
-        std::vector<wchar_t> merged;
-        if (baseEnvironment)
-        {
-            LPCWSTR cursor = static_cast<LPCWSTR>(baseEnvironment);
-            while (*cursor)
-            {
-                size_t len = wcslen(cursor);
-                merged.insert(merged.end(), cursor, cursor + len + 1);
-                cursor += len + 1;
-            }
-        }
-        if (extraEnvironment)
-        {
-            LPCWSTR cursor = extraEnvironment;
-            while (*cursor)
-            {
-                size_t len = wcslen(cursor);
-                merged.insert(merged.end(), cursor, cursor + len + 1);
-                cursor += len + 1;
-            }
-        }
-        merged.push_back(L'\0');
-        if (merged.size() == 1)
-            merged.push_back(L'\0');
-        return merged;
     }
 
     HANDLE LaunchProcessWin(LPCWSTR cmd, DWORD dwSessionId, BOOL as_user, BOOL show, LPCWSTR extraEnvironment, DWORD *pDwTokenPid)

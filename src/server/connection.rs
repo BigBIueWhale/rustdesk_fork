@@ -104,13 +104,19 @@ lazy_static::lazy_static! {
     // an unbounded/never-decaying/full-IPv6-keyed map on dead paths; CPace's GUESS_FAILURES is live.
     static ref ALIVE_CONNS: Arc::<Mutex<Vec<i32>>> = Default::default();
     pub static ref AUTHED_CONNS: Arc::<Mutex<Vec<AuthedConn>>> = Default::default();
-    #[cfg(target_os = "linux")]
-    static ref CM_PEER_IDENTITIES: Arc::<Mutex<Vec<(i32, crate::ipc::PeerProcessIdentity)>>> = Default::default();
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    static ref CM_LAUNCH_TOKEN: String = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
     pub static ref CONTROL_PERMISSIONS_ARRAY: Arc::<Mutex<Vec<(i32, ControlPermissions)>>> = Default::default();
     static ref WAKELOCK_SENDER: Arc::<Mutex<std::sync::mpsc::Sender<(usize, usize)>>> = Arc::new(Mutex::new(start_wakelock_thread()));
     static ref WAKELOCK_KEEP_AWAKE_OPTION: Arc::<Mutex<Option<bool>>> = Default::default();
+}
+
+#[cfg(target_os = "linux")]
+lazy_static::lazy_static! {
+    static ref CM_PEER_IDENTITIES: Arc::<Mutex<Vec<(i32, crate::ipc::PeerProcessIdentity)>>> = Default::default();
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+lazy_static::lazy_static! {
+    static ref CM_LAUNCH_TOKEN: String = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
 }
 
 #[cfg(target_os = "linux")]

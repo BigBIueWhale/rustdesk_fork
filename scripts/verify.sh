@@ -1329,6 +1329,13 @@ grep -q 'unregister_whiteboard(self.inner.id)' src/server/connection.rs || r_s11
 grep -q 'run_as_user_with_env' src/whiteboard/client.rs || r_s11c8="$r_s11c8 whiteboard-launch-env-not-wired"
 grep -q 'pub fn run_as_user_with_env' src/platform/windows.rs || r_s11c8="$r_s11c8 windows-env-launcher-missing"
 grep -q 'LPCWSTR extraEnvironment' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-createprocess-env-missing"
+grep -q 'environment_entry_key' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-env-key-helper-missing"
+grep -q 'environment_keys_equal' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-env-key-compare-missing"
+grep -q 'compare_environment_text(left, right, TRUE)' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-env-key-compare-not-case-insensitive"
+grep -q 'baseEntries.erase' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-env-extra-vars-do-not-override-base"
+grep -q 'std::sort(entries.begin(), entries.end(), environment_entry_less)' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-env-block-not-sorted"
+grep -q 'Windows helper launch environment authority' requirements.html || r_s11c8="$r_s11c8 windows-env-requirements-disposition-missing"
+grep -q 'R-S11c-15 — Windows helper launch environment authority' HARDENING_STATUS.md || r_s11c8="$r_s11c8 windows-env-hardening-ledger-missing"
 if awk '/^extern "C"[[:space:]]*$/,/end of extern "C"/' src/platform/windows.cc | grep -q 'std::vector<wchar_t> merge_environment_blocks'; then
   r_s11c8="$r_s11c8 windows-env-helper-has-c-linkage"
 fi

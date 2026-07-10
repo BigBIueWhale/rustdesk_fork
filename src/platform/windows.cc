@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <intrin.h>
+#include <algorithm>
 #include <string>
 #include <memory>
 #include <shlobj.h> // NOLINT(build/include_order)
@@ -13,6 +14,7 @@
 #include <vector>
 #include <sddl.h>
 #include <memory>
+#include <utility>
 
 extern "C" uint32_t get_session_user_info(PWSTR bufin, uint32_t nin, uint32_t id);
 
@@ -192,28 +194,94 @@ static bool has_extra_environment(LPCWSTR extraEnvironment)
     return extraEnvironment && extraEnvironment[0] != L'\0';
 }
 
+static std::wstring environment_entry_key(const std::wstring &entry)
+{
+    size_t searchStart = !entry.empty() && entry[0] == L'=' ? 1 : 0;
+    size_t separator = entry.find(L'=', searchStart);
+    if (separator == std::wstring::npos)
+        return entry;
+    return entry.substr(0, separator);
+}
+
+static int compare_environment_text(const std::wstring &left, const std::wstring &right, BOOL ignoreCase)
+{
+    int result = CompareStringOrdinal(left.c_str(), -1, right.c_str(), -1, ignoreCase);
+    if (result == CSTR_LESS_THAN)
+        return -1;
+    if (result == CSTR_GREATER_THAN)
+        return 1;
+    return 0;
+}
+
+static bool environment_keys_equal(const std::wstring &left, const std::wstring &right)
+{
+    return compare_environment_text(left, right, TRUE) == 0;
+}
+
+static bool environment_entry_less(const std::wstring &left, const std::wstring &right)
+{
+    std::wstring leftKey = environment_entry_key(left);
+    std::wstring rightKey = environment_entry_key(right);
+    int keyOrder = compare_environment_text(leftKey, rightKey, TRUE);
+    if (keyOrder != 0)
+        return keyOrder < 0;
+    return compare_environment_text(left, right, FALSE) < 0;
+}
+
+static void append_environment_entries(std::vector<std::wstring> &entries, LPCWSTR environment)
+{
+    if (!environment)
+        return;
+
+    LPCWSTR cursor = environment;
+    while (*cursor)
+    {
+        size_t len = wcslen(cursor);
+        entries.emplace_back(cursor, len);
+        cursor += len + 1;
+    }
+}
+
 static std::vector<wchar_t> merge_environment_blocks(LPVOID baseEnvironment, LPCWSTR extraEnvironment)
 {
-    std::vector<wchar_t> merged;
-    if (baseEnvironment)
+    std::vector<std::wstring> baseEntries;
+    std::vector<std::wstring> extraEntries;
+    append_environment_entries(baseEntries, static_cast<LPCWSTR>(baseEnvironment));
+    append_environment_entries(extraEntries, extraEnvironment);
+
+    for (const auto &extra : extraEntries)
     {
-        LPCWSTR cursor = static_cast<LPCWSTR>(baseEnvironment);
-        while (*cursor)
+        std::wstring extraKey = environment_entry_key(extra);
+        baseEntries.erase(
+            std::remove_if(baseEntries.begin(), baseEntries.end(), [&](const std::wstring &base) {
+                return environment_keys_equal(environment_entry_key(base), extraKey);
+            }),
+            baseEntries.end());
+    }
+
+    std::vector<std::wstring> entries = std::move(baseEntries);
+    for (const auto &extra : extraEntries)
+    {
+        std::wstring extraKey = environment_entry_key(extra);
+        auto existing = std::find_if(entries.begin(), entries.end(), [&](const std::wstring &entry) {
+            return environment_keys_equal(environment_entry_key(entry), extraKey);
+        });
+        if (existing != entries.end())
         {
-            size_t len = wcslen(cursor);
-            merged.insert(merged.end(), cursor, cursor + len + 1);
-            cursor += len + 1;
+            *existing = extra;
+        }
+        else
+        {
+            entries.push_back(extra);
         }
     }
-    if (extraEnvironment)
+
+    std::sort(entries.begin(), entries.end(), environment_entry_less);
+
+    std::vector<wchar_t> merged;
+    for (const auto &entry : entries)
     {
-        LPCWSTR cursor = extraEnvironment;
-        while (*cursor)
-        {
-            size_t len = wcslen(cursor);
-            merged.insert(merged.end(), cursor, cursor + len + 1);
-            cursor += len + 1;
-        }
+        merged.insert(merged.end(), entry.c_str(), entry.c_str() + entry.size() + 1);
     }
     merged.push_back(L'\0');
     if (merged.size() == 1)

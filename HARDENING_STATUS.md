@@ -400,6 +400,19 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `allows_main_channel_voice_call_input_write` receiver-authority helper, the gated
   `Data::SetVoiceCallInput` policy arm, and absence of the old unconditional
   `Data::SetVoiceCallInput(_) => true` arm.
+- **R-S11c-15 — Windows helper launch environment authority — CLOSED 2026-07-10.**
+  Platform: Windows token-switched helper launches. Endpoint/action: `LaunchProcessWin` environment construction
+  for helper processes that carry CM/whiteboard launch-token and launch-parent proof variables. Boundary:
+  LocalSystem/session-token launcher ↔ helper IPC endpoint proof. Attack surface closed: a token-switched child
+  no longer receives an ambiguous environment block when the target user's profile already contains a same-name
+  RustDesk launch-proof variable. The C++ launch path now removes inherited same-name variables using
+  case-insensitive environment-key comparison, appends the launcher-owned variables, and sorts the final block
+  before `CreateProcessAsUserW`, matching the Win32 environment-block contract. The practical impact of the old
+  shape was helper launch ambiguity/denial rather than a proven SYSTEM shell, but the authority model is now
+  explicit: helper proof material belongs to the launcher, not to ambient user environment state. Verification
+  closure: `scripts/verify.sh` asserts the Windows helper environment key parser, case-insensitive key comparison,
+  base-entry removal for extra variables, final environment-block sorting, and that the merge helper remains
+  outside C linkage.
 - **R-S11b-4d — local credential-bearing store file hardening — CLOSED 2026-07-10.**
   Platforms: desktop local config stores. Endpoint/action: per-peer config load, address-book store/load,
   and group store/load. Boundary: local filesystem readers/writers ↔ connect-relevant saved peer credentials

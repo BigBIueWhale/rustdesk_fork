@@ -2159,8 +2159,12 @@ impl Config {
 
 const PEERS: &str = "peers";
 
-fn should_remove_empty_peer_config(status: ConfigLoadStatus) -> bool {
-    matches!(status, ConfigLoadStatus::Loaded)
+fn is_semantically_empty_peer_config(config: &PeerConfig) -> bool {
+    config == &PeerConfig::default()
+}
+
+fn should_remove_empty_peer_config(status: ConfigLoadStatus, config: &PeerConfig) -> bool {
+    matches!(status, ConfigLoadStatus::Loaded) && is_semantically_empty_peer_config(config)
 }
 
 impl PeerConfig {
@@ -2381,7 +2385,7 @@ impl PeerConfig {
                 let status = loaded.status;
                 let c = loaded.value;
                 if c.info.platform.is_empty() {
-                    if should_remove_empty_peer_config(status) {
+                    if should_remove_empty_peer_config(status, &c) {
                         fs::remove_file(p).ok();
                     }
                     return None;
@@ -4310,11 +4314,31 @@ mod tests {
     }
 
     #[test]
-    fn empty_peer_cleanup_only_after_successful_load() {
-        assert!(should_remove_empty_peer_config(ConfigLoadStatus::Loaded));
-        assert!(!should_remove_empty_peer_config(ConfigLoadStatus::NotFound));
-        assert!(!should_remove_empty_peer_config(ConfigLoadStatus::Corrupt));
-        assert!(!should_remove_empty_peer_config(ConfigLoadStatus::TransientError));
+    fn empty_peer_cleanup_requires_loaded_semantically_empty_config() {
+        let empty = PeerConfig::default();
+        assert!(should_remove_empty_peer_config(ConfigLoadStatus::Loaded, &empty));
+        assert!(!should_remove_empty_peer_config(ConfigLoadStatus::NotFound, &empty));
+        assert!(!should_remove_empty_peer_config(ConfigLoadStatus::Corrupt, &empty));
+        assert!(!should_remove_empty_peer_config(
+            ConfigLoadStatus::TransientError,
+            &empty
+        ));
+
+        let mut with_rdp_password = PeerConfig::default();
+        with_rdp_password
+            .options
+            .insert("rdp_password".to_owned(), "secret".to_owned());
+        assert!(!should_remove_empty_peer_config(
+            ConfigLoadStatus::Loaded,
+            &with_rdp_password
+        ));
+
+        let mut with_peer_prs = PeerConfig::default();
+        with_peer_prs.password_prs = b"connect-equivalent".to_vec();
+        assert!(!should_remove_empty_peer_config(
+            ConfigLoadStatus::Loaded,
+            &with_peer_prs
+        ));
     }
 
     #[test]

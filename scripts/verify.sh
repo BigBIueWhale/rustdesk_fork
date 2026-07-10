@@ -251,7 +251,7 @@ echo "== (3b-iii-a1b) credential-bearing local stores use hardened raw-file writ
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::store_raw_config_bytes --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::raw_encrypted_json_load_failure_preserves_payload_for_recovery --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_path_present_but_unreadable_is_transient_not_stale --color never
-"${RUN[@]}" cargo test -p hbb_common --lib config::tests::empty_peer_cleanup_only_after_successful_load --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::empty_peer_cleanup_requires_loaded_semantically_empty_config --color never
 index_s11b4d=
 grep -q 'fn store_raw_config_bytes(path: PathBuf, data: &\[u8\]) -> Result<()>' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-helper-missing"
 grep -q 'fn load_raw_config_bytes(path: &Path) -> Result<Vec<u8>>' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-load-helper-missing"
@@ -266,9 +266,12 @@ grep -q 'MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH' libs/hbb_common/src
 grep -q 'enum ConfigLoadStatus' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d typed-load-status-missing"
 grep -q 'fn load_path_with_status' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d typed-load-helper-missing"
 grep -q 'load_path_with_status(Self::path(id))' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d peer-config-load-bypasses-typed-wrapper"
-grep -q 'fn should_remove_empty_peer_config(status: ConfigLoadStatus) -> bool' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d empty-peer-cleanup-policy-missing"
-grep -q 'matches!(status, ConfigLoadStatus::Loaded)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d empty-peer-cleanup-not-loaded-only"
-grep -q 'if should_remove_empty_peer_config(status)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d batch-peer-cleanup-not-status-gated"
+grep -q 'fn is_semantically_empty_peer_config(config: &PeerConfig) -> bool' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d semantic-empty-peer-helper-missing"
+grep -q 'config == &PeerConfig::default()' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d semantic-empty-peer-not-default-comparison"
+grep -q 'fn should_remove_empty_peer_config(status: ConfigLoadStatus, config: &PeerConfig) -> bool' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d empty-peer-cleanup-policy-missing"
+grep -q 'matches!(status, ConfigLoadStatus::Loaded) && is_semantically_empty_peer_config(config)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d empty-peer-cleanup-not-loaded-empty-only"
+grep -q 'if should_remove_empty_peer_config(status, &c)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d batch-peer-cleanup-not-status-and-content-gated"
+grep -q 'with_rdp_password' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d rdp-password-peer-cleanup-regression-missing"
 if grep -q 'let mut config: PeerConfig = load_path(Self::path(id));' libs/hbb_common/src/config.rs; then
   index_s11b4d="$index_s11b4d peer-config-direct-untyped-load-present"
 fi
@@ -290,7 +293,7 @@ fi
 grep -q 'Local credential-bearing store file hardening' requirements.html || index_s11b4d="$index_s11b4d requirements-disposition-missing"
 grep -q 'R-S11b-4d — local credential-bearing store file hardening' HARDENING_STATUS.md || index_s11b4d="$index_s11b4d hardening-ledger-missing"
 if [ -n "$index_s11b4d" ]; then echo "  FAIL R-S11b-4d local credential-bearing store hardening:$index_s11b4d"; rc=1; else
-  echo "  ok  R-S11b-4d PeerConfig uses typed hardened load status so transient peer-read failures are not deleted; raw encrypted address-book/group stores keep their byte format while using ACL/0600 replacing writes and corrupt-payload preservation without silent direct File::create/write_all drops"; fi
+  echo "  ok  R-S11b-4d PeerConfig uses typed hardened load status so transient peer-read failures are not deleted and loaded peer files are removed only when semantically empty; raw encrypted address-book/group stores keep their byte format while using ACL/0600 replacing writes and corrupt-payload preservation without silent direct File::create/write_all drops"; fi
 
 echo "== (3b-iii-a2) Linux _pa audio helper requires capture authority (R-S11c-7) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config pa_capture_authority --color never
@@ -606,9 +609,16 @@ privacy_broker_create_one_line=$(printf '%s\n' "$privacy_broker_create" | tr '\n
 echo "$privacy_broker_create" | grep -q 'broker_path_utf16.as_ptr() as _' || r_s11d="$r_s11d privacy-broker:not-explicit-application-name"
 echo "$privacy_broker_create_one_line" | grep -Eq 'broker_path_utf16\.as_ptr\(\) as _[[:space:]]*,[[:space:]]*NULL as _[[:space:]]*,' || r_s11d="$r_s11d privacy-broker:command-line-not-null"
 echo "$privacy_broker_create" | grep -q 'current_dir_utf16.as_ptr() as _' || r_s11d="$r_s11d privacy-broker:no-explicit-current-directory"
+grep -q 'if !dll_file.is_file()' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:dll-file-existence-not-checked"
 grep -q 'if !broker_file.is_file()' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:file-existence-not-checked"
 if grep -q 'cmd_utf16' src/privacy_mode/win_topmost_window.rs; then
   r_s11d="$r_s11d privacy-broker:command-line-module-parsing-leftover"
+fi
+grep -q 'let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };' src/platform/windows.rs || r_s11d="$r_s11d user-shortcut:com-init-hresult-not-captured"
+grep -q 'if hr.is_ok()' src/platform/windows.rs || r_s11d="$r_s11d user-shortcut:com-init-hresult-success-not-checked"
+grep -q 'if hr == RPC_E_CHANGED_MODE' src/platform/windows.rs || r_s11d="$r_s11d user-shortcut:com-init-changed-mode-not-hresult-checked"
+if grep -q 'Err(err) if err.code() == RPC_E_CHANGED_MODE' src/platform/windows.rs || grep -q 'Ok(()) => Ok(Self { uninitialize: true })' src/platform/windows.rs; then
+  r_s11d="$r_s11d user-shortcut:com-init-uses-wrong-windows-061-result-shape"
 fi
 create_shortcut_body=$(awk '/^pub fn create_shortcut\(id: &str\)/,/^pub fn enable_lowlevel_keyboard/' src/platform/windows.rs)
 echo "$create_shortcut_body" | grep -q 'validate_shortcut_connect_id(id)?' || r_s11d="$r_s11d user-shortcut:id-not-validated"

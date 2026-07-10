@@ -2652,13 +2652,16 @@ struct ComApartment {
 
 impl ComApartment {
     fn init() -> ResultType<Self> {
-        match unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) } {
-            Ok(()) => Ok(Self { uninitialize: true }),
-            Err(err) if err.code() == RPC_E_CHANGED_MODE => Ok(Self {
-                uninitialize: false,
-            }),
-            Err(err) => Err(anyhow!("CoInitializeEx failed: {err}")),
+        let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+        if hr.is_ok() {
+            return Ok(Self { uninitialize: true });
         }
+        if hr == RPC_E_CHANGED_MODE {
+            return Ok(Self {
+                uninitialize: false,
+            });
+        }
+        Err(anyhow!("CoInitializeEx failed: {}", hr.message()))
     }
 }
 

@@ -252,6 +252,7 @@ echo "== (3b-iii-a1b) credential-bearing local stores use hardened raw-file writ
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::raw_encrypted_json_load_failure_preserves_payload_for_recovery --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_path_present_but_unreadable_is_transient_not_stale --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::empty_peer_cleanup_requires_loaded_semantically_empty_config --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::peer_cleanup_decision_is_bound_to_the_enumerated_path --color never
 index_s11b4d=
 grep -q 'fn store_raw_config_bytes(path: PathBuf, data: &\[u8\]) -> Result<()>' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-helper-missing"
 grep -q 'fn load_raw_config_bytes(path: &Path) -> Result<Vec<u8>>' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-load-helper-missing"
@@ -265,13 +266,19 @@ grep -q 'MoveFileExW' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b
 grep -q 'MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-windows-replace-flags-missing"
 grep -q 'enum ConfigLoadStatus' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d typed-load-status-missing"
 grep -q 'fn load_path_with_status' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d typed-load-helper-missing"
-grep -q 'load_path_with_status(Self::path(id))' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d peer-config-load-bypasses-typed-wrapper"
+grep -q 'Self::load_path_with_status(Self::path(id), Some(id))' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d peer-config-id-load-not-through-path-wrapper"
+grep -q 'fn load_path_with_status(path: PathBuf, stored_peer_id: Option<&str>) -> ConfigLoad<PeerConfig>' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d peer-config-exact-path-load-helper-missing"
 grep -q 'fn is_semantically_empty_peer_config(config: &PeerConfig) -> bool' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d semantic-empty-peer-helper-missing"
 grep -q 'config == &PeerConfig::default()' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d semantic-empty-peer-not-default-comparison"
 grep -q 'fn should_remove_empty_peer_config(status: ConfigLoadStatus, config: &PeerConfig) -> bool' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d empty-peer-cleanup-policy-missing"
 grep -q 'matches!(status, ConfigLoadStatus::Loaded) && is_semantically_empty_peer_config(config)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d empty-peer-cleanup-not-loaded-empty-only"
 grep -q 'if should_remove_empty_peer_config(status, &c)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d batch-peer-cleanup-not-status-and-content-gated"
+grep -q 'let loaded = PeerConfig::load_path_with_status(p.clone(), Some(id));' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d batch-peer-cleanup-not-bound-to-enumerated-path"
 grep -q 'with_rdp_password' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d rdp-password-peer-cleanup-regression-missing"
+grep -q 'peer_cleanup_decision_is_bound_to_the_enumerated_path' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d alias-path-cleanup-regression-missing"
+if grep -q 'let loaded = PeerConfig::load_with_status(&id)' libs/hbb_common/src/config.rs; then
+  index_s11b4d="$index_s11b4d batch-peer-cleanup-loads-canonical-id-path"
+fi
 if grep -q 'let mut config: PeerConfig = load_path(Self::path(id));' libs/hbb_common/src/config.rs; then
   index_s11b4d="$index_s11b4d peer-config-direct-untyped-load-present"
 fi

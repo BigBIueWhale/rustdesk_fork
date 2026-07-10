@@ -419,18 +419,19 @@ unreachable and a source/test/AST gate prevents reintroduction.
   and address-book/group access tokens. Attack surface closed: `PeerConfig::load` no longer bypasses the
   hardened config loader; it carries typed load status so Windows ACL preparation and corrupt-config
   preservation apply to per-peer config loads, and peer enumeration removes peer files only after a successful
-  load of a semantically default `PeerConfig`, never after transient unreadable/corrupt/default status and
-  never when saved options or connect-equivalent credentials are present. Address-book and group files keep
+  load of that exact enumerated path as a semantically default `PeerConfig`, never after loading a different
+  canonicalized peer path, never after transient unreadable/corrupt/default status, and never when saved options
+  or connect-equivalent credentials are present. Address-book and group files keep
   their existing encrypted compressed raw-byte format, but writes now go through a
   temp-and-replace raw helper that prepares the Windows config ACL, writes owner-only `0600` files on Unix,
   uses `MoveFileExW` replace-existing/write-through semantics on Windows, hardens the final Windows file, and
   logs store/load/remove failures. Present-but-unreadable or corrupt raw encrypted payloads are preserved as
   sibling recovery files instead of being deleted. Verification closure: `scripts/verify.sh` asserts the typed
-  peer-config load status, loaded-and-semantically-default empty-peer cleanup, the raw helper shape, Windows
-  ACL preparation, Unix owner-only permissions, Windows replace-existing/write-through replacement,
+  peer-config load status, exact-path loaded-and-semantically-default empty-peer cleanup, the raw helper shape,
+  Windows ACL preparation, Unix owner-only permissions, Windows replace-existing/write-through replacement,
   corrupt-payload preservation, absence of direct `File::create(Self::path())` / ignored `write_all` in those
-  stores, and the raw-store permission, replacement, recovery, transient-load, and RDP-password cleanup-policy
-  regression tests.
+  stores, and the raw-store permission, replacement, recovery, transient-load, RDP-password, and alias-path
+  cleanup-policy regression tests.
 - **R-S11c-2a/R-S11c-3a — Windows `_service` raw session/SAS commands removed — CLOSED 2026-07-08.**
   Platform: Windows installed service. Endpoint/action: `_service` named pipe messages formerly carrying
   `Data::UserSid(Some(_))` for service-owned session switching and `Data::SAS` for SYSTEM-mediated

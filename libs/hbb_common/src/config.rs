@@ -2174,8 +2174,12 @@ impl PeerConfig {
     }
 
     fn load_with_status(id: &str) -> ConfigLoad<PeerConfig> {
+        Self::load_path_with_status(Self::path(id), Some(id))
+    }
+
+    fn load_path_with_status(path: PathBuf, stored_peer_id: Option<&str>) -> ConfigLoad<PeerConfig> {
         let _lock = CONFIG.read().unwrap();
-        let loaded: ConfigLoad<PeerConfig> = load_path_with_status(Self::path(id));
+        let loaded: ConfigLoad<PeerConfig> = load_path_with_status(path.clone());
         let mut config = loaded.value;
         let status = loaded.status;
         let mut store = false;
@@ -2195,7 +2199,10 @@ impl PeerConfig {
             }
         }
         if store {
-            config.store_(id);
+            Self::store_path_(&path, &config);
+            if let Some(id) = stored_peer_id {
+                NEW_STORED_PEER_CONFIG.lock().unwrap().insert(id.to_owned());
+            }
         }
         ConfigLoad::new(config, status)
     }
@@ -2206,7 +2213,12 @@ impl PeerConfig {
     }
 
     fn store_(&self, id: &str) {
-        let mut config = self.clone();
+        Self::store_path_(&Self::path(id), self);
+        NEW_STORED_PEER_CONFIG.lock().unwrap().insert(id.to_owned());
+    }
+
+    fn store_path_(path: &Path, config: &PeerConfig) {
+        let mut config = config.clone();
         config.password =
             encrypt_vec_or_original(&config.password, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
         // R-S16 (viewer twin): the DERIVED Argon2id CPace PRS, encrypted at rest like `password`.
@@ -2217,10 +2229,9 @@ impl PeerConfig {
                 *v = encrypt_str_or_original(v, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN)
             }
         }
-        if let Err(err) = store_path(Self::path(id), config) {
+        if let Err(err) = store_path(path.to_path_buf(), config) {
             log::error!("Failed to store config: {}", err);
         }
-        NEW_STORED_PEER_CONFIG.lock().unwrap().insert(id.to_owned());
     }
 
     pub fn remove(id: &str) {
@@ -2382,7 +2393,7 @@ impl PeerConfig {
         let peers: Vec<_> = all[from..to]
             .iter()
             .filter_map(|(id, t, p)| {
-                let loaded = PeerConfig::load_with_status(&id);
+                let loaded = PeerConfig::load_path_with_status(p.clone(), Some(id));
                 let status = loaded.status;
                 let c = loaded.value;
                 if c.info.platform.is_empty() {
@@ -4347,6 +4358,41 @@ mod tests {
             ConfigLoadStatus::Loaded,
             &with_peer_prs
         ));
+    }
+
+    #[test]
+    fn peer_cleanup_decision_is_bound_to_the_enumerated_path() {
+        let _lock = CONFIG_STATE_TEST_LOCK.lock().unwrap();
+        let id = "r_s11b4d_alias_cleanup";
+        let canonical_path = PeerConfig::path(id);
+        let _canonical_guard = ConfigFileRestoreGuard::new(canonical_path.clone());
+        if let Some(parent) = canonical_path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        store_path(canonical_path, PeerConfig::default()).unwrap();
+
+        let alias_dir = unique_tmp_dir("peer-alias-cleanup");
+        let alias_path = alias_dir.join(format!(
+            "base64_{}.toml",
+            base64::encode(id, base64::Variant::Original)
+        ));
+        let mut alias_config = PeerConfig::default();
+        alias_config.password_prs = b"connect-equivalent".to_vec();
+        alias_config
+            .options
+            .insert("rdp_password".to_owned(), "secret".to_owned());
+        store_path(alias_path.clone(), alias_config).unwrap();
+
+        let all = vec![(id.to_owned(), SystemTime::UNIX_EPOCH, alias_path.clone())];
+        let (peers, next) = PeerConfig::batch_peers(&all, 0, None);
+
+        assert!(peers.is_empty());
+        assert_eq!(next, 1);
+        assert!(
+            alias_path.exists(),
+            "peer cleanup must not delete an enumerated file based on a different canonical path load"
+        );
+        fs::remove_dir_all(&alias_dir).ok();
     }
 
     #[test]

@@ -86,8 +86,8 @@ use windows::{
         },
         UI::Shell::{
             FOLDERID_CommonPrograms, FOLDERID_CommonStartup, FOLDERID_Desktop,
-            FOLDERID_ProgramFiles, FOLDERID_ProgramFilesX86, FOLDERID_PublicDesktop, IShellLinkW,
-            SHGetKnownFolderPath, ShellLink, KF_FLAG_DEFAULT,
+            FOLDERID_ProgramData, FOLDERID_ProgramFiles, FOLDERID_ProgramFilesX86,
+            FOLDERID_PublicDesktop, IShellLinkW, SHGetKnownFolderPath, ShellLink, KF_FLAG_DEFAULT,
         },
     },
 };
@@ -1675,6 +1675,10 @@ fn common_startup_dir() -> ResultType<PathBuf> {
     )
 }
 
+fn program_data_dir() -> ResultType<PathBuf> {
+    known_folder_path(&FOLDERID_ProgramData, "SHGetKnownFolderPath(ProgramData)")
+}
+
 fn public_desktop_dir() -> ResultType<PathBuf> {
     known_folder_path(
         &FOLDERID_PublicDesktop,
@@ -1746,13 +1750,31 @@ pub(crate) fn trusted_system_tool_path(tool: &str) -> ResultType<PathBuf> {
 }
 
 fn quoted_batch_path(path: &Path) -> ResultType<String> {
+    let text = batch_path_text(path, "batch path")?;
+    Ok(format!("\"{text}\""))
+}
+
+fn batch_path_text(path: &Path, label: &str) -> ResultType<String> {
     let text = path
         .to_str()
-        .ok_or_else(|| anyhow!("system tool path is not valid UTF-8: {:?}", path))?;
-    if text.contains('"') {
-        bail!("system tool path contains a quote: {text}");
+        .ok_or_else(|| anyhow!("{label} is not valid UTF-8: {:?}", path))?;
+    batch_literal_text(text, label)?;
+    Ok(text.to_owned())
+}
+
+fn batch_literal_text<'a>(text: &'a str, label: &str) -> ResultType<&'a str> {
+    if text.is_empty() {
+        bail!("{label} is empty");
     }
-    Ok(format!("\"{text}\""))
+    if text.chars().any(|c| {
+        matches!(
+            c,
+            '"' | '%' | '!' | '&' | '|' | '<' | '>' | '^' | '@' | '\r' | '\n'
+        ) || c.is_control()
+    }) {
+        bail!("{label} contains characters unsafe for elevated cmd.exe execution: {text}");
+    }
+    Ok(text)
 }
 
 fn trusted_system_cmd_path() -> ResultType<PathBuf> {
@@ -2276,14 +2298,6 @@ struct InstallerCommandFile {
     file: Option<fs::File>,
 }
 
-impl InstallerCommandFile {
-    fn path_str(&self) -> ResultType<&str> {
-        self.path
-            .to_str()
-            .ok_or_else(|| anyhow!("installer command path is not valid UTF-8: {:?}", self.path))
-    }
-}
-
 impl Drop for InstallerCommandFile {
     fn drop(&mut self) {
         self.file.take();
@@ -2291,47 +2305,86 @@ impl Drop for InstallerCommandFile {
     }
 }
 
-fn installer_command_dir() -> PathBuf {
-    let tmp = std::env::temp_dir();
-    if ["&", "@", "^"]
-        .iter()
-        .any(|s| tmp.to_string_lossy().contains(s))
-    {
-        if let Ok(dir) = user_accessible_folder() {
-            return dir;
+fn push_installer_command_dir(
+    dirs: &mut Vec<PathBuf>,
+    candidate: ResultType<PathBuf>,
+    label: &str,
+) {
+    if let Ok(dir) = candidate.and_then(|dir| {
+        batch_path_text(&dir, label)?;
+        Ok(dir)
+    }) {
+        if !dirs.iter().any(|existing| existing == &dir) {
+            dirs.push(dir);
         }
     }
-    tmp
+}
+
+fn installer_command_dirs() -> ResultType<Vec<PathBuf>> {
+    let mut dirs = Vec::new();
+    let tmp = std::env::temp_dir();
+    push_installer_command_dir(&mut dirs, Ok(tmp), "installer command temp directory");
+    push_installer_command_dir(
+        &mut dirs,
+        program_data_dir(),
+        "installer command ProgramData directory",
+    );
+    push_installer_command_dir(
+        &mut dirs,
+        user_accessible_folder(),
+        "installer command user-accessible directory",
+    );
+    if dirs.is_empty() {
+        bail!("no safe installer command directory is available");
+    }
+    Ok(dirs)
 }
 
 fn create_installer_command_file(ext: &str, tip: &str) -> ResultType<InstallerCommandFile> {
-    let dir = installer_command_dir();
-    for _ in 0..16 {
-        let path = dir.join(format!(
-            "{}_{}_{}.{}",
-            crate::get_app_name(),
-            tip,
-            uuid::Uuid::new_v4(),
-            ext
-        ));
-        match fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .share_mode(FILE_SHARE_READ)
-            .custom_flags(FILE_ATTRIBUTE_TEMPORARY)
-            .open(&path)
-        {
-            Ok(file) => {
-                return Ok(InstallerCommandFile {
-                    path,
-                    file: Some(file),
-                });
+    let mut create_errors = Vec::new();
+    for dir in installer_command_dirs()? {
+        let mut exhausted_names = true;
+        for _ in 0..16 {
+            let path = dir.join(format!(
+                "{}_{}_{}.{}",
+                crate::get_app_name(),
+                tip,
+                uuid::Uuid::new_v4(),
+                ext
+            ));
+            batch_path_text(&path, "installer command file path")?;
+            match fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .share_mode(FILE_SHARE_READ)
+                .custom_flags(FILE_ATTRIBUTE_TEMPORARY)
+                .open(&path)
+            {
+                Ok(file) => {
+                    return Ok(InstallerCommandFile {
+                        path,
+                        file: Some(file),
+                    });
+                }
+                Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
+                Err(err) => {
+                    exhausted_names = false;
+                    create_errors.push(format!("{}: {err}", dir.display()));
+                    break;
+                }
             }
-            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(err) => return Err(err.into()),
+        }
+        if exhausted_names {
+            create_errors.push(format!(
+                "{}: generated installer command names already exist",
+                dir.display()
+            ));
         }
     }
-    bail!("failed to create a unique installer command file")
+    bail!(
+        "failed to create an installer command file: {}",
+        create_errors.join("; ")
+    )
 }
 
 fn write_cmds(cmds: String, ext: &str, tip: &str) -> ResultType<InstallerCommandFile> {
@@ -2339,6 +2392,7 @@ fn write_cmds(cmds: String, ext: &str, tip: &str) -> ResultType<InstallerCommand
     let mut command_file = create_installer_command_file(ext, tip)?;
     if ext == "bat" {
         let tmp2 = get_undone_file(&command_file.path)?;
+        let tmp2_quoted = quoted_batch_path(&tmp2)?;
         fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -2346,9 +2400,9 @@ fn write_cmds(cmds: String, ext: &str, tip: &str) -> ResultType<InstallerCommand
         cmds = format!(
             "
 {cmds}
-if exist \"{path}\" del /f /q \"{path}\"
+if exist {path} del /f /q {path}
 ",
-            path = tmp2.to_string_lossy()
+            path = tmp2_quoted
         );
     }
     // in case cmds mixed with \r\n and \n, make sure all ending with \r\n
@@ -2479,7 +2533,7 @@ fn get_undone_file(tmp: &Path) -> ResultType<PathBuf> {
 fn run_cmds(cmds: String, show: bool, tip: &str) -> ResultType<()> {
     let tmp = write_cmds(cmds, "bat", tip)?;
     let tmp2 = get_undone_file(&tmp.path)?;
-    let tmp_fn = tmp.path_str()?;
+    let tmp_fn = batch_path_text(&tmp.path, "installer command file path")?;
     let cmd = trusted_system_cmd_path()?;
     let already_elevated = match is_elevated(None) {
         Ok(elevated) => elevated,
@@ -2490,14 +2544,14 @@ fn run_cmds(cmds: String, show: bool, tip: &str) -> ResultType<()> {
     };
     let status = if already_elevated {
         let mut command = std::process::Command::new(&cmd);
-        command.args(["/C", tmp_fn]);
+        command.args(["/D", "/V:OFF", "/S", "/C", tmp_fn.as_str()]);
         if !show {
             command.creation_flags(CREATE_NO_WINDOW);
         }
         command.status()?
     } else {
         runas::Command::new(cmd)
-            .args(&["/C", &tmp_fn])
+            .args(&["/D", "/V:OFF", "/S", "/C", tmp_fn.as_str()])
             .show(show)
             .force_prompt(true)
             .status()?

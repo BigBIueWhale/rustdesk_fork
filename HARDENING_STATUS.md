@@ -894,6 +894,25 @@ unreachable and a source/test/AST gate prevents reintroduction.
   asserts mandatory marker creation, elevated exit-status success checking, marker-state checking, absence of
   the old ignored-status shape, service install/uninstall failure reporting, and this ledger/requirements
   disposition.
+- **R-S11d-18 — Windows EXE elevated batch cmd-state hardening — CLOSED 2026-07-10.**
+  Platform: Windows EXE install/uninstall/service-install/service-uninstall elevated command runner.
+  Endpoint/action: `run_cmds` writing generated `.bat` and completion-marker files, then executing the batch
+  through elevated `System32\cmd.exe`. Boundary: medium-integrity caller environment, temp path, and HKCU
+  Command Processor state ↔ elevated installer command execution. Attack surface closed: the runner no longer
+  lets HKCU Command Processor `AutoRun` participate in elevated command startup, and generated batch/marker
+  path text no longer enters `cmd.exe` with expansion-sensitive characters. `run_cmds` invokes trusted
+  `cmd.exe` with `/D /V:OFF /S /C`; generated batch and marker paths are accepted only after rejecting quotes,
+  `%`, `!`, shell metacharacters, CR/LF, and control characters; command-file creation tries only validated
+  candidate directories, in order: caller temp, the ProgramData known folder, and the existing user-accessible
+  folder, continuing to the next safe candidate when creation fails. Completion-marker deletion is quoted
+  through the same safe path guard.
+  Verification closure: `scripts/verify.sh` asserts the ProgramData fallback, fallible installer command
+  directory candidate list, literal/path guards, rejected expansion/metacharacter set, safe temp/ProgramData/
+  user-accessible checks, create-error tracking, marker quoting, `/D /V:OFF /S /C` command invocation on both
+  already-elevated and UAC `runas` paths, absence of the old bare `/C` invocation shape, and this
+  ledger/requirements disposition. Separate Windows findings not
+  closed by this item remain open for later slices: env-expanded uninstall cleanup roots, per-command batch
+  postconditions, and the MSI `CC_CONNECTION_TYPE` public-property service-mode gate.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's

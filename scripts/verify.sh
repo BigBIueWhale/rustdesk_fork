@@ -803,6 +803,35 @@ grep -Fq 'R-S11d-15 — Windows EXE elevated batch completion accounting' HARDEN
 if [ -n "$r_s11d15" ]; then echo "  FAIL R-S11d-15 Windows EXE elevated batch completion accounting:$r_s11d15"; rc=1; else
   echo "  ok  R-S11d-15 Windows elevated EXE batches require marker creation, successful exit status, marker removal, and false-on-failure service wrappers"; fi
 
+echo "== (3b-iii-a5d4b) Windows EXE elevated batch rejects ambient cmd state (R-S11d-18) =="
+r_s11d18=
+grep -Fq 'FOLDERID_ProgramData' src/platform/windows.rs || r_s11d18="$r_s11d18 programdata-known-folder-missing"
+grep -Fq 'fn program_data_dir() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d18="$r_s11d18 programdata-helper-missing"
+grep -Fq 'fn batch_literal_text<' src/platform/windows.rs || r_s11d18="$r_s11d18 batch-literal-guard-missing"
+grep -Fq 'fn batch_path_text(path: &Path, label: &str) -> ResultType<String>' src/platform/windows.rs || r_s11d18="$r_s11d18 batch-path-guard-missing"
+grep -Fq "'\"' | '%'" src/platform/windows.rs || r_s11d18="$r_s11d18 cmd-expansion-metachar-quote-not-rejected"
+for ch in '%' '!' '&' '|' '<' '>' '^' '@' '\r' '\n'; do
+  grep -Fq "'$ch'" src/platform/windows.rs || r_s11d18="$r_s11d18 cmd-expansion-metachar-$ch-not-rejected"
+done
+grep -Fq 'fn push_installer_command_dir(' src/platform/windows.rs || r_s11d18="$r_s11d18 installer-command-dir-candidate-helper-missing"
+grep -Fq 'fn installer_command_dirs() -> ResultType<Vec<PathBuf>>' src/platform/windows.rs || r_s11d18="$r_s11d18 installer-command-dirs-not-fallible-list"
+grep -Fq 'for dir in installer_command_dirs()?' src/platform/windows.rs || r_s11d18="$r_s11d18 command-file-creation-does-not-try-safe-candidates"
+grep -Fq '"installer command temp directory"' src/platform/windows.rs || r_s11d18="$r_s11d18 temp-dir-not-safety-checked"
+grep -Fq '"installer command ProgramData directory"' src/platform/windows.rs || r_s11d18="$r_s11d18 programdata-dir-not-safety-checked"
+grep -Fq '"installer command user-accessible directory"' src/platform/windows.rs || r_s11d18="$r_s11d18 user-accessible-dir-not-safety-checked"
+grep -Fq 'create_errors.push(format!("{}: {err}", dir.display()));' src/platform/windows.rs || r_s11d18="$r_s11d18 command-file-create-errors-not-tracked"
+grep -Fq 'batch_path_text(&path, "installer command file path")?' src/platform/windows.rs || r_s11d18="$r_s11d18 command-file-path-not-safety-checked"
+grep -Fq 'let tmp2_quoted = quoted_batch_path(&tmp2)?;' src/platform/windows.rs || r_s11d18="$r_s11d18 marker-path-not-quoted-through-safe-guard"
+echo "$run_cmds_body" | grep -Fq 'command.args(["/D", "/V:OFF", "/S", "/C", tmp_fn.as_str()]);' || r_s11d18="$r_s11d18 elevated-cmd-args-not-autorun-delayed-expansion-safe"
+echo "$run_cmds_body" | grep -Fq '.args(&["/D", "/V:OFF", "/S", "/C", tmp_fn.as_str()])' || r_s11d18="$r_s11d18 runas-cmd-args-not-autorun-delayed-expansion-safe"
+if echo "$run_cmds_body" | grep -Eq 'args\(\["/C"|args\(&\["/C"|/C", tmp_fn\]'; then
+  r_s11d18="$r_s11d18 bare-cmd-slash-c-leftover"
+fi
+grep -Fq 'Windows EXE elevated batch cmd-state hardening' requirements.html || r_s11d18="$r_s11d18 requirements-disposition-missing"
+grep -Fq 'R-S11d-18 — Windows EXE elevated batch cmd-state hardening' HARDENING_STATUS.md || r_s11d18="$r_s11d18 hardening-ledger-missing"
+if [ -n "$r_s11d18" ]; then echo "  FAIL R-S11d-18 Windows EXE elevated batch cmd-state hardening:$r_s11d18"; rc=1; else
+  echo "  ok  R-S11d-18 Windows elevated EXE batches use cmd /D /V:OFF /S /C and reject expansion-sensitive generated paths"; fi
+
 echo "== (3b-iii-a5d5) Windows MSI service state and SAS policy are not persistent user-config side effects (R-S11d-16) =="
 r_s11d16=
 grep -Fq '<Custom Action="CreateStartService" Before="InstallFinalize" Condition="(NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)) AND (NOT CC_CONNECTION_TYPE=&quot;outgoing&quot;)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:create-service-condition-not-always-service"

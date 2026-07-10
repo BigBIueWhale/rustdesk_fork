@@ -2517,12 +2517,17 @@ fn systemctl_service(action: &str, app_name: &str) -> bool {
         log::error!("systemctl was not found at a trusted fixed path");
         return false;
     };
-    Command::new(systemctl)
-        .arg(action)
-        .arg(app_name)
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
+    match Command::new(systemctl).arg(action).arg(app_name).status() {
+        Ok(status) if status.success() => true,
+        Ok(status) => {
+            log::error!("systemctl {action} {app_name} failed with status {status}");
+            false
+        }
+        Err(err) => {
+            log::error!("Failed to run systemctl {action} {app_name}: {err}");
+            false
+        }
+    }
 }
 
 fn copy_user_config_to_root_service_config() -> bool {
@@ -2626,11 +2631,12 @@ pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
         return false;
     }
     log::info!("Uninstalling service...");
-    let _ = copy_user_config_to_root_service_config();
     let app_name = crate::get_app_name().to_lowercase();
-    let _ = systemctl_service("disable", &app_name);
+    if !systemctl_service("disable", &app_name) {
+        return false;
+    }
     if !systemctl_service("stop", &app_name) {
-        return true;
+        return false;
     }
     // Stopping the service can terminate child processes before this branch runs.
     if show_new_window {
@@ -2645,11 +2651,17 @@ pub fn install_service() -> bool {
         return false;
     }
     log::info!("Installing service...");
-    let _ = copy_user_config_to_root_service_config();
+    if !copy_user_config_to_root_service_config() {
+        log::error!("Failed to copy user config before installing service");
+        return false;
+    }
     let app_name = crate::get_app_name().to_lowercase();
-    let _ = systemctl_service("enable", &app_name);
+    if !systemctl_service("enable", &app_name) {
+        return false;
+    }
     if !systemctl_service("start", &app_name) {
         log::error!("Failed to enable/start the {app_name} service");
+        return false;
     }
     true
 }

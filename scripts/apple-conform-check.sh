@@ -541,6 +541,43 @@ else
   note "ok  R-S11c-5 LaunchDaemon uses a root-owned PrivilegedHelperTools executable; dormant updater and active-user config import are absent"
 fi
 
+echo "== (2b-iv-b) R-S11c-16 macOS privileged service completion authority =="
+r_s11c16=
+grep -q 'fn run_checked_command(command: &mut Command, description: &str) -> bool' "$macos_rs" || r_s11c16="$r_s11c16 no-checked-command-helper"
+grep -q 'Ok(status) if status.success() => true' "$macos_rs" || r_s11c16="$r_s11c16 status-success-not-explicit"
+grep -q 'fn launchctl_label_loaded(label: &str) -> Option<bool>' "$macos_rs" || r_s11c16="$r_s11c16 no-launchctl-label-query"
+grep -q 'fn ensure_launchctl_label_removed(label: &str) -> bool' "$macos_rs" || r_s11c16="$r_s11c16 no-launchctl-remove-verifier"
+grep -q 'fn restart_launch_agent(agent_plist_file: &str, label: &str) -> bool' "$macos_rs" || r_s11c16="$r_s11c16 no-launch-agent-restart-verifier"
+macos_install_service_body=$(awk '/pub fn install_service\(\) -> bool/,/^}/' "$macos_rs")
+echo "$macos_install_service_body" | grep -Fq 'run_service_install(context)' || r_s11c16="$r_s11c16 install-wrapper-not-checked-install"
+if echo "$macos_install_service_body" | grep -Fq 'service_plists_exist'; then
+  r_s11c16="$r_s11c16 install-wrapper-plist-only-success"
+fi
+grep -q 'restart_launch_agent(&context.agent_plist_file, &server_launch_agent_label())' "$macos_rs" || r_s11c16="$r_s11c16 install-agent-load-not-authoritative"
+grep -q 'return func();' "$macos_rs" || r_s11c16="$r_s11c16 sync-uninstall-return-not-propagated"
+grep -q 'if !ensure_launchctl_label_removed(&server_launch_agent_label())' "$macos_rs" || r_s11c16="$r_s11c16 uninstall-agent-remove-not-authoritative"
+if perl -0ne 'exit(/\.status\(\)\s*\.ok\(\)/ ? 0 : 1)' "$macos_rs"; then
+  r_s11c16="$r_s11c16 status-result-discard"
+fi
+grep -q 'set unload_existing_service to "if /bin/launchctl list " & quoted form of service_label' "$install_scpt" || r_s11c16="$r_s11c16 install-no-existing-daemon-unload"
+grep -q '&& /bin/launchctl list " & quoted form of service_label' "$install_scpt" || r_s11c16="$r_s11c16 install-daemon-load-not-verified"
+grep -q 'unload_existing_service.*load_service' "$install_scpt" || r_s11c16="$r_s11c16 install-order-not-pinned"
+grep -q 'set unload_service to "if /bin/launchctl list " & quoted form of service_label' "$uninstall_scpt" || r_s11c16="$r_s11c16 uninstall-no-daemon-loaded-branch"
+grep -q 'set verify_unloaded to "if /bin/launchctl list " & quoted form of service_label' "$uninstall_scpt" || r_s11c16="$r_s11c16 uninstall-daemon-unload-not-verified"
+grep -q 'set verify_removed to "if \[ -e " & quoted form of daemon_plist' "$uninstall_scpt" || r_s11c16="$r_s11c16 uninstall-plist-removal-not-verified"
+grep -q 'set sh to "set -e;"' "$uninstall_scpt" || r_s11c16="$r_s11c16 uninstall-not-set-e"
+if grep -qF '|| true' "$uninstall_scpt"; then
+  r_s11c16="$r_s11c16 uninstall-masks-launchctl-failure"
+fi
+grep -q 'R-S11c-16 makes service lifecycle completion status-authoritative' "$REPO/requirements.html" || r_s11c16="$r_s11c16 requirements-disposition-missing"
+grep -q 'R-S11c-16 — Desktop service lifecycle completion authority' "$REPO/HARDENING_STATUS.md" || r_s11c16="$r_s11c16 hardening-ledger-missing"
+if [ -n "$r_s11c16" ]; then
+  echo "  FAIL R-S11c-16 macOS privileged service completion authority:$r_s11c16"
+  rc=1
+else
+  note "ok  R-S11c-16 macOS service install/uninstall checks AppleScript exit status, launchd label state, and plist postconditions"
+fi
+
 # (2c) Appendix C #2b is an ACCEPTED, documented residual: the fork SHOULD (not MUST) sandbox the decode
 # path. Commit 0c54912 deliberately reverted the ENTIRE native-worker decode-sandbox subsystem (the
 # per-codec worker processes + the macOS Seatbelt sandbox file + the Android isolatedProcess services

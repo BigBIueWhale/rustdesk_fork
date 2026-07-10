@@ -292,11 +292,17 @@ pub fn core_main() -> Option<Vec<String>> {
             return None;
         } else if args[0] == "--install-service" {
             log::info!("start --install-service");
-            crate::platform::install_service();
+            if !crate::platform::install_service() {
+                log::error!("--install-service failed");
+                std::process::exit(1);
+            }
             return None;
         } else if args[0] == "--uninstall-service" {
             log::info!("start --uninstall-service");
-            crate::platform::uninstall_service(false, true);
+            if !crate::platform::uninstall_service(false, true) {
+                log::error!("--uninstall-service failed");
+                std::process::exit(1);
+            }
             return None;
         } else if args[0] == "--service" {
             log::info!("start --service");

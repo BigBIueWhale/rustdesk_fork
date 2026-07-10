@@ -501,6 +501,23 @@ unreachable and a source/test/AST gate prevents reintroduction.
   re-verification before load, `/Library/Logs/RustDesk` daemon logs, root-owned directory setup, quoted plist
   writes, quoted privileged plist paths, absolute local helper tool paths, and the `/dev/console`/`getpwuid_r`
   active-user lookup.
+- **R-S11c-16 — Desktop service lifecycle completion authority — CLOSED 2026-07-10.**
+  Platforms: Linux and macOS desktop service wrappers, plus the shared desktop service CLI dispatcher. Surfaces:
+  `core_main` `--install-service` / `--uninstall-service`, Linux `systemctl` service lifecycle helpers, macOS
+  `install_service()` / `is_installed_daemon(prompt=true)` / `uninstall_service(sync=true)`, and
+  `install.scpt` / `uninstall.scpt`. Boundary: local caller/UI/CLI ↔ privileged service lifecycle state.
+  Attack surface closed: service install/uninstall can no longer hide failure behind a started helper process,
+  ignored status, partial plist state, or a discarded wrapper return. The CLI exits nonzero when service lifecycle
+  wrappers report failure. Linux treats install-time user-config migration plus `systemctl enable`, `start`,
+  `disable`, and `stop` failures as fatal wrapper failures with logged status, and uninstall no longer runs that
+  unrelated config migration. macOS checks AppleScript exit status, verifies both daemon and agent plist
+  postconditions, propagates synchronous uninstall result, verifies current-session
+  LaunchAgent label removal/reload, and the privileged scripts verify daemon unload/load state plus final plist
+  removal instead of masking `launchctl unload` with `|| true`. The Flutter daemon install card keeps its
+  prompt-and-return-immediately shape: the prompt path starts the checked install worker and the UI's next state
+  observation is still the ordinary installed-state query. Verification closure: `scripts/verify.sh` asserts the
+  cross-desktop CLI, Linux, and macOS invariants; `scripts/apple-conform-check.sh` mirrors the macOS source
+  assertions.
 - **R-S11c-10a — Linux root-context desktop discovery shell interpolation — CLOSED 2026-07-09.**
   Platform: Linux installed service/helper discovery. Surfaces: active-user prelogin shell lookup,
   process-environment discovery for `DISPLAY`/`XAUTHORITY`/Wayland/DBus variables, direct PID environment
@@ -567,8 +584,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   block contains no `run_cmds`, `whoami`, `getent`, `awk`, or shell-shaped probe tokens.
 - **R-S11c-10i — Linux service lifecycle `systemctl` command construction — CLOSED 2026-07-09.**
   Platform: Linux installed-service lifecycle commands from `src/platform/linux.rs`. Surface:
-  `install_service()` / `uninstall_service()` and the user-config migration they run before service
-  start/stop. Boundary: local service lifecycle action ↔ root-context process execution and root-owned
+  `install_service()` / `uninstall_service()` and the install-time user-config migration before service
+  start. Boundary: local service lifecycle action ↔ root-context process execution and root-owned
   service config files. Attack surface closed: lifecycle commands no longer build a single `sh -c`
   string containing `cp -f ...; systemctl enable/disable/start/stop ...`, and they no longer discover
   `systemctl` through `which`/`PATH`. The service helper selects only fixed root-owned non-group/world-writable
@@ -2265,7 +2282,7 @@ native-codec-watch ledger is re-confirmed valid against each.
 The current snapshot (matching the `scripts/native-codec-watch.sh` pin) is:
 
 ```text
-7ad5f9dd8d20bbed9cf0ecc639c94198c52ad35dac5d2ebd2e2a8fa1dc483505  requirements.html
+27235735f69d53fe85fd5a28ccf7efef60c99995c5d857f34329b038d4563a70  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

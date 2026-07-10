@@ -185,70 +185,193 @@ fn unsafe_is_can_screen_recording(prompt: bool) -> bool {
 }
 
 pub fn install_service() -> bool {
-    is_installed_daemon(false)
+    let (daemon_plist_file, agent_plist_file) = service_plist_files();
+    let Some(context) = service_install_context(daemon_plist_file, agent_plist_file) else {
+        return false;
+    };
+    run_service_install(context)
 }
 
 pub fn is_installed_daemon(prompt: bool) -> bool {
-    let daemon = format!("{}_service.plist", crate::get_full_name());
-    let agent = format!("{}_server.plist", crate::get_full_name());
-    let agent_plist_file = format!("/Library/LaunchAgents/{}", agent);
-    if !prompt {
-        // in macos 13, there is new way to check if they are running or enabled, https://developer.apple.com/documentation/servicemanagement/updating-helper-executables-from-earlier-versions-of-macos#Respond-to-changes-in-System-Settings
-        if !std::path::Path::new(&format!("/Library/LaunchDaemons/{}", daemon)).exists() {
-            return false;
-        }
-        if !std::path::Path::new(&agent_plist_file).exists() {
-            return false;
-        }
+    let (daemon_plist_file, agent_plist_file) = service_plist_files();
+    if service_plists_exist(&daemon_plist_file, &agent_plist_file) {
         return true;
     }
+    if !prompt {
+        // in macos 13, there is new way to check if they are running or enabled, https://developer.apple.com/documentation/servicemanagement/updating-helper-executables-from-earlier-versions-of-macos#Respond-to-changes-in-System-Settings
+        return false;
+    }
 
-    let Some(install_script) = PRIVILEGES_SCRIPTS_DIR.get_file("install.scpt") else {
-        return false;
-    };
-    let Some(install_script_body) = install_script.contents_utf8().map(correct_app_name) else {
-        return false;
-    };
-
-    let Some(daemon_plist) = PRIVILEGES_SCRIPTS_DIR.get_file("daemon.plist") else {
-        return false;
-    };
-    let Some(daemon_plist_body) = daemon_plist.contents_utf8().map(correct_app_name) else {
-        return false;
-    };
-
-    let Some(agent_plist) = PRIVILEGES_SCRIPTS_DIR.get_file("agent.plist") else {
-        return false;
-    };
-    let Some(agent_plist_body) = agent_plist.contents_utf8().map(correct_app_name) else {
+    let Some(context) = service_install_context(daemon_plist_file, agent_plist_file) else {
         return false;
     };
 
     std::thread::spawn(move || {
-        match std::process::Command::new(MACOS_OSASCRIPT)
-            .arg("-e")
-            .arg(install_script_body)
-            .arg(daemon_plist_body)
-            .arg(agent_plist_body)
-            .status()
-        {
-            Err(e) => {
-                log::error!("run osascript failed: {}", e);
-            }
-            _ => {
-                let installed = std::path::Path::new(&agent_plist_file).exists();
-                log::info!("Agent file {} installed: {}", agent_plist_file, installed);
-                if installed {
-                    log::info!("launch server");
-                    std::process::Command::new(MACOS_LAUNCHCTL)
-                        .args(&["load", "-w", &agent_plist_file])
-                        .status()
-                        .ok();
-                }
-            }
-        }
+        run_service_install(context);
     });
     false
+}
+
+fn service_plist_files() -> (String, String) {
+    let daemon = format!("{}_service.plist", crate::get_full_name());
+    let agent = format!("{}_server.plist", crate::get_full_name());
+    (
+        format!("/Library/LaunchDaemons/{}", daemon),
+        format!("/Library/LaunchAgents/{}", agent),
+    )
+}
+
+fn service_plists_exist(daemon_plist_file: &str, agent_plist_file: &str) -> bool {
+    std::path::Path::new(daemon_plist_file).exists()
+        && std::path::Path::new(agent_plist_file).exists()
+}
+
+fn server_launch_agent_label() -> String {
+    format!("{}_server", crate::get_full_name())
+}
+
+struct ServiceInstallContext {
+    install_script_body: String,
+    daemon_plist_body: String,
+    agent_plist_body: String,
+    daemon_plist_file: String,
+    agent_plist_file: String,
+}
+
+fn service_install_context(
+    daemon_plist_file: String,
+    agent_plist_file: String,
+) -> Option<ServiceInstallContext> {
+    let Some(install_script) = PRIVILEGES_SCRIPTS_DIR.get_file("install.scpt") else {
+        log::error!("Embedded macOS install.scpt is missing");
+        return None;
+    };
+    let Some(install_script_body) = install_script.contents_utf8().map(correct_app_name) else {
+        log::error!("Embedded macOS install.scpt is not valid UTF-8");
+        return None;
+    };
+
+    let Some(daemon_plist) = PRIVILEGES_SCRIPTS_DIR.get_file("daemon.plist") else {
+        log::error!("Embedded macOS daemon.plist is missing");
+        return None;
+    };
+    let Some(daemon_plist_body) = daemon_plist.contents_utf8().map(correct_app_name) else {
+        log::error!("Embedded macOS daemon.plist is not valid UTF-8");
+        return None;
+    };
+
+    let Some(agent_plist) = PRIVILEGES_SCRIPTS_DIR.get_file("agent.plist") else {
+        log::error!("Embedded macOS agent.plist is missing");
+        return None;
+    };
+    let Some(agent_plist_body) = agent_plist.contents_utf8().map(correct_app_name) else {
+        log::error!("Embedded macOS agent.plist is not valid UTF-8");
+        return None;
+    };
+
+    Some(ServiceInstallContext {
+        install_script_body,
+        daemon_plist_body,
+        agent_plist_body,
+        daemon_plist_file,
+        agent_plist_file,
+    })
+}
+
+fn run_checked_command(command: &mut Command, description: &str) -> bool {
+    match command.status() {
+        Ok(status) if status.success() => true,
+        Ok(status) => {
+            log::error!("{description} failed with status {status}");
+            false
+        }
+        Err(err) => {
+            log::error!("{description} failed: {err}");
+            false
+        }
+    }
+}
+
+fn launchctl_label_loaded(label: &str) -> Option<bool> {
+    match Command::new(MACOS_LAUNCHCTL)
+        .args(&["list", label])
+        .status()
+    {
+        Ok(status) => Some(status.success()),
+        Err(err) => {
+            log::error!("Failed to query launchctl label {label}: {err}");
+            None
+        }
+    }
+}
+
+fn ensure_launchctl_label_removed(label: &str) -> bool {
+    let Some(loaded) = launchctl_label_loaded(label) else {
+        return false;
+    };
+    if loaded
+        && !run_checked_command(
+            Command::new(MACOS_LAUNCHCTL).args(&["remove", label]),
+            "remove macOS launchctl label",
+        )
+    {
+        return false;
+    }
+    match launchctl_label_loaded(label) {
+        Some(false) => true,
+        Some(true) => {
+            log::error!("macOS launchctl label remained loaded after remove: {label}");
+            false
+        }
+        None => false,
+    }
+}
+
+fn restart_launch_agent(agent_plist_file: &str, label: &str) -> bool {
+    if !ensure_launchctl_label_removed(label) {
+        return false;
+    }
+    if !run_checked_command(
+        Command::new(MACOS_LAUNCHCTL).args(&["load", "-w", agent_plist_file]),
+        "load macOS LaunchAgent",
+    ) {
+        return false;
+    }
+    match launchctl_label_loaded(label) {
+        Some(true) => true,
+        Some(false) => {
+            log::error!("macOS LaunchAgent did not load: {label}");
+            false
+        }
+        None => false,
+    }
+}
+
+fn run_service_install(context: ServiceInstallContext) -> bool {
+    if !run_checked_command(
+        Command::new(MACOS_OSASCRIPT)
+            .arg("-e")
+            .arg(context.install_script_body)
+            .arg(context.daemon_plist_body)
+            .arg(context.agent_plist_body),
+        "run macOS service install AppleScript",
+    ) {
+        return false;
+    }
+
+    let installed = service_plists_exist(&context.daemon_plist_file, &context.agent_plist_file);
+    log::info!(
+        "Service plists installed: daemon={}, agent={}, installed={}",
+        context.daemon_plist_file,
+        context.agent_plist_file,
+        installed
+    );
+    if !installed {
+        return false;
+    }
+
+    log::info!("launch server");
+    restart_launch_agent(&context.agent_plist_file, &server_launch_agent_label())
 }
 
 fn correct_app_name(s: &str) -> String {
@@ -266,61 +389,66 @@ pub fn uninstall_service(show_new_window: bool, sync: bool) -> bool {
     if !is_installed_daemon(false) {
         return false;
     }
+    let (daemon_plist_file, agent_plist_file) = service_plist_files();
 
     let Some(script_file) = PRIVILEGES_SCRIPTS_DIR.get_file("uninstall.scpt") else {
+        log::error!("Embedded macOS uninstall.scpt is missing");
         return false;
     };
     let Some(script_body) = script_file.contents_utf8().map(correct_app_name) else {
+        log::error!("Embedded macOS uninstall.scpt is not valid UTF-8");
         return false;
     };
 
-    let func = move || {
-        match std::process::Command::new(MACOS_OSASCRIPT)
-            .arg("-e")
-            .arg(script_body)
-            .status()
-        {
-            Err(e) => {
-                log::error!("run osascript failed: {}", e);
-            }
-            _ => {
-                let agent = format!("{}_server.plist", crate::get_full_name());
-                let agent_plist_file = format!("/Library/LaunchAgents/{}", agent);
-                let uninstalled = !std::path::Path::new(&agent_plist_file).exists();
-                log::info!(
-                    "Agent file {} uninstalled: {}",
-                    agent_plist_file,
-                    uninstalled
-                );
-                if uninstalled {
-                    if !show_new_window {
-                        let _ = crate::ipc::close_all_instances();
-                        // leave ipc a little time
-                        std::thread::sleep(std::time::Duration::from_millis(300));
-                    }
-                    crate::ipc::set_option("stop-service", "Y");
-                    std::process::Command::new(MACOS_LAUNCHCTL)
-                        .args(&["remove", &format!("{}_server", crate::get_full_name())])
-                        .status()
-                        .ok();
-                    if show_new_window {
-                        std::process::Command::new(MACOS_OPEN)
-                            .arg("-n")
-                            .arg(&format!("/Applications/{}.app", crate::get_app_name()))
-                            .spawn()
-                            .ok();
-                        // leave open a little time
-                        std::thread::sleep(std::time::Duration::from_millis(300));
-                    }
-                    quit_gui();
-                }
-            }
+    let func = move || -> bool {
+        if !run_checked_command(
+            std::process::Command::new(MACOS_OSASCRIPT)
+                .arg("-e")
+                .arg(script_body),
+            "run macOS service uninstall AppleScript",
+        ) {
+            return false;
         }
+        let uninstalled = !std::path::Path::new(&daemon_plist_file).exists()
+            && !std::path::Path::new(&agent_plist_file).exists();
+        log::info!(
+            "Service plists uninstalled: daemon={}, agent={}, uninstalled={}",
+            daemon_plist_file,
+            agent_plist_file,
+            uninstalled
+        );
+        if !uninstalled {
+            return false;
+        }
+        if !show_new_window {
+            let _ = crate::ipc::close_all_instances();
+            // leave ipc a little time
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
+        crate::ipc::set_option("stop-service", "Y");
+        if !ensure_launchctl_label_removed(&server_launch_agent_label()) {
+            return false;
+        }
+        if show_new_window {
+            if let Err(err) = std::process::Command::new(MACOS_OPEN)
+                .arg("-n")
+                .arg(&format!("/Applications/{}.app", crate::get_app_name()))
+                .spawn()
+            {
+                log::warn!("Failed to reopen macOS app after service uninstall: {err}");
+            }
+            // leave open a little time
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
+        quit_gui();
+        true
     };
     if sync {
-        func();
+        return func();
     } else {
-        std::thread::spawn(func);
+        std::thread::spawn(move || {
+            func();
+        });
     }
     true
 }

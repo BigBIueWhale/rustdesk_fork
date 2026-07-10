@@ -1752,6 +1752,65 @@ fi
 if [ -n "$r_s11c5" ]; then echo "  FAIL R-S11c-5 macOS privileged service packaging:$r_s11c5"; rc=1; else
   echo "  ok  R-S11c-5 macOS LaunchDaemon uses a root-owned PrivilegedHelperTools executable; dormant updater and active-user config import are absent"; fi
 
+echo "== (3b-iii-g2) desktop service lifecycle completion authority (R-S11c-16) =="
+r_s11c16=
+core_install_block=$(awk '/args\[0\] == "--install-service"/,/args\[0\] == "--uninstall-service"/' src/core_main.rs)
+core_uninstall_block=$(awk '/args\[0\] == "--uninstall-service"/,/args\[0\] == "--service"/' src/core_main.rs)
+echo "$core_install_block" | grep -Fq 'if !crate::platform::install_service()' || r_s11c16="$r_s11c16 core-install-return-ignored"
+echo "$core_install_block" | grep -Fq 'std::process::exit(1);' || r_s11c16="$r_s11c16 core-install-no-nonzero-exit"
+echo "$core_uninstall_block" | grep -Fq 'if !crate::platform::uninstall_service(false, true)' || r_s11c16="$r_s11c16 core-uninstall-return-ignored"
+echo "$core_uninstall_block" | grep -Fq 'std::process::exit(1);' || r_s11c16="$r_s11c16 core-uninstall-no-nonzero-exit"
+if grep -Fq 'crate::platform::install_service();' src/core_main.rs || grep -Fq 'crate::platform::uninstall_service(false, true);' src/core_main.rs; then
+  r_s11c16="$r_s11c16 stale-core-service-call-discard"
+fi
+linux_systemctl_body=$(awk '/fn systemctl_service\(action: &str, app_name: &str\) -> bool/,/^}/' src/platform/linux.rs)
+linux_install_body=$(awk '/pub fn install_service\(\) -> bool/,/^}/' src/platform/linux.rs)
+linux_uninstall_body=$(awk '/pub fn uninstall_service\(show_new_window: bool, _: bool\) -> bool/,/^}/' src/platform/linux.rs)
+echo "$linux_systemctl_body" | grep -Fq 'Ok(status) if status.success() => true' || r_s11c16="$r_s11c16 linux-systemctl-success-not-explicit"
+echo "$linux_systemctl_body" | grep -Fq 'log::error!("systemctl {action} {app_name} failed with status {status}")' || r_s11c16="$r_s11c16 linux-systemctl-nonzero-not-logged"
+echo "$linux_systemctl_body" | grep -Fq 'Err(err)' || r_s11c16="$r_s11c16 linux-systemctl-spawn-error-not-handled"
+echo "$linux_install_body" | grep -Fq 'if !copy_user_config_to_root_service_config()' || r_s11c16="$r_s11c16 linux-install-config-copy-not-fatal"
+echo "$linux_install_body" | grep -Fq 'if !systemctl_service("enable", &app_name)' || r_s11c16="$r_s11c16 linux-install-enable-not-fatal"
+echo "$linux_install_body" | grep -Fq 'if !systemctl_service("start", &app_name)' || r_s11c16="$r_s11c16 linux-install-start-not-fatal"
+echo "$linux_uninstall_body" | grep -Fq 'if !systemctl_service("disable", &app_name)' || r_s11c16="$r_s11c16 linux-uninstall-disable-not-fatal"
+echo "$linux_uninstall_body" | grep -Fq 'if !systemctl_service("stop", &app_name)' || r_s11c16="$r_s11c16 linux-uninstall-stop-not-fatal"
+if echo "$linux_uninstall_body" | grep -Fq 'copy_user_config_to_root_service_config()'; then
+  r_s11c16="$r_s11c16 linux-uninstall-runs-config-migration"
+fi
+if grep -Fq 'let _ = systemctl_service' src/platform/linux.rs; then
+  r_s11c16="$r_s11c16 linux-systemctl-result-discard"
+fi
+grep -q 'fn run_checked_command(command: &mut Command, description: &str) -> bool' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-no-checked-command-helper"
+grep -q 'Ok(status) if status.success() => true' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-status-success-not-explicit"
+grep -q 'fn launchctl_label_loaded(label: &str) -> Option<bool>' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-no-launchctl-label-query"
+grep -q 'fn ensure_launchctl_label_removed(label: &str) -> bool' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-no-launchctl-remove-verifier"
+grep -q 'fn restart_launch_agent(agent_plist_file: &str, label: &str) -> bool' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-no-launch-agent-restart-verifier"
+macos_install_service_body=$(awk '/pub fn install_service\(\) -> bool/,/^}/' src/platform/macos.rs)
+echo "$macos_install_service_body" | grep -Fq 'run_service_install(context)' || r_s11c16="$r_s11c16 macos-install-wrapper-not-checked-install"
+if echo "$macos_install_service_body" | grep -Fq 'service_plists_exist'; then
+  r_s11c16="$r_s11c16 macos-install-wrapper-plist-only-success"
+fi
+grep -q 'restart_launch_agent(&context.agent_plist_file, &server_launch_agent_label())' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-install-agent-load-not-authoritative"
+grep -q 'return func();' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-sync-uninstall-return-not-propagated"
+grep -q 'if !ensure_launchctl_label_removed(&server_launch_agent_label())' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-uninstall-agent-remove-not-authoritative"
+if perl -0ne 'exit(/\.status\(\)\s*\.ok\(\)/ ? 0 : 1)' src/platform/macos.rs; then
+  r_s11c16="$r_s11c16 macos-status-result-discard"
+fi
+grep -q 'set unload_existing_service to "if /bin/launchctl list " & quoted form of service_label' "$install_scpt" || r_s11c16="$r_s11c16 macos-install-no-existing-daemon-unload"
+grep -q '&& /bin/launchctl list " & quoted form of service_label' "$install_scpt" || r_s11c16="$r_s11c16 macos-install-daemon-load-not-verified"
+grep -q 'unload_existing_service.*load_service' "$install_scpt" || r_s11c16="$r_s11c16 macos-install-order-not-pinned"
+grep -q 'set unload_service to "if /bin/launchctl list " & quoted form of service_label' "$uninstall_scpt" || r_s11c16="$r_s11c16 macos-uninstall-no-daemon-loaded-branch"
+grep -q 'set verify_unloaded to "if /bin/launchctl list " & quoted form of service_label' "$uninstall_scpt" || r_s11c16="$r_s11c16 macos-uninstall-daemon-unload-not-verified"
+grep -q 'set verify_removed to "if \[ -e " & quoted form of daemon_plist' "$uninstall_scpt" || r_s11c16="$r_s11c16 macos-uninstall-plist-removal-not-verified"
+grep -q 'set sh to "set -e;"' "$uninstall_scpt" || r_s11c16="$r_s11c16 macos-uninstall-not-set-e"
+if grep -qF '|| true' "$uninstall_scpt"; then
+  r_s11c16="$r_s11c16 macos-uninstall-masks-launchctl-failure"
+fi
+grep -q 'R-S11c-16 makes service lifecycle completion status-authoritative' requirements.html || r_s11c16="$r_s11c16 requirements-disposition-missing"
+grep -q 'R-S11c-16 — Desktop service lifecycle completion authority' HARDENING_STATUS.md || r_s11c16="$r_s11c16 hardening-ledger-missing"
+if [ -n "$r_s11c16" ]; then echo "  FAIL R-S11c-16 desktop service lifecycle completion authority:$r_s11c16"; rc=1; else
+  echo "  ok  R-S11c-16 service lifecycle wrappers propagate CLI failure, Linux systemctl/config-copy failures are fatal, and macOS AppleScript/launchctl/plist completion is checked"; fi
+
 # (3b-iii-h) R-S11c-10a: Linux root-context desktop discovery must not build passwd/proc
 # lookups through a shell. This is a narrow sub-slice: env/home/Xorg/subprocess discovery
 # only. Lifecycle kill/service commands and display-tool invocations remain separate R-S11c-10 work.

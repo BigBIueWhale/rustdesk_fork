@@ -9,6 +9,7 @@ on run {daemon_file, agent_file}
   set log_stdout to "/Library/Logs/RustDesk/rustdesk_service.out"
   set support_dir to "/Library/Application Support/RustDesk"
   set root_prefs_dir to "/var/root/Library/Preferences/com.carriez.RustDesk"
+  set service_label to "com.carriez.RustDesk_service"
 
   set reject_symlinks to "if [ -L " & quoted form of daemon_plist & " ] || [ -L " & quoted form of agent_plist & " ] || [ -L " & quoted form of helper_dir & " ] || [ -L " & quoted form of service_exec & " ] || [ -L " & quoted form of log_dir & " ] || [ -L " & quoted form of log_stderr & " ] || [ -L " & quoted form of log_stdout & " ] || [ -L " & quoted form of support_dir & " ] || [ -L " & quoted form of root_prefs_dir & " ]; then exit 1; fi;"
 
@@ -24,9 +25,11 @@ on run {daemon_file, agent_file}
 
   set write_agent_plist to "/usr/bin/printf %s " & quoted form of agent_file & " > " & quoted form of agent_plist & " && /bin/chmod -N " & quoted form of agent_plist & " && /usr/sbin/chown root:wheel " & quoted form of agent_plist & " && /bin/chmod 0644 " & quoted form of agent_plist & ";"
 
-  set load_service to "/bin/launchctl load -w " & quoted form of daemon_plist & ";"
+  set unload_existing_service to "if /bin/launchctl list " & quoted form of service_label & " >/dev/null 2>&1; then /bin/launchctl unload -w " & quoted form of daemon_plist & "; fi;"
 
-  set sh to "set -e;" & reject_symlinks & verify_service_exec & create_dirs & secure_dirs & prepare_logs & write_daemon_plist & write_agent_plist & verify_service_exec & load_service
+  set load_service to "/bin/launchctl load -w " & quoted form of daemon_plist & " && /bin/launchctl list " & quoted form of service_label & " >/dev/null 2>&1;"
+
+  set sh to "set -e;" & reject_symlinks & verify_service_exec & create_dirs & secure_dirs & prepare_logs & write_daemon_plist & write_agent_plist & verify_service_exec & unload_existing_service & load_service
 
   do shell script sh with prompt "RustDesk wants to install daemon and agent" with administrator privileges
 end run

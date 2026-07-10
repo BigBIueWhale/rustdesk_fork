@@ -186,7 +186,7 @@ pub fn core_main() -> Option<Vec<String>> {
     // quick-support -> start_portable_service launch and the
     // --elevate/--run-as-system -> elevate_or_run_as_system escalation are gone. On the
     // installed-service fork the controlled side is reached only via `--service`
-    // (launch_privileged_process / CreateProcessAsUserW -> `--server` -> `--tray`).
+    // (CreateProcessAsUserW -> `--server` -> `--tray`).
     if args.is_empty() || crate::common::is_empty_uni_link(&args[0]) {
         #[cfg(windows)]
         {

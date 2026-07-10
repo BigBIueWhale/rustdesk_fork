@@ -263,10 +263,15 @@ extern "C"
         return IsWindows10OrGreater();
     }
 
-    HANDLE LaunchProcessWin(LPCWSTR cmd, DWORD dwSessionId, BOOL as_user, BOOL show, LPCWSTR extraEnvironment, DWORD *pDwTokenPid)
+    HANDLE LaunchProcessWin(LPCWSTR application, LPCWSTR cmd, DWORD dwSessionId, BOOL as_user, BOOL show, LPCWSTR extraEnvironment, DWORD *pDwTokenPid)
     {
         HANDLE hProcess = NULL;
         HANDLE hToken = NULL;
+        if (application == NULL || application[0] == L'\0' || cmd == NULL || cmd[0] == L'\0')
+        {
+            SetLastError(ERROR_INVALID_PARAMETER);
+            return hProcess;
+        }
         if (GetSessionUserTokenWin(&hToken, dwSessionId, as_user, pDwTokenPid))
         {
             STARTUPINFOW si;
@@ -278,8 +283,13 @@ extern "C"
                 si.lpDesktop = (LPWSTR)L"winsta0\\default";
                 si.wShowWindow = SW_SHOW;
             }
-            wchar_t buf[MAX_PATH];
-            wcscpy_s(buf, MAX_PATH, cmd);
+            std::vector<wchar_t> commandLine(wcslen(cmd) + 1);
+            if (wcscpy_s(commandLine.data(), commandLine.size(), cmd) != 0)
+            {
+                SetLastError(ERROR_INVALID_PARAMETER);
+                CloseHandle(hToken);
+                return hProcess;
+            }
             PROCESS_INFORMATION pi;
             LPVOID lpEnvironment = NULL;
             DWORD dwCreationFlags = DETACHED_PROCESS;
@@ -301,7 +311,7 @@ extern "C"
             {
                 dwCreationFlags |= CREATE_UNICODE_ENVIRONMENT;
             }
-            if (CreateProcessAsUserW(hToken, NULL, buf, NULL, NULL, FALSE, dwCreationFlags, processEnvironment, NULL, &si, &pi))
+            if (CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE, dwCreationFlags, processEnvironment, NULL, &si, &pi))
             {
                 CloseHandle(pi.hThread);
                 hProcess = pi.hProcess;

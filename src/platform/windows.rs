@@ -542,6 +542,7 @@ extern "C" {
     fn get_current_session(rdp: BOOL) -> DWORD;
     fn is_session_locked(session_id: DWORD) -> BOOL;
     fn LaunchProcessWin(
+        application: *const u16,
         cmd: *const u16,
         session_id: DWORD,
         as_user: BOOL,
@@ -824,32 +825,15 @@ async fn launch_server(session_id: DWORD, close_first: bool) -> ResultType<HANDL
         // in case started some elsewhere
         send_close_async("").await.ok();
     }
-    let cmd = format!(
-        "\"{}\" --server {}",
-        std::env::current_exe()?.to_str().unwrap_or(""),
-        crate::common::SERVICE_OWNED_SERVER_ARG
-    );
-    launch_privileged_process(session_id, &cmd)
-}
-
-pub fn launch_privileged_process(session_id: DWORD, cmd: &str) -> ResultType<HANDLE> {
-    use std::os::windows::ffi::OsStrExt;
-    let wstr: Vec<u16> = std::ffi::OsStr::new(&cmd)
-        .encode_wide()
-        .chain(Some(0).into_iter())
-        .collect();
-    let wstr = wstr.as_ptr();
-    let mut token_pid = 0;
-    let h = unsafe {
-        LaunchProcessWin(
-            wstr,
-            session_id,
-            FALSE,
-            FALSE,
-            std::ptr::null(),
-            &mut token_pid,
-        )
-    };
+    let exe = std::env::current_exe()?;
+    let (h, token_pid) = launch_process_in_session_with_env(
+        &exe,
+        &["--server", crate::common::SERVICE_OWNED_SERVER_ARG],
+        session_id,
+        FALSE,
+        FALSE,
+        std::iter::empty::<(&str, &str)>(),
+    )?;
     if h.is_null() {
         log::error!(
             "Failed to launch privileged process: {}",
@@ -860,6 +844,166 @@ pub fn launch_privileged_process(session_id: DWORD, cmd: &str) -> ResultType<HAN
         }
     }
     Ok(h)
+}
+
+fn launch_executable_path(exe: &Path) -> ResultType<&Path> {
+    if !exe.is_absolute() {
+        bail!(
+            "token-switched Windows launch requires an absolute executable path: {}",
+            exe.display()
+        );
+    }
+    if !exe.is_file() {
+        bail!("Windows launch executable is not a file: {}", exe.display());
+    }
+    Ok(exe)
+}
+
+fn null_terminated_wide(value: &OsStr, label: &str) -> ResultType<Vec<u16>> {
+    let mut wide = value.encode_wide().collect::<Vec<_>>();
+    if wide.is_empty() {
+        bail!("empty Windows {}", label);
+    }
+    if wide.iter().any(|value| *value == 0) {
+        bail!("Windows {} contains NUL", label);
+    }
+    wide.push(0);
+    Ok(wide)
+}
+
+fn append_windows_command_arg(command_line: &mut Vec<u16>, arg: &OsStr) -> ResultType<()> {
+    const BACKSLASH: u16 = b'\\' as u16;
+    const QUOTE: u16 = b'"' as u16;
+    const SPACE: u16 = b' ' as u16;
+    const TAB: u16 = b'\t' as u16;
+
+    let value = arg.encode_wide().collect::<Vec<_>>();
+    if value.iter().any(|value| *value == 0) {
+        bail!("Windows command argument contains NUL");
+    }
+    let needs_quotes = value.is_empty()
+        || value
+            .iter()
+            .any(|value| matches!(*value, SPACE | TAB | QUOTE));
+    if !needs_quotes {
+        command_line.extend_from_slice(&value);
+        return Ok(());
+    }
+
+    command_line.push(QUOTE);
+    let mut backslashes = 0usize;
+    for value in value {
+        if value == BACKSLASH {
+            backslashes += 1;
+            continue;
+        }
+        if value == QUOTE {
+            for _ in 0..(backslashes * 2 + 1) {
+                command_line.push(BACKSLASH);
+            }
+            command_line.push(QUOTE);
+            backslashes = 0;
+            continue;
+        }
+        for _ in 0..backslashes {
+            command_line.push(BACKSLASH);
+        }
+        backslashes = 0;
+        command_line.push(value);
+    }
+    for _ in 0..(backslashes * 2) {
+        command_line.push(BACKSLASH);
+    }
+    command_line.push(QUOTE);
+    Ok(())
+}
+
+fn windows_command_line(exe: &Path, arg: &[&str]) -> ResultType<Vec<u16>> {
+    let mut command_line = Vec::new();
+    append_windows_command_arg(&mut command_line, exe.as_os_str())?;
+    for arg in arg {
+        command_line.push(b' ' as u16);
+        append_windows_command_arg(&mut command_line, OsStr::new(arg))?;
+    }
+    command_line.push(0);
+    Ok(command_line)
+}
+
+#[cfg(test)]
+mod process_launch_tests {
+    use super::*;
+    use std::os::windows::ffi::OsStringExt;
+
+    fn command_line_string(exe: &str, arg: &[&str]) -> String {
+        let mut command_line = windows_command_line(Path::new(exe), arg).unwrap();
+        assert_eq!(command_line.pop(), Some(0));
+        OsString::from_wide(&command_line)
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    #[test]
+    fn windows_command_line_quotes_executable_and_args() {
+        let command_line = command_line_string(
+            r"C:\Program Files\RustDesk\rustdesk.exe",
+            &[
+                "--server",
+                crate::common::SERVICE_OWNED_SERVER_ARG,
+                "has space",
+                r#"quote"arg"#,
+                r"needs space\",
+            ],
+        );
+
+        assert_eq!(
+            command_line,
+            r#""C:\Program Files\RustDesk\rustdesk.exe" --server --service-owned-server "has space" "quote\"arg" "needs space\\""#
+        );
+    }
+
+    #[test]
+    fn windows_command_line_rejects_nul() {
+        assert!(
+            windows_command_line(Path::new(r"C:\RustDesk\rustdesk.exe"), &["bad\0arg"]).is_err()
+        );
+    }
+}
+
+fn launch_process_in_session_with_env<I, K, V>(
+    exe: &Path,
+    arg: &[&str],
+    session_id: DWORD,
+    as_user: BOOL,
+    show: BOOL,
+    envs: I,
+) -> ResultType<(HANDLE, DWORD)>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+{
+    let exe = launch_executable_path(exe)?;
+    let application = null_terminated_wide(exe.as_os_str(), "application path")?;
+    let command_line = windows_command_line(exe, arg)?;
+    let extra_env_block = windows_env_block(envs)?;
+    let extra_env = if extra_env_block.len() > 1 {
+        extra_env_block.as_ptr()
+    } else {
+        std::ptr::null()
+    };
+    let mut token_pid = 0;
+    let h = unsafe {
+        LaunchProcessWin(
+            application.as_ptr(),
+            command_line.as_ptr(),
+            session_id,
+            as_user,
+            show,
+            extra_env,
+            &mut token_pid,
+        )
+    };
+    Ok((h, token_pid))
 }
 
 pub fn run_as_user(arg: Vec<&str>) -> ResultType<Option<std::process::Child>> {
@@ -875,12 +1019,8 @@ where
     K: AsRef<OsStr>,
     V: AsRef<OsStr>,
 {
-    run_exe_in_cur_session_with_env(
-        std::env::current_exe()?.to_str().unwrap_or(""),
-        arg,
-        false,
-        envs,
-    )
+    let exe = std::env::current_exe()?;
+    run_exe_path_in_cur_session_with_env(&exe, arg, false, envs)
 }
 
 pub fn run_exe_direct(
@@ -893,6 +1033,20 @@ pub fn run_exe_direct(
 
 pub fn run_exe_direct_with_env<I, K, V>(
     exe: &str,
+    arg: Vec<&str>,
+    show: bool,
+    envs: I,
+) -> ResultType<Option<std::process::Child>>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+{
+    run_exe_path_direct_with_env(Path::new(exe), arg, show, envs)
+}
+
+fn run_exe_path_direct_with_env<I, K, V>(
+    exe: &Path,
     arg: Vec<&str>,
     show: bool,
     envs: I,
@@ -935,13 +1089,27 @@ where
     K: AsRef<OsStr>,
     V: AsRef<OsStr>,
 {
+    run_exe_path_in_cur_session_with_env(Path::new(exe), arg, show, envs)
+}
+
+fn run_exe_path_in_cur_session_with_env<I, K, V>(
+    exe: &Path,
+    arg: Vec<&str>,
+    show: bool,
+    envs: I,
+) -> ResultType<Option<std::process::Child>>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+{
     if is_root() {
         let Some(session_id) = get_current_process_session_id() else {
             bail!("Failed to get current process session id");
         };
-        run_exe_in_session_with_env(exe, arg, session_id, show, envs)
+        run_exe_path_in_session_with_env(exe, arg, session_id, show, envs)
     } else {
-        run_exe_direct_with_env(exe, arg, show, envs)
+        run_exe_path_direct_with_env(exe, arg, show, envs)
     }
 }
 
@@ -997,25 +1165,29 @@ where
     K: AsRef<OsStr>,
     V: AsRef<OsStr>,
 {
-    use std::os::windows::ffi::OsStrExt;
-    let cmd = format!("\"{}\" {}", exe, arg.join(" "),);
-    let wstr: Vec<u16> = std::ffi::OsStr::new(&cmd)
-        .encode_wide()
-        .chain(Some(0).into_iter())
-        .collect();
-    let wstr = wstr.as_ptr();
-    let extra_env = windows_env_block(envs)?;
-    let mut token_pid = 0;
-    let h = unsafe {
-        LaunchProcessWin(
-            wstr,
-            session_id,
-            TRUE,
-            if show { TRUE } else { FALSE },
-            extra_env.as_ptr(),
-            &mut token_pid,
-        )
-    };
+    run_exe_path_in_session_with_env(Path::new(exe), arg, session_id, show, envs)
+}
+
+fn run_exe_path_in_session_with_env<I, K, V>(
+    exe: &Path,
+    arg: Vec<&str>,
+    session_id: DWORD,
+    show: bool,
+    envs: I,
+) -> ResultType<Option<std::process::Child>>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+{
+    let (h, token_pid) = launch_process_in_session_with_env(
+        exe,
+        &arg,
+        session_id,
+        TRUE,
+        if show { TRUE } else { FALSE },
+        envs,
+    )?;
     if h.is_null() {
         if token_pid == 0 {
             bail!(
@@ -2849,8 +3021,8 @@ pub fn run_background(exe: &str, arg: &str) -> ResultType<bool> {
 // `elevate_or_run_as_system` (the --elevate/--run-as-system/--quick_support /
 // --portable-service run-mode dispatch that started the portable SYSTEM helper) are
 // excised. On the installed-service fork the sole controlled entry is the installed
-// LocalSystem service (`--service` -> launch_privileged_process / CreateProcessAsUserW
-// -> `--server` -> `--tray`); there is no interactive UAC elevation and no
+// LocalSystem service (`--service` -> CreateProcessAsUserW -> `--server` -> `--tray`);
+// there is no interactive UAC elevation and no
 // peer-OS-credential / token-theft escalation. `check_super_user_permission` (still used
 // by the R-X11 UI via ui_interface / flutter_ffi::main_check_super_user_permission) is
 // converted to a PASSIVE elevation check: it reports whether this process is already

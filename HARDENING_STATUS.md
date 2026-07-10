@@ -826,6 +826,21 @@ unreachable and a source/test/AST gate prevents reintroduction.
   application-name launch, broker file checks, absence of `cmd_utf16`, native ShellLink shortcut creation,
   direct-id validation, Desktop known-folder use, absence of script-backed shortcut code in `create_shortcut`,
   and this ledger/requirements disposition.
+- **R-S11d-13 — Windows service and session-token process launch provenance — CLOSED 2026-07-10.**
+  Platform: Windows installed service and desktop session handoff. Endpoint/action: service-owned `--server`
+  launch plus token-switched `--tray`, connection-manager, whiteboard, and `run_exe_in_session` launches.
+  Boundary: LocalSystem/root Windows service or elevated process ↔ target session process creation through
+  `CreateProcessAsUserW`. Attack surface closed: the launcher no longer passes only a mutable command-line
+  string while leaving `lpApplicationName` null. The Rust FFI now passes an explicit application path and a
+  separately quoted command line; the C++ side requires both, copies the command line into a dynamically sized
+  mutable buffer, and calls `CreateProcessAsUserW` with the explicit application path. Token-switched Rust
+  launches require an absolute existing executable file, reject NUL-bearing application, argv, and environment
+  data, use Windows command-line quoting for argv, and reuse the same provenance helper for service-owned
+  `--server` and user-session helper launches. The old preformatted command-string wrapper is deleted.
+  Verification closure: `scripts/verify.sh` asserts the explicit application-name FFI shape, absence of
+  null-application `CreateProcessAsUserW` and fixed `MAX_PATH` command buffers, absolute-file validation,
+  quoted argv construction, service-owned `--server` launch through the helper, user-session launch reuse of
+  the helper, removal of the obsolete wrapper, and this ledger/requirements disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

@@ -639,6 +639,45 @@ grep -q 'R-S11d-4 — Windows MSI runtime-generated executable cleanup completio
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else
   echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service/SAS custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path; MSI cleanup observes Amyuni and runtime-generated executable completion; unsupported 32-bit WMIC process probes are absent"; fi
 
+echo "== (3b-iii-a5d2) Windows service/session token launch binds executable identity (R-S11d-13) =="
+r_s11d13=
+grep -Fq 'HANDLE LaunchProcessWin(LPCWSTR application, LPCWSTR cmd' src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-signature-not-explicit-application"
+grep -Fq "application == NULL || application[0] == L'\\0' || cmd == NULL || cmd[0] == L'\\0'" src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-null-empty-guard-missing"
+grep -Fq 'std::vector<wchar_t> commandLine(wcslen(cmd) + 1)' src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-dynamic-command-buffer-missing"
+grep -Fq 'CreateProcessAsUserW(hToken, application, commandLine.data()' src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-createprocess-not-bound-to-application"
+if grep -Fq 'CreateProcessAsUserW(hToken, NULL' src/platform/windows.cc; then
+  r_s11d13="$r_s11d13 cpp-null-application-createprocess-leftover"
+fi
+if grep -Fq 'wchar_t buf[MAX_PATH]' src/platform/windows.cc; then
+  r_s11d13="$r_s11d13 cpp-fixed-maxpath-command-buffer-leftover"
+fi
+grep -Fq 'application: *const u16,' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-ffi-application-arg-missing"
+grep -Fq 'application.as_ptr(),' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-launch-call-not-passing-application"
+grep -Fq 'fn launch_executable_path(exe: &Path) -> ResultType<&Path>' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-launch-path-validator-missing"
+grep -Fq 'if !exe.is_absolute()' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-absolute-path-requirement-missing"
+grep -Fq 'if !exe.is_file()' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-existing-file-requirement-missing"
+grep -Fq 'fn append_windows_command_arg(command_line: &mut Vec<u16>, arg: &OsStr) -> ResultType<()>' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-command-arg-quoting-helper-missing"
+grep -Fq 'backslashes * 2 + 1' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-quote-backslash-before-quote-rule-missing"
+grep -Fq 'backslashes * 2)' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-quote-trailing-backslash-rule-missing"
+grep -Fq 'fn windows_command_line(exe: &Path, arg: &[&str]) -> ResultType<Vec<u16>>' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-command-line-builder-missing"
+grep -Fq 'let exe = std::env::current_exe()?' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-service-current-exe-path-missing"
+launch_server_body=$(awk '/^async fn launch_server\(/,/^fn launch_executable_path/' src/platform/windows.rs)
+echo "$launch_server_body" | grep -Fq 'launch_process_in_session_with_env(' || r_s11d13="$r_s11d13 rust-launch-server-not-using-bound-helper"
+echo "$launch_server_body" | grep -Fq 'SERVICE_OWNED_SERVER_ARG' || r_s11d13="$r_s11d13 rust-launch-server-arg-missing"
+if echo "$launch_server_body" | grep -Fq 'format!'; then
+  r_s11d13="$r_s11d13 rust-launch-server-preformatted-command-leftover"
+fi
+run_exe_session_body=$(awk '/^fn run_exe_path_in_session_with_env/,/^#\[tokio::main/' src/platform/windows.rs)
+echo "$run_exe_session_body" | grep -Fq 'launch_process_in_session_with_env(' || r_s11d13="$r_s11d13 rust-session-launch-not-using-bound-helper"
+grep -Fq 'run_exe_path_in_session_with_env(Path::new(exe), arg, session_id, show, envs)' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-public-session-launch-not-delegated"
+if grep -Fq 'pub fn launch_privileged_process' src/platform/windows.rs || grep -Fq 'launch_privileged_process' src/core_main.rs src/platform/windows.rs requirements.html HARDENING_STATUS.md; then
+  r_s11d13="$r_s11d13 obsolete-launch-privileged-process-reference-leftover"
+fi
+grep -Fq 'Windows service and session-token process launch provenance' requirements.html || r_s11d13="$r_s11d13 requirements-disposition-missing"
+grep -Fq 'R-S11d-13 — Windows service and session-token process launch provenance' HARDENING_STATUS.md || r_s11d13="$r_s11d13 hardening-ledger-missing"
+if [ -n "$r_s11d13" ]; then echo "  FAIL R-S11d-13 Windows service/session token launch provenance:$r_s11d13"; rc=1; else
+  echo "  ok  R-S11d-13 Windows service/session token launches bind lpApplicationName, quote argv separately, and reject ambient executable identity"; fi
+
 echo "== (3b-iii-a5e) Windows EXE elevated batch binds external tools to System32 (R-S11d-5) =="
 r_s11d5=
 grep -q 'fn trusted_system_tool_path(tool: &str) -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d5="$r_s11d5 system-tool-resolver-missing"

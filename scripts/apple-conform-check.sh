@@ -261,6 +261,24 @@ grep -q 'MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm' "$REP
 grep -q 'handle_macos_service_owned_unattended_password_begin' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-begin-handler-missing"
 grep -q 'handle_macos_service_owned_unattended_password_finish' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-finish-handler-missing"
 grep -q 'crate::platform::is_installed() && crate::platform::is_installed_daemon(false)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-install-state-gate-missing"
+grep -Fq 'const MACOS_PRIVILEGED_HELPER_EXEC: &str =' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-helper-const-missing"
+grep -Fq '/Library/PrivilegedHelperTools/com.carriez.rustdesk_service' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-helper-path-missing"
+grep -Fq 'fn macos_installed_app_executable_path() -> PathBuf' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-installed-app-path-missing"
+grep -Fq 'fn macos_privileged_helper_is_expected_and_trusted(current_exe: &Path) -> bool' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-helper-trust-missing"
+grep -Fq 'fs::symlink_metadata(expected)' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-helper-symlink-metadata-missing"
+grep -Fq 'link_metadata.uid() != 0 || link_metadata.gid() != 0' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-helper-root-wheel-missing"
+grep -Fq 'mode & 0o022 == 0 && mode & 0o111 != 0' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-helper-mode-gate-missing"
+grep -Fq 'macos_service_ipc_allows_installed_app_and_privileged_helper' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-installed-helper-pair-missing"
+macos_service_identity_block=$(awk '/fn macos_service_ipc_allows_installed_app_and_privileged_helper/,/^}/' "$REPO/src/ipc/auth.rs")
+echo "$macos_service_identity_block" | grep -Fq 'postfix != crate::POSTFIX_SERVICE' || r_s11b2="$r_s11b2 macos-service-ipc-postfix-gate-missing"
+echo "$macos_service_identity_block" | grep -Fq 'macos_privileged_helper_is_expected_and_trusted(current_exe)' || r_s11b2="$r_s11b2 macos-service-ipc-current-helper-not-verified"
+echo "$macos_service_identity_block" | grep -Fq 'macos_installed_app_executable_path()' || r_s11b2="$r_s11b2 macos-service-ipc-peer-app-not-verified"
+if grep -q 'macos_service_ipc_allows_gui_and_service_binaries' "$REPO/src/ipc/auth.rs"; then
+  r_s11b2="$r_s11b2 macos-service-ipc-old-gui-service-binary-model-present"
+fi
+if echo "$macos_service_identity_block" | grep -qE 'peer_dir|current_dir|OsStr::new\("service"\)|executable_paths_match\(peer_dir, current_dir\)'; then
+  r_s11b2="$r_s11b2 macos-service-ipc-old-same-directory-model-present"
+fi
 grep -q 'Self::RootUnixPeer => true' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-commit-not-root-gated"
 macos_auth_create_block=$(awk '/MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm/,/^}/' "$REPO/src/platform/macos.mm")
 macos_auth_verify_block=$(awk '/MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm/,/^}/' "$REPO/src/platform/macos.mm")
@@ -309,7 +327,7 @@ if [ -n "$r_s11b2" ]; then
   echo "  FAIL R-S11b-2a/R-S11b-3a macOS service-owned IPC closure:$r_s11b2"
   rc=1
 else
-  note "ok  R-S11b-2/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password config writes are absent; typed user-owned password/options writes are denied by source policy; trust-anchor/proxy credential option keys are pinned empty; trusted-device/key-confirmation writers are absent; macOS service-owned password provisioning stores the proposed value in a one-shot same-peer request, finishes with authorization only, uses a nonshared timeout-zero custom Authorization Services right, verifies the external form noninteractively, and commits only the stored value through the root service; whole-config IPC is absent; storage/salt sync is denied"
+  note "ok  R-S11b-2/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password config writes are absent; typed user-owned password/options writes are denied by source policy; trust-anchor/proxy credential option keys are pinned empty; trusted-device/key-confirmation writers are absent; macOS service-owned password provisioning stores the proposed value in a one-shot same-peer request, admits _service only for the installed app executable talking to the trusted PrivilegedHelperTools helper, finishes with authorization only, uses a nonshared timeout-zero custom Authorization Services right, verifies the external form noninteractively, and commits only the stored value through the root service; whole-config IPC is absent; storage/salt sync is denied"
 fi
 
 echo "== (2b-iii) R-S11c-4a macOS CM pre-login filesystem IPC rejected =="
@@ -477,6 +495,21 @@ for system_path in /usr/bin/osascript /bin/launchctl /usr/bin/open /usr/sbin/ior
 done
 grep -Fq 'const MACOS_OPEN: &str = "/usr/bin/open";' "$REPO/src/ipc.rs" || r_s11c5="$r_s11c5 macos-ipc-open-absolute-missing"
 grep -Fq 'Command::new(MACOS_OPEN)' "$REPO/src/ipc.rs" || r_s11c5="$r_s11c5 macos-ipc-reopen-not-absolute"
+grep -Fq 'const MACOS_PRIVILEGED_HELPER_EXEC: &str =' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-service-ipc-helper-const-missing"
+grep -Fq '/Library/PrivilegedHelperTools/com.carriez.rustdesk_service' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-service-ipc-helper-path-missing"
+grep -Fq 'fn macos_privileged_helper_is_expected_and_trusted(current_exe: &Path) -> bool' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-service-ipc-helper-trust-missing"
+grep -Fq 'fs::symlink_metadata(expected)' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-service-ipc-helper-symlink-metadata-missing"
+grep -Fq 'link_metadata.uid() != 0 || link_metadata.gid() != 0' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-service-ipc-helper-root-wheel-missing"
+grep -Fq 'mode & 0o022 == 0 && mode & 0o111 != 0' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-service-ipc-helper-mode-gate-missing"
+macos_service_identity_block=$(awk '/fn macos_service_ipc_allows_installed_app_and_privileged_helper/,/^}/' "$REPO/src/ipc/auth.rs")
+echo "$macos_service_identity_block" | grep -Fq 'macos_privileged_helper_is_expected_and_trusted(current_exe)' || r_s11c5="$r_s11c5 macos-service-ipc-current-helper-not-verified"
+echo "$macos_service_identity_block" | grep -Fq 'macos_installed_app_executable_path()' || r_s11c5="$r_s11c5 macos-service-ipc-peer-app-not-verified"
+if grep -q 'macos_service_ipc_allows_gui_and_service_binaries' "$REPO/src/ipc/auth.rs"; then
+  r_s11c5="$r_s11c5 macos-service-ipc-old-gui-service-binary-model-present"
+fi
+if echo "$macos_service_identity_block" | grep -qE 'peer_dir|current_dir|OsStr::new\("service"\)|executable_paths_match\(peer_dir, current_dir\)'; then
+  r_s11c5="$r_s11c5 macos-service-ipc-old-same-directory-model-present"
+fi
 grep -q 'pub(crate) fn console_owner_uid' "$macos_rs" || r_s11c5="$r_s11c5 macos-console-owner-uid-missing"
 grep -Fq 'std::fs::metadata("/dev/console")' "$macos_rs" || r_s11c5="$r_s11c5 macos-console-owner-not-dev-console-backed"
 grep -q 'hbb_common::libc::getpwuid_r' "$macos_rs" || r_s11c5="$r_s11c5 macos-active-user-not-passwd-r-backed"
@@ -538,7 +571,7 @@ if [ -n "$r_s11c5" ]; then
   echo "  FAIL R-S11c-5 macOS privileged-service packaging:$r_s11c5"
   rc=1
 else
-  note "ok  R-S11c-5 LaunchDaemon uses a root-owned PrivilegedHelperTools executable; dormant updater and active-user config import are absent"
+  note "ok  R-S11c-5 LaunchDaemon uses a root-owned PrivilegedHelperTools executable, and _service IPC identity matches that deployed helper model; dormant updater and active-user config import are absent"
 fi
 
 echo "== (2b-iv-b) R-S11c-16 macOS privileged service completion authority =="

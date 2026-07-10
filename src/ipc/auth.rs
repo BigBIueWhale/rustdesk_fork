@@ -12,6 +12,8 @@ use serde_derive::{Deserialize, Serialize};
 use std::fmt;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::fs::MetadataExt;
+#[cfg(target_os = "macos")]
+use std::os::unix::fs::PermissionsExt;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::io::RawFd;
 #[cfg(windows)]
@@ -61,6 +63,10 @@ pub(crate) const WINDOWS_NAMED_PIPE_CLIENT_ACCESS_MASK: u32 = 0x0012_019b;
 const SE_GROUP_LOGON_ID: u32 = 0xc000_0000;
 #[cfg(windows)]
 const LOCAL_SYSTEM_SID: &str = "S-1-5-18";
+
+#[cfg(target_os = "macos")]
+const MACOS_PRIVILEGED_HELPER_EXEC: &str =
+    "/Library/PrivilegedHelperTools/com.carriez.rustdesk_service";
 
 #[cfg(windows)]
 struct WindowsIpcDaclSids {
@@ -346,7 +352,42 @@ pub(crate) fn ensure_windows_ipc_server_matches_current(
 
 #[cfg(target_os = "macos")]
 #[inline]
-fn macos_service_ipc_allows_gui_and_service_binaries(
+fn macos_installed_app_executable_path() -> PathBuf {
+    let app_name = crate::get_app_name();
+    PathBuf::from(format!(
+        "/Applications/{app_name}.app/Contents/MacOS/{app_name}"
+    ))
+}
+
+#[cfg(target_os = "macos")]
+#[inline]
+fn macos_executable_matches_expected_path(actual: &Path, expected: &Path) -> bool {
+    actual == expected || paths_refer_to_same_file(actual, expected)
+}
+
+#[cfg(target_os = "macos")]
+#[inline]
+fn macos_privileged_helper_is_expected_and_trusted(current_exe: &Path) -> bool {
+    let expected = Path::new(MACOS_PRIVILEGED_HELPER_EXEC);
+    if !macos_executable_matches_expected_path(current_exe, expected) {
+        return false;
+    }
+    let Ok(link_metadata) = fs::symlink_metadata(expected) else {
+        return false;
+    };
+    if link_metadata.file_type().is_symlink() || !link_metadata.is_file() {
+        return false;
+    }
+    if link_metadata.uid() != 0 || link_metadata.gid() != 0 {
+        return false;
+    }
+    let mode = link_metadata.permissions().mode();
+    mode & 0o022 == 0 && mode & 0o111 != 0
+}
+
+#[cfg(target_os = "macos")]
+#[inline]
+fn macos_service_ipc_allows_installed_app_and_privileged_helper(
     peer_exe: &Path,
     current_exe: &Path,
     postfix: &str,
@@ -354,30 +395,10 @@ fn macos_service_ipc_allows_gui_and_service_binaries(
     if postfix != crate::POSTFIX_SERVICE {
         return false;
     }
-    let Some(peer_dir) = peer_exe.parent() else {
-        return false;
-    };
-    let Some(current_dir) = current_exe.parent() else {
-        return false;
-    };
-    if !executable_paths_match(peer_dir, current_dir) {
+    if !macos_privileged_helper_is_expected_and_trusted(current_exe) {
         return false;
     }
-
-    // On installed macOS builds, `_service` is listened by the `service` binary while the GUI
-    // process connects from the app executable within the same app bundle.
-    let gui_exe_name = std::ffi::OsString::from(crate::get_app_name());
-    let gui_exe = gui_exe_name.as_os_str();
-    let service_exe = std::ffi::OsStr::new("service");
-    let allowed_exe = [Some(gui_exe), Some(service_exe)];
-    let peer_name = peer_exe.file_name();
-    let current_name = current_exe.file_name();
-    allowed_exe
-        .iter()
-        .any(|name| os_str_eq_ignore_ascii_case(peer_name, *name))
-        && allowed_exe
-            .iter()
-            .any(|name| os_str_eq_ignore_ascii_case(current_name, *name))
+    macos_executable_matches_expected_path(peer_exe, &macos_installed_app_executable_path())
 }
 
 #[cfg(windows)]
@@ -920,19 +941,6 @@ fn paths_refer_to_same_file(left: &Path, right: &Path) -> bool {
     left.dev() == right.dev() && left.ino() == right.ino()
 }
 
-#[cfg(target_os = "macos")]
-#[inline]
-fn os_str_eq_ignore_ascii_case(
-    left: Option<&std::ffi::OsStr>,
-    right: Option<&std::ffi::OsStr>,
-) -> bool {
-    let (Some(left), Some(right)) = (left, right) else {
-        return false;
-    };
-    left.to_string_lossy()
-        .eq_ignore_ascii_case(&right.to_string_lossy())
-}
-
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 #[inline]
 fn ensure_peer_executable_matches_current_by_pid(peer_pid: u32, postfix: &str) -> ResultType<()> {
@@ -942,7 +950,11 @@ fn ensure_peer_executable_matches_current_by_pid(peer_pid: u32, postfix: &str) -
         return Ok(());
     }
     #[cfg(target_os = "macos")]
-    if macos_service_ipc_allows_gui_and_service_binaries(&peer_exe, &current_exe, postfix) {
+    if macos_service_ipc_allows_installed_app_and_privileged_helper(
+        &peer_exe,
+        &current_exe,
+        postfix,
+    ) {
         return Ok(());
     }
     bail!(
@@ -1538,19 +1550,6 @@ mod tests {
         let left = std::path::PathBuf::from(r"\\?\C:\Program Files\RustDesk\RustDesk.exe");
         let right = std::path::PathBuf::from(r"c:\program files\rustdesk\rustdesk.exe");
         assert!(super::executable_paths_match(&left, &right));
-    }
-
-    #[test]
-    #[cfg(target_os = "macos")]
-    fn test_os_str_eq_ignore_ascii_case_for_process_names() {
-        assert!(super::os_str_eq_ignore_ascii_case(
-            Some(std::ffi::OsStr::new("RustDesk")),
-            Some(std::ffi::OsStr::new("rustdesk"))
-        ));
-        assert!(!super::os_str_eq_ignore_ascii_case(
-            Some(std::ffi::OsStr::new("RustDesk")),
-            Some(std::ffi::OsStr::new("service"))
-        ));
     }
 
     #[cfg(target_os = "macos")]

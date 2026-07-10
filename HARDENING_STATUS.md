@@ -252,14 +252,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   pipe-client token impersonation, `RevertToSelf`, elevated-token request gate, LocalSystem-token commit gate,
   already-elevated UI/CLI exposure, and absence of PID-based elevation proof for this operation; the Windows
   source test `windows_service_owned_password_commit_requires_localsystem_peer` covers the main-channel policy.
-- **R-S11b-2e/R-S11c-1f — macOS service-owned unattended password provisioning — CLOSED 2026-07-09; tightened 2026-07-10.**
+- **R-S11b-2e/R-S11c-1f — macOS service-owned unattended password provisioning — CLOSED 2026-07-09; tightened 2026-07-11.**
   Platform: macOS LaunchDaemon/LaunchAgent installed service. Endpoint/action:
   `Data::BeginMacosServiceOwnedUnattendedPasswordChange(String)` over `_service`, a root LaunchDaemon
   `Data::MacosServiceOwnedUnattendedPasswordChallenge { request_id }`, then
   `Data::FinishMacosServiceOwnedUnattendedPasswordChange { request_id, authorization }`, followed by
   `Data::CommitServiceOwnedUnattendedPasswordChange(String)` from the root LaunchDaemon into the service-owned
   main server. Boundary: active desktop/CLI process ↔ root LaunchDaemon `_service` ↔ service-owned `--server`
-  process that honors the unattended credential. Attack surface closed: service-owned password provisioning no
+  process that honors the unattended credential. The `_service` executable identity gate models the deployed
+  installation: the peer is the installed app executable under `/Applications/<App>.app/Contents/MacOS/<App>`,
+  and the receiver is the root-owned, non-symlink, non-group/world-writable executable at
+  `/Library/PrivilegedHelperTools/com.carriez.rustdesk_service`; the old same-directory app-bundle `service`
+  exception is absent. Attack surface closed: service-owned password provisioning no
   longer fails closed on macOS for lack of a privileged path, and it does not fall back to ordinary main IPC,
   generic config writes, or the Authorization Services generic rule. Before issuing a challenge and before
   verifying the finish message, the LaunchDaemon creates/updates the RustDesk-specific
@@ -279,7 +283,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   and caps, pending-value storage, zero-on-drop, TTL expiry, authorization-failure cancellation, peer pid/uid
   binding, finish-without-password shape, explicit non-shared timeout-zero Authorization Services right, no
   request-digest prompt/verification API, no `kAuthorizationRightExecute` fallback in the service password
-  functions, non-interactive `AuthorizationCreateFromExternalForm` verification, root-peer commit gate,
+  functions, non-interactive `AuthorizationCreateFromExternalForm` verification, trusted PrivilegedHelperTools
+  `_service` peer/current identity, absence of the old same-directory `service` binary exception, root-peer commit gate,
   installed-daemon exposure gate, and service handler wiring; the Unix source tests cover main-channel commit
   policy and `_service` request admission.
 - **R-S11b-3a — service-marked server rejects ordinary options IPC — CLOSED 2026-07-08.** Platforms:
@@ -493,7 +498,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   before `add_connection`, desktop `AuthorizedFS` token matching, desktop legacy `Data::FS` rejection,
   and Android pre-`handle_fs` gating; `scripts/apple-conform-check.sh` mirrors the desktop source
   assertion for macOS.
-- **R-S11c-5 — macOS privileged service packaging — CLOSED 2026-07-09.** Platform: macOS
+- **R-S11c-5 — macOS privileged service packaging — CLOSED 2026-07-09; tightened 2026-07-11.** Platform: macOS
   source-conformance and any future macOS artifact. Surfaces: `src/platform/privileges_scripts/daemon.plist`,
   `install.scpt`, deleted `update.scpt`, `uninstall.scpt`, and their `osascript` call sites in
   `src/platform/macos.rs`. Boundary: active-user install/update flow ↔ root LaunchDaemon. Attack surface
@@ -512,12 +517,15 @@ unreachable and a source/test/AST gate prevents reintroduction.
   install/uninstall/asuser/reopen helpers invoke fixed system paths for `osascript`, `launchctl`, `open`,
   and `ioreg`, and active-console identity no longer parses `ls /dev/console`; it reads `/dev/console`
   ownership and resolves the username through `getpwuid_r`, with `launchctl asuser` failing closed on an
-  unresolved console UID. Verification closure: `scripts/verify.sh` and
+  unresolved console UID. The `_service` IPC executable identity exception now requires the same deployed
+  helper path and helper ownership/mode invariants, with the peer fixed to the installed app executable rather
+  than any sibling `service` binary in the app bundle. Verification closure: `scripts/verify.sh` and
   `scripts/apple-conform-check.sh` assert the PrivilegedHelperTools daemon target and root-owned working
   directory, absence of `update.scpt`/`update_daemon_agent`/`.rustdeskupdate-*`, absence of app-bundle root
   service execution, absence of active-user config import, helper root ownership/mode/ACL checks, helper
   re-verification before load, `/Library/Logs/RustDesk` daemon logs, root-owned directory setup, quoted plist
-  writes, quoted privileged plist paths, absolute local helper tool paths, and the `/dev/console`/`getpwuid_r`
+  writes, quoted privileged plist paths, trusted PrivilegedHelperTools `_service` IPC identity, absence of the
+  old same-directory `service` binary exception, absolute local helper tool paths, and the `/dev/console`/`getpwuid_r`
   active-user lookup.
 - **R-S11c-16 — Desktop service lifecycle completion authority — CLOSED 2026-07-10.**
   Platforms: Linux and macOS desktop service wrappers, plus the shared desktop service CLI dispatcher. Surfaces:

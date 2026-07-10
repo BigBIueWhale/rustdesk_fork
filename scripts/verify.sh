@@ -1053,6 +1053,21 @@ grep -Fq 'R-S11d-23 — Windows EXE Amyuni IDD cleanup completion authority' HAR
 if [ -n "$r_s11d23" ]; then echo "  FAIL R-S11d-23 Windows EXE Amyuni IDD cleanup completion authority:$r_s11d23"; rc=1; else
   echo "  ok  R-S11d-23 EXE uninstall Amyuni cleanup waits for helper completion, propagates errors, and is fail-fast in the elevated batch"; fi
 
+echo "== (3b-iii-a5d4e) Windows stale RustDesk IDD install helper is reject-only (R-S11d-24) =="
+r_s11d24=
+install_idd_block=$(awk '/args\[0\] == "--install-idd"/,/args\[0\] == "--uninstall-amyuni-idd"/' src/core_main.rs)
+printf '%s\n' "$install_idd_block" | grep -Fq 'log::error!("--install-idd is not supported in this build");' || r_s11d24="$r_s11d24 install-idd-rejection-not-logged"
+printf '%s\n' "$install_idd_block" | grep -Fq 'std::process::exit(1);' || r_s11d24="$r_s11d24 install-idd-not-nonzero"
+if printf '%s\n' "$install_idd_block" | grep -Fq 'rustdesk_idd::install_update_driver()' \
+  || printf '%s\n' "$install_idd_block" | grep -Fq 'allow_err!'; then
+  r_s11d24="$r_s11d24 install-idd-still-runs-or-masks-driver-install"
+fi
+grep -Fq 'const IDD_IMPL: &str = IDD_IMPL_AMYUNI;' src/virtual_display_manager.rs || r_s11d24="$r_s11d24 active-idd-impl-not-amyuni"
+grep -Fq 'Windows stale RustDesk IDD install helper completion' requirements.html || r_s11d24="$r_s11d24 requirements-disposition-missing"
+grep -Fq 'R-S11d-24 — Windows stale RustDesk IDD install helper completion' HARDENING_STATUS.md || r_s11d24="$r_s11d24 hardening-ledger-missing"
+if [ -n "$r_s11d24" ]; then echo "  FAIL R-S11d-24 Windows stale RustDesk IDD install helper completion:$r_s11d24"; rc=1; else
+  echo "  ok  R-S11d-24 stale --install-idd rejects instead of invoking the inactive RustDesk IDD installer"; fi
+
 echo "== (3b-iii-a5d5) Windows MSI service state and SAS policy are not persistent user-config side effects (R-S11d-16) =="
 r_s11d16=
 grep -Fq '<Custom Action="CreateStartService" Before="InstallFinalize" Condition="NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:create-service-condition-not-always-service"

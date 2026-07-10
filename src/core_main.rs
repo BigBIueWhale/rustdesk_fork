@@ -266,10 +266,9 @@ pub fn core_main() -> Option<Vec<String>> {
                 return None;
             } else if args[0] == "--install-idd" {
                 #[cfg(windows)]
-                if crate::virtual_display_manager::is_virtual_display_supported() {
-                    hbb_common::allow_err!(
-                        crate::virtual_display_manager::rustdesk_idd::install_update_driver()
-                    );
+                {
+                    log::error!("--install-idd is not supported in this build");
+                    std::process::exit(1);
                 }
                 return None;
             // R-X9 (slices 2-4): the `--portable-service` arg handler is excised — it

@@ -1042,6 +1042,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `CreateProcessW` application-path binding, bounded wait, exit-code read, remove-vs-install reboot policy, absence
   of the old skipped-command helper, absence of `ShellExecuteW` in the runtime helper, and this ledger/requirements
   disposition.
+- **R-S11d-24 — Windows stale RustDesk IDD install helper completion — CLOSED 2026-07-10.**
+  Platform: Windows raw CLI. Endpoint/action: `--install-idd`, the RustDesk IDD
+  `rustdesk_idd::install_update_driver()` helper, and the active virtual-display implementation selector. Boundary:
+  local CLI exit status ↔ persistent display-driver install/update state. Attack surface closed: a stale public CLI
+  can no longer invoke the inactive RustDesk IDD installer, mask install/update failure with `allow_err!`, and report
+  success in a build whose active virtual-display implementation is Amyuni. The fork's supported virtual-display
+  driver install/update path remains the Amyuni runtime path, which is checked by R-S11d-23: helper launch is bound to
+  the checked executable path, waited, exit-code checked, and rejects reboot-required install before the driver is
+  used. The raw `--install-idd` arm is now reject-only: it logs that the command is unsupported in this build and
+  exits nonzero without touching driver state. Verification closure: `scripts/verify.sh` asserts the reject-only
+  `--install-idd` arm, nonzero exit, absence of `allow_err!` and `rustdesk_idd::install_update_driver()` from that
+  arm, the active `IDD_IMPL_AMYUNI` selector, and this ledger/requirements disposition.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's

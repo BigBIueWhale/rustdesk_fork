@@ -911,8 +911,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   user-accessible checks, create-error tracking, marker quoting, `/D /V:OFF /S /C` command invocation on both
   already-elevated and UAC `runas` paths, absence of the old bare `/C` invocation shape, and this
   ledger/requirements disposition. Separate Windows findings not closed by this item were tracked separately:
-  R-S11d-19 closes env-expanded uninstall cleanup roots; per-command batch postconditions and the MSI
-  `CC_CONNECTION_TYPE` public-property service-mode gate remain open for later slices.
+  R-S11d-19 closes env-expanded uninstall cleanup roots, R-S11d-20 closes elevated batch command
+  postconditions, and the MSI `CC_CONNECTION_TYPE` public-property service-mode gate remains open for a later
+  slice.
 - **R-S11d-19 — Windows EXE uninstall cleanup known-folder authority — CLOSED 2026-07-10.**
   Platform: Windows EXE uninstall and service-uninstall elevated command paths. Endpoint/action: cleanup of
   all-users Start Menu, Public Desktop, and Common Startup shortcuts/directories after uninstall or service
@@ -928,8 +929,29 @@ unreachable and a source/test/AST gate prevents reintroduction.
   fallible uninstall builder/callers, installed-path literal guard, known-folder quoted cleanup paths, service
   uninstall known-folder cleanup, absence of `%ProgramData%` / `%PROGRAMDATA%` / `%PUBLIC%` roots in
   `src/platform/windows.rs`, and this ledger/requirements disposition. Separate Windows findings not closed by
-  this item remain open for later slices: per-command batch postconditions and the MSI `CC_CONNECTION_TYPE`
-  public-property service-mode gate.
+  this item are tracked separately: R-S11d-20 closes elevated batch command postconditions, and the MSI
+  `CC_CONNECTION_TYPE` public-property service-mode gate remains open for a later slice.
+- **R-S11d-20 — Windows EXE elevated batch command postconditions — CLOSED 2026-07-10.**
+  Platform: Windows EXE install, update-broker, uninstall, service-install, and service-uninstall elevated
+  batch bodies. Endpoint/action: generated `.bat` fragments that copy binaries, create install directories,
+  write HKLM/HKCR registry state, add/remove firewall rules, create/delete the service, create/delete all-users
+  shortcuts, and delegate to a prior MSI uninstall. Boundary: approved elevated installer command stream ↔
+  privileged persistent Windows state. Attack surface closed: required elevated operations no longer fall
+  through to marker deletion after an ignored command failure, and cleanup operations that are allowed to be
+  absent now verify the target is absent before reporting success. Required install/update operations are routed
+  through fail-fast helpers: broker and install payload copies verify their destination files, `xcopy` no longer
+  carries `/C`, install-directory creation verifies the directory exists, registry and firewall additions are
+  checked for command failure, shortcut scripts verify the final `.lnk` exists, and service creation/failure/start
+  retains checked `sc` exit handling. Uninstall cleanup now uses absence-driven helpers for service deletion,
+  HKCR/HKLM key deletion, firewall rule deletion, install-directory removal, Start Menu removal, Public Desktop
+  shortcut removal, and Common Startup tray-shortcut removal. Prior MSI uninstall delegation now observes
+  `msiexec` exit status, accepting only success, reboot-required `3010`, and product-absent `1605`. Explicitly
+  not claimed by this slice: certificate cleanup, Amyuni IDD cleanup, and the MSI `CC_CONNECTION_TYPE`
+  public-property service-mode gate. Verification closure: `scripts/verify.sh` asserts the fail-fast and
+  absence-postcondition helpers, checked copy/update/install call sites, removal of `xcopy /C`, install directory
+  and shortcut existence postconditions, service/registry/firewall absence checks, MSI uninstall exit handling,
+  absence of raw install-dir create/service-delete/uninstall-registry-delete leftovers, and this
+  ledger/requirements disposition.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's

@@ -1789,6 +1789,113 @@ fn batch_literal_text<'a>(text: &'a str, label: &str) -> ResultType<&'a str> {
     Ok(text)
 }
 
+fn checked_batch_cmd(command: impl AsRef<str>) -> String {
+    format!(
+        "
+{}
+if errorlevel 1 exit /b 1
+",
+        command.as_ref()
+    )
+}
+
+fn checked_reg_add(command: String) -> String {
+    checked_batch_cmd(command)
+}
+
+fn require_batch_path_exists(quoted_path: &str) -> String {
+    format!("if not exist {quoted_path} exit /b 1")
+}
+
+fn require_batch_path_absent(quoted_path: &str) -> String {
+    format!("if exist {quoted_path} exit /b 1")
+}
+
+fn checked_copy_to_path(command: String, quoted_target: &str) -> String {
+    format!(
+        "
+{}
+{}
+",
+        checked_batch_cmd(command),
+        require_batch_path_exists(quoted_target)
+    )
+}
+
+fn ensure_batch_dir_exists(path: &Path) -> ResultType<String> {
+    let quoted_path = quoted_batch_path(path)?;
+    Ok(format!(
+        "
+if not exist {quoted_path} md {quoted_path}
+{}
+",
+        require_batch_path_exists(&quoted_path)
+    ))
+}
+
+fn delete_batch_path_absent_ok(command: String, quoted_path: &str) -> String {
+    format!(
+        "
+{command}
+{}
+",
+        require_batch_path_absent(quoted_path)
+    )
+}
+
+fn delete_reg_key_absent_ok(reg: &str, key: &str) -> String {
+    format!(
+        "
+{reg} delete {key} /f >nul 2>nul
+{reg} query {key} >nul 2>nul && exit /b 1
+"
+    )
+}
+
+fn delete_firewall_rule_absent_ok(netsh: &str, rule_name: &str) -> String {
+    format!(
+        "
+{netsh} advfirewall firewall delete rule name=\"{rule_name}\" >nul 2>nul
+{netsh} advfirewall firewall show rule name=\"{rule_name}\" >nul 2>nul && exit /b 1
+"
+    )
+}
+
+fn delete_service_absent_ok(
+    sc: &str,
+    timeout: &str,
+    service_name: &str,
+    absent_label: &str,
+) -> String {
+    format!(
+        "
+{sc} query \"{service_name}\" >nul 2>nul
+if not errorlevel 1 (
+  {sc} delete \"{service_name}\" >nul 2>nul
+)
+for /L %%i in (1,1,20) do (
+  {sc} query \"{service_name}\" >nul 2>nul
+  if errorlevel 1 goto {absent_label}
+  {timeout} /T 1 /NOBREAK >nul 2>nul
+)
+exit /b 1
+:{absent_label}
+"
+    )
+}
+
+fn checked_msi_uninstall_command(command: String) -> String {
+    format!(
+        "
+{command}
+if %ERRORLEVEL% EQU 3010 goto rustdesk_msi_uninstall_ok
+if %ERRORLEVEL% EQU 1605 goto rustdesk_msi_uninstall_ok
+if errorlevel 1 exit /b 1
+:rustdesk_msi_uninstall_ok
+"
+    )
+}
+
 fn trusted_system_cmd_path() -> ResultType<PathBuf> {
     trusted_system_tool_path("cmd.exe")
 }
@@ -1831,17 +1938,21 @@ pub fn check_update_broker_process() -> ResultType<()> {
         bail!("Cannot get parent of current exe file");
     };
     let cur_exe = cur_dir.join(process_exe);
+    let cur_exe_quoted = quoted_batch_path(&cur_exe)?;
+    let copy_broker = checked_copy_to_path(
+        format!("copy /Y \"{origin_process_exe}\" {cur_exe_quoted}"),
+        &cur_exe_quoted,
+    );
 
     // Force update broker exe if failed to check modified time.
     let cmds = format!(
         "
         {chcp} 65001
         {taskkill} /F /IM {process_exe}
-        copy /Y \"{origin_process_exe}\" \"{cur_exe}\"
+        {copy_broker}
     ",
         chcp = tools.chcp,
         taskkill = tools.taskkill,
-        cur_exe = cur_exe.to_string_lossy(),
     );
 
     if !std::path::Path::new(&cur_exe).exists() {
@@ -1881,21 +1992,25 @@ fn get_install_info_with_subkey(subkey: String) -> (String, String, String) {
 
 fn copy_raw_cmd(
     src_raw: &str,
-    _raw: &str,
-    _path: &str,
+    expected_exe: &str,
+    install_dir: &str,
     tools: &WindowsSystemTools,
 ) -> ResultType<String> {
-    let main_raw = format!(
-        "{} \"{}\" \"{}\" /Y /E /H /C /I /K /R /Z",
-        tools.xcopy,
-        PathBuf::from(src_raw)
-            .parent()
-            .ok_or(anyhow!("Can't get parent directory of {src_raw}"))?
-            .to_string_lossy()
-            .to_string(),
-        _path
+    let src_parent = PathBuf::from(src_raw)
+        .parent()
+        .ok_or(anyhow!("Can't get parent directory of {src_raw}"))?
+        .to_owned();
+    let src_parent = quoted_batch_path(&src_parent)?;
+    let install_dir = quoted_batch_path(Path::new(install_dir))?;
+    let expected_exe = quoted_batch_path(Path::new(expected_exe))?;
+    let main_raw = checked_copy_to_path(
+        format!(
+            "{} {src_parent} {install_dir} /Y /E /H /I /K /R /Z",
+            tools.xcopy,
+        ),
+        &expected_exe,
     );
-    return Ok(main_raw);
+    Ok(main_raw)
 }
 
 fn copy_exe_cmd(
@@ -1905,13 +2020,21 @@ fn copy_exe_cmd(
     tools: &WindowsSystemTools,
 ) -> ResultType<String> {
     let main_exe = copy_raw_cmd(src_exe, exe, path, tools)?;
+    let broker_exe = win_topmost_window::INJECTED_PROCESS_EXE;
+    let broker_dst = Path::new(path).join(broker_exe);
+    let broker_dst = quoted_batch_path(&broker_dst)?;
+    let copy_broker = checked_copy_to_path(
+        format!(
+            "copy /Y \"{}\" {broker_dst}",
+            win_topmost_window::ORIGIN_PROCESS_EXE,
+        ),
+        &broker_dst,
+    );
     Ok(format!(
         "
         {main_exe}
-        copy /Y \"{ORIGIN_PROCESS_EXE}\" \"{path}\\{broker_exe}\"
+        {copy_broker}
         ",
-        ORIGIN_PROCESS_EXE = win_topmost_window::ORIGIN_PROCESS_EXE,
-        broker_exe = win_topmost_window::INJECTED_PROCESS_EXE,
     ))
 }
 
@@ -1963,45 +2086,87 @@ fn get_after_install(
     hcu.delete_subkey_all(format!("Software\\Classes\\{}", exe))
         .ok();
 
-    let desktop_shortcuts = reg_value_desktop_shortcuts
-        .map(|v| {
-            format!("{reg} add HKEY_CLASSES_ROOT\\.{ext} /f /v {REG_NAME_INSTALL_DESKTOPSHORTCUTS} /t REG_SZ /d \"{v}\"", reg = tools.reg)
-        })
-        .unwrap_or_default();
-    let start_menu_shortcuts = reg_value_start_menu_shortcuts
-        .map(|v| {
-            format!(
-                "{reg} add HKEY_CLASSES_ROOT\\.{ext} /f /v {REG_NAME_INSTALL_STARTMENUSHORTCUTS} /t REG_SZ /d \"{v}\"",
-                reg = tools.reg
-            )
-        })
-        .unwrap_or_default();
+    let mut commands = Vec::new();
+    commands.push(checked_reg_add(format!(
+        "{reg} add HKEY_CLASSES_ROOT\\.{ext} /f",
+        reg = tools.reg
+    )));
+    if let Some(v) = reg_value_desktop_shortcuts {
+        commands.push(checked_reg_add(format!("{reg} add HKEY_CLASSES_ROOT\\.{ext} /f /v {REG_NAME_INSTALL_DESKTOPSHORTCUTS} /t REG_SZ /d \"{v}\"", reg = tools.reg)));
+    }
+    if let Some(v) = reg_value_start_menu_shortcuts {
+        commands.push(checked_reg_add(format!("{reg} add HKEY_CLASSES_ROOT\\.{ext} /f /v {REG_NAME_INSTALL_STARTMENUSHORTCUTS} /t REG_SZ /d \"{v}\"", reg = tools.reg)));
+    }
+    commands.extend([
+        checked_reg_add(format!(
+            "{reg} add HKEY_CLASSES_ROOT\\.{ext}\\DefaultIcon /f",
+            reg = tools.reg
+        )),
+        checked_reg_add(format!(
+            "{reg} add HKEY_CLASSES_ROOT\\.{ext}\\DefaultIcon /f /ve /t REG_SZ  /d \"\\\"{exe}\\\",0\"",
+            reg = tools.reg
+        )),
+        checked_reg_add(format!(
+            "{reg} add HKEY_CLASSES_ROOT\\.{ext}\\shell /f",
+            reg = tools.reg
+        )),
+        checked_reg_add(format!(
+            "{reg} add HKEY_CLASSES_ROOT\\.{ext}\\shell\\open /f",
+            reg = tools.reg
+        )),
+        checked_reg_add(format!(
+            "{reg} add HKEY_CLASSES_ROOT\\.{ext}\\shell\\open\\command /f",
+            reg = tools.reg
+        )),
+        checked_reg_add(format!(
+            "{reg} add HKEY_CLASSES_ROOT\\.{ext}\\shell\\open\\command /f /ve /t REG_SZ /d \"\\\"{exe}\\\" --play \\\"%%1\\\"\"",
+            reg = tools.reg
+        )),
+        checked_reg_add(format!(
+            "{reg} add HKEY_CLASSES_ROOT\\{ext} /f",
+            reg = tools.reg
+        )),
+        checked_reg_add(format!(
+            "{reg} add HKEY_CLASSES_ROOT\\{ext} /f /v \"URL Protocol\" /t REG_SZ /d \"\"",
+            reg = tools.reg
+        )),
+        checked_reg_add(format!(
+            "{reg} add HKEY_CLASSES_ROOT\\{ext}\\shell /f",
+            reg = tools.reg
+        )),
+        checked_reg_add(format!(
+            "{reg} add HKEY_CLASSES_ROOT\\{ext}\\shell\\open /f",
+            reg = tools.reg
+        )),
+        checked_reg_add(format!(
+            "{reg} add HKEY_CLASSES_ROOT\\{ext}\\shell\\open\\command /f",
+            reg = tools.reg
+        )),
+        checked_reg_add(format!(
+            "{reg} add HKEY_CLASSES_ROOT\\{ext}\\shell\\open\\command /f /ve /t REG_SZ /d \"\\\"{exe}\\\" \\\"%%1\\\"\"",
+            reg = tools.reg
+        )),
+        checked_batch_cmd(format!(
+            "{netsh} advfirewall firewall add rule name=\"{app_name} Service\" dir=out action=allow program=\"{exe}\" enable=yes",
+            netsh = tools.netsh
+        )),
+        checked_batch_cmd(format!(
+            "{netsh} advfirewall firewall add rule name=\"{app_name} Service\" dir=in action=allow program=\"{exe}\" enable=yes",
+            netsh = tools.netsh
+        )),
+    ]);
+    let create_service = get_create_service(exe, tools);
+    if !create_service.trim().is_empty() {
+        commands.push(create_service);
+    }
 
-    format!("
+    format!(
+        "
     {chcp} 65001
-    {reg} add HKEY_CLASSES_ROOT\\.{ext} /f
-    {desktop_shortcuts}
-    {start_menu_shortcuts}
-    {reg} add HKEY_CLASSES_ROOT\\.{ext}\\DefaultIcon /f
-    {reg} add HKEY_CLASSES_ROOT\\.{ext}\\DefaultIcon /f /ve /t REG_SZ  /d \"\\\"{exe}\\\",0\"
-    {reg} add HKEY_CLASSES_ROOT\\.{ext}\\shell /f
-    {reg} add HKEY_CLASSES_ROOT\\.{ext}\\shell\\open /f
-    {reg} add HKEY_CLASSES_ROOT\\.{ext}\\shell\\open\\command /f
-    {reg} add HKEY_CLASSES_ROOT\\.{ext}\\shell\\open\\command /f /ve /t REG_SZ /d \"\\\"{exe}\\\" --play \\\"%%1\\\"\"
-    {reg} add HKEY_CLASSES_ROOT\\{ext} /f
-    {reg} add HKEY_CLASSES_ROOT\\{ext} /f /v \"URL Protocol\" /t REG_SZ /d \"\"
-    {reg} add HKEY_CLASSES_ROOT\\{ext}\\shell /f
-    {reg} add HKEY_CLASSES_ROOT\\{ext}\\shell\\open /f
-    {reg} add HKEY_CLASSES_ROOT\\{ext}\\shell\\open\\command /f
-    {reg} add HKEY_CLASSES_ROOT\\{ext}\\shell\\open\\command /f /ve /t REG_SZ /d \"\\\"{exe}\\\" \\\"%%1\\\"\"
-    {netsh} advfirewall firewall add rule name=\"{app_name} Service\" dir=out action=allow program=\"{exe}\" enable=yes
-    {netsh} advfirewall firewall add rule name=\"{app_name} Service\" dir=in action=allow program=\"{exe}\" enable=yes
-    {create_service}
+    {commands}
     ",
         chcp = tools.chcp,
-        reg = tools.reg,
-        netsh = tools.netsh,
-        create_service = get_create_service(&exe, tools)
+        commands = commands.join("\n"),
     )
 }
 
@@ -2030,14 +2195,15 @@ pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> Res
     let app_name = crate::get_app_name();
 
     let current_exe = std::env::current_exe()?;
-    let cur_exe = current_exe.to_str().unwrap_or("").to_owned();
+    let cur_exe = batch_path_text(&current_exe, "current exe")?;
     let mut reg_value_desktop_shortcuts = "0".to_owned();
     let mut reg_value_start_menu_shortcuts = "0".to_owned();
     let mut shortcut_scripts = Vec::new();
     let mut shortcut_cmds = String::new();
     if options.contains("desktopicon") {
+        let desktop_shortcut_path = public_desktop_app_shortcut_path()?;
         let desktop_shortcut = create_shortcut_command_file(
-            &public_desktop_app_shortcut_path()?,
+            &desktop_shortcut_path,
             &exe,
             None,
             None,
@@ -2048,8 +2214,9 @@ pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> Res
         let desktop_shortcut = desktop_shortcut?;
         shortcut_cmds.push_str(&run_shortcut_script_cmd(
             desktop_shortcut.path_str()?,
+            &desktop_shortcut_path,
             &tools,
-        ));
+        )?);
         shortcut_scripts.push(desktop_shortcut);
         reg_value_desktop_shortcuts = "1".to_owned();
     }
@@ -2062,8 +2229,9 @@ if not exist {quoted_start_menu} md {quoted_start_menu}
 if not exist {quoted_start_menu} exit /b 1
 "
         ));
+        let start_menu_shortcut_path = start_menu.join(format!("{app_name}.lnk"));
         let start_menu_shortcut = create_shortcut_command_file(
-            &start_menu.join(format!("{app_name}.lnk")),
+            &start_menu_shortcut_path,
             &exe,
             None,
             None,
@@ -2073,11 +2241,14 @@ if not exist {quoted_start_menu} exit /b 1
         )?;
         shortcut_cmds.push_str(&run_shortcut_script_cmd(
             start_menu_shortcut.path_str()?,
+            &start_menu_shortcut_path,
             &tools,
-        ));
+        )?);
         shortcut_scripts.push(start_menu_shortcut);
+        let start_menu_uninstall_shortcut_path =
+            start_menu.join(format!("Uninstall {app_name}.lnk"));
         let start_menu_uninstall_shortcut = create_shortcut_command_file(
-            &start_menu.join(format!("Uninstall {app_name}.lnk")),
+            &start_menu_uninstall_shortcut_path,
             &exe,
             Some("--uninstall"),
             Some("msiexec.exe"),
@@ -2087,14 +2258,16 @@ if not exist {quoted_start_menu} exit /b 1
         )?;
         shortcut_cmds.push_str(&run_shortcut_script_cmd(
             start_menu_uninstall_shortcut.path_str()?,
+            &start_menu_uninstall_shortcut_path,
             &tools,
-        ));
+        )?);
         shortcut_scripts.push(start_menu_uninstall_shortcut);
         reg_value_start_menu_shortcuts = "1".to_owned();
     }
     if !config::is_outgoing_only() {
+        let tray_shortcut_path = common_startup_tray_shortcut_path()?;
         let tray_shortcut = create_shortcut_command_file(
-            &common_startup_tray_shortcut_path()?,
+            &tray_shortcut_path,
             &exe,
             Some("--tray"),
             None,
@@ -2102,11 +2275,17 @@ if not exist {quoted_start_menu} exit /b 1
             &cur_exe,
             "tray_shortcut",
         )?;
-        shortcut_cmds.push_str(&run_shortcut_script_cmd(tray_shortcut.path_str()?, &tools));
+        shortcut_cmds.push_str(&run_shortcut_script_cmd(
+            tray_shortcut.path_str()?,
+            &tray_shortcut_path,
+            &tools,
+        )?);
         shortcut_scripts.push(tray_shortcut);
     }
+    let install_uninstall_shortcut_path =
+        Path::new(&path).join(format!("Uninstall {app_name}.lnk"));
     let install_uninstall_shortcut = create_shortcut_command_file(
-        &Path::new(&path).join(format!("Uninstall {app_name}.lnk")),
+        &install_uninstall_shortcut_path,
         &exe,
         Some("--uninstall"),
         Some("msiexec.exe"),
@@ -2116,8 +2295,9 @@ if not exist {quoted_start_menu} exit /b 1
     )?;
     shortcut_cmds.push_str(&run_shortcut_script_cmd(
         install_uninstall_shortcut.path_str()?,
+        &install_uninstall_shortcut_path,
         &tools,
-    ));
+    )?);
     shortcut_scripts.push(install_uninstall_shortcut);
 
     let meta = std::fs::symlink_metadata(&current_exe)?;
@@ -2130,41 +2310,87 @@ if not exist {quoted_start_menu} exit /b 1
     // https://docs.microsoft.com/zh-cn/windows/win32/msi/uninstall-registry-key?redirectedfrom=MSDNa
     // https://www.windowscentral.com/how-edit-registry-using-command-prompt-windows-10
     // https://www.tenforums.com/tutorials/70903-add-remove-allowed-apps-through-windows-firewall-windows-10-a.html
-    let src_exe = std::env::current_exe()?.to_str().unwrap_or("").to_string();
+    let src_exe = cur_exe.to_owned();
 
     // R-X4: the install-time license injection (custom_server-from-exe-name -> key /
     // custom-rendezvous-server / api-server) is excised; the fork is direct-IP only.
 
+    let display_icon = get_custom_icon(&path, &cur_exe).unwrap_or(exe.to_string());
+    let install_dir_cmd = ensure_batch_dir_exists(Path::new(&path))?;
+    let copy_exe = copy_exe_cmd(&src_exe, &exe, &path, &tools)?;
+    let install_reg_cmds = [
+        checked_reg_add(format!("{reg} add {subkey} /f", reg = tools.reg)),
+        checked_reg_add(format!(
+            "{reg} add {subkey} /f /v DisplayIcon /t REG_SZ /d \"{display_icon}\"",
+            reg = tools.reg
+        )),
+        checked_reg_add(format!(
+            "{reg} add {subkey} /f /v DisplayName /t REG_SZ /d \"{app_name}\"",
+            reg = tools.reg
+        )),
+        checked_reg_add(format!(
+            "{reg} add {subkey} /f /v DisplayVersion /t REG_SZ /d \"{version}\"",
+            reg = tools.reg,
+            version = crate::VERSION.replace("-", "."),
+        )),
+        checked_reg_add(format!(
+            "{reg} add {subkey} /f /v Version /t REG_SZ /d \"{version}\"",
+            reg = tools.reg,
+            version = crate::VERSION.replace("-", "."),
+        )),
+        checked_reg_add(format!(
+            "{reg} add {subkey} /f /v BuildDate /t REG_SZ /d \"{build_date}\"",
+            reg = tools.reg,
+            build_date = crate::BUILD_DATE,
+        )),
+        checked_reg_add(format!(
+            "{reg} add {subkey} /f /v InstallLocation /t REG_SZ /d \"{path}\"",
+            reg = tools.reg,
+        )),
+        checked_reg_add(format!(
+            "{reg} add {subkey} /f /v Publisher /t REG_SZ /d \"{app_name}\"",
+            reg = tools.reg,
+        )),
+        checked_reg_add(format!(
+            "{reg} add {subkey} /f /v VersionMajor /t REG_DWORD /d {version_major}",
+            reg = tools.reg,
+        )),
+        checked_reg_add(format!(
+            "{reg} add {subkey} /f /v VersionMinor /t REG_DWORD /d {version_minor}",
+            reg = tools.reg,
+        )),
+        checked_reg_add(format!(
+            "{reg} add {subkey} /f /v VersionBuild /t REG_DWORD /d {version_build}",
+            reg = tools.reg,
+        )),
+        checked_reg_add(format!(
+            "{reg} add {subkey} /f /v UninstallString /t REG_SZ /d \"\\\"{exe}\\\" --uninstall\"",
+            reg = tools.reg,
+        )),
+        checked_reg_add(format!(
+            "{reg} add {subkey} /f /v EstimatedSize /t REG_DWORD /d {size}",
+            reg = tools.reg,
+        )),
+        checked_reg_add(format!(
+            "{reg} add {subkey} /f /v WindowsInstaller /t REG_DWORD /d 0",
+            reg = tools.reg,
+        )),
+    ]
+    .join("\n");
+
     let cmds = format!(
         "
-{uninstall_str}
-	{chcp} 65001
-	md \"{path}\"
-	{copy_exe}
-	{reg} add {subkey} /f
-	{reg} add {subkey} /f /v DisplayIcon /t REG_SZ /d \"{display_icon}\"
-	{reg} add {subkey} /f /v DisplayName /t REG_SZ /d \"{app_name}\"
-	{reg} add {subkey} /f /v DisplayVersion /t REG_SZ /d \"{version}\"
-	{reg} add {subkey} /f /v Version /t REG_SZ /d \"{version}\"
-	{reg} add {subkey} /f /v BuildDate /t REG_SZ /d \"{build_date}\"
-	{reg} add {subkey} /f /v InstallLocation /t REG_SZ /d \"{path}\"
-	{reg} add {subkey} /f /v Publisher /t REG_SZ /d \"{app_name}\"
-	{reg} add {subkey} /f /v VersionMajor /t REG_DWORD /d {version_major}
-	{reg} add {subkey} /f /v VersionMinor /t REG_DWORD /d {version_minor}
-	{reg} add {subkey} /f /v VersionBuild /t REG_DWORD /d {version_build}
-	{reg} add {subkey} /f /v UninstallString /t REG_SZ /d \"\\\"{exe}\\\" --uninstall\"
-	{reg} add {subkey} /f /v EstimatedSize /t REG_DWORD /d {size}
-	{reg} add {subkey} /f /v WindowsInstaller /t REG_DWORD /d 0
-	{shortcut_cmds}
-{import_config}
-{after_install}
-{sleep}
-    ",
-        display_icon = get_custom_icon(&path, &cur_exe).unwrap_or(exe.to_string()),
-        version = crate::VERSION.replace("-", "."),
-        build_date = crate::BUILD_DATE,
+	{uninstall_str}
+		{chcp} 65001
+		{install_dir_cmd}
+		{copy_exe}
+		{install_reg_cmds}
+		{shortcut_cmds}
+	{import_config}
+	{after_install}
+	{sleep}
+	    ",
         chcp = tools.chcp,
-        reg = tools.reg,
         after_install = get_after_install(
             &exe,
             Some(reg_value_start_menu_shortcuts),
@@ -2176,7 +2402,6 @@ if not exist {quoted_start_menu} exit /b 1
         } else {
             String::new()
         },
-        copy_exe = copy_exe_cmd(&src_exe, &exe, &path, &tools)?,
         import_config = get_import_config(&exe),
         shortcut_cmds = shortcut_cmds,
     );
@@ -2208,22 +2433,32 @@ fn get_before_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> String {
     } else {
         format!(" /FI \"PID ne {}\"", get_current_pid())
     };
+    let delete_service = delete_service_absent_ok(
+        &tools.sc,
+        &tools.timeout,
+        &app_name,
+        "rustdesk_service_deleted_before_uninstall",
+    );
+    let delete_hkcr_ext =
+        delete_reg_key_absent_ok(&tools.reg, &format!("HKEY_CLASSES_ROOT\\.{ext}"));
+    let delete_hkcr_protocol =
+        delete_reg_key_absent_ok(&tools.reg, &format!("HKEY_CLASSES_ROOT\\{ext}"));
+    let delete_firewall_rule =
+        delete_firewall_rule_absent_ok(&tools.netsh, &format!("{app_name} Service"));
     format!(
         "
     {chcp} 65001
-    {sc} stop {app_name}
-    {sc} delete {app_name}
+    {sc} stop \"{app_name}\" >nul 2>nul
     {taskkill} /F /IM {broker_exe}
     {taskkill} /F /IM {app_name}.exe{filter}
-    {reg} delete HKEY_CLASSES_ROOT\\.{ext} /f
-    {reg} delete HKEY_CLASSES_ROOT\\{ext} /f
-    {netsh} advfirewall firewall delete rule name=\"{app_name} Service\"
+    {delete_service}
+    {delete_hkcr_ext}
+    {delete_hkcr_protocol}
+    {delete_firewall_rule}
     ",
         chcp = tools.chcp,
         sc = tools.sc,
         taskkill = tools.taskkill,
-        reg = tools.reg,
-        netsh = tools.netsh,
         broker_exe = WIN_TOPMOST_INJECTED_PROCESS_EXE,
     )
 }
@@ -2266,9 +2501,9 @@ fn get_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> ResultType<Stri
         if let Some(command) =
             command_with_system_tool(&reg_uninstall_string, "msiexec.exe", &tools.msiexec)
         {
-            return Ok(command);
+            return Ok(checked_msi_uninstall_command(command));
         }
-        return Ok(reg_uninstall_string);
+        return Ok(checked_msi_uninstall_command(reg_uninstall_string));
     }
 
     let mut uninstall_cert_cmd = "".to_string();
@@ -2286,19 +2521,33 @@ fn get_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> ResultType<Stri
     let start_menu = quoted_batch_path(&common_programs_app_dir()?)?;
     let public_desktop_shortcut = quoted_batch_path(&public_desktop_app_shortcut_path()?)?;
     let startup_tray_shortcut = quoted_batch_path(&common_startup_tray_shortcut_path()?)?;
+    let delete_uninstall_key = delete_reg_key_absent_ok(&tools.reg, &subkey);
+    let remove_install_dir =
+        delete_batch_path_absent_ok(format!("if exist {path} rd /s /q {path}"), &path);
+    let remove_start_menu = delete_batch_path_absent_ok(
+        format!("if exist {start_menu} rd /s /q {start_menu}"),
+        &start_menu,
+    );
+    let remove_public_desktop_shortcut = delete_batch_path_absent_ok(
+        format!("if exist {public_desktop_shortcut} del /f /q {public_desktop_shortcut}"),
+        &public_desktop_shortcut,
+    );
+    let remove_startup_tray_shortcut = delete_batch_path_absent_ok(
+        format!("if exist {startup_tray_shortcut} del /f /q {startup_tray_shortcut}"),
+        &startup_tray_shortcut,
+    );
     Ok(format!(
         "
     {before_uninstall}
     {uninstall_cert_cmd}
-    {reg} delete {subkey} /f
+    {delete_uninstall_key}
     {uninstall_amyuni_idd}
-    if exist {path} rd /s /q {path}
-    if exist {start_menu} rd /s /q {start_menu}
-    if exist {public_desktop_shortcut} del /f /q {public_desktop_shortcut}
-    if exist {startup_tray_shortcut} del /f /q {startup_tray_shortcut}
+    {remove_install_dir}
+    {remove_start_menu}
+    {remove_public_desktop_shortcut}
+    {remove_startup_tray_shortcut}
     ",
         before_uninstall = get_before_uninstall(kill_self, tools),
-        reg = tools.reg,
         uninstall_amyuni_idd = get_uninstall_amyuni_idd(),
     ))
 }
@@ -2519,14 +2768,21 @@ oLink.Save
     )
 }
 
-fn run_shortcut_script_cmd(script_path: &str, tools: &WindowsSystemTools) -> String {
-    format!(
+fn run_shortcut_script_cmd(
+    script_path: &str,
+    shortcut_path: &Path,
+    tools: &WindowsSystemTools,
+) -> ResultType<String> {
+    batch_literal_text(script_path, "shortcut script path")?;
+    let shortcut_path = quoted_batch_path(shortcut_path)?;
+    Ok(format!(
         "
-{cscript} //NoLogo \"{script_path}\"
-if errorlevel 1 exit /b 1
+{}
+{}
 ",
-        cscript = tools.cscript,
-    )
+        checked_batch_cmd(format!("{} //NoLogo \"{script_path}\"", tools.cscript)),
+        require_batch_path_exists(&shortcut_path),
+    ))
 }
 
 fn to_le(v: &mut [u16]) -> &[u8] {
@@ -3681,20 +3937,29 @@ pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
                 return false;
             }
         };
+    let app_name = crate::get_app_name();
+    let delete_service = delete_service_absent_ok(
+        &tools.sc,
+        &tools.timeout,
+        &app_name,
+        "rustdesk_service_deleted_service_uninstall",
+    );
+    let remove_startup_tray_shortcut = delete_batch_path_absent_ok(
+        format!("if exist {startup_tray_shortcut} del /f /q {startup_tray_shortcut}"),
+        &startup_tray_shortcut,
+    );
     let cmds = format!(
         "
     {chcp} 65001
-    {sc} stop {app_name}
-    {sc} delete {app_name}
-    if exist {startup_tray_shortcut} del /f /q {startup_tray_shortcut}
+    {sc} stop \"{app_name}\" >nul 2>nul
     {taskkill} /F /IM {broker_exe}
     {taskkill} /F /IM {app_name}.exe{filter}
+    {delete_service}
+    {remove_startup_tray_shortcut}
     ",
         chcp = tools.chcp,
         sc = tools.sc,
         taskkill = tools.taskkill,
-        app_name = crate::get_app_name(),
-        startup_tray_shortcut = startup_tray_shortcut,
         broker_exe = WIN_TOPMOST_INJECTED_PROCESS_EXE,
     );
     if let Err(err) = run_cmds(cmds, false, "uninstall") {
@@ -3755,21 +4020,26 @@ pub fn install_service() -> bool {
             return false;
         }
     };
+    let run_tray_shortcut =
+        match run_shortcut_script_cmd(&tray_shortcut_command_path, &tray_shortcut_path, &tools) {
+            Ok(cmd) => cmd,
+            Err(err) => {
+                log::error!("Failed to prepare tray shortcut command: {err}");
+                return false;
+            }
+        };
     let filter = format!(" /FI \"PID ne {}\"", get_current_pid());
     crate::ipc::EXIT_RECV_CLOSE.store(false, Ordering::Relaxed);
     let cmds = format!(
         "
-		{chcp} 65001
-		{taskkill} /F /IM {app_name}.exe{filter}
-		{cscript} //NoLogo \"{tray_shortcut_command_path}\"
-		if errorlevel 1 exit /b 1
-		{import_config}
-		{create_service}
-		    ",
+			{chcp} 65001
+			{taskkill} /F /IM {app_name}.exe{filter}
+			{run_tray_shortcut}
+			{import_config}
+			{create_service}
+			    ",
         chcp = tools.chcp,
         taskkill = tools.taskkill,
-        cscript = tools.cscript,
-        tray_shortcut_command_path = tray_shortcut_command_path,
         app_name = crate::get_app_name(),
         import_config = get_import_config(&exe),
         create_service = get_create_service(&exe, &tools),

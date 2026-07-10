@@ -856,6 +856,70 @@ grep -Fq 'R-S11d-19 — Windows EXE uninstall cleanup known-folder authority' HA
 if [ -n "$r_s11d19" ]; then echo "  FAIL R-S11d-19 Windows EXE uninstall cleanup known-folder authority:$r_s11d19"; rc=1; else
   echo "  ok  R-S11d-19 Windows EXE uninstall cleanup uses known-folder literal paths and no env-expanded ProgramData/Public roots"; fi
 
+echo "== (3b-iii-a5d4d) Windows EXE elevated batch command bodies fail closed (R-S11d-20) =="
+r_s11d20=
+for helper in \
+  'fn checked_batch_cmd(command: impl AsRef<str>) -> String' \
+  'fn checked_reg_add(command: String) -> String' \
+  'fn require_batch_path_exists(quoted_path: &str) -> String' \
+  'fn require_batch_path_absent(quoted_path: &str) -> String' \
+  'fn checked_copy_to_path(command: String, quoted_target: &str) -> String' \
+  'fn ensure_batch_dir_exists(path: &Path) -> ResultType<String>' \
+  'fn delete_batch_path_absent_ok(command: String, quoted_path: &str) -> String' \
+  'fn delete_reg_key_absent_ok(reg: &str, key: &str) -> String' \
+  'fn delete_firewall_rule_absent_ok(netsh: &str, rule_name: &str) -> String' \
+  'fn checked_msi_uninstall_command(command: String) -> String'; do
+  grep -Fq "$helper" src/platform/windows.rs || r_s11d20="$r_s11d20 helper-missing:$helper"
+done
+grep -Fq 'fn delete_service_absent_ok(' src/platform/windows.rs || r_s11d20="$r_s11d20 service-delete-helper-missing"
+grep -Fq 'if errorlevel 1 exit /b 1' src/platform/windows.rs || r_s11d20="$r_s11d20 fail-fast-command-check-missing"
+grep -Fq 'if not exist {quoted_path} exit /b 1' src/platform/windows.rs || r_s11d20="$r_s11d20 path-exists-postcondition-missing"
+grep -Fq 'if exist {quoted_path} exit /b 1' src/platform/windows.rs || r_s11d20="$r_s11d20 path-absent-postcondition-missing"
+grep -Fq '{reg} query {key} >nul 2>nul && exit /b 1' src/platform/windows.rs || r_s11d20="$r_s11d20 registry-delete-absence-check-missing"
+grep -Fq '{netsh} advfirewall firewall show rule name=\"{rule_name}\" >nul 2>nul && exit /b 1' src/platform/windows.rs || r_s11d20="$r_s11d20 firewall-delete-absence-check-missing"
+grep -Fq 'for /L %%i in (1,1,20) do (' src/platform/windows.rs || r_s11d20="$r_s11d20 service-delete-wait-postcondition-missing"
+grep -Fq '{sc} delete \"{service_name}\" >nul 2>nul' src/platform/windows.rs || r_s11d20="$r_s11d20 service-delete-not-absence-driven"
+grep -Fq 'if %ERRORLEVEL% EQU 3010 goto rustdesk_msi_uninstall_ok' src/platform/windows.rs || r_s11d20="$r_s11d20 msi-reboot-success-code-not-accepted"
+grep -Fq 'if %ERRORLEVEL% EQU 1605 goto rustdesk_msi_uninstall_ok' src/platform/windows.rs || r_s11d20="$r_s11d20 msi-absent-product-code-not-accepted"
+grep -Fq 'let cur_exe = batch_path_text(&current_exe, "current exe")?;' src/platform/windows.rs || r_s11d20="$r_s11d20 current-exe-not-batch-literal-guarded"
+grep -Fq 'let copy_broker = checked_copy_to_path(' src/platform/windows.rs || r_s11d20="$r_s11d20 broker-copy-not-checked"
+[ "$(grep -Fc 'let copy_broker = checked_copy_to_path(' src/platform/windows.rs)" -ge 2 ] || r_s11d20="$r_s11d20 all-broker-copy-sites-not-checked"
+grep -Fq 'format!("copy /Y \"{origin_process_exe}\" {cur_exe_quoted}")' src/platform/windows.rs || r_s11d20="$r_s11d20 broker-update-copy-target-not-quoted-checked"
+grep -Fq '{} {src_parent} {install_dir} /Y /E /H /I /K /R /Z' src/platform/windows.rs || r_s11d20="$r_s11d20 xcopy-not-fail-fast-without-c"
+grep -Fq 'let install_dir_cmd = ensure_batch_dir_exists(Path::new(&path))?;' src/platform/windows.rs || r_s11d20="$r_s11d20 install-dir-not-existence-checked"
+grep -Fq 'let install_reg_cmds = [' src/platform/windows.rs || r_s11d20="$r_s11d20 install-registry-not-grouped-checked"
+grep -Fq 'commands.push(checked_reg_add(format!(' src/platform/windows.rs || r_s11d20="$r_s11d20 hkcr-registry-not-checked"
+grep -Fq 'checked_batch_cmd(format!(' src/platform/windows.rs || r_s11d20="$r_s11d20 required-command-wrapper-not-used"
+grep -Fq 'run_shortcut_script_cmd(' src/platform/windows.rs || r_s11d20="$r_s11d20 shortcut-runner-missing"
+grep -Fq 'require_batch_path_exists(&shortcut_path)' src/platform/windows.rs || r_s11d20="$r_s11d20 shortcut-target-postcondition-missing"
+grep -Fq 'delete_reg_key_absent_ok(&tools.reg, &subkey)' src/platform/windows.rs || r_s11d20="$r_s11d20 uninstall-registry-delete-not-absence-checked"
+grep -Fq 'delete_firewall_rule_absent_ok(&tools.netsh, &format!("{app_name} Service"))' src/platform/windows.rs || r_s11d20="$r_s11d20 firewall-cleanup-not-absence-checked"
+grep -Fq 'delete_service_absent_ok(' src/platform/windows.rs || r_s11d20="$r_s11d20 service-cleanup-not-absence-checked"
+grep -Fq '"rustdesk_service_deleted_before_uninstall"' src/platform/windows.rs || r_s11d20="$r_s11d20 full-uninstall-service-delete-label-missing"
+grep -Fq '"rustdesk_service_deleted_service_uninstall"' src/platform/windows.rs || r_s11d20="$r_s11d20 service-uninstall-service-delete-label-missing"
+grep -Fq 'let remove_install_dir =' src/platform/windows.rs || r_s11d20="$r_s11d20 install-dir-removal-not-postchecked"
+grep -Fq 'let remove_start_menu = delete_batch_path_absent_ok(' src/platform/windows.rs || r_s11d20="$r_s11d20 start-menu-removal-not-postchecked"
+grep -Fq 'let remove_public_desktop_shortcut = delete_batch_path_absent_ok(' src/platform/windows.rs || r_s11d20="$r_s11d20 desktop-shortcut-removal-not-postchecked"
+grep -Fq 'let remove_startup_tray_shortcut = delete_batch_path_absent_ok(' src/platform/windows.rs || r_s11d20="$r_s11d20 startup-shortcut-removal-not-postchecked"
+grep -Fq 'checked_msi_uninstall_command(command)' src/platform/windows.rs || r_s11d20="$r_s11d20 bound-msi-uninstall-not-exit-checked"
+grep -Fq 'checked_msi_uninstall_command(reg_uninstall_string)' src/platform/windows.rs || r_s11d20="$r_s11d20 fallback-msi-uninstall-not-exit-checked"
+if grep -Fq '/Y /E /H /C /I /K /R /Z' src/platform/windows.rs; then
+  r_s11d20="$r_s11d20 xcopy-continue-on-error-leftover"
+fi
+if grep -Fq 'md \"{path}\"' src/platform/windows.rs; then
+  r_s11d20="$r_s11d20 raw-install-dir-create-leftover"
+fi
+if grep -Fq '{sc} delete {app_name}' src/platform/windows.rs; then
+  r_s11d20="$r_s11d20 raw-service-delete-leftover"
+fi
+if grep -Fq '{reg} delete {subkey} /f' src/platform/windows.rs; then
+  r_s11d20="$r_s11d20 raw-uninstall-registry-delete-leftover"
+fi
+grep -Fq 'Windows EXE elevated batch command postconditions' requirements.html || r_s11d20="$r_s11d20 requirements-disposition-missing"
+grep -Fq 'R-S11d-20 — Windows EXE elevated batch command postconditions' HARDENING_STATUS.md || r_s11d20="$r_s11d20 hardening-ledger-missing"
+if [ -n "$r_s11d20" ]; then echo "  FAIL R-S11d-20 Windows EXE elevated batch command postconditions:$r_s11d20"; rc=1; else
+  echo "  ok  R-S11d-20 Windows elevated EXE batch bodies fail fast for required operations and verify persistent file/service/registry/firewall cleanup state"; fi
+
 echo "== (3b-iii-a5d5) Windows MSI service state and SAS policy are not persistent user-config side effects (R-S11d-16) =="
 r_s11d16=
 grep -Fq '<Custom Action="CreateStartService" Before="InstallFinalize" Condition="(NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)) AND (NOT CC_CONNECTION_TYPE=&quot;outgoing&quot;)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:create-service-condition-not-always-service"
@@ -905,7 +969,7 @@ done
 grep -q 'let tools = WindowsSystemTools::resolve()?' src/platform/windows.rs || r_s11d5="$r_s11d5 installer-paths-do-not-resolve-tools"
 grep -q 'command_with_system_tool(&reg_uninstall_string, "msiexec.exe", &tools.msiexec)' src/platform/windows.rs || r_s11d5="$r_s11d5 prior-msi-uninstall-not-bound"
 grep -q 'tools.xcopy' src/platform/windows.rs || r_s11d5="$r_s11d5 xcopy-not-bound"
-grep -q '{cscript} //NoLogo' src/platform/windows.rs || r_s11d5="$r_s11d5 cscript-not-bound"
+grep -q 'tools.cscript' src/platform/windows.rs || r_s11d5="$r_s11d5 cscript-not-bound"
 grep -q '{taskkill} /F /IM' src/platform/windows.rs || r_s11d5="$r_s11d5 taskkill-not-bound"
 grep -q '{netsh} advfirewall' src/platform/windows.rs || r_s11d5="$r_s11d5 netsh-not-bound"
 grep -q '{sc} create' src/platform/windows.rs || r_s11d5="$r_s11d5 sc-create-not-bound"
@@ -928,16 +992,18 @@ grep -Fq 'FOLDERID_CommonPrograms' src/platform/windows.rs || r_s11d6="$r_s11d6 
 grep -Fq 'FOLDERID_CommonStartup' src/platform/windows.rs || r_s11d6="$r_s11d6 common-startup-known-folder-missing"
 grep -Fq 'fn create_shortcut_command_file(' src/platform/windows.rs || r_s11d6="$r_s11d6 shortcut-command-helper-missing"
 grep -Fq 'fn installer_script_literal(value: &str, label: &str) -> ResultType<String>' src/platform/windows.rs || r_s11d6="$r_s11d6 shortcut-script-literal-guard-missing"
-grep -Fq 'fn run_shortcut_script_cmd(script_path: &str, tools: &WindowsSystemTools) -> String' src/platform/windows.rs || r_s11d6="$r_s11d6 checked-shortcut-runner-missing"
+grep -Fq 'fn run_shortcut_script_cmd(' src/platform/windows.rs || r_s11d6="$r_s11d6 checked-shortcut-runner-missing"
+grep -Fq 'shortcut_path: &Path,' src/platform/windows.rs || r_s11d6="$r_s11d6 shortcut-runner-target-postcondition-missing"
+grep -Fq ') -> ResultType<String> {' src/platform/windows.rs || r_s11d6="$r_s11d6 shortcut-runner-not-fallible"
 grep -Fq 'fn public_desktop_app_shortcut_path() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d6="$r_s11d6 desktop-shortcut-helper-missing"
 grep -Fq 'Ok(public_desktop_dir()?.join(format!("{}.lnk", crate::get_app_name())))' src/platform/windows.rs || r_s11d6="$r_s11d6 desktop-shortcut-not-final-known-folder"
 grep -Fq 'fn common_programs_app_dir() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d6="$r_s11d6 start-menu-helper-missing"
 grep -Fq 'Ok(common_programs_dir()?.join(crate::get_app_name()))' src/platform/windows.rs || r_s11d6="$r_s11d6 start-menu-shortcut-not-final-known-folder"
 grep -Fq 'fn common_startup_tray_shortcut_path() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d6="$r_s11d6 tray-shortcut-helper-missing"
 grep -Fq 'Ok(common_startup_dir()?.join(format!("{} Tray.lnk", crate::get_app_name())))' src/platform/windows.rs || r_s11d6="$r_s11d6 tray-shortcut-not-final-known-folder"
-grep -Fq '&public_desktop_app_shortcut_path()?' src/platform/windows.rs || r_s11d6="$r_s11d6 desktop-shortcut-callsite-not-helper"
+grep -Fq 'let desktop_shortcut_path = public_desktop_app_shortcut_path()?;' src/platform/windows.rs || r_s11d6="$r_s11d6 desktop-shortcut-callsite-not-helper"
 grep -Fq 'let start_menu = common_programs_app_dir()?;' src/platform/windows.rs || r_s11d6="$r_s11d6 start-menu-shortcut-callsite-not-helper"
-grep -Fq '&common_startup_tray_shortcut_path()?' src/platform/windows.rs || r_s11d6="$r_s11d6 tray-shortcut-callsite-not-helper"
+grep -Fq 'let tray_shortcut_path = common_startup_tray_shortcut_path()?;' src/platform/windows.rs || r_s11d6="$r_s11d6 tray-shortcut-callsite-not-helper"
 grep -Fq 'Path::new(&path).join(format!("Uninstall {app_name}.lnk"))' src/platform/windows.rs || r_s11d6="$r_s11d6 install-dir-uninstall-shortcut-not-final"
 grep -Fq 'if errorlevel 1 exit /b 1' src/platform/windows.rs || r_s11d6="$r_s11d6 shortcut-cscript-not-fail-closed"
 if grep -nE 'sLinkFile = "\{tmp_path\}|copy /Y .*\.lnk|tmp_path.*\.lnk|fn get_tray_shortcut' src/platform/windows.rs >/tmp/rd_verify_r_s11d6_staging.$$; then

@@ -545,10 +545,17 @@ if grep -Fq 'Command::new("taskkill")' libs/portable/src/main.rs || grep -Fq 'Co
 fi
 grep -q 'Windows portable RuntimeBroker cleanup command provenance' requirements.html || r_s11d="$r_s11d portable-taskkill-requirements-disposition-missing"
 grep -q 'R-S11d-10 — Windows portable RuntimeBroker cleanup command provenance' HARDENING_STATUS.md || r_s11d="$r_s11d portable-taskkill-hardening-ledger-missing"
+if rg -n 'wmic|by_wmic|get_pids_with_args_by_wmic|get_pids_with_first_arg_by_wmic|get_pids_with_first_arg_check_session|not\(target_pointer_width = "64"\)|all\(target_os = "windows", not\(target_pointer_width = "64"\)\)' src/common.rs src/platform -g '*.rs' >/tmp/rd_verify_r_s11d_wmic.$$; then
+  cat /tmp/rd_verify_r_s11d_wmic.$$
+  r_s11d="$r_s11d windows:unsupported-32bit-wmic-process-probe-leftover"
+fi
+rm -f /tmp/rd_verify_r_s11d_wmic.$$
+grep -q 'Windows unsupported 32-bit WMIC process-probe deletion' requirements.html || r_s11d="$r_s11d wmic-process-probe-requirements-disposition-missing"
+grep -q 'R-S11d-11 — Windows unsupported 32-bit WMIC process-probe deletion' HARDENING_STATUS.md || r_s11d="$r_s11d wmic-process-probe-hardening-ledger-missing"
 grep -q 'Windows MSI runtime-generated executable cleanup completion authority' requirements.html || r_s11d="$r_s11d runtime-generated-cleanup-requirements-disposition-missing"
 grep -q 'R-S11d-4 — Windows MSI runtime-generated executable cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d runtime-generated-cleanup-hardening-ledger-missing"
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else
-  echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service/SAS custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path; MSI cleanup observes Amyuni and runtime-generated executable completion"; fi
+  echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service/SAS custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path; MSI cleanup observes Amyuni and runtime-generated executable completion; unsupported 32-bit WMIC process probes are absent"; fi
 
 echo "== (3b-iii-a5e) Windows EXE elevated batch binds external tools to System32 (R-S11d-5) =="
 r_s11d5=

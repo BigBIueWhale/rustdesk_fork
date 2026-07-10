@@ -777,6 +777,15 @@ unreachable and a source/test/AST gate prevents reintroduction.
   errors are reported rather than hidden. Verification closure: `scripts/verify.sh` asserts trusted
   `taskkill.exe` resolution, `GetSystemDirectoryW` use, absence of bare taskkill launch, reported spawn errors,
   and this ledger/requirements disposition.
+- **R-S11d-11 — Windows unsupported 32-bit WMIC process-probe deletion — CLOSED 2026-07-10.**
+  Platform: unsupported Windows non-x64 source branches. Endpoint/action: process command-line probes used by
+  `check_process` and the shared platform process helpers. Boundary: release matrix is Windows x86_64; the
+  32-bit Windows branch was inherited dead compatibility code, not a shipped artifact path. Attack surface
+  closed: the fork no longer retains a WMIC fallback that launches `wmic.exe`, parses command-line output, or
+  keeps a non-x64 process-probe detour for Windows. Non-mobile process probes use the existing structured
+  `sysinfo` enumeration path only. Verification closure: `scripts/verify.sh` rejects any reintroduced WMIC
+  helper, `by_wmic` helper, `get_pids_with_first_arg_check_session` helper, or Windows non-64-bit process-probe
+  cfg detour in `src/common.rs` / `src/platform`, and asserts this ledger/requirements disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

@@ -1074,16 +1074,22 @@ unreachable and a source/test/AST gate prevents reintroduction.
   embedded payload paths as relative Windows-safe components, treats decompression/create/write/sync failures as
   fatal, treats generated RuntimeBroker copy failure as fatal, and launches interactive and silent install
   operations only from the protected staging tree. The protected install UI is marked with
-  `RUSTDESK_PROTECTED_INSTALL`, which hides and blocks the run-without-install escape; `run_cmds` executes
-  through trusted `cmd.exe` directly when the process is already elevated instead of prompting for a second
-  elevation. Cleanup removes only manifest-known payload files plus the generated broker copy after verifying
-  parent directories and targets are not reparse points, then removes empty payload directories and the staging
-  root; post-extraction failures still attempt that manifest cleanup before returning.
+  `RUSTDESK_PROTECTED_INSTALL`, which hides and blocks the run-without-install escape; the app-side `install_me`
+  sink requires that exact marker, an already elevated child process, a regular current executable, and a regular
+  non-reparse `Program Files\RustDesk-staging-*` source directory whose parent is the width-correct Program Files
+  root and whose path is outside the final install root before composing the privileged copy command. The copy
+  command receives that verified source directory directly rather than deriving authority from an arbitrary
+  `current_exe().parent()`, and interactive/silent child install failures exit nonzero for the waiting protected
+  packer. `run_cmds` executes through trusted `cmd.exe` directly when the process is already elevated instead of
+  prompting for a second elevation. Cleanup removes only manifest-known payload files plus the generated broker
+  copy after verifying parent directories and targets are not reparse points, then removes empty payload directories
+  and the staging root; post-extraction failures still attempt that manifest cleanup before returning.
   Verification closure: `scripts/verify.sh` asserts the protected relaunch, elevated child exit-code check,
   Program Files staging root, final-root overlap rejection, payload path validation, create-new/synced payload
-  writes, protected install marker, interactive and silent install routing, run-without-install block,
-  already-elevated command execution path, fatal RuntimeBroker source copy, manifest cleanup on success and
-  failure paths, and this ledger/requirements disposition.
+  writes, protected install marker, app-side exact marker/elevation/source-directory proof at `install_me`,
+  verified-source-directory copy construction, interactive and silent install routing, child install nonzero failure
+  exits, run-without-install block, already-elevated command execution path, fatal RuntimeBroker source copy,
+  manifest cleanup on success and failure paths, and this ledger/requirements disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

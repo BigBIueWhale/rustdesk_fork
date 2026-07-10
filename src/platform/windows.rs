@@ -21,7 +21,12 @@ use std::{
     mem,
     os::{
         raw::c_ulong,
-        windows::{ffi::OsStrExt, ffi::OsStringExt, fs::OpenOptionsExt, process::CommandExt},
+        windows::{
+            ffi::OsStrExt,
+            ffi::OsStringExt,
+            fs::{MetadataExt, OpenOptionsExt},
+            process::CommandExt,
+        },
     },
     path::*,
     ptr::null_mut,
@@ -109,6 +114,9 @@ pub const SET_FOREGROUND_WINDOW: &'static str = "SET_FOREGROUND_WINDOW";
 
 const REG_NAME_INSTALL_DESKTOPSHORTCUTS: &str = "DESKTOPSHORTCUTS";
 const REG_NAME_INSTALL_STARTMENUSHORTCUTS: &str = "STARTMENUSHORTCUTS";
+const PROTECTED_INSTALL_ENV_KEY: &str = "RUSTDESK_PROTECTED_INSTALL";
+const PROTECTED_INSTALL_STAGING_PREFIX: &str = "RustDesk-staging-";
+const FILE_ATTRIBUTE_REPARSE_POINT_FLAG: u32 = 0x400;
 
 pub fn get_focused_display(displays: Vec<DisplayInfo>) -> Option<usize> {
     unsafe {
@@ -1730,6 +1738,81 @@ fn fixed_service_install_path(requested_path: &str) -> ResultType<PathBuf> {
     bail!("custom Windows install paths are not supported for the installed service")
 }
 
+fn has_reparse_point(metadata: &fs::Metadata) -> bool {
+    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT_FLAG != 0
+}
+
+fn require_protected_install_source(
+    current_exe: PathBuf,
+    install_dir: &Path,
+) -> ResultType<(PathBuf, PathBuf)> {
+    if std::env::var_os(PROTECTED_INSTALL_ENV_KEY).as_deref() != Some(OsStr::new("1")) {
+        bail!("Windows EXE install requires protected installer staging");
+    }
+    if !is_elevated(None)? {
+        bail!("Windows EXE install requires an elevated protected installer process");
+    }
+
+    let exe_metadata = fs::symlink_metadata(&current_exe)?;
+    if !exe_metadata.is_file()
+        || exe_metadata.file_type().is_symlink()
+        || has_reparse_point(&exe_metadata)
+    {
+        bail!(
+            "Windows EXE install source is not a regular protected file: {:?}",
+            current_exe
+        );
+    }
+
+    let source_dir = current_exe
+        .parent()
+        .ok_or_else(|| anyhow!("Windows EXE install source has no parent directory"))?
+        .to_path_buf();
+    let source_metadata = fs::symlink_metadata(&source_dir)?;
+    if !source_metadata.is_dir()
+        || source_metadata.file_type().is_symlink()
+        || has_reparse_point(&source_metadata)
+    {
+        bail!(
+            "Windows EXE install source directory is not a regular protected directory: {:?}",
+            source_dir
+        );
+    }
+
+    let source_name = source_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow!("Windows EXE install source directory has no valid name"))?;
+    if !source_name.starts_with(PROTECTED_INSTALL_STAGING_PREFIX) {
+        bail!(
+            "Windows EXE install source is not protected installer staging: {:?}",
+            source_dir
+        );
+    }
+
+    let program_files = program_files_dir()?;
+    let source_parent = source_dir
+        .parent()
+        .ok_or_else(|| anyhow!("Windows EXE install source directory has no parent"))?;
+    if normalized_windows_path_text(source_parent) != normalized_windows_path_text(&program_files) {
+        bail!(
+            "Windows EXE install source is outside protected Program Files staging: {:?}",
+            source_dir
+        );
+    }
+
+    let source = normalized_windows_path_text(&source_dir);
+    let final_install = normalized_windows_path_text(install_dir);
+    if source == final_install || source.starts_with(&(final_install + "\\")) {
+        bail!(
+            "Windows EXE install source overlaps the final install directory: {:?}",
+            source_dir
+        );
+    }
+
+    Ok((current_exe, source_dir))
+}
+
 fn fixed_service_install_dir_and_exe() -> ResultType<(String, String)> {
     let path = fixed_service_install_path("")?
         .to_string_lossy()
@@ -1990,36 +2073,32 @@ fn get_install_info_with_subkey(subkey: String) -> (String, String, String) {
     (subkey, path, exe)
 }
 
-fn copy_raw_cmd(
-    src_raw: &str,
+fn copy_source_dir_cmd(
+    source_dir: &Path,
     expected_exe: &str,
     install_dir: &str,
     tools: &WindowsSystemTools,
 ) -> ResultType<String> {
-    let src_parent = PathBuf::from(src_raw)
-        .parent()
-        .ok_or(anyhow!("Can't get parent directory of {src_raw}"))?
-        .to_owned();
-    let src_parent = quoted_batch_path(&src_parent)?;
+    let src_parent = quoted_batch_path(source_dir)?;
     let install_dir = quoted_batch_path(Path::new(install_dir))?;
     let expected_exe = quoted_batch_path(Path::new(expected_exe))?;
-    let main_raw = checked_copy_to_path(
+    let main_copy = checked_copy_to_path(
         format!(
             "{} {src_parent} {install_dir} /Y /E /H /I /K /R /Z",
             tools.xcopy,
         ),
         &expected_exe,
     );
-    Ok(main_raw)
+    Ok(main_copy)
 }
 
 fn copy_exe_cmd(
-    src_exe: &str,
+    source_dir: &Path,
     exe: &str,
     path: &str,
     tools: &WindowsSystemTools,
 ) -> ResultType<String> {
-    let main_exe = copy_raw_cmd(src_exe, exe, path, tools)?;
+    let main_exe = copy_source_dir_cmd(source_dir, exe, path, tools)?;
     let broker_exe = win_topmost_window::INJECTED_PROCESS_EXE;
     let broker_dst = Path::new(path).join(broker_exe);
     let broker_dst = quoted_batch_path(&broker_dst)?;
@@ -2173,9 +2252,8 @@ fn get_after_install(
 pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> ResultType<()> {
     let tools = WindowsSystemTools::resolve()?;
     let uninstall_str = get_uninstall(false, &tools)?;
-    let path = fixed_service_install_path(&path)?
-        .to_string_lossy()
-        .into_owned();
+    let install_dir = fixed_service_install_path(&path)?;
+    let path = install_dir.to_string_lossy().into_owned();
     let (subkey, _path, exe) = get_default_install_info();
     let mut exe = exe;
     exe = exe.replace(&_path, &path);
@@ -2195,6 +2273,7 @@ pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> Res
     let app_name = crate::get_app_name();
 
     let current_exe = std::env::current_exe()?;
+    let (current_exe, source_dir) = require_protected_install_source(current_exe, &install_dir)?;
     let cur_exe = batch_path_text(&current_exe, "current exe")?;
     let mut reg_value_desktop_shortcuts = "0".to_owned();
     let mut reg_value_start_menu_shortcuts = "0".to_owned();
@@ -2302,22 +2381,18 @@ if not exist {quoted_start_menu} exit /b 1
 
     let meta = std::fs::symlink_metadata(&current_exe)?;
     let mut size = meta.len() / 1024;
-    if let Some(parent_dir) = current_exe.parent() {
-        if let Some(d) = parent_dir.to_str() {
-            size = get_directory_size_kb(d);
-        }
+    if let Some(d) = source_dir.to_str() {
+        size = get_directory_size_kb(d);
     }
     // https://docs.microsoft.com/zh-cn/windows/win32/msi/uninstall-registry-key?redirectedfrom=MSDNa
     // https://www.windowscentral.com/how-edit-registry-using-command-prompt-windows-10
     // https://www.tenforums.com/tutorials/70903-add-remove-allowed-apps-through-windows-firewall-windows-10-a.html
-    let src_exe = cur_exe.to_owned();
-
     // R-X4: the install-time license injection (custom_server-from-exe-name -> key /
     // custom-rendezvous-server / api-server) is excised; the fork is direct-IP only.
 
     let display_icon = get_custom_icon(&path, &cur_exe).unwrap_or(exe.to_string());
     let install_dir_cmd = ensure_batch_dir_exists(Path::new(&path))?;
-    let copy_exe = copy_exe_cmd(&src_exe, &exe, &path, &tools)?;
+    let copy_exe = copy_exe_cmd(&source_dir, &exe, &path, &tools)?;
     let install_reg_cmds = [
         checked_reg_add(format!("{reg} add {subkey} /f", reg = tools.reg)),
         checked_reg_add(format!(

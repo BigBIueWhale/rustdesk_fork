@@ -237,10 +237,12 @@ pub fn core_main() -> Option<Vec<String>> {
                 }
                 let options = "desktopicon startmenu";
                 let res = platform::install_me(options, "".to_owned(), true, args.len() > 1);
+                let mut failed = false;
                 let text = match res {
                     Ok(_) => translate("Installation Successful!".to_string()),
                     Err(err) => {
                         println!("Failed with error: {err}");
+                        failed = true;
                         translate("Installation failed!".to_string())
                     }
                 };
@@ -251,6 +253,9 @@ pub fn core_main() -> Option<Vec<String>> {
                     .duration(Duration::Short)
                     .show()
                     .ok();
+                if failed {
+                    std::process::exit(1);
+                }
                 return None;
             } else if args[0] == "--uninstall-cert" {
                 #[cfg(windows)]

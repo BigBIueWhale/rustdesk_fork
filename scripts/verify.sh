@@ -638,6 +638,23 @@ grep -Fq 'is_windows_safe_component(component)' libs/portable/src/bin_reader.rs 
 grep -Fq '.create_new(true)' libs/portable/src/bin_reader.rs || r_s11d="$r_s11d portable-staging:payload-temp-not-create-new"
 grep -Fq 'file.sync_all()' libs/portable/src/bin_reader.rs || r_s11d="$r_s11d portable-staging:payload-write-not-synced"
 grep -Fq 'std::env::var_os("RUSTDESK_PROTECTED_INSTALL").is_some()' src/ui_interface.rs || r_s11d="$r_s11d portable-staging:run-without-install-not-blocked"
+grep -Fq 'const PROTECTED_INSTALL_ENV_KEY: &str = "RUSTDESK_PROTECTED_INSTALL";' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-protected-env-missing"
+grep -Fq 'const PROTECTED_INSTALL_STAGING_PREFIX: &str = "RustDesk-staging-";' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-staging-prefix-missing"
+grep -Fq 'fn require_protected_install_source(' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-proof-helper-missing"
+grep -Fq 'std::env::var_os(PROTECTED_INSTALL_ENV_KEY).as_deref() != Some(OsStr::new("1"))' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-protected-env-not-exact"
+grep -Fq 'if !is_elevated(None)? {' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-does-not-require-elevated-child"
+grep -Fq 'fs::symlink_metadata(&current_exe)?' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-source-exe-not-inspected"
+grep -Fq 'has_reparse_point(&exe_metadata)' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-source-exe-reparse-not-rejected"
+grep -Fq 'fs::symlink_metadata(&source_dir)?' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-source-dir-not-inspected"
+grep -Fq 'has_reparse_point(&source_metadata)' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-source-dir-reparse-not-rejected"
+grep -Fq 'source_name.starts_with(PROTECTED_INSTALL_STAGING_PREFIX)' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-staging-prefix-not-required"
+grep -Fq 'normalized_windows_path_text(source_parent) != normalized_windows_path_text(&program_files)' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-program-files-parent-not-required"
+grep -Fq 'source == final_install || source.starts_with(&(final_install + "\\"))' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-final-root-overlap-not-rejected"
+grep -Fq 'let (current_exe, source_dir) = require_protected_install_source(current_exe, &install_dir)?;' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-proof-not-consumed-by-install"
+grep -Fq 'fn copy_source_dir_cmd(' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-source-dir-copy-helper-missing"
+grep -Fq 'let src_parent = quoted_batch_path(source_dir)?;' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-copy-source-dir-not-quoted"
+grep -Fq 'let copy_exe = copy_exe_cmd(&source_dir, &exe, &path, &tools)?;' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-copy-not-bound-to-proven-source-dir"
+grep -Fq 'log::error!("Failed to install: {err}");' src/ui_interface.rs || r_s11d="$r_s11d portable-staging:interactive-install-failure-not-logged"
 grep -Fq 'let already_elevated = match is_elevated(None)' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:run-cmds-no-already-elevated-fast-path"
 grep -Fq 'std::process::Command::new(&cmd)' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:run-cmds-elevated-direct-cmd-missing"
 if grep -Fq 'std::fs::remove_dir_all(&dir).ok()' libs/portable/src/main.rs; then
@@ -649,6 +666,20 @@ fi
 if grep -Fq 'cmd.arg("--install")' libs/portable/src/main.rs && ! grep -Fq '.env(PROTECTED_INSTALL_ENV_KEY, "1")' libs/portable/src/main.rs; then
   r_s11d="$r_s11d portable-staging:unmarked-install-ui-child"
 fi
+if grep -Fq 'let src_exe = cur_exe.to_owned();' src/platform/windows.rs \
+  || grep -Fq 'fn copy_raw_cmd(' src/platform/windows.rs \
+  || grep -Fq 'PathBuf::from(src_raw)' src/platform/windows.rs \
+  || grep -Fq 'copy_exe_cmd(&src_exe, &exe, &path, &tools)?' src/platform/windows.rs; then
+  r_s11d="$r_s11d portable-staging:raw-current-exe-parent-copy-leftover"
+fi
+silent_install_block=$(awk '/args\[0\] == "--silent-install"/,/args\[0\] == "--uninstall-cert"/' src/core_main.rs)
+if ! printf '%s\n' "$silent_install_block" | grep -Fq 'std::process::exit(1);'; then
+  r_s11d="$r_s11d portable-staging:silent-child-install-failure-exits-success"
+fi
+if ! rg -U 'pub fn install_me\(_options: String, _path: String, _silent: bool, _debug: bool\) \{\s*#\[cfg\(windows\)\]\s*std::thread::spawn\(move \|\| \{\s*if let Err\(err\) = crate::platform::windows::install_me\(&_options, _path, _silent, _debug\) \{\s*log::error!\("Failed to install: \{err\}"\);\s*std::process::exit\(1\);' src/ui_interface.rs >/tmp/rd_verify_r_s11d_install_ui.$$; then
+  r_s11d="$r_s11d portable-staging:interactive-child-install-failure-exits-success"
+fi
+rm -f /tmp/rd_verify_r_s11d_install_ui.$$
 grep -q 'Windows portable installer source-staging authority' requirements.html || r_s11d="$r_s11d portable-staging-requirements-disposition-missing"
 grep -q 'R-S11d-17 — Windows portable installer source-staging authority' HARDENING_STATUS.md || r_s11d="$r_s11d portable-staging-hardening-ledger-missing"
 if rg -n 'wmic|by_wmic|get_pids_with_args_by_wmic|get_pids_with_first_arg_by_wmic|get_pids_with_first_arg_check_session|not\(target_pointer_width = "64"\)|all\(target_os = "windows", not\(target_pointer_width = "64"\)\)' src/common.rs src/platform -g '*.rs' >/tmp/rd_verify_r_s11d_wmic.$$; then

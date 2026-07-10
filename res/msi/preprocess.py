@@ -90,12 +90,6 @@ def make_parser():
         "-c", "--custom", action="store_true", help="Is custom client", default=False
     )
     parser.add_argument(
-        "--conn-type",
-        type=str,
-        default="",
-        help='Connection type, e.g. "incoming", "outgoing". Default is empty, means incoming-outgoing',
-    )
-    parser.add_argument(
         "--app-name", type=str, default="RustDesk", help="The app name."
     )
     parser.add_argument(
@@ -453,27 +447,6 @@ def gen_custom_ARPSYSTEMCOMPONENT(args, dist_dir):
     else:
         return gen_custom_ARPSYSTEMCOMPONENT_False(args)
 
-def gen_conn_type(args):
-    def func(lines, index_start):
-        indent = g_indent_unit * 3
-
-        lines_new = []
-        if args.conn_type != "":
-            lines_new.append(
-                f"""{indent}<Property Id="CC_CONNECTION_TYPE" Value="{args.conn_type}" />\n"""
-            )
-
-        for i, line in enumerate(lines_new):
-            lines.insert(index_start + i + 1, line)
-        return lines
-
-    return gen_content_between_tags(
-        "Package/Fragments/AddRemoveProperties.wxs",
-        "<!--$CustomClientPropsStart$-->",
-        "<!--$CustomClientPropsEnd$-->",
-        func,
-    )
-
 def gen_content_between_tags(filename, tag_start, tag_end, func):
     target_file = Path(sys.argv[0]).parent.joinpath(filename)
     lines, index_start = read_lines_and_start_index(target_file, tag_start, tag_end)
@@ -598,9 +571,6 @@ if __name__ == "__main__":
         sys.exit(-1)
 
     if not gen_custom_ARPSYSTEMCOMPONENT(args, dist_dir):
-        sys.exit(-1)
-
-    if not gen_conn_type(args):
         sys.exit(-1)
 
     if not gen_auto_component(app_name, dist_dir):

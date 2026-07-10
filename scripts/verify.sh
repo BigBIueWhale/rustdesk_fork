@@ -920,11 +920,27 @@ grep -Fq 'R-S11d-20 — Windows EXE elevated batch command postconditions' HARDE
 if [ -n "$r_s11d20" ]; then echo "  FAIL R-S11d-20 Windows EXE elevated batch command postconditions:$r_s11d20"; rc=1; else
   echo "  ok  R-S11d-20 Windows elevated EXE batch bodies fail fast for required operations and verify persistent file/service/registry/firewall cleanup state"; fi
 
+echo "== (3b-iii-a5d4a) Windows MSI service mode is package authority, not caller connection type (R-S11d-21) =="
+r_s11d21=
+if grep -RInE 'CC_CONNECTION_TYPE|--conn-type|conn_type|gen_conn_type' res/msi >/tmp/rd_verify_r_s11d21_msi.$$; then
+  cat /tmp/rd_verify_r_s11d21_msi.$$
+  r_s11d21="$r_s11d21 msi:connection-type-service-gate-leftover"
+fi
+rm -f /tmp/rd_verify_r_s11d21_msi.$$
+grep -Fq '<Custom Action="CreateStartService" Before="InstallFinalize" Condition="NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d21="$r_s11d21 msi:create-service-not-package-policy"
+grep -Fq '<Custom Action="CreateStartService.SetParam" Before="CreateStartService" Condition="NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d21="$r_s11d21 msi:create-service-setparam-not-package-policy"
+grep -Fq '<Custom Action="LaunchAppTray" After="InstallFinalize" Condition="(LAUNCH_TRAY_APP=&quot;Y&quot; OR LAUNCH_TRAY_APP=&quot;1&quot;) AND (NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE))"/>' res/msi/Package/Components/RustDesk.wxs || r_s11d21="$r_s11d21 msi:launch-tray-still-connection-type-gated"
+grep -Fq '<Component Id="App.StartupFolder.ShortcutTray" Guid="B1D1E2BB-E53E-E159-DB7C-744D5C726A8C" Condition="STARTUPSHORTCUTS = 1">' res/msi/Package/Components/RustDesk.wxs || r_s11d21="$r_s11d21 msi:startup-tray-still-connection-type-gated"
+grep -Fq 'Windows MSI service-mode package authority' requirements.html || r_s11d21="$r_s11d21 requirements-disposition-missing"
+grep -Fq 'R-S11d-21 — Windows MSI service-mode package authority' HARDENING_STATUS.md || r_s11d21="$r_s11d21 hardening-ledger-missing"
+if [ -n "$r_s11d21" ]; then echo "  FAIL R-S11d-21 Windows MSI service-mode package authority:$r_s11d21"; rc=1; else
+  echo "  ok  R-S11d-21 MSI service/tray install state is no longer controlled by connection-type public properties"; fi
+
 echo "== (3b-iii-a5d5) Windows MSI service state and SAS policy are not persistent user-config side effects (R-S11d-16) =="
 r_s11d16=
-grep -Fq '<Custom Action="CreateStartService" Before="InstallFinalize" Condition="(NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)) AND (NOT CC_CONNECTION_TYPE=&quot;outgoing&quot;)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:create-service-condition-not-always-service"
-grep -Fq '<Custom Action="CreateStartService.SetParam" Before="CreateStartService" Condition="(NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)) AND (NOT CC_CONNECTION_TYPE=&quot;outgoing&quot;)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:create-service-setparam-condition-not-always-service"
-grep -Fq '<Custom Action="LaunchAppTray" After="InstallFinalize" Condition="(LAUNCH_TRAY_APP=&quot;Y&quot; OR LAUNCH_TRAY_APP=&quot;1&quot;) AND (NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)) AND (NOT CC_CONNECTION_TYPE=&quot;outgoing&quot;)"/>' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:launch-tray-still-service-stop-gated"
+grep -Fq '<Custom Action="CreateStartService" Before="InstallFinalize" Condition="NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:create-service-condition-not-always-service"
+grep -Fq '<Custom Action="CreateStartService.SetParam" Before="CreateStartService" Condition="NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:create-service-setparam-condition-not-always-service"
+grep -Fq '<Custom Action="LaunchAppTray" After="InstallFinalize" Condition="(LAUNCH_TRAY_APP=&quot;Y&quot; OR LAUNCH_TRAY_APP=&quot;1&quot;) AND (NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE))"/>' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:launch-tray-still-service-stop-gated"
 grep -Fq '<Custom Action="TryStopDeleteService" Before="RemoveRuntimeGeneratedFiles.SetParam" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:stop-delete-service-not-remove-upgrade-scoped"
 grep -Fq '<Custom Action="TryStopDeleteService.SetParam" Before="TryStopDeleteService" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:stop-delete-service-setparam-not-remove-upgrade-scoped"
 if grep -RInE 'STOP_SERVICE|SetPropertyServiceStop|SetPropertyFromConfig|SetPropertyIsServiceRunning|TryDeleteStartupShortcut|ReadConfig|AddRegSoftwareSASGeneration|SoftwareSASGeneration' res/msi >/tmp/rd_verify_r_s11d16_msi.$$; then

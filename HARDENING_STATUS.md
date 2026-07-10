@@ -944,13 +944,13 @@ unreachable and a source/test/AST gate prevents reintroduction.
   retains checked `sc` exit handling. Uninstall cleanup now uses absence-driven helpers for service deletion,
   HKCR/HKLM key deletion, firewall rule deletion, install-directory removal, Start Menu removal, Public Desktop
   shortcut removal, and Common Startup tray-shortcut removal. Prior MSI uninstall delegation now observes
-  `msiexec` exit status, accepting only success, reboot-required `3010`, and product-absent `1605`. Explicitly
-  not claimed by this slice: certificate cleanup and Amyuni IDD cleanup. R-S11d-21 separately closes the MSI
-  `CC_CONNECTION_TYPE` public-property service-mode gate. Verification closure: `scripts/verify.sh` asserts the
-  fail-fast and absence-postcondition helpers, checked copy/update/install call sites, removal of `xcopy /C`,
-  install directory and shortcut existence postconditions, service/registry/firewall absence checks, MSI uninstall
-  exit handling, absence of raw install-dir create/service-delete/uninstall-registry-delete leftovers, and this
-  ledger/requirements disposition.
+  `msiexec` exit status, accepting only success, reboot-required `3010`, and product-absent `1605`. R-S11d-21
+  separately closes the MSI `CC_CONNECTION_TYPE` public-property service-mode gate, and R-S11d-22 separately closes
+  EXE certificate-cleanup completion. This slice does not claim additional Amyuni IDD cleanup beyond
+  R-S11d-2/R-S11d-7. Verification closure: `scripts/verify.sh` asserts the fail-fast and absence-postcondition
+  helpers, checked copy/update/install call sites, removal of `xcopy /C`, install directory and shortcut existence
+  postconditions, service/registry/firewall absence checks, MSI uninstall exit handling, absence of raw install-dir
+  create/service-delete/uninstall-registry-delete leftovers, and this ledger/requirements disposition.
 - **R-S11d-21 — Windows MSI service-mode package authority — CLOSED 2026-07-10.**
   Platform: Windows MSI install/repair/upgrade. Endpoint/action: package-time service creation/start, tray launch,
   and startup tray shortcut installation. Boundary: MSI public properties and transforms ↔ per-machine LocalSystem
@@ -961,6 +961,21 @@ unreachable and a source/test/AST gate prevents reintroduction.
   the package's pinned service policy. Verification closure: `scripts/verify.sh` rejects `CC_CONNECTION_TYPE`,
   `--conn-type`, `conn_type`, and `gen_conn_type` under `res/msi`, asserts the service/tray/startup shortcut
   conditions without a connection-type branch, and pins this ledger/requirements disposition.
+- **R-S11d-22 — Windows EXE certificate cleanup completion authority — CLOSED 2026-07-10.**
+  Platform: Windows EXE uninstall. Endpoint/action: elevated uninstall batch invoking `--uninstall-cert`, the
+  Rust `uninstall_cert()` FFI wrapper, and `windows_delete_test_cert.cc` deleting the fixed WDK test-certificate
+  thumbprint plus the historical malformed ROOT store. Boundary: elevated uninstall completion ↔ persistent
+  Windows certificate trust state. Attack surface closed: certificate cleanup can no longer fail or be skipped
+  while EXE uninstall reports success. `get_uninstall` now fails if the current executable cannot be resolved and
+  wraps `--uninstall-cert` with the fail-fast batch helper; the CLI arm logs cleanup errors and exits nonzero; the
+  Rust FFI wrapper treats a false native result as an error; and the native helper returns `BOOL` after checking
+  every registry operation it owns. The native helper also removes the stale `readResult` branch that prevented the
+  certificate Blob read from authorizing deletion, deletes only the fixed thumbprint after a bounded WDK-test-cert
+  suffix match, preserves malformed-ROOT-store cleanup through an explicit wide prefix, and opens store keys with
+  read-scoped access rather than `KEY_ALL_ACCESS`. Verification closure: `scripts/verify.sh` asserts the native
+  `BOOL` contract, Rust status propagation, nonzero CLI exit on failure, checked uninstall batch command, fatal
+  current-exe resolution, checked Blob read, bounded Blob match, explicit malformed-store prefix, absence of the
+  old void-return/read-result/ignored-error/all-access shapes, and this ledger/requirements disposition.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's

@@ -936,6 +936,37 @@ grep -Fq 'R-S11d-21 — Windows MSI service-mode package authority' HARDENING_ST
 if [ -n "$r_s11d21" ]; then echo "  FAIL R-S11d-21 Windows MSI service-mode package authority:$r_s11d21"; rc=1; else
   echo "  ok  R-S11d-21 MSI service/tray install state is no longer controlled by connection-type public properties"; fi
 
+echo "== (3b-iii-a5d4b) Windows EXE certificate cleanup reports and enforces completion (R-S11d-22) =="
+r_s11d22=
+grep -Fq 'extern "C" BOOL DeleteRustDeskTestCertsW()' src/platform/windows_delete_test_cert.cc || r_s11d22="$r_s11d22 cert-helper-not-status-returning"
+grep -Fq 'fn DeleteRustDeskTestCertsW() -> BOOL;' src/platform/windows.rs || r_s11d22="$r_s11d22 rust-ffi-not-status-returning"
+grep -Fq 'if unsafe { DeleteRustDeskTestCertsW() } == 0 {' src/platform/windows.rs || r_s11d22="$r_s11d22 rust-ffi-status-not-checked"
+grep -Fq 'return Err(anyhow!("Failed to delete RustDesk test certificates"));' src/platform/windows.rs || r_s11d22="$r_s11d22 cert-cleanup-error-not-propagated"
+grep -Fq 'if let Err(err) = crate::platform::windows::uninstall_cert() {' src/core_main.rs || r_s11d22="$r_s11d22 uninstall-cert-cli-not-error-checked"
+grep -Fq 'std::process::exit(1);' src/core_main.rs || r_s11d22="$r_s11d22 uninstall-cert-cli-not-nonzero-on-failure"
+grep -Fq 'checked_batch_cmd(format!("{} --uninstall-cert", quoted_batch_path(&exe)?))' src/platform/windows.rs || r_s11d22="$r_s11d22 uninstall-cert-batch-command-not-checked"
+grep -Fq 'map_err(|err| anyhow!("Failed to resolve current exe for certificate uninstall: {err}"))?' src/platform/windows.rs || r_s11d22="$r_s11d22 uninstall-cert-current-exe-failure-not-fatal"
+grep -Fq 'result = RegQueryValueExW(cert_key.get(), L"Blob", NULL, &value_type, blob.data(), &blob_size);' src/platform/windows_delete_test_cert.cc || r_s11d22="$r_s11d22 cert-blob-read-not-status-checked"
+grep -Fq 'return std::memcmp(blob.data() + blob.size() - suffix_size, kWdkTestCertSuffix, suffix_size) == 0;' src/platform/windows_delete_test_cert.cc || r_s11d22="$r_s11d22 cert-blob-match-not-bounded"
+grep -Fq 'RegOpenKeyExW(root, base_path.c_str(), 0, KEY_READ, system_certificates.receive())' src/platform/windows_delete_test_cert.cc || r_s11d22="$r_s11d22 cert-store-open-not-read-scoped"
+grep -Fq 'const wchar_t kWrongRootStorePrefix[] = {static_cast<wchar_t>(0x4F52), static_cast<wchar_t>(0x544F), L' src/platform/windows_delete_test_cert.cc || r_s11d22="$r_s11d22 wrong-root-prefix-not-wide-explicit"
+if grep -Fq 'extern "C" void DeleteRustDeskTestCertsW' src/platform/windows_delete_test_cert.cc src/platform/windows.rs; then
+  r_s11d22="$r_s11d22 cert-helper-void-return-leftover"
+fi
+if grep -Fq 'readResult' src/platform/windows_delete_test_cert.cc; then
+  r_s11d22="$r_s11d22 stale-cert-read-result-leftover"
+fi
+if grep -Fq 'KEY_ALL_ACCESS' src/platform/windows_delete_test_cert.cc; then
+  r_s11d22="$r_s11d22 certificate-cleanup-all-access-leftover"
+fi
+if grep -Fq 'allow_err!(crate::platform::windows::uninstall_cert())' src/core_main.rs; then
+  r_s11d22="$r_s11d22 uninstall-cert-cli-ignored-error-leftover"
+fi
+grep -Fq 'Windows EXE certificate cleanup completion authority' requirements.html || r_s11d22="$r_s11d22 requirements-disposition-missing"
+grep -Fq 'R-S11d-22 — Windows EXE certificate cleanup completion authority' HARDENING_STATUS.md || r_s11d22="$r_s11d22 hardening-ledger-missing"
+if [ -n "$r_s11d22" ]; then echo "  FAIL R-S11d-22 Windows EXE certificate cleanup completion authority:$r_s11d22"; rc=1; else
+  echo "  ok  R-S11d-22 EXE uninstall certificate cleanup returns status, propagates errors, and is fail-fast in the elevated batch"; fi
+
 echo "== (3b-iii-a5d5) Windows MSI service state and SAS policy are not persistent user-config side effects (R-S11d-16) =="
 r_s11d16=
 grep -Fq '<Custom Action="CreateStartService" Before="InstallFinalize" Condition="NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:create-service-condition-not-always-service"

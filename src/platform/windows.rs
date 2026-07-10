@@ -2506,15 +2506,10 @@ fn get_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> ResultType<Stri
         return Ok(checked_msi_uninstall_command(reg_uninstall_string));
     }
 
-    let mut uninstall_cert_cmd = "".to_string();
-    match std::env::current_exe() {
-        Ok(exe) => {
-            uninstall_cert_cmd = format!("{} --uninstall-cert", quoted_batch_path(&exe)?);
-        }
-        Err(err) => {
-            log::warn!("Failed to resolve current exe for certificate uninstall: {err}");
-        }
-    }
+    let exe = std::env::current_exe()
+        .map_err(|err| anyhow!("Failed to resolve current exe for certificate uninstall: {err}"))?;
+    let uninstall_cert_cmd =
+        checked_batch_cmd(format!("{} --uninstall-cert", quoted_batch_path(&exe)?));
     let (subkey, path, _) = get_install_info();
     batch_literal_text(&path, "installed path")?;
     let path = format!("\"{path}\"");
@@ -3725,14 +3720,15 @@ pub fn uninstall_cert() -> ResultType<()> {
 }
 
 mod cert {
-    use hbb_common::ResultType;
+    use hbb_common::{anyhow::anyhow, ResultType};
+    use winapi::shared::minwindef::BOOL;
 
     extern "C" {
-        fn DeleteRustDeskTestCertsW();
+        fn DeleteRustDeskTestCertsW() -> BOOL;
     }
     pub fn uninstall_cert() -> ResultType<()> {
-        unsafe {
-            DeleteRustDeskTestCertsW();
+        if unsafe { DeleteRustDeskTestCertsW() } == 0 {
+            return Err(anyhow!("Failed to delete RustDesk test certificates"));
         }
         Ok(())
     }

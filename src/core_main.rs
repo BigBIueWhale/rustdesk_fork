@@ -253,7 +253,10 @@ pub fn core_main() -> Option<Vec<String>> {
                 return None;
             } else if args[0] == "--uninstall-cert" {
                 #[cfg(windows)]
-                hbb_common::allow_err!(crate::platform::windows::uninstall_cert());
+                if let Err(err) = crate::platform::windows::uninstall_cert() {
+                    log::error!("Failed to uninstall test certificates: {}", err);
+                    std::process::exit(1);
+                }
                 return None;
             } else if args[0] == "--install-idd" {
                 #[cfg(windows)]

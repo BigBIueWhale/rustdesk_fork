@@ -1080,8 +1080,9 @@ surfaces remain contained by manifest/exported-permission shape; iOS has no cont
 in scope; Unix IPC parent/socket hardening remains a prerequisite and is not the failing layer; FileTransfer
 authorization, file-transfer symlink TOCTOU, port-forward plaintext, decompression amplification,
 OS-login/PAM/LogonUser, deep-link password/config/import, and Windows terminal-helper SYSTEM-shell concerns
-are tracked by their existing requirements/fixes, not reopened here. Dependency advisories remain the
-separate R-R3/Appendix D open item.
+are tracked by their existing requirements/fixes, not reopened here. Dependency advisories are the separate
+R-R3/Appendix D gated class: Rust and Dart package advisories are checked by the pinned advisory gates, while
+native vcpkg codec advisories remain the Appendix C #2b watch/residual.
 
 Current implementation is compliant with this R-S11b/R-S11c stronger requirement as of 2026-07-09. No
 release or prerelease should be promoted on that fact alone; the separate live-QA, build, dependency, and
@@ -1751,9 +1752,12 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   "complete"/"proven" milestones. GREEN again at HEAD (2026-07-01). **To wire in:** add
   it to the release-verification path so future Apple-source drift fails fast rather than
   silently.
-- **R-R3 dependency-advisory gates** — `cargo audit`/`cargo deny` (`scripts/audit.sh`)
-  and `osv-scanner` (`scripts/dart-audit.sh`) are wired; the documented-accept
-  ledger is maintained there.
+- **R-R3 dependency-advisory gates** — `scripts/audit.sh` builds a digest-pinned Rust 1.75 audit image,
+  installs the pinned `cargo-audit` and `cargo-deny` versions from `scripts/pins.env`, bakes the pinned
+  RustSec advisory-db snapshot, derives cargo-audit ignores only from `deny.toml` TOML ignore objects,
+  then runs both `cargo-audit` and `cargo-deny check advisories`. `scripts/dart-audit.sh` runs pinned
+  offline OSV for `flutter/pubspec.lock` and requires reason-bearing future accepts. `scripts/verify.sh`
+  pins that structure; `scripts/native-codec-watch.sh` covers the vcpkg native-codec watch separately.
 - **Peer-avatar remote-image egress — ✅ CLOSED 2026-07-01.** The 2026-07-01
   completion review found the sole open gap: a CPace-authenticated peer's
   `LoginRequest.avatar` (`connection.rs:1447` → CM `Client`) was rendered by

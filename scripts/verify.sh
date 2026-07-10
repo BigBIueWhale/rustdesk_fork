@@ -16,7 +16,7 @@
 # vcpkg flow in build-debian.sh). Exit non-zero if any gate fails.
 #
 # COMPANION GATE: scripts/audit.sh runs the R-R3/R-A7 dependency-advisory check
-# for the Rust crate graph (cargo-audit against deny.toml + a pinned advisory-db),
+# for the Rust crate graph (cargo-audit + cargo-deny against deny.toml and a pinned advisory-db),
 # and scripts/dart-audit.sh is its Dart-side mirror (osv-scanner against
 # flutter/pubspec.lock + the deny-style accept-list scripts/dart-audit-ignores.txt,
 # offline against a pinned OSV "Pub" snapshot). Both are kept separate because they
@@ -4015,6 +4015,39 @@ elif [ "$(printf '%s\n3.7.2\n' "$pb_ver" | sort -V | head -1)" != "3.7.2" ]; the
   echo "  FAIL R-A7: rust-protobuf $pb_ver < 3.7.2 reopens RUSTSEC-2024-0437 recursion-crash DoS (parser-safety floor)"; rc=1
 else
   echo "  ok  R-A7 protobuf parser-safety floor: rust-protobuf $pb_ver >= 3.7.2 (RUSTSEC-2024-0437 recursion-limit fix; pre-key Cpace + post-key Message parse; audited 2026-06-29)"
+fi
+
+# R-R3/R-A7 advisory gates are intentionally outside the fast verifier, but the
+# verifier pins their fail-closed structure: both Rust advisory tools must be wired,
+# pins must come from scripts/pins.env, and accept-lists must not be comment greps.
+echo "== R-R3/R-A7 dependency-advisory gate wiring =="
+r_r3_gate=
+grep -qF '. scripts/pins.env' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-pins-env"
+grep -qF 'CARGO_AUDIT_VERSION' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-cargo-audit-pin"
+grep -qF 'CARGO_DENY_VERSION' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-cargo-deny-pin"
+grep -qF 'ADVISORY_DB_COMMIT' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-advisory-db-pin"
+grep -qF 'SHA256_BASEIMAGE_RUST_1_75_SLIM' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-base-digest-pin"
+grep -qF 'cargo-audit audit --db "$ADVISORY_DB" --no-fetch "$@"' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-cargo-audit-run"
+grep -qF 'cargo-deny --locked check -c "$tmp" advisories --disable-fetch' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-cargo-deny-run"
+grep -qF 'tomllib.load' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-toml-ignore-parser"
+if grep -qE 'grep .*RUSTSEC.*deny[.]toml' scripts/audit.sh; then
+  r_r3_gate="$r_r3_gate audit:comment-grep-ignore-parser"
+fi
+grep -qF 'FROM rust:${RUST_VERSION}-slim@${BASE_DIGEST}' scripts/Dockerfile.audit || r_r3_gate="$r_r3_gate docker:no-digest-pinned-rust-base"
+grep -qF 'cargo install cargo-audit --version "$CARGO_AUDIT_VERSION" --locked' scripts/Dockerfile.audit || r_r3_gate="$r_r3_gate docker:no-pinned-cargo-audit"
+grep -qF 'cargo install cargo-deny --version "$CARGO_DENY_VERSION" --locked' scripts/Dockerfile.audit || r_r3_gate="$r_r3_gate docker:no-pinned-cargo-deny"
+grep -qF 'CARGO_DENY_DB_PATH' scripts/Dockerfile.audit || r_r3_gate="$r_r3_gate docker:no-deny-db-path"
+grep -qF 'CARGO_DENY_VERSION=' scripts/pins.env || r_r3_gate="$r_r3_gate pins:no-cargo-deny-version"
+grep -qF 'SHA256_BASEIMAGE_RUST_1_75_SLIM=' scripts/pins.env || r_r3_gate="$r_r3_gate pins:no-rust-audit-base-digest"
+grep -qF 'accepted advisory has no reason' scripts/dart-audit.sh || r_r3_gate="$r_r3_gate dart:no-accept-reason-parser"
+grep -qF 'expected exactly one advisory id' scripts/dart-audit.sh || r_r3_gate="$r_r3_gate dart:no-strict-id-parser"
+if grep -qE 'no[^<]{0,30}<code>deny[.]toml</code>|cargo[- ]audit</code> is not wired|not <code>cargo[- ]audit</code>-clean today|R-A7'\''s "audit green" does <em>not</em> hold as-is|dependency tree remains <strong>outstanding work</strong> \\(#16\\)' requirements.html; then
+  r_r3_gate="$r_r3_gate requirements:stale-r-r3-text"
+fi
+if [ -n "$r_r3_gate" ]; then
+  echo "  FAIL R-R3/R-A7 advisory gate wiring regressed:$r_r3_gate"; rc=1
+else
+  echo "  ok  R-R3/R-A7 Rust cargo-audit+cargo-deny gate, Dart OSV gate, pinned advisory snapshots, and structured accept-list parsing are wired"
 fi
 # R-D5 / R-SV4 / R-G1: config-option keys + an IPC vestige orphaned by the UDP / webrtc / WebSocket
 # excisions are REMOVED, not just left unread — OPTION_DISABLE_UDP (the UDP transport is gone) +

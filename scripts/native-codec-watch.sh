@@ -11,7 +11,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 LEDGER=docs/NATIVE-CODEC-WATCH.md
-EXPECTED_REQUIREMENTS_SHA=77168170a0e6abbc9f7acfcb2ffe773f1efb583f4db0b8b286d7c48856a3c751
 expected_packages=(aom cpu-features libjpeg-turbo libvpx libyuv oboe opus)
 rc=0
 
@@ -45,6 +44,7 @@ first_sha512() {
 }
 
 require_file "$LEDGER"
+require_file requirements.html
 require_file vcpkg.json
 require_file scripts/pins.env
 require_file res/vcpkg/aom/vcpkg.json
@@ -70,6 +70,8 @@ if [ "$actual_baseline" != "$VCPKG_BASELINE" ]; then
   fail "vcpkg.json baseline '$actual_baseline' does not match scripts/pins.env VCPKG_BASELINE '$VCPKG_BASELINE'"
 fi
 
+requirements_sha=$(sha256sum requirements.html | awk '{print $1}')
+
 tmp_expected=$(mktemp)
 tmp_actual=$(mktemp)
 trap 'rm -f "$tmp_expected" "$tmp_actual"' EXIT
@@ -93,7 +95,7 @@ if grep -qE '"(ffmpeg|mfx-dispatch|ffnvcodec|amd-amf)"' vcpkg.json; then
 fi
 
 require_literal "Native-Codec-Watch-Version: 1" "$LEDGER"
-require_literal "Requirements hash: $EXPECTED_REQUIREMENTS_SHA" "$LEDGER"
+require_literal "Requirements hash: $requirements_sha" "$LEDGER"
 require_literal "Cargo/RustSec and Dart/OSV gates do not cover these vcpkg C/C++" "$LEDGER"
 require_literal "This gate is not the decoder sandbox." "$LEDGER"
 require_literal "VCPKG_BASELINE: $VCPKG_BASELINE" "$LEDGER"

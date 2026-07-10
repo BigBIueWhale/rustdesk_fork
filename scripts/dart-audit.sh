@@ -33,6 +33,10 @@ if [ ! -f "$LOCKFILE" ]; then
   echo "dart-audit.sh: $LOCKFILE not found — nothing to audit" >&2
   exit 2
 fi
+if [ ! -f "$IGNORES_FILE" ]; then
+  echo "dart-audit.sh: $IGNORES_FILE not found — refusing to run without an accept-list source" >&2
+  exit 2
+fi
 
 # Every pin must be present — refuse to build a non-reproducible image.
 : "${OSV_SCANNER_VERSION:?dart-audit.sh: OSV_SCANNER_VERSION unset in pins.env}"
@@ -48,9 +52,43 @@ docker build -q \
   --build-arg "OSV_DB_PUB_SHA256=${OSV_DB_PUB_SHA256}" \
   -t "$IMG" -f scripts/Dockerfile.dart-audit scripts >/dev/null
 
-# dart-audit-ignores.txt is the single accept-list: strip comments/blanks, keep
-# the first whitespace-delimited token (the advisory id) of each remaining line.
-mapfile -t IGNORES < <(sed -E 's/#.*//' "$IGNORES_FILE" | awk '{print $1}' | grep -E '\S' | sort -u)
+# dart-audit-ignores.txt is the single accept-list. Parse active entries
+# deliberately: every accepted advisory must have exactly one id and a reason.
+ignores_tmp=$(mktemp)
+trap 'rm -f "$ignores_tmp"' EXIT
+python3 - "$IGNORES_FILE" <<'PY' >"$ignores_tmp"
+import re
+import sys
+
+path = sys.argv[1]
+seen = set()
+ids = []
+with open(path, encoding="utf-8") as f:
+    for lineno, raw in enumerate(f, 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        body, sep, reason = raw.partition("#")
+        tokens = body.split()
+        if len(tokens) != 1:
+            print(f"dart-audit.sh: {path}:{lineno}: expected exactly one advisory id", file=sys.stderr)
+            sys.exit(2)
+        if not sep or not reason.strip():
+            print(f"dart-audit.sh: {path}:{lineno}: accepted advisory has no reason", file=sys.stderr)
+            sys.exit(2)
+        adv_id = tokens[0]
+        if not re.fullmatch(r"[A-Za-z0-9_.:-]+", adv_id):
+            print(f"dart-audit.sh: {path}:{lineno}: invalid advisory id {adv_id!r}", file=sys.stderr)
+            sys.exit(2)
+        if adv_id in seen:
+            print(f"dart-audit.sh: {path}:{lineno}: duplicate advisory id {adv_id}", file=sys.stderr)
+            sys.exit(2)
+        seen.add(adv_id)
+        ids.append(adv_id)
+
+sys.stdout.write("\n".join(sorted(ids)))
+PY
+mapfile -t IGNORES <"$ignores_tmp"
 echo "== R-R3 Dart advisory audit: ${#IGNORES[@]} documented accept(s) from ${IGNORES_FILE} =="
 
 # Run the scan offline against a READ-ONLY mount of the repo (the audit must never

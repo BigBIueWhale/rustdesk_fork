@@ -28,7 +28,7 @@ use hbb_common::{
         DigestCheckResult, RemoveJobMeta,
     },
     get_time, log,
-    message_proto::{permission_info::Permission, *},
+    message_proto::{option_message::BoolOption, permission_info::Permission, *},
     protobuf::Message as _,
     rendezvous_proto::ConnType,
     timeout,
@@ -63,6 +63,7 @@ const MAX_PEER_PRIVACY_MODE_IMPLS: usize = 8;
 const MAX_PEER_DISPLAY_DIMENSION: i32 = 32_768;
 const MAX_PEER_DISPLAY_ORIGIN_ABS: i32 = 1_000_000;
 const MAX_PEER_DISPLAY_SCALE: f64 = 16.0;
+const PRIVACY_MODE_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub struct Remote<T: InvokeUiSession> {
     handler: Session<T>,
@@ -90,6 +91,102 @@ pub struct Remote<T: InvokeUiSession> {
     sent_close_reason: bool,
     peer_text_gate: crate::peer_text::PeerTextGate,
     pending_screenshot_sids: HashSet<String>,
+    pending_privacy_mode_request: Option<PendingPrivacyModeRequest>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PrivacyModeResponseAdmission {
+    Persist(bool),
+    CompleteWithoutPersist,
+    Ignore,
+}
+
+#[derive(Clone, Debug)]
+struct PendingPrivacyModeRequest {
+    on: bool,
+    impl_key: String,
+    sent_at: Instant,
+}
+
+impl PendingPrivacyModeRequest {
+    fn new(on: bool, impl_key: String) -> Self {
+        Self::new_at(on, impl_key, Instant::now())
+    }
+
+    fn new_at(on: bool, impl_key: String, sent_at: Instant) -> Self {
+        Self {
+            on,
+            impl_key: config::bound_peer_config_string(&impl_key),
+            sent_at,
+        }
+    }
+
+    fn from_message(msg: &Message, default_remote_session: bool) -> Option<Self> {
+        if !default_remote_session {
+            return None;
+        }
+        let Some(message::Union::Misc(misc)) = &msg.union else {
+            return None;
+        };
+        match misc.union.as_ref()? {
+            misc::Union::TogglePrivacyMode(toggle) => {
+                Some(Self::new(toggle.on, toggle.impl_key.clone()))
+            }
+            misc::Union::Option(option) => {
+                let on = match option.privacy_mode.enum_value().ok()? {
+                    BoolOption::Yes => true,
+                    BoolOption::No => false,
+                    BoolOption::NotSet => return None,
+                };
+                Some(Self::new(on, String::new()))
+            }
+            _ => None,
+        }
+    }
+
+    fn is_expired(&self, now: Instant) -> bool {
+        now.duration_since(self.sent_at) > PRIVACY_MODE_RESPONSE_TIMEOUT
+    }
+
+    fn classify_response(
+        &self,
+        state: back_notification::PrivacyModeState,
+        impl_key: &str,
+        now: Instant,
+    ) -> PrivacyModeResponseAdmission {
+        if self.is_expired(now) {
+            return PrivacyModeResponseAdmission::Ignore;
+        }
+        if !self.impl_key.is_empty() && self.impl_key != config::bound_peer_config_string(impl_key)
+        {
+            return PrivacyModeResponseAdmission::Ignore;
+        }
+        match (self.on, state) {
+            (true, back_notification::PrivacyModeState::PrvOnSucceeded) => {
+                PrivacyModeResponseAdmission::Persist(true)
+            }
+            (
+                true,
+                back_notification::PrivacyModeState::PrvNotSupported
+                | back_notification::PrivacyModeState::PrvOnFailedDenied
+                | back_notification::PrivacyModeState::PrvOnFailedPlugin
+                | back_notification::PrivacyModeState::PrvOnFailed,
+            ) => PrivacyModeResponseAdmission::Persist(false),
+            (true, back_notification::PrivacyModeState::PrvOnByOther) => {
+                PrivacyModeResponseAdmission::CompleteWithoutPersist
+            }
+            (
+                false,
+                back_notification::PrivacyModeState::PrvOffSucceeded
+                | back_notification::PrivacyModeState::PrvOffByPeer
+                | back_notification::PrivacyModeState::PrvOffUnknown,
+            ) => PrivacyModeResponseAdmission::Persist(false),
+            (false, back_notification::PrivacyModeState::PrvOffFailed) => {
+                PrivacyModeResponseAdmission::CompleteWithoutPersist
+            }
+            _ => PrivacyModeResponseAdmission::Ignore,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -356,6 +453,7 @@ impl<T: InvokeUiSession> Remote<T> {
             sent_close_reason: false,
             peer_text_gate: Default::default(),
             pending_screenshot_sids: Default::default(),
+            pending_privacy_mode_request: None,
         }
     }
 
@@ -781,7 +879,10 @@ impl<T: InvokeUiSession> Remote<T> {
                     },
                     _ => {}
                 }
-                allow_err!(peer.send(&msg).await);
+                match peer.send(&msg).await {
+                    Ok(()) => self.record_pending_privacy_mode_request(&msg),
+                    Err(err) => log::error!("Failed to send message to peer: {}", err),
+                }
             }
             Data::SendFiles((id, r#type, path, to, file_num, include_hidden, is_remote)) => {
                 log::info!("send files, is remote {}", is_remote);
@@ -1306,27 +1407,64 @@ impl<T: InvokeUiSession> Remote<T> {
         }
     }
 
-    async fn send_toggle_privacy_mode_msg(&self, peer: &mut Stream) {
-        let lc = self.handler.lc.read().unwrap();
-        if lc.version >= hbb_common::get_version_number("1.2.4")
-            && lc.get_toggle_option("privacy-mode")
-        {
-            let impl_key = lc.get_option("privacy-mode-impl-key");
-            if impl_key == crate::privacy_mode::PRIVACY_MODE_IMPL_WIN_VIRTUAL_DISPLAY
-                && !self.peer_info.is_support_virtual_display()
+    async fn send_toggle_privacy_mode_msg(&mut self, peer: &mut Stream) {
+        let impl_key = {
+            let lc = self.handler.lc.read().unwrap();
+            if lc.version < hbb_common::get_version_number("1.2.4")
+                || !lc.get_toggle_option("privacy-mode")
             {
                 return;
             }
-            let mut misc = Misc::new();
-            misc.set_toggle_privacy_mode(TogglePrivacyMode {
-                impl_key,
-                on: true,
-                ..Default::default()
-            });
-            let mut msg_out = Message::new();
-            msg_out.set_misc(misc);
-            allow_err!(peer.send(&msg_out).await);
+            lc.get_option("privacy-mode-impl-key")
+        };
+        if impl_key == crate::privacy_mode::PRIVACY_MODE_IMPL_WIN_VIRTUAL_DISPLAY
+            && !self.peer_info.is_support_virtual_display()
+        {
+            return;
         }
+        let mut misc = Misc::new();
+        misc.set_toggle_privacy_mode(TogglePrivacyMode {
+            impl_key,
+            on: true,
+            ..Default::default()
+        });
+        let mut msg_out = Message::new();
+        msg_out.set_misc(misc);
+        match peer.send(&msg_out).await {
+            Ok(()) => self.record_pending_privacy_mode_request(&msg_out),
+            Err(err) => log::error!("Failed to send privacy-mode request: {}", err),
+        }
+    }
+
+    fn record_pending_privacy_mode_request(&mut self, msg: &Message) {
+        if let Some(request) =
+            PendingPrivacyModeRequest::from_message(msg, self.handler.is_default())
+        {
+            self.pending_privacy_mode_request = Some(request);
+        }
+    }
+
+    fn privacy_mode_response_admission(
+        &mut self,
+        state: back_notification::PrivacyModeState,
+        impl_key: &str,
+    ) -> PrivacyModeResponseAdmission {
+        let now = Instant::now();
+        if self
+            .pending_privacy_mode_request
+            .as_ref()
+            .map_or(false, |request| request.is_expired(now))
+        {
+            self.pending_privacy_mode_request = None;
+        }
+        let Some(request) = self.pending_privacy_mode_request.as_ref() else {
+            return PrivacyModeResponseAdmission::Ignore;
+        };
+        let admission = request.classify_response(state, impl_key, now);
+        if !matches!(admission, PrivacyModeResponseAdmission::Ignore) {
+            self.pending_privacy_mode_request = None;
+        }
+        admission
     }
 
     fn contains_key_frame(vf: &VideoFrame) -> bool {
@@ -2400,12 +2538,24 @@ impl<T: InvokeUiSession> Remote<T> {
         self.handler.update_privacy_mode();
     }
 
+    fn persist_privacy_mode_response_if_admitted(
+        &mut self,
+        admission: PrivacyModeResponseAdmission,
+        impl_key: String,
+        on: bool,
+    ) {
+        if admission == PrivacyModeResponseAdmission::Persist(on) {
+            self.update_privacy_mode(impl_key, on);
+        }
+    }
+
     async fn handle_back_msg_privacy_mode(
         &mut self,
         state: back_notification::PrivacyModeState,
         details: String,
         impl_key: String,
     ) -> bool {
+        let admission = self.privacy_mode_response_admission(state, &impl_key);
         match state {
             back_notification::PrivacyModeState::PrvOnByOther => {
                 self.peer_notification_msgbox(
@@ -2418,7 +2568,7 @@ impl<T: InvokeUiSession> Remote<T> {
             }
             back_notification::PrivacyModeState::PrvNotSupported => {
                 self.peer_notification_msgbox("custom-error", "Privacy mode", "Unsupported", "");
-                self.update_privacy_mode(impl_key, false);
+                self.persist_privacy_mode_response_if_admitted(admission, impl_key, false);
             }
             back_notification::PrivacyModeState::PrvOnSucceeded => {
                 self.peer_notification_msgbox(
@@ -2427,11 +2577,11 @@ impl<T: InvokeUiSession> Remote<T> {
                     "Enter privacy mode",
                     "",
                 );
-                self.update_privacy_mode(impl_key, true);
+                self.persist_privacy_mode_response_if_admitted(admission, impl_key, true);
             }
             back_notification::PrivacyModeState::PrvOnFailedDenied => {
                 self.peer_notification_msgbox("custom-error", "Privacy mode", "Peer denied", "");
-                self.update_privacy_mode(impl_key, false);
+                self.persist_privacy_mode_response_if_admitted(admission, impl_key, false);
             }
             back_notification::PrivacyModeState::PrvOnFailedPlugin => {
                 self.peer_notification_msgbox(
@@ -2440,7 +2590,7 @@ impl<T: InvokeUiSession> Remote<T> {
                     "Please install plugins",
                     "",
                 );
-                self.update_privacy_mode(impl_key, false);
+                self.persist_privacy_mode_response_if_admitted(admission, impl_key, false);
             }
             back_notification::PrivacyModeState::PrvOnFailed => {
                 self.peer_notification_msgbox(
@@ -2453,7 +2603,7 @@ impl<T: InvokeUiSession> Remote<T> {
                     },
                     "",
                 );
-                self.update_privacy_mode(impl_key, false);
+                self.persist_privacy_mode_response_if_admitted(admission, impl_key, false);
             }
             back_notification::PrivacyModeState::PrvOffSucceeded => {
                 self.peer_notification_msgbox(
@@ -2462,11 +2612,11 @@ impl<T: InvokeUiSession> Remote<T> {
                     "Exit privacy mode",
                     "",
                 );
-                self.update_privacy_mode(impl_key, false);
+                self.persist_privacy_mode_response_if_admitted(admission, impl_key, false);
             }
             back_notification::PrivacyModeState::PrvOffByPeer => {
                 self.peer_notification_msgbox("custom-error", "Privacy mode", "Peer exit", "");
-                self.update_privacy_mode(impl_key, false);
+                self.persist_privacy_mode_response_if_admitted(admission, impl_key, false);
             }
             back_notification::PrivacyModeState::PrvOffFailed => {
                 self.peer_notification_msgbox(
@@ -2483,7 +2633,7 @@ impl<T: InvokeUiSession> Remote<T> {
             back_notification::PrivacyModeState::PrvOffUnknown => {
                 self.peer_notification_msgbox("custom-error", "Privacy mode", "Turned off", "");
                 // log::error!("Privacy mode is turned off with unknown reason");
-                self.update_privacy_mode(impl_key, false);
+                self.persist_privacy_mode_response_if_admitted(admission, impl_key, false);
             }
             _ => {}
         }
@@ -2834,6 +2984,116 @@ mod tests {
         );
         assert_eq!(sanitize_peer_platform_additions("{not-json"), "");
         assert_eq!(sanitize_peer_platform_additions("[1,2,3]"), "");
+    }
+
+    #[test]
+    fn privacy_mode_response_classifier_requires_matching_pending_request() {
+        let now = Instant::now();
+        let request = PendingPrivacyModeRequest::new_at(true, "impl-a".to_owned(), now);
+
+        assert_eq!(
+            request.classify_response(
+                back_notification::PrivacyModeState::PrvOnSucceeded,
+                "impl-a",
+                now,
+            ),
+            PrivacyModeResponseAdmission::Persist(true)
+        );
+        assert_eq!(
+            request.classify_response(
+                back_notification::PrivacyModeState::PrvOnFailed,
+                "impl-a",
+                now,
+            ),
+            PrivacyModeResponseAdmission::Persist(false)
+        );
+        assert_eq!(
+            request.classify_response(
+                back_notification::PrivacyModeState::PrvOnSucceeded,
+                "impl-b",
+                now,
+            ),
+            PrivacyModeResponseAdmission::Ignore
+        );
+        assert_eq!(
+            request.classify_response(
+                back_notification::PrivacyModeState::PrvOffSucceeded,
+                "impl-a",
+                now,
+            ),
+            PrivacyModeResponseAdmission::Ignore
+        );
+    }
+
+    #[test]
+    fn privacy_mode_response_classifier_handles_off_and_expiry() {
+        let now = Instant::now();
+        let request = PendingPrivacyModeRequest::new_at(false, "impl-a".to_owned(), now);
+
+        assert_eq!(
+            request.classify_response(
+                back_notification::PrivacyModeState::PrvOffSucceeded,
+                "impl-a",
+                now,
+            ),
+            PrivacyModeResponseAdmission::Persist(false)
+        );
+        assert_eq!(
+            request.classify_response(
+                back_notification::PrivacyModeState::PrvOffFailed,
+                "impl-a",
+                now,
+            ),
+            PrivacyModeResponseAdmission::CompleteWithoutPersist
+        );
+        assert_eq!(
+            request.classify_response(
+                back_notification::PrivacyModeState::PrvOnSucceeded,
+                "impl-a",
+                now,
+            ),
+            PrivacyModeResponseAdmission::Ignore
+        );
+
+        let old = PendingPrivacyModeRequest::new_at(
+            true,
+            "impl-a".to_owned(),
+            now - PRIVACY_MODE_RESPONSE_TIMEOUT - Duration::from_secs(1),
+        );
+        assert_eq!(
+            old.classify_response(
+                back_notification::PrivacyModeState::PrvOnSucceeded,
+                "impl-a",
+                now,
+            ),
+            PrivacyModeResponseAdmission::Ignore
+        );
+    }
+
+    #[test]
+    fn privacy_mode_pending_request_is_recorded_only_from_local_remote_toggle() {
+        let mut toggle = Misc::new();
+        toggle.set_toggle_privacy_mode(TogglePrivacyMode {
+            impl_key: "impl-a".to_owned(),
+            on: true,
+            ..Default::default()
+        });
+        let mut msg = Message::new();
+        msg.set_misc(toggle);
+        let request = PendingPrivacyModeRequest::from_message(&msg, true).unwrap();
+        assert!(request.on);
+        assert_eq!(request.impl_key, "impl-a");
+        assert!(PendingPrivacyModeRequest::from_message(&msg, false).is_none());
+
+        let mut option = OptionMessage::new();
+        option.privacy_mode = BoolOption::No.into();
+        let mut legacy = Misc::new();
+        legacy.set_option(option);
+        let mut legacy_msg = Message::new();
+        legacy_msg.set_misc(legacy);
+        let request = PendingPrivacyModeRequest::from_message(&legacy_msg, true).unwrap();
+        assert!(!request.on);
+        assert_eq!(request.impl_key, "");
     }
 }
 

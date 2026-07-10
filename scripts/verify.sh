@@ -3441,7 +3441,8 @@ ra6_clean 'get_option\("os-username"\)|get_option\("os-password"\)|fn should_aut
 # R-S11 gate. This gate VALUE-asserts the SPECIFIC named writes are routed (not mere token presence,
 # which passed green despite the service_id sibling write being unbounded): (a) PeerInfo + service_id
 # clamped via hbb_common::config::bound_peer_config_string; (b) the privacy-mode impl_key REJECTED
-# unless it is in the compile-time get_supported_privacy_mode_impl() set. KAT: config_it tests/r_s15.rs.
+# unless it is in the compile-time get_supported_privacy_mode_impl() set, and peer privacy-mode status
+# may persist only as a response to a local outbound toggle request. KAT: config_it tests/r_s15.rs.
 r_s15_missing=
 for f in src/client.rs src/client/io_loop.rs; do
   grep -q 'bound_peer_config_string' "$f" || r_s15_missing="$r_s15_missing $f:bound-absent"
@@ -3451,6 +3452,22 @@ grep -q 'bound_peer_config_string(&opened.service_id)' src/client/io_loop.rs || 
 grep -qE 'set_option\(key, opened\.service_id\.clone' src/client/io_loop.rs && r_s15_missing="$r_s15_missing service_id-RAW-write-present"
 # the privacy-mode impl_key is allowlist-validated against the supported set before the insert
 grep -q 'get_supported_privacy_mode_impl()' src/client/io_loop.rs || r_s15_missing="$r_s15_missing impl_key-unvalidated"
+# peer BackNotification::PrivacyModeState is status, not write authority: persistence requires a pending
+# local privacy-mode request recorded by the Rust I/O loop after an outbound toggle send.
+grep -q 'struct PendingPrivacyModeRequest' src/client/io_loop.rs || r_s15_missing="$r_s15_missing privacy-pending-request-missing"
+grep -q 'enum PrivacyModeResponseAdmission' src/client/io_loop.rs || r_s15_missing="$r_s15_missing privacy-response-admission-missing"
+grep -q 'fn from_message(msg: &Message, default_remote_session: bool)' src/client/io_loop.rs || r_s15_missing="$r_s15_missing privacy-request-not-session-bound"
+grep -q 'misc::Union::TogglePrivacyMode(toggle)' src/client/io_loop.rs || r_s15_missing="$r_s15_missing privacy-toggle-request-not-recorded"
+grep -q 'option.privacy_mode.enum_value' src/client/io_loop.rs || r_s15_missing="$r_s15_missing privacy-legacy-option-request-not-recorded"
+grep -q 'record_pending_privacy_mode_request(&msg)' src/client/io_loop.rs || r_s15_missing="$r_s15_missing privacy-ui-toggle-send-not-recorded"
+grep -q 'record_pending_privacy_mode_request(&msg_out)' src/client/io_loop.rs || r_s15_missing="$r_s15_missing privacy-auto-toggle-send-not-recorded"
+grep -q 'privacy_mode_response_admission(state, &impl_key)' src/client/io_loop.rs || r_s15_missing="$r_s15_missing privacy-response-not-classified"
+grep -q 'persist_privacy_mode_response_if_admitted' src/client/io_loop.rs || r_s15_missing="$r_s15_missing privacy-persist-helper-missing"
+r_s15_privacy_persist_calls=$(grep -c 'self.update_privacy_mode(impl_key' src/client/io_loop.rs || true)
+[ "$r_s15_privacy_persist_calls" -eq 1 ] || r_s15_missing="$r_s15_missing privacy-direct-persist-call-count:$r_s15_privacy_persist_calls"
+grep -q 'privacy_mode_response_classifier_requires_matching_pending_request' src/client/io_loop.rs || r_s15_missing="$r_s15_missing privacy-response-match-test-missing"
+grep -q 'privacy_mode_response_classifier_handles_off_and_expiry' src/client/io_loop.rs || r_s15_missing="$r_s15_missing privacy-response-expiry-test-missing"
+grep -q 'privacy_mode_pending_request_is_recorded_only_from_local_remote_toggle' src/client/io_loop.rs || r_s15_missing="$r_s15_missing privacy-request-record-test-missing"
 # peer-controlled version/platform may determine the effective runtime keyboard mode, but must not
 # select or rewrite the operator-owned persisted PeerConfig.keyboard_mode.
 r_s15_peer_info_body="$(sed -n '/pub fn handle_peer_info(&mut self, pi: &PeerInfo)/,/pub fn get_remote_dir/p' src/client.rs)"
@@ -3468,7 +3485,7 @@ grep -q 'isInputSourceFlutter && isDesktop' flutter/lib/models/input_model.dart 
 if [ -n "$r_s15_missing" ]; then
   echo "  FAIL R-S15: peer-config-write allowlist gap:$r_s15_missing"; rc=1
 else
-  echo "  ok  R-S15 viewer PeerConfig writes routed (PeerInfo+service_id bounded; impl_key validated vs supported set; peer keyboard-mode compatibility runtime-only)"
+  echo "  ok  R-S15 viewer PeerConfig writes routed (PeerInfo+service_id bounded; privacy status requires a pending local request before persistence; peer keyboard-mode compatibility runtime-only)"
 fi
 # R-A2 (clipboard-file capability parity): the inbound Cliprdr clipboard-FILE arm (connection.rs ~2311)
 # drives unix_file_clip::serve_clip_messages — the FUSE context + host-clipboard file:// injection. It

@@ -139,16 +139,20 @@ are in all builds, and the Windows/Kotlin edges are validated by the win-exe/apk
 **R-S15 — viewer PeerConfig write authority — status: CLOSED / GATED (2026-07-10).**
 Platforms: all viewer-capable targets. Endpoint/action: post-PAKE peer messages that reach the viewer's
 per-peer config store. Boundary: password-correct but hostile peer ↔ operator-owned persisted viewer
-preferences. Attack surface closed: the already gated R-S15 writes still bound peer identity strings,
-bound `TerminalResponse.service_id`, and accept `privacy-mode-impl-key` only from the compile-time supported
-implementation set; the remaining keyboard-mode edge is now closed too. `PeerInfo.version`/`platform` may
-still determine the effective runtime compatibility fallback, but neither `LoginConfigHandler::handle_peer_info`
-nor the Flutter peer-info flow persists a keyboard-mode value chosen from peer metadata. The saved
-`PeerConfig.keyboard_mode` is changed only by an explicit operator session setting, while Flutter input-source
-compatibility is applied as a runtime input-model fallback. Verification closure: `src/client.rs` regression tests
-assert peer info neither chooses an empty saved keyboard mode nor rewrites an existing saved keyboard mode, and
-`scripts/verify.sh` asserts the Rust peer-info body, Dart peer-info path, removed auto-persist helper, runtime
-fallback, and the existing R-S15 peer identity/service-id/privacy implementation gates.
+preferences. Attack surface closed: peer identity strings are bounded, `TerminalResponse.service_id` is
+bounded, `privacy-mode-impl-key` is accepted only from the compile-time supported implementation set, and
+peer `BackNotification::PrivacyModeState` no longer owns the saved privacy-mode policy. A privacy-mode status
+response can persist only when it matches a receiver-owned pending local outbound `TogglePrivacyMode` or legacy
+`OptionMessage.privacy_mode` request for a default remote-control session; unsolicited, expired, wrong-impl, or
+wrong-direction status remains notification-only. `PeerInfo.version`/`platform` may still determine the effective
+runtime keyboard-mode compatibility fallback, but neither `LoginConfigHandler::handle_peer_info` nor the Flutter
+peer-info flow persists a keyboard-mode value chosen from peer metadata. The saved `PeerConfig.keyboard_mode` is
+changed only by an explicit operator session setting, while Flutter input-source compatibility is applied as a
+runtime input-model fallback. Verification closure: `src/client.rs` regression tests assert peer info neither
+chooses an empty saved keyboard mode nor rewrites an existing saved keyboard mode; `src/client/io_loop.rs`
+regression tests assert privacy-mode responses require a matching pending request, expire, and are recorded only
+from local remote-session toggles; and `scripts/verify.sh` asserts the Rust peer-info body, Dart peer-info path,
+removed auto-persist helper, runtime fallback, bounded peer writes, and pending-request privacy-mode gate.
 
 **R-S11b/R-S11c — service-owned IPC authority — status: CLOSED / GATED (2026-07-09).**
 The 2026-07-08 service-boundary audit supersedes the earlier narrow "IPC transport is local and
@@ -2296,7 +2300,7 @@ native-codec-watch ledger is re-confirmed valid against each.
 The current snapshot (matching the `scripts/native-codec-watch.sh` pin) is:
 
 ```text
-27235735f69d53fe85fd5a28ccf7efef60c99995c5d857f34329b038d4563a70  requirements.html
+58bd948561d71b6cbc32b17942eca2c3d5ba9b46bf3d4e332bdd40cb03248853  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

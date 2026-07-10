@@ -46,6 +46,27 @@ preflight() {
     log "preflight OK — building $FEATURES in $IMAGE, offline, SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
 }
 
+verify_deb_control_scripts() {
+    local deb="$1"
+    local tmp_control
+    tmp_control="$(mktemp -d)"
+    dpkg-deb -e "$deb" "$tmp_control"
+    for script in preinst postinst prerm postrm; do
+        cmp -s "$REPO_ROOT/res/DEBIAN/$script" "$tmp_control/$script" || {
+            rm -rf "$tmp_control"
+            die "built .deb control script $script differs from res/DEBIAN/$script"
+        }
+    done
+    local masked
+    masked="$(grep -RInE '\|\|[[:space:]]*true|deb-systemd-(invoke|helper).*\|\|' "$tmp_control" || true)"
+    if [ -n "$masked" ]; then
+        printf '%s\n' "$masked" >&2
+        rm -rf "$tmp_control"
+        die "built .deb maintainer scripts mask lifecycle failure"
+    fi
+    rm -rf "$tmp_control"
+}
+
 # build_one PROFILE FEATURES: run upstream's build.py in the pinned container,
 # network removed, ./online mounted read-only. Emits target/release + the .deb.
 build_one() {
@@ -204,6 +225,7 @@ CFG
     [ -n "$deb" ] && [ -f "$deb" ] || die "no rustdesk-*.deb produced — build.py did not emit a package (flutter build linux likely failed); see the build output above"
     cp "$deb" "$OUT_DIR/rustdesk-${profile}.deb"
     python3 "$SCRIPT_DIR/verify-polkit-policy.py" --repo "$REPO_ROOT" --deb "$OUT_DIR/rustdesk-${profile}.deb"
+    verify_deb_control_scripts "$OUT_DIR/rustdesk-${profile}.deb"
     sha256sum "$OUT_DIR/rustdesk-${profile}.deb" | tee "$OUT_DIR/rustdesk-${profile}.deb.sha256"
 }
 

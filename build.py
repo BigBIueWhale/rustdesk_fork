@@ -306,6 +306,7 @@ def build_flutter_deb(version, features):
         ffi_bindgen_function_refactor()
     os.chdir('flutter')
     system2('flutter build linux --release')
+    system2('/bin/rm -rf tmpdeb')
     system2('mkdir -p tmpdeb/usr/bin/')
     system2('mkdir -p tmpdeb/usr/share/rustdesk')
     system2('mkdir -p tmpdeb/etc/rustdesk/')
@@ -314,7 +315,7 @@ def build_flutter_deb(version, features):
     system2('mkdir -p tmpdeb/usr/share/icons/hicolor/scalable/apps/')
     system2('mkdir -p tmpdeb/usr/share/applications/')
     system2('mkdir -p tmpdeb/usr/share/polkit-1/actions')
-    system2('rm tmpdeb/usr/bin/rustdesk || true')
+    system2('rm -f tmpdeb/usr/bin/rustdesk')
     system2(
         f'cp -r {flutter_build_dir}/* tmpdeb/usr/share/rustdesk/')
     system2(
@@ -347,6 +348,7 @@ def build_flutter_deb(version, features):
 
 def build_deb_from_folder(version, binary_folder):
     os.chdir('flutter')
+    system2('/bin/rm -rf tmpdeb')
     system2('mkdir -p tmpdeb/usr/bin/')
     system2('mkdir -p tmpdeb/usr/share/rustdesk')
     system2('mkdir -p tmpdeb/usr/share/rustdesk/files/systemd/')
@@ -354,7 +356,7 @@ def build_deb_from_folder(version, binary_folder):
     system2('mkdir -p tmpdeb/usr/share/icons/hicolor/scalable/apps/')
     system2('mkdir -p tmpdeb/usr/share/applications/')
     system2('mkdir -p tmpdeb/usr/share/polkit-1/actions')
-    system2('rm tmpdeb/usr/bin/rustdesk || true')
+    system2('rm -f tmpdeb/usr/bin/rustdesk')
     system2(
         f'cp -r ../{binary_folder}/* tmpdeb/usr/share/rustdesk/')
     system2(
@@ -562,6 +564,7 @@ def main():
                 # build deb package
                 system2(
                     'mv target/release/bundle/deb/rustdesk*.deb ./rustdesk.deb')
+                system2('/bin/rm -rf tmpdeb')
                 system2('dpkg-deb -R rustdesk.deb tmpdeb')
                 system2('mkdir -p tmpdeb/usr/share/rustdesk/files/systemd/')
                 system2('mkdir -p tmpdeb/usr/share/icons/hicolor/256x256/apps/')
@@ -579,17 +582,18 @@ def main():
                 system2('mkdir -p tmpdeb/usr/share/polkit-1/actions')
                 system2(
                     'cp res/com.carriez.RustDesk.policy tmpdeb/usr/share/polkit-1/actions/')
-                os.system('mkdir -p tmpdeb/etc/rustdesk/')
-                os.system('cp -a res/startwm.sh tmpdeb/etc/rustdesk/')
-                os.system('mkdir -p tmpdeb/etc/X11/rustdesk/')
-                os.system('cp res/xorg.conf tmpdeb/etc/X11/rustdesk/')
-                os.system('cp -a DEBIAN/* tmpdeb/DEBIAN/')
+                system2('mkdir -p tmpdeb/etc/rustdesk/')
+                system2('cp -a res/startwm.sh tmpdeb/etc/rustdesk/')
+                system2('mkdir -p tmpdeb/etc/X11/rustdesk/')
+                system2('cp res/xorg.conf tmpdeb/etc/X11/rustdesk/')
+                system2('cp -a DEBIAN/* tmpdeb/DEBIAN/')
                 system2('strip tmpdeb/usr/bin/rustdesk')
                 system2('mkdir -p tmpdeb/usr/share/rustdesk')
                 system2('mv tmpdeb/usr/bin/rustdesk tmpdeb/usr/share/rustdesk/')
                 # R-B6: no libsciter-gtk.so to bundle (Sciter UI removed; Linux GUI is Flutter).
                 md5_file_folder("tmpdeb/")
-                system2('dpkg-deb -b tmpdeb rustdesk.deb; /bin/rm -rf tmpdeb/')
+                system2('dpkg-deb -b tmpdeb rustdesk.deb;')
+                system2('/bin/rm -rf tmpdeb/')
                 os.rename('rustdesk.deb', 'rustdesk-%s.deb' % version)
 
 

@@ -1806,7 +1806,7 @@ grep -q 'set sh to "set -e;"' "$uninstall_scpt" || r_s11c16="$r_s11c16 macos-uni
 if grep -qF '|| true' "$uninstall_scpt"; then
   r_s11c16="$r_s11c16 macos-uninstall-masks-launchctl-failure"
 fi
-grep -q 'R-S11c-16 makes service lifecycle completion status-authoritative' requirements.html || r_s11c16="$r_s11c16 requirements-disposition-missing"
+grep -q 'R-S11c-16 and R-S11c-10j make service lifecycle completion status-authoritative' requirements.html || r_s11c16="$r_s11c16 requirements-disposition-missing"
 grep -q 'R-S11c-16 — Desktop service lifecycle completion authority' HARDENING_STATUS.md || r_s11c16="$r_s11c16 hardening-ledger-missing"
 if [ -n "$r_s11c16" ]; then echo "  FAIL R-S11c-16 desktop service lifecycle completion authority:$r_s11c16"; rc=1; else
   echo "  ok  R-S11c-16 service lifecycle wrappers propagate CLI failure, Linux systemctl/config-copy failures are fatal, and macOS AppleScript/launchctl/plist completion is checked"; fi
@@ -2172,12 +2172,16 @@ echo "== (3b-iii-h10) Debian package lifecycle uses service-manager helpers (R-S
 r_s11c10j=
 for maintscript in res/DEBIAN/preinst res/DEBIAN/postinst res/DEBIAN/prerm res/DEBIAN/postrm; do
   grep -qE '^#!/bin/sh$' "$maintscript" || r_s11c10j="$r_s11c10j ${maintscript##*/}:not-posix-sh"
+  grep -qE '^set -e$' "$maintscript" || r_s11c10j="$r_s11c10j ${maintscript##*/}:not-set-e"
 done
 grep -q 'deb-systemd-invoke stop "$unit"' res/DEBIAN/preinst  || r_s11c10j="$r_s11c10j preinst:no-helper-stop"
+grep -q '\[ -e "/etc/systemd/system/$unit" \] || \[ -e "/usr/lib/systemd/system/$unit" \] || \[ -e "/lib/systemd/system/$unit" \]' res/DEBIAN/preinst || r_s11c10j="$r_s11c10j preinst:no-old-unit-predicate"
 grep -q 'deb-systemd-helper enable "$unit"' res/DEBIAN/postinst || r_s11c10j="$r_s11c10j postinst:no-helper-enable"
+grep -q 'deb-systemd-invoke daemon-reload >/dev/null' res/DEBIAN/postinst || r_s11c10j="$r_s11c10j postinst:no-helper-daemon-reload"
 grep -q 'deb-systemd-invoke start "$unit"' res/DEBIAN/postinst || r_s11c10j="$r_s11c10j postinst:no-helper-start"
 grep -q 'deb-systemd-invoke stop "$unit"' res/DEBIAN/prerm     || r_s11c10j="$r_s11c10j prerm:no-helper-stop"
 grep -q 'deb-systemd-helper disable "$unit"' res/DEBIAN/prerm  || r_s11c10j="$r_s11c10j prerm:no-helper-disable"
+grep -q 'deb-systemd-invoke daemon-reload >/dev/null' res/DEBIAN/prerm || r_s11c10j="$r_s11c10j prerm:no-helper-daemon-reload"
 grep -q 'deb-systemd-helper purge "$unit"' res/DEBIAN/postrm   || r_s11c10j="$r_s11c10j postrm:no-helper-purge"
 grep -q 'init-system-helpers' build.py                         || r_s11c10j="$r_s11c10j deb-control:no-init-system-helpers-dep"
 grep -qE '^KillMode=control-group$' res/rustdesk.service       || r_s11c10j="$r_s11c10j unit:not-control-group"
@@ -2189,6 +2193,22 @@ if grep -RInE 'INITSYS|/proc/1/exe|ps -ef|grep -E|awk|sed -i|service rustdesk|sy
   r_s11c10j="$r_s11c10j maintscript:raw-service-discovery-or-systemctl"
 fi
 rm -f /tmp/rd_verify_r_s11c10j_pkg.$$
+if grep -RInE '\|\|[[:space:]]*true|deb-systemd-(invoke|helper).*\|\|' res/DEBIAN >/tmp/rd_verify_r_s11c10j_mask.$$; then
+  cat /tmp/rd_verify_r_s11c10j_mask.$$
+  r_s11c10j="$r_s11c10j maintscript:masked-lifecycle-failure"
+fi
+rm -f /tmp/rd_verify_r_s11c10j_mask.$$
+if grep -n 'os.system(' build.py | grep -v 'exit_code = os.system(cmd)' >/tmp/rd_verify_r_s11c10j_build_os_system.$$; then
+  cat /tmp/rd_verify_r_s11c10j_build_os_system.$$
+  r_s11c10j="$r_s11c10j build.py:unchecked-os-system"
+fi
+rm -f /tmp/rd_verify_r_s11c10j_build_os_system.$$
+grep -q "system2('/bin/rm -rf tmpdeb')" build.py || r_s11c10j="$r_s11c10j build.py:no-clean-staging-root"
+if grep -nE 'tmpdeb/usr/bin/rustdesk[^\n]*\|\|[[:space:]]*true|dpkg-deb -b tmpdeb rustdesk\.deb;[[:space:]]*/bin/rm -rf tmpdeb' build.py >/tmp/rd_verify_r_s11c10j_build_mask.$$; then
+  cat /tmp/rd_verify_r_s11c10j_build_mask.$$
+  r_s11c10j="$r_s11c10j build.py:masked-debian-build-failure"
+fi
+rm -f /tmp/rd_verify_r_s11c10j_build_mask.$$
 grep -q 'const SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(8)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-drain-timeout"
 grep -q 'fn terminate_child(mut child: Child, label: &str)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-terminate-helper"
 grep -q 'hbb_common::libc::SIGTERM' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-sigterm"
@@ -2202,7 +2222,7 @@ if echo "$linux_child_stop_block" | grep -q 'allow_err!(ps.kill())'; then
   r_s11c10j="$r_s11c10j linux:managed-server-child-sigkill-regressed"
 fi
 if [ -n "$r_s11c10j" ]; then echo "  FAIL R-S11c-10j/R-T9 Debian package lifecycle/systemd stop:$r_s11c10j"; rc=1; else
-  echo "  ok  R-S11c-10j/R-T9 Debian scripts use deb-systemd helpers; unit has cgroup-scoped SIGTERM/TimeoutStopSec with no pkill ExecStop; Linux supervisor SIGTERMs child servers before forced stop"; fi
+  echo "  ok  R-S11c-10j/R-T9 Debian scripts use checked deb-systemd helpers with no masked lifecycle failures; build.py stages checked control scripts; unit has cgroup-scoped SIGTERM/TimeoutStopSec with no pkill ExecStop; Linux supervisor SIGTERMs child servers before forced stop"; fi
 
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() are now only typed password

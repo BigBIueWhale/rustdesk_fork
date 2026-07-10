@@ -6,15 +6,15 @@ unit=rustdesk.service
 
 case "$1" in
     remove|upgrade|deconfigure)
-        rm -f /usr/bin/rustdesk
-        deb-systemd-invoke stop "$unit" >/dev/null || true
+        deb-systemd-invoke stop "$unit" >/dev/null
         if [ "$1" = remove ] || [ "$1" = deconfigure ]; then
-            deb-systemd-helper disable "$unit" >/dev/null || true
+            deb-systemd-helper disable "$unit" >/dev/null
         fi
+        rm -f /usr/bin/rustdesk
         rm -f /etc/systemd/system/rustdesk.service
         rm -f /usr/lib/systemd/system/rustdesk.service
         rm -f /usr/lib/systemd/user/rustdesk.service
-        deb-systemd-invoke daemon-reload >/dev/null || true
+        deb-systemd-invoke daemon-reload >/dev/null
         ;;
 esac
 

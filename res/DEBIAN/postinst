@@ -15,8 +15,8 @@ if [ "$1" = configure ]; then
 	mkdir -p /usr/lib/systemd/system
 	cp /usr/share/rustdesk/files/systemd/rustdesk.service "$unit_path"
 	deb-systemd-helper enable "$unit" >/dev/null
-	deb-systemd-invoke daemon-reload >/dev/null || true
-	deb-systemd-invoke start "$unit" >/dev/null || true
+	deb-systemd-invoke daemon-reload >/dev/null
+	deb-systemd-invoke start "$unit" >/dev/null
 fi
 
 exit 0

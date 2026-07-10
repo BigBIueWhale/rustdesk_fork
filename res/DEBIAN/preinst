@@ -5,8 +5,14 @@ set -e
 unit=rustdesk.service
 
 case "$1" in
-    install|upgrade)
-        deb-systemd-invoke stop "$unit" >/dev/null || true
+    upgrade)
+        if [ -e "/etc/systemd/system/$unit" ] || [ -e "/usr/lib/systemd/system/$unit" ] || [ -e "/lib/systemd/system/$unit" ]; then
+            deb-systemd-invoke stop "$unit" >/dev/null
+        fi
+        sleep 1
+        rm -f /usr/bin/libsciter-gtk.so
+        ;;
+    install)
         sleep 1
         rm -f /usr/bin/libsciter-gtk.so
         ;;

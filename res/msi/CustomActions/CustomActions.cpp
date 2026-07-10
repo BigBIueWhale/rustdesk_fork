@@ -365,15 +365,27 @@ UINT __stdcall AddFirewallRules(
     ExitOnFailure(hr, "failed to read database key from custom action data: %ls", pwz);
     WcaLog(LOGMSG_STANDARD, "Try add firewall exceptions for file : %ls", exeFile);
 
+    if (exeFile[0] != L'0' && exeFile[0] != L'1') {
+        WcaLog(LOGMSG_STANDARD, "Malformed firewall CustomActionData: %ls", exeFile);
+        hr = E_INVALIDARG;
+        goto LExit;
+    }
+    if (exeFile[1] == L'\0') {
+        WcaLog(LOGMSG_STANDARD, "Firewall CustomActionData contains an empty executable path");
+        hr = E_INVALIDARG;
+        goto LExit;
+    }
+
     exeName = PathFindFileNameW(exeFile + 1);
-    hr = StringCchPrintfW(exeNameNoExt, 500, exeName);
+    hr = StringCchCopyW(exeNameNoExt, 500, exeName);
     ExitOnFailure(hr, "Failed to copy exe name: %ls", exeName);
     szNameLen = wcslen(exeNameNoExt);
     if (szNameLen >= 4 && wcscmp(exeNameNoExt + szNameLen - 4, L".exe") == 0) {
         exeNameNoExt[szNameLen - 4] = L'\0';
     }
 
-    AddFirewallRule(exeFile[0] == L'1', exeNameNoExt, exeFile + 1);
+    hr = AddFirewallRule(exeFile[0] == L'1', exeNameNoExt, exeFile + 1);
+    ExitOnFailure(hr, "Failed to update firewall rules for: %ls", exeFile + 1);
 
 LExit:
     if (pwzData) {
@@ -718,15 +730,29 @@ UINT __stdcall RemoveAmyuniIdd(
     WCHAR exePath[1024] = L"";
 
     BOOL rebootRequired = FALSE;
+    DriverUninstallStatus uninstallStatus = DriverUninstallNotPresent;
+    HRESULT setupApiHr = S_OK;
 
     hr = WcaInitialize(hInstall, "RemoveAmyuniIdd");
     ExitOnFailure(hr, "Failed to initialize");
 
-    UninstallDriver(L"usbmmidd", rebootRequired);
+    setupApiHr = UninstallDriver(L"usbmmidd", uninstallStatus, rebootRequired);
+    if (FAILED(setupApiHr)) {
+        WcaLog(LOGMSG_STANDARD, "SetupAPI Amyuni IDD removal failed: 0x%08lx", setupApiHr);
+    }
+    else if (uninstallStatus == DriverUninstallNotPresent) {
+        WcaLog(LOGMSG_STANDARD, "Amyuni IDD device is not present");
+        goto LExit;
+    }
+    else {
+        WcaLog(LOGMSG_STANDARD, "Amyuni IDD device removed through SetupAPI");
+        goto LExit;
+    }
 
     // Only for x86 app on x64
     GetNativeSystemInfo(&nativeSystemInfo);
     if (nativeSystemInfo.wProcessorArchitecture != PROCESSOR_ARCHITECTURE_AMD64) {
+        hr = setupApiHr;
         goto LExit;
     }
 
@@ -742,6 +768,7 @@ UINT __stdcall RemoveAmyuniIdd(
     fileAttributes = GetFileAttributesW(workDir);
     if (fileAttributes == INVALID_FILE_ATTRIBUTES || !(fileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
         WcaLog(LOGMSG_STANDARD, "Amyuni idd dir \"%ls\" is not found, %d", workDir, fileAttributes);
+        hr = FAILED(setupApiHr) ? setupApiHr : HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
         goto LExit;
     }
 
@@ -749,6 +776,7 @@ UINT __stdcall RemoveAmyuniIdd(
     ExitOnFailure(hr, "Failed to compose a resource identifier string");
     fileAttributes = GetFileAttributesW(exePath);
     if (fileAttributes == INVALID_FILE_ATTRIBUTES || (fileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        hr = FAILED(setupApiHr) ? setupApiHr : HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
         goto LExit;
     }
 
@@ -783,15 +811,27 @@ UINT __stdcall RemoveAmyuniIdd(
         goto LExit;
     }
 
-    if (exitCode != 0) {
+    if (exitCode == ERROR_SUCCESS_REBOOT_REQUIRED) {
+        rebootRequired = TRUE;
+    }
+    else if (exitCode != 0) {
         WcaLog(LOGMSG_STANDARD, "Amyuni idd removal helper failed with exit code %lu", exitCode);
         hr = E_FAIL;
         goto LExit;
     }
 
     WcaLog(LOGMSG_STANDARD, "Amyuni idd is removed");
+    hr = S_OK;
 
 LExit:
+    if (rebootRequired && SUCCEEDED(hr)) {
+        WcaLog(LOGMSG_STANDARD, "Amyuni IDD removal requires reboot");
+        HRESULT rebootHr = WcaDeferredActionRequiresReboot();
+        if (FAILED(rebootHr)) {
+            WcaLog(LOGMSG_STANDARD, "Failed to signal Amyuni IDD reboot requirement: 0x%08lx", rebootHr);
+            hr = rebootHr;
+        }
+    }
     if (pi.hThread) {
         CloseHandle(pi.hThread);
     }

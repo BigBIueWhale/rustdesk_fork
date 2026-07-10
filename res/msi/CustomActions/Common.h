@@ -3,7 +3,7 @@
 #include <Windows.h>
 #include <string>
 
-bool AddFirewallRule(bool add, LPWSTR exeName, LPWSTR exeFile);
+HRESULT AddFirewallRule(bool add, LPWSTR exeName, LPWSTR exeFile);
 
 bool QueryServiceStatusExW(LPCWSTR serviceName, SERVICE_STATUS_PROCESS* status);
 bool IsServiceRunningW(LPCWSTR serviceName);
@@ -14,4 +14,9 @@ bool MyStopServiceW(LPCWSTR serviceName);
 
 std::wstring ReadConfig(const std::wstring& filename, const std::wstring& key);
 
-void UninstallDriver(LPCWSTR hardwareId, BOOL &rebootRequired);
+enum DriverUninstallStatus {
+    DriverUninstallNotPresent,
+    DriverUninstallRemoved,
+};
+
+HRESULT UninstallDriver(LPCWSTR hardwareId, DriverUninstallStatus& status, BOOL &rebootRequired);

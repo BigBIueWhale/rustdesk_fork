@@ -411,9 +411,32 @@ rm -f /tmp/rd_verify_r_s11d_msi_shell.$$
 grep -q 'Id="CreateStartService".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:create-service-return-not-checked"
 grep -q 'Id="TryStopDeleteService".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:delete-service-return-not-checked"
 grep -q 'Id="AddRegSoftwareSASGeneration".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:sas-registry-return-not-checked"
-if grep -qE 'Id="(CreateStartService|TryStopDeleteService|AddRegSoftwareSASGeneration)".*Return="ignore"' res/msi/Package/Fragments/CustomActions.wxs; then
+grep -q 'Id="AddFirewallRules".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:add-firewall-return-not-checked"
+grep -q 'Id="RemoveFirewallRules".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:remove-firewall-return-not-checked"
+if grep -qE 'Id="(CreateStartService|TryStopDeleteService|AddRegSoftwareSASGeneration|AddFirewallRules|RemoveFirewallRules)".*Return="ignore"' res/msi/Package/Fragments/CustomActions.wxs; then
   r_s11d="$r_s11d msi:privileged-custom-action-return-ignored"
 fi
+grep -Fq 'HRESULT AddFirewallRule(bool add, LPWSTR exeName, LPWSTR exeFile)' res/msi/CustomActions/Common.h || r_s11d="$r_s11d msi:firewall-helper-not-hresult"
+grep -Fq 'HRESULT AddFirewallRule(bool add, LPWSTR exeName, LPWSTR exeFile)' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-helper-definition-not-hresult"
+grep -Fq 'hr = AddFirewallRule(exeFile[0] == L'\''1'\'', exeNameNoExt, exeFile + 1);' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:firewall-helper-result-not-propagated"
+grep -Fq 'Failed to update firewall rules for:' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:firewall-failure-not-fatal"
+if grep -qE '^[[:space:]]*AddFirewallRule\(exeFile\[0\].*\);' res/msi/CustomActions/CustomActions.cpp; then
+  r_s11d="$r_s11d msi:firewall-helper-result-discarded"
+fi
+grep -Fq "if (exeFile[0] != L'0' && exeFile[0] != L'1')" res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:firewall-mode-not-validated"
+grep -Fq "if (exeFile[1] == L'\\0')" res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:firewall-empty-path-not-rejected"
+if grep -Fq 'StringCchPrintfW(exeNameNoExt, 500, exeName)' res/msi/CustomActions/CustomActions.cpp; then
+  r_s11d="$r_s11d msi:firewall-exe-name-format-string-copy"
+fi
+if grep -Fq 'StringCchPrintfW(pwszTemp, STRING_BUFFER_SIZE, exeName)' res/msi/CustomActions/FirewallRules.cpp; then
+  r_s11d="$r_s11d msi:firewall-group-format-string-copy"
+fi
+grep -Fq 'MAX_FIREWALL_RULE_REMOVALS' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-remove-not-bounded"
+grep -Fq 'pNetFwRules->Item(RuleName, &pNetFwRule)' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-remove-does-not-prove-absence"
+grep -Fq 'bool absenceProven = false;' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-remove-absence-proof-missing"
+grep -Fq 'ERROR_FILE_NOT_FOUND' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-absent-file-not-found-not-noop"
+grep -Fq 'ERROR_NOT_FOUND' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-absent-not-found-not-noop"
+grep -Fq 'ERROR_PATH_NOT_FOUND' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-absent-path-not-found-not-noop"
 grep -q 'Service still exists after deletion' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-not-verified"
 grep -q 'HRESULT_FROM_WIN32(lastErrorCode)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-errors-not-propagated"
 grep -Fq 'reinterpret_cast<const BYTE*>(&valueData)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:sas-registry-value-pointer-wrong"
@@ -433,11 +456,28 @@ rm -f /tmp/rd_verify_r_s11d_msi_noop.$$
 grep -q 'CreateProcessW(exePath, commandLine, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, workDir, &startupInfo, &pi)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-not-absolute-createprocess"
 grep -q 'WaitForSingleObject(pi.hProcess, 120000)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-not-waited"
 grep -q 'GetExitCodeProcess(pi.hProcess, &exitCode)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-exit-code-not-checked"
-grep -q 'if (exitCode != 0)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-nonzero-not-fatal"
+grep -q 'exitCode == ERROR_SUCCESS_REBOOT_REQUIRED' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-reboot-success-not-accepted"
+grep -q 'else if (exitCode != 0)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-nonzero-not-fatal"
+grep -q 'WcaDeferredActionRequiresReboot();' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-reboot-not-signaled"
 grep -q 'Id="RemoveAmyuniIdd".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:amyuni-return-not-checked"
 if grep -q 'Id="RemoveAmyuniIdd".*Return="ignore"' res/msi/Package/Fragments/CustomActions.wxs; then
   r_s11d="$r_s11d msi:amyuni-return-ignored"
 fi
+grep -Fq 'enum DriverUninstallStatus' res/msi/CustomActions/Common.h || r_s11d="$r_s11d msi:amyuni-native-status-enum-missing"
+grep -Fq 'HRESULT UninstallDriver(LPCWSTR hardwareId, DriverUninstallStatus& status, BOOL &rebootRequired)' res/msi/CustomActions/Common.h || r_s11d="$r_s11d msi:amyuni-native-helper-not-hresult"
+grep -Fq 'HRESULT UninstallDriver(LPCWSTR hardwareId, DriverUninstallStatus& status, BOOL &rebootRequired)' res/msi/CustomActions/DeviceUtils.cpp || r_s11d="$r_s11d msi:amyuni-native-helper-definition-not-hresult"
+grep -Fq 'setupApiHr = UninstallDriver(L"usbmmidd", uninstallStatus, rebootRequired);' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-native-result-not-captured"
+if grep -Fq 'UninstallDriver(L"usbmmidd", rebootRequired);' res/msi/CustomActions/CustomActions.cpp; then
+  r_s11d="$r_s11d msi:amyuni-native-result-discarded"
+fi
+grep -Fq 'DriverUninstallNotPresent' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-not-present-branch-missing"
+grep -Fq 'DriverUninstallRemoved' res/msi/CustomActions/DeviceUtils.cpp || r_s11d="$r_s11d msi:amyuni-removed-status-missing"
+grep -Fq 'ERROR_NO_MORE_ITEMS' res/msi/CustomActions/DeviceUtils.cpp || r_s11d="$r_s11d msi:amyuni-enum-completion-not-checked"
+grep -Fq 'MultiSzContains(deviceId, hardwareId)' res/msi/CustomActions/DeviceUtils.cpp || r_s11d="$r_s11d msi:amyuni-hardware-id-not-multisz"
+grep -Fq 'ZeroMemory(deviceId, sizeof(deviceId));' res/msi/CustomActions/DeviceUtils.cpp || r_s11d="$r_s11d msi:amyuni-hardware-id-buffer-not-cleared"
+grep -Fq 'HRESULT_FROM_WIN32(lastError)' res/msi/CustomActions/DeviceUtils.cpp || r_s11d="$r_s11d msi:amyuni-native-errors-not-propagated"
+grep -Fq 'hr = FAILED(setupApiHr) ? setupApiHr : HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-missing-helper-after-native-failure-not-fatal"
+grep -q 'RemoveAmyuniIdd".*Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"' res/msi/Package/Components/RustDesk.wxs || r_s11d="$r_s11d msi:amyuni-removal-not-uninstall-upgrade-only"
 if grep -qE 'ShellExecuteW\(NULL, L"open", (exe|exePath|L"netsh")' res/msi/CustomActions/CustomActions.cpp; then
   r_s11d="$r_s11d msi:amyuni-or-netsh-shellexecute-leftover"
 fi
@@ -453,6 +493,8 @@ grep -q 'Windows Amyuni IDD helper launch provenance' requirements.html || r_s11
 grep -q 'R-S11d-1 — Windows Amyuni IDD helper launch provenance' HARDENING_STATUS.md || r_s11d="$r_s11d amyuni-hardening-ledger-missing"
 grep -q 'Windows Amyuni IDD cleanup completion authority' requirements.html || r_s11d="$r_s11d amyuni-cleanup-requirements-disposition-missing"
 grep -q 'R-S11d-2 — Windows Amyuni IDD cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d amyuni-cleanup-hardening-ledger-missing"
+grep -q 'Windows MSI firewall custom-action completion authority' requirements.html || r_s11d="$r_s11d firewall-requirements-disposition-missing"
+grep -q 'R-S11d-7 — Windows MSI firewall custom-action completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d firewall-hardening-ledger-missing"
 grep -q 'Windows MSI runtime-generated executable cleanup completion authority' requirements.html || r_s11d="$r_s11d runtime-generated-cleanup-requirements-disposition-missing"
 grep -q 'R-S11d-4 — Windows MSI runtime-generated executable cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d runtime-generated-cleanup-hardening-ledger-missing"
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else

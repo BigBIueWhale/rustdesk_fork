@@ -75,8 +75,8 @@
 			<Custom Action="TerminateProcesses.SetParam" Before="TerminateProcesses"/>
 			<Custom Action="TerminateBrokers" Before="RemoveRuntimeGeneratedFiles"/>
 			<Custom Action="TerminateBrokers.SetParam" Before="TerminateBrokers"/>
-			<Custom Action="RemoveAmyuniIdd" Before="RemoveRuntimeGeneratedFiles"/>
-			<Custom Action="RemoveAmyuniIdd.SetParam" Before="RemoveAmyuniIdd"/>
+			<Custom Action="RemoveAmyuniIdd" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>
+			<Custom Action="RemoveAmyuniIdd.SetParam" Before="RemoveAmyuniIdd" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>
 		</InstallExecuteSequence>
 
 		<!-- Shortcuts -->

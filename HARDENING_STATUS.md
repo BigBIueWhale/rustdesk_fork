@@ -658,18 +658,22 @@ unreachable and a source/test/AST gate prevents reintroduction.
   ledger/requirements disposition.
 - **R-S11d-2 — Windows Amyuni IDD cleanup completion authority — CLOSED 2026-07-10.** Platform:
   Windows MSI deferred non-impersonated uninstall/update custom action. Endpoint/action:
-  `RemoveAmyuniIdd` running `usbmmidd_v2\deviceinstaller64.exe remove usbmmidd`. Boundary:
-  installed Program Files helper payload ↔ privileged MSI cleanup state. Attack surface closed: once the
-  optional helper directory and helper executable are present, cleanup is no longer an async best-effort launch
-  whose failure is hidden from MSI. The action launches the already checked absolute helper with
-  `CreateProcessW`, uses the helper directory only as working directory, waits for the process handle with a
-  bounded timeout, reads the exit code, treats launch failure, timeout, exit-code read failure, and nonzero exit
-  as MSI custom-action failure, closes process/thread handles on every path, and the WiX action is
-  `Return="check"`. The absent helper directory remains a no-op for installs without the optional Amyuni
-  payload. Stale bare-`netsh` `ShellExecuteW` firewall helper examples and their commented reactivation path are
-  deleted. Verification closure: `scripts/verify.sh` asserts checked `CreateProcessW`/wait/exit-code handling,
-  `RemoveAmyuniIdd` `Return="check"`, absence of the old `Return="ignore"` and stale bare-`netsh` shell helpers,
-  and this ledger/requirements disposition.
+  `RemoveAmyuniIdd` removing the `usbmmidd` Amyuni virtual-display device through SetupAPI and, on AMD64, the
+  installed `usbmmidd_v2\deviceinstaller64.exe remove usbmmidd` fallback. Boundary: installed privileged driver
+  state/helper payload ↔ privileged MSI cleanup state. Attack surface closed: cleanup no longer hides native
+  SetupAPI failure or helper failure from MSI. The native path returns a `DriverUninstallStatus` plus `HRESULT`:
+  complete enumeration proving no present matching hardware ID is a successful no-op, successful removal of all
+  matching present devices is success, and enumeration/property/class-installer/remove failures are fatal unless
+  the AMD64 helper fallback succeeds. The helper fallback is attempted only after native failure; if native
+  removal failed, a missing helper directory or helper executable is fatal rather than a silent skip. The action
+  launches the already checked absolute helper with `CreateProcessW`, waits with a bounded timeout, reads the
+  exit code, accepts `ERROR_SUCCESS_REBOOT_REQUIRED` as success-with-reboot, treats other nonzero exits as
+  failure, signals reboot-required state through WiX, and the WiX action is `Return="check"`. The action is
+  scheduled only for uninstall/upgrade. Stale bare-`netsh` `ShellExecuteW` firewall helper examples and their
+  commented reactivation path are deleted. Verification closure: `scripts/verify.sh` asserts the native status
+  contract, HRESULT propagation, complete-enumeration/not-present branch, MultiSZ hardware-ID scan, checked
+  helper fallback, reboot signaling, uninstall/upgrade scheduling, `RemoveAmyuniIdd` `Return="check"`, absence
+  of the old ignored-return/native-result-discard shapes, and this ledger/requirements disposition.
 - **R-S11d-3 — Windows runtime process command provenance — CLOSED 2026-07-10.** Platform:
   Windows runtime service-adjacent process probes in `src/platform/windows.rs`. Endpoint/action:
   non-installed UAC `consent.exe` detection used by capture/privacy-mode decisions, and startup cleanup for the
@@ -722,6 +726,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Verification closure: `scripts/verify.sh` asserts the known-folder roots, final-destination shortcut command
   helper, checked `cscript.exe` runner, final path call sites, absence of temp `.lnk` staging/copy patterns, and
   this ledger/requirements disposition.
+- **R-S11d-7 — Windows MSI firewall custom-action completion authority — CLOSED 2026-07-10.** Platform:
+  Windows MSI deferred non-impersonated install/uninstall custom actions. Endpoint/action:
+  `AddFirewallRules` and `RemoveFirewallRules` modifying Windows Firewall policy for the installed RustDesk
+  executable. Boundary: privileged firewall policy ↔ MSI install/uninstall completion state. Attack surface
+  closed: the actions no longer continue after firewall COM/policy/add/remove failure and no longer discard
+  helper results. WiX declares both actions `Return="check"`; the custom-action entry validates the mode byte and
+  non-empty executable path, derives the rule name with string-copy rather than format-string copy, propagates
+  the helper `HRESULT`, and fails MSI on helper failure. The helper returns `HRESULT`, removes existing same-name
+  rules before add, requires both inbound and outbound rule creation to succeed, best-effort removes partial state
+  before returning an add failure, and removes rules by bounded `Item`/`Remove` loops until absence is proven.
+  Already-absent rules are successful no-ops; COM/policy/query/remove failures are fatal. Verification closure:
+  `scripts/verify.sh` asserts checked WiX returns, HRESULT helper signatures and propagation, invalid
+  CustomActionData rejection, absence of format-string copies and discarded helper results, bounded
+  remove-until-absent semantics, absent-rule no-op HRESULTs, and this ledger/requirements disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

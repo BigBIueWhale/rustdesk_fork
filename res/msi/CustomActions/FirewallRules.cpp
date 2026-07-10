@@ -19,6 +19,7 @@ Abstract:
 #pragma comment(lib, "oleaut32.lib")
 
 #define STRING_BUFFER_SIZE  500     
+#define MAX_FIREWALL_RULE_REMOVALS 16
 
 
 // Forward declarations
@@ -32,10 +33,16 @@ HRESULT    AddFirewallRuleWithEdgeTraversal(__in INetFwPolicy2* pNetFwPolicy2,
                                             __in LPWSTR exeName,
                                             __in LPWSTR exeFile);
 
-
-bool AddFirewallRule(bool add, LPWSTR exeName, LPWSTR exeFile)
+bool IsFirewallRuleAbsent(HRESULT hr)
 {
-    bool result = false;
+    return hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND) ||
+        hr == HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND) ||
+        hr == HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+}
+
+
+HRESULT AddFirewallRule(bool add, LPWSTR exeName, LPWSTR exeFile)
+{
     HRESULT hrComInit = S_OK;
     HRESULT hr = S_OK;
     INetFwPolicy2* pNetFwPolicy2 = NULL;
@@ -66,15 +73,27 @@ bool AddFirewallRule(bool add, LPWSTR exeName, LPWSTR exeFile)
     }
 
     if (add) {
+        hr = RemoveFirewallRule(pNetFwPolicy2, exeName);
+        if (FAILED(hr)) {
+            goto Cleanup;
+        }
+
         // Add firewall rule with EdgeTraversalOption=DeferApp (Windows7+) if available 
         //   else add with Edge=True (Vista and Server 2008).
         hr = AddFirewallRuleWithEdgeTraversal(pNetFwPolicy2, true, exeName, exeFile);
+        if (FAILED(hr)) {
+            RemoveFirewallRule(pNetFwPolicy2, exeName);
+            goto Cleanup;
+        }
         hr = AddFirewallRuleWithEdgeTraversal(pNetFwPolicy2, false, exeName, exeFile);
+        if (FAILED(hr)) {
+            RemoveFirewallRule(pNetFwPolicy2, exeName);
+            goto Cleanup;
+        }
     }
     else {
         hr = RemoveFirewallRule(pNetFwPolicy2, exeName);
     }
-    result = SUCCEEDED(hr);
 
 Cleanup:
 
@@ -87,7 +106,7 @@ Cleanup:
         CoUninitialize();
     }
 
-    return result;
+    return hr;
 }
 
 BSTR MakeRuleName(__in LPWSTR exeName)
@@ -108,6 +127,8 @@ HRESULT    RemoveFirewallRule(
 {
     HRESULT hr = S_OK;
     INetFwRules* pNetFwRules = NULL;
+    INetFwRule* pNetFwRule = NULL;
+    bool absenceProven = false;
 
     WCHAR pwszTemp[STRING_BUFFER_SIZE] = L"";
 
@@ -127,20 +148,51 @@ HRESULT    RemoveFirewallRule(
         goto Cleanup;
     }
 
-    // We need to "Remove()" twice, because both "in" and "out" rules are added?
-    // There's no remarks for this case https://learn.microsoft.com/en-us/windows/win32/api/netfw/nf-netfw-inetfwrules-remove
-    hr = pNetFwRules->Remove(RuleName);
-    hr = pNetFwRules->Remove(RuleName);
-    if (FAILED(hr)) {
-        WcaLog(LOGMSG_STANDARD, "Failed to remove firewall rule \"%ls\" : 0x%08lx\n", exeName, hr);
+    for (DWORD removeAttempt = 0; removeAttempt < MAX_FIREWALL_RULE_REMOVALS; removeAttempt++) {
+        if (pNetFwRule != NULL)
+        {
+            pNetFwRule->Release();
+            pNetFwRule = NULL;
+        }
+
+        hr = pNetFwRules->Item(RuleName, &pNetFwRule);
+        if (IsFirewallRuleAbsent(hr)) {
+            absenceProven = true;
+            hr = S_OK;
+            break;
+        }
+        if (FAILED(hr)) {
+            WcaLog(LOGMSG_STANDARD, "Failed to query firewall rule \"%ls\" : 0x%08lx\n", exeName, hr);
+            goto Cleanup;
+        }
+        if (pNetFwRule != NULL)
+        {
+            pNetFwRule->Release();
+            pNetFwRule = NULL;
+        }
+
+        hr = pNetFwRules->Remove(RuleName);
+        if (FAILED(hr) && !IsFirewallRuleAbsent(hr)) {
+            WcaLog(LOGMSG_STANDARD, "Failed to remove firewall rule \"%ls\" : 0x%08lx\n", exeName, hr);
+            goto Cleanup;
+        }
     }
-    else {
-        WcaLog(LOGMSG_STANDARD, "Firewall rule \"%ls\" is removed\n", exeName);
+    if (!absenceProven) {
+        WcaLog(LOGMSG_STANDARD, "Firewall rule \"%ls\" remained after bounded cleanup\n", exeName);
+        hr = E_FAIL;
+        goto Cleanup;
     }
 
+    hr = S_OK;
+    WcaLog(LOGMSG_STANDARD, "Firewall rule \"%ls\" is absent\n", exeName);
 Cleanup:
 
     SysFreeString(RuleName);
+
+    if (pNetFwRule != NULL)
+    {
+        pNetFwRule->Release();
+    }
 
     if (pNetFwRules != NULL)
     {
@@ -194,7 +246,7 @@ HRESULT    AddFirewallRuleWithEdgeTraversal(
     }
     //    Examples of using indirect strings -
     //    hr = StringCchPrintfW(pwszTemp, STRING_BUFFER_SIZE, L"@EdgeTraversalOptions.exe,-127");
-    hr = StringCchPrintfW(pwszTemp, STRING_BUFFER_SIZE, exeName);
+    hr = StringCchCopyW(pwszTemp, STRING_BUFFER_SIZE, exeName);
     if (FAILED(hr))
     {
         WcaLog(LOGMSG_STANDARD, "Failed to compose a resource identifier string: 0x%08lx\n", hr);

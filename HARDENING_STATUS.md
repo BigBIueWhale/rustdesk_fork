@@ -621,7 +621,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   closure: `scripts/verify.sh` runs the `r_s11c10_service_*` unit tests and asserts the lifecycle block uses fixed
   `systemctl` paths, the argv helper, no user-config import into root service state, and no stale
   `run_cmds_status`, `has_cmd`, `which`, `cp -f`, shell, or inline `systemctl ...` command text.
-- **R-S11c-10j — Debian package lifecycle and systemd stop semantics — CLOSED 2026-07-09; tightened 2026-07-10.**
+- **R-S11c-10j — Debian package lifecycle and systemd stop semantics — CLOSED 2026-07-09; tightened 2026-07-11.**
   Platform: Debian/Linux `.deb` install, upgrade, remove, and purge lifecycle. Surfaces:
   `res/DEBIAN/preinst`, `postinst`, `prerm`, `postrm`, `res/rustdesk.service`, generated `.deb`
   dependencies and Debian packaging paths in `build.py`, `scripts/build-debian.sh`, and the Linux service parent
@@ -635,7 +635,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   converted to maintainer-script success. Fresh install does not stop a nonexistent old unit; upgrade stops an
   existing old system unit before package transition; configure checks enable, daemon-reload, and start; remove
   and deconfigure check stop/disable/daemon-reload before deleting entry points and unit files; purge checks
-  helper-state cleanup and root service-config removal. `build.py` starts Debian package staging from a clean
+  helper-state cleanup and removes the stock root service config tree at `/root/.config/RustDesk`, plus the
+  historical lowercase `/root/.config/rustdesk` residue. `build.py` starts Debian package staging from a clean
   `tmpdeb`, uses checked control-script copy operations, and separates `dpkg-deb` from cleanup so package-build
   failure cannot be hidden by `rm -rf`. `scripts/build-debian.sh` extracts each emitted `.deb`, compares
   `preinst`/`postinst`/`prerm`/`postrm` byte-for-byte with `res/DEBIAN`, and rejects any built maintainer script
@@ -644,8 +645,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `TimeoutStopSec=30`/SIGKILL as the fixed backstop. The Linux service parent no longer uses
   `Child::kill()` as the first stop action for the managed `--server` child; it sends `SIGTERM`, waits a bounded
   eight seconds for the existing R-T9 drain, and only then forces the child. Verification closure:
-  `scripts/verify.sh` asserts the helper-layer package scripts, checked helper results, checked Debian
-  packaging operations, the `.deb` dependency, absence of legacy raw process/systemctl/pkill stop shapes, the
+  `scripts/verify.sh` asserts the helper-layer package scripts, checked helper results, stock root config purge
+  path, checked Debian packaging operations, the `.deb` dependency, absence of legacy raw process/systemctl/pkill stop shapes, the
   cgroup-scoped unit stop mode, and the SIGTERM-first managed-child supervisor path; `scripts/build-debian.sh`
   enforces the built-control-script proof before hashing artifacts.
 - **R-S11c-7 — Linux `_pa` audio helper capability — CLOSED 2026-07-09.** Platform: Linux desktop while the

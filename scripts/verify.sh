@@ -2280,6 +2280,12 @@ grep -q 'deb-systemd-invoke stop "$unit"' res/DEBIAN/prerm     || r_s11c10j="$r_
 grep -q 'deb-systemd-helper disable "$unit"' res/DEBIAN/prerm  || r_s11c10j="$r_s11c10j prerm:no-helper-disable"
 grep -q 'deb-systemd-invoke daemon-reload >/dev/null' res/DEBIAN/prerm || r_s11c10j="$r_s11c10j prerm:no-helper-daemon-reload"
 grep -q 'deb-systemd-helper purge "$unit"' res/DEBIAN/postrm   || r_s11c10j="$r_s11c10j postrm:no-helper-purge"
+grep -q 'pub static ref APP_NAME: RwLock<String> = RwLock::new("RustDesk".to_owned());' libs/hbb_common/src/config.rs || r_s11c10j="$r_s11c10j config:stock-app-name-not-rustdesk"
+grep -q 'directories_next::ProjectDirs::from("", &org, &APP_NAME.read().unwrap())' libs/hbb_common/src/config.rs || r_s11c10j="$r_s11c10j config:no-projectdirs-app-name-path"
+grep -q 'rm -rf -- /root/.config/RustDesk /root/.config/rustdesk' res/DEBIAN/postrm || r_s11c10j="$r_s11c10j postrm:no-stock-root-config-purge"
+if grep -q 'rm -rf /root/.config/rustdesk' res/DEBIAN/postrm; then
+  r_s11c10j="$r_s11c10j postrm:lowercase-only-root-config-purge"
+fi
 grep -q 'init-system-helpers' build.py                         || r_s11c10j="$r_s11c10j deb-control:no-init-system-helpers-dep"
 grep -qE '^KillMode=control-group$' res/rustdesk.service       || r_s11c10j="$r_s11c10j unit:not-control-group"
 if grep -qE '^ExecStop=|pkill|KillMode=mixed' res/rustdesk.service; then
@@ -2319,7 +2325,7 @@ if echo "$linux_child_stop_block" | grep -q 'allow_err!(ps.kill())'; then
   r_s11c10j="$r_s11c10j linux:managed-server-child-sigkill-regressed"
 fi
 if [ -n "$r_s11c10j" ]; then echo "  FAIL R-S11c-10j/R-T9 Debian package lifecycle/systemd stop:$r_s11c10j"; rc=1; else
-  echo "  ok  R-S11c-10j/R-T9 Debian scripts use checked deb-systemd helpers with no masked lifecycle failures; build.py stages checked control scripts; unit has cgroup-scoped SIGTERM/TimeoutStopSec with no pkill ExecStop; Linux supervisor SIGTERMs child servers before forced stop"; fi
+  echo "  ok  R-S11c-10j/R-T9 Debian scripts use checked deb-systemd helpers with no masked lifecycle failures and purge the stock root RustDesk config tree; build.py stages checked control scripts; unit has cgroup-scoped SIGTERM/TimeoutStopSec with no pkill ExecStop; Linux supervisor SIGTERMs child servers before forced stop"; fi
 
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() are now only typed password

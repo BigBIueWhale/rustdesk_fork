@@ -7,7 +7,7 @@ unit=rustdesk.service
 case "$1" in
     purge)
         deb-systemd-helper purge "$unit" >/dev/null
-        rm -rf /root/.config/rustdesk
+        rm -rf -- /root/.config/RustDesk /root/.config/rustdesk
         ;;
 esac
 

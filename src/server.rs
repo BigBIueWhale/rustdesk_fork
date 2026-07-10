@@ -751,8 +751,6 @@ pub async fn start_server(is_server: bool) {
         input_service::fix_key_down_timeout_loop();
         #[cfg(target_os = "windows")]
         crate::platform::try_kill_broker();
-        #[cfg(feature = "hwcodec")]
-        scrap::hwcodec::start_check_process();
         // R-D4 / §17: direct-only service entry — no rendezvous mediator (the inherited
         // start_all and its register/STUN/KCP/LAN protocol are bypassed, removal pending).
         // R-D7a (N1/F1): desktop/`--service` has no Android service generation — its listener
@@ -760,11 +758,7 @@ pub async fn start_server(is_server: bool) {
         crate::direct_service::start_direct_only(None).await;
     } else {
         match crate::ipc::connect(1000, "").await {
-            Ok(_) => {
-                #[cfg(feature = "hwcodec")]
-                #[cfg(any(target_os = "windows", target_os = "linux"))]
-                crate::ipc::client_get_hwcodec_config_thread(0);
-            }
+            Ok(_) => {}
             Err(err) => {
                 // R-X10: the GUI/client (`is_server == false`) path NEVER auto-starts a controlled
                 // server — the controlled side starts ONLY via the installed `--service` (one mode,

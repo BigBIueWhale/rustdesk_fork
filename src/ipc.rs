@@ -549,8 +549,6 @@ pub enum Data {
         conn_id: i32,
         err: String,
     },
-    CheckHwcodec,
-    HwCodecConfig(Option<String>),
     #[cfg(all(
         feature = "flutter",
         not(any(target_os = "android", target_os = "ios"))
@@ -1050,9 +1048,7 @@ pub(crate) fn main_channel_admits_state_mutation(
         | Data::FileReadError { .. }
         | Data::FileDigestFromCM { .. }
         | Data::AllFilesResult { .. }
-        | Data::WriteJobRejected { .. }
-        | Data::CheckHwcodec
-        | Data::HwCodecConfig(_) => true,
+        | Data::WriteJobRejected { .. } => true,
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         Data::CmEndpointChallenge { .. }
         | Data::CmEndpointProof { .. }
@@ -2260,28 +2256,6 @@ async fn handle(data: Data, stream: &mut Connection, channel: IpcChannel) {
             let count = crate::terminal_service::get_terminal_session_count(true);
             allow_err!(stream.send(&Data::TerminalSessionCount(count)).await);
         }
-        #[cfg(feature = "hwcodec")]
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        Data::CheckHwcodec => {
-            scrap::hwcodec::start_check_process();
-        }
-        #[cfg(feature = "hwcodec")]
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        Data::HwCodecConfig(c) => {
-            match c {
-                None => {
-                    let v = match scrap::hwcodec::HwCodecConfig::get_set_value() {
-                        Some(v) => Some(serde_json::to_string(&v).unwrap_or_default()),
-                        None => None,
-                    };
-                    allow_err!(stream.send(&Data::HwCodecConfig(v)).await);
-                }
-                Some(v) => {
-                    // --server and portable
-                    scrap::hwcodec::HwCodecConfig::set(v);
-                }
-            }
-        }
         #[cfg(target_os = "windows")]
         Data::PortForwardSessionCount(c) => match c {
             None => {
@@ -3101,12 +3075,6 @@ pub fn close_all_instances() -> ResultType<bool> {
     }
 }
 
-#[tokio::main(flavor = "current_thread")]
-pub async fn notify_server_to_check_hwcodec() -> ResultType<()> {
-    connect(1_000, "").await?.send(&&Data::CheckHwcodec).await?;
-    Ok(())
-}
-
 #[cfg(target_os = "windows")]
 pub async fn get_port_forward_session_count(ms_timeout: u64) -> ResultType<usize> {
     let mut c = connect(ms_timeout, "").await?;
@@ -3115,83 +3083,6 @@ pub async fn get_port_forward_session_count(ms_timeout: u64) -> ResultType<usize
         return Ok(count);
     }
     bail!("Failed to get port forward session count");
-}
-
-#[cfg(feature = "hwcodec")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[tokio::main(flavor = "current_thread")]
-pub async fn get_hwcodec_config_from_server() -> ResultType<()> {
-    if !scrap::codec::enable_hwcodec_option() || scrap::hwcodec::HwCodecConfig::already_set() {
-        return Ok(());
-    }
-    let mut c = connect(50, "").await?;
-    c.send(&Data::HwCodecConfig(None)).await?;
-    if let Some(Data::HwCodecConfig(v)) = c.next_timeout(50).await? {
-        match v {
-            Some(v) => {
-                scrap::hwcodec::HwCodecConfig::set(v);
-                return Ok(());
-            }
-            None => {
-                bail!("hwcodec config is none");
-            }
-        }
-    }
-    bail!("failed to get hwcodec config");
-}
-
-#[cfg(feature = "hwcodec")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn client_get_hwcodec_config_thread(wait_sec: u64) {
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    if !crate::platform::is_installed()
-        || !scrap::codec::enable_hwcodec_option()
-        || scrap::hwcodec::HwCodecConfig::already_set()
-    {
-        return;
-    }
-    ONCE.call_once(move || {
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            let mut intervals: Vec<u64> = vec![wait_sec, 3, 3, 6, 9];
-            for i in intervals.drain(..) {
-                if i > 0 {
-                    std::thread::sleep(std::time::Duration::from_secs(i));
-                }
-                if get_hwcodec_config_from_server().is_ok() {
-                    break;
-                }
-            }
-        });
-    });
-}
-
-#[cfg(feature = "hwcodec")]
-#[tokio::main(flavor = "current_thread")]
-pub async fn hwcodec_process() {
-    let s = scrap::hwcodec::check_available_hwcodec();
-    for _ in 0..5 {
-        match crate::ipc::connect(1000, "").await {
-            Ok(mut conn) => {
-                match conn
-                    .send(&crate::ipc::Data::HwCodecConfig(Some(s.clone())))
-                    .await
-                {
-                    Ok(()) => {
-                        log::info!("send ok");
-                        break;
-                    }
-                    Err(e) => {
-                        log::error!("send failed: {e:?}");
-                    }
-                }
-            }
-            Err(e) => {
-                log::error!("connect failed: {e:?}");
-            }
-        }
-        std::thread::sleep(std::time::Duration::from_secs(1));
-    }
 }
 
 #[cfg(all(

@@ -157,7 +157,11 @@ grep -q 'Socks(Option' src/ipc.rs && r_s11="$r_s11 socks-ipc-variant-present"
 grep -q 'Data::Socks' src/ipc.rs && r_s11="$r_s11 socks-ipc-reference-present"
 main_policy_body=$(sed -n '/pub(crate) fn main_channel_admits_state_mutation/,/^async fn send_main_channel_mutation_rejection_ack/p' src/ipc.rs)
 echo "$main_policy_body" | grep -q 'Data::Login { .. }' || r_s11="$r_s11 main-policy-explicit-nonmutating-classification-missing"
-echo "$main_policy_body" | grep -q 'Data::HwCodecConfig(_) => true' || r_s11="$r_s11 main-policy-explicit-handler-write-classification-missing"
+if rg -n 'CheckHwcodec|HwCodecConfig|notify_server_to_check_hwcodec|get_hwcodec_config_from_server|client_get_hwcodec_config_thread|hwcodec_process|--check-hwcodec-config|start_check_process\(|check_available_hwcodec\(|HwCodecConfig::' \
+  src >/tmp/rd_verify_hwcodec_ipc.$$; then
+  r_s11="$r_s11 hwcodec-ipc-probe-surface-present:$(tr '\n' ';' </tmp/rd_verify_hwcodec_ipc.$$)"
+fi
+rm -f /tmp/rd_verify_hwcodec_ipc.$$
 if echo "$main_policy_body" | grep -qE '^[[:space:]]*\| Data::Close([[:space:]]|$)'; then
   r_s11="$r_s11 close-in-unconditional-main-policy-bucket"
 fi
@@ -1921,9 +1925,8 @@ if [ -n "$r_s11c10j" ]; then echo "  FAIL R-S11c-10j/R-T9 Debian package lifecyc
 # wildcard arm, so any NEW Data variant must be classified before the code compiles; this count catches a
 # newly classified bypassing write that reaches Config unguarded on the main channel — the exact regression.
 # set_options is EXCLUDED (it self-filters via is_option_can_save, R-S16, including trust-anchor/proxy
-# credential option keys); HwCodecConfig::set is a separate hwcodec store (compiled out, R-R2b), excluded by
-# the \b before Config. Pin the count: a new
-# bypassing write trips this, forcing the author to deny its Data variant in main_channel_admits.
+# credential option keys). Pin the count: a new bypassing write trips this, forcing the author to deny
+# its Data variant in main_channel_admits.
 hb_cfg_writes=$(awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -cE '\bConfig::set_socks|\bConfig::set_permanent_password|\bConfig::set_id|\bConfig::set_salt|\bConfig::set\(|\bConfig2::set\(')
 # I-1 (2026-07-03): was 9; the id-write arm's set_key_confirmed(false) was excised with the dead
 # rendezvous key_confirmed cluster (the setter no longer exists), 9->8.

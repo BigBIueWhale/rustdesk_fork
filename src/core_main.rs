@@ -470,10 +470,6 @@ pub fn core_main() -> Option<Vec<String>> {
         // excision missed). Removed so the egress is structurally absent (R-SV1), not
         // merely pin-safe via the empty api-server; deploy_device itself is gutted to
         // refuse (ui_interface.rs), keeping the flutter FFI signature compiling.
-        } else if args[0] == "--check-hwcodec-config" {
-            #[cfg(feature = "hwcodec")]
-            crate::ipc::hwcodec_process();
-            return None;
         } else if args[0] == "--terminal-helper" {
             // Terminal helper process - runs as user to create ConPTY
             // This is needed because ConPTY has compatibility issues with CreateProcessAsUserW
@@ -640,7 +636,6 @@ mod tests {
             "--server",
             "--tray",
             "--cm",
-            "--check-hwcodec-config",
             "--password",
             "--connect",
         ] {

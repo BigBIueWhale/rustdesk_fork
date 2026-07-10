@@ -376,6 +376,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   existing handle-level config-write count remains pinned to the two typed permanent-password writers, so a
   newly classified identity/salt/key/proxy/trust-store writer must be introduced as an explicit
   receiver-authorized operation with its own gate rather than as an ordinary IPC write.
+- **R-S11b-3i — hardware-codec probe IPC write surface deleted — CLOSED 2026-07-10.**
+  Platforms: desktop main IPC source surface. Endpoint/action: the feature-gated `CheckHwcodec` /
+  `HwCodecConfig` hardware-codec probe and `_hwcodec` config propagation path. Boundary: ordinary local
+  main-IPC peer ↔ service-owned receiver runtime codec state. Attack surface closed: the fork's R-R2b
+  software-codec policy already forbids selecting `hwcodec`/`vram`/`mediacodec` in any build path, so the
+  remaining feature-gated main-IPC probe write had no valid authority model. `Data::CheckHwcodec`,
+  `Data::HwCodecConfig`, their receiver handler, `--check-hwcodec-config`, the client/server IPC sync helpers,
+  and the startup callers are deleted instead of being wrapped in a helper-token protocol for a forbidden
+  feature. The generated Flutter `main_check_hwcodec` wrapper remains ABI-compatible but reaches a no-op.
+  Verification closure: `scripts/verify.sh` rejects any reintroduced hardware-codec IPC message, handler helper,
+  client/server sync helper, core `--check-hwcodec-config` entry, or direct helper-process/probe caller anywhere
+  in the application source.
 - **R-S11c-13 — service-owned IPC close is receiver-authorized — CLOSED 2026-07-09.**
   Platforms: Windows installed service-owned main server and `_service`; Linux/macOS main-channel policy covered
   by the same source rule. Endpoint/action: `Data::Close` on desktop main IPC and Windows `_service`.

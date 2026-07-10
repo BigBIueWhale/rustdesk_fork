@@ -2323,7 +2323,6 @@ pub fn start_video_thread<F, T>(
     std::thread::spawn(move || {
         #[cfg(windows)]
         sync_cpu_usage();
-        get_hwcodec_config();
         let mut video_handler = None;
         let mut count = 0;
         let mut duration = std::time::Duration::ZERO;
@@ -2521,27 +2520,6 @@ fn fps_calculate(
     if *count >= 30 {
         *count = 0;
         *duration = Duration::ZERO;
-    }
-}
-
-fn get_hwcodec_config() {
-    // for sciter and unilink
-    #[cfg(feature = "hwcodec")]
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
-    {
-        use std::sync::Once;
-        static ONCE: Once = Once::new();
-        ONCE.call_once(|| {
-            let start = std::time::Instant::now();
-            if let Err(e) = crate::ipc::get_hwcodec_config_from_server() {
-                log::error!(
-                    "Failed to get hwcodec config: {e:?}, elapsed: {:?}",
-                    start.elapsed()
-                );
-            } else {
-                log::info!("{:?} used to get hwcodec config", start.elapsed());
-            }
-        });
     }
 }
 

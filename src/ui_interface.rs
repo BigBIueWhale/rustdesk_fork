@@ -93,12 +93,20 @@ pub fn install_me(_options: String, _path: String, _silent: bool, _debug: bool) 
 
 #[inline]
 pub fn run_without_install() {
+    #[cfg(windows)]
+    if std::env::var_os("RUSTDESK_PROTECTED_INSTALL").is_some() {
+        return;
+    }
     crate::run_me(vec!["--noinstall"]).ok();
     std::process::exit(0);
 }
 
 #[inline]
 pub fn show_run_without_install() -> bool {
+    #[cfg(windows)]
+    if std::env::var_os("RUSTDESK_PROTECTED_INSTALL").is_some() {
+        return true;
+    }
     let mut it = std::env::args();
     if let Some(tmp) = it.next() {
         if crate::is_setup(&tmp) {

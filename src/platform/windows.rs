@@ -2481,12 +2481,27 @@ fn run_cmds(cmds: String, show: bool, tip: &str) -> ResultType<()> {
     let tmp2 = get_undone_file(&tmp.path)?;
     let tmp_fn = tmp.path_str()?;
     let cmd = trusted_system_cmd_path()?;
-    let res = runas::Command::new(cmd)
-        .args(&["/C", &tmp_fn])
-        .show(show)
-        .force_prompt(true)
-        .status();
-    let status = res?;
+    let already_elevated = match is_elevated(None) {
+        Ok(elevated) => elevated,
+        Err(err) => {
+            log::warn!("Failed to determine installer command elevation state: {err}");
+            false
+        }
+    };
+    let status = if already_elevated {
+        let mut command = std::process::Command::new(&cmd);
+        command.args(["/C", tmp_fn]);
+        if !show {
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        command.status()?
+    } else {
+        runas::Command::new(cmd)
+            .args(&["/C", &tmp_fn])
+            .show(show)
+            .force_prompt(true)
+            .status()?
+    };
     let marker_left = tmp2.exists();
     if marker_left {
         allow_err!(std::fs::remove_file(tmp2));
@@ -3058,7 +3073,7 @@ pub fn is_elevated(process_id: Option<DWORD>) -> ResultType<bool> {
                 io::Error::last_os_error()
             )
         }
-        let _handle = RAIIHandle(handle);
+        let _handle = process_id.map(|_| RAIIHandle(handle));
         let mut token: HANDLE = mem::zeroed();
         if OpenProcessToken(handle, TOKEN_QUERY, &mut token) == FALSE {
             bail!(

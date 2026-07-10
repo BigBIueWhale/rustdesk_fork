@@ -901,6 +901,28 @@ unreachable and a source/test/AST gate prevents reintroduction.
   MSI service/SAS custom actions and config reader, absence of persistent installer SAS writes, the runtime
   original-policy state machine, serialized known-value-only temporary policy mutation, fail-closed
   read/set/restore handling, caller error propagation, and this ledger/requirements disposition.
+- **R-S11d-17 — Windows portable installer source-staging authority — CLOSED 2026-07-10.**
+  Platform: Windows self-extracting EXE installer. Endpoint/action: double-click `rustdesk-*install.exe`
+  extraction and handoff into the installed-service EXE installer. Boundary: medium-integrity caller-writable
+  portable staging vs elevated Program Files install source. Attack surface closed: the double-click and silent
+  installer entry points no longer extract to `%LOCALAPPDATA%\rustdesk` and then let an elevated install copy
+  that mutable same-user tree into Program Files. The packer relaunches itself with `ShellExecuteExW`/`runas`,
+  waits for and checks the elevated child exit code, requires the internal install leg to be elevated, creates a
+  private per-run staging directory under the width-correct Program Files root,
+  rejects staging paths equal to or below the final install root, rejects reparse-point staging roots, validates
+  embedded payload paths as relative Windows-safe components, treats decompression/create/write/sync failures as
+  fatal, treats generated RuntimeBroker copy failure as fatal, and launches interactive and silent install
+  operations only from the protected staging tree. The protected install UI is marked with
+  `RUSTDESK_PROTECTED_INSTALL`, which hides and blocks the run-without-install escape; `run_cmds` executes
+  through trusted `cmd.exe` directly when the process is already elevated instead of prompting for a second
+  elevation. Cleanup removes only manifest-known payload files plus the generated broker copy after verifying
+  parent directories and targets are not reparse points, then removes empty payload directories and the staging
+  root; post-extraction failures still attempt that manifest cleanup before returning.
+  Verification closure: `scripts/verify.sh` asserts the protected relaunch, elevated child exit-code check,
+  Program Files staging root, final-root overlap rejection, payload path validation, create-new/synced payload
+  writes, protected install marker, interactive and silent install routing, run-without-install block,
+  already-elevated command execution path, fatal RuntimeBroker source copy, manifest cleanup on success and
+  failure paths, and this ledger/requirements disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

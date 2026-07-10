@@ -594,6 +594,52 @@ if grep -Fq 'Command::new("taskkill")' libs/portable/src/main.rs || grep -Fq 'Co
 fi
 grep -q 'Windows portable RuntimeBroker cleanup command provenance' requirements.html || r_s11d="$r_s11d portable-taskkill-requirements-disposition-missing"
 grep -q 'R-S11d-10 — Windows portable RuntimeBroker cleanup command provenance' HARDENING_STATUS.md || r_s11d="$r_s11d portable-taskkill-hardening-ledger-missing"
+grep -Fq 'const ELEVATED_INSTALL_ARG: &str = "--rustdesk-protected-install";' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:internal-install-arg-missing"
+grep -Fq 'const ELEVATED_SILENT_INSTALL_ARG: &str = "--rustdesk-protected-silent-install";' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:internal-silent-install-arg-missing"
+grep -Fq 'const PROTECTED_INSTALL_ENV_KEY: &str = "RUSTDESK_PROTECTED_INSTALL";' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:protected-env-missing"
+grep -Fq 'let silent_install = args.iter().any(|arg| arg == "--silent-install");' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:silent-install-not-detected"
+grep -Fq 'if click_setup || silent_install || protected_install {' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:silent-install-not-protected"
+grep -Fq 'win::run_protected_installer(reader, silent)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:silent-mode-not-bound-to-protected-runner"
+grep -Fq 'std::process::exit(1);' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:protected-main-error-exits-success"
+grep -Fq 'ShellExecuteExW(&mut info)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:not-shell-execute-ex"
+grep -Fq 'SEE_MASK_NOCLOSEPROCESS' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:no-elevated-process-handle"
+grep -Fq 'WaitForSingleObject(process.0, INFINITE)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:no-parent-wait"
+grep -Fq 'GetExitCodeProcess(process.0, &mut exit_code)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:relaunch-exit-code-not-checked"
+grep -Fq 'if exit_code != 0 {' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:relaunch-nonzero-not-fatal"
+grep -Fq 'relaunch_self_for_protected_install(silent)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:silent-mode-not-preserved-through-uac"
+grep -Fq 'current_process_is_elevated()?' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:elevation-check-not-required"
+grep -Fq 'FOLDERID_ProgramFilesX86' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:program-files-root-not-width-aware"
+grep -Fq 'staging_is_outside_final_install_dir(&path)?' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:no-final-root-overlap-check"
+grep -Fq 'fs::create_dir(&path)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:not-private-create-dir"
+grep -Fq 'metadata.file_type().is_symlink() || crate::has_reparse_point(&metadata)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:no-reparse-root-reject"
+grep -Fq '.env(PROTECTED_INSTALL_ENV_KEY, "1")' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:child-not-marked-protected"
+grep -Fq 'let install_arg = if silent {' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:protected-runner-not-mode-aware"
+grep -Fq '"--silent-install"' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:silent-child-install-arg-missing"
+grep -Fq 'finish_with_payload_cleanup(&staging, &payload, result)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:no-error-path-manifest-cleanup"
+grep -Fq 'cleanup_extracted_payload(&staging.path, &payload.files)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:no-manifest-cleanup"
+grep -Fq 'remove_payload_file(root, file)?' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:manifest-file-removal-missing"
+grep -Fq 'ensure_clean_parent_chain(root, file)?' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:no-parent-reparse-check"
+grep -Fq 'copy_runtime_broker(dir: &Path) -> Result<(), String>' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:runtime-broker-copy-not-fallible"
+grep -Fq 'fs::copy(src, &target_file).map_err' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:runtime-broker-copy-error-ignored"
+grep -Fq 'relative_payload_path(&self.path)?' libs/portable/src/bin_reader.rs || r_s11d="$r_s11d portable-staging:payload-path-not-validated"
+grep -Fq 'absolute embedded payload path is not allowed' libs/portable/src/bin_reader.rs || r_s11d="$r_s11d portable-staging:absolute-path-not-rejected"
+grep -Fq 'is_windows_safe_component(component)' libs/portable/src/bin_reader.rs || r_s11d="$r_s11d portable-staging:windows-component-validator-missing"
+grep -Fq '.create_new(true)' libs/portable/src/bin_reader.rs || r_s11d="$r_s11d portable-staging:payload-temp-not-create-new"
+grep -Fq 'file.sync_all()' libs/portable/src/bin_reader.rs || r_s11d="$r_s11d portable-staging:payload-write-not-synced"
+grep -Fq 'std::env::var_os("RUSTDESK_PROTECTED_INSTALL").is_some()' src/ui_interface.rs || r_s11d="$r_s11d portable-staging:run-without-install-not-blocked"
+grep -Fq 'let already_elevated = match is_elevated(None)' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:run-cmds-no-already-elevated-fast-path"
+grep -Fq 'std::process::Command::new(&cmd)' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:run-cmds-elevated-direct-cmd-missing"
+if grep -Fq 'std::fs::remove_dir_all(&dir).ok()' libs/portable/src/main.rs; then
+  r_s11d="$r_s11d portable-staging:old-silent-remove-dir-all"
+fi
+if grep -Fq 'file.write_to_file(&dir);' libs/portable/src/main.rs; then
+  r_s11d="$r_s11d portable-staging:old-infallible-write-shape"
+fi
+if grep -Fq 'cmd.arg("--install")' libs/portable/src/main.rs && ! grep -Fq '.env(PROTECTED_INSTALL_ENV_KEY, "1")' libs/portable/src/main.rs; then
+  r_s11d="$r_s11d portable-staging:unmarked-install-ui-child"
+fi
+grep -q 'Windows portable installer source-staging authority' requirements.html || r_s11d="$r_s11d portable-staging-requirements-disposition-missing"
+grep -q 'R-S11d-17 — Windows portable installer source-staging authority' HARDENING_STATUS.md || r_s11d="$r_s11d portable-staging-hardening-ledger-missing"
 if rg -n 'wmic|by_wmic|get_pids_with_args_by_wmic|get_pids_with_first_arg_by_wmic|get_pids_with_first_arg_check_session|not\(target_pointer_width = "64"\)|all\(target_os = "windows", not\(target_pointer_width = "64"\)\)' src/common.rs src/platform -g '*.rs' >/tmp/rd_verify_r_s11d_wmic.$$; then
   cat /tmp/rd_verify_r_s11d_wmic.$$
   r_s11d="$r_s11d windows:unsupported-32bit-wmic-process-probe-leftover"
@@ -634,7 +680,7 @@ grep -q 'R-S11d-12 — Windows privacy broker and user shortcut process provenan
 grep -q 'Windows MSI runtime-generated executable cleanup completion authority' requirements.html || r_s11d="$r_s11d runtime-generated-cleanup-requirements-disposition-missing"
 grep -q 'R-S11d-4 — Windows MSI runtime-generated executable cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d runtime-generated-cleanup-hardening-ledger-missing"
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else
-  echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path; MSI cleanup observes Amyuni and runtime-generated executable completion; unsupported 32-bit WMIC process probes are absent"; fi
+  echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path; MSI cleanup observes Amyuni and runtime-generated executable completion; portable installer source staging is elevated/protected/manifest-cleaned; unsupported 32-bit WMIC process probes are absent"; fi
 
 echo "== (3b-iii-a5d2) Windows service/session token launch binds executable identity (R-S11d-13) =="
 r_s11d13=
@@ -716,7 +762,14 @@ echo "$write_cmds_body" | grep -Fq 'open(&tmp2)?;' || r_s11d15="$r_s11d15 marker
 if echo "$write_cmds_body" | grep -A8 -F 'let tmp2 = get_undone_file(&command_file.path)?;' | grep -Fq '.ok()'; then
   r_s11d15="$r_s11d15 marker-create-error-ignored"
 fi
-echo "$run_cmds_body" | grep -Fq 'let status = res?;' || r_s11d15="$r_s11d15 elevated-status-not-captured"
+if ! echo "$run_cmds_body" | grep -Fq 'let status = res?;' \
+  && ! echo "$run_cmds_body" | grep -Fq 'let status = if already_elevated {'; then
+  r_s11d15="$r_s11d15 elevated-status-not-captured"
+fi
+if echo "$run_cmds_body" | grep -Fq 'let status = if already_elevated {'; then
+  echo "$run_cmds_body" | grep -Fq 'command.status()?' || r_s11d15="$r_s11d15 elevated-direct-status-not-captured"
+  echo "$run_cmds_body" | grep -Fq 'runas::Command::new(cmd)' || r_s11d15="$r_s11d15 unelevated-runas-branch-missing"
+fi
 echo "$run_cmds_body" | grep -Fq 'let marker_left = tmp2.exists();' || r_s11d15="$r_s11d15 marker-state-not-captured"
 echo "$run_cmds_body" | grep -Fq 'if !status.success() || marker_left {' || r_s11d15="$r_s11d15 status-or-marker-not-required"
 echo "$run_cmds_body" | grep -Fq 'completion marker {}' || r_s11d15="$r_s11d15 failure-message-does-not-report-marker-state"

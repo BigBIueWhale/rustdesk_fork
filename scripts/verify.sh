@@ -1352,6 +1352,28 @@ fi
 if [ -n "$r_s11c10o" ]; then echo "  FAIL R-S11c-10o Linux clipboard FUSE stale unmount provenance:$r_s11c10o"; rc=1; else
   echo "  ok  R-S11c-10o Linux clipboard FUSE stale unmount uses direct umount2(UMOUNT_NOFOLLOW), not PATH-selected umount"; fi
 
+echo "== (3b-iii-h9c4) Linux self-relaunch avoids AppImage APPDIR/AppRun fallback (R-S11c-10p) =="
+r_s11c10p=
+grep -qF 'pub fn run_me_with_env<T, I, K, V>' src/common.rs || r_s11c10p="$r_s11c10p no-self-relaunch-helper"
+grep -qF 'let cmd = std::env::current_exe()?;' src/common.rs || r_s11c10p="$r_s11c10p self-relaunch-not-current-exe"
+grep -qF 'let mut cmd = std::process::Command::new(cmd);' src/common.rs || r_s11c10p="$r_s11c10p self-relaunch-not-current-exe-command"
+grep -qF 'cmd.envs(envs.iter().map(|(k, v)| (k, v)));' src/common.rs || r_s11c10p="$r_s11c10p self-relaunch-env-forwarding-lost"
+grep -q 'Linux self-relaunch AppImage fallback' requirements.html || r_s11c10p="$r_s11c10p requirements-disposition-missing"
+grep -q 'R-S11c-10p closes the Linux self-relaunch AppImage fallback' HARDENING_STATUS.md || r_s11c10p="$r_s11c10p hardening-ledger-missing"
+self_relaunch_block=$(awk '/pub fn run_me_with_env/,/let result = cmd.args/' src/common.rs)
+if echo "$self_relaunch_block" | grep -Eq 'APPDIR|AppRun|AppImage|appimage_cmd|std::env::var\("APPDIR"\)'; then
+  r_s11c10p="$r_s11c10p stale-appimage-relaunch-branch"
+fi
+if grep -RInE 'APPDIR|AppRun|appimage_cmd|std::env::var\("APPDIR"\)' src/common.rs >/tmp/rd_verify_r_s11c10p.$$; then
+  cat /tmp/rd_verify_r_s11c10p.$$
+  rm -f /tmp/rd_verify_r_s11c10p.$$
+  r_s11c10p="$r_s11c10p stale-appimage-runtime-relaunch"
+else
+  rm -f /tmp/rd_verify_r_s11c10p.$$
+fi
+if [ -n "$r_s11c10p" ]; then echo "  FAIL R-S11c-10p Linux self-relaunch AppImage fallback:$r_s11c10p"; rc=1; else
+  echo "  ok  R-S11c-10p Linux self-relaunch uses current_exe only, with no APPDIR/AppRun fallback"; fi
+
 echo "== (3b-iii-h10) Debian package lifecycle uses service-manager helpers (R-S11c-10j/R-T9) =="
 r_s11c10j=
 for maintscript in res/DEBIAN/preinst res/DEBIAN/postinst res/DEBIAN/prerm res/DEBIAN/postrm; do
@@ -3788,18 +3810,27 @@ fi
 # non-Debian distro packaging — res/PKGBUILD (Arch) + res/rpm*.spec (Fedora/SUSE) + build.py's
 # pacman/yum/zypper branches + the CI rpmbuild/makepkg (arch) steps — is excised too, so the .deb
 # is the ONLY Linux artifact (the harmless apt-get `rpm` tooling install is not a build step).
+# PHASE 3: the runtime self-relaunch helper cannot resurrect the AppImage launcher model through
+# APPDIR/AppRun; child processes relaunch the committed current executable only.
 rr2a_bad=
 [ -e appimage ] && rr2a_bad="$rr2a_bad appimage-dir"
 [ -e flatpak ]  && rr2a_bad="$rr2a_bad flatpak-dir"
 [ -e res/PKGBUILD ] && rr2a_bad="$rr2a_bad PKGBUILD"
 ls res/rpm*.spec >/dev/null 2>&1 && rr2a_bad="$rr2a_bad rpm-spec"
+if grep -RInE 'APPDIR|AppRun|appimage_cmd|std::env::var\("APPDIR"\)' src/common.rs >/tmp/rd_verify_rr2a_runtime.$$; then
+  cat /tmp/rd_verify_rr2a_runtime.$$
+  rm -f /tmp/rd_verify_rr2a_runtime.$$
+  rr2a_bad="$rr2a_bad runtime-AppImage-relaunch"
+else
+  rm -f /tmp/rd_verify_rr2a_runtime.$$
+fi
 if grep -rqIE 'build-appimage:|build-flatpak:|appimage-builder|flatpak-builder|rpmbuild|makepkg|arch-makepkg|"appimage/\*\*"|"flatpak/\*\*"' .github/workflows/ 2>/dev/null; then
   rr2a_bad="$rr2a_bad CI-ref"
 fi
 if [ -n "$rr2a_bad" ]; then
   echo "  FAIL R-R2a: non-.deb Linux packaging must be ABSENT (.deb+systemd is the sole model):$rr2a_bad"; rc=1
 else
-  echo "  ok  R-R2a non-.deb Linux packaging excised — AppImage/Flatpak + PKGBUILD/rpm (.deb+systemd is the sole Linux model)"
+  echo "  ok  R-R2a non-.deb Linux packaging/runtime launch paths excised — AppImage/Flatpak + PKGBUILD/rpm (.deb+systemd is the sole Linux model)"
 fi
 # R-SV8 (§18 sovereignty, MUST): no Firebase / FCM / Google-services on ANY artifact (iOS source +
 # Android). The iOS GoogleService-Info.plist shipped LIVE Google creds (API_KEY / GCM_SENDER_ID /

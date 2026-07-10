@@ -613,17 +613,6 @@ where
             )
         })
         .collect::<Vec<_>>();
-    #[cfg(target_os = "linux")]
-    if let Ok(appdir) = std::env::var("APPDIR") {
-        let appimage_cmd = std::path::Path::new(&appdir).join("AppRun");
-        if appimage_cmd.exists() {
-            log::info!("path: {:?}", appimage_cmd);
-            return std::process::Command::new(appimage_cmd)
-                .envs(envs.iter().map(|(k, v)| (k, v)))
-                .args(&args)
-                .spawn();
-        }
-    }
     let cmd = std::env::current_exe()?;
     let mut cmd = std::process::Command::new(cmd);
     cmd.envs(envs.iter().map(|(k, v)| (k, v)));

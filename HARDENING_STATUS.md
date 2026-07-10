@@ -801,6 +801,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `/tmp/<app>/cliprdr-*` directory setup, stale cleanup uses a checked mount-path C string and direct
   `umount2(..., UMOUNT_NOFOLLOW)` syscall; "not mounted" remains best-effort cleanup, and `spawn_mount2`
   stays the operation that fails closed if a stale mount still blocks the mount point.
+  R-S11c-10p closes the Linux self-relaunch AppImage fallback in `src/common.rs`: the shared
+  `run_me_with_env` helper no longer honors ambient `APPDIR` or launches `AppRun` for Linux child-process
+  relaunch. CM, whiteboard, tray, and same-user service-owned child launches now use the current executable
+  only while preserving the explicit authority-token environment supplied by their callers.
   Remaining closure:
   no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
   root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
@@ -811,7 +815,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   root/service helper command provenance is closed by R-S11c-10k; Linux `--server` tray cleanup is closed
   by R-S11c-10l; shared Linux helper command provenance and delayed reopen shell removal are closed by
   R-S11c-10m; Linux headless CM uid lookup is closed by R-S11c-10n; Linux clipboard FUSE stale unmount is
-  closed by R-S11c-10o.
+  closed by R-S11c-10o; Linux self-relaunch AppImage fallback is closed by R-S11c-10p.
 - **R-S11b-4 — config secrecy statement after IPC closure — CLOSED 2026-07-09.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary

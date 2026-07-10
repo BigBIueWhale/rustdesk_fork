@@ -2337,8 +2337,7 @@ fn write_cmds(cmds: String, ext: &str, tip: &str) -> ResultType<InstallerCommand
         fs::OpenOptions::new()
             .write(true)
             .create_new(true)
-            .open(&tmp2)
-            .ok();
+            .open(&tmp2)?;
         cmds = format!(
             "
 {cmds}
@@ -2482,10 +2481,22 @@ fn run_cmds(cmds: String, show: bool, tip: &str) -> ResultType<()> {
         .show(show)
         .force_prompt(true)
         .status();
-    let _ = res?;
-    if tmp2.exists() {
+    let status = res?;
+    let marker_left = tmp2.exists();
+    if marker_left {
         allow_err!(std::fs::remove_file(tmp2));
-        bail!("{} failed", tip);
+    }
+    if !status.success() || marker_left {
+        bail!(
+            "{} failed: elevated command status {}, completion marker {}",
+            tip,
+            status,
+            if marker_left {
+                "left behind"
+            } else {
+                "cleared"
+            }
+        );
     }
     Ok(())
 }
@@ -3589,8 +3600,8 @@ pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
         broker_exe = WIN_TOPMOST_INJECTED_PROCESS_EXE,
     );
     if let Err(err) = run_cmds(cmds, false, "uninstall") {
-        log::debug!("{err}");
-        return true;
+        log::error!("{err}");
+        return false;
     }
     run_after_run_cmds(!show_new_window);
     std::process::exit(0);
@@ -3669,8 +3680,8 @@ pub fn install_service() -> bool {
     );
     if let Err(err) = run_cmds(cmds, false, "install") {
         crate::ipc::EXIT_RECV_CLOSE.store(true, Ordering::Relaxed);
-        log::debug!("{err}");
-        return true;
+        log::error!("{err}");
+        return false;
     }
     run_after_run_cmds(false);
     std::process::exit(0);

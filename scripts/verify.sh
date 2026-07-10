@@ -709,6 +709,39 @@ grep -Fq 'R-S11d-14 — Windows service/session token source provenance' HARDENI
 if [ -n "$r_s11d14" ]; then echo "  FAIL R-S11d-14 Windows service/session token source provenance:$r_s11d14"; rc=1; else
   echo "  ok  R-S11d-14 Windows session launches use WTS user tokens and validated LocalSystem winlogon tokens with minimum rights"; fi
 
+echo "== (3b-iii-a5d4) Windows EXE elevated batch completion is authoritative (R-S11d-15) =="
+r_s11d15=
+run_cmds_body=$(awk '/fn run_cmds\(/,/^}/' src/platform/windows.rs)
+write_cmds_body=$(awk '/fn write_cmds\(/,/^}/' src/platform/windows.rs)
+uninstall_service_body=$(awk '/pub fn uninstall_service\(/,/^}/' src/platform/windows.rs)
+install_service_body=$(awk '/pub fn install_service\(/,/^}/' src/platform/windows.rs)
+echo "$write_cmds_body" | grep -Fq 'open(&tmp2)?;' || r_s11d15="$r_s11d15 marker-create-not-mandatory"
+if echo "$write_cmds_body" | grep -A8 -F 'let tmp2 = get_undone_file(&command_file.path)?;' | grep -Fq '.ok()'; then
+  r_s11d15="$r_s11d15 marker-create-error-ignored"
+fi
+echo "$run_cmds_body" | grep -Fq 'let status = res?;' || r_s11d15="$r_s11d15 elevated-status-not-captured"
+echo "$run_cmds_body" | grep -Fq 'let marker_left = tmp2.exists();' || r_s11d15="$r_s11d15 marker-state-not-captured"
+echo "$run_cmds_body" | grep -Fq 'if !status.success() || marker_left {' || r_s11d15="$r_s11d15 status-or-marker-not-required"
+echo "$run_cmds_body" | grep -Fq 'completion marker {}' || r_s11d15="$r_s11d15 failure-message-does-not-report-marker-state"
+if echo "$run_cmds_body" | grep -Fq 'let _ = res?;'; then
+  r_s11d15="$r_s11d15 elevated-status-still-ignored"
+fi
+echo "$uninstall_service_body" | grep -Fq 'log::error!("{err}");' || r_s11d15="$r_s11d15 uninstall-failure-not-error-logged"
+echo "$uninstall_service_body" | grep -Fq 'return false;' || r_s11d15="$r_s11d15 uninstall-failure-not-false"
+if echo "$uninstall_service_body" | grep -Fq 'return true;'; then
+  r_s11d15="$r_s11d15 uninstall-failure-still-success"
+fi
+echo "$install_service_body" | grep -Fq 'crate::ipc::EXIT_RECV_CLOSE.store(true, Ordering::Relaxed);' || r_s11d15="$r_s11d15 install-failure-exit-close-not-restored"
+echo "$install_service_body" | grep -Fq 'log::error!("{err}");' || r_s11d15="$r_s11d15 install-failure-not-error-logged"
+echo "$install_service_body" | grep -Fq 'return false;' || r_s11d15="$r_s11d15 install-failure-not-false"
+if echo "$install_service_body" | grep -Fq 'return true;'; then
+  r_s11d15="$r_s11d15 install-failure-still-success"
+fi
+grep -Fq 'Windows EXE elevated batch completion accounting' requirements.html || r_s11d15="$r_s11d15 requirements-disposition-missing"
+grep -Fq 'R-S11d-15 — Windows EXE elevated batch completion accounting' HARDENING_STATUS.md || r_s11d15="$r_s11d15 hardening-ledger-missing"
+if [ -n "$r_s11d15" ]; then echo "  FAIL R-S11d-15 Windows EXE elevated batch completion accounting:$r_s11d15"; rc=1; else
+  echo "  ok  R-S11d-15 Windows elevated EXE batches require marker creation, successful exit status, marker removal, and false-on-failure service wrappers"; fi
+
 echo "== (3b-iii-a5e) Windows EXE elevated batch binds external tools to System32 (R-S11d-5) =="
 r_s11d5=
 grep -q 'fn trusted_system_tool_path(tool: &str) -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d5="$r_s11d5 system-tool-resolver-missing"

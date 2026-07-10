@@ -855,6 +855,19 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `WTSQueryUserToken`, trusted System32 `winlogon.exe` image validation, LocalSystem SID validation,
   token-session validation, minimum handle rights, absence of Explorer/sihost token fallbacks, absence of the
   old all-access token source, and this ledger/requirements disposition.
+- **R-S11d-15 — Windows EXE elevated batch completion accounting — CLOSED 2026-07-10.**
+  Platform: Windows EXE install/uninstall/service-install elevated command path. Endpoint/action:
+  `run_cmds` launching generated `.bat` files through UAC-elevated `System32\cmd.exe`, plus the
+  `install_service` / `uninstall_service` wrappers that report service-lifecycle result status. Boundary:
+  unelevated caller ↔ elevated installer command completion. Attack surface closed: the elevated wrapper no
+  longer treats a successfully spawned `cmd.exe` as proof of successful privileged state change. The `.undone`
+  completion marker is now created as a mandatory precondition; after the elevated command exits, `run_cmds`
+  requires both `ExitStatus::success()` and removal of the completion marker. A leftover marker is deleted
+  before returning failure. `install_service` and `uninstall_service` now return `false` when the elevated
+  command fails instead of logging the error and reporting success. Verification closure: `scripts/verify.sh`
+  asserts mandatory marker creation, elevated exit-status success checking, marker-state checking, absence of
+  the old ignored-status shape, service install/uninstall failure reporting, and this ledger/requirements
+  disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

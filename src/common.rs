@@ -1431,9 +1431,10 @@ mod tests {
             "",
             "R-S16/R-S11b-3: the trust-anchor option must be pinned empty"
         );
-        assert!(
-            !Config::get_options().contains_key("key"),
-            "R-S16/R-S11b-3: a rejected trust-anchor override must not be persisted"
+        assert_eq!(
+            Config::get_options().get("key").map(String::as_str),
+            Some(""),
+            "R-S16/R-S11b-3: whole-map option reads must expose the pinned empty trust-anchor value"
         );
         // both invocations (the upstream sync=true Config path and sync=false IPC path) yield the anchor
         assert_eq!(

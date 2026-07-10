@@ -1,10 +1,10 @@
 //! R-S16 policy funnel (UNCONDITIONAL — the lockdown build-split feature was
 //! retired, R-R2b): the controlled-side PINNED_SETTINGS policy is the single
 //! source of truth on every artifact — pinned keys return their compile-time
-//! values (read funnel, R-S16b) and cannot be written (write guard, R-S16c), so
-//! no local/IPC/server-pushed write can default-permissive or re-enable them. A
-//! wrong funnel here is fail-open and "looks fine", so this test pins the
-//! behavior exactly.
+//! values through both single-key and whole-map reads (read funnel, R-S16b) and
+//! cannot be written (write guard, R-S16c), so no local/IPC/server-pushed write
+//! can default-permissive or re-enable them. A wrong funnel here is fail-open and
+//! "looks fine", so this test pins the behavior exactly.
 
 use hbb_common::config::Config;
 
@@ -69,6 +69,24 @@ fn pinned_policy_is_the_single_source_of_truth() {
     assert!(Config::get_bool_option("enable-terminal")); // full access — terminal granted
     assert!(!Config::get_bool_option("stop-service"));
 
+    let effective_options = Config::get_options();
+    for (k, expected) in [
+        ("verification-method", "use-permanent-password"),
+        ("approve-mode", "password"),
+        ("access-mode", "full"),
+        ("enable-terminal", "Y"),
+        ("enable-virtual-display", "N"),
+        ("proxy-password", ""),
+        ("key", ""),
+        ("stop-service", "N"),
+    ] {
+        assert_eq!(
+            effective_options.get(k).map(String::as_str),
+            Some(expected),
+            "{k} must be pinned in whole-map option reads too"
+        );
+    }
+
     // ── Write guard (R-S16c): an attempt to override a pinned key is rejected and the pin still
     //    holds — in EITHER direction. A password-knower can neither WIDEN the policy (egress, kill
     //    the service) nor NARROW the pinned full-access policy (drop to view-only, disable the
@@ -96,18 +114,22 @@ fn pinned_policy_is_the_single_source_of_truth() {
     whole_options_write.insert("key".to_owned(), "ATTACKER-REPOINTED-TRUST-ANCHOR=".to_owned());
     Config::set_options(whole_options_write);
 
-    // The rejected writes never reach the persisted options map.
+    // The rejected writes cannot shadow the effective whole-map read.
     let opts = Config::get_options();
-    for k in [
-        "access-mode",
-        "approve-mode",
-        "api-server",
-        "proxy-username",
-        "proxy-password",
-        "key",
-        "enable-terminal",
+    for (k, expected) in [
+        ("access-mode", "full"),
+        ("approve-mode", "password"),
+        ("api-server", ""),
+        ("proxy-username", ""),
+        ("proxy-password", ""),
+        ("key", ""),
+        ("enable-terminal", "Y"),
     ] {
-        assert!(!opts.contains_key(k), "{k} must not be persisted");
+        assert_eq!(
+            opts.get(k).map(String::as_str),
+            Some(expected),
+            "{k} must resolve to the pinned value in whole-map option reads"
+        );
     }
 
     // ── A non-pinned key is unaffected: the funnel touches only the policy table. ──

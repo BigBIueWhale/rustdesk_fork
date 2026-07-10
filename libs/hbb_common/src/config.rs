@@ -1705,6 +1705,7 @@ impl Config {
         let mut res = DEFAULT_SETTINGS.read().unwrap().clone();
         res.extend(CONFIG2.read().unwrap().options.clone());
         res.extend(OVERWRITE_SETTINGS.read().unwrap().clone());
+        overlay_pinned_settings(&mut res);
         res
     }
 
@@ -3147,6 +3148,13 @@ fn pinned_setting(k: &str) -> Option<&'static str> {
         .iter()
         .find(|(key, _)| *key == k)
         .map(|(_, v)| *v)
+}
+
+#[inline]
+fn overlay_pinned_settings(options: &mut HashMap<String, String>) {
+    for &(key, value) in keys::PINNED_SETTINGS {
+        options.insert(key.to_owned(), value.to_owned());
+    }
 }
 
 #[inline]

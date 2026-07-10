@@ -1172,6 +1172,8 @@ grep -q 'Rejected options write over ordinary IPC for service-owned server' src/
 grep -qF '(OPTION_KEY, "")' libs/hbb_common/src/config.rs                             || r_s11b3="$r_s11b3 trust-anchor-option-not-pinned-empty"
 grep -qF '(OPTION_PROXY_USERNAME, "")' libs/hbb_common/src/config.rs                  || r_s11b3="$r_s11b3 proxy-username-not-pinned-empty"
 grep -qF '(OPTION_PROXY_PASSWORD, "")' libs/hbb_common/src/config.rs                  || r_s11b3="$r_s11b3 proxy-password-not-pinned-empty"
+grep -qF 'overlay_pinned_settings(&mut res);' libs/hbb_common/src/config.rs           || r_s11b3="$r_s11b3 effective-options-read-not-pinned"
+grep -qF 'fn overlay_pinned_settings(options: &mut HashMap<String, String>)' libs/hbb_common/src/config.rs || r_s11b3="$r_s11b3 effective-options-overlay-helper-missing"
 if rg -n 'RemoveTrustedDevices|ClearTrustedDevices|main(Get|Remove|Clear)TrustedDevices|add_trusted_device|set_key_confirmed\(' src libs --glob '*.rs' >/tmp/r_s11b3_trust_writers.$$; then
   r_s11b3="$r_s11b3 trusted-device-or-key-confirmation-writer-present:$(tr '\n' ';' </tmp/r_s11b3_trust_writers.$$)"
 fi

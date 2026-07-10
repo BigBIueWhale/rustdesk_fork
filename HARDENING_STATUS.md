@@ -977,7 +977,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   after R-S11b-3c; Windows `share_rdp` is no longer a UI-side shell/registry write after R-S11b-3d and is
   committed only by the LocalSystem service through a typed elevated `_service` request; service identity/salt
   reads are side-effect-free after R-S11b-3e; desktop at-rest wrapper reads no longer mint key material after
-  R-S11b-3f; trust-anchor/proxy-shaped option keys are pinned empty after R-S11b-3g; and the main IPC mutation
+  R-S11b-3f; trust-anchor/proxy-shaped option keys are pinned empty after R-S11b-3g; whole-map option reads
+  (`Config::get_options`, the UI cache, CLI `--option`, and IPC `Data::Options(None)`) now overlay
+  `PINNED_SETTINGS` last after R-S11b-3i, so broad reads cannot surface stale default/stored/signed-custom
+  values for pinned policy keys; and the main IPC mutation
   policy is exhaustive after R-S11b-3h, with no wildcard arm that could admit a future
   identity/salt/key/proxy/trust-store write without an explicit receiver-authorized gate.
 **Contained hardening items from the same audit:**
@@ -2136,14 +2139,15 @@ allowlist in on_message (input=Remote-only, desktop-capture=Remote|ViewCamera) +
 capability-flag clear (keyboard/block_input/privacy_mode), verify.sh-gated). A further 2026-07-03
 edit **added a normative requirement** — §7 **R-S19** (capability confinement by `AuthConnType`:
 the CWE-863 class of which CVE-2026-58056 is one instance; see the R-S19 status note above) — the
-first spec change in this run that is not disclosure-only; its structural closure is in progress.
-The other requirements.html edits are disclosure/inventory updates (no normative requirement
-changed) — the #24 confinement itself is a source change landed alongside — and the
+first spec change in this run that is not disclosure-only. The 2026-07-10 IPC/options audit added the
+second normative closure in this area: R-S16's read funnel now explicitly includes whole-map option reads
+(`Config::get_options` / UI cache / CLI `--option` / IPC `Data::Options(None)`), with pinned policy
+overlaid last. The other requirements.html edits are disclosure/inventory updates, and the
 native-codec-watch ledger is re-confirmed valid against each.
 The current snapshot (matching the `scripts/native-codec-watch.sh` pin) is:
 
 ```text
-77168170a0e6abbc9f7acfcb2ffe773f1efb583f4db0b8b286d7c48856a3c751  requirements.html
+7ad5f9dd8d20bbed9cf0ecc639c94198c52ad35dac5d2ebd2e2a8fa1dc483505  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

@@ -215,6 +215,7 @@ pub fn core_main() -> Option<Vec<String>> {
             if args[0] == "--uninstall" {
                 if let Err(err) = platform::uninstall_me(true) {
                     log::error!("Failed to uninstall: {}", err);
+                    std::process::exit(1);
                 }
                 return None;
             // R-X1: the `--update` apply-handler is excised with the fetch-and-run
@@ -271,9 +272,10 @@ pub fn core_main() -> Option<Vec<String>> {
             // helper, which is gone.
             } else if args[0] == "--uninstall-amyuni-idd" {
                 #[cfg(windows)]
-                hbb_common::allow_err!(
-                    crate::virtual_display_manager::amyuni_idd::uninstall_driver()
-                );
+                if let Err(err) = crate::virtual_display_manager::amyuni_idd::uninstall_driver() {
+                    log::error!("Failed to uninstall Amyuni IDD: {err}");
+                    std::process::exit(1);
+                }
                 return None;
             }
         }

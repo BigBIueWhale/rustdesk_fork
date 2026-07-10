@@ -945,12 +945,13 @@ unreachable and a source/test/AST gate prevents reintroduction.
   HKCR/HKLM key deletion, firewall rule deletion, install-directory removal, Start Menu removal, Public Desktop
   shortcut removal, and Common Startup tray-shortcut removal. Prior MSI uninstall delegation now observes
   `msiexec` exit status, accepting only success, reboot-required `3010`, and product-absent `1605`. R-S11d-21
-  separately closes the MSI `CC_CONNECTION_TYPE` public-property service-mode gate, and R-S11d-22 separately closes
-  EXE certificate-cleanup completion. This slice does not claim additional Amyuni IDD cleanup beyond
-  R-S11d-2/R-S11d-7. Verification closure: `scripts/verify.sh` asserts the fail-fast and absence-postcondition
-  helpers, checked copy/update/install call sites, removal of `xcopy /C`, install directory and shortcut existence
-  postconditions, service/registry/firewall absence checks, MSI uninstall exit handling, absence of raw install-dir
-  create/service-delete/uninstall-registry-delete leftovers, and this ledger/requirements disposition.
+  separately closes the MSI `CC_CONNECTION_TYPE` public-property service-mode gate, R-S11d-22 separately closes
+  EXE certificate-cleanup completion, and R-S11d-23 separately closes EXE Amyuni IDD cleanup completion. The MSI
+  Amyuni cleanup authority is R-S11d-2/R-S11d-7. Verification closure: `scripts/verify.sh` asserts the fail-fast
+  and absence-postcondition helpers, checked copy/update/install call sites, removal of `xcopy /C`, install
+  directory and shortcut existence postconditions, service/registry/firewall absence checks, MSI uninstall exit
+  handling, absence of raw install-dir create/service-delete/uninstall-registry-delete leftovers, and this
+  ledger/requirements disposition.
 - **R-S11d-21 — Windows MSI service-mode package authority — CLOSED 2026-07-10.**
   Platform: Windows MSI install/repair/upgrade. Endpoint/action: package-time service creation/start, tray launch,
   and startup tray shortcut installation. Boundary: MSI public properties and transforms ↔ per-machine LocalSystem
@@ -976,6 +977,26 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `BOOL` contract, Rust status propagation, nonzero CLI exit on failure, checked uninstall batch command, fatal
   current-exe resolution, checked Blob read, bounded Blob match, explicit malformed-store prefix, absence of the
   old void-return/read-result/ignored-error/all-access shapes, and this ledger/requirements disposition.
+- **R-S11d-23 — Windows EXE Amyuni IDD cleanup completion authority — CLOSED 2026-07-10.**
+  Platform: Windows EXE uninstall and runtime AMD64 Amyuni helper launch. Endpoint/action: elevated uninstall batch
+  invoking `--uninstall-amyuni-idd`, the top-level `--uninstall` dispatcher, the Rust
+  `amyuni_idd::uninstall_driver()` CLI arm, and runtime `deviceinstaller64.exe` install/remove fallback. Boundary:
+  elevated uninstall/install completion ↔ persistent Amyuni virtual-display driver state and helper execution.
+  Attack surface closed: EXE uninstall can no longer skip or hide Amyuni cleanup failure while reporting success.
+  `get_uninstall` resolves the current executable once for EXE uninstall helpers, treats that failure as fatal, quotes
+  the helper command through the elevated-batch path guard, and wraps `--uninstall-amyuni-idd` in the fail-fast
+  command helper. The top-level `--uninstall` dispatcher exits nonzero when `uninstall_me()` fails, and the
+  `--uninstall-amyuni-idd` CLI arm logs cleanup errors and exits nonzero. The AMD64 runtime helper no longer uses
+  `ShellExecuteW` fire-and-forget; it builds a quoted mutable command line, starts the checked absolute
+  `deviceinstaller64.exe` path with `CreateProcessW`, waits with the same two-minute bound used by MSI, reads the
+  child exit code, accepts `ERROR_SUCCESS_REBOOT_REQUIRED` only for remove/cleanup, rejects reboot-required on
+  install/update before trying to use the driver, and propagates launch/wait/exit-code failures. Optional helper
+  payload absence before selecting the helper remains a no-op; selected native/helper cleanup failure does not.
+  Verification closure: `scripts/verify.sh` asserts checked elevated-batch command construction, fatal shared
+  `current_exe` resolution, top-level and helper CLI nonzero exits, explicit helper command-line ownership,
+  `CreateProcessW` application-path binding, bounded wait, exit-code read, remove-vs-install reboot policy, absence
+  of the old skipped-command helper, absence of `ShellExecuteW` in the runtime helper, and this ledger/requirements
+  disposition.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's

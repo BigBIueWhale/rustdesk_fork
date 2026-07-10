@@ -945,7 +945,7 @@ grep -Fq 'return Err(anyhow!("Failed to delete RustDesk test certificates"));' s
 grep -Fq 'if let Err(err) = crate::platform::windows::uninstall_cert() {' src/core_main.rs || r_s11d22="$r_s11d22 uninstall-cert-cli-not-error-checked"
 grep -Fq 'std::process::exit(1);' src/core_main.rs || r_s11d22="$r_s11d22 uninstall-cert-cli-not-nonzero-on-failure"
 grep -Fq 'checked_batch_cmd(format!("{} --uninstall-cert", quoted_batch_path(&exe)?))' src/platform/windows.rs || r_s11d22="$r_s11d22 uninstall-cert-batch-command-not-checked"
-grep -Fq 'map_err(|err| anyhow!("Failed to resolve current exe for certificate uninstall: {err}"))?' src/platform/windows.rs || r_s11d22="$r_s11d22 uninstall-cert-current-exe-failure-not-fatal"
+grep -Fq 'map_err(|err| anyhow!("Failed to resolve current exe for EXE uninstall helpers: {err}"))?' src/platform/windows.rs || r_s11d22="$r_s11d22 uninstall-cert-current-exe-failure-not-fatal"
 grep -Fq 'result = RegQueryValueExW(cert_key.get(), L"Blob", NULL, &value_type, blob.data(), &blob_size);' src/platform/windows_delete_test_cert.cc || r_s11d22="$r_s11d22 cert-blob-read-not-status-checked"
 grep -Fq 'return std::memcmp(blob.data() + blob.size() - suffix_size, kWdkTestCertSuffix, suffix_size) == 0;' src/platform/windows_delete_test_cert.cc || r_s11d22="$r_s11d22 cert-blob-match-not-bounded"
 grep -Fq 'RegOpenKeyExW(root, base_path.c_str(), 0, KEY_READ, system_certificates.receive())' src/platform/windows_delete_test_cert.cc || r_s11d22="$r_s11d22 cert-store-open-not-read-scoped"
@@ -966,6 +966,61 @@ grep -Fq 'Windows EXE certificate cleanup completion authority' requirements.htm
 grep -Fq 'R-S11d-22 — Windows EXE certificate cleanup completion authority' HARDENING_STATUS.md || r_s11d22="$r_s11d22 hardening-ledger-missing"
 if [ -n "$r_s11d22" ]; then echo "  FAIL R-S11d-22 Windows EXE certificate cleanup completion authority:$r_s11d22"; rc=1; else
   echo "  ok  R-S11d-22 EXE uninstall certificate cleanup returns status, propagates errors, and is fail-fast in the elevated batch"; fi
+
+echo "== (3b-iii-a5d4c) Windows EXE Amyuni cleanup reports and enforces completion (R-S11d-23) =="
+r_s11d23=
+grep -Fq 'if let Err(err) = crate::virtual_display_manager::amyuni_idd::uninstall_driver() {' src/core_main.rs || r_s11d23="$r_s11d23 amyuni-cli-not-error-checked"
+grep -Fq 'log::error!("Failed to uninstall Amyuni IDD: {err}");' src/core_main.rs || r_s11d23="$r_s11d23 amyuni-cli-error-not-logged"
+grep -Fq 'std::process::exit(1);' src/core_main.rs || r_s11d23="$r_s11d23 amyuni-cli-not-nonzero-on-failure"
+grep -Fq 'if let Err(err) = platform::uninstall_me(true) {' src/core_main.rs || r_s11d23="$r_s11d23 top-level-uninstall-not-error-checked"
+grep -Fq 'log::error!("Failed to uninstall: {}", err);' src/core_main.rs || r_s11d23="$r_s11d23 top-level-uninstall-error-not-logged"
+if ! rg -U 'if let Err\(err\) = platform::uninstall_me\(true\) \{\s*log::error!\("Failed to uninstall: \{\}", err\);\s*std::process::exit\(1\);' src/core_main.rs >/tmp/rd_verify_r_s11d23_top_uninstall.$$; then
+  r_s11d23="$r_s11d23 top-level-uninstall-not-nonzero-on-failure"
+fi
+rm -f /tmp/rd_verify_r_s11d23_top_uninstall.$$
+grep -Fq 'Failed to resolve current exe for EXE uninstall helpers' src/platform/windows.rs || r_s11d23="$r_s11d23 amyuni-current-exe-failure-not-fatal"
+grep -Fq 'let uninstall_amyuni_idd = checked_batch_cmd(format!(' src/platform/windows.rs || r_s11d23="$r_s11d23 amyuni-batch-command-not-checked"
+grep -Fq '"{} --uninstall-amyuni-idd"' src/platform/windows.rs || r_s11d23="$r_s11d23 amyuni-batch-helper-command-missing"
+grep -Fq 'quoted_batch_path(&exe)?' src/platform/windows.rs || r_s11d23="$r_s11d23 amyuni-batch-helper-not-quoted"
+grep -Fq 'enum DeviceInstaller64RebootPolicy' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-reboot-policy-missing"
+grep -Fq 'DeviceInstaller64RebootPolicy::Accept' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-remove-reboot-policy-missing"
+grep -Fq 'DeviceInstaller64RebootPolicy::Reject' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-install-reboot-policy-missing"
+grep -Fq 'const DEVICEINSTALLER64_TIMEOUT_MS: u32 = 120_000;' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-timeout-not-pinned"
+grep -Fq 'fn deviceinstaller64_command_line(paths: &DeviceInstaller64Paths, args: &str) -> Vec<u16>' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-command-line-not-owned"
+grep -Fq 'CreateProcessW(' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-not-createprocess"
+grep -Fq 'paths.exe_path.as_ptr(),' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-application-path-not-bound"
+grep -Fq 'command_line.as_mut_ptr(),' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-command-line-not-mutable"
+grep -Fq 'WaitForSingleObject(process.0, DEVICEINSTALLER64_TIMEOUT_MS)' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-not-waited"
+grep -Fq 'GetExitCodeProcess(process.0, &mut exit_code)' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-exit-code-not-read"
+grep -Fq 'exit_code == ERROR_SUCCESS_REBOOT_REQUIRED' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-reboot-required-not-accepted"
+grep -Fq 'else if exit_code != 0' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-nonzero-not-fatal"
+grep -Fq 'bail!("deviceinstaller64.exe requires reboot before the driver can be used");' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-install-reboot-required-not-fatal"
+if ! rg -U '"remove usbmmidd",\s*DeviceInstaller64RebootPolicy::Accept' src/virtual_display_manager.rs >/tmp/rd_verify_r_s11d23_remove_policy.$$; then
+  r_s11d23="$r_s11d23 amyuni-helper-remove-reboot-policy-not-accept"
+fi
+rm -f /tmp/rd_verify_r_s11d23_remove_policy.$$
+if ! rg -U '"install usbmmidd.inf usbmmidd",\s*DeviceInstaller64RebootPolicy::Reject' src/virtual_display_manager.rs >/tmp/rd_verify_r_s11d23_install_policy.$$; then
+  r_s11d23="$r_s11d23 amyuni-helper-install-reboot-policy-not-reject"
+fi
+rm -f /tmp/rd_verify_r_s11d23_install_policy.$$
+if grep -Fq 'fn get_uninstall_amyuni_idd()' src/platform/windows.rs; then
+  r_s11d23="$r_s11d23 amyuni-skip-on-current-exe-failure-leftover"
+fi
+if rg -U 'allow_err!\(\s*crate::virtual_display_manager::amyuni_idd::uninstall_driver\(\)\s*\)' src/core_main.rs >/tmp/rd_verify_r_s11d23_allow_err.$$; then
+  cat /tmp/rd_verify_r_s11d23_allow_err.$$
+  r_s11d23="$r_s11d23 amyuni-cli-ignored-error-leftover"
+fi
+rm -f /tmp/rd_verify_r_s11d23_allow_err.$$
+if grep -Fq 'ShellExecuteW(' src/virtual_display_manager.rs; then
+  r_s11d23="$r_s11d23 amyuni-runtime-shellexecute-leftover"
+fi
+if grep -Fq 'fn str_wide_null' src/virtual_display_manager.rs; then
+  r_s11d23="$r_s11d23 amyuni-runtime-open-verb-helper-leftover"
+fi
+grep -Fq 'Windows EXE Amyuni IDD cleanup completion authority' requirements.html || r_s11d23="$r_s11d23 requirements-disposition-missing"
+grep -Fq 'R-S11d-23 — Windows EXE Amyuni IDD cleanup completion authority' HARDENING_STATUS.md || r_s11d23="$r_s11d23 hardening-ledger-missing"
+if [ -n "$r_s11d23" ]; then echo "  FAIL R-S11d-23 Windows EXE Amyuni IDD cleanup completion authority:$r_s11d23"; rc=1; else
+  echo "  ok  R-S11d-23 EXE uninstall Amyuni cleanup waits for helper completion, propagates errors, and is fail-fast in the elevated batch"; fi
 
 echo "== (3b-iii-a5d5) Windows MSI service state and SAS policy are not persistent user-config side effects (R-S11d-16) =="
 r_s11d16=

@@ -2507,9 +2507,13 @@ fn get_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> ResultType<Stri
     }
 
     let exe = std::env::current_exe()
-        .map_err(|err| anyhow!("Failed to resolve current exe for certificate uninstall: {err}"))?;
+        .map_err(|err| anyhow!("Failed to resolve current exe for EXE uninstall helpers: {err}"))?;
     let uninstall_cert_cmd =
         checked_batch_cmd(format!("{} --uninstall-cert", quoted_batch_path(&exe)?));
+    let uninstall_amyuni_idd = checked_batch_cmd(format!(
+        "{} --uninstall-amyuni-idd",
+        quoted_batch_path(&exe)?
+    ));
     let (subkey, path, _) = get_install_info();
     batch_literal_text(&path, "installed path")?;
     let path = format!("\"{path}\"");
@@ -2543,7 +2547,6 @@ fn get_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> ResultType<Stri
     {remove_startup_tray_shortcut}
     ",
         before_uninstall = get_before_uninstall(kill_self, tools),
-        uninstall_amyuni_idd = get_uninstall_amyuni_idd(),
     ))
 }
 
@@ -4313,16 +4316,6 @@ impl Drop for WallPaperRemover {
     fn drop(&mut self) {
         // If the old background is a slideshow, it will be converted into an image. AnyDesk does the same.
         allow_err!(Self::set_wallpaper(Some(self.old_path.clone())));
-    }
-}
-
-fn get_uninstall_amyuni_idd() -> String {
-    match std::env::current_exe() {
-        Ok(path) => format!("\"{}\" --uninstall-amyuni-idd", path.to_str().unwrap_or("")),
-        Err(e) => {
-            log::warn!("Failed to get current exe path, cannot get command of uninstalling idd, Zzerror: {:?}", e);
-            "".to_string()
-        }
     }
 }
 

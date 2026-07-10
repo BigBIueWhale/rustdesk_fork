@@ -74,7 +74,11 @@ const MACOS_PRIVILEGED_HELPER_DIR: &str = "/Library/PrivilegedHelperTools";
 #[cfg(target_os = "macos")]
 const MACOS_CODESIGN: &str = "/usr/bin/codesign";
 #[cfg(target_os = "macos")]
+const MACOS_LS: &str = "/bin/ls";
+#[cfg(target_os = "macos")]
 const MACOS_PRIVILEGED_HELPER_REQUIREMENT: &str = r#"=anchor apple generic and certificate leaf[subject.OU] = "HZF9JMC8YN" and (identifier "service" or identifier "com.carriez.rustdesk_service")"#;
+#[cfg(target_os = "macos")]
+const MACOS_INSTALLED_APP_REQUIREMENT: &str = r#"=anchor apple generic and certificate leaf[subject.OU] = "HZF9JMC8YN" and identifier "com.carriez.rustdesk""#;
 
 #[cfg(windows)]
 struct WindowsIpcDaclSids {
@@ -369,6 +373,12 @@ fn macos_installed_app_executable_path() -> PathBuf {
 
 #[cfg(target_os = "macos")]
 #[inline]
+fn macos_installed_app_bundle_path() -> PathBuf {
+    PathBuf::from(format!("/Applications/{}.app", crate::get_app_name()))
+}
+
+#[cfg(target_os = "macos")]
+#[inline]
 fn macos_executable_matches_expected_path(actual: &Path, expected: &Path) -> bool {
     actual == expected || paths_refer_to_same_file(actual, expected)
 }
@@ -380,27 +390,106 @@ fn macos_root_wheel_not_group_world_writable(metadata: &fs::Metadata) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn macos_privileged_helper_satisfies_code_requirement(path: &Path) -> bool {
+#[inline]
+fn macos_root_owned_not_group_world_writable(metadata: &fs::Metadata) -> bool {
+    metadata.uid() == 0 && metadata.permissions().mode() & 0o022 == 0
+}
+
+#[cfg(target_os = "macos")]
+fn macos_path_has_no_extended_acl(path: &Path) -> bool {
+    match Command::new(MACOS_LS).arg("-lde").arg(path).output() {
+        Ok(output) if output.status.success() => {
+            output
+                .stdout
+                .split(|byte| *byte == b'\n')
+                .filter(|line| !line.is_empty())
+                .count()
+                == 1
+        }
+        Ok(output) => {
+            log::error!(
+                "macOS ACL inspection failed for '{}' with status {}",
+                path.display(),
+                output.status
+            );
+            false
+        }
+        Err(err) => {
+            log::error!(
+                "Failed to inspect macOS ACLs for '{}': {err}",
+                path.display()
+            );
+            false
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_path_has_expected_type_and_permissions(
+    path: &Path,
+    is_dir: bool,
+    require_executable: bool,
+    require_wheel: bool,
+) -> bool {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    if metadata.file_type().is_symlink() {
+        return false;
+    }
+    if is_dir {
+        if !metadata.is_dir() {
+            return false;
+        }
+    } else if !metadata.is_file() {
+        return false;
+    }
+    if require_wheel {
+        if !macos_root_wheel_not_group_world_writable(&metadata) {
+            return false;
+        }
+    } else if !macos_root_owned_not_group_world_writable(&metadata) {
+        return false;
+    }
+    if require_executable && metadata.permissions().mode() & 0o111 == 0 {
+        return false;
+    }
+    macos_path_has_no_extended_acl(path)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_code_satisfies_requirement(path: &Path, requirement: &str, description: &str) -> bool {
     match Command::new(MACOS_CODESIGN)
-        .args([
-            "--verify",
-            "--strict",
-            "-R",
-            MACOS_PRIVILEGED_HELPER_REQUIREMENT,
-        ])
+        .args(["--verify", "--strict", "-R", requirement])
         .arg(path)
         .status()
     {
         Ok(status) if status.success() => true,
         Ok(status) => {
-            log::error!("macOS privileged helper code-signing check failed with status {status}");
+            log::error!("macOS {description} code-signing check failed with status {status}");
             false
         }
         Err(err) => {
-            log::error!("Failed to run macOS privileged helper code-signing check: {err}");
+            log::error!("Failed to run macOS {description} code-signing check: {err}");
             false
         }
     }
+}
+
+#[cfg(target_os = "macos")]
+#[inline]
+fn macos_privileged_helper_satisfies_code_requirement(path: &Path) -> bool {
+    macos_code_satisfies_requirement(
+        path,
+        MACOS_PRIVILEGED_HELPER_REQUIREMENT,
+        "privileged helper",
+    )
+}
+
+#[cfg(target_os = "macos")]
+#[inline]
+fn macos_installed_app_satisfies_code_requirement(path: &Path) -> bool {
+    macos_code_satisfies_requirement(path, MACOS_INSTALLED_APP_REQUIREMENT, "installed app")
 }
 
 #[cfg(target_os = "macos")]
@@ -410,27 +499,39 @@ fn macos_privileged_helper_is_expected_and_trusted(current_exe: &Path) -> bool {
     if !macos_executable_matches_expected_path(current_exe, expected) {
         return false;
     }
-    let Ok(dir_metadata) = fs::symlink_metadata(MACOS_PRIVILEGED_HELPER_DIR) else {
+    if !macos_path_has_expected_type_and_permissions(
+        Path::new(MACOS_PRIVILEGED_HELPER_DIR),
+        true,
+        false,
+        true,
+    ) {
+        return false;
+    }
+    if !macos_path_has_expected_type_and_permissions(expected, false, true, true) {
         return false;
     };
-    if dir_metadata.file_type().is_symlink()
-        || !dir_metadata.is_dir()
-        || !macos_root_wheel_not_group_world_writable(&dir_metadata)
-    {
-        return false;
-    }
-    let Ok(link_metadata) = fs::symlink_metadata(expected) else {
-        return false;
-    };
-    if link_metadata.file_type().is_symlink() || !link_metadata.is_file() {
-        return false;
-    }
-    if !macos_root_wheel_not_group_world_writable(&link_metadata)
-        || link_metadata.permissions().mode() & 0o111 == 0
-    {
-        return false;
-    }
     macos_privileged_helper_satisfies_code_requirement(expected)
+}
+
+#[cfg(target_os = "macos")]
+#[inline]
+fn macos_installed_app_is_expected_and_trusted(peer_exe: &Path) -> bool {
+    let app_bundle = macos_installed_app_bundle_path();
+    let app_contents = app_bundle.join("Contents");
+    let app_macos = app_contents.join("MacOS");
+    let app_executable = macos_installed_app_executable_path();
+    if !macos_executable_matches_expected_path(peer_exe, &app_executable) {
+        return false;
+    }
+    for app_dir in [&app_bundle, &app_contents, &app_macos] {
+        if !macos_path_has_expected_type_and_permissions(app_dir, true, false, false) {
+            return false;
+        }
+    }
+    if !macos_path_has_expected_type_and_permissions(&app_executable, false, true, false) {
+        return false;
+    }
+    macos_installed_app_satisfies_code_requirement(&app_bundle)
 }
 
 #[cfg(target_os = "macos")]
@@ -443,10 +544,10 @@ fn macos_service_ipc_allows_installed_app_and_privileged_helper(
     if postfix != crate::POSTFIX_SERVICE {
         return false;
     }
-    if !macos_privileged_helper_is_expected_and_trusted(current_exe) {
+    if !macos_installed_app_is_expected_and_trusted(peer_exe) {
         return false;
     }
-    macos_executable_matches_expected_path(peer_exe, &macos_installed_app_executable_path())
+    macos_privileged_helper_is_expected_and_trusted(current_exe)
 }
 
 #[cfg(windows)]

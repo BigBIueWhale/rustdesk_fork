@@ -261,7 +261,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   main server. Boundary: active desktop/CLI process ↔ root LaunchDaemon `_service` ↔ service-owned `--server`
   process that honors the unattended credential. The `_service` executable identity gate models the deployed
   installation: the peer is the installed app executable under `/Applications/<App>.app/Contents/MacOS/<App>`,
-  and the receiver is the root-owned, non-symlink, non-group/world-writable executable at
+  with root-owned, non-symlink, non-group/world-writable bundle/executable components and the pinned Developer ID
+  Team ID plus app identifier requirement, and the receiver is the root-owned, non-symlink,
+  non-group/world-writable, ACL-free executable at
   `/Library/PrivilegedHelperTools/com.carriez.rustdesk_service`; the old same-directory app-bundle `service`
   exception is absent. Attack surface closed: service-owned password provisioning no
   longer fails closed on macOS for lack of a privileged path, and it does not fall back to ordinary main IPC,
@@ -283,10 +285,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   and caps, pending-value storage, zero-on-drop, TTL expiry, authorization-failure cancellation, peer pid/uid
   binding, finish-without-password shape, explicit non-shared timeout-zero Authorization Services right, no
   request-digest prompt/verification API, no `kAuthorizationRightExecute` fallback in the service password
-  functions, non-interactive `AuthorizationCreateFromExternalForm` verification, trusted PrivilegedHelperTools
-  `_service` peer/current identity, absence of the old same-directory `service` binary exception, root-peer commit gate,
-  installed-daemon exposure gate, and service handler wiring; the Unix source tests cover main-channel commit
-  policy and `_service` request admission.
+  functions, non-interactive `AuthorizationCreateFromExternalForm` verification, signed/root-owned installed-app
+  peer identity, trusted PrivilegedHelperTools `_service` current-helper identity, absence of the old same-directory
+  `service` binary exception, root-peer commit gate, installed-daemon exposure gate, and service handler wiring; the
+  Unix source tests cover main-channel commit policy and `_service` request admission.
 - **R-S11b-3a — service-marked server rejects ordinary options IPC — CLOSED 2026-07-08.** Platforms:
   Windows installed service-launched `--server`, Linux root-service-launched root or active-user `--server`,
   and macOS LaunchAgent `--server` source path. Endpoint/action: main IPC `Data::Options(Some(_))`.
@@ -524,20 +526,22 @@ unreachable and a source/test/AST gate prevents reintroduction.
   install/uninstall/asuser/reopen helpers invoke fixed system paths for `osascript`, `launchctl`, `open`,
   and `ioreg`, and active-console identity no longer parses `ls /dev/console`; it reads `/dev/console`
   ownership and resolves the username through `getpwuid_r`, with `launchctl asuser` failing closed on an
-  unresolved console UID. The `_service` IPC executable identity exception now requires the same deployed
-  helper path, helper-directory ownership/mode invariants, helper-file ownership/mode invariants, and the same
-  helper code-signing requirement, with the peer fixed to the installed app executable rather than any sibling
-  `service` binary in the app bundle. Verification closure: `scripts/verify.sh` and
+  unresolved console UID. The `_service` IPC executable identity exception now requires the peer to be the installed
+  app executable under a root-owned, non-symlink, non-group/world-writable bundle path that satisfies the pinned
+  Developer ID Team ID plus `com.carriez.rustdesk` app identifier requirement before the helper is inspected. It
+  also requires the same deployed helper path, helper-directory ownership/mode/ACL invariants, helper-file
+  ownership/mode/ACL invariants, and the same helper code-signing requirement. The old sibling `service` binary
+  exception inside the app bundle is absent. Verification closure: `scripts/verify.sh` and
   `scripts/apple-conform-check.sh` assert the PrivilegedHelperTools daemon target and root-owned working
   directory, absence of `update.scpt`/`update_daemon_agent`/`.rustdeskupdate-*`, absence of app-bundle root
   service execution, absence of active-user config import, bundled-helper resolution and osascript argument
   passing, bundled-helper signature checks, root-owned temporary helper install, byte comparison against the
-  bundled source, deployed-helper root ownership/mode/ACL checks, helper designated-requirement checks in the
-  install script and `_service` IPC receiver, helper re-verification before load, uninstall removal of helper
-  leftovers, `/Library/Logs/RustDesk` daemon logs, root-owned directory setup, quoted plist writes, quoted
-  privileged plist paths, trusted PrivilegedHelperTools `_service` IPC identity, absence of the old same-directory
-  `service` binary exception, absolute local helper tool paths, and the `/dev/console`/`getpwuid_r` active-user
-  lookup.
+  bundled source, installed-app root ownership/mode and designated-requirement checks, deployed-helper root
+  ownership/mode/ACL checks, helper designated-requirement checks in the install script and `_service` IPC receiver,
+  helper re-verification before load, uninstall removal of helper leftovers, `/Library/Logs/RustDesk` daemon logs,
+  root-owned directory setup, quoted plist writes, quoted privileged plist paths, trusted signed-app plus
+  PrivilegedHelperTools `_service` IPC identity, absence of the old same-directory `service` binary exception,
+  absolute local helper tool paths, and the `/dev/console`/`getpwuid_r` active-user lookup.
 - **R-S11c-16 — Desktop service lifecycle completion authority — CLOSED 2026-07-10.**
   Platforms: Linux and macOS desktop service wrappers, plus the shared desktop service CLI dispatcher. Surfaces:
   `core_main` `--install-service` / `--uninstall-service`, Linux `systemctl` service lifecycle helpers, macOS

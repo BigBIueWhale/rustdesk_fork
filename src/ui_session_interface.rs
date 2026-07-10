@@ -1570,7 +1570,6 @@ impl<T: InvokeUiSession> Session<T> {
     pub fn get_conn_token(&self) -> Option<String> {
         self.lc.read().unwrap().get_conn_token()
     }
-
 }
 
 pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
@@ -1848,16 +1847,21 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u32) {
                 .get_option("rdp_port".to_owned())
                 .parse::<i32>()
                 .unwrap_or(3389);
-            std::env::set_var(
-                "rdp_username",
-                handler.get_option("rdp_username".to_owned()),
-            );
-            std::env::set_var(
-                "rdp_password",
-                handler.get_option("rdp_password".to_owned()),
-            );
+            let rdp_username = handler.get_option("rdp_username".to_owned());
+            let rdp_password = handler.get_option("rdp_password".to_owned());
             log::info!("Remote rdp port: {}", port);
-            start_one_port_forward(handler, 0, "".to_owned(), port, receiver, &key, &token).await;
+            start_one_port_forward(
+                handler,
+                0,
+                "".to_owned(),
+                port,
+                receiver,
+                &key,
+                &token,
+                rdp_username,
+                rdp_password,
+            )
+            .await;
         } else if handler.args.len() == 0 {
             let pfs = handler.lc.read().unwrap().port_forwards.clone();
             let mut queues = HashMap::<i32, mpsc::UnboundedSender<Data>>::new();
@@ -1884,6 +1888,8 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u32) {
                                 receiver,
                                 &key,
                                 &token,
+                                String::new(),
+                                String::new(),
                             )
                             .await;
                         });
@@ -1922,6 +1928,8 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u32) {
                 receiver,
                 &key,
                 &token,
+                String::new(),
+                String::new(),
             )
             .await;
         }
@@ -1941,6 +1949,8 @@ async fn start_one_port_forward<T: InvokeUiSession>(
     receiver: mpsc::UnboundedReceiver<Data>,
     key: &str,
     token: &str,
+    rdp_username: String,
+    rdp_password: String,
 ) {
     if let Err(err) = crate::port_forward::listen(
         handler.get_id(),
@@ -1953,6 +1963,8 @@ async fn start_one_port_forward<T: InvokeUiSession>(
         handler.lc.clone(),
         remote_host,
         remote_port,
+        rdp_username,
+        rdp_password,
     )
     .await
     {

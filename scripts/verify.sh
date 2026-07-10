@@ -495,6 +495,31 @@ grep -q 'Windows Amyuni IDD cleanup completion authority' requirements.html || r
 grep -q 'R-S11d-2 — Windows Amyuni IDD cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d amyuni-cleanup-hardening-ledger-missing"
 grep -q 'Windows MSI firewall custom-action completion authority' requirements.html || r_s11d="$r_s11d firewall-requirements-disposition-missing"
 grep -q 'R-S11d-7 — Windows MSI firewall custom-action completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d firewall-hardening-ledger-missing"
+grep -Fq 'pub(crate) fn trusted_system_tool_path(tool: &str) -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d="$r_s11d windows:trusted-system-tool-helper-not-crate-visible"
+grep -Fq 'trusted_system_tool_path("mstsc.exe")' src/port_forward.rs || r_s11d="$r_s11d rdp:mstsc-not-trusted-system-tool"
+grep -Fq '"Win32_Security_Credentials"' Cargo.toml || r_s11d="$r_s11d rdp:windows-credential-feature-missing"
+if grep -Fq 'Command::new("cmdkey")' src/port_forward.rs || grep -Fq 'Command::new("mstsc")' src/port_forward.rs || grep -Fq 'trusted_system_tool_path("cmdkey.exe")' src/port_forward.rs; then
+  r_s11d="$r_s11d rdp:cmdkey-or-bare-mstsc-launch"
+fi
+grep -Fq 'const RDP_CREDENTIAL_TARGET: &str = "TERMSRV/localhost";' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-target-not-pinned"
+grep -Fq 'let has_complete_credentials = !username.is_empty() && !password.is_empty();' src/port_forward.rs || r_s11d="$r_s11d rdp:partial-credentials-not-rejected"
+grep -Fq 'Ignoring incomplete RDP credential; username and password are both required' src/port_forward.rs || r_s11d="$r_s11d rdp:partial-credential-warning-missing"
+grep -Fq 'args.push("/prompt".to_owned());' src/port_forward.rs || r_s11d="$r_s11d rdp:unseeded-mstsc-not-prompted"
+grep -Fq 'CredReadW(' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-state-not-snapshotted"
+grep -Fq 'CredWriteW(&raw, 0)' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-not-native-write"
+grep -Fq 'CredDeleteW(' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-not-native-delete"
+grep -Fq 'CRED_TYPE_GENERIC' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-type-not-generic"
+grep -Fq 'CRED_PERSIST_SESSION' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-not-session-scoped"
+grep -Fq 'RDP_CREDENTIAL_ACTIVE' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-concurrency-guard-missing"
+grep -Fq 'struct RdpCredentialLease' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-lease-missing"
+grep -Fq 'impl Drop for RdpCredentialLease' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-lease-drop-missing"
+grep -Fq 'cleanup_rdp_credentials_when_mstsc_exits(lease, child);' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-not-restored-after-mstsc"
+grep -Fq 'lease.restore()?' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-not-restored-after-spawn-failure"
+if grep -Fq '/pass:' src/port_forward.rs || grep -qE 'std::env::(set_var|var)\("rdp_(username|password)"' src/port_forward.rs src/ui_session_interface.rs; then
+  r_s11d="$r_s11d rdp:credential-password-argv-or-env"
+fi
+grep -q 'Windows RDP viewer credential command provenance' requirements.html || r_s11d="$r_s11d rdp-requirements-disposition-missing"
+grep -q 'R-S11d-8 — Windows RDP viewer credential command provenance' HARDENING_STATUS.md || r_s11d="$r_s11d rdp-hardening-ledger-missing"
 grep -q 'Windows MSI runtime-generated executable cleanup completion authority' requirements.html || r_s11d="$r_s11d runtime-generated-cleanup-requirements-disposition-missing"
 grep -q 'R-S11d-4 — Windows MSI runtime-generated executable cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d runtime-generated-cleanup-hardening-ledger-missing"
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else

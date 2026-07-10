@@ -1555,7 +1555,7 @@ fn trusted_system_dir() -> ResultType<PathBuf> {
     Ok(PathBuf::from(OsString::from_wide(&buffer[..len])))
 }
 
-fn trusted_system_tool_path(tool: &str) -> ResultType<PathBuf> {
+pub(crate) fn trusted_system_tool_path(tool: &str) -> ResultType<PathBuf> {
     if tool.contains('\\') || tool.contains('/') || tool.contains('"') || tool.trim() != tool {
         bail!("invalid trusted system tool name: {tool}");
     }

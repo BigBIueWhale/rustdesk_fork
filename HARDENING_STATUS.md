@@ -740,6 +740,21 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `scripts/verify.sh` asserts checked WiX returns, HRESULT helper signatures and propagation, invalid
   CustomActionData rejection, absence of format-string copies and discarded helper results, bounded
   remove-until-absent semantics, absent-rule no-op HRESULTs, and this ledger/requirements disposition.
+- **R-S11d-8 — Windows RDP viewer credential command provenance — CLOSED 2026-07-10.** Platform: Windows
+  viewer-side RDP tunnel convenience. Endpoint/action: launching `mstsc.exe` to connect to the loopback tunnel
+  and temporarily seeding the current user's Windows Credential Manager entry for `TERMSRV/localhost`. Boundary:
+  same-user viewer credential handling and local command provenance, not a service/SYSTEM escalation path. Attack
+  surface closed: the RDP helper no longer resolves `cmdkey` or `mstsc` through the caller's current directory or
+  PATH, no longer passes the saved RDP password through `cmdkey /pass:` argv, and no longer moves RDP credentials
+  through process-global environment variables. It binds `mstsc.exe` through the checked `GetSystemDirectoryW`
+  resolver, writes the temporary credential with native `CredWriteW` only when both username and password are
+  present, snapshots any pre-existing `TERMSRV/localhost` generic credential with `CredReadW`, serializes
+  in-process seeded launches with a credential lease, prompts `mstsc` when no complete credential was seeded, and
+  restores the previous credential state or deletes the temporary credential after `mstsc` exits or if launch
+  fails. Verification closure: `scripts/verify.sh` asserts trusted `mstsc` resolution, absence of `cmdkey` and
+  bare RDP command launch, absence of password argv/env plumbing, native `CredReadW`/`CredWriteW`/`CredDeleteW`
+  use, session-scoped generic credential policy, lease/drop restoration, prompt fallback, and this
+  ledger/requirements disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

@@ -1,8 +1,17 @@
 use std::sync::{Arc, RwLock};
 
 use crate::client::{Client, Data, Interface, LoginConfigHandler};
+#[cfg(windows)]
+use std::{
+    process::Command,
+    ptr::null_mut,
+    sync::atomic::{AtomicBool, Ordering},
+};
+
 use hbb_common::{
-    allow_err, bail,
+    allow_err,
+    anyhow::anyhow,
+    bail,
     config::READ_TIMEOUT,
     futures::{SinkExt, StreamExt},
     log,
@@ -15,35 +24,367 @@ use hbb_common::{
     ResultType, Stream,
 };
 
-// R-F1/R-D6: the RDP convenience — launch the local Windows RDP client (mstsc) pointed at the
-// tunnel's ephemeral local port, seeding cmdkey with any supplied rdp_username/rdp_password. Compiles
-// cross-platform (cmdkey/mstsc simply fail closed off Windows, where the operator dials 127.0.0.1:port
-// with their own client). Unlike upstream this does NOT `println!` the cmdkey args — those include
-// `/pass:<rdp_password>`, and the hardened fork does not leak the RDP credential to stdout.
-fn run_rdp(port: u16) {
-    std::process::Command::new("cmdkey")
-        .arg("/delete:localhost")
-        .output()
-        .ok();
-    let username = std::env::var("rdp_username").unwrap_or_default();
-    let password = std::env::var("rdp_password").unwrap_or_default();
-    if !username.is_empty() || !password.is_empty() {
-        let mut args = vec!["/generic:localhost".to_owned()];
-        if !username.is_empty() {
-            args.push(format!("/user:{}", username));
-        }
-        if !password.is_empty() {
-            args.push(format!("/pass:{}", password));
-        }
-        std::process::Command::new("cmdkey")
-            .args(&args)
-            .output()
-            .ok();
+#[cfg(windows)]
+const RDP_CREDENTIAL_TARGET: &str = "TERMSRV/localhost";
+#[cfg(windows)]
+static RDP_CREDENTIAL_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+fn rdp_endpoint_arg(port: u16) -> String {
+    format!("/v:localhost:{}", port)
+}
+
+#[cfg(windows)]
+fn wide_null(text: &str) -> Vec<u16> {
+    text.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(windows)]
+unsafe fn copy_pwstr(ptr: windows::core::PWSTR) -> Option<Vec<u16>> {
+    if ptr.is_null() {
+        return None;
     }
-    std::process::Command::new("mstsc")
-        .arg(format!("/v:localhost:{}", port))
-        .spawn()
-        .ok();
+    let mut len = 0usize;
+    while unsafe { *ptr.0.add(len) } != 0 {
+        len += 1;
+    }
+    let mut out = unsafe { std::slice::from_raw_parts(ptr.0, len) }.to_vec();
+    out.push(0);
+    Some(out)
+}
+
+#[cfg(windows)]
+unsafe fn copy_bytes(ptr: *mut u8, len: u32) -> ResultType<Vec<u8>> {
+    let len = len as usize;
+    if len == 0 {
+        return Ok(Vec::new());
+    }
+    if ptr.is_null() {
+        bail!("credential blob pointer is null but size is nonzero");
+    }
+    Ok(unsafe { std::slice::from_raw_parts(ptr, len) }.to_vec())
+}
+
+#[cfg(windows)]
+fn pwstr_from_option(value: &mut Option<Vec<u16>>) -> windows::core::PWSTR {
+    value
+        .as_mut()
+        .map(|v| windows::core::PWSTR(v.as_mut_ptr()))
+        .unwrap_or_else(windows::core::PWSTR::null)
+}
+
+#[cfg(windows)]
+struct OwnedCredentialAttribute {
+    keyword: Option<Vec<u16>>,
+    flags: u32,
+    value: Vec<u8>,
+}
+
+#[cfg(windows)]
+struct OwnedCredential {
+    flags: windows::Win32::Security::Credentials::CRED_FLAGS,
+    credential_type: windows::Win32::Security::Credentials::CRED_TYPE,
+    target_name: Option<Vec<u16>>,
+    comment: Option<Vec<u16>>,
+    credential_blob: Vec<u8>,
+    persist: windows::Win32::Security::Credentials::CRED_PERSIST,
+    attribute_storage: Vec<OwnedCredentialAttribute>,
+    target_alias: Option<Vec<u16>>,
+    user_name: Option<Vec<u16>>,
+}
+
+#[cfg(windows)]
+impl OwnedCredential {
+    unsafe fn from_raw(
+        raw: &windows::Win32::Security::Credentials::CREDENTIALW,
+    ) -> ResultType<Self> {
+        let mut attribute_storage = Vec::new();
+        if raw.AttributeCount > 0 {
+            if raw.Attributes.is_null() {
+                bail!("credential attributes pointer is null but count is nonzero");
+            }
+            let attrs =
+                unsafe { std::slice::from_raw_parts(raw.Attributes, raw.AttributeCount as usize) };
+            for attr in attrs {
+                attribute_storage.push(OwnedCredentialAttribute {
+                    keyword: unsafe { copy_pwstr(attr.Keyword) },
+                    flags: attr.Flags,
+                    value: unsafe { copy_bytes(attr.Value, attr.ValueSize)? },
+                });
+            }
+        }
+
+        Ok(Self {
+            flags: raw.Flags,
+            credential_type: raw.Type,
+            target_name: unsafe { copy_pwstr(raw.TargetName) },
+            comment: unsafe { copy_pwstr(raw.Comment) },
+            credential_blob: unsafe { copy_bytes(raw.CredentialBlob, raw.CredentialBlobSize)? },
+            persist: raw.Persist,
+            attribute_storage,
+            target_alias: unsafe { copy_pwstr(raw.TargetAlias) },
+            user_name: unsafe { copy_pwstr(raw.UserName) },
+        })
+    }
+
+    fn temporary_rdp(username: &str, password: &str) -> Self {
+        let password_blob: Vec<u8> = password
+            .encode_utf16()
+            .flat_map(|unit| unit.to_le_bytes())
+            .collect();
+        Self {
+            flags: Default::default(),
+            credential_type: windows::Win32::Security::Credentials::CRED_TYPE_GENERIC,
+            target_name: Some(wide_null(RDP_CREDENTIAL_TARGET)),
+            comment: None,
+            credential_blob: password_blob,
+            persist: windows::Win32::Security::Credentials::CRED_PERSIST_SESSION,
+            attribute_storage: Vec::new(),
+            target_alias: None,
+            user_name: Some(wide_null(username)),
+        }
+    }
+
+    fn as_raw_parts(
+        &mut self,
+    ) -> ResultType<(
+        windows::Win32::Security::Credentials::CREDENTIALW,
+        Vec<windows::Win32::Security::Credentials::CREDENTIAL_ATTRIBUTEW>,
+    )> {
+        let mut attributes = Vec::with_capacity(self.attribute_storage.len());
+        for attr in &mut self.attribute_storage {
+            attributes.push(
+                windows::Win32::Security::Credentials::CREDENTIAL_ATTRIBUTEW {
+                    Keyword: pwstr_from_option(&mut attr.keyword),
+                    Flags: attr.flags,
+                    ValueSize: attr
+                        .value
+                        .len()
+                        .try_into()
+                        .map_err(|_| anyhow!("credential attribute value is too large"))?,
+                    Value: if attr.value.is_empty() {
+                        null_mut()
+                    } else {
+                        attr.value.as_mut_ptr()
+                    },
+                },
+            );
+        }
+        let raw = windows::Win32::Security::Credentials::CREDENTIALW {
+            Flags: self.flags,
+            Type: self.credential_type,
+            TargetName: pwstr_from_option(&mut self.target_name),
+            Comment: pwstr_from_option(&mut self.comment),
+            LastWritten: Default::default(),
+            CredentialBlobSize: self
+                .credential_blob
+                .len()
+                .try_into()
+                .map_err(|_| anyhow!("credential blob is too large"))?,
+            CredentialBlob: if self.credential_blob.is_empty() {
+                null_mut()
+            } else {
+                self.credential_blob.as_mut_ptr()
+            },
+            Persist: self.persist,
+            AttributeCount: attributes
+                .len()
+                .try_into()
+                .map_err(|_| anyhow!("credential attribute count is too large"))?,
+            Attributes: if attributes.is_empty() {
+                null_mut()
+            } else {
+                attributes.as_mut_ptr()
+            },
+            TargetAlias: pwstr_from_option(&mut self.target_alias),
+            UserName: pwstr_from_option(&mut self.user_name),
+        };
+        Ok((raw, attributes))
+    }
+}
+
+#[cfg(windows)]
+fn credential_error_is_not_found(err: &windows::core::Error) -> bool {
+    err.code() == windows::core::HRESULT::from_win32(windows::Win32::Foundation::ERROR_NOT_FOUND.0)
+}
+
+#[cfg(windows)]
+fn read_rdp_credential() -> ResultType<Option<OwnedCredential>> {
+    use windows::Win32::Security::Credentials::{
+        CredFree, CredReadW, CREDENTIALW, CRED_TYPE_GENERIC,
+    };
+
+    let target = wide_null(RDP_CREDENTIAL_TARGET);
+    let mut raw: *mut CREDENTIALW = null_mut();
+    match unsafe {
+        CredReadW(
+            windows::core::PCWSTR(target.as_ptr()),
+            CRED_TYPE_GENERIC,
+            None,
+            &mut raw,
+        )
+    } {
+        Ok(()) => {
+            if raw.is_null() {
+                bail!("CredReadW returned a null credential pointer");
+            }
+            let credential = unsafe { OwnedCredential::from_raw(&*raw) };
+            unsafe {
+                CredFree(raw.cast());
+            }
+            credential.map(Some)
+        }
+        Err(err) if credential_error_is_not_found(&err) => Ok(None),
+        Err(err) => Err(anyhow!("CredReadW({RDP_CREDENTIAL_TARGET}) failed: {err}")),
+    }
+}
+
+#[cfg(windows)]
+fn write_rdp_credential(mut credential: OwnedCredential) -> ResultType<()> {
+    let (raw, _attributes) = credential.as_raw_parts()?;
+    unsafe { windows::Win32::Security::Credentials::CredWriteW(&raw, 0) }
+        .map_err(|err| anyhow!("CredWriteW({RDP_CREDENTIAL_TARGET}) failed: {err}"))?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn delete_rdp_credential() -> ResultType<()> {
+    use windows::Win32::Security::Credentials::{CredDeleteW, CRED_TYPE_GENERIC};
+
+    let target = wide_null(RDP_CREDENTIAL_TARGET);
+    match unsafe {
+        CredDeleteW(
+            windows::core::PCWSTR(target.as_ptr()),
+            CRED_TYPE_GENERIC,
+            None,
+        )
+    } {
+        Ok(()) => Ok(()),
+        Err(err) if credential_error_is_not_found(&err) => Ok(()),
+        Err(err) => Err(anyhow!(
+            "CredDeleteW({RDP_CREDENTIAL_TARGET}) failed: {err}"
+        )),
+    }
+}
+
+#[cfg(windows)]
+struct RdpCredentialLease {
+    original: Option<OwnedCredential>,
+    temporary_written: bool,
+}
+
+#[cfg(windows)]
+impl RdpCredentialLease {
+    fn acquire() -> ResultType<Self> {
+        RDP_CREDENTIAL_ACTIVE
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .map_err(|_| anyhow!("another RustDesk RDP credential launch is active"))?;
+        match read_rdp_credential() {
+            Ok(original) => Ok(Self {
+                original,
+                temporary_written: false,
+            }),
+            Err(err) => {
+                RDP_CREDENTIAL_ACTIVE.store(false, Ordering::Release);
+                Err(err)
+            }
+        }
+    }
+
+    fn write_temporary(&mut self, username: &str, password: &str) -> ResultType<()> {
+        write_rdp_credential(OwnedCredential::temporary_rdp(username, password))?;
+        self.temporary_written = true;
+        Ok(())
+    }
+
+    fn restore(&mut self) -> ResultType<()> {
+        if !self.temporary_written {
+            return Ok(());
+        }
+        match self.original.take() {
+            Some(original) => write_rdp_credential(original)?,
+            None => delete_rdp_credential()?,
+        }
+        self.temporary_written = false;
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+impl Drop for RdpCredentialLease {
+    fn drop(&mut self) {
+        if let Err(err) = self.restore() {
+            log::error!("{}", err);
+        }
+        RDP_CREDENTIAL_ACTIVE.store(false, Ordering::Release);
+    }
+}
+
+#[cfg(windows)]
+fn cleanup_rdp_credentials_when_mstsc_exits(
+    mut lease: RdpCredentialLease,
+    mut child: std::process::Child,
+) {
+    std::thread::spawn(move || {
+        if let Err(err) = child.wait() {
+            log::debug!("Failed to wait for mstsc credential restoration: {}", err);
+        }
+        if let Err(err) = lease.restore() {
+            log::error!("{}", err);
+        }
+    });
+}
+
+// R-F1/R-D6: the RDP convenience launches the local Windows RDP client at the tunnel's ephemeral
+// loopback port. R-S11d-8: when seeding saved RDP credentials, bind mstsc.exe to a checked
+// System32 path, write credentials through native CredWriteW instead of argv/env, and restore the
+// previous Credential Manager state after mstsc exits.
+#[cfg(windows)]
+fn run_rdp(port: u16, username: &str, password: &str) -> ResultType<()> {
+    let mstsc = crate::platform::windows::trusted_system_tool_path("mstsc.exe")?;
+    let has_complete_credentials = !username.is_empty() && !password.is_empty();
+
+    let mut lease = if has_complete_credentials {
+        let mut lease = RdpCredentialLease::acquire()?;
+        lease.write_temporary(username, password)?;
+        Some(lease)
+    } else {
+        if !username.is_empty() || !password.is_empty() {
+            log::warn!(
+                "Ignoring incomplete RDP credential; username and password are both required"
+            );
+        }
+        if RDP_CREDENTIAL_ACTIVE.load(Ordering::Acquire) {
+            bail!("another RustDesk RDP credential launch is active");
+        }
+        None
+    };
+
+    let mut args = vec![rdp_endpoint_arg(port)];
+    if !has_complete_credentials {
+        args.push("/prompt".to_owned());
+    }
+    let child = match Command::new(&mstsc).args(&args).spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            if let Some(mut lease) = lease.take() {
+                lease.restore()?;
+            }
+            return Err(err.into());
+        }
+    };
+    if let Some(lease) = lease {
+        cleanup_rdp_credentials_when_mstsc_exits(lease, child);
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn run_rdp(port: u16, _username: &str, _password: &str) -> ResultType<()> {
+    log::info!(
+        "RDP helper launch is Windows-only; connect a local RDP client to 127.0.0.1:{}",
+        port
+    );
+    Ok(())
 }
 
 // R-F1/R-D6/R-S5: the viewer-side port-forward/RDP tunnel. Bind a LOCAL 127.0.0.1 listener (never
@@ -63,6 +404,8 @@ pub async fn listen(
     lc: Arc<RwLock<LoginConfigHandler>>,
     remote_host: String,
     remote_port: i32,
+    rdp_username: String,
+    rdp_password: String,
 ) -> ResultType<()> {
     // 127.0.0.1 only — the tunnel entry point is a loopback listener, never bound to a public
     // interface (direct-IP-only, R-SV4/R-F4).
@@ -71,7 +414,7 @@ pub async fn listen(
     log::info!("listening on port {:?}", addr);
     let is_rdp = port == 0;
     if is_rdp {
-        run_rdp(addr.port());
+        run_rdp(addr.port(), &rdp_username, &rdp_password)?;
     }
     let mut ui_receiver = ui_receiver;
     loop {
@@ -104,7 +447,7 @@ pub async fn listen(
                         break;
                     }
                     Some(Data::NewRDP) => {
-                        run_rdp(addr.port());
+                        allow_err!(run_rdp(addr.port(), &rdp_username, &rdp_password));
                     }
                     _ => {}
                 }

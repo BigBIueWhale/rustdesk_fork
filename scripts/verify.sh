@@ -485,6 +485,29 @@ grep -q 'R-S11d-5 — Windows EXE elevated batch command provenance' HARDENING_S
 if [ -n "$r_s11d5" ]; then echo "  FAIL R-S11d-5 Windows EXE elevated batch command provenance:$r_s11d5"; rc=1; else
   echo "  ok  R-S11d-5 Windows EXE elevated batch resolves external tools from System32 and rejects bare tool names in the elevated batch surface"; fi
 
+echo "== (3b-iii-a5f) Windows EXE shortcut finalization avoids temp .lnk staging (R-S11d-6) =="
+r_s11d6=
+grep -Fq 'FOLDERID_PublicDesktop' src/platform/windows.rs || r_s11d6="$r_s11d6 public-desktop-known-folder-missing"
+grep -Fq 'FOLDERID_CommonPrograms' src/platform/windows.rs || r_s11d6="$r_s11d6 common-programs-known-folder-missing"
+grep -Fq 'FOLDERID_CommonStartup' src/platform/windows.rs || r_s11d6="$r_s11d6 common-startup-known-folder-missing"
+grep -Fq 'fn create_shortcut_command_file(' src/platform/windows.rs || r_s11d6="$r_s11d6 shortcut-command-helper-missing"
+grep -Fq 'fn installer_script_literal(value: &str, label: &str) -> ResultType<String>' src/platform/windows.rs || r_s11d6="$r_s11d6 shortcut-script-literal-guard-missing"
+grep -Fq 'fn run_shortcut_script_cmd(script_path: &str, tools: &WindowsSystemTools) -> String' src/platform/windows.rs || r_s11d6="$r_s11d6 checked-shortcut-runner-missing"
+grep -Fq 'public_desktop_dir()?.join(format!("{app_name}.lnk"))' src/platform/windows.rs || r_s11d6="$r_s11d6 desktop-shortcut-not-final-known-folder"
+grep -Fq 'common_programs_dir()?.join(&app_name)' src/platform/windows.rs || r_s11d6="$r_s11d6 start-menu-shortcut-not-final-known-folder"
+grep -Fq 'common_startup_dir()?.join(format!("{app_name} Tray.lnk"))' src/platform/windows.rs || r_s11d6="$r_s11d6 tray-shortcut-not-final-known-folder"
+grep -Fq 'Path::new(&path).join(format!("Uninstall {app_name}.lnk"))' src/platform/windows.rs || r_s11d6="$r_s11d6 install-dir-uninstall-shortcut-not-final"
+grep -Fq 'if errorlevel 1 exit /b 1' src/platform/windows.rs || r_s11d6="$r_s11d6 shortcut-cscript-not-fail-closed"
+if grep -nE 'sLinkFile = "\{tmp_path\}|copy /Y .*\.lnk|tmp_path.*\.lnk|fn get_tray_shortcut' src/platform/windows.rs >/tmp/rd_verify_r_s11d6_staging.$$; then
+  cat /tmp/rd_verify_r_s11d6_staging.$$
+  r_s11d6="$r_s11d6 temp-shortcut-staging-leftover"
+fi
+rm -f /tmp/rd_verify_r_s11d6_staging.$$
+grep -q 'Windows EXE shortcut finalization provenance' requirements.html || r_s11d6="$r_s11d6 requirements-disposition-missing"
+grep -q 'R-S11d-6 — Windows EXE shortcut finalization provenance' HARDENING_STATUS.md || r_s11d6="$r_s11d6 hardening-ledger-missing"
+if [ -n "$r_s11d6" ]; then echo "  FAIL R-S11d-6 Windows EXE shortcut finalization provenance:$r_s11d6"; rc=1; else
+  echo "  ok  R-S11d-6 Windows EXE shortcut finalization writes final protected shortcut paths directly and rejects temp .lnk staging"; fi
+
 echo "== (3b-iii-a6) Windows runtime process probes avoid shell tasklist/taskkill (R-S11d-3) =="
 r_s11d3=
 grep -q 'struct WinHandleGuard(WinHANDLE)' src/platform/windows.rs || r_s11d3="$r_s11d3 no-windows-handle-guard"

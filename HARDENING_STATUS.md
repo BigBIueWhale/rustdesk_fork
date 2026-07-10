@@ -709,6 +709,19 @@ unreachable and a source/test/AST gate prevents reintroduction.
   tool resolver, the required tool set, `msiexec.exe` command-prefix binding for prior MSI uninstall strings,
   and absence of bare `chcp`, `reg`, `netsh`, `sc`, `taskkill`, `cscript`, `XCOPY`, `xcopy`, or `timeout`
   command lines in the elevated batch surface.
+- **R-S11d-6 — Windows EXE shortcut finalization provenance — CLOSED 2026-07-10.** Platform:
+  Windows EXE install/service-install elevated shortcut creation. Endpoint/action: Public Desktop shortcut,
+  Common Programs Start Menu shortcuts, Common Startup tray shortcut, and Program Files uninstall shortcut.
+  Boundary: unelevated caller-owned temporary staging ↔ all-users/protected shortcut destinations. Attack
+  surface closed: the installer no longer creates predictable `.lnk` files under the user temp directory and
+  then elevated-copies them into public/ProgramData/Program Files locations. `src/platform/windows.rs` resolves
+  final shortcut roots with `SHGetKnownFolderPath` (`FOLDERID_PublicDesktop`, `FOLDERID_CommonPrograms`,
+  `FOLDERID_CommonStartup`), creates VBS command files that call `WScript.Shell.CreateShortcut` on the final
+  protected shortcut path directly under the elevated batch, rejects quote/CR/LF in installer script literals,
+  fails the batch immediately on `cscript.exe` error, and deletes the old temp-output tray shortcut helper.
+  Verification closure: `scripts/verify.sh` asserts the known-folder roots, final-destination shortcut command
+  helper, checked `cscript.exe` runner, final path call sites, absence of temp `.lnk` staging/copy patterns, and
+  this ledger/requirements disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

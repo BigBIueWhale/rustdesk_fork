@@ -60,27 +60,32 @@ use winapi::{
         winuser::*,
     },
 };
-use windows::Win32::{
-    Foundation::{CloseHandle as WinCloseHandle, HANDLE as WinHANDLE},
-    Security::{
-        GetTokenInformation as WinGetTokenInformation, IsWellKnownSid, TokenUser,
-        WinLocalSystemSid, TOKEN_QUERY as WIN_TOKEN_QUERY, TOKEN_USER,
-    },
-    System::Com::CoTaskMemFree,
-    System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
-        TH32CS_SNAPPROCESS,
-    },
-    System::SystemInformation::GetSystemDirectoryW,
-    System::Threading::{
-        OpenProcess as WinOpenProcess, OpenProcessToken as WinOpenProcessToken,
-        QueryFullProcessImageNameW as WinQueryFullProcessImageNameW,
-        TerminateProcess as WinTerminateProcess,
-        PROCESS_QUERY_LIMITED_INFORMATION as WIN_PROCESS_QUERY_LIMITED_INFORMATION,
-        PROCESS_TERMINATE as WIN_PROCESS_TERMINATE,
-    },
-    UI::Shell::{
-        FOLDERID_ProgramFiles, FOLDERID_ProgramFilesX86, SHGetKnownFolderPath, KF_FLAG_DEFAULT,
+use windows::{
+    core::GUID,
+    Win32::{
+        Foundation::{CloseHandle as WinCloseHandle, HANDLE as WinHANDLE},
+        Security::{
+            GetTokenInformation as WinGetTokenInformation, IsWellKnownSid, TokenUser,
+            WinLocalSystemSid, TOKEN_QUERY as WIN_TOKEN_QUERY, TOKEN_USER,
+        },
+        System::Com::CoTaskMemFree,
+        System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+            TH32CS_SNAPPROCESS,
+        },
+        System::SystemInformation::GetSystemDirectoryW,
+        System::Threading::{
+            OpenProcess as WinOpenProcess, OpenProcessToken as WinOpenProcessToken,
+            QueryFullProcessImageNameW as WinQueryFullProcessImageNameW,
+            TerminateProcess as WinTerminateProcess,
+            PROCESS_QUERY_LIMITED_INFORMATION as WIN_PROCESS_QUERY_LIMITED_INFORMATION,
+            PROCESS_TERMINATE as WIN_PROCESS_TERMINATE,
+        },
+        UI::Shell::{
+            FOLDERID_CommonPrograms, FOLDERID_CommonStartup, FOLDERID_ProgramFiles,
+            FOLDERID_ProgramFilesX86, FOLDERID_PublicDesktop, SHGetKnownFolderPath,
+            KF_FLAG_DEFAULT,
+        },
     },
 };
 use windows_service::{
@@ -1460,6 +1465,12 @@ fn path_from_cotaskmem_pwstr(path: windows::core::PWSTR, label: &str) -> ResultT
     }
 }
 
+fn known_folder_path(folder: &GUID, label: &'static str) -> ResultType<PathBuf> {
+    let path = unsafe { SHGetKnownFolderPath(folder, KF_FLAG_DEFAULT, None) }
+        .map_err(|e| anyhow!("{label} failed: {e}"))?;
+    path_from_cotaskmem_pwstr(path, label)
+}
+
 fn program_files_dir() -> ResultType<PathBuf> {
     let folder = if cfg!(target_pointer_width = "32") {
         &FOLDERID_ProgramFilesX86
@@ -1469,6 +1480,27 @@ fn program_files_dir() -> ResultType<PathBuf> {
     let path = unsafe { SHGetKnownFolderPath(folder, KF_FLAG_DEFAULT, None) }
         .map_err(|e| anyhow!("SHGetKnownFolderPath(Program Files) failed: {e}"))?;
     path_from_cotaskmem_pwstr(path, "SHGetKnownFolderPath(Program Files)")
+}
+
+fn common_programs_dir() -> ResultType<PathBuf> {
+    known_folder_path(
+        &FOLDERID_CommonPrograms,
+        "SHGetKnownFolderPath(Common Programs)",
+    )
+}
+
+fn common_startup_dir() -> ResultType<PathBuf> {
+    known_folder_path(
+        &FOLDERID_CommonStartup,
+        "SHGetKnownFolderPath(Common Startup)",
+    )
+}
+
+fn public_desktop_dir() -> ResultType<PathBuf> {
+    known_folder_path(
+        &FOLDERID_PublicDesktop,
+        "SHGetKnownFolderPath(Public Desktop)",
+    )
 }
 
 fn default_install_path_buf() -> ResultType<PathBuf> {
@@ -1771,7 +1803,7 @@ pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> Res
     let path = fixed_service_install_path(&path)?
         .to_string_lossy()
         .into_owned();
-    let (subkey, _path, start_menu, exe) = get_default_install_info();
+    let (subkey, _path, _start_menu, exe) = get_default_install_info();
     let mut exe = exe;
     exe = exe.replace(&_path, &path);
     let mut version_major = "0";
@@ -1790,66 +1822,95 @@ pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> Res
     let app_name = crate::get_app_name();
 
     let current_exe = std::env::current_exe()?;
-
-    let tmp_path = std::env::temp_dir().to_string_lossy().to_string();
     let cur_exe = current_exe.to_str().unwrap_or("").to_owned();
-    let shortcut_icon_location = get_shortcut_icon_location(&path, &cur_exe);
-    let mk_shortcut = write_cmds(
-        format!(
-            "
-Set oWS = WScript.CreateObject(\"WScript.Shell\")
-sLinkFile = \"{tmp_path}\\{app_name}.lnk\"
-
-Set oLink = oWS.CreateShortcut(sLinkFile)
-    oLink.TargetPath = \"{exe}\"
-    {shortcut_icon_location}
-oLink.Save
-        "
-        ),
-        "vbs",
-        "mk_shortcut",
-    )?;
-    let mk_shortcut_path = mk_shortcut.path_str()?.to_owned();
-    // https://superuser.com/questions/392061/how-to-make-a-shortcut-from-cmd
-    let uninstall_shortcut = write_cmds(
-        format!(
-            "
-Set oWS = WScript.CreateObject(\"WScript.Shell\")
-sLinkFile = \"{tmp_path}\\Uninstall {app_name}.lnk\"
-Set oLink = oWS.CreateShortcut(sLinkFile)
-    oLink.TargetPath = \"{exe}\"
-    oLink.Arguments = \"--uninstall\"
-    oLink.IconLocation = \"msiexec.exe\"
-oLink.Save
-        "
-        ),
-        "vbs",
-        "uninstall_shortcut",
-    )?;
-    let uninstall_shortcut_path = uninstall_shortcut.path_str()?.to_owned();
-    let tray_shortcut = get_tray_shortcut(&path, &exe, &cur_exe, &tmp_path)?;
-    let tray_shortcut_path = tray_shortcut.path_str()?.to_owned();
     let mut reg_value_desktop_shortcuts = "0".to_owned();
     let mut reg_value_start_menu_shortcuts = "0".to_owned();
-    let mut shortcuts = Default::default();
+    let mut shortcut_scripts = Vec::new();
+    let mut shortcut_cmds = String::new();
     if options.contains("desktopicon") {
-        shortcuts = format!(
-            "copy /Y \"{}\\{}.lnk\" \"%PUBLIC%\\Desktop\\\"",
-            tmp_path,
-            crate::get_app_name()
+        let desktop_shortcut = create_shortcut_command_file(
+            &public_desktop_dir()?.join(format!("{app_name}.lnk")),
+            &exe,
+            None,
+            None,
+            &path,
+            &cur_exe,
+            "desktop_shortcut",
         );
+        let desktop_shortcut = desktop_shortcut?;
+        shortcut_cmds.push_str(&run_shortcut_script_cmd(
+            desktop_shortcut.path_str()?,
+            &tools,
+        ));
+        shortcut_scripts.push(desktop_shortcut);
         reg_value_desktop_shortcuts = "1".to_owned();
     }
     if options.contains("startmenu") {
-        shortcuts = format!(
-            "{shortcuts}
-md \"{start_menu}\"
-copy /Y \"{tmp_path}\\{app_name}.lnk\" \"{start_menu}\\\"
-copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{start_menu}\\\"
-     "
-        );
+        let start_menu = common_programs_dir()?.join(&app_name);
+        let quoted_start_menu = quoted_batch_path(&start_menu)?;
+        shortcut_cmds.push_str(&format!(
+            "
+if not exist {quoted_start_menu} md {quoted_start_menu}
+if not exist {quoted_start_menu} exit /b 1
+"
+        ));
+        let start_menu_shortcut = create_shortcut_command_file(
+            &start_menu.join(format!("{app_name}.lnk")),
+            &exe,
+            None,
+            None,
+            &path,
+            &cur_exe,
+            "start_menu_shortcut",
+        )?;
+        shortcut_cmds.push_str(&run_shortcut_script_cmd(
+            start_menu_shortcut.path_str()?,
+            &tools,
+        ));
+        shortcut_scripts.push(start_menu_shortcut);
+        let start_menu_uninstall_shortcut = create_shortcut_command_file(
+            &start_menu.join(format!("Uninstall {app_name}.lnk")),
+            &exe,
+            Some("--uninstall"),
+            Some("msiexec.exe"),
+            "",
+            "",
+            "start_menu_uninstall_shortcut",
+        )?;
+        shortcut_cmds.push_str(&run_shortcut_script_cmd(
+            start_menu_uninstall_shortcut.path_str()?,
+            &tools,
+        ));
+        shortcut_scripts.push(start_menu_uninstall_shortcut);
         reg_value_start_menu_shortcuts = "1".to_owned();
     }
+    if !config::is_outgoing_only() {
+        let tray_shortcut = create_shortcut_command_file(
+            &common_startup_dir()?.join(format!("{app_name} Tray.lnk")),
+            &exe,
+            Some("--tray"),
+            None,
+            &path,
+            &cur_exe,
+            "tray_shortcut",
+        )?;
+        shortcut_cmds.push_str(&run_shortcut_script_cmd(tray_shortcut.path_str()?, &tools));
+        shortcut_scripts.push(tray_shortcut);
+    }
+    let install_uninstall_shortcut = create_shortcut_command_file(
+        &Path::new(&path).join(format!("Uninstall {app_name}.lnk")),
+        &exe,
+        Some("--uninstall"),
+        Some("msiexec.exe"),
+        "",
+        "",
+        "install_uninstall_shortcut",
+    )?;
+    shortcut_cmds.push_str(&run_shortcut_script_cmd(
+        install_uninstall_shortcut.path_str()?,
+        &tools,
+    ));
+    shortcut_scripts.push(install_uninstall_shortcut);
 
     let meta = std::fs::symlink_metadata(&current_exe)?;
     let mut size = meta.len() / 1024;
@@ -1861,36 +1922,11 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{start_menu}\\\"
     // https://docs.microsoft.com/zh-cn/windows/win32/msi/uninstall-registry-key?redirectedfrom=MSDNa
     // https://www.windowscentral.com/how-edit-registry-using-command-prompt-windows-10
     // https://www.tenforums.com/tutorials/70903-add-remove-allowed-apps-through-windows-firewall-windows-10-a.html
-    // Note: without if exist, the bat may exit in advance on some Windows7 https://github.com/rustdesk/rustdesk/issues/895
-    let dels = format!(
-        "
-	if exist \"{mk_shortcut_path}\" del /f /q \"{mk_shortcut_path}\"
-	if exist \"{uninstall_shortcut_path}\" del /f /q \"{uninstall_shortcut_path}\"
-	if exist \"{tray_shortcut_path}\" del /f /q \"{tray_shortcut_path}\"
-	if exist \"{tmp_path}\\{app_name}.lnk\" del /f /q \"{tmp_path}\\{app_name}.lnk\"
-	if exist \"{tmp_path}\\Uninstall {app_name}.lnk\" del /f /q \"{tmp_path}\\Uninstall {app_name}.lnk\"
-	if exist \"{tmp_path}\\{app_name} Tray.lnk\" del /f /q \"{tmp_path}\\{app_name} Tray.lnk\"
-        "
-    );
     let src_exe = std::env::current_exe()?.to_str().unwrap_or("").to_string();
 
     // R-X4: the install-time license injection (custom_server-from-exe-name -> key /
     // custom-rendezvous-server / api-server) is excised; the fork is direct-IP only.
 
-    let tray_shortcuts = if config::is_outgoing_only() {
-        "".to_owned()
-    } else {
-        format!("
-		{cscript} //NoLogo \"{tray_shortcut_path}\"
-		copy /Y \"{tmp_path}\\{app_name} Tray.lnk\" \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\\"
-		",
-            cscript = tools.cscript
-        )
-    };
-
-    // Remember to check if `update_me` need to be changed if changing the `cmds`.
-    // No need to merge the existing dup code, because the code in these two functions are too critical.
-    // New code should be written in a common function.
     let cmds = format!(
         "
 {uninstall_str}
@@ -1911,12 +1947,7 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{start_menu}\\\"
 	{reg} add {subkey} /f /v UninstallString /t REG_SZ /d \"\\\"{exe}\\\" --uninstall\"
 	{reg} add {subkey} /f /v EstimatedSize /t REG_DWORD /d {size}
 	{reg} add {subkey} /f /v WindowsInstaller /t REG_DWORD /d 0
-		{cscript} //NoLogo \"{mk_shortcut}\"
-		{cscript} //NoLogo \"{uninstall_shortcut}\"
-		{tray_shortcuts}
-	{shortcuts}
-	copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
-{dels}
+	{shortcut_cmds}
 {import_config}
 {after_install}
 {sleep}
@@ -1926,7 +1957,6 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{start_menu}\\\"
         build_date = crate::BUILD_DATE,
         chcp = tools.chcp,
         reg = tools.reg,
-        cscript = tools.cscript,
         after_install = get_after_install(
             &exe,
             Some(reg_value_start_menu_shortcuts),
@@ -1938,11 +1968,9 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{start_menu}\\\"
         } else {
             String::new()
         },
-        dels = if debug { "" } else { &dels },
         copy_exe = copy_exe_cmd(&src_exe, &exe, &path, &tools)?,
         import_config = get_import_config(&exe),
-        mk_shortcut = mk_shortcut_path,
-        uninstall_shortcut = uninstall_shortcut_path,
+        shortcut_cmds = shortcut_cmds,
     );
     run_cmds(cmds, debug, "install")?;
     run_after_run_cmds(silent);
@@ -2177,6 +2205,82 @@ if exist \"{path}\" del /f /q \"{path}\"
             .open(&command_file.path)?,
     );
     Ok(command_file)
+}
+
+fn installer_script_literal(value: &str, label: &str) -> ResultType<String> {
+    if value.contains('"') || value.contains('\r') || value.contains('\n') {
+        bail!("{label} contains characters unsafe for an installer script literal");
+    }
+    Ok(value.to_owned())
+}
+
+fn installer_path_literal(path: &Path, label: &str) -> ResultType<String> {
+    let text = path
+        .to_str()
+        .ok_or_else(|| anyhow!("{label} is not valid UTF-8: {:?}", path))?;
+    installer_script_literal(text, label)
+}
+
+fn shortcut_icon_assignment(install_dir: &str, exe: &str) -> ResultType<String> {
+    if exe.is_empty() {
+        return Ok(String::new());
+    }
+    let Some(icon_path) = get_custom_icon(install_dir, exe) else {
+        return Ok(String::new());
+    };
+    let icon_path = installer_script_literal(&icon_path, "shortcut icon path")?;
+    Ok(format!("    oLink.IconLocation = \"{icon_path}\""))
+}
+
+fn create_shortcut_command_file(
+    shortcut_path: &Path,
+    target_path: &str,
+    arguments: Option<&str>,
+    explicit_icon: Option<&str>,
+    icon_install_dir: &str,
+    icon_source_exe: &str,
+    tip: &str,
+) -> ResultType<InstallerCommandFile> {
+    let shortcut_path = installer_path_literal(shortcut_path, "shortcut path")?;
+    let target_path = installer_script_literal(target_path, "shortcut target path")?;
+    let arguments = match arguments {
+        Some(arguments) if !arguments.is_empty() => {
+            let arguments = installer_script_literal(arguments, "shortcut arguments")?;
+            format!("    oLink.Arguments = \"{arguments}\"")
+        }
+        _ => String::new(),
+    };
+    let shortcut_icon_location = if let Some(icon_path) = explicit_icon {
+        let icon_path = installer_script_literal(icon_path, "shortcut icon path")?;
+        format!("    oLink.IconLocation = \"{icon_path}\"")
+    } else {
+        shortcut_icon_assignment(icon_install_dir, icon_source_exe)?
+    };
+    write_cmds(
+        format!(
+            "
+Set oWS = WScript.CreateObject(\"WScript.Shell\")
+sLinkFile = \"{shortcut_path}\"
+Set oLink = oWS.CreateShortcut(sLinkFile)
+    oLink.TargetPath = \"{target_path}\"
+{arguments}
+{shortcut_icon_location}
+oLink.Save
+        "
+        ),
+        "vbs",
+        tip,
+    )
+}
+
+fn run_shortcut_script_cmd(script_path: &str, tools: &WindowsSystemTools) -> String {
+    format!(
+        "
+{cscript} //NoLogo \"{script_path}\"
+if errorlevel 1 exit /b 1
+",
+        cscript = tools.cscript,
+    )
 }
 
 fn to_le(v: &mut [u16]) -> &[u8] {
@@ -3249,15 +3353,31 @@ pub fn install_service() -> bool {
         log::error!("Fixed Windows service executable does not exist: {exe}");
         return false;
     }
-    let tmp_path = std::env::temp_dir().to_string_lossy().to_string();
-    let tray_shortcut = match get_tray_shortcut(&path, &exe, &exe, &tmp_path) {
+    let tray_shortcut_path = match common_startup_dir()
+        .map(|dir| dir.join(format!("{} Tray.lnk", crate::get_app_name())))
+    {
+        Ok(path) => path,
+        Err(err) => {
+            log::error!("Failed to resolve common startup shortcut path: {err}");
+            return false;
+        }
+    };
+    let tray_shortcut = match create_shortcut_command_file(
+        &tray_shortcut_path,
+        &exe,
+        Some("--tray"),
+        None,
+        &path,
+        &exe,
+        "tray_shortcut",
+    ) {
         Ok(shortcut) => shortcut,
         Err(err) => {
             log::error!("Failed to create tray shortcut command file: {err}");
             return false;
         }
     };
-    let tray_shortcut_path = match tray_shortcut.path_str() {
+    let tray_shortcut_command_path = match tray_shortcut.path_str() {
         Ok(path) => path.to_owned(),
         Err(err) => {
             log::error!("Failed to resolve tray shortcut command path: {err}");
@@ -3270,15 +3390,15 @@ pub fn install_service() -> bool {
         "
 		{chcp} 65001
 		{taskkill} /F /IM {app_name}.exe{filter}
-		{cscript} //NoLogo \"{tray_shortcut_path}\"
-		copy /Y \"{tmp_path}\\{app_name} Tray.lnk\" \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\\"
+		{cscript} //NoLogo \"{tray_shortcut_command_path}\"
+		if errorlevel 1 exit /b 1
 		{import_config}
 		{create_service}
-		if exist \"{tray_shortcut_path}\" del /f /q \"{tray_shortcut_path}\"
 		    ",
         chcp = tools.chcp,
         taskkill = tools.taskkill,
         cscript = tools.cscript,
+        tray_shortcut_command_path = tray_shortcut_command_path,
         app_name = crate::get_app_name(),
         import_config = get_import_config(&exe),
         create_service = get_create_service(&exe, &tools),
@@ -3334,32 +3454,6 @@ fn get_directory_size_kb(path: &str) -> u64 {
 // update_me_msi, handle_custom_client_staging_dir_before_update, plus the updater-only helpers
 // get_reg_msi_key / kill_process_by_pids (the run_uac "--update" MSI re-install) — is excised,
 // not disabled. The fork ships signed releases (§12); there is no fetch-and-run path.
-fn get_tray_shortcut(
-    install_dir: &str,
-    exe: &str,
-    icon_source_exe: &str,
-    tmp_path: &str,
-) -> ResultType<InstallerCommandFile> {
-    let shortcut_icon_location = get_shortcut_icon_location(install_dir, icon_source_exe);
-    write_cmds(
-        format!(
-            "
-	Set oWS = WScript.CreateObject(\"WScript.Shell\")
-sLinkFile = \"{tmp_path}\\{app_name} Tray.lnk\"
-
-Set oLink = oWS.CreateShortcut(sLinkFile)
-    oLink.TargetPath = \"{exe}\"
-    oLink.Arguments = \"--tray\"
-    {shortcut_icon_location}
-oLink.Save
-        ",
-            app_name = crate::get_app_name(),
-        ),
-        "vbs",
-        "tray_shortcut",
-    )
-}
-
 fn get_import_config(_exe: &str) -> String {
     // R-X4: `--import-config` is excised from core_main (its arg-arm overwrote the entire config —
     // trust anchor + servers — from an attacker-suppliable file). The upstream installer's

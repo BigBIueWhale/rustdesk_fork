@@ -694,6 +694,21 @@ unreachable and a source/test/AST gate prevents reintroduction.
   execute sequence. Verification closure: `scripts/verify.sh` asserts the checked broker-delete branch, fatal
   cleanup message, checked WiX return, absence of the old ignored return, absence of the sample custom action,
   and this ledger/requirements disposition.
+- **R-S11d-5 — Windows EXE elevated batch command provenance — CLOSED 2026-07-10.** Platform:
+  Windows EXE install/uninstall/service-install elevated command path. Endpoint/action: generated `.bat`
+  files launched through UAC-elevated `System32\cmd.exe` by `run_cmds`. Boundary: unelevated installer process
+  and its current directory/environment ↔ elevated registry, firewall, service, process-termination, shortcut,
+  and file-copy actions. Attack surface closed: the batch body no longer resolves external tools by bare command
+  name. Before any elevated EXE batch is formatted, `src/platform/windows.rs` resolves `chcp.com`,
+  `cscript.exe`, `msiexec.exe`, `netsh.exe`, `reg.exe`, `sc.exe`, `taskkill.exe`, `timeout.exe`, and
+  `xcopy.exe` from `GetSystemDirectoryW`, requires each file to exist, quotes the resulting absolute path, and
+  threads that tool set through broker update, install, uninstall, service install/uninstall, previous-MSI
+  uninstall handoff, service creation, shortcut-script execution, registry/firewall/SAS setup, and bulk-copy
+  fragments. Missing or malformed tool paths fail closed before elevation; the existing `.undone` marker still
+  makes batch failure visible to the caller. Verification closure: `scripts/verify.sh` asserts the System32
+  tool resolver, the required tool set, `msiexec.exe` command-prefix binding for prior MSI uninstall strings,
+  and absence of bare `chcp`, `reg`, `netsh`, `sc`, `taskkill`, `cscript`, `XCOPY`, `xcopy`, or `timeout`
+  command lines in the elevated batch surface.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

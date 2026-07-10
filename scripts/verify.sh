@@ -458,6 +458,33 @@ grep -q 'R-S11d-4 — Windows MSI runtime-generated executable cleanup completio
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else
   echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service/SAS custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path; MSI cleanup observes Amyuni and runtime-generated executable completion"; fi
 
+echo "== (3b-iii-a5e) Windows EXE elevated batch binds external tools to System32 (R-S11d-5) =="
+r_s11d5=
+grep -q 'fn trusted_system_tool_path(tool: &str) -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d5="$r_s11d5 system-tool-resolver-missing"
+grep -q 'fn quoted_batch_path(path: &Path) -> ResultType<String>' src/platform/windows.rs || r_s11d5="$r_s11d5 batch-tool-quoting-missing"
+grep -q 'struct WindowsSystemTools' src/platform/windows.rs || r_s11d5="$r_s11d5 system-tool-set-missing"
+for tool in chcp.com cscript.exe msiexec.exe netsh.exe reg.exe sc.exe taskkill.exe timeout.exe xcopy.exe; do
+  grep -q "trusted_system_tool_path(\"$tool\")" src/platform/windows.rs || r_s11d5="$r_s11d5 missing-$tool"
+done
+grep -q 'let tools = WindowsSystemTools::resolve()?' src/platform/windows.rs || r_s11d5="$r_s11d5 installer-paths-do-not-resolve-tools"
+grep -q 'command_with_system_tool(&reg_uninstall_string, "msiexec.exe", &tools.msiexec)' src/platform/windows.rs || r_s11d5="$r_s11d5 prior-msi-uninstall-not-bound"
+grep -q 'tools.xcopy' src/platform/windows.rs || r_s11d5="$r_s11d5 xcopy-not-bound"
+grep -q '{cscript} //NoLogo' src/platform/windows.rs || r_s11d5="$r_s11d5 cscript-not-bound"
+grep -q '{taskkill} /F /IM' src/platform/windows.rs || r_s11d5="$r_s11d5 taskkill-not-bound"
+grep -q '{netsh} advfirewall' src/platform/windows.rs || r_s11d5="$r_s11d5 netsh-not-bound"
+grep -q '{sc} create' src/platform/windows.rs || r_s11d5="$r_s11d5 sc-create-not-bound"
+grep -q '{reg} add' src/platform/windows.rs || r_s11d5="$r_s11d5 reg-add-not-bound"
+grep -q '{chcp} 65001' src/platform/windows.rs || r_s11d5="$r_s11d5 chcp-not-bound"
+if grep -nE '^[[:space:]]*(chcp 65001|reg (add|delete)|netsh advfirewall|sc (create|stop|delete|failure|start)|taskkill /F /IM|cscript "|XCOPY |xcopy |timeout 300)' src/platform/windows.rs >/tmp/rd_verify_r_s11d5_bare.$$; then
+  cat /tmp/rd_verify_r_s11d5_bare.$$
+  r_s11d5="$r_s11d5 bare-external-tool-in-elevated-batch"
+fi
+rm -f /tmp/rd_verify_r_s11d5_bare.$$
+grep -q 'Windows EXE elevated batch command provenance' requirements.html || r_s11d5="$r_s11d5 requirements-disposition-missing"
+grep -q 'R-S11d-5 — Windows EXE elevated batch command provenance' HARDENING_STATUS.md || r_s11d5="$r_s11d5 hardening-ledger-missing"
+if [ -n "$r_s11d5" ]; then echo "  FAIL R-S11d-5 Windows EXE elevated batch command provenance:$r_s11d5"; rc=1; else
+  echo "  ok  R-S11d-5 Windows EXE elevated batch resolves external tools from System32 and rejects bare tool names in the elevated batch surface"; fi
+
 echo "== (3b-iii-a6) Windows runtime process probes avoid shell tasklist/taskkill (R-S11d-3) =="
 r_s11d3=
 grep -q 'struct WinHandleGuard(WinHANDLE)' src/platform/windows.rs || r_s11d3="$r_s11d3 no-windows-handle-guard"

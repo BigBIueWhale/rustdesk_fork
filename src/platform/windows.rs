@@ -1511,7 +1511,7 @@ fn fixed_service_install_dir_and_exe() -> ResultType<(String, String)> {
     Ok((path, exe))
 }
 
-fn trusted_system_cmd_path() -> ResultType<PathBuf> {
+fn trusted_system_dir() -> ResultType<PathBuf> {
     let mut buffer = vec![0u16; 32768];
     let len = unsafe { GetSystemDirectoryW(Some(&mut buffer)) } as usize;
     if len == 0 {
@@ -1520,10 +1520,64 @@ fn trusted_system_cmd_path() -> ResultType<PathBuf> {
     if len >= buffer.len() {
         bail!("GetSystemDirectoryW returned an oversized path");
     }
-    Ok(PathBuf::from(OsString::from_wide(&buffer[..len])).join("cmd.exe"))
+    Ok(PathBuf::from(OsString::from_wide(&buffer[..len])))
+}
+
+fn trusted_system_tool_path(tool: &str) -> ResultType<PathBuf> {
+    if tool.contains('\\') || tool.contains('/') || tool.contains('"') || tool.trim() != tool {
+        bail!("invalid trusted system tool name: {tool}");
+    }
+    let path = trusted_system_dir()?.join(tool);
+    if !path.is_file() {
+        bail!("trusted system tool is missing: {:?}", path);
+    }
+    Ok(path)
+}
+
+fn quoted_batch_path(path: &Path) -> ResultType<String> {
+    let text = path
+        .to_str()
+        .ok_or_else(|| anyhow!("system tool path is not valid UTF-8: {:?}", path))?;
+    if text.contains('"') {
+        bail!("system tool path contains a quote: {text}");
+    }
+    Ok(format!("\"{text}\""))
+}
+
+fn trusted_system_cmd_path() -> ResultType<PathBuf> {
+    trusted_system_tool_path("cmd.exe")
+}
+
+struct WindowsSystemTools {
+    chcp: String,
+    cscript: String,
+    msiexec: String,
+    netsh: String,
+    reg: String,
+    sc: String,
+    taskkill: String,
+    timeout: String,
+    xcopy: String,
+}
+
+impl WindowsSystemTools {
+    fn resolve() -> ResultType<Self> {
+        Ok(Self {
+            chcp: quoted_batch_path(&trusted_system_tool_path("chcp.com")?)?,
+            cscript: quoted_batch_path(&trusted_system_tool_path("cscript.exe")?)?,
+            msiexec: quoted_batch_path(&trusted_system_tool_path("msiexec.exe")?)?,
+            netsh: quoted_batch_path(&trusted_system_tool_path("netsh.exe")?)?,
+            reg: quoted_batch_path(&trusted_system_tool_path("reg.exe")?)?,
+            sc: quoted_batch_path(&trusted_system_tool_path("sc.exe")?)?,
+            taskkill: quoted_batch_path(&trusted_system_tool_path("taskkill.exe")?)?,
+            timeout: quoted_batch_path(&trusted_system_tool_path("timeout.exe")?)?,
+            xcopy: quoted_batch_path(&trusted_system_tool_path("xcopy.exe")?)?,
+        })
+    }
 }
 
 pub fn check_update_broker_process() -> ResultType<()> {
+    let tools = WindowsSystemTools::resolve()?;
     let process_exe = win_topmost_window::INJECTED_PROCESS_EXE;
     let origin_process_exe = win_topmost_window::ORIGIN_PROCESS_EXE;
 
@@ -1536,10 +1590,12 @@ pub fn check_update_broker_process() -> ResultType<()> {
     // Force update broker exe if failed to check modified time.
     let cmds = format!(
         "
-        chcp 65001
-        taskkill /F /IM {process_exe}
+        {chcp} 65001
+        {taskkill} /F /IM {process_exe}
         copy /Y \"{origin_process_exe}\" \"{cur_exe}\"
     ",
+        chcp = tools.chcp,
+        taskkill = tools.taskkill,
         cur_exe = cur_exe.to_string_lossy(),
     );
 
@@ -1582,9 +1638,15 @@ fn get_install_info_with_subkey(subkey: String) -> (String, String, String, Stri
     (subkey, path, start_menu, exe)
 }
 
-pub fn copy_raw_cmd(src_raw: &str, _raw: &str, _path: &str) -> ResultType<String> {
+fn copy_raw_cmd(
+    src_raw: &str,
+    _raw: &str,
+    _path: &str,
+    tools: &WindowsSystemTools,
+) -> ResultType<String> {
     let main_raw = format!(
-        "XCOPY \"{}\" \"{}\" /Y /E /H /C /I /K /R /Z",
+        "{} \"{}\" \"{}\" /Y /E /H /C /I /K /R /Z",
+        tools.xcopy,
         PathBuf::from(src_raw)
             .parent()
             .ok_or(anyhow!("Can't get parent directory of {src_raw}"))?
@@ -1595,8 +1657,13 @@ pub fn copy_raw_cmd(src_raw: &str, _raw: &str, _path: &str) -> ResultType<String
     return Ok(main_raw);
 }
 
-pub fn copy_exe_cmd(src_exe: &str, exe: &str, path: &str) -> ResultType<String> {
-    let main_exe = copy_raw_cmd(src_exe, exe, path)?;
+fn copy_exe_cmd(
+    src_exe: &str,
+    exe: &str,
+    path: &str,
+    tools: &WindowsSystemTools,
+) -> ResultType<String> {
+    let main_exe = copy_raw_cmd(src_exe, exe, path, tools)?;
     Ok(format!(
         "
         {main_exe}
@@ -1643,6 +1710,7 @@ fn get_after_install(
     exe: &str,
     reg_value_start_menu_shortcuts: Option<String>,
     reg_value_desktop_shortcuts: Option<String>,
+    tools: &WindowsSystemTools,
 ) -> String {
     let app_name = crate::get_app_name();
     let ext = app_name.to_lowercase();
@@ -1656,43 +1724,50 @@ fn get_after_install(
 
     let desktop_shortcuts = reg_value_desktop_shortcuts
         .map(|v| {
-            format!("reg add HKEY_CLASSES_ROOT\\.{ext} /f /v {REG_NAME_INSTALL_DESKTOPSHORTCUTS} /t REG_SZ /d \"{v}\"")
+            format!("{reg} add HKEY_CLASSES_ROOT\\.{ext} /f /v {REG_NAME_INSTALL_DESKTOPSHORTCUTS} /t REG_SZ /d \"{v}\"", reg = tools.reg)
         })
         .unwrap_or_default();
     let start_menu_shortcuts = reg_value_start_menu_shortcuts
         .map(|v| {
             format!(
-                "reg add HKEY_CLASSES_ROOT\\.{ext} /f /v {REG_NAME_INSTALL_STARTMENUSHORTCUTS} /t REG_SZ /d \"{v}\""
+                "{reg} add HKEY_CLASSES_ROOT\\.{ext} /f /v {REG_NAME_INSTALL_STARTMENUSHORTCUTS} /t REG_SZ /d \"{v}\"",
+                reg = tools.reg
             )
         })
         .unwrap_or_default();
 
     format!("
-    chcp 65001
-    reg add HKEY_CLASSES_ROOT\\.{ext} /f
+    {chcp} 65001
+    {reg} add HKEY_CLASSES_ROOT\\.{ext} /f
     {desktop_shortcuts}
     {start_menu_shortcuts}
-    reg add HKEY_CLASSES_ROOT\\.{ext}\\DefaultIcon /f
-    reg add HKEY_CLASSES_ROOT\\.{ext}\\DefaultIcon /f /ve /t REG_SZ  /d \"\\\"{exe}\\\",0\"
-    reg add HKEY_CLASSES_ROOT\\.{ext}\\shell /f
-    reg add HKEY_CLASSES_ROOT\\.{ext}\\shell\\open /f
-    reg add HKEY_CLASSES_ROOT\\.{ext}\\shell\\open\\command /f
-    reg add HKEY_CLASSES_ROOT\\.{ext}\\shell\\open\\command /f /ve /t REG_SZ /d \"\\\"{exe}\\\" --play \\\"%%1\\\"\"
-    reg add HKEY_CLASSES_ROOT\\{ext} /f
-    reg add HKEY_CLASSES_ROOT\\{ext} /f /v \"URL Protocol\" /t REG_SZ /d \"\"
-    reg add HKEY_CLASSES_ROOT\\{ext}\\shell /f
-    reg add HKEY_CLASSES_ROOT\\{ext}\\shell\\open /f
-    reg add HKEY_CLASSES_ROOT\\{ext}\\shell\\open\\command /f
-    reg add HKEY_CLASSES_ROOT\\{ext}\\shell\\open\\command /f /ve /t REG_SZ /d \"\\\"{exe}\\\" \\\"%%1\\\"\"
-    netsh advfirewall firewall add rule name=\"{app_name} Service\" dir=out action=allow program=\"{exe}\" enable=yes
-    netsh advfirewall firewall add rule name=\"{app_name} Service\" dir=in action=allow program=\"{exe}\" enable=yes
+    {reg} add HKEY_CLASSES_ROOT\\.{ext}\\DefaultIcon /f
+    {reg} add HKEY_CLASSES_ROOT\\.{ext}\\DefaultIcon /f /ve /t REG_SZ  /d \"\\\"{exe}\\\",0\"
+    {reg} add HKEY_CLASSES_ROOT\\.{ext}\\shell /f
+    {reg} add HKEY_CLASSES_ROOT\\.{ext}\\shell\\open /f
+    {reg} add HKEY_CLASSES_ROOT\\.{ext}\\shell\\open\\command /f
+    {reg} add HKEY_CLASSES_ROOT\\.{ext}\\shell\\open\\command /f /ve /t REG_SZ /d \"\\\"{exe}\\\" --play \\\"%%1\\\"\"
+    {reg} add HKEY_CLASSES_ROOT\\{ext} /f
+    {reg} add HKEY_CLASSES_ROOT\\{ext} /f /v \"URL Protocol\" /t REG_SZ /d \"\"
+    {reg} add HKEY_CLASSES_ROOT\\{ext}\\shell /f
+    {reg} add HKEY_CLASSES_ROOT\\{ext}\\shell\\open /f
+    {reg} add HKEY_CLASSES_ROOT\\{ext}\\shell\\open\\command /f
+    {reg} add HKEY_CLASSES_ROOT\\{ext}\\shell\\open\\command /f /ve /t REG_SZ /d \"\\\"{exe}\\\" \\\"%%1\\\"\"
+    {netsh} advfirewall firewall add rule name=\"{app_name} Service\" dir=out action=allow program=\"{exe}\" enable=yes
+    {netsh} advfirewall firewall add rule name=\"{app_name} Service\" dir=in action=allow program=\"{exe}\" enable=yes
     {create_service}
-    reg add HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System /f /v SoftwareSASGeneration /t REG_DWORD /d 1
-    ", create_service=get_create_service(&exe))
+    {reg} add HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System /f /v SoftwareSASGeneration /t REG_DWORD /d 1
+    ",
+        chcp = tools.chcp,
+        reg = tools.reg,
+        netsh = tools.netsh,
+        create_service = get_create_service(&exe, tools)
+    )
 }
 
 pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> ResultType<()> {
-    let uninstall_str = get_uninstall(false);
+    let tools = WindowsSystemTools::resolve()?;
+    let uninstall_str = get_uninstall(false, &tools);
     let path = fixed_service_install_path(&path)?
         .to_string_lossy()
         .into_owned();
@@ -1806,9 +1881,11 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{start_menu}\\\"
         "".to_owned()
     } else {
         format!("
-	cscript \"{tray_shortcut_path}\"
-	copy /Y \"{tmp_path}\\{app_name} Tray.lnk\" \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\\"
-	")
+		{cscript} //NoLogo \"{tray_shortcut_path}\"
+		copy /Y \"{tmp_path}\\{app_name} Tray.lnk\" \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\\"
+		",
+            cscript = tools.cscript
+        )
     };
 
     // Remember to check if `update_me` need to be changed if changing the `cmds`.
@@ -1817,28 +1894,28 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{start_menu}\\\"
     let cmds = format!(
         "
 {uninstall_str}
-chcp 65001
-md \"{path}\"
-{copy_exe}
-reg add {subkey} /f
-reg add {subkey} /f /v DisplayIcon /t REG_SZ /d \"{display_icon}\"
-reg add {subkey} /f /v DisplayName /t REG_SZ /d \"{app_name}\"
-reg add {subkey} /f /v DisplayVersion /t REG_SZ /d \"{version}\"
-reg add {subkey} /f /v Version /t REG_SZ /d \"{version}\"
-reg add {subkey} /f /v BuildDate /t REG_SZ /d \"{build_date}\"
-reg add {subkey} /f /v InstallLocation /t REG_SZ /d \"{path}\"
-reg add {subkey} /f /v Publisher /t REG_SZ /d \"{app_name}\"
-reg add {subkey} /f /v VersionMajor /t REG_DWORD /d {version_major}
-reg add {subkey} /f /v VersionMinor /t REG_DWORD /d {version_minor}
-reg add {subkey} /f /v VersionBuild /t REG_DWORD /d {version_build}
-reg add {subkey} /f /v UninstallString /t REG_SZ /d \"\\\"{exe}\\\" --uninstall\"
-reg add {subkey} /f /v EstimatedSize /t REG_DWORD /d {size}
-reg add {subkey} /f /v WindowsInstaller /t REG_DWORD /d 0
-	cscript \"{mk_shortcut}\"
-	cscript \"{uninstall_shortcut}\"
-	{tray_shortcuts}
-{shortcuts}
-copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
+	{chcp} 65001
+	md \"{path}\"
+	{copy_exe}
+	{reg} add {subkey} /f
+	{reg} add {subkey} /f /v DisplayIcon /t REG_SZ /d \"{display_icon}\"
+	{reg} add {subkey} /f /v DisplayName /t REG_SZ /d \"{app_name}\"
+	{reg} add {subkey} /f /v DisplayVersion /t REG_SZ /d \"{version}\"
+	{reg} add {subkey} /f /v Version /t REG_SZ /d \"{version}\"
+	{reg} add {subkey} /f /v BuildDate /t REG_SZ /d \"{build_date}\"
+	{reg} add {subkey} /f /v InstallLocation /t REG_SZ /d \"{path}\"
+	{reg} add {subkey} /f /v Publisher /t REG_SZ /d \"{app_name}\"
+	{reg} add {subkey} /f /v VersionMajor /t REG_DWORD /d {version_major}
+	{reg} add {subkey} /f /v VersionMinor /t REG_DWORD /d {version_minor}
+	{reg} add {subkey} /f /v VersionBuild /t REG_DWORD /d {version_build}
+	{reg} add {subkey} /f /v UninstallString /t REG_SZ /d \"\\\"{exe}\\\" --uninstall\"
+	{reg} add {subkey} /f /v EstimatedSize /t REG_DWORD /d {size}
+	{reg} add {subkey} /f /v WindowsInstaller /t REG_DWORD /d 0
+		{cscript} //NoLogo \"{mk_shortcut}\"
+		{cscript} //NoLogo \"{uninstall_shortcut}\"
+		{tray_shortcuts}
+	{shortcuts}
+	copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
 {dels}
 {import_config}
 {after_install}
@@ -1847,14 +1924,22 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
         display_icon = get_custom_icon(&path, &cur_exe).unwrap_or(exe.to_string()),
         version = crate::VERSION.replace("-", "."),
         build_date = crate::BUILD_DATE,
+        chcp = tools.chcp,
+        reg = tools.reg,
+        cscript = tools.cscript,
         after_install = get_after_install(
             &exe,
             Some(reg_value_start_menu_shortcuts),
             Some(reg_value_desktop_shortcuts),
+            &tools,
         ),
-        sleep = if debug { "timeout 300" } else { "" },
+        sleep = if debug {
+            format!("{} /T 300", tools.timeout)
+        } else {
+            String::new()
+        },
         dels = if debug { "" } else { &dels },
-        copy_exe = copy_exe_cmd(&src_exe, &exe, &path)?,
+        copy_exe = copy_exe_cmd(&src_exe, &exe, &path, &tools)?,
         import_config = get_import_config(&exe),
         mk_shortcut = mk_shortcut_path,
         uninstall_shortcut = uninstall_shortcut_path,
@@ -1865,15 +1950,21 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
 }
 
 pub fn run_after_install() -> ResultType<()> {
+    let tools = WindowsSystemTools::resolve()?;
     let (_, exe) = fixed_service_install_dir_and_exe()?;
-    run_cmds(get_after_install(&exe, None, None), true, "after_install")
+    run_cmds(
+        get_after_install(&exe, None, None, &tools),
+        true,
+        "after_install",
+    )
 }
 
 pub fn run_before_uninstall() -> ResultType<()> {
-    run_cmds(get_before_uninstall(true), true, "before_install")
+    let tools = WindowsSystemTools::resolve()?;
+    run_cmds(get_before_uninstall(true, &tools), true, "before_install")
 }
 
-fn get_before_uninstall(kill_self: bool) -> String {
+fn get_before_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> String {
     let app_name = crate::get_app_name();
     let ext = app_name.to_lowercase();
     let filter = if kill_self {
@@ -1883,15 +1974,20 @@ fn get_before_uninstall(kill_self: bool) -> String {
     };
     format!(
         "
-    chcp 65001
-    sc stop {app_name}
-    sc delete {app_name}
-    taskkill /F /IM {broker_exe}
-    taskkill /F /IM {app_name}.exe{filter}
-    reg delete HKEY_CLASSES_ROOT\\.{ext} /f
-    reg delete HKEY_CLASSES_ROOT\\{ext} /f
-    netsh advfirewall firewall delete rule name=\"{app_name} Service\"
+    {chcp} 65001
+    {sc} stop {app_name}
+    {sc} delete {app_name}
+    {taskkill} /F /IM {broker_exe}
+    {taskkill} /F /IM {app_name}.exe{filter}
+    {reg} delete HKEY_CLASSES_ROOT\\.{ext} /f
+    {reg} delete HKEY_CLASSES_ROOT\\{ext} /f
+    {netsh} advfirewall firewall delete rule name=\"{app_name} Service\"
     ",
+        chcp = tools.chcp,
+        sc = tools.sc,
+        taskkill = tools.taskkill,
+        reg = tools.reg,
+        netsh = tools.netsh,
         broker_exe = WIN_TOPMOST_INJECTED_PROCESS_EXE,
     )
 }
@@ -1902,9 +1998,40 @@ fn get_before_uninstall(kill_self: bool) -> String {
 /// - `kill_self`: The command will kill the process of current app name. If `true`, it will kill
 ///   the current process as well. If `false`, it will exclude the current process from the kill
 ///   command.
-fn get_uninstall(kill_self: bool) -> String {
+fn command_with_system_tool(
+    command: &str,
+    tool_name: &str,
+    quoted_tool_path: &str,
+) -> Option<String> {
+    let trimmed = command.trim_start();
+    let leading = &command[..command.len() - trimmed.len()];
+    let lower = trimmed.to_ascii_lowercase();
+    let tool = tool_name.to_ascii_lowercase();
+    let quoted_tool = format!("\"{tool}\"");
+
+    if lower.starts_with(&quoted_tool) {
+        let rest = &trimmed[quoted_tool.len()..];
+        return Some(format!("{leading}{quoted_tool_path}{rest}"));
+    }
+
+    if lower.starts_with(&tool) {
+        let rest = &trimmed[tool.len()..];
+        if rest.is_empty() || rest.chars().next().is_some_and(|c| c.is_whitespace()) {
+            return Some(format!("{leading}{quoted_tool_path}{rest}"));
+        }
+    }
+
+    None
+}
+
+fn get_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> String {
     let reg_uninstall_string = get_reg("UninstallString");
     if reg_uninstall_string.to_lowercase().contains("msiexec.exe") {
+        if let Some(command) =
+            command_with_system_tool(&reg_uninstall_string, "msiexec.exe", &tools.msiexec)
+        {
+            return command;
+        }
         return reg_uninstall_string;
     }
 
@@ -1919,21 +2046,23 @@ fn get_uninstall(kill_self: bool) -> String {
         "
     {before_uninstall}
     {uninstall_cert_cmd}
-    reg delete {subkey} /f
+    {reg} delete {subkey} /f
     {uninstall_amyuni_idd}
     if exist \"{path}\" rd /s /q \"{path}\"
     if exist \"{start_menu}\" rd /s /q \"{start_menu}\"
     if exist \"%PUBLIC%\\Desktop\\{app_name}.lnk\" del /f /q \"%PUBLIC%\\Desktop\\{app_name}.lnk\"
     if exist \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{app_name} Tray.lnk\" del /f /q \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{app_name} Tray.lnk\"
     ",
-        before_uninstall=get_before_uninstall(kill_self),
+        before_uninstall=get_before_uninstall(kill_self, tools),
+        reg = tools.reg,
         uninstall_amyuni_idd=get_uninstall_amyuni_idd(),
         app_name = crate::get_app_name(),
     )
 }
 
 pub fn uninstall_me(kill_self: bool) -> ResultType<()> {
-    run_cmds(get_uninstall(kill_self), true, "uninstall")
+    let tools = WindowsSystemTools::resolve()?;
+    run_cmds(get_uninstall(kill_self, &tools), true, "uninstall")
 }
 
 struct InstallerCommandFile {
@@ -3068,16 +3197,26 @@ impl Drop for WakeLock {
 
 pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
     log::info!("Uninstalling service...");
+    let tools = match WindowsSystemTools::resolve() {
+        Ok(tools) => tools,
+        Err(err) => {
+            log::error!("Failed to resolve Windows system tools: {err}");
+            return false;
+        }
+    };
     let filter = format!(" /FI \"PID ne {}\"", get_current_pid());
     let cmds = format!(
         "
-    chcp 65001
-    sc stop {app_name}
-    sc delete {app_name}
+    {chcp} 65001
+    {sc} stop {app_name}
+    {sc} delete {app_name}
     if exist \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{app_name} Tray.lnk\" del /f /q \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{app_name} Tray.lnk\"
-    taskkill /F /IM {broker_exe}
-    taskkill /F /IM {app_name}.exe{filter}
+    {taskkill} /F /IM {broker_exe}
+    {taskkill} /F /IM {app_name}.exe{filter}
     ",
+        chcp = tools.chcp,
+        sc = tools.sc,
+        taskkill = tools.taskkill,
         app_name = crate::get_app_name(),
         broker_exe = WIN_TOPMOST_INJECTED_PROCESS_EXE,
     );
@@ -3091,6 +3230,13 @@ pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
 
 pub fn install_service() -> bool {
     log::info!("Installing service...");
+    let tools = match WindowsSystemTools::resolve() {
+        Ok(tools) => tools,
+        Err(err) => {
+            log::error!("Failed to resolve Windows system tools: {err}");
+            return false;
+        }
+    };
     let _installing = crate::platform::InstallingService::new();
     let (path, exe) = match fixed_service_install_dir_and_exe() {
         Ok(info) => info,
@@ -3122,17 +3268,20 @@ pub fn install_service() -> bool {
     crate::ipc::EXIT_RECV_CLOSE.store(false, Ordering::Relaxed);
     let cmds = format!(
         "
-	chcp 65001
-	taskkill /F /IM {app_name}.exe{filter}
-	cscript \"{tray_shortcut_path}\"
-	copy /Y \"{tmp_path}\\{app_name} Tray.lnk\" \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\\"
-	{import_config}
-	{create_service}
-	if exist \"{tray_shortcut_path}\" del /f /q \"{tray_shortcut_path}\"
-	    ",
+		{chcp} 65001
+		{taskkill} /F /IM {app_name}.exe{filter}
+		{cscript} //NoLogo \"{tray_shortcut_path}\"
+		copy /Y \"{tmp_path}\\{app_name} Tray.lnk\" \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\\"
+		{import_config}
+		{create_service}
+		if exist \"{tray_shortcut_path}\" del /f /q \"{tray_shortcut_path}\"
+		    ",
+        chcp = tools.chcp,
+        taskkill = tools.taskkill,
+        cscript = tools.cscript,
         app_name = crate::get_app_name(),
         import_config = get_import_config(&exe),
-        create_service = get_create_service(&exe),
+        create_service = get_create_service(&exe, &tools),
     );
     if let Err(err) = run_cmds(cmds, false, "install") {
         crate::ipc::EXIT_RECV_CLOSE.store(true, Ordering::Relaxed);
@@ -3219,7 +3368,7 @@ fn get_import_config(_exe: &str) -> String {
     String::new()
 }
 
-fn get_create_service(exe: &str) -> String {
+fn get_create_service(exe: &str, tools: &WindowsSystemTools) -> String {
     if config::is_outgoing_only() {
         return "".to_string();
     }
@@ -3244,14 +3393,15 @@ fn get_create_service(exe: &str) -> String {
     // up → "always recover", the N3 twin of the systemd start-limit fix); the failure counter resets
     // after a day of uptime so a genuine one-off does not inherit a stale 30s delay.
     format!("
-	if not exist \"{exe}\" exit /b 1
-	sc create {app_name} binpath= \"\\\"{exe}\\\" --service\" start= auto DisplayName= \"{app_name} Service\"
-	if errorlevel 1 exit /b 1
-	sc failure {app_name} reset= 86400 actions= restart/5000/restart/10000/restart/30000
-	if errorlevel 1 exit /b 1
-	sc start {app_name}
-	if errorlevel 1 exit /b 1
-	",
+		if not exist \"{exe}\" exit /b 1
+		{sc} create {app_name} binpath= \"\\\"{exe}\\\" --service\" start= auto DisplayName= \"{app_name} Service\"
+		if errorlevel 1 exit /b 1
+		{sc} failure {app_name} reset= 86400 actions= restart/5000/restart/10000/restart/30000
+		if errorlevel 1 exit /b 1
+		{sc} start {app_name}
+		if errorlevel 1 exit /b 1
+		",
+    sc = tools.sc,
     app_name = crate::get_app_name())
 }
 

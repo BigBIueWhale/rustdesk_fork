@@ -1450,9 +1450,11 @@ grep -Fq 'const MACOS_PRIVILEGED_HELPER_EXEC: &str =' src/ipc/auth.rs           
 grep -Fq '/Library/PrivilegedHelperTools/com.carriez.rustdesk_service' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-helper-path-missing"
 grep -Fq 'fn macos_installed_app_executable_path() -> PathBuf' src/ipc/auth.rs      || r_s11b2="$r_s11b2 macos-service-ipc-installed-app-path-missing"
 grep -Fq 'fn macos_privileged_helper_is_expected_and_trusted(current_exe: &Path) -> bool' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-helper-trust-missing"
+grep -Fq 'fs::symlink_metadata(MACOS_PRIVILEGED_HELPER_DIR)' src/ipc/auth.rs       || r_s11b2="$r_s11b2 macos-service-ipc-helper-dir-symlink-metadata-missing"
 grep -Fq 'fs::symlink_metadata(expected)' src/ipc/auth.rs                          || r_s11b2="$r_s11b2 macos-service-ipc-helper-symlink-metadata-missing"
-grep -Fq 'link_metadata.uid() != 0 || link_metadata.gid() != 0' src/ipc/auth.rs     || r_s11b2="$r_s11b2 macos-service-ipc-helper-root-wheel-missing"
-grep -Fq 'mode & 0o022 == 0 && mode & 0o111 != 0' src/ipc/auth.rs                  || r_s11b2="$r_s11b2 macos-service-ipc-helper-mode-gate-missing"
+grep -Fq 'macos_root_wheel_not_group_world_writable(&dir_metadata)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-helper-dir-root-wheel-mode-missing"
+grep -Fq 'macos_root_wheel_not_group_world_writable(&link_metadata)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-helper-root-wheel-mode-missing"
+grep -Fq 'macos_privileged_helper_satisfies_code_requirement(expected)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-helper-code-requirement-missing"
 grep -Fq 'macos_service_ipc_allows_installed_app_and_privileged_helper' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-installed-helper-pair-missing"
 macos_service_identity_block=$(awk '/fn macos_service_ipc_allows_installed_app_and_privileged_helper/,/^}/' src/ipc/auth.rs)
 echo "$macos_service_identity_block" | grep -Fq 'postfix != crate::POSTFIX_SERVICE' || r_s11b2="$r_s11b2 macos-service-ipc-postfix-gate-missing"
@@ -1823,7 +1825,7 @@ install_scpt=src/platform/privileges_scripts/install.scpt
 update_scpt=src/platform/privileges_scripts/update.scpt
 uninstall_scpt=src/platform/privileges_scripts/uninstall.scpt
 macos_rs=src/platform/macos.rs
-macos_helper_command_sources=(src/platform/macos.rs src/ipc.rs)
+macos_helper_command_sources=(src/platform/macos.rs src/ipc.rs src/ipc/auth.rs)
 daemon_args_block=$(awk '/<key>ProgramArguments<\/key>/,/<\/array>/' "$daemon_plist")
 echo "$daemon_args_block" | grep -q '<string>/Library/PrivilegedHelperTools/com.carriez.rustdesk_service</string>' || r_s11c5="$r_s11c5 daemon-not-privileged-helper-exec"
 if echo "$daemon_args_block" | grep -qE '<string>/(bin|usr/bin)/(sh|bash)</string>|<string>-c</string>'; then
@@ -1838,22 +1840,33 @@ if grep -RInE 'update_daemon_agent|update_source_dir|\.rustdeskupdate|get_update
   r_s11c5="$r_s11c5 macos-privileged-update-surface-present"
 fi
 rm -f /tmp/rd_verify_macos_update.$$
-for command in osascript launchctl open ls ioreg; do
+for command in osascript launchctl open ls ioreg codesign; do
   if grep -F "Command::new(\"$command\")" "${macos_helper_command_sources[@]}" >/dev/null; then
     r_s11c5="$r_s11c5 macos-path-selected-$command"
   fi
 done
-for system_path in /usr/bin/osascript /bin/launchctl /usr/bin/open /usr/sbin/ioreg; do
+for system_path in /usr/bin/osascript /bin/launchctl /usr/bin/open /usr/sbin/ioreg /usr/bin/codesign; do
   grep -F "\"$system_path\"" "${macos_helper_command_sources[@]}" >/dev/null || r_s11c5="$r_s11c5 macos-absolute-${system_path##*/}-missing"
 done
 grep -Fq 'const MACOS_OPEN: &str = "/usr/bin/open";' src/ipc.rs || r_s11c5="$r_s11c5 macos-ipc-open-absolute-missing"
 grep -Fq 'Command::new(MACOS_OPEN)' src/ipc.rs || r_s11c5="$r_s11c5 macos-ipc-reopen-not-absolute"
 grep -Fq 'const MACOS_PRIVILEGED_HELPER_EXEC: &str =' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-const-missing"
 grep -Fq '/Library/PrivilegedHelperTools/com.carriez.rustdesk_service' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-path-missing"
+grep -Fq 'const MACOS_PRIVILEGED_HELPER_DIR: &str = "/Library/PrivilegedHelperTools";' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-dir-const-missing"
+grep -Fq 'const MACOS_CODESIGN: &str = "/usr/bin/codesign";' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-codesign-absolute-missing"
+grep -Fq 'const MACOS_PRIVILEGED_HELPER_REQUIREMENT: &str =' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-code-requirement-const-missing"
+grep -Fq 'certificate leaf[subject.OU] = "HZF9JMC8YN"' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-teamid-requirement-missing"
+grep -Fq 'identifier "service" or identifier "com.carriez.rustdesk_service"' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-identifier-requirement-missing"
 grep -Fq 'fn macos_privileged_helper_is_expected_and_trusted(current_exe: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-trust-missing"
+grep -Fq 'fn macos_privileged_helper_satisfies_code_requirement(path: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-codesign-check-missing"
+grep -Fq 'Command::new(MACOS_CODESIGN)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-codesign-not-absolute"
+grep -Fq 'MACOS_PRIVILEGED_HELPER_REQUIREMENT' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-requirement-not-used"
+grep -Fq 'fs::symlink_metadata(MACOS_PRIVILEGED_HELPER_DIR)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-dir-symlink-metadata-missing"
 grep -Fq 'fs::symlink_metadata(expected)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-symlink-metadata-missing"
-grep -Fq 'link_metadata.uid() != 0 || link_metadata.gid() != 0' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-root-wheel-missing"
-grep -Fq 'mode & 0o022 == 0 && mode & 0o111 != 0' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-mode-gate-missing"
+grep -Fq 'macos_root_wheel_not_group_world_writable(&dir_metadata)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-dir-root-wheel-mode-gate-missing"
+grep -Fq 'macos_root_wheel_not_group_world_writable(&link_metadata)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-root-wheel-mode-gate-missing"
+grep -Fq 'link_metadata.permissions().mode() & 0o111 == 0' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-exec-mode-gate-missing"
+grep -Fq 'macos_privileged_helper_satisfies_code_requirement(expected)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-code-requirement-not-enforced"
 macos_service_identity_block=$(awk '/fn macos_service_ipc_allows_installed_app_and_privileged_helper/,/^}/' src/ipc/auth.rs)
 echo "$macos_service_identity_block" | grep -Fq 'macos_privileged_helper_is_expected_and_trusted(current_exe)' || r_s11c5="$r_s11c5 macos-service-ipc-current-helper-not-verified"
 echo "$macos_service_identity_block" | grep -Fq 'macos_installed_app_executable_path()' || r_s11c5="$r_s11c5 macos-service-ipc-peer-app-not-verified"
@@ -1880,9 +1893,13 @@ script="$install_scpt"
 script_sh_line=$(grep 'set sh to' "$script")
 grep -q 'on run {daemon_file, agent_file}' "$script" || r_s11c5="$r_s11c5 install-takes-extra-authority-args"
 grep -q 'set reject_symlinks to' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-no-symlink-reject"
+grep -q 'set helper_requirement to "=anchor apple generic' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-requirement-missing"
+grep -q 'certificate leaf\[subject.OU\] = \\"HZF9JMC8YN\\"' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-teamid-requirement-missing"
+grep -q 'identifier \\"service\\" or identifier \\"com.carriez.rustdesk_service\\"' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-identifier-requirement-missing"
 grep -q 'quoted form of helper_dir' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-dir-symlink-not-checked"
 grep -q 'quoted form of service_exec' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-service-exec-symlink-not-checked"
 grep -q 'set verify_service_exec to' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-no-service-exec-verifier"
+grep -q '/usr/bin/codesign --verify --strict -R " & quoted form of helper_requirement' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-codesign-check-missing"
 grep -q '/Library/PrivilegedHelperTools' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-dir-not-used"
 grep -q '/Library/PrivilegedHelperTools/com.carriez.rustdesk_service' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-exec-not-used"
 grep -q "/usr/bin/stat -f '%Su:%Sg'" "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-owner-not-statted"
@@ -1921,7 +1938,7 @@ if grep -qE 'let active_user_home|arg\(active_user_home\)|arg\(&active_user_home
   r_s11c5="$r_s11c5 macos-install-imports-active-user-home"
 fi
 if [ -n "$r_s11c5" ]; then echo "  FAIL R-S11c-5 macOS privileged service packaging:$r_s11c5"; rc=1; else
-  echo "  ok  R-S11c-5 macOS LaunchDaemon uses a root-owned PrivilegedHelperTools executable, and _service IPC identity matches that deployed helper model; dormant updater and active-user config import are absent"; fi
+  echo "  ok  R-S11c-5 macOS LaunchDaemon uses a signed root-owned PrivilegedHelperTools executable, and _service IPC identity matches that deployed helper model; dormant updater and active-user config import are absent"; fi
 
 echo "== (3b-iii-g2) desktop service lifecycle completion authority (R-S11c-16) =="
 r_s11c16=

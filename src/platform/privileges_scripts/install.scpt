@@ -4,6 +4,7 @@ on run {daemon_file, agent_file}
   set agent_plist to "/Library/LaunchAgents/com.carriez.RustDesk_server.plist"
   set helper_dir to "/Library/PrivilegedHelperTools"
   set service_exec to "/Library/PrivilegedHelperTools/com.carriez.rustdesk_service"
+  set helper_requirement to "=anchor apple generic and certificate leaf[subject.OU] = \"HZF9JMC8YN\" and (identifier \"service\" or identifier \"com.carriez.rustdesk_service\")"
   set log_dir to "/Library/Logs/RustDesk"
   set log_stderr to "/Library/Logs/RustDesk/rustdesk_service.err"
   set log_stdout to "/Library/Logs/RustDesk/rustdesk_service.out"
@@ -17,7 +18,7 @@ on run {daemon_file, agent_file}
 
   set secure_dirs to "/bin/chmod -N " & quoted form of log_dir & " " & quoted form of support_dir & " " & quoted form of root_prefs_dir & " && /usr/sbin/chown root:wheel " & quoted form of log_dir & " " & quoted form of support_dir & " " & quoted form of root_prefs_dir & " && /bin/chmod 0755 " & quoted form of log_dir & " " & quoted form of support_dir & " " & quoted form of root_prefs_dir & ";"
 
-  set verify_service_exec to "for service_component in " & quoted form of helper_dir & " " & quoted form of service_exec & "; do if [ -L \"$service_component\" ]; then exit 1; fi; if [ ! -e \"$service_component\" ]; then exit 1; fi; if [ \"$(/usr/bin/stat -f '%Su:%Sg' \"$service_component\")\" != \"root:wheel\" ]; then exit 1; fi; if [ -n \"$(/usr/bin/find \"$service_component\" -prune \\( ! -user root -o ! -group wheel -o -perm +022 \\) -print)\" ]; then exit 1; fi; /bin/ls -lde \"$service_component\" | /usr/bin/awk 'NR > 1 {exit 1}' || exit 1; done; if [ ! -f " & quoted form of service_exec & " ] || [ ! -x " & quoted form of service_exec & " ]; then exit 1; fi;"
+  set verify_service_exec to "for service_component in " & quoted form of helper_dir & " " & quoted form of service_exec & "; do if [ -L \"$service_component\" ]; then exit 1; fi; if [ ! -e \"$service_component\" ]; then exit 1; fi; if [ \"$(/usr/bin/stat -f '%Su:%Sg' \"$service_component\")\" != \"root:wheel\" ]; then exit 1; fi; if [ -n \"$(/usr/bin/find \"$service_component\" -prune \\( ! -user root -o ! -group wheel -o -perm +022 \\) -print)\" ]; then exit 1; fi; /bin/ls -lde \"$service_component\" | /usr/bin/awk 'NR > 1 {exit 1}' || exit 1; done; if [ ! -f " & quoted form of service_exec & " ] || [ ! -x " & quoted form of service_exec & " ]; then exit 1; fi; /usr/bin/codesign --verify --strict -R " & quoted form of helper_requirement & " " & quoted form of service_exec & " >/dev/null 2>&1;"
 
   set prepare_logs to "/bin/rm -f " & quoted form of log_stderr & " " & quoted form of log_stdout & " && /usr/bin/touch " & quoted form of log_stderr & " " & quoted form of log_stdout & " && /bin/chmod -N " & quoted form of log_stderr & " " & quoted form of log_stdout & " && /usr/sbin/chown root:wheel " & quoted form of log_stderr & " " & quoted form of log_stdout & " && /bin/chmod 0644 " & quoted form of log_stderr & " " & quoted form of log_stdout & ";"
 

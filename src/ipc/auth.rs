@@ -18,6 +18,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::RawFd;
 #[cfg(windows)]
 use std::os::windows::io::AsRawHandle;
+#[cfg(target_os = "macos")]
+use std::process::Command;
 #[cfg(windows)]
 use std::{collections::BTreeSet, ffi::c_void};
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
@@ -67,6 +69,12 @@ const LOCAL_SYSTEM_SID: &str = "S-1-5-18";
 #[cfg(target_os = "macos")]
 const MACOS_PRIVILEGED_HELPER_EXEC: &str =
     "/Library/PrivilegedHelperTools/com.carriez.rustdesk_service";
+#[cfg(target_os = "macos")]
+const MACOS_PRIVILEGED_HELPER_DIR: &str = "/Library/PrivilegedHelperTools";
+#[cfg(target_os = "macos")]
+const MACOS_CODESIGN: &str = "/usr/bin/codesign";
+#[cfg(target_os = "macos")]
+const MACOS_PRIVILEGED_HELPER_REQUIREMENT: &str = r#"=anchor apple generic and certificate leaf[subject.OU] = "HZF9JMC8YN" and (identifier "service" or identifier "com.carriez.rustdesk_service")"#;
 
 #[cfg(windows)]
 struct WindowsIpcDaclSids {
@@ -367,9 +375,48 @@ fn macos_executable_matches_expected_path(actual: &Path, expected: &Path) -> boo
 
 #[cfg(target_os = "macos")]
 #[inline]
+fn macos_root_wheel_not_group_world_writable(metadata: &fs::Metadata) -> bool {
+    metadata.uid() == 0 && metadata.gid() == 0 && metadata.permissions().mode() & 0o022 == 0
+}
+
+#[cfg(target_os = "macos")]
+fn macos_privileged_helper_satisfies_code_requirement(path: &Path) -> bool {
+    match Command::new(MACOS_CODESIGN)
+        .args([
+            "--verify",
+            "--strict",
+            "-R",
+            MACOS_PRIVILEGED_HELPER_REQUIREMENT,
+        ])
+        .arg(path)
+        .status()
+    {
+        Ok(status) if status.success() => true,
+        Ok(status) => {
+            log::error!("macOS privileged helper code-signing check failed with status {status}");
+            false
+        }
+        Err(err) => {
+            log::error!("Failed to run macOS privileged helper code-signing check: {err}");
+            false
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[inline]
 fn macos_privileged_helper_is_expected_and_trusted(current_exe: &Path) -> bool {
     let expected = Path::new(MACOS_PRIVILEGED_HELPER_EXEC);
     if !macos_executable_matches_expected_path(current_exe, expected) {
+        return false;
+    }
+    let Ok(dir_metadata) = fs::symlink_metadata(MACOS_PRIVILEGED_HELPER_DIR) else {
+        return false;
+    };
+    if dir_metadata.file_type().is_symlink()
+        || !dir_metadata.is_dir()
+        || !macos_root_wheel_not_group_world_writable(&dir_metadata)
+    {
         return false;
     }
     let Ok(link_metadata) = fs::symlink_metadata(expected) else {
@@ -378,11 +425,12 @@ fn macos_privileged_helper_is_expected_and_trusted(current_exe: &Path) -> bool {
     if link_metadata.file_type().is_symlink() || !link_metadata.is_file() {
         return false;
     }
-    if link_metadata.uid() != 0 || link_metadata.gid() != 0 {
+    if !macos_root_wheel_not_group_world_writable(&link_metadata)
+        || link_metadata.permissions().mode() & 0o111 == 0
+    {
         return false;
     }
-    let mode = link_metadata.permissions().mode();
-    mode & 0o022 == 0 && mode & 0o111 != 0
+    macos_privileged_helper_satisfies_code_requirement(expected)
 }
 
 #[cfg(target_os = "macos")]

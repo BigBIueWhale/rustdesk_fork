@@ -510,23 +510,24 @@ unreachable and a source/test/AST gate prevents reintroduction.
   chowns a mutable app bundle into a root service path, no longer accepts an active-user home argument, and no
   longer copies active-user `RustDesk.toml`/`RustDesk2.toml` into root preferences. Instead it requires the
   helper directory and helper executable to be non-symlinks, already `root:wheel`, non-group/world-writable,
-  ACL-free, and executable, and it re-verifies that helper after plist writes and immediately before
-  `launchctl load`. The dormant privileged updater is deleted rather than retained: `update.scpt`,
+  ACL-free, executable, and signed by the pinned Developer ID Team ID with the expected helper identifier, and it
+  re-verifies that helper after plist writes and immediately before `launchctl load`. The dormant privileged updater is deleted rather than retained: `update.scpt`,
   `update_daemon_agent`, `.rustdeskupdate-*` helpers, and the macOS startup cleanup for the old update temp
   tree are absent. The Rust-side launcher path remains closed against caller-controlled `PATH`: local
   install/uninstall/asuser/reopen helpers invoke fixed system paths for `osascript`, `launchctl`, `open`,
   and `ioreg`, and active-console identity no longer parses `ls /dev/console`; it reads `/dev/console`
   ownership and resolves the username through `getpwuid_r`, with `launchctl asuser` failing closed on an
   unresolved console UID. The `_service` IPC executable identity exception now requires the same deployed
-  helper path and helper ownership/mode invariants, with the peer fixed to the installed app executable rather
-  than any sibling `service` binary in the app bundle. Verification closure: `scripts/verify.sh` and
+  helper path, helper-directory ownership/mode invariants, helper-file ownership/mode invariants, and the same
+  helper code-signing requirement, with the peer fixed to the installed app executable rather than any sibling
+  `service` binary in the app bundle. Verification closure: `scripts/verify.sh` and
   `scripts/apple-conform-check.sh` assert the PrivilegedHelperTools daemon target and root-owned working
   directory, absence of `update.scpt`/`update_daemon_agent`/`.rustdeskupdate-*`, absence of app-bundle root
   service execution, absence of active-user config import, helper root ownership/mode/ACL checks, helper
-  re-verification before load, `/Library/Logs/RustDesk` daemon logs, root-owned directory setup, quoted plist
-  writes, quoted privileged plist paths, trusted PrivilegedHelperTools `_service` IPC identity, absence of the
-  old same-directory `service` binary exception, absolute local helper tool paths, and the `/dev/console`/`getpwuid_r`
-  active-user lookup.
+  designated-requirement checks in the install script and `_service` IPC receiver, helper re-verification before
+  load, `/Library/Logs/RustDesk` daemon logs, root-owned directory setup, quoted plist writes, quoted privileged
+  plist paths, trusted PrivilegedHelperTools `_service` IPC identity, absence of the old same-directory `service`
+  binary exception, absolute local helper tool paths, and the `/dev/console`/`getpwuid_r` active-user lookup.
 - **R-S11c-16 — Desktop service lifecycle completion authority — CLOSED 2026-07-10.**
   Platforms: Linux and macOS desktop service wrappers, plus the shared desktop service CLI dispatcher. Surfaces:
   `core_main` `--install-service` / `--uninstall-service`, Linux `systemctl` service lifecycle helpers, macOS

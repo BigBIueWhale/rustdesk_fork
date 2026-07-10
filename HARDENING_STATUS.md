@@ -841,6 +841,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   null-application `CreateProcessAsUserW` and fixed `MAX_PATH` command buffers, absolute-file validation,
   quoted argv construction, service-owned `--server` launch through the helper, user-session launch reuse of
   the helper, removal of the obsolete wrapper, and this ledger/requirements disposition.
+- **R-S11d-14 — Windows service/session token source provenance — CLOSED 2026-07-10.**
+  Platform: Windows installed service and desktop session handoff. Endpoint/action: resolving the token used
+  by `CreateProcessAsUserW` for service-owned `--server` and user-session helper launches. Boundary:
+  LocalSystem service ↔ session token authority. Attack surface closed: the service no longer turns the first
+  same-session process whose basename is `explorer.exe`, `sihost.exe`, or `winlogon.exe` into launch authority.
+  User-session launches use `WTSQueryUserToken` for the target session's logged-on user token. Service-owned
+  SYSTEM launches accept only a same-session `winlogon.exe` whose full image path is the trusted
+  `%SystemRoot%\System32\winlogon.exe`, whose token belongs to LocalSystem, and whose token session matches the
+  target session. This path now requests only the documented token/process rights needed for query and
+  `CreateProcessAsUserW` instead of `PROCESS_ALL_ACCESS` / `TOKEN_ALL_ACCESS`. The obsolete user-process
+  fallback and Explorer-name error suppression are deleted. Verification closure: `scripts/verify.sh` asserts
+  `WTSQueryUserToken`, trusted System32 `winlogon.exe` image validation, LocalSystem SID validation,
+  token-session validation, minimum handle rights, absence of Explorer/sihost token fallbacks, absence of the
+  old all-access token source, and this ledger/requirements disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

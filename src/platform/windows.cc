@@ -28,172 +28,163 @@ void flog(char const *fmt, ...)
     fclose(h);
 }
 
-static BOOL GetProcessUserName(DWORD processID, LPWSTR outUserName, DWORD inUserNameSize)
-{
-    BOOL ret = FALSE;
-    HANDLE hProcess = NULL;
-    HANDLE hToken = NULL;
-    PTOKEN_USER tokenUser = NULL;
-    wchar_t *userName = NULL;
-    wchar_t *domainName = NULL;
+static const DWORD kCreateProcessTokenAccess = TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY;
+static const DWORD kWtsUserTokenSource = 0xFFFFFFFF;
 
-    hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, processID);
-    if (hProcess == NULL)
+static bool token_session_matches(HANDLE token, DWORD dwSessionId)
+{
+    DWORD tokenSessionId = 0;
+    DWORD returned = 0;
+    return GetTokenInformation(token,
+                               TokenSessionId,
+                               &tokenSessionId,
+                               sizeof(tokenSessionId),
+                               &returned) &&
+           tokenSessionId == dwSessionId;
+}
+
+static bool token_user_is_local_system(HANDLE token)
+{
+    BYTE localSystemSid[SECURITY_MAX_SID_SIZE];
+    DWORD localSystemSidSize = sizeof(localSystemSid);
+    if (!CreateWellKnownSid(WinLocalSystemSid, NULL, localSystemSid, &localSystemSidSize))
     {
-        goto cleanup;
+        return false;
     }
-    if (!OpenProcessToken(hProcess, TOKEN_QUERY, &hToken))
-    {
-        goto cleanup;
-    }
+
     DWORD tokenInfoLength = 0;
-    GetTokenInformation(hToken, TokenUser, NULL, 0, &tokenInfoLength);
+    GetTokenInformation(token, TokenUser, NULL, 0, &tokenInfoLength);
     if (tokenInfoLength == 0)
     {
-        goto cleanup;
+        return false;
     }
-    tokenUser = (PTOKEN_USER)malloc(tokenInfoLength);
-    if (tokenUser == NULL)
+    std::vector<BYTE> tokenInfo(tokenInfoLength);
+    if (!GetTokenInformation(token, TokenUser, tokenInfo.data(), tokenInfoLength, &tokenInfoLength))
     {
-        goto cleanup;
+        return false;
     }
-    if (!GetTokenInformation(hToken, TokenUser, tokenUser, tokenInfoLength, &tokenInfoLength))
-    {
-        goto cleanup;
-    }
-    DWORD userSize = 0;
-    DWORD domainSize = 0;
-    SID_NAME_USE snu;
-    LookupAccountSidW(NULL, tokenUser->User.Sid, NULL, &userSize, NULL, &domainSize, &snu);
-    if (userSize == 0 || domainSize == 0)
-    {
-        goto cleanup;
-    }
-    userName = (wchar_t *)malloc((userSize + 1) * sizeof(wchar_t));
-    if (userName == NULL)
-    {
-        goto cleanup;
-    }
-    domainName = (wchar_t *)malloc((domainSize + 1) * sizeof(wchar_t));
-    if (domainName == NULL)
-    {
-        goto cleanup;
-    }
-    if (!LookupAccountSidW(NULL, tokenUser->User.Sid, userName, &userSize, domainName, &domainSize, &snu))
-    {
-        goto cleanup;
-    }
-    userName[userSize] = L'\0';
-    domainName[domainSize] = L'\0';
-    if (inUserNameSize <= userSize)
-    {
-        goto cleanup;
-    }
-    wcscpy(outUserName, userName);
+    PTOKEN_USER tokenUser = reinterpret_cast<PTOKEN_USER>(tokenInfo.data());
+    return EqualSid(tokenUser->User.Sid, localSystemSid);
+}
 
-    ret = TRUE;
-cleanup:
-    if (userName)
+static bool system32_executable_path(LPCWSTR exeName, std::wstring &path)
+{
+    std::vector<wchar_t> systemDir(MAX_PATH);
+    UINT len = GetSystemDirectoryW(systemDir.data(), static_cast<UINT>(systemDir.size()));
+    if (len >= systemDir.size())
     {
-        free(userName);
+        systemDir.resize(static_cast<size_t>(len) + 1);
+        len = GetSystemDirectoryW(systemDir.data(), static_cast<UINT>(systemDir.size()));
     }
-    if (domainName)
+    if (len == 0 || len >= systemDir.size())
     {
-        free(domainName);
+        return false;
     }
-    if (tokenUser != NULL)
+    path.assign(systemDir.data(), len);
+    path.append(L"\\");
+    path.append(exeName);
+    return true;
+}
+
+static bool process_image_matches(HANDLE hProcess, const std::wstring &expectedPath)
+{
+    std::vector<wchar_t> imagePath(32768);
+    DWORD imagePathLen = static_cast<DWORD>(imagePath.size());
+    if (!QueryFullProcessImageNameW(hProcess, 0, imagePath.data(), &imagePathLen))
     {
-        free(tokenUser);
+        return false;
     }
-    if (hToken != NULL)
+    std::wstring actualPath(imagePath.data(), imagePathLen);
+    return _wcsicmp(actualPath.c_str(), expectedPath.c_str()) == 0;
+}
+
+static BOOL query_logged_on_user_token(DWORD dwSessionId, LPHANDLE lphUserToken, DWORD *pDwTokenPid)
+{
+    HANDLE hToken = NULL;
+    if (pDwTokenPid)
+        *pDwTokenPid = 0;
+    if (!WTSQueryUserToken(dwSessionId, &hToken))
+    {
+        return FALSE;
+    }
+    if (!token_session_matches(hToken, dwSessionId))
     {
         CloseHandle(hToken);
+        SetLastError(ERROR_ACCESS_DENIED);
+        return FALSE;
     }
-    if (hProcess != NULL)
-    {
-        CloseHandle(hProcess);
-    }
-
-    return ret;
+    *lphUserToken = hToken;
+    if (pDwTokenPid)
+        *pDwTokenPid = kWtsUserTokenSource;
+    return TRUE;
 }
 
-// ultravnc has rdp support
-// https://github.com/veyon/ultravnc/blob/master/winvnc/winvnc/service.cpp
-// https://github.com/TigerVNC/tigervnc/blob/master/win/winvnc/VNCServerService.cxx
-// https://blog.csdn.net/MA540213/article/details/84638264
-
-DWORD GetLogonPid(DWORD dwSessionId, BOOL as_user)
+static BOOL query_trusted_winlogon_token(DWORD dwSessionId, LPHANDLE lphUserToken, DWORD *pDwTokenPid)
 {
-    DWORD dwLogonPid = 0;
+    if (pDwTokenPid)
+        *pDwTokenPid = 0;
+    std::wstring expectedWinlogonPath;
+    if (!system32_executable_path(L"winlogon.exe", expectedWinlogonPath))
+    {
+        SetLastError(ERROR_NOT_FOUND);
+        return FALSE;
+    }
+
     HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnap != INVALID_HANDLE_VALUE)
+    if (hSnap == INVALID_HANDLE_VALUE)
     {
-        PROCESSENTRY32W procEntry;
-        procEntry.dwSize = sizeof procEntry;
+        return FALSE;
+    }
 
-        if (Process32FirstW(hSnap, &procEntry))
-            do
+    PROCESSENTRY32W procEntry;
+    procEntry.dwSize = sizeof procEntry;
+    if (Process32FirstW(hSnap, &procEntry))
+    {
+        do
+        {
+            DWORD processSessionId = 0;
+            if (_wcsicmp(procEntry.szExeFile, L"winlogon.exe") != 0 ||
+                !ProcessIdToSessionId(procEntry.th32ProcessID, &processSessionId) ||
+                processSessionId != dwSessionId)
             {
-                DWORD dwLogonSessionId = 0;
-                if (_wcsicmp(procEntry.szExeFile, as_user ? L"explorer.exe" : L"winlogon.exe") == 0 &&
-                    ProcessIdToSessionId(procEntry.th32ProcessID, &dwLogonSessionId) &&
-                    dwLogonSessionId == dwSessionId)
-                {
-                    dwLogonPid = procEntry.th32ProcessID;
-                    break;
-                }
-            } while (Process32NextW(hSnap, &procEntry));
-        CloseHandle(hSnap);
-    }
-    return dwLogonPid;
-}
+                continue;
+            }
 
-static DWORD GetFallbackUserPid(DWORD dwSessionId)
-{
-    DWORD dwFallbackPid = 0;
-    const wchar_t* fallbackUserProcs[] = {L"sihost.exe"};
-    const int maxUsernameLen = 256;
-    wchar_t sessionUsername[maxUsernameLen + 1] = {0};
-    wchar_t processUsername[maxUsernameLen + 1] = {0};
-
-    if (get_session_user_info(sessionUsername, maxUsernameLen, dwSessionId) == 0)
-    {
-        return 0;
-    }
-    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnap != INVALID_HANDLE_VALUE)
-    {
-        PROCESSENTRY32W procEntry;
-        procEntry.dwSize = sizeof procEntry;
-
-        if (Process32FirstW(hSnap, &procEntry))
-            do
+            HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, procEntry.th32ProcessID);
+            if (hProcess == NULL)
             {
-                for (int i = 0; i < sizeof(fallbackUserProcs) / sizeof(fallbackUserProcs[0]); i++)
-                {
-                    DWORD dwProcessSessionId = 0;
-                    if (_wcsicmp(procEntry.szExeFile, fallbackUserProcs[i]) == 0 &&
-                        ProcessIdToSessionId(procEntry.th32ProcessID, &dwProcessSessionId) &&
-                        dwProcessSessionId == dwSessionId)
-                    {
-                        memset(processUsername, 0, sizeof(processUsername));
-                        if (GetProcessUserName(procEntry.th32ProcessID, processUsername, maxUsernameLen)) {
-                            if (_wcsicmp(sessionUsername, processUsername) == 0)
-                            {
-                                dwFallbackPid = procEntry.th32ProcessID;
-                                break;
-                            }                           
-                        }
-                    }
-                }
-                if (dwFallbackPid != 0)
-                {
-                    break;
-                }
-            } while (Process32NextW(hSnap, &procEntry));
-        CloseHandle(hSnap);
+                continue;
+            }
+            if (!process_image_matches(hProcess, expectedWinlogonPath))
+            {
+                CloseHandle(hProcess);
+                continue;
+            }
+
+            HANDLE hToken = NULL;
+            if (!OpenProcessToken(hProcess, kCreateProcessTokenAccess, &hToken))
+            {
+                CloseHandle(hProcess);
+                continue;
+            }
+            CloseHandle(hProcess);
+
+            if (!token_session_matches(hToken, dwSessionId) || !token_user_is_local_system(hToken))
+            {
+                CloseHandle(hToken);
+                continue;
+            }
+
+            *lphUserToken = hToken;
+            if (pDwTokenPid)
+                *pDwTokenPid = procEntry.th32ProcessID;
+            CloseHandle(hSnap);
+            return TRUE;
+        } while (Process32NextW(hSnap, &procEntry));
     }
-    return dwFallbackPid;
+    CloseHandle(hSnap);
+    SetLastError(ERROR_NOT_FOUND);
+    return FALSE;
 }
 
 static bool has_extra_environment(LPCWSTR extraEnvironment)
@@ -233,24 +224,19 @@ static std::vector<wchar_t> merge_environment_blocks(LPVOID baseEnvironment, LPC
 // START the app as system
 extern "C"
 {
-    // if should try WTSQueryUserToken?
-    // https://stackoverflow.com/questions/7285666/example-code-a-service-calls-createprocessasuser-i-want-the-process-to-run-in
     BOOL GetSessionUserTokenWin(OUT LPHANDLE lphUserToken, DWORD dwSessionId, BOOL as_user, DWORD *pDwTokenPid)
     {
-        BOOL bResult = FALSE;
-        DWORD Id = GetLogonPid(dwSessionId, as_user);
-        if (Id == 0)
+        if (lphUserToken == NULL)
         {
-            Id = GetFallbackUserPid(dwSessionId);
+            SetLastError(ERROR_INVALID_PARAMETER);
+            return FALSE;
         }
-        if (pDwTokenPid)
-            *pDwTokenPid = Id;
-        if (HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, Id))
+        *lphUserToken = NULL;
+        if (as_user)
         {
-            bResult = OpenProcessToken(hProcess, TOKEN_ALL_ACCESS, lphUserToken);
-            CloseHandle(hProcess);
+            return query_logged_on_user_token(dwSessionId, lphUserToken, pDwTokenPid);
         }
-        return bResult;
+        return query_trusted_winlogon_token(dwSessionId, lphUserToken, pDwTokenPid);
     }
 
     bool is_windows_server()

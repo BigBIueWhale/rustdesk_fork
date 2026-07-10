@@ -678,6 +678,37 @@ grep -Fq 'R-S11d-13 — Windows service and session-token process launch provena
 if [ -n "$r_s11d13" ]; then echo "  FAIL R-S11d-13 Windows service/session token launch provenance:$r_s11d13"; rc=1; else
   echo "  ok  R-S11d-13 Windows service/session token launches bind lpApplicationName, quote argv separately, and reject ambient executable identity"; fi
 
+echo "== (3b-iii-a5d3) Windows service/session token source is provenance-checked (R-S11d-14) =="
+r_s11d14=
+grep -Fq 'static const DWORD kCreateProcessTokenAccess = TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY;' src/platform/windows.cc || r_s11d14="$r_s11d14 token-access-not-minimum"
+grep -Fq 'static BOOL query_logged_on_user_token' src/platform/windows.cc || r_s11d14="$r_s11d14 logged-on-user-token-helper-missing"
+grep -Fq 'WTSQueryUserToken(dwSessionId, &hToken)' src/platform/windows.cc || r_s11d14="$r_s11d14 user-token-not-from-wts"
+grep -Fq 'static BOOL query_trusted_winlogon_token' src/platform/windows.cc || r_s11d14="$r_s11d14 trusted-winlogon-helper-missing"
+grep -Fq 'system32_executable_path(L"winlogon.exe", expectedWinlogonPath)' src/platform/windows.cc || r_s11d14="$r_s11d14 winlogon-system32-path-not-resolved"
+grep -Fq 'QueryFullProcessImageNameW(hProcess, 0, imagePath.data(), &imagePathLen)' src/platform/windows.cc || r_s11d14="$r_s11d14 process-image-path-not-queried"
+grep -Fq 'process_image_matches(hProcess, expectedWinlogonPath)' src/platform/windows.cc || r_s11d14="$r_s11d14 winlogon-image-not-validated"
+grep -Fq 'token_session_matches(hToken, dwSessionId)' src/platform/windows.cc || r_s11d14="$r_s11d14 token-session-not-validated"
+grep -Fq 'CreateWellKnownSid(WinLocalSystemSid' src/platform/windows.cc || r_s11d14="$r_s11d14 localsystem-sid-not-built"
+grep -Fq 'EqualSid(tokenUser->User.Sid, localSystemSid)' src/platform/windows.cc || r_s11d14="$r_s11d14 token-user-not-compared-to-localsystem"
+grep -Fq 'OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, procEntry.th32ProcessID)' src/platform/windows.cc || r_s11d14="$r_s11d14 process-open-not-limited-query"
+grep -Fq 'OpenProcessToken(hProcess, kCreateProcessTokenAccess, &hToken)' src/platform/windows.cc || r_s11d14="$r_s11d14 token-open-not-minimum-helper"
+get_session_token_body=$(awk '/BOOL GetSessionUserTokenWin/,/^    }$/' src/platform/windows.cc)
+echo "$get_session_token_body" | grep -Fq 'return query_logged_on_user_token(dwSessionId, lphUserToken, pDwTokenPid);' || r_s11d14="$r_s11d14 as-user-not-wts-helper"
+echo "$get_session_token_body" | grep -Fq 'return query_trusted_winlogon_token(dwSessionId, lphUserToken, pDwTokenPid);' || r_s11d14="$r_s11d14 system-token-not-trusted-winlogon-helper"
+if grep -Eq 'GetProcessUserName|GetLogonPid|GetFallbackUserPid|sihost\.exe|as_user \? L"explorer\.exe"|L"explorer\.exe"' src/platform/windows.cc src/platform/windows.rs src/server/connection.rs; then
+  r_s11d14="$r_s11d14 old-basename-token-source-leftover"
+fi
+if grep -Fq 'PROCESS_ALL_ACCESS, FALSE, Id' src/platform/windows.cc || grep -Fq 'TOKEN_ALL_ACCESS, lphUserToken' src/platform/windows.cc; then
+  r_s11d14="$r_s11d14 all-access-token-source-leftover"
+fi
+if grep -Fq 'EXPLORER_EXE' src/platform/windows.rs src/server/connection.rs; then
+  r_s11d14="$r_s11d14 explorer-error-suppression-leftover"
+fi
+grep -Fq 'Windows service/session token source provenance' requirements.html || r_s11d14="$r_s11d14 requirements-disposition-missing"
+grep -Fq 'R-S11d-14 — Windows service/session token source provenance' HARDENING_STATUS.md || r_s11d14="$r_s11d14 hardening-ledger-missing"
+if [ -n "$r_s11d14" ]; then echo "  FAIL R-S11d-14 Windows service/session token source provenance:$r_s11d14"; rc=1; else
+  echo "  ok  R-S11d-14 Windows session launches use WTS user tokens and validated LocalSystem winlogon tokens with minimum rights"; fi
+
 echo "== (3b-iii-a5e) Windows EXE elevated batch binds external tools to System32 (R-S11d-5) =="
 r_s11d5=
 grep -q 'fn trusted_system_tool_path(tool: &str) -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d5="$r_s11d5 system-tool-resolver-missing"

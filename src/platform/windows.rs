@@ -105,7 +105,6 @@ mod acl;
 pub use acl::set_path_permission;
 
 pub const FLUTTER_RUNNER_WIN32_WINDOW_CLASS: &'static str = "FLUTTER_RUNNER_WIN32_WINDOW"; // main window, install window
-pub const EXPLORER_EXE: &'static str = "explorer.exe";
 pub const SET_FOREGROUND_WINDOW: &'static str = "SET_FOREGROUND_WINDOW";
 
 const REG_NAME_INSTALL_DESKTOPSHORTCUTS: &str = "DESKTOPSHORTCUTS";
@@ -840,7 +839,7 @@ async fn launch_server(session_id: DWORD, close_first: bool) -> ResultType<HANDL
             io::Error::last_os_error()
         );
         if token_pid == 0 {
-            log::error!("No process winlogon.exe");
+            log::error!("No trusted LocalSystem session token");
         }
     }
     Ok(h)
@@ -1191,10 +1190,9 @@ where
     if h.is_null() {
         if token_pid == 0 {
             bail!(
-                "Failed to launch {:?} with session id {}: no process {}",
+                "Failed to launch {:?} with session id {}: no trusted logged-on user token",
                 arg,
-                session_id,
-                EXPLORER_EXE
+                session_id
             );
         }
         bail!(

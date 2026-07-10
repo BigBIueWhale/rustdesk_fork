@@ -61,14 +61,17 @@ use winapi::{
     },
 };
 use windows::{
-    core::GUID,
+    core::{Interface, GUID, PCWSTR},
     Win32::{
-        Foundation::{CloseHandle as WinCloseHandle, HANDLE as WinHANDLE},
+        Foundation::{CloseHandle as WinCloseHandle, HANDLE as WinHANDLE, RPC_E_CHANGED_MODE},
         Security::{
             GetTokenInformation as WinGetTokenInformation, IsWellKnownSid, TokenUser,
             WinLocalSystemSid, TOKEN_QUERY as WIN_TOKEN_QUERY, TOKEN_USER,
         },
-        System::Com::CoTaskMemFree,
+        System::Com::{
+            CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, IPersistFile,
+            CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
+        },
         System::Diagnostics::ToolHelp::{
             CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
             TH32CS_SNAPPROCESS,
@@ -82,9 +85,9 @@ use windows::{
             PROCESS_TERMINATE as WIN_PROCESS_TERMINATE,
         },
         UI::Shell::{
-            FOLDERID_CommonPrograms, FOLDERID_CommonStartup, FOLDERID_ProgramFiles,
-            FOLDERID_ProgramFilesX86, FOLDERID_PublicDesktop, SHGetKnownFolderPath,
-            KF_FLAG_DEFAULT,
+            FOLDERID_CommonPrograms, FOLDERID_CommonStartup, FOLDERID_Desktop,
+            FOLDERID_ProgramFiles, FOLDERID_ProgramFilesX86, FOLDERID_PublicDesktop, IShellLinkW,
+            SHGetKnownFolderPath, ShellLink, KF_FLAG_DEFAULT,
         },
     },
 };
@@ -2643,45 +2646,133 @@ fn get_custom_icon(install_dir: &str, exe: &str) -> Option<String> {
     None
 }
 
-#[inline]
-fn get_shortcut_icon_location(install_dir: &str, exe: &str) -> String {
-    if exe.is_empty() {
-        return "".to_owned();
-    }
+struct ComApartment {
+    uninitialize: bool,
+}
 
-    get_custom_icon(install_dir, exe)
-        .map(|p| format!("oLink.IconLocation = \"{}\"", p))
-        .unwrap_or_default()
+impl ComApartment {
+    fn init() -> ResultType<Self> {
+        match unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) } {
+            Ok(()) => Ok(Self { uninitialize: true }),
+            Err(err) if err.code() == RPC_E_CHANGED_MODE => Ok(Self {
+                uninitialize: false,
+            }),
+            Err(err) => Err(anyhow!("CoInitializeEx failed: {err}")),
+        }
+    }
+}
+
+impl Drop for ComApartment {
+    fn drop(&mut self) {
+        if self.uninitialize {
+            unsafe {
+                CoUninitialize();
+            }
+        }
+    }
+}
+
+fn user_desktop_dir() -> ResultType<PathBuf> {
+    known_folder_path(&FOLDERID_Desktop, "SHGetKnownFolderPath(Desktop)")
+}
+
+fn wide_path(path: &Path) -> Vec<u16> {
+    path.as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
+}
+
+fn wide_str(value: &str) -> Vec<u16> {
+    OsStr::new(value)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
+}
+
+fn validate_shortcut_connect_id(id: &str) -> ResultType<()> {
+    if id.is_empty() {
+        bail!("Shortcut connection id is empty");
+    }
+    if id.len() > 512 {
+        bail!("Shortcut connection id is too long");
+    }
+    for byte in id.bytes() {
+        if !byte.is_ascii()
+            || byte.is_ascii_control()
+            || byte.is_ascii_whitespace()
+            || matches!(
+                byte,
+                b'"' | b'\'' | b'`' | b'<' | b'>' | b'|' | b'&' | b';' | b'/' | b'\\' | b'?' | b'*'
+            )
+        {
+            bail!("Shortcut connection id contains unsupported characters");
+        }
+    }
+    Ok(())
+}
+
+fn shortcut_filename_from_id(id: &str) -> ResultType<String> {
+    validate_shortcut_connect_id(id)?;
+    let mut filename = id
+        .chars()
+        .map(|ch| match ch {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            ch if ch.is_control() => '_',
+            ch => ch,
+        })
+        .collect::<String>();
+    while filename.ends_with(' ') || filename.ends_with('.') {
+        filename.pop();
+    }
+    if filename.is_empty() {
+        bail!("Shortcut filename is empty");
+    }
+    Ok(filename)
 }
 
 pub fn create_shortcut(id: &str) -> ResultType<()> {
-    let exe = std::env::current_exe()?.to_str().unwrap_or("").to_owned();
-    // https://github.com/rustdesk/rustdesk/issues/13735
-    // Replace ':' with '_' for filename since ':' is not allowed in Windows filenames
-    // https://github.com/rustdesk/hbb_common/blob/8b0e25867375ba9e6bff548acf44fe6d6ffa7c0e/src/config.rs#L1384
-    let filename = id.replace(':', "_");
-    let shortcut_icon_location = get_shortcut_icon_location("", &exe);
-    let shortcut = write_cmds(
-        format!(
-            "
-	Set oWS = WScript.CreateObject(\"WScript.Shell\")
-strDesktop = oWS.SpecialFolders(\"Desktop\")
-Set objFSO = CreateObject(\"Scripting.FileSystemObject\")
-sLinkFile = objFSO.BuildPath(strDesktop, \"{filename}.lnk\")
-Set oLink = oWS.CreateShortcut(sLinkFile)
-    oLink.TargetPath = \"{exe}\"
-    oLink.Arguments = \"--connect {id}\"
-    {shortcut_icon_location}
-oLink.Save
-        "
-        ),
-        "vbs",
-        "connect_shortcut",
-    )?;
-    std::process::Command::new("cscript")
-        .arg(shortcut.path_str()?)
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()?;
+    validate_shortcut_connect_id(id)?;
+    let exe = std::env::current_exe()?;
+    if !exe.is_file() {
+        bail!("Current executable is not a file: {}", exe.display());
+    }
+    let shortcut = user_desktop_dir()?.join(format!("{}.lnk", shortcut_filename_from_id(id)?));
+    let _com = ComApartment::init()?;
+    let shell_link: IShellLinkW =
+        unsafe { CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER) }
+            .map_err(|err| anyhow!("CoCreateInstance(ShellLink) failed: {err}"))?;
+
+    let exe_w = wide_path(&exe);
+    let args = wide_str(&format!("--connect {id}"));
+    unsafe {
+        shell_link
+            .SetPath(PCWSTR(exe_w.as_ptr()))
+            .map_err(|err| anyhow!("IShellLinkW::SetPath failed: {err}"))?;
+        shell_link
+            .SetArguments(PCWSTR(args.as_ptr()))
+            .map_err(|err| anyhow!("IShellLinkW::SetArguments failed: {err}"))?;
+        if let Some(parent) = exe.parent() {
+            let working_dir = wide_path(parent);
+            shell_link
+                .SetWorkingDirectory(PCWSTR(working_dir.as_ptr()))
+                .map_err(|err| anyhow!("IShellLinkW::SetWorkingDirectory failed: {err}"))?;
+        }
+        let exe_str = exe.to_string_lossy();
+        if let Some(icon) = get_custom_icon("", exe_str.as_ref()) {
+            let icon_w = wide_str(&icon);
+            shell_link
+                .SetIconLocation(PCWSTR(icon_w.as_ptr()), 0)
+                .map_err(|err| anyhow!("IShellLinkW::SetIconLocation failed: {err}"))?;
+        }
+        let persist: IPersistFile = shell_link
+            .cast()
+            .map_err(|err| anyhow!("IShellLinkW::IPersistFile cast failed: {err}"))?;
+        let shortcut_w = wide_path(&shortcut);
+        persist
+            .Save(PCWSTR(shortcut_w.as_ptr()), true)
+            .map_err(|err| anyhow!("IPersistFile::Save failed: {err}"))?;
+    }
     Ok(())
 }
 

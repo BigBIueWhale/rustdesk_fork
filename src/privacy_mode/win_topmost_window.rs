@@ -4,6 +4,7 @@ use hbb_common::{allow_err, bail, log, ResultType};
 use std::{
     ffi::CString,
     io::Error,
+    os::windows::ffi::OsStrExt,
     time::{Duration, Instant},
 };
 use winapi::{
@@ -199,7 +200,7 @@ impl PrivacyModeImpl {
         };
 
         let dll_file = cur_dir.join("WindowInjection.dll");
-        if !dll_file.exists() {
+        if !dll_file.is_file() {
             bail!(
                 "Failed to find required file {}",
                 dll_file.to_string_lossy().as_ref()
@@ -212,14 +213,25 @@ impl PrivacyModeImpl {
             return Ok(());
         }
 
-        // let cmdline = cur_dir.join("MiniBroker.exe").to_string_lossy().to_string();
-        let cmdline = cur_dir
-            .join(INJECTED_PROCESS_EXE)
-            .to_string_lossy()
-            .to_string();
+        let broker_file = cur_dir.join(INJECTED_PROCESS_EXE);
+        if !broker_file.is_file() {
+            bail!(
+                "Failed to find required file {}",
+                broker_file.to_string_lossy().as_ref()
+            );
+        }
 
         unsafe {
-            let cmd_utf16: Vec<u16> = cmdline.encode_utf16().chain(Some(0).into_iter()).collect();
+            let broker_path_utf16: Vec<u16> = broker_file
+                .as_os_str()
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+            let current_dir_utf16: Vec<u16> = cur_dir
+                .as_os_str()
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
 
             let mut start_info = STARTUPINFOW {
                 cb: 0,
@@ -256,14 +268,14 @@ impl PrivacyModeImpl {
 
             let create_res = CreateProcessAsUserW(
                 token,
+                broker_path_utf16.as_ptr() as _,
                 NULL as _,
-                cmd_utf16.as_ptr() as _,
                 NULL as _,
                 NULL as _,
                 FALSE,
                 CREATE_SUSPENDED | DETACHED_PROCESS,
                 NULL,
-                NULL as _,
+                current_dir_utf16.as_ptr() as _,
                 &mut start_info,
                 &mut proc_info,
             );
@@ -271,7 +283,7 @@ impl PrivacyModeImpl {
             if 0 == create_res {
                 bail!(
                     "Failed to create privacy window process {}, error {}",
-                    cmdline,
+                    broker_file.to_string_lossy().as_ref(),
                     Error::last_os_error()
                 );
             };

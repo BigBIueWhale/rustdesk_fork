@@ -677,7 +677,9 @@ pub fn get_app_name() -> String {
 #[cfg(windows)]
 #[inline]
 pub fn create_shortcut(_id: String) {
-    crate::platform::windows::create_shortcut(&_id).ok();
+    if let Err(err) = crate::platform::windows::create_shortcut(&_id) {
+        log::error!("Failed to create shortcut: {err}");
+    }
 }
 
 #[cfg(feature = "flutter")]

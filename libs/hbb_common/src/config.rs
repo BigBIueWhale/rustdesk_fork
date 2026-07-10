@@ -1,12 +1,12 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    io::{Read, Write},
+    io::{self, Read, Write},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
     sync::{Mutex, RwLock},
-    time::{Duration, Instant, SystemTime},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{anyhow, Result};
@@ -840,9 +840,40 @@ mod windows_config_acl {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ConfigLoadStatus {
+    Loaded,
+    NotFound,
+    Corrupt,
+    TransientError,
+}
+
+struct ConfigLoad<T> {
+    value: T,
+    status: ConfigLoadStatus,
+}
+
+impl<T> ConfigLoad<T> {
+    fn new(value: T, status: ConfigLoadStatus) -> Self {
+        Self { value, status }
+    }
+
+    fn into_value(self) -> T {
+        self.value
+    }
+}
+
 pub fn load_path<T: serde::Serialize + serde::de::DeserializeOwned + Default + std::fmt::Debug>(
     file: PathBuf,
 ) -> T {
+    load_path_with_status(file).into_value()
+}
+
+fn load_path_with_status<
+    T: serde::Serialize + serde::de::DeserializeOwned + Default + std::fmt::Debug,
+>(
+    file: PathBuf,
+) -> ConfigLoad<T> {
     // A HIGH-blast-radius path: EVERY config load. Distinguish a genuine first run (no file)
     // from a PRESENT-but-corrupt file, and never silently reset+overwrite the latter — a
     // regenerated default stored back over it would discard the key_pair/permanent credential
@@ -854,17 +885,17 @@ pub fn load_path<T: serde::Serialize + serde::de::DeserializeOwned + Default + s
             "Config '{}' could not be secured before load: {err} - starting from defaults",
             file.display()
         );
-        return T::default();
+        return ConfigLoad::new(T::default(), ConfigLoadStatus::TransientError);
     }
 
     match confy::load_path(&file) {
-        Ok(config) => config,
+        Ok(config) => ConfigLoad::new(config, ConfigLoadStatus::Loaded),
         Err(err) => match &err {
             // Genuine first run: `File::open` returned NotFound — no file exists yet.
             confy::ConfyError::GeneralLoadError(e)
                 if e.kind() == std::io::ErrorKind::NotFound =>
             {
-                T::default()
+                ConfigLoad::new(T::default(), ConfigLoadStatus::NotFound)
             }
             // Read succeeded but the bytes will not parse: DEFINITE corruption (a valid
             // stored config always parses). Preserve the exact bytes for recovery so no
@@ -878,7 +909,7 @@ pub fn load_path<T: serde::Serialize + serde::de::DeserializeOwned + Default + s
                     file.display()
                 );
                 preserve_corrupt_config(&file);
-                T::default()
+                ConfigLoad::new(T::default(), ConfigLoadStatus::Corrupt)
             }
             // Present but could not be read/opened THIS time (I/O or permission): this may be
             // a transient fault over intact bytes, so DO NOT move or destroy the file. Return
@@ -891,7 +922,7 @@ pub fn load_path<T: serde::Serialize + serde::de::DeserializeOwned + Default + s
                      untouched and starting from defaults (not overwriting)",
                     file.display()
                 );
-                T::default()
+                ConfigLoad::new(T::default(), ConfigLoadStatus::TransientError)
             }
         },
     }
@@ -914,6 +945,253 @@ pub fn store_path<T: serde::Serialize>(path: PathBuf, cfg: T) -> crate::ResultTy
         confy::store_path(&path, cfg)?;
         windows_config_acl::harden_config_file(&path)?;
         Ok(())
+    }
+}
+
+fn load_raw_config_bytes(path: &Path) -> Result<Vec<u8>> {
+    #[cfg(windows)]
+    windows_config_acl::prepare_config_path_for_load(path)?;
+
+    let mut file = fs::File::open(path)?;
+    let mut data = Vec::new();
+    file.read_to_end(&mut data)?;
+    Ok(data)
+}
+
+fn store_raw_config_bytes(path: PathBuf, data: &[u8]) -> Result<()> {
+    #[cfg(windows)]
+    windows_config_acl::prepare_config_path_for_store(&path)?;
+
+    #[cfg(not(windows))]
+    {
+        let parent = path
+            .parent()
+            .ok_or_else(|| anyhow!("Config path '{}' has no parent directory", path.display()))?;
+        fs::create_dir_all(parent)?;
+    }
+
+    for attempt in 0..128 {
+        let tmp = raw_config_temp_path(&path, attempt);
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+
+        let mut file = match options.open(&tmp) {
+            Ok(file) => file,
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(err) => {
+                return Err(anyhow!(
+                    "Failed to create temporary config file '{}': {err}",
+                    tmp.display()
+                ));
+            }
+        };
+
+        let write_result = file
+            .write_all(data)
+            .and_then(|_| file.sync_all())
+            .map_err(|err| anyhow!("Failed to write '{}': {err}", tmp.display()));
+        drop(file);
+        if let Err(err) = write_result {
+            let _ = fs::remove_file(&tmp);
+            return Err(err);
+        }
+
+        if let Err(err) = replace_raw_config_file(&tmp, &path) {
+            let _ = fs::remove_file(&tmp);
+            return Err(err);
+        }
+
+        #[cfg(windows)]
+        windows_config_acl::harden_config_file(&path)?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+        }
+
+        return Ok(());
+    }
+
+    Err(anyhow!(
+        "Could not allocate a temporary config path for '{}'",
+        path.display()
+    ))
+}
+
+#[cfg(windows)]
+fn replace_raw_config_file(tmp: &Path, path: &Path) -> Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use winapi::um::{
+        errhandlingapi::GetLastError,
+        winbase::{MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH},
+    };
+
+    let tmp_w: Vec<u16> = tmp
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let path_w: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let moved = unsafe {
+        MoveFileExW(
+            tmp_w.as_ptr(),
+            path_w.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if moved == 0 {
+        return Err(anyhow!(
+            "Failed to replace config file '{}' with '{}': win32_error={}",
+            path.display(),
+            tmp.display(),
+            unsafe { GetLastError() }
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn replace_raw_config_file(tmp: &Path, path: &Path) -> Result<()> {
+    fs::rename(tmp, path).map_err(|err| {
+        anyhow!(
+            "Failed to replace config file '{}' with '{}': {err}",
+            path.display(),
+            tmp.display()
+        )
+    })
+}
+
+fn raw_config_temp_path(path: &Path, attempt: u32) -> PathBuf {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let mut tmp = path.to_path_buf();
+    tmp.set_extension(format!("{}.{}.{}", std::process::id(), stamp, attempt));
+    tmp
+}
+
+fn encrypted_json_config_bytes(label: &str, json: String) -> Option<Vec<u8>> {
+    let data = compress(json.as_bytes());
+    let max_len = 64 * 1024 * 1024;
+    if data.len() > max_len {
+        log::error!("{label} data too large, {} > {}", data.len(), max_len);
+        return None;
+    }
+    match symmetric_crypt(&data, true) {
+        Ok(data) => Some(data),
+        Err(_) => {
+            log::error!("Failed to encrypt {label} data");
+            None
+        }
+    }
+}
+
+fn load_encrypted_json_config<T: serde::de::DeserializeOwned>(
+    path: &Path,
+    label: &str,
+) -> Result<Option<T>> {
+    let data = match load_raw_config_bytes(path) {
+        Ok(data) => data,
+        Err(err) => {
+            if is_not_found_error(&err) {
+                return Ok(None);
+            }
+            return Err(anyhow!(
+                "Failed to read {label} '{}': {err}",
+                path.display()
+            ));
+        }
+    };
+    let data = match symmetric_crypt(&data, false) {
+        Ok(data) => data,
+        Err(_) => {
+            return Err(anyhow!("Failed to decrypt {label} '{}'", path.display()));
+        }
+    };
+    let data = decompress(&data);
+    match serde_json::from_slice::<T>(&data) {
+        Ok(value) => Ok(Some(value)),
+        Err(err) => Err(anyhow!(
+            "Failed to parse {label} '{}': {err}",
+            path.display()
+        )),
+    }
+}
+
+fn is_not_found_error(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<io::Error>()
+        .map_or(false, |err| err.kind() == io::ErrorKind::NotFound)
+}
+
+fn remove_raw_config_file(path: PathBuf, label: &str) {
+    match fs::remove_file(&path) {
+        Ok(()) => {}
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+        Err(err) => log::error!("Failed to remove {label} '{}': {err}", path.display()),
+    }
+}
+
+fn preserve_raw_config_file(path: &Path, label: &str) {
+    if !path.exists() {
+        return;
+    }
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("raw_config");
+    let mut backup = path.to_path_buf();
+    backup.set_file_name(format!("{name}.corrupt.{stamp}"));
+    match fs::rename(path, &backup) {
+        Ok(()) => {
+            #[cfg(windows)]
+            if let Err(err) = windows_config_acl::harden_config_file(&backup) {
+                log::error!(
+                    "Preserved corrupt {label} '{}' as '{}', but failed to harden backup ACL: {err}",
+                    path.display(),
+                    backup.display()
+                );
+                return;
+            }
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Err(err) = fs::set_permissions(&backup, fs::Permissions::from_mode(0o600)) {
+                    log::error!(
+                        "Preserved corrupt {label} '{}' as '{}', but failed to set owner-only permissions: {err}",
+                        path.display(),
+                        backup.display()
+                    );
+                    return;
+                }
+            }
+
+            log::error!(
+                "Preserved corrupt {label} '{}' as '{}' for recovery",
+                path.display(),
+                backup.display()
+            );
+        }
+        Err(err) => log::error!(
+            "Could not preserve corrupt {label} '{}' for recovery: {err}",
+            path.display()
+        ),
     }
 }
 
@@ -1881,45 +2159,40 @@ impl Config {
 
 const PEERS: &str = "peers";
 
+fn should_remove_empty_peer_config(status: ConfigLoadStatus) -> bool {
+    matches!(status, ConfigLoadStatus::Loaded)
+}
+
 impl PeerConfig {
     pub fn load(id: &str) -> PeerConfig {
+        Self::load_with_status(id).into_value()
+    }
+
+    fn load_with_status(id: &str) -> ConfigLoad<PeerConfig> {
         let _lock = CONFIG.read().unwrap();
-        match confy::load_path(Self::path(id)) {
-            Ok(config) => {
-                let mut config: PeerConfig = config;
-                let mut store = false;
-                let (password, _, store2) =
-                    decrypt_vec_or_original(&config.password, PASSWORD_ENC_VERSION);
-                config.password = password;
+        let loaded: ConfigLoad<PeerConfig> = load_path_with_status(Self::path(id));
+        let mut config = loaded.value;
+        let status = loaded.status;
+        let mut store = false;
+        let (password, _, store2) = decrypt_vec_or_original(&config.password, PASSWORD_ENC_VERSION);
+        config.password = password;
+        store = store || store2;
+        // R-S16 (viewer twin): the DERIVED Argon2id CPace PRS, encrypted at rest like `password`.
+        let (password_prs, _, store2) =
+            decrypt_vec_or_original(&config.password_prs, PASSWORD_ENC_VERSION);
+        config.password_prs = password_prs;
+        store = store || store2;
+        for opt in ["rdp_password"] {
+            if let Some(v) = config.options.get_mut(opt) {
+                let (encrypted, _, store2) = decrypt_str_or_original(v, PASSWORD_ENC_VERSION);
+                *v = encrypted;
                 store = store || store2;
-                // R-S16 (viewer twin): the DERIVED Argon2id CPace PRS, encrypted at rest like `password`.
-                let (password_prs, _, store2) =
-                    decrypt_vec_or_original(&config.password_prs, PASSWORD_ENC_VERSION);
-                config.password_prs = password_prs;
-                store = store || store2;
-                for opt in ["rdp_password"] {
-                    if let Some(v) = config.options.get_mut(opt) {
-                        let (encrypted, _, store2) =
-                            decrypt_str_or_original(v, PASSWORD_ENC_VERSION);
-                        *v = encrypted;
-                        store = store || store2;
-                    }
-                }
-                if store {
-                    config.store_(id);
-                }
-                config
-            }
-            Err(err) => {
-                if let confy::ConfyError::GeneralLoadError(err) = &err {
-                    if err.kind() == std::io::ErrorKind::NotFound {
-                        return Default::default();
-                    }
-                }
-                log::error!("Failed to load peer config '{}': {}", id, err);
-                Default::default()
             }
         }
+        if store {
+            config.store_(id);
+        }
+        ConfigLoad::new(config, status)
     }
 
     pub fn store(&self, id: &str) {
@@ -2103,14 +2376,18 @@ impl PeerConfig {
 
         let peers: Vec<_> = all[from..to]
             .iter()
-            .map(|(id, t, p)| {
-                let c = PeerConfig::load(&id);
+            .filter_map(|(id, t, p)| {
+                let loaded = PeerConfig::load_with_status(&id);
+                let status = loaded.status;
+                let c = loaded.value;
                 if c.info.platform.is_empty() {
-                    fs::remove_file(p).ok();
+                    if should_remove_empty_peer_config(status) {
+                        fs::remove_file(p).ok();
+                    }
+                    return None;
                 }
-                (id.clone(), t.clone(), c)
+                Some((id.clone(), t.clone(), c))
             })
-            .filter(|p| !p.2.info.platform.is_empty())
             .collect();
         (peers, to)
     }
@@ -2679,38 +2956,29 @@ impl Ab {
     }
 
     pub fn store(json: String) {
-        if let Ok(mut file) = std::fs::File::create(Self::path()) {
-            let data = compress(json.as_bytes());
-            let max_len = 64 * 1024 * 1024;
-            if data.len() > max_len {
-                // maxlen of function decompress
-                log::error!("ab data too large, {} > {}", data.len(), max_len);
-                return;
-            }
-            if let Ok(data) = symmetric_crypt(&data, true) {
-                file.write_all(&data).ok();
-            }
+        let Some(data) = encrypted_json_config_bytes("address book", json) else {
+            return;
         };
+        if let Err(err) = store_raw_config_bytes(Self::path(), &data) {
+            log::error!("Failed to store address book: {err}");
+        }
     }
 
     pub fn load() -> Ab {
-        if let Ok(mut file) = std::fs::File::open(Self::path()) {
-            let mut data = vec![];
-            if file.read_to_end(&mut data).is_ok() {
-                if let Ok(data) = symmetric_crypt(&data, false) {
-                    let data = decompress(&data);
-                    if let Ok(ab) = serde_json::from_str::<Ab>(&String::from_utf8_lossy(&data)) {
-                        return ab;
-                    }
-                }
+        let path = Self::path();
+        match load_encrypted_json_config::<Ab>(&path, "address book") {
+            Ok(Some(ab)) => return ab,
+            Ok(None) => {}
+            Err(err) => {
+                log::error!("{err}");
+                preserve_raw_config_file(&path, "address book");
             }
-        };
-        Self::remove();
+        }
         Ab::default()
     }
 
     pub fn remove() {
-        std::fs::remove_file(Self::path()).ok();
+        remove_raw_config_file(Self::path(), "address book");
     }
 }
 
@@ -2809,38 +3077,29 @@ impl Group {
     }
 
     pub fn store(json: String) {
-        if let Ok(mut file) = std::fs::File::create(Self::path()) {
-            let data = compress(json.as_bytes());
-            let max_len = 64 * 1024 * 1024;
-            if data.len() > max_len {
-                // maxlen of function decompress
-                return;
-            }
-            if let Ok(data) = symmetric_crypt(&data, true) {
-                file.write_all(&data).ok();
-            }
+        let Some(data) = encrypted_json_config_bytes("group", json) else {
+            return;
         };
+        if let Err(err) = store_raw_config_bytes(Self::path(), &data) {
+            log::error!("Failed to store group: {err}");
+        }
     }
 
     pub fn load() -> Self {
-        if let Ok(mut file) = std::fs::File::open(Self::path()) {
-            let mut data = vec![];
-            if file.read_to_end(&mut data).is_ok() {
-                if let Ok(data) = symmetric_crypt(&data, false) {
-                    let data = decompress(&data);
-                    if let Ok(group) = serde_json::from_str::<Self>(&String::from_utf8_lossy(&data))
-                    {
-                        return group;
-                    }
-                }
+        let path = Self::path();
+        match load_encrypted_json_config::<Self>(&path, "group") {
+            Ok(Some(group)) => return group,
+            Ok(None) => {}
+            Err(err) => {
+                log::error!("{err}");
+                preserve_raw_config_file(&path, "group");
             }
-        };
-        Self::remove();
+        }
         Self::default()
     }
 
     pub fn remove() {
-        std::fs::remove_file(Self::path()).ok();
+        remove_raw_config_file(Self::path(), "group");
     }
 }
 
@@ -3901,6 +4160,60 @@ mod tests {
         assert_eq!(mode, 0o600);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn store_raw_config_bytes_writes_owner_only_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = unique_tmp_dir("raw-mode600");
+        let file = dir.join("raw");
+        store_raw_config_bytes(file.clone(), b"secret").unwrap();
+
+        let mode = fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+        let data = load_raw_config_bytes(&file).unwrap();
+        fs::remove_dir_all(&dir).ok();
+        assert_eq!(mode, 0o600);
+        assert_eq!(data, b"secret");
+    }
+
+    #[test]
+    fn store_raw_config_bytes_replaces_existing_file() {
+        let dir = unique_tmp_dir("raw-replace");
+        let file = dir.join("raw");
+        store_raw_config_bytes(file.clone(), b"old").unwrap();
+        store_raw_config_bytes(file.clone(), b"new").unwrap();
+
+        let data = load_raw_config_bytes(&file).unwrap();
+        fs::remove_dir_all(&dir).ok();
+        assert_eq!(data, b"new");
+    }
+
+    #[test]
+    fn raw_encrypted_json_load_failure_preserves_payload_for_recovery() {
+        let dir = unique_tmp_dir("raw-corrupt");
+        let file = dir.join("ab");
+        let corrupt_json = symmetric_crypt(&compress(b"not-json"), true).unwrap();
+        store_raw_config_bytes(file.clone(), &corrupt_json).unwrap();
+
+        let err = load_encrypted_json_config::<Ab>(&file, "address book").unwrap_err();
+        assert!(err.to_string().contains("Failed to parse address book"));
+        preserve_raw_config_file(&file, "address book");
+
+        assert!(!file.exists());
+        let preserved = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("ab.corrupt.")
+            })
+            .count();
+        fs::remove_dir_all(&dir).ok();
+        assert_eq!(preserved, 1);
+    }
+
     #[test]
     fn windows_config_acl_sddl_is_protected_owner_system_only() {
         let user_sid = "S-1-5-21-1-2-3-1001";
@@ -3923,8 +4236,9 @@ mod tests {
         // F1: a NON-existent file is a genuine first run → default, and NOTHING is created.
         let dir = unique_tmp_dir("firstrun");
         let file = dir.join("absent.toml");
-        let cfg: Config2 = load_path(file.clone());
-        assert_eq!(cfg, Config2::default());
+        let loaded: ConfigLoad<Config2> = load_path_with_status(file.clone());
+        assert_eq!(loaded.value, Config2::default());
+        assert_eq!(loaded.status, ConfigLoadStatus::NotFound);
         assert!(!file.exists(), "load_path must not create a file on first run");
         fs::remove_dir_all(&dir).ok();
     }
@@ -3937,8 +4251,9 @@ mod tests {
         let mut original = Config2::default();
         original.options.insert("k".to_owned(), "v".to_owned());
         store_path(file.clone(), original.clone()).unwrap();
-        let loaded: Config2 = load_path(file.clone());
-        assert_eq!(loaded, original);
+        let loaded: ConfigLoad<Config2> = load_path_with_status(file.clone());
+        assert_eq!(loaded.value, original);
+        assert_eq!(loaded.status, ConfigLoadStatus::Loaded);
         assert!(file.exists());
         fs::remove_dir_all(&dir).ok();
     }
@@ -3953,8 +4268,9 @@ mod tests {
         let corrupt_bytes = b"= = = this is not valid toml [[[".to_vec();
         fs::write(&file, &corrupt_bytes).unwrap();
 
-        let cfg: Config2 = load_path(file.clone());
-        assert_eq!(cfg, Config2::default(), "a corrupt load yields a fail-closed default");
+        let loaded: ConfigLoad<Config2> = load_path_with_status(file.clone());
+        assert_eq!(loaded.value, Config2::default(), "a corrupt load yields a fail-closed default");
+        assert_eq!(loaded.status, ConfigLoadStatus::Corrupt);
         assert!(
             !file.exists(),
             "the corrupt file must be moved aside, not left in place to be overwritten"
@@ -3975,6 +4291,30 @@ mod tests {
             "the corrupt bytes are preserved verbatim for operator recovery"
         );
         fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_load_path_present_but_unreadable_is_transient_not_stale() {
+        let dir = unique_tmp_dir("transient-read");
+        let file = dir.join("peer.toml");
+        fs::create_dir(&file).unwrap();
+
+        let loaded: ConfigLoad<Config2> = load_path_with_status(file.clone());
+        assert_eq!(loaded.value, Config2::default());
+        assert_eq!(loaded.status, ConfigLoadStatus::TransientError);
+        assert!(
+            file.exists(),
+            "a transient read failure must leave the original path available for recovery"
+        );
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn empty_peer_cleanup_only_after_successful_load() {
+        assert!(should_remove_empty_peer_config(ConfigLoadStatus::Loaded));
+        assert!(!should_remove_empty_peer_config(ConfigLoadStatus::NotFound));
+        assert!(!should_remove_empty_peer_config(ConfigLoadStatus::Corrupt));
+        assert!(!should_remove_empty_peer_config(ConfigLoadStatus::TransientError));
     }
 
     #[test]

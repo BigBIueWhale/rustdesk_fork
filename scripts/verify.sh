@@ -108,8 +108,8 @@ echo "== (3b-iv) trust-anchor option is pinned empty and get_key is constant (R-
 # arms. The legacy generic write shapes are absent: no Data::Config((name, Some(value))) for
 # id/salt/permanent-password/voice-call-input, no Data::Socks(Some) proxy mutation, and no generic
 # send_config/set_config helper. Config IPC is request/value only; remaining writes are typed:
-# voice-call-input always, typed user-owned permanent password/options only for user-owned servers.
-# Service-owned servers reject typed user-owned password/options writes and storage/salt sync (R-S11b-2a/R-S11b-3a). Behavior-tested AND the
+# voice-call-input, typed user-owned permanent password/options only for user-owned servers.
+# Service-owned servers reject typed user-owned voice/password/options writes and storage/salt sync (R-S11b-2a/R-S11b-3a). Behavior-tested AND the
 # loop routes through the allowlist before handle() (R-A6 reachability), AND the allowlist is asserted
 # POSITIVE. Whole-config IPC is not a gated variant: SyncConfig is absent.
 echo "== (3b-iii) IPC main-channel state-mutation positive allowlist (R-S11) =="
@@ -141,7 +141,11 @@ grep -q 'send_config(' src/ipc.rs && r_s11="$r_s11 generic-send-config-present"
 grep -q 'set_config_async' src/ipc.rs && r_s11="$r_s11 generic-set-config-async-present"
 grep -q 'pub async fn set_config' src/ipc.rs && r_s11="$r_s11 generic-set-config-present"
 grep -q 'Data::Options(Some(_)) => authority.allows_main_channel_options_write()' src/ipc.rs || r_s11="$r_s11 options-authority-not-gated"
-grep -q 'Data::SetVoiceCallInput(_) => true' src/ipc.rs                                || r_s11="$r_s11 voice-input-typed-arm-missing"
+grep -q 'fn allows_main_channel_voice_call_input_write' src/ipc.rs                     || r_s11="$r_s11 voice-input-authority-helper-missing"
+grep -q 'Data::SetVoiceCallInput(_) => authority.allows_main_channel_voice_call_input_write()' src/ipc.rs || r_s11="$r_s11 voice-input-not-authority-gated"
+if grep -q 'Data::SetVoiceCallInput(_) => true' src/ipc.rs; then
+  r_s11="$r_s11 voice-input-still-unconditionally-admitted"
+fi
 grep -q 'fn allows_service_owned_main_channel_close' src/ipc.rs                        || r_s11="$r_s11 service-owned-close-peer-authority-missing"
 grep -q 'fn allows_main_channel_close' src/ipc.rs                                      || r_s11="$r_s11 close-receiver-authority-missing"
 grep -q 'Data::Close => authority.allows_main_channel_close(peer_authority)' src/ipc.rs || r_s11="$r_s11 close-not-authority-gated"
@@ -216,7 +220,7 @@ windows_service_close_block=$(awk '/ipc::Data::Close => \{/,/ipc::Data::Test =>/
 echo "$windows_service_close_block" | grep -q 'windows_pipe_client_token_is_local_system' || r_s11="$r_s11 windows-service-close-not-localsystem-gated"
 echo "$windows_service_close_block" | grep -q 'Rejected Windows _service close: caller is not LocalSystem' || r_s11="$r_s11 windows-service-close-rejection-missing"
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel state-mutation allowlist:$r_s11"; rc=1; else
-  echo "  ok  R-S11/R-S11b/R-S11c main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options remain scoped; service-owned close is root/LocalSystem-gated on main IPC and Windows _service; the policy table is exhaustive with no wildcard fallback; gate binds Linux/macOS AND the Windows main pipe)"; fi
+  echo "  ok  R-S11/R-S11b/R-S11c main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options are user-owned scoped; service-owned close is root/LocalSystem-gated on main IPC and Windows _service; the policy table is exhaustive with no wildcard fallback; gate binds Linux/macOS AND the Windows main pipe)"; fi
 rm -f /tmp/rd_verify_identity_writers.$$ /tmp/rd_verify_mac_address.$$
 
 echo "== (3b-iii-a1) desktop at-rest wrapper does not mint service identity material (R-S11b-3f) =="
@@ -242,6 +246,51 @@ grep -A14 'pub fn encrypt_str_or_original' libs/hbb_common/src/password_security
 grep -A18 'pub fn encrypt_vec_or_original' libs/hbb_common/src/password_security.rs | grep -q 'return Vec::new()' || r_s11b3f="$r_s11b3f vec-encrypt-failure-not-fail-closed"
 if [ -n "$r_s11b3f" ]; then echo "  FAIL R-S11b-3f desktop at-rest key/identity boundary:$r_s11b3f"; rc=1; else
   echo "  ok  R-S11b-3f desktop at-rest wrapping uses a fallible machine-UID key, never get_uuid/keypair generation; legacy keypair decrypt remains read-only and mobile-only generation is cfg-isolated"; fi
+
+echo "== (3b-iii-a1b) credential-bearing local stores use hardened raw-file writes (R-S11b-4d) =="
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::store_raw_config_bytes --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::raw_encrypted_json_load_failure_preserves_payload_for_recovery --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_path_present_but_unreadable_is_transient_not_stale --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::empty_peer_cleanup_only_after_successful_load --color never
+index_s11b4d=
+grep -q 'fn store_raw_config_bytes(path: PathBuf, data: &\[u8\]) -> Result<()>' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-helper-missing"
+grep -q 'fn load_raw_config_bytes(path: &Path) -> Result<Vec<u8>>' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-load-helper-missing"
+grep -q 'windows_config_acl::prepare_config_path_for_store(&path)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-windows-acl-not-prepared"
+grep -q 'windows_config_acl::prepare_config_path_for_load(path)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-load-windows-acl-not-prepared"
+grep -q 'options.mode(0o600)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-unix-mode-not-owner-only"
+grep -q 'fs::set_permissions(&path, fs::Permissions::from_mode(0o600))' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-unix-final-mode-not-owner-only"
+grep -q 'file.sync_all()' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-sync-missing"
+grep -q 'fn replace_raw_config_file(tmp: &Path, path: &Path) -> Result<()>' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-replace-helper-missing"
+grep -q 'MoveFileExW' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-windows-replace-primitive-missing"
+grep -q 'MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-windows-replace-flags-missing"
+grep -q 'enum ConfigLoadStatus' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d typed-load-status-missing"
+grep -q 'fn load_path_with_status' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d typed-load-helper-missing"
+grep -q 'load_path_with_status(Self::path(id))' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d peer-config-load-bypasses-typed-wrapper"
+grep -q 'fn should_remove_empty_peer_config(status: ConfigLoadStatus) -> bool' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d empty-peer-cleanup-policy-missing"
+grep -q 'matches!(status, ConfigLoadStatus::Loaded)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d empty-peer-cleanup-not-loaded-only"
+grep -q 'if should_remove_empty_peer_config(status)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d batch-peer-cleanup-not-status-gated"
+if grep -q 'let mut config: PeerConfig = load_path(Self::path(id));' libs/hbb_common/src/config.rs; then
+  index_s11b4d="$index_s11b4d peer-config-direct-untyped-load-present"
+fi
+if grep -q 'confy::load_path(Self::path(id))' libs/hbb_common/src/config.rs; then
+  index_s11b4d="$index_s11b4d peer-config-direct-confy-load-present"
+fi
+[ "$(grep -c 'store_raw_config_bytes(Self::path(), &data)' libs/hbb_common/src/config.rs)" -eq 2 ] || index_s11b4d="$index_s11b4d address-book-or-group-raw-store-not-used"
+grep -q 'load_encrypted_json_config::<Ab>(&path, "address book")' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d address-book-raw-load-not-used"
+grep -q 'load_encrypted_json_config::<Self>(&path, "group")' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d group-raw-load-not-used"
+grep -q 'preserve_raw_config_file(&path, "address book")' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d address-book-corrupt-preserve-missing"
+grep -q 'preserve_raw_config_file(&path, "group")' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d group-corrupt-preserve-missing"
+grep -q 'fn preserve_raw_config_file(path: &Path, label: &str)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-corrupt-preserve-helper-missing"
+if grep -q 'std::fs::File::create(Self::path())' libs/hbb_common/src/config.rs; then
+  index_s11b4d="$index_s11b4d address-book-or-group-direct-create-present"
+fi
+if grep -q 'file.write_all(&data).ok()' libs/hbb_common/src/config.rs; then
+  index_s11b4d="$index_s11b4d address-book-or-group-silent-write-present"
+fi
+grep -q 'Local credential-bearing store file hardening' requirements.html || index_s11b4d="$index_s11b4d requirements-disposition-missing"
+grep -q 'R-S11b-4d — local credential-bearing store file hardening' HARDENING_STATUS.md || index_s11b4d="$index_s11b4d hardening-ledger-missing"
+if [ -n "$index_s11b4d" ]; then echo "  FAIL R-S11b-4d local credential-bearing store hardening:$index_s11b4d"; rc=1; else
+  echo "  ok  R-S11b-4d PeerConfig uses typed hardened load status so transient peer-read failures are not deleted; raw encrypted address-book/group stores keep their byte format while using ACL/0600 replacing writes and corrupt-payload preservation without silent direct File::create/write_all drops"; fi
 
 echo "== (3b-iii-a2) Linux _pa audio helper requires capture authority (R-S11c-7) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config pa_capture_authority --color never
@@ -552,6 +601,29 @@ fi
 rm -f /tmp/rd_verify_r_s11d_wmic.$$
 grep -q 'Windows unsupported 32-bit WMIC process-probe deletion' requirements.html || r_s11d="$r_s11d wmic-process-probe-requirements-disposition-missing"
 grep -q 'R-S11d-11 — Windows unsupported 32-bit WMIC process-probe deletion' HARDENING_STATUS.md || r_s11d="$r_s11d wmic-process-probe-hardening-ledger-missing"
+privacy_broker_create=$(awk '/let create_res = CreateProcessAsUserW\(/,/^[[:space:]]*\);/' src/privacy_mode/win_topmost_window.rs)
+privacy_broker_create_one_line=$(printf '%s\n' "$privacy_broker_create" | tr '\n' ' ')
+echo "$privacy_broker_create" | grep -q 'broker_path_utf16.as_ptr() as _' || r_s11d="$r_s11d privacy-broker:not-explicit-application-name"
+echo "$privacy_broker_create_one_line" | grep -Eq 'broker_path_utf16\.as_ptr\(\) as _[[:space:]]*,[[:space:]]*NULL as _[[:space:]]*,' || r_s11d="$r_s11d privacy-broker:command-line-not-null"
+echo "$privacy_broker_create" | grep -q 'current_dir_utf16.as_ptr() as _' || r_s11d="$r_s11d privacy-broker:no-explicit-current-directory"
+grep -q 'if !broker_file.is_file()' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:file-existence-not-checked"
+if grep -q 'cmd_utf16' src/privacy_mode/win_topmost_window.rs; then
+  r_s11d="$r_s11d privacy-broker:command-line-module-parsing-leftover"
+fi
+create_shortcut_body=$(awk '/^pub fn create_shortcut\(id: &str\)/,/^pub fn enable_lowlevel_keyboard/' src/platform/windows.rs)
+echo "$create_shortcut_body" | grep -q 'validate_shortcut_connect_id(id)?' || r_s11d="$r_s11d user-shortcut:id-not-validated"
+echo "$create_shortcut_body" | grep -q 'CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)' || r_s11d="$r_s11d user-shortcut:not-native-shelllink"
+echo "$create_shortcut_body" | grep -q 'IPersistFile' || r_s11d="$r_s11d user-shortcut:persistfile-save-missing"
+echo "$create_shortcut_body" | grep -q 'user_desktop_dir()' || r_s11d="$r_s11d user-shortcut:desktop-known-folder-not-used"
+grep -q 'fn validate_shortcut_connect_id' src/platform/windows.rs || r_s11d="$r_s11d user-shortcut:id-validator-missing"
+if echo "$create_shortcut_body" | grep -qE 'write_cmds|WScript|CreateShortcut|Command::new\("cscript"\)'; then
+  r_s11d="$r_s11d user-shortcut:script-backed-shortcut-leftover"
+fi
+if grep -q 'fn get_shortcut_icon_location' src/platform/windows.rs; then
+  r_s11d="$r_s11d user-shortcut:vbs-icon-helper-leftover"
+fi
+grep -q 'Windows privacy broker and user shortcut process provenance' requirements.html || r_s11d="$r_s11d privacy-shortcut-requirements-disposition-missing"
+grep -q 'R-S11d-12 — Windows privacy broker and user shortcut process provenance' HARDENING_STATUS.md || r_s11d="$r_s11d privacy-shortcut-hardening-ledger-missing"
 grep -q 'Windows MSI runtime-generated executable cleanup completion authority' requirements.html || r_s11d="$r_s11d runtime-generated-cleanup-requirements-disposition-missing"
 grep -q 'R-S11d-4 — Windows MSI runtime-generated executable cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d runtime-generated-cleanup-hardening-ledger-missing"
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else

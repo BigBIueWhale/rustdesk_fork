@@ -915,6 +915,10 @@ impl MainIpcAuthority {
         matches!(self, Self::UserOwned)
     }
 
+    fn allows_main_channel_voice_call_input_write(self) -> bool {
+        matches!(self, Self::UserOwned)
+    }
+
     fn allows_main_channel_password_storage_sync(self) -> bool {
         matches!(self, Self::UserOwned)
     }
@@ -992,7 +996,7 @@ pub(crate) fn main_channel_admits_state_mutation(
     peer_authority: MainIpcPeerAuthority,
 ) -> bool {
     match data {
-        Data::SetVoiceCallInput(_) => true,
+        Data::SetVoiceCallInput(_) => authority.allows_main_channel_voice_call_input_write(),
         Data::SetUserOwnedPermanentPassword(_) => {
             authority.allows_main_channel_user_owned_password_write()
         }
@@ -3341,7 +3345,15 @@ mod test {
                 user_owned,
                 ordinary_peer
             ),
-            "voice-call-input stays as a typed non-config local operation"
+            "voice-call-input stays as a typed user-owned local operation"
+        );
+        assert!(
+            !main_channel_admits_state_mutation(
+                &Data::SetVoiceCallInput("mic".to_owned()),
+                service_owned,
+                ordinary_peer
+            ),
+            "R-S11c-14: service-owned voice-call input MUST NOT be changed over ordinary main IPC"
         );
         assert!(
             main_channel_admits_state_mutation(
@@ -3464,6 +3476,22 @@ mod test {
         assert!(
             main_channel_admits_state_mutation(&Data::Close, user_owned, ordinary_peer),
             "a user-owned main IPC close stays a user-owned process-control action"
+        );
+        assert!(
+            main_channel_admits_state_mutation(
+                &Data::SetVoiceCallInput("mic".to_owned()),
+                user_owned,
+                ordinary_peer
+            ),
+            "voice-call-input stays as a typed user-owned local operation"
+        );
+        assert!(
+            !main_channel_admits_state_mutation(
+                &Data::SetVoiceCallInput("mic".to_owned()),
+                service_owned,
+                system_peer
+            ),
+            "R-S11c-14: service-owned voice-call input MUST NOT be changed over main IPC"
         );
         assert!(
             !main_channel_admits_state_mutation(&Data::Close, service_owned, ordinary_peer),

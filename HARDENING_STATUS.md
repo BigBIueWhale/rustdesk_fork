@@ -390,6 +390,32 @@ unreachable and a source/test/AST gate prevents reintroduction.
   authority helper, the `Data::Close => authority.allows_main_channel_close(peer_authority)` policy arm, the
   Windows main-pipe token resolution path, the Windows `_service` LocalSystem close gate, absence of an
   unconditional close bucket, and the Appendix C #31 disposition.
+- **R-S11c-14 — service-owned voice-call input IPC mutation gate — CLOSED 2026-07-10.**
+  Platforms: Linux, Windows, and macOS desktop main IPC. Endpoint/action:
+  `Data::SetVoiceCallInput`. Boundary: ordinary local main-IPC peer ↔ service-owned runtime audio-selection
+  state. Attack surface closed: the last unconditional typed main-channel state mutation is no longer admitted
+  for service-owned receivers. User-owned receivers keep the operation; service-owned receivers reject it
+  regardless of ordinary/same-service peer identity because there is no service-owned voice-input control path
+  that should ride the ordinary main IPC channel. Verification closure: `scripts/verify.sh` asserts the
+  `allows_main_channel_voice_call_input_write` receiver-authority helper, the gated
+  `Data::SetVoiceCallInput` policy arm, and absence of the old unconditional
+  `Data::SetVoiceCallInput(_) => true` arm.
+- **R-S11b-4d — local credential-bearing store file hardening — CLOSED 2026-07-10.**
+  Platforms: desktop local config stores. Endpoint/action: per-peer config load, address-book store/load,
+  and group store/load. Boundary: local filesystem readers/writers ↔ connect-relevant saved peer credentials
+  and address-book/group access tokens. Attack surface closed: `PeerConfig::load` no longer bypasses the
+  hardened config loader; it carries typed load status so Windows ACL preparation and corrupt-config
+  preservation apply to per-peer config loads, and peer enumeration removes empty peer files only after a
+  successful loaded-empty result, never after transient unreadable/corrupt/default status. Address-book and
+  group files keep their existing encrypted compressed raw-byte format, but writes now go through a
+  temp-and-replace raw helper that prepares the Windows config ACL, writes owner-only `0600` files on Unix,
+  uses `MoveFileExW` replace-existing/write-through semantics on Windows, hardens the final Windows file, and
+  logs store/load/remove failures. Present-but-unreadable or corrupt raw encrypted payloads are preserved as
+  sibling recovery files instead of being deleted. Verification closure: `scripts/verify.sh` asserts the typed
+  peer-config load status, loaded-only empty-peer cleanup, the raw helper shape, Windows ACL preparation, Unix
+  owner-only permissions, Windows replace-existing/write-through replacement, corrupt-payload preservation,
+  absence of direct `File::create(Self::path())` / ignored `write_all` in those stores, and the raw-store
+  permission, replacement, recovery, transient-load, and cleanup-policy regression tests.
 - **R-S11c-2a/R-S11c-3a — Windows `_service` raw session/SAS commands removed — CLOSED 2026-07-08.**
   Platform: Windows installed service. Endpoint/action: `_service` named pipe messages formerly carrying
   `Data::UserSid(Some(_))` for service-owned session switching and `Data::SAS` for SYSTEM-mediated
@@ -786,6 +812,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `sysinfo` enumeration path only. Verification closure: `scripts/verify.sh` rejects any reintroduced WMIC
   helper, `by_wmic` helper, `get_pids_with_first_arg_check_session` helper, or Windows non-64-bit process-probe
   cfg detour in `src/common.rs` / `src/platform`, and asserts this ledger/requirements disposition.
+- **R-S11d-12 — Windows privacy broker and user shortcut process provenance — CLOSED 2026-07-10.**
+  Platform: Windows desktop. Endpoint/action: privacy-mode broker launch and user-created Desktop connection
+  shortcuts. Boundary: authenticated privacy-mode request / local same-user UI action ↔ process creation and
+  shortcut persistence. Attack surface closed: privacy mode no longer asks `CreateProcessAsUserW` to infer the
+  executable from a command-line string; the broker path is verified as a file, passed as explicit
+  `lpApplicationName`, launched with a null command line, and given the broker directory as current directory.
+  The user shortcut path no longer writes per-shortcut VBScript or launches `cscript`; it validates the direct
+  connect id and creates the shell link through native COM `IShellLinkW` / `IPersistFile` under the current
+  user's Desktop known folder. Verification closure: `scripts/verify.sh` asserts explicit broker
+  application-name launch, broker file checks, absence of `cmd_utf16`, native ShellLink shortcut creation,
+  direct-id validation, Desktop known-folder use, absence of script-backed shortcut code in `create_shortcut`,
+  and this ledger/requirements disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

@@ -956,10 +956,12 @@ unreachable and a source/test/AST gate prevents reintroduction.
   one action, `com.carriez.RustDesk.set-unattended-password`, with `allow_any`, `allow_inactive`, and
   `allow_active` all set to `auth_admin`, with no `yes`, `auth_self`, or keep-style authorizations. The
   repository is checked for matching shipped `.rules` overrides, `build.py` is checked to stage that policy
-  in all Debian packaging paths, and `scripts/build-debian.sh` validates every emitted `.deb` before hashing
-  it by inspecting the packaged path, file type, root ownership, non-writable group/world mode, XML policy
-  semantics, and byte identity with the source policy. Distro-local administrator policy/rules overrides
-  remain an environment fact outside app-side LPE; the package now proves the fork itself does not ship one.
+  in all Debian packaging paths, and the obsolete executable `usr/share/rustdesk/files/polkit` stub is rejected
+  at both source and package-validation time. `scripts/build-debian.sh` validates every emitted `.deb` before
+  hashing it by inspecting the packaged path, file type, root ownership, non-writable group/world mode, XML
+  policy semantics, byte identity with the source policy, and absence of the legacy executable polkit stub.
+  Distro-local administrator policy/rules overrides remain an environment fact outside app-side LPE; the package
+  now proves the fork itself does not ship one.
   Verification closure: `scripts/verify-polkit-policy.py`, called from `scripts/verify.sh` and
   `scripts/build-debian.sh`, enforces the source and package invariants above, and `scripts/verify.sh`
   requires this ledger/requirements disposition.

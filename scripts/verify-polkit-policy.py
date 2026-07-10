@@ -13,6 +13,7 @@ from pathlib import Path
 ACTION_ID = "com.carriez.RustDesk.set-unattended-password"
 SOURCE_POLICY = Path("res/com.carriez.RustDesk.policy")
 DEB_POLICY = Path("usr/share/polkit-1/actions/com.carriez.RustDesk.policy")
+LEGACY_POLKIT_STUB = Path("usr/share/rustdesk/files/polkit")
 EXPECTED_DEFAULTS = {
     "allow_any": "auth_admin",
     "allow_inactive": "auth_admin",
@@ -112,6 +113,8 @@ def validate_build_py(repo):
     for line_no, line in enumerate(text.splitlines(), 1):
         if "com.carriez.RustDesk.policy" in line and "cp " in line and not copy_re.search(line):
             fail(f"build.py:{line_no}: policy copy does not target tmpdeb/usr/share/polkit-1/actions")
+        if "tmpdeb/usr/share/rustdesk/files/polkit" in line:
+            fail(f"build.py:{line_no}: legacy executable polkit stub must not be packaged")
 
 
 def deb_contents(deb):
@@ -139,6 +142,7 @@ def validate_deb(repo, deb):
 
     policy_entries = [entry for entry in entries if entry[2].startswith("usr/share/polkit-1/actions/") and entry[2].endswith(".policy")]
     expected_entries = [entry for entry in policy_entries if entry[2] == str(DEB_POLICY)]
+    legacy_stub_entries = [entry for entry in entries if entry[2] == str(LEGACY_POLKIT_STUB)]
 
     if len(policy_entries) != 1:
         fail(f"{deb}: expected exactly one packaged polkit policy, found {len(policy_entries)}")
@@ -152,6 +156,8 @@ def validate_deb(repo, deb):
         fail(f"{deb}: packaged policy is group/world writable ({mode})")
     if owner != "root/root":
         fail(f"{deb}: packaged policy owner is {owner}, expected root/root")
+    if legacy_stub_entries:
+        fail(f"{deb}: legacy executable polkit stub is packaged at {LEGACY_POLKIT_STUB}")
 
     with tempfile.TemporaryDirectory(prefix="rustdesk-polkit-deb.") as tmp:
         try:

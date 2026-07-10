@@ -1083,6 +1083,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   character letter, last character letter or digit, and only letters/digits/hyphen in between. Verification
   closure: `scripts/verify.sh` asserts the Rust validator and unit test, the guarded signed-config `APP_NAME`
   assignment, the MSI regex/front-door check, and this ledger/requirements disposition.
+- **R-S11d-27 — Windows custom-client public staging deletion — CLOSED 2026-07-11.** Platform:
+  Windows custom-client update residue. Endpoint/action: dormant `custom.txt` staging from a public-style
+  `RustDeskCustomClientStaging` directory into the current executable directory, followed by runtime custom-client
+  loading. Boundary: mutable public filesystem mailbox ↔ installed executable directory and signed custom-client
+  identity/policy. Attack surface closed: the public staging bridge is deleted rather than hardened or retained as
+  compatibility code. The cluster had no live caller in current source, generated bindings, scripts, packaging,
+  tests, or docs; normal custom-client loading remains the signed runtime/build input path from `load_custom_client`
+  and `read_custom_client`. `get_public_base_dir`, `get_custom_client_staging_dir`,
+  `remove_custom_client_staging_dir`, `prepare_custom_client_update`, the `RustDeskCustomClientStaging` literal, and
+  the executable-directory `custom.txt` copy/load sink are absent from `src/platform/windows.rs`. Verification
+  closure: `scripts/verify.sh` rejects reintroduced staging symbols, the staging directory name, the executable-dir
+  copy sink, and requires this ledger/requirements disposition.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's

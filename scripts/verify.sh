@@ -976,6 +976,21 @@ grep -Fq 'R-S11d-26 — Windows app-name identity contract' HARDENING_STATUS.md 
 if [ -n "$r_s11d26" ]; then echo "  FAIL R-S11d-26 Windows app-name identity contract:$r_s11d26"; rc=1; else
   echo "  ok  R-S11d-26 signed custom-client and MSI app names are constrained ASCII system identifiers before reaching service/protocol/path/batch sinks"; fi
 
+echo "== (3b-iii-a5d4f) Windows custom-client public staging path is absent (R-S11d-27) =="
+r_s11d27=
+if grep -nE 'prepare_custom_client_update|get_custom_client_staging_dir|remove_custom_client_staging_dir|get_public_base_dir|RustDeskCustomClientStaging' src/platform/windows.rs >/tmp/rd_verify_r_s11d27_staging.$$; then
+  r_s11d27="$r_s11d27 windows-public-custom-client-staging-leftover:$(cat /tmp/rd_verify_r_s11d27_staging.$$)"
+fi
+rm -f /tmp/rd_verify_r_s11d27_staging.$$
+if grep -nF 'current_exe_dir.join("custom.txt")' src/platform/windows.rs >/tmp/rd_verify_r_s11d27_copy.$$; then
+  r_s11d27="$r_s11d27 executable-dir-custom-txt-copy-leftover:$(cat /tmp/rd_verify_r_s11d27_copy.$$)"
+fi
+rm -f /tmp/rd_verify_r_s11d27_copy.$$
+grep -Fq 'Windows custom-client public staging deletion' requirements.html || r_s11d27="$r_s11d27 requirements-disposition-missing"
+grep -Fq 'R-S11d-27 — Windows custom-client public staging deletion' HARDENING_STATUS.md || r_s11d27="$r_s11d27 hardening-ledger-missing"
+if [ -n "$r_s11d27" ]; then echo "  FAIL R-S11d-27 Windows custom-client public staging deletion:$r_s11d27"; rc=1; else
+  echo "  ok  R-S11d-27 Windows custom-client updates have no public staging directory or executable-dir custom.txt copy loader"; fi
+
 echo "== (3b-iii-a5d4a) Windows MSI service mode is package authority, not caller connection type (R-S11d-21) =="
 r_s11d21=
 if grep -RInE 'CC_CONNECTION_TYPE|--conn-type|conn_type|gen_conn_type' res/msi >/tmp/rd_verify_r_s11d21_msi.$$; then

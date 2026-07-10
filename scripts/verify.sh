@@ -1831,7 +1831,9 @@ linux_uninstall_body=$(awk '/pub fn uninstall_service\(show_new_window: bool, _:
 echo "$linux_systemctl_body" | grep -Fq 'Ok(status) if status.success() => true' || r_s11c16="$r_s11c16 linux-systemctl-success-not-explicit"
 echo "$linux_systemctl_body" | grep -Fq 'log::error!("systemctl {action} {app_name} failed with status {status}")' || r_s11c16="$r_s11c16 linux-systemctl-nonzero-not-logged"
 echo "$linux_systemctl_body" | grep -Fq 'Err(err)' || r_s11c16="$r_s11c16 linux-systemctl-spawn-error-not-handled"
-echo "$linux_install_body" | grep -Fq 'if !copy_user_config_to_root_service_config()' || r_s11c16="$r_s11c16 linux-install-config-copy-not-fatal"
+if echo "$linux_install_body" | grep -Eq 'copy_user_config_to_root_service_config|copy_service_config_files|copy_service_config_file|fs::copy'; then
+  r_s11c16="$r_s11c16 linux-install-imports-user-config"
+fi
 echo "$linux_install_body" | grep -Fq 'if !systemctl_service("enable", &app_name)' || r_s11c16="$r_s11c16 linux-install-enable-not-fatal"
 echo "$linux_install_body" | grep -Fq 'if !systemctl_service("start", &app_name)' || r_s11c16="$r_s11c16 linux-install-start-not-fatal"
 echo "$linux_uninstall_body" | grep -Fq 'if !systemctl_service("disable", &app_name)' || r_s11c16="$r_s11c16 linux-uninstall-disable-not-fatal"
@@ -1871,7 +1873,7 @@ fi
 grep -q 'R-S11c-16 and R-S11c-10j make service lifecycle completion status-authoritative' requirements.html || r_s11c16="$r_s11c16 requirements-disposition-missing"
 grep -q 'R-S11c-16 — Desktop service lifecycle completion authority' HARDENING_STATUS.md || r_s11c16="$r_s11c16 hardening-ledger-missing"
 if [ -n "$r_s11c16" ]; then echo "  FAIL R-S11c-16 desktop service lifecycle completion authority:$r_s11c16"; rc=1; else
-  echo "  ok  R-S11c-16 service lifecycle wrappers propagate CLI failure, Linux systemctl/config-copy failures are fatal, and macOS AppleScript/launchctl/plist completion is checked"; fi
+  echo "  ok  R-S11c-16 service lifecycle wrappers propagate CLI failure, Linux service install does not import user config, and macOS AppleScript/launchctl/plist completion is checked"; fi
 
 # (3b-iii-h) R-S11c-10a: Linux root-context desktop discovery must not build passwd/proc
 # lookups through a shell. This is a narrow sub-slice: env/home/Xorg/subprocess discovery
@@ -2088,9 +2090,9 @@ r_s11c10i=
 grep -q 'const SYSTEMCTL_PATHS' src/platform/linux.rs || r_s11c10i="$r_s11c10i no-fixed-systemctl-paths"
 grep -q 'fn systemctl_service(action: &str, app_name: &str) -> bool' src/platform/linux.rs || r_s11c10i="$r_s11c10i no-systemctl-argv-helper"
 grep -q 'Command::new(systemctl)' src/platform/linux.rs || r_s11c10i="$r_s11c10i systemctl-not-argv-only"
-grep -q 'fn copy_user_config_to_root_service_config() -> bool' src/platform/linux.rs || r_s11c10i="$r_s11c10i no-native-service-config-copy"
-grep -q 'fs::symlink_metadata(src)' src/platform/linux.rs || r_s11c10i="$r_s11c10i service-config-source-not-symlink-checked"
-grep -q 'fs::Permissions::from_mode(0o600)' src/platform/linux.rs || r_s11c10i="$r_s11c10i service-config-copy-not-owner-only"
+if grep -qE 'copy_user_config_to_root_service_config|copy_service_config_files|copy_service_config_file|prepare_service_config_dir|fs::copy\(.*toml|/root/\.config' src/platform/linux.rs; then
+  r_s11c10i="$r_s11c10i service-install-imports-user-config"
+fi
 if grep -qE 'fn run_cmds_status|fn has_cmd' src/platform/linux.rs; then
   r_s11c10i="$r_s11c10i stale-shell-lifecycle-helper"
 fi
@@ -2100,8 +2102,8 @@ service_lifecycle_blocks=$(
 if echo "$service_lifecycle_blocks" | grep -Eq 'run_cmds|CMD_SH|sh -c|cp -f|Command::new\("which"\)|systemctl (enable|disable|start|stop)'; then
   r_s11c10i="$r_s11c10i shell-shaped-service-lifecycle-regressed"
 fi
-if [ -n "$r_s11c10i" ]; then echo "  FAIL R-S11c-10i Linux service lifecycle systemctl/config-copy:$r_s11c10i"; rc=1; else
-  echo "  ok  R-S11c-10i Linux service lifecycle uses fixed systemctl paths, argv-only start/stop/enable/disable, and native owner-only config copies"; fi
+if [ -n "$r_s11c10i" ]; then echo "  FAIL R-S11c-10i Linux service lifecycle systemctl/no-config-import:$r_s11c10i"; rc=1; else
+  echo "  ok  R-S11c-10i Linux service lifecycle uses fixed systemctl paths, argv-only start/stop/enable/disable, and no user-config import into root service state"; fi
 
 echo "== (3b-iii-h9b) Linux privileged helper command provenance is fixed-path (R-S11c-10k) =="
 r_s11c10k=

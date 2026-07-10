@@ -17,7 +17,7 @@ use std::{
     cell::RefCell,
     ffi::{OsStr, OsString},
     fs,
-    os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt},
+    os::unix::fs::{FileTypeExt, MetadataExt},
     path::{Path, PathBuf},
     process::{Child, Command},
     string::String,
@@ -2530,101 +2530,6 @@ fn systemctl_service(action: &str, app_name: &str) -> bool {
     }
 }
 
-fn copy_user_config_to_root_service_config() -> bool {
-    let Some(home) = get_home_dir_trusted() else {
-        return true;
-    };
-    if home == Path::new("/root") || Config::get().is_empty() {
-        return true;
-    }
-
-    let app_name = crate::get_app_name();
-    let app_name_lower = app_name.to_lowercase();
-    let src_dir = home.join(".config").join(&app_name_lower);
-    let dst_dir = Path::new("/root/.config").join(&app_name_lower);
-    copy_service_config_files(&src_dir, &dst_dir, &app_name)
-}
-
-fn copy_service_config_files(src_dir: &Path, dst_dir: &Path, app_name: &str) -> bool {
-    if !prepare_service_config_dir(dst_dir) {
-        return false;
-    }
-
-    let mut ok = true;
-    for file_name in [format!("{app_name}.toml"), format!("{app_name}2.toml")] {
-        if !copy_service_config_file(&src_dir.join(&file_name), &dst_dir.join(&file_name)) {
-            ok = false;
-        }
-    }
-    ok
-}
-
-fn prepare_service_config_dir(path: &Path) -> bool {
-    if let Err(err) = fs::create_dir_all(path) {
-        log::warn!(
-            "Failed to create service config directory {}: {}",
-            path.display(),
-            err
-        );
-        return false;
-    }
-    let Ok(metadata) = fs::symlink_metadata(path) else {
-        log::warn!("Failed to inspect service config directory {}", path.display());
-        return false;
-    };
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        log::warn!(
-            "Refusing non-directory service config path {}",
-            path.display()
-        );
-        return false;
-    }
-    if let Err(err) = fs::set_permissions(path, fs::Permissions::from_mode(0o700)) {
-        log::warn!(
-            "Failed to harden service config directory {}: {}",
-            path.display(),
-            err
-        );
-        return false;
-    }
-    true
-}
-
-fn copy_service_config_file(src: &Path, dst: &Path) -> bool {
-    let metadata = match fs::symlink_metadata(src) {
-        Ok(metadata) => metadata,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return true,
-        Err(err) => {
-            log::warn!("Failed to inspect config file {}: {}", src.display(), err);
-            return false;
-        }
-    };
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        log::warn!("Refusing non-regular config file {}", src.display());
-        return false;
-    }
-    if let Ok(metadata) = fs::symlink_metadata(dst) {
-        if metadata.file_type().is_symlink() || !metadata.is_file() {
-            log::warn!("Refusing non-regular destination config file {}", dst.display());
-            return false;
-        }
-    }
-    if let Err(err) = fs::copy(src, dst) {
-        log::warn!(
-            "Failed to copy service config {} to {}: {}",
-            src.display(),
-            dst.display(),
-            err
-        );
-        return false;
-    }
-    if let Err(err) = fs::set_permissions(dst, fs::Permissions::from_mode(0o600)) {
-        log::warn!("Failed to harden service config file {}: {}", dst.display(), err);
-        return false;
-    }
-    true
-}
-
 pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
     if systemctl_path().is_none() {
         // Failed when installed + flutter run + started by `show_new_window`.
@@ -2651,10 +2556,6 @@ pub fn install_service() -> bool {
         return false;
     }
     log::info!("Installing service...");
-    if !copy_user_config_to_root_service_config() {
-        log::error!("Failed to copy user config before installing service");
-        return false;
-    }
     let app_name = crate::get_app_name().to_lowercase();
     if !systemctl_service("enable", &app_name) {
         return false;
@@ -2669,14 +2570,6 @@ pub fn install_service() -> bool {
 #[cfg(test)]
 mod service_lifecycle_tests {
     use super::*;
-
-    fn unique_temp_dir(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "rustdesk-{name}-{}-{}",
-            std::process::id(),
-            std::thread::current().name().unwrap_or("test")
-        ))
-    }
 
     #[test]
     fn r_s11c10_service_lifecycle_uses_absolute_systemctl_candidates() {
@@ -2717,46 +2610,6 @@ mod service_lifecycle_tests {
         ]);
         assert_eq!(envs.len(), 1);
         assert_eq!(envs[0].0, OsString::from("DISPLAY"));
-    }
-
-    #[test]
-    fn r_s11c10_service_config_copy_hardens_destination_file() {
-        let root = unique_temp_dir("service-config-copy");
-        let src_dir = root.join("src");
-        let dst_dir = root.join("dst");
-        let src = src_dir.join("RustDesk.toml");
-        let dst = dst_dir.join("RustDesk.toml");
-        fs::create_dir_all(&src_dir).unwrap();
-        fs::create_dir_all(&dst_dir).unwrap();
-        fs::write(&src, "key = 'value'\n").unwrap();
-
-        assert!(copy_service_config_file(&src, &dst));
-        assert_eq!(fs::read_to_string(&dst).unwrap(), "key = 'value'\n");
-        assert_eq!(
-            fs::symlink_metadata(&dst).unwrap().permissions().mode() & 0o777,
-            0o600
-        );
-
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn r_s11c10_service_config_copy_rejects_symlink_source() {
-        let root = unique_temp_dir("service-config-symlink");
-        let src_dir = root.join("src");
-        let dst_dir = root.join("dst");
-        let real = src_dir.join("real.toml");
-        let link = src_dir.join("RustDesk.toml");
-        let dst = dst_dir.join("RustDesk.toml");
-        fs::create_dir_all(&src_dir).unwrap();
-        fs::create_dir_all(&dst_dir).unwrap();
-        fs::write(&real, "key = 'value'\n").unwrap();
-        std::os::unix::fs::symlink(&real, &link).unwrap();
-
-        assert!(!copy_service_config_file(&link, &dst));
-        assert!(!dst.exists());
-
-        fs::remove_dir_all(root).unwrap();
     }
 }
 

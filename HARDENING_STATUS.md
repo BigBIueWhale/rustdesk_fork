@@ -526,9 +526,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `install.scpt` / `uninstall.scpt`. Boundary: local caller/UI/CLI ↔ privileged service lifecycle state.
   Attack surface closed: service install/uninstall can no longer hide failure behind a started helper process,
   ignored status, partial plist state, or a discarded wrapper return. The CLI exits nonzero when service lifecycle
-  wrappers report failure. Linux treats install-time user-config migration plus `systemctl enable`, `start`,
-  `disable`, and `stop` failures as fatal wrapper failures with logged status, and uninstall no longer runs that
-  unrelated config migration. macOS checks AppleScript exit status, verifies both daemon and agent plist
+  wrappers report failure. Linux service install no longer imports active-user `Config`/`Config2` files into
+  root service state; service-owned unattended password provisioning remains the typed `_service` + polkit path.
+  `systemctl enable`, `start`, `disable`, and `stop` failures are fatal wrapper failures with logged status.
+  macOS checks AppleScript exit status, verifies both daemon and agent plist
   postconditions, propagates synchronous uninstall result, verifies current-session
   LaunchAgent label removal/reload, and the privileged scripts verify daemon unload/load state plus final plist
   removal instead of masking `launchctl unload` with `|| true`. The Flutter daemon install card keeps its
@@ -602,18 +603,16 @@ unreachable and a source/test/AST gate prevents reintroduction.
   block contains no `run_cmds`, `whoami`, `getent`, `awk`, or shell-shaped probe tokens.
 - **R-S11c-10i — Linux service lifecycle `systemctl` command construction — CLOSED 2026-07-09.**
   Platform: Linux installed-service lifecycle commands from `src/platform/linux.rs`. Surface:
-  `install_service()` / `uninstall_service()` and the install-time user-config migration before service
-  start. Boundary: local service lifecycle action ↔ root-context process execution and root-owned
-  service config files. Attack surface closed: lifecycle commands no longer build a single `sh -c`
+  `install_service()` / `uninstall_service()`. Boundary: local service lifecycle action ↔ root-context
+  process execution and service-owned credential state. Attack surface closed: lifecycle commands no longer build a single `sh -c`
   string containing `cp -f ...; systemctl enable/disable/start/stop ...`, and they no longer discover
   `systemctl` through `which`/`PATH`. The service helper selects only fixed root-owned non-group/world-writable
   `/usr/bin/systemctl` or `/bin/systemctl` candidates and invokes `enable`, `disable`, `start`, and `stop`
-  as direct argv. Config migration is native filesystem work: source config files are inspected with
-  `symlink_metadata`, symlink/non-regular sources and destinations are rejected, the service config directory
-  is kept `0700`, and copied service config files are hardened to `0600`. Verification closure:
-  `scripts/verify.sh` runs the `r_s11c10_service_*` unit tests and asserts the lifecycle block uses fixed
-  `systemctl` paths, the argv helper, native symlink-checked config copying, owner-only destination modes,
-  and no stale `run_cmds_status`, `has_cmd`, `which`, `cp -f`, shell, or inline `systemctl ...` command text.
+  as direct argv. Linux service install no longer imports active-user `Config`/`Config2` files into root service
+  state; service-owned unattended password provisioning remains the typed `_service` + polkit path. Verification
+  closure: `scripts/verify.sh` runs the `r_s11c10_service_*` unit tests and asserts the lifecycle block uses fixed
+  `systemctl` paths, the argv helper, no user-config import into root service state, and no stale
+  `run_cmds_status`, `has_cmd`, `which`, `cp -f`, shell, or inline `systemctl ...` command text.
 - **R-S11c-10j — Debian package lifecycle and systemd stop semantics — CLOSED 2026-07-09; tightened 2026-07-10.**
   Platform: Debian/Linux `.deb` install, upgrade, remove, and purge lifecycle. Surfaces:
   `res/DEBIAN/preinst`, `postinst`, `prerm`, `postrm`, `res/rustdesk.service`, generated `.deb`
@@ -1240,8 +1239,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `scripts/verify.sh` runs the focused parser tests and source gate. R-S11c-10h closes config-home correction
   in `libs/hbb_common/src/config.rs`: `patch(PathBuf)` uses the `getpwuid`-backed trusted home helper instead
   of `whoami` plus `getent|awk`. R-S11c-10i closes Linux runtime service lifecycle command construction:
-  service start/stop/enable/disable now invoke fixed trusted `systemctl` paths with direct argv, and root-service
-  config migration is native symlink-checked filesystem copying with `0700`/`0600` modes. R-S11c-10j closes the
+  service start/stop/enable/disable now invoke fixed trusted `systemctl` paths with direct argv, and service install
+  does not import active-user config into root service state. R-S11c-10j closes the
   Debian package lifecycle and unit stop layer: maintainer scripts use checked
   `deb-systemd-helper`/`deb-systemd-invoke` operations instead of raw init/systemctl/process-table probes,
   `build.py` cannot mask Debian control-script/package-build failures, the release build compares emitted

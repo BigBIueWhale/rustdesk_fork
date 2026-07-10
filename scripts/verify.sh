@@ -445,6 +445,39 @@ grep -q 'R-S11d-2 — Windows Amyuni IDD cleanup completion authority' HARDENING
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else
   echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service/SAS custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path and MSI cleanup observes helper completion"; fi
 
+echo "== (3b-iii-a6) Windows runtime process probes avoid shell tasklist/taskkill (R-S11d-3) =="
+r_s11d3=
+grep -q 'struct WinHandleGuard(WinHANDLE)' src/platform/windows.rs || r_s11d3="$r_s11d3 no-windows-handle-guard"
+grep -q 'fn process_entry_image_name(entry: &PROCESSENTRY32W) -> String' src/platform/windows.rs || r_s11d3="$r_s11d3 no-process-entry-name-helper"
+grep -q 'fn pids_by_exact_process_name(name: &str) -> ResultType<Vec<u32>>' src/platform/windows.rs || r_s11d3="$r_s11d3 no-exact-process-enumerator"
+grep -q 'CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)' src/platform/windows.rs || r_s11d3="$r_s11d3 no-toolhelp-snapshot"
+grep -q 'Process32FirstW(snapshot.get(), &mut entry)' src/platform/windows.rs || r_s11d3="$r_s11d3 no-process32first"
+grep -q 'Process32NextW(snapshot.get(), &mut entry)' src/platform/windows.rs || r_s11d3="$r_s11d3 no-process32next"
+grep -q 'process_entry_image_name(&entry).eq_ignore_ascii_case(name)' src/platform/windows.rs || r_s11d3="$r_s11d3 process-match-not-exact"
+grep -q 'fn terminate_processes_by_exact_process_name(name: &str) -> ResultType<usize>' src/platform/windows.rs || r_s11d3="$r_s11d3 no-native-terminate-helper"
+grep -q 'WinOpenProcess(WIN_PROCESS_TERMINATE, false, pid)' src/platform/windows.rs || r_s11d3="$r_s11d3 no-process-terminate-open"
+grep -q 'WinTerminateProcess(process.get(), 0)' src/platform/windows.rs || r_s11d3="$r_s11d3 no-native-terminate"
+grep -q 'pids_by_exact_process_name("consent.exe")' src/platform/windows.rs || r_s11d3="$r_s11d3 consent-not-toolhelp-backed"
+grep -q 'terminate_processes_by_exact_process_name(WIN_TOPMOST_INJECTED_PROCESS_EXE)' src/platform/windows.rs || r_s11d3="$r_s11d3 broker-not-native-terminate-backed"
+grep -q 'Windows runtime process command provenance' requirements.html || r_s11d3="$r_s11d3 requirements-disposition-missing"
+grep -q 'R-S11d-3 — Windows runtime process command provenance' HARDENING_STATUS.md || r_s11d3="$r_s11d3 hardening-ledger-missing"
+windows_runtime_process_blocks=$(
+  awk '/pub fn is_process_consent_running/,/pub struct WakeLock/' src/platform/windows.rs
+  awk '/pub fn try_kill_broker/,/pub fn message_box/' src/platform/windows.rs
+)
+if echo "$windows_runtime_process_blocks" | grep -Eq 'Command::new\("cmd"\)|tasklist|findstr|taskkill /F /IM|/c"\)|/C"'; then
+  r_s11d3="$r_s11d3 runtime-process-shell-regressed"
+fi
+if grep -RInE 'Command::new\("cmd"\)|tasklist \| findstr consent\.exe' src/platform/windows.rs >/tmp/rd_verify_r_s11d3.$$; then
+  cat /tmp/rd_verify_r_s11d3.$$
+  rm -f /tmp/rd_verify_r_s11d3.$$
+  r_s11d3="$r_s11d3 stale-service-adjacent-cmd"
+else
+  rm -f /tmp/rd_verify_r_s11d3.$$
+fi
+if [ -n "$r_s11d3" ]; then echo "  FAIL R-S11d-3 Windows runtime process command provenance:$r_s11d3"; rc=1; else
+  echo "  ok  R-S11d-3 Windows service-adjacent process probes use ToolHelp/OpenProcess/TerminateProcess, not cmd tasklist/taskkill"; fi
+
 # (3b-iii-b) R-S11b-1/R-S11b-2c/R-S11c-1f: Linux/macOS `_service` is a privileged service-control channel,
 # not a root<->user Config/Config2 bus. The world-connectable service socket may keep only narrow,
 # typed receiver-authorized traffic; it MUST NOT accept/return whole config, and stale-socket probing

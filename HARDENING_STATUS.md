@@ -667,6 +667,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   deleted. Verification closure: `scripts/verify.sh` asserts checked `CreateProcessW`/wait/exit-code handling,
   `RemoveAmyuniIdd` `Return="check"`, absence of the old `Return="ignore"` and stale bare-`netsh` shell helpers,
   and this ledger/requirements disposition.
+- **R-S11d-3 — Windows runtime process command provenance — CLOSED 2026-07-10.** Platform:
+  Windows runtime service-adjacent process probes in `src/platform/windows.rs`. Endpoint/action:
+  non-installed UAC `consent.exe` detection used by capture/privacy-mode decisions, and startup cleanup for the
+  topmost-window `RuntimeBroker_rustdesk.exe` helper. Boundary: service/runtime control flow ↔ ambient shell and
+  executable lookup. Attack surface closed: these paths no longer launch bare `cmd`, `tasklist | findstr`, or
+  shell `taskkill`; they enumerate exact image names with a ToolHelp process snapshot, close snapshot/process
+  handles through a local RAII guard, and terminate stale broker processes through `OpenProcess(PROCESS_TERMINATE)`
+  plus `TerminateProcess`. Cleanup remains best-effort for service startup, but enumeration and per-process
+  failures are logged instead of hidden behind a spawned shell. Verification closure: `scripts/verify.sh` asserts
+  the exact-name ToolHelp enumerator, RAII handle guard, native termination helper, the `consent.exe` and broker
+  call sites, absence of shell probes in the runtime blocks, absence of `Command::new("cmd")` in
+  `src/platform/windows.rs`, and this ledger/requirements disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

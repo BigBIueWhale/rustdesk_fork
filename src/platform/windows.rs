@@ -75,7 +75,9 @@ use windows::Win32::{
     System::Threading::{
         OpenProcess as WinOpenProcess, OpenProcessToken as WinOpenProcessToken,
         QueryFullProcessImageNameW as WinQueryFullProcessImageNameW,
+        TerminateProcess as WinTerminateProcess,
         PROCESS_QUERY_LIMITED_INFORMATION as WIN_PROCESS_QUERY_LIMITED_INFORMATION,
+        PROCESS_TERMINATE as WIN_PROCESS_TERMINATE,
     },
     UI::Shell::{
         FOLDERID_ProgramFiles, FOLDERID_ProgramFilesX86, SHGetKnownFolderPath, KF_FLAG_DEFAULT,
@@ -2932,12 +2934,98 @@ pub fn get_unicode_from_vk(vk: u32) -> Option<u16> {
     }
 }
 
+struct WinHandleGuard(WinHANDLE);
+
+impl WinHandleGuard {
+    #[inline]
+    fn new(handle: WinHANDLE) -> ResultType<Self> {
+        if handle.is_invalid() {
+            bail!("invalid Windows handle");
+        }
+        Ok(Self(handle))
+    }
+
+    #[inline]
+    fn get(&self) -> WinHANDLE {
+        self.0
+    }
+}
+
+impl Drop for WinHandleGuard {
+    fn drop(&mut self) {
+        unsafe {
+            if !self.0.is_invalid() {
+                let _ = WinCloseHandle(self.0);
+            }
+        }
+    }
+}
+
+fn process_entry_image_name(entry: &PROCESSENTRY32W) -> String {
+    let len = entry
+        .szExeFile
+        .iter()
+        .position(|c| *c == 0)
+        .unwrap_or(entry.szExeFile.len());
+    OsString::from_wide(&entry.szExeFile[..len])
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn pids_by_exact_process_name(name: &str) -> ResultType<Vec<u32>> {
+    if name.is_empty() {
+        bail!("empty process name");
+    }
+
+    let mut pids = Vec::new();
+    unsafe {
+        let snapshot = WinHandleGuard::new(
+            CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+                .map_err(|e| anyhow!("Failed to create process snapshot: {}", e))?,
+        )?;
+
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+
+        if Process32FirstW(snapshot.get(), &mut entry).is_ok() {
+            loop {
+                if process_entry_image_name(&entry).eq_ignore_ascii_case(name) {
+                    pids.push(entry.th32ProcessID);
+                }
+                if !Process32NextW(snapshot.get(), &mut entry).is_ok() {
+                    break;
+                }
+            }
+        }
+    }
+
+    Ok(pids)
+}
+
+fn terminate_processes_by_exact_process_name(name: &str) -> ResultType<usize> {
+    let pids = pids_by_exact_process_name(name)?;
+    let mut terminated = 0usize;
+
+    for pid in pids {
+        let result = unsafe {
+            let process = WinOpenProcess(WIN_PROCESS_TERMINATE, false, pid)
+                .map_err(|e| anyhow!("Failed to open process {} for termination: {}", pid, e))
+                .and_then(|handle| WinHandleGuard::new(handle))?;
+            WinTerminateProcess(process.get(), 0)
+                .map_err(|e| anyhow!("Failed to terminate process {}: {}", pid, e))
+        };
+
+        match result {
+            Ok(()) => terminated += 1,
+            Err(err) => log::warn!("Failed to terminate {} pid {}: {}", name, pid, err),
+        }
+    }
+
+    Ok(terminated)
+}
+
 pub fn is_process_consent_running() -> ResultType<bool> {
-    let output = std::process::Command::new("cmd")
-        .args(&["/C", "tasklist | findstr consent.exe"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()?;
-    Ok(output.status.success() && !output.stdout.is_empty())
+    Ok(!pids_by_exact_process_name("consent.exe")?.is_empty())
 }
 
 pub struct WakeLock(u32);
@@ -3218,14 +3306,19 @@ pub fn try_remove_temp_update_files() {
 
 #[inline]
 pub fn try_kill_broker() {
-    allow_err!(std::process::Command::new("cmd")
-        .arg("/c")
-        .arg(&format!(
-            "taskkill /F /IM {}",
+    match terminate_processes_by_exact_process_name(WIN_TOPMOST_INJECTED_PROCESS_EXE) {
+        Ok(0) => {}
+        Ok(count) => log::info!(
+            "Terminated {} stale {} process(es)",
+            count,
             WIN_TOPMOST_INJECTED_PROCESS_EXE
-        ))
-        .creation_flags(winapi::um::winbase::CREATE_NO_WINDOW)
-        .spawn());
+        ),
+        Err(err) => log::warn!(
+            "Failed to enumerate stale {} processes: {}",
+            WIN_TOPMOST_INJECTED_PROCESS_EXE,
+            err
+        ),
+    }
 }
 
 pub fn message_box(text: &str) {
@@ -3823,35 +3916,6 @@ pub(super) fn get_pids_with_first_arg_by_wmic<S1: AsRef<str>, S2: AsRef<str>>(
 mod tests {
     use super::*;
 
-    // Test-only reusable Win32 HANDLE RAII helper.
-    // If a future non-test path needs the same pattern, move it out of this test module.
-    //
-    // This struct is similar to `hbb_common::platform::windows::RAIIHandle`,
-    // but `RAIIHandle` depends on `WinApi` crate, while this `HandleGuard` only depends on `windows` crate.
-    struct HandleGuard(WinHANDLE);
-
-    impl HandleGuard {
-        #[inline]
-        fn new(handle: WinHANDLE) -> Self {
-            Self(handle)
-        }
-
-        #[inline]
-        fn get(&self) -> WinHANDLE {
-            self.0
-        }
-    }
-
-    impl Drop for HandleGuard {
-        fn drop(&mut self) {
-            unsafe {
-                if !self.0.is_invalid() {
-                    let _ = WinCloseHandle(self.0);
-                }
-            }
-        }
-    }
-
     #[test]
     fn test_is_process_running_as_system_invalid_pid_errors() {
         assert!(is_process_running_as_system(u32::MAX).is_err());
@@ -3864,14 +3928,15 @@ mod tests {
 
         let expected = unsafe {
             // Keep this test consistent: use only the `windows` crate APIs/types.
-            let process = HandleGuard::new(
+            let process = WinHandleGuard::new(
                 WinOpenProcess(WIN_PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
                     .expect("WinOpenProcess should succeed for current process"),
-            );
+            )
+            .expect("current process handle should be valid");
             let mut token = WinHANDLE::default();
             WinOpenProcessToken(process.get(), WIN_TOKEN_QUERY, &mut token)
                 .expect("WinOpenProcessToken should succeed for current process");
-            let token = HandleGuard::new(token);
+            let token = WinHandleGuard::new(token).expect("current process token should be valid");
 
             let mut token_user_size = 0u32;
             let _ = WinGetTokenInformation(token.get(), TokenUser, None, 0, &mut token_user_size);

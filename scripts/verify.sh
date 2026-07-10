@@ -840,7 +840,7 @@ if [ -n "$r_s11d15" ]; then echo "  FAIL R-S11d-15 Windows EXE elevated batch co
 echo "== (3b-iii-a5d4b) Windows EXE elevated batch rejects ambient cmd state (R-S11d-18) =="
 r_s11d18=
 grep -Fq 'FOLDERID_ProgramData' src/platform/windows.rs || r_s11d18="$r_s11d18 programdata-known-folder-missing"
-grep -Fq 'fn program_data_dir() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d18="$r_s11d18 programdata-helper-missing"
+grep -Fq 'pub(crate) fn program_data_dir() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d18="$r_s11d18 programdata-helper-missing"
 grep -Fq 'fn batch_literal_text<' src/platform/windows.rs || r_s11d18="$r_s11d18 batch-literal-guard-missing"
 grep -Fq 'fn batch_path_text(path: &Path, label: &str) -> ResultType<String>' src/platform/windows.rs || r_s11d18="$r_s11d18 batch-path-guard-missing"
 grep -Fq "'\"' | '%'" src/platform/windows.rs || r_s11d18="$r_s11d18 cmd-expansion-metachar-quote-not-rejected"
@@ -1267,6 +1267,27 @@ grep -Fq 'Windows dormant diagnostic message-box deletion' requirements.html || 
 grep -Fq 'R-S11d-28 — Windows dormant diagnostic message-box deletion' HARDENING_STATUS.md || r_s11d28="$r_s11d28 hardening-ledger-missing"
 if [ -n "$r_s11d28" ]; then echo "  FAIL R-S11d-28 Windows dormant diagnostic message-box deletion:$r_s11d28"; rc=1; else
   echo "  ok  R-S11d-28 dormant Windows diagnostic message-box/file/clipboard side effects are absent"; fi
+
+echo "== (3b-iii-a6c) Windows service-adjacent profile and recording paths use known folders (R-S11d-29) =="
+r_s11d29=
+if grep -RInF 'SystemDrive' src/platform/windows.rs src/ui_interface.rs >/tmp/rd_verify_r_s11d29_systemdrive.$$; then
+  r_s11d29="$r_s11d29 systemdrive-path-authority-leftover:$(cat /tmp/rd_verify_r_s11d29_systemdrive.$$)"
+fi
+rm -f /tmp/rd_verify_r_s11d29_systemdrive.$$
+grep -Fq 'FOLDERID_UserProfiles' src/platform/windows.rs || r_s11d29="$r_s11d29 userprofiles-known-folder-missing"
+grep -Fq 'FOLDERID_Windows' src/platform/windows.rs || r_s11d29="$r_s11d29 windows-known-folder-missing"
+grep -Fq 'fn user_profiles_dir() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d29="$r_s11d29 userprofiles-helper-missing"
+grep -Fq 'fn windows_dir() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d29="$r_s11d29 windows-dir-helper-missing"
+grep -Fq "username.contains(['\\\\', '/', ':'])" src/platform/windows.rs || r_s11d29="$r_s11d29 username-component-guard-missing"
+grep -Fq 'username.bytes().any(|byte| byte < 0x20)' src/platform/windows.rs || r_s11d29="$r_s11d29 username-control-guard-missing"
+grep -Fq 'let home = user_profiles_dir().ok()?.join(username);' src/platform/windows.rs || r_s11d29="$r_s11d29 active-user-home-not-userprofiles-backed"
+grep -Fq 'let windows_temp = windows_dir()?.join("Temp");' src/platform/windows.rs || r_s11d29="$r_s11d29 user-accessible-windows-temp-not-known-folder-backed"
+grep -Fq 'return match crate::platform::windows::program_data_dir()' src/ui_interface.rs || r_s11d29="$r_s11d29 root-recording-not-programdata-known-folder-backed"
+grep -Fq 'Failed to resolve ProgramData recording directory' src/ui_interface.rs || r_s11d29="$r_s11d29 root-recording-failure-not-logged"
+grep -Fq 'Windows service-adjacent path known-folder authority' requirements.html || r_s11d29="$r_s11d29 requirements-disposition-missing"
+grep -Fq 'R-S11d-29 — Windows service-adjacent path known-folder authority' HARDENING_STATUS.md || r_s11d29="$r_s11d29 hardening-ledger-missing"
+if [ -n "$r_s11d29" ]; then echo "  FAIL R-S11d-29 Windows service-adjacent path known-folder authority:$r_s11d29"; rc=1; else
+  echo "  ok  R-S11d-29 Windows service-adjacent profile/recording/installer fallback paths use known folders, not SystemDrive"; fi
 
 # (3b-iii-b) R-S11b-1/R-S11b-2c/R-S11c-1f: Linux/macOS `_service` is a privileged service-control channel,
 # not a root<->user Config/Config2 bus. The world-connectable service socket may keep only narrow,

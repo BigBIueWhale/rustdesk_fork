@@ -755,10 +755,17 @@ pub fn video_save_directory(root: bool) -> String {
         // Currently, only installed windows run as root
         #[cfg(windows)]
         {
-            let drive = std::env::var("SystemDrive").unwrap_or("C:".to_owned());
-            let dir =
-                std::path::PathBuf::from(format!("{drive}\\ProgramData\\{appname}\\recording",));
-            return dir.to_string_lossy().to_string();
+            return match crate::platform::windows::program_data_dir() {
+                Ok(program_data) => program_data
+                    .join(&appname)
+                    .join("recording")
+                    .to_string_lossy()
+                    .to_string(),
+                Err(err) => {
+                    log::error!("Failed to resolve ProgramData recording directory: {err}");
+                    String::new()
+                }
+            };
         }
     }
     // Get directory from config file otherwise --server will use the old value from global var.

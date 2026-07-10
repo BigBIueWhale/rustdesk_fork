@@ -92,7 +92,8 @@ use windows::{
         UI::Shell::{
             FOLDERID_CommonPrograms, FOLDERID_CommonStartup, FOLDERID_Desktop,
             FOLDERID_ProgramData, FOLDERID_ProgramFiles, FOLDERID_ProgramFilesX86,
-            FOLDERID_PublicDesktop, IShellLinkW, SHGetKnownFolderPath, ShellLink, KF_FLAG_DEFAULT,
+            FOLDERID_PublicDesktop, FOLDERID_UserProfiles, FOLDERID_Windows, IShellLinkW,
+            SHGetKnownFolderPath, ShellLink, KF_FLAG_DEFAULT,
         },
     },
 };
@@ -1523,8 +1524,10 @@ pub fn get_available_sessions(name: bool) -> Vec<WindowsSession> {
 pub fn get_active_user_home() -> Option<PathBuf> {
     let username = get_active_username();
     if !username.is_empty() {
-        let drive = std::env::var("SystemDrive").unwrap_or("C:".to_owned());
-        let home = PathBuf::from(format!("{}\\Users\\{}", drive, username));
+        if username.contains(['\\', '/', ':']) || username.bytes().any(|byte| byte < 0x20) {
+            return None;
+        }
+        let home = user_profiles_dir().ok()?.join(username);
         if home.exists() {
             return Some(home);
         }
@@ -1691,8 +1694,16 @@ fn common_startup_tray_shortcut_path() -> ResultType<PathBuf> {
     Ok(common_startup_dir()?.join(format!("{} Tray.lnk", crate::get_app_name())))
 }
 
-fn program_data_dir() -> ResultType<PathBuf> {
+pub(crate) fn program_data_dir() -> ResultType<PathBuf> {
     known_folder_path(&FOLDERID_ProgramData, "SHGetKnownFolderPath(ProgramData)")
+}
+
+fn user_profiles_dir() -> ResultType<PathBuf> {
+    known_folder_path(&FOLDERID_UserProfiles, "SHGetKnownFolderPath(UserProfiles)")
+}
+
+fn windows_dir() -> ResultType<PathBuf> {
+    known_folder_path(&FOLDERID_Windows, "SHGetKnownFolderPath(Windows)")
 }
 
 fn public_desktop_dir() -> ResultType<PathBuf> {
@@ -3620,19 +3631,19 @@ pub(super) fn change_resolution_directly(
 }
 
 pub fn user_accessible_folder() -> ResultType<PathBuf> {
-    let disk = std::env::var("SystemDrive").unwrap_or("C:".to_string());
-    let dir1 = PathBuf::from(format!("{}\\ProgramData", disk));
-    // NOTICE: "C:\Windows\Temp" requires permanent authorization.
-    let dir2 = PathBuf::from(format!("{}\\Windows\\Temp", disk));
-    let dir;
-    if dir1.exists() {
-        dir = dir1;
-    } else if dir2.exists() {
-        dir = dir2;
-    } else {
-        bail!("no valid user accessible folder");
+    if let Ok(program_data) = program_data_dir() {
+        if program_data.exists() {
+            return Ok(program_data);
+        }
     }
-    Ok(dir)
+
+    // NOTICE: "C:\Windows\Temp" requires permanent authorization.
+    let windows_temp = windows_dir()?.join("Temp");
+    if windows_temp.exists() {
+        return Ok(windows_temp);
+    }
+
+    bail!("no valid user accessible folder")
 }
 
 #[inline]

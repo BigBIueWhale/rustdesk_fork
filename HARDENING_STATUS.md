@@ -1106,6 +1106,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   and remains intact. Verification closure: `scripts/verify.sh` rejects `my_println!`, `macro_rules! my_println`,
   the Windows `message_box` helper, the diagnostic environment knobs, and the old diagnostic strings, and requires
   this ledger/requirements disposition.
+- **R-S11d-29 — Windows service-adjacent path known-folder authority — CLOSED 2026-07-11.** Platform:
+  Windows runtime/service-adjacent path selection. Endpoint/action: active-user home fallback, root recording
+  directory selection, and installer command-file user-accessible fallback directory. Boundary: Windows system/profile
+  root authority ↔ process environment text. Attack surface closed: profile, ProgramData, and Windows Temp roots no
+  longer derive from `SystemDrive`. This was not a proven current unprivileged-to-SYSTEM primitive: recording is local
+  session-recording state, active-user home is a UI fallback, and installer command files were already literal-guarded
+  before creation. The corrected authority model is still stricter: privileged-capable code resolves these roots
+  through `SHGetKnownFolderPath`. Active-user home now uses `FOLDERID_UserProfiles` plus a single-component username
+  guard before joining; root recording uses the shared `FOLDERID_ProgramData` helper and fails closed with a logged
+  error if resolution fails; installer command fallback uses `FOLDERID_ProgramData` and `FOLDERID_Windows\\Temp`,
+  not `SystemDrive` strings. Verification closure: `scripts/verify.sh` rejects `SystemDrive` in the affected Windows
+  sources, asserts the `FOLDERID_UserProfiles` and `FOLDERID_Windows` helpers, the username component/control guard,
+  the root-recording ProgramData known-folder path, the Windows Temp known-folder fallback, and this
+  ledger/requirements disposition.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's

@@ -385,7 +385,6 @@ fn correct_app_name(s: &str) -> String {
 }
 
 pub fn uninstall_service(show_new_window: bool, sync: bool) -> bool {
-    // to-do: do together with win/linux about refactory start/stop service
     if !is_installed_daemon(false) {
         return false;
     }
@@ -425,7 +424,6 @@ pub fn uninstall_service(show_new_window: bool, sync: bool) -> bool {
             // leave ipc a little time
             std::thread::sleep(std::time::Duration::from_millis(300));
         }
-        crate::ipc::set_option("stop-service", "Y");
         if !ensure_launchctl_label_removed(&server_launch_agent_label()) {
             return false;
         }

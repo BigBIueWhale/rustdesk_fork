@@ -3140,7 +3140,9 @@ else
 fi
 # R-X9/R-X10 (§19): the ui_interface::set_option `stop-service` special-case (value=="Y" -> uninstall_service,
 # else -> install_service) is EXCISED — it was the LIVE runtime service-kill path reachable from the legacy
-# sciter "Enable service"/"Start service" toggle (+ macos.rs + any ipc::set_option), BYPASSING the R-S11
+# sciter "Enable service"/"Start service" toggle. Residual desktop production Config/IPC writers of this
+# dead key are rejected too; the explicit uninstall path must uninstall, not persist a runtime service switch.
+# The old service-kill shape bypassed the R-S11
 # config-write reject (it called uninstall_service DIRECTLY, before any Config write). The installed desktop
 # service is un-killable at runtime; the SOLE sanctioned uninstall is the `--uninstall` CLI (core_main). The
 # sciter UI controls (#stop-service menu + #start-service link + their handlers + the hide_stop_service
@@ -3150,6 +3152,7 @@ fi
 # supersedes the direct listener's service-owned generation — not a Config write — R-D7a.)
 r_x9_killsvc=
 grep -qE '&key == "stop-service"' src/ui_interface.rs && r_x9_killsvc="$r_x9_killsvc ui_interface-special-case"
+grep -qE '(ipc::set_option|Config::set_option)\("stop-service"' src/platform/*.rs src/ui_interface.rs src/core_main.rs && r_x9_killsvc="$r_x9_killsvc stop-service-config-writer"
 # (the sciter #stop-service/#start-service/Enable-service controls are gone with the Sciter UI, R-B6)
 if [ -n "$r_x9_killsvc" ]; then
   echo "  FAIL R-X9/R-X10: runtime service-kill path still present:$r_x9_killsvc"; rc=1

@@ -946,9 +946,13 @@ grep -q 'rsplit_once(") ")' src/ipc/auth.rs                                     
 grep -q 'peer_pid()' src/ipc.rs                                                      || r_s11b2="$r_s11b2 linux-peer-pid-missing"
 grep -q 'peer_uid()' src/ipc.rs                                                      || r_s11b2="$r_s11b2 linux-peer-uid-missing"
 grep -q 'UserMainIpcScope::new()' src/ipc.rs                                         || r_s11b2="$r_s11b2 linux-service-commit-not-main-server-scoped"
-grep -q 'com.carriez.RustDesk.set-unattended-password' res/com.carriez.RustDesk.policy || r_s11b2="$r_s11b2 linux-polkit-policy-missing"
-grep -q '<allow_active>auth_admin</allow_active>' res/com.carriez.RustDesk.policy    || r_s11b2="$r_s11b2 linux-polkit-policy-not-admin-authorized"
-grep -q 'usr/share/polkit-1/actions' build.py                                       || r_s11b2="$r_s11b2 linux-polkit-policy-not-packaged"
+if ! python3 scripts/verify-polkit-policy.py --repo . >/tmp/rd_verify_polkit_policy.$$ 2>&1; then
+  cat /tmp/rd_verify_polkit_policy.$$
+  r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"
+fi
+rm -f /tmp/rd_verify_polkit_policy.$$
+grep -Fq 'R-S11e — Linux polkit policy/package assurance' HARDENING_STATUS.md        || r_s11b2="$r_s11b2 linux-polkit-assurance-ledger-missing"
+grep -Fq 'Linux polkit policy/package assurance' requirements.html                   || r_s11b2="$r_s11b2 linux-polkit-assurance-requirements-missing"
 grep -q 'windows_peer_is_authorized_for_service_owned_password_change' src/ipc.rs    || r_s11b2="$r_s11b2 windows-service-password-authorizer-missing"
 grep -q 'windows_pipe_client_token_is_elevated' src/ipc/auth.rs                     || r_s11b2="$r_s11b2 windows-service-password-token-elevation-missing"
 grep -q 'windows_pipe_client_token_is_local_system' src/ipc/auth.rs                  || r_s11b2="$r_s11b2 windows-service-password-localsystem-token-missing"
@@ -1055,7 +1059,7 @@ if echo "$user_scope_fn" | grep -q '"--password"'; then
   r_s11b2="$r_s11b2 password-still-root-routes-to-user-main-ipc"
 fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 service-owned password IPC closure:$r_s11b2"; rc=1; else
-  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux uses polkit/root-service commit; Windows uses pipe-client token elevation plus LocalSystem service commit; macOS stores the proposed value in a one-shot same-peer request, finishes with authorization only, uses a nonshared timeout-zero custom Authorization Services right, verifies the external form noninteractively, and commits only the stored value through the root service; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
+  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux uses polkit/root-service commit with structured policy/package assurance; Windows uses pipe-client token elevation plus LocalSystem service commit; macOS stores the proposed value in a one-shot same-peer request, finishes with authorization only, uses a nonshared timeout-zero custom Authorization Services right, verifies the external form noninteractively, and commits only the stored value through the root service; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
 
 # R-S11b-4: config/PRS secrecy after IPC closure. The balanced-PAKE PRS is
 # connect-equivalent at rest, so the code-owned boundary is:

@@ -910,6 +910,24 @@ unreachable and a source/test/AST gate prevents reintroduction.
   LaunchDaemon stores the proposed value in a bounded, TTL-expiring, zero-on-drop same-peer request, finishes
   with authorization only, verifies an explicit non-shared timeout-zero RustDesk Authorization Services right
   noninteractively, and performs a final main-server commit accepted only from a root service peer.
+- **R-S11e — Linux polkit policy/package assurance — CLOSED 2026-07-10.**
+  Platform: Linux `.deb` installed-service mode. Endpoint/action: the single local admin-authorized
+  service-owned unattended-password change. Boundary: user-session process and distro-local polkit policy
+  state ↔ root service credential commit. Attack surface closed: no new credential mutation path is added;
+  the existing R-S11b-2c `_service` request remains the only Linux service-owned password path, still using
+  the SO_PEERCRED-derived peer process subject, `/usr/bin/pkcheck --action-id ... --process ... --allow-user-interaction`,
+  and a root-service final commit into the service-owned main server. This slice closes the residual assurance
+  gap around what the repo ships: `res/com.carriez.RustDesk.policy` is now structurally verified as exactly
+  one action, `com.carriez.RustDesk.set-unattended-password`, with `allow_any`, `allow_inactive`, and
+  `allow_active` all set to `auth_admin`, with no `yes`, `auth_self`, or keep-style authorizations. The
+  repository is checked for matching shipped `.rules` overrides, `build.py` is checked to stage that policy
+  in all Debian packaging paths, and `scripts/build-debian.sh` validates every emitted `.deb` before hashing
+  it by inspecting the packaged path, file type, root ownership, non-writable group/world mode, XML policy
+  semantics, and byte identity with the source policy. Distro-local administrator policy/rules overrides
+  remain an environment fact outside app-side LPE; the package now proves the fork itself does not ship one.
+  Verification closure: `scripts/verify-polkit-policy.py`, called from `scripts/verify.sh` and
+  `scripts/build-debian.sh`, enforces the source and package invariants above, and `scripts/verify.sh`
+  requires this ledger/requirements disposition.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows

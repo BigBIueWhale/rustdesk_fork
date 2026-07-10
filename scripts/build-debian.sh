@@ -30,7 +30,7 @@ export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$SOURCE_DATE_EPOCH_PIN}"
 IMAGE="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
 
 preflight() {
-    require_cmd docker git
+    require_cmd docker git python3 dpkg-deb
     assert_repo_state
     assert_clean_worktree
     assert_source_date_epoch
@@ -203,6 +203,7 @@ CFG
     deb="$(ls -1 "$REPO_ROOT"/rustdesk-*.deb 2>/dev/null | head -1 || true)"
     [ -n "$deb" ] && [ -f "$deb" ] || die "no rustdesk-*.deb produced — build.py did not emit a package (flutter build linux likely failed); see the build output above"
     cp "$deb" "$OUT_DIR/rustdesk-${profile}.deb"
+    python3 "$SCRIPT_DIR/verify-polkit-policy.py" --repo "$REPO_ROOT" --deb "$OUT_DIR/rustdesk-${profile}.deb"
     sha256sum "$OUT_DIR/rustdesk-${profile}.deb" | tee "$OUT_DIR/rustdesk-${profile}.deb.sha256"
 }
 

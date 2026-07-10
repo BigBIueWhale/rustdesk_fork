@@ -505,13 +505,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   closed: the LaunchDaemon no longer uses `/bin/sh -c`, its stdout/stderr paths no longer point under
   predictable `/tmp`, and its root service executable is no longer inside `/Applications/RustDesk.app`.
   `daemon.plist` runs `/Library/PrivilegedHelperTools/com.carriez.rustdesk_service` directly with
-  `/Library/Application Support/RustDesk` as the root-owned working directory. `install.scpt` creates only
-  root-owned log/support/root-preference directories and quoted root-owned launchd plists; it no longer
-  chowns a mutable app bundle into a root service path, no longer accepts an active-user home argument, and no
-  longer copies active-user `RustDesk.toml`/`RustDesk2.toml` into root preferences. Instead it requires the
-  helper directory and helper executable to be non-symlinks, already `root:wheel`, non-group/world-writable,
-  ACL-free, executable, and signed by the pinned Developer ID Team ID with the expected helper identifier, and it
-  re-verifies that helper after plist writes and immediately before `launchctl load`. The dormant privileged updater is deleted rather than retained: `update.scpt`,
+  `/Library/Application Support/RustDesk` as the root-owned working directory. `install.scpt` creates the
+  root-owned helper/log/support/root-preference directories and quoted root-owned launchd plists; it no longer
+  chowns a mutable app bundle into a root service path, no longer accepts an active-user home argument, no longer
+  copies active-user `RustDesk.toml`/`RustDesk2.toml` into root preferences, and no longer trusts a preexisting
+  PrivilegedHelperTools executable as the service authority. Instead the Rust install context resolves the bundled
+  `Contents/MacOS/service` helper beside the running app, passes that path to the privileged script, and the script
+  verifies that bundled helper as a non-symlink executable signed by the pinned Developer ID Team ID with the
+  expected helper identifier. It then installs that exact bundled helper through a root-owned temporary file into
+  `/Library/PrivilegedHelperTools/com.carriez.rustdesk_service` as `root:wheel` mode `0755`, clears ACLs, verifies
+  the temp and final helper signatures, byte-compares the final helper to the bundled source, requires the deployed
+  helper directory and helper executable to be non-symlinks, `root:wheel`, non-group/world-writable, ACL-free,
+  executable, and signed by the same requirement, and re-verifies the helper after plist writes and immediately
+  before `launchctl load`. `uninstall.scpt` unloads the daemon and removes the deployed helper plus any install-temp
+  helper before verifying absence. The dormant privileged updater is deleted rather than retained: `update.scpt`,
   `update_daemon_agent`, `.rustdeskupdate-*` helpers, and the macOS startup cleanup for the old update temp
   tree are absent. The Rust-side launcher path remains closed against caller-controlled `PATH`: local
   install/uninstall/asuser/reopen helpers invoke fixed system paths for `osascript`, `launchctl`, `open`,
@@ -523,11 +530,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `service` binary in the app bundle. Verification closure: `scripts/verify.sh` and
   `scripts/apple-conform-check.sh` assert the PrivilegedHelperTools daemon target and root-owned working
   directory, absence of `update.scpt`/`update_daemon_agent`/`.rustdeskupdate-*`, absence of app-bundle root
-  service execution, absence of active-user config import, helper root ownership/mode/ACL checks, helper
-  designated-requirement checks in the install script and `_service` IPC receiver, helper re-verification before
-  load, `/Library/Logs/RustDesk` daemon logs, root-owned directory setup, quoted plist writes, quoted privileged
-  plist paths, trusted PrivilegedHelperTools `_service` IPC identity, absence of the old same-directory `service`
-  binary exception, absolute local helper tool paths, and the `/dev/console`/`getpwuid_r` active-user lookup.
+  service execution, absence of active-user config import, bundled-helper resolution and osascript argument
+  passing, bundled-helper signature checks, root-owned temporary helper install, byte comparison against the
+  bundled source, deployed-helper root ownership/mode/ACL checks, helper designated-requirement checks in the
+  install script and `_service` IPC receiver, helper re-verification before load, uninstall removal of helper
+  leftovers, `/Library/Logs/RustDesk` daemon logs, root-owned directory setup, quoted plist writes, quoted
+  privileged plist paths, trusted PrivilegedHelperTools `_service` IPC identity, absence of the old same-directory
+  `service` binary exception, absolute local helper tool paths, and the `/dev/console`/`getpwuid_r` active-user
+  lookup.
 - **R-S11c-16 — Desktop service lifecycle completion authority — CLOSED 2026-07-10.**
   Platforms: Linux and macOS desktop service wrappers, plus the shared desktop service CLI dispatcher. Surfaces:
   `core_main` `--install-service` / `--uninstall-service`, Linux `systemctl` service lifecycle helpers, macOS

@@ -234,6 +234,7 @@ struct ServiceInstallContext {
     install_script_body: String,
     daemon_plist_body: String,
     agent_plist_body: String,
+    bundled_service_exec: PathBuf,
     daemon_plist_file: String,
     agent_plist_file: String,
 }
@@ -269,13 +270,41 @@ fn service_install_context(
         return None;
     };
 
+    let Some(bundled_service_exec) = bundled_service_executable() else {
+        return None;
+    };
+
     Some(ServiceInstallContext {
         install_script_body,
         daemon_plist_body,
         agent_plist_body,
+        bundled_service_exec,
         daemon_plist_file,
         agent_plist_file,
     })
+}
+
+fn bundled_service_executable() -> Option<PathBuf> {
+    let Ok(current_exe) = std::env::current_exe() else {
+        log::error!("Failed to resolve current macOS executable for service install");
+        return None;
+    };
+    let Some(current_exe_dir) = current_exe.parent() else {
+        log::error!(
+            "Failed to resolve current macOS executable directory: {}",
+            current_exe.display()
+        );
+        return None;
+    };
+    let bundled_service_exec = current_exe_dir.join("service");
+    if !bundled_service_exec.is_file() {
+        log::error!(
+            "Bundled macOS service helper is missing: {}",
+            bundled_service_exec.display()
+        );
+        return None;
+    }
+    Some(bundled_service_exec)
 }
 
 fn run_checked_command(command: &mut Command, description: &str) -> bool {
@@ -353,7 +382,8 @@ fn run_service_install(context: ServiceInstallContext) -> bool {
             .arg("-e")
             .arg(context.install_script_body)
             .arg(context.daemon_plist_body)
-            .arg(context.agent_plist_body),
+            .arg(context.agent_plist_body)
+            .arg(&context.bundled_service_exec),
         "run macOS service install AppleScript",
     ) {
         return false;

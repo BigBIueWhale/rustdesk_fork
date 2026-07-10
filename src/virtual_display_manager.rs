@@ -620,8 +620,10 @@ pub mod amyuni_idd {
 
         log::info!("Installing driver by SetupAPI");
         let mut reboot_required = false;
-        let _ =
-            unsafe { win_device::install_driver(&inf_path, HARDWARE_ID, &mut reboot_required)? };
+        unsafe { win_device::install_driver(&inf_path, HARDWARE_ID, &mut reboot_required)? };
+        if reboot_required {
+            bail!("SetupAPI driver install requires reboot before the driver can be used");
+        }
         *is_async = false;
         Ok(())
     }

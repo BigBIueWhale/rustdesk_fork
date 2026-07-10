@@ -1068,6 +1068,22 @@ grep -Fq 'R-S11d-24 — Windows stale RustDesk IDD install helper completion' HA
 if [ -n "$r_s11d24" ]; then echo "  FAIL R-S11d-24 Windows stale RustDesk IDD install helper completion:$r_s11d24"; rc=1; else
   echo "  ok  R-S11d-24 stale --install-idd rejects instead of invoking the inactive RustDesk IDD installer"; fi
 
+echo "== (3b-iii-a5d4f) Windows Amyuni SetupAPI install rejects reboot-required completion (R-S11d-25) =="
+r_s11d25=
+grep -Fq 'bail!("SetupAPI driver install requires reboot before the driver can be used");' src/virtual_display_manager.rs || r_s11d25="$r_s11d25 setupapi-install-reboot-required-not-fatal"
+if rg -U 'let _ =\s*unsafe \{ win_device::install_driver\(&inf_path, HARDWARE_ID, &mut reboot_required\)\? \};' src/virtual_display_manager.rs >/tmp/rd_verify_r_s11d25_setupapi_install.$$; then
+  r_s11d25="$r_s11d25 setupapi-install-result-discard-leftover"
+fi
+rm -f /tmp/rd_verify_r_s11d25_setupapi_install.$$
+setupapi_install_block=$(awk '/Installing driver by SetupAPI/,/\*is_async = false;/' src/virtual_display_manager.rs)
+printf '%s\n' "$setupapi_install_block" | grep -Fq 'unsafe { win_device::install_driver(&inf_path, HARDWARE_ID, &mut reboot_required)? };' || r_s11d25="$r_s11d25 setupapi-install-call-missing"
+printf '%s\n' "$setupapi_install_block" | grep -Fq 'if reboot_required {' || r_s11d25="$r_s11d25 setupapi-install-reboot-branch-missing"
+printf '%s\n' "$setupapi_install_block" | grep -Fq 'bail!("SetupAPI driver install requires reboot before the driver can be used");' || r_s11d25="$r_s11d25 setupapi-install-reboot-bail-outside-block"
+grep -Fq 'Windows Amyuni SetupAPI install reboot-required completion' requirements.html || r_s11d25="$r_s11d25 requirements-disposition-missing"
+grep -Fq 'R-S11d-25 — Windows Amyuni SetupAPI install reboot-required completion' HARDENING_STATUS.md || r_s11d25="$r_s11d25 hardening-ledger-missing"
+if [ -n "$r_s11d25" ]; then echo "  FAIL R-S11d-25 Windows Amyuni SetupAPI install reboot-required completion:$r_s11d25"; rc=1; else
+  echo "  ok  R-S11d-25 Amyuni direct SetupAPI install rejects reboot-required before using the driver"; fi
+
 echo "== (3b-iii-a5d5) Windows MSI service state and SAS policy are not persistent user-config side effects (R-S11d-16) =="
 r_s11d16=
 grep -Fq '<Custom Action="CreateStartService" Before="InstallFinalize" Condition="NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:create-service-condition-not-always-service"

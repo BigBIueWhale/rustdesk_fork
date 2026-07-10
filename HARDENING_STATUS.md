@@ -1054,6 +1054,17 @@ unreachable and a source/test/AST gate prevents reintroduction.
   exits nonzero without touching driver state. Verification closure: `scripts/verify.sh` asserts the reject-only
   `--install-idd` arm, nonzero exit, absence of `allow_err!` and `rustdesk_idd::install_update_driver()` from that
   arm, the active `IDD_IMPL_AMYUNI` selector, and this ledger/requirements disposition.
+- **R-S11d-25 — Windows Amyuni SetupAPI install reboot-required completion — CLOSED 2026-07-10.**
+  Platform: Windows runtime Amyuni virtual-display driver install fallback. Endpoint/action: direct SetupAPI
+  `win_device::install_driver()` path used when the AMD64 `deviceinstaller64.exe` helper is unavailable. Boundary:
+  driver install/update completion ↔ immediate virtual-display use. Attack surface closed: direct SetupAPI install
+  can no longer report success when `UpdateDriverForPlugAndPlayDevicesW` sets `reboot_required`, because that state
+  means the driver cannot be treated as immediately usable. The fallback now follows the same install/update policy
+  as the checked helper path from R-S11d-23: reboot-required install fails closed before `check_install_driver()`
+  returns and before monitor plug-in proceeds. Remove/cleanup reboot-required remains accepted under the cleanup
+  policy; this entry is only the install/update fallback. Verification closure: `scripts/verify.sh` asserts the
+  direct SetupAPI install call, the `reboot_required` branch, fatal install reboot-required error, absence of the old
+  discarded install result shape, and this ledger/requirements disposition.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's

@@ -2319,6 +2319,8 @@ echo "== (3c-ii-a) viewer peer media display/thread + queue bounds (Appendix C #
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::media_data_queue_is_bounded --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::native_opus_format_admission_pins_first_format --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::native_video_unsupported_guard_blocks_marked_format --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::peer_info_does_not_choose_saved_keyboard_mode --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::peer_info_does_not_rewrite_saved_keyboard_mode --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::io_loop::tests --color never
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config common::codec::tests::encoder_negotiation --color never
 grep -qF 'native_video_format_locally_unsupported(&lc.mark_unsupported, format)' src/client.rs ||
@@ -3449,10 +3451,24 @@ grep -q 'bound_peer_config_string(&opened.service_id)' src/client/io_loop.rs || 
 grep -qE 'set_option\(key, opened\.service_id\.clone' src/client/io_loop.rs && r_s15_missing="$r_s15_missing service_id-RAW-write-present"
 # the privacy-mode impl_key is allowlist-validated against the supported set before the insert
 grep -q 'get_supported_privacy_mode_impl()' src/client/io_loop.rs || r_s15_missing="$r_s15_missing impl_key-unvalidated"
+# peer-controlled version/platform may determine the effective runtime keyboard mode, but must not
+# select or rewrite the operator-owned persisted PeerConfig.keyboard_mode.
+r_s15_peer_info_body="$(sed -n '/pub fn handle_peer_info(&mut self, pi: &PeerInfo)/,/pub fn get_remote_dir/p' src/client.rs)"
+printf '%s\n' "$r_s15_peer_info_body" | grep -qE 'keyboard_mode|get_supported_keyboard_modes|is_keyboard_mode_supported' &&
+  r_s15_missing="$r_s15_missing peer-info-keyboard-mode-persistence"
+grep -q 'peer_info_does_not_choose_saved_keyboard_mode' src/client.rs || r_s15_missing="$r_s15_missing keyboard-mode-empty-regression-test"
+grep -q 'peer_info_does_not_rewrite_saved_keyboard_mode' src/client.rs || r_s15_missing="$r_s15_missing keyboard-mode-existing-regression-test"
+grep -RIn 'checkDesktopKeyboardMode' flutter/lib >/tmp/rd_verify_r_s15_keyboard_mode.$$ &&
+  r_s15_missing="$r_s15_missing flutter-auto-keyboard-mode-persist-helper"
+rm -f /tmp/rd_verify_r_s15_keyboard_mode.$$
+r_s15_flutter_peer_info="$(sed -n '/handlePeerInfo(Map<String, dynamic> evt/,/notifyListeners()/p' flutter/lib/models/model.dart)"
+printf '%s\n' "$r_s15_flutter_peer_info" | grep -qE 'sessionSetKeyboardMode|checkDesktopKeyboardMode' &&
+  r_s15_missing="$r_s15_missing flutter-peer-info-keyboard-mode-persistence"
+grep -q 'isInputSourceFlutter && isDesktop' flutter/lib/models/input_model.dart || r_s15_missing="$r_s15_missing runtime-flutter-input-fallback"
 if [ -n "$r_s15_missing" ]; then
   echo "  FAIL R-S15: peer-config-write allowlist gap:$r_s15_missing"; rc=1
 else
-  echo "  ok  R-S15 viewer PeerConfig writes routed (PeerInfo+service_id bounded; impl_key validated vs supported set)"
+  echo "  ok  R-S15 viewer PeerConfig writes routed (PeerInfo+service_id bounded; impl_key validated vs supported set; peer keyboard-mode compatibility runtime-only)"
 fi
 # R-A2 (clipboard-file capability parity): the inbound Cliprdr clipboard-FILE arm (connection.rs ~2311)
 # drives unix_file_clip::serve_clip_messages — the FUSE context + host-clipboard file:// injection. It

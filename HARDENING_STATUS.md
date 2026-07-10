@@ -136,6 +136,20 @@ Accepted low-severity residual (no host action/capability): the video-QoS metada
 re-prove at this HEAD (a background build loop is handling it; the connection.rs/video_service.rs changes
 are in all builds, and the Windows/Kotlin edges are validated by the win-exe/apk builds).
 
+**R-S15 — viewer PeerConfig write authority — status: CLOSED / GATED (2026-07-10).**
+Platforms: all viewer-capable targets. Endpoint/action: post-PAKE peer messages that reach the viewer's
+per-peer config store. Boundary: password-correct but hostile peer ↔ operator-owned persisted viewer
+preferences. Attack surface closed: the already gated R-S15 writes still bound peer identity strings,
+bound `TerminalResponse.service_id`, and accept `privacy-mode-impl-key` only from the compile-time supported
+implementation set; the remaining keyboard-mode edge is now closed too. `PeerInfo.version`/`platform` may
+still determine the effective runtime compatibility fallback, but neither `LoginConfigHandler::handle_peer_info`
+nor the Flutter peer-info flow persists a keyboard-mode value chosen from peer metadata. The saved
+`PeerConfig.keyboard_mode` is changed only by an explicit operator session setting, while Flutter input-source
+compatibility is applied as a runtime input-model fallback. Verification closure: `src/client.rs` regression tests
+assert peer info neither chooses an empty saved keyboard mode nor rewrites an existing saved keyboard mode, and
+`scripts/verify.sh` asserts the Rust peer-info body, Dart peer-info path, removed auto-persist helper, runtime
+fallback, and the existing R-S15 peer identity/service-id/privacy implementation gates.
+
 **R-S11b/R-S11c — service-owned IPC authority — status: CLOSED / GATED (2026-07-09).**
 The 2026-07-08 service-boundary audit supersedes the earlier narrow "IPC transport is local and
 write-allowlisted" conclusion for installed-service mode. The issue is not socket locality; it is authority

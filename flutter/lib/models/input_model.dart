@@ -591,6 +591,17 @@ class InputModel {
   updateKeyboardMode() async {
     // * Currently mobile does not enable map mode
     if (isDesktop || isWebDesktop) {
+      if (isInputSourceFlutter && isDesktop) {
+        for (final mode in [kKeyMapMode, kKeyLegacyMode]) {
+          if (bind.sessionIsKeyboardModeSupported(
+              sessionId: sessionId, mode: mode)) {
+            keyboardMode = mode;
+            return;
+          }
+        }
+        keyboardMode = kKeyLegacyMode;
+        return;
+      }
       keyboardMode = await bind.sessionGetKeyboardMode(sessionId: sessionId) ??
           kKeyLegacyMode;
     }

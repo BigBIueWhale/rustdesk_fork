@@ -17,7 +17,6 @@ use std::{
     collections::HashMap,
     ffi::c_void,
     ops::Deref,
-    str::FromStr,
     sync::{
         mpsc::{self, RecvTimeoutError},
         Arc, Mutex, RwLock,
@@ -28,7 +27,6 @@ use uuid::Uuid;
 use crate::{
     check_port,
     common::input::{MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_TYPE_DOWN, MOUSE_TYPE_UP},
-    is_keyboard_mode_supported,
     ui_interface::{get_builtin_option, resolve_avatar_url, use_texture_render},
     ui_session_interface::{InvokeUiSession, Session},
 };
@@ -2083,24 +2081,6 @@ impl LoginConfigHandler {
                 crate::flutter::push_global_event(crate::flutter::APP_TYPE_MAIN, evt);
             }
         }
-        if config.keyboard_mode.is_empty() {
-            if is_keyboard_mode_supported(
-                &KeyboardMode::Map,
-                get_version_number(&pi.version),
-                &pi.platform,
-            ) {
-                config.keyboard_mode = KeyboardMode::Map.to_string();
-            } else {
-                config.keyboard_mode = KeyboardMode::Legacy.to_string();
-            }
-        } else {
-            let keyboard_modes =
-                crate::get_supported_keyboard_modes(get_version_number(&pi.version), &pi.platform);
-            let current_mode = &KeyboardMode::from_str(&config.keyboard_mode).unwrap_or_default();
-            if !keyboard_modes.contains(current_mode) {
-                config.keyboard_mode = KeyboardMode::Legacy.to_string();
-            }
-        }
         // no matter if change, for update file time
         self.save_config(config);
         self.supported_encoding = pi.encoding.clone().unwrap_or_default();
@@ -3259,6 +3239,40 @@ mod tests {
         h.remember = false;
         h.handle_peer_info(&PeerInfo::new());
         assert!(PeerConfig::load(id).password_prs.is_empty());
+    }
+
+    #[test]
+    fn peer_info_does_not_choose_saved_keyboard_mode() {
+        isolate();
+        let id = "r-s15-keyboard-mode-empty";
+        let mut h = handler(id);
+        let mut pi = PeerInfo::new();
+        pi.version = "1.2.0".to_owned();
+        pi.platform = hbb_common::whoami::Platform::Windows.to_string();
+        h.handle_peer_info(&pi);
+        assert!(
+            PeerConfig::load(id).keyboard_mode.is_empty(),
+            "peer metadata may influence runtime compatibility, not persisted keyboard_mode"
+        );
+    }
+
+    #[test]
+    fn peer_info_does_not_rewrite_saved_keyboard_mode() {
+        isolate();
+        let id = "r-s15-keyboard-mode-existing";
+        let mut pre = PeerConfig::default();
+        pre.keyboard_mode = KeyboardMode::Translate.to_string();
+        pre.store(id);
+        let mut h = handler(id);
+        let mut pi = PeerInfo::new();
+        pi.version = "1.1.0".to_owned();
+        pi.platform = hbb_common::whoami::Platform::Android.to_string();
+        h.handle_peer_info(&pi);
+        assert_eq!(
+            PeerConfig::load(id).keyboard_mode,
+            KeyboardMode::Translate.to_string(),
+            "peer metadata must not rewrite the operator-owned keyboard_mode preference"
+        );
     }
 
     #[test]

@@ -907,8 +907,8 @@ class FfiModel with ChangeNotifier {
     // Users must manually enable it via toolbar or keyboard shortcut (Ctrl+Alt+Shift+M).
     //
     // For desktop/webDesktop, keyboard mode initialization is handled later by
-    // checkDesktopKeyboardMode() which may change the mode if not supported,
-    // followed by updateKeyboardMode() to sync InputModel.keyboardMode.
+    // updateKeyboardMode(), which computes a runtime compatibility fallback
+    // without changing the saved per-peer preference.
     // For mobile, updateKeyboardMode() is currently a no-op (only executes on desktop/web),
     // but we call it here for consistency and future-proofing.
     if (isMobile) {
@@ -1015,10 +1015,6 @@ class FfiModel with ChangeNotifier {
     stateGlobal.resetLastResolutionGroupValues(peerId);
 
     if (isDesktop || isWebDesktop) {
-      // checkDesktopKeyboardMode may change the keyboard mode if the current
-      // mode is not supported. Re-sync InputModel.keyboardMode afterwards.
-      // Note: updateKeyboardMode() is a no-op on mobile (early-returns).
-      await checkDesktopKeyboardMode();
       await parent.target?.inputModel.updateKeyboardMode();
     }
 
@@ -1026,37 +1022,6 @@ class FfiModel with ChangeNotifier {
 
     if (!isCache) {
       tryUseAllMyDisplaysForTheRemoteSession(peerId);
-    }
-  }
-
-  checkDesktopKeyboardMode() async {
-    if (isInputSourceFlutter) {
-      // Local side, flutter keyboard input source
-      // Currently only map mode is supported, legacy mode is used for compatibility.
-      for (final mode in [kKeyMapMode, kKeyLegacyMode]) {
-        if (bind.sessionIsKeyboardModeSupported(
-            sessionId: sessionId, mode: mode)) {
-          await bind.sessionSetKeyboardMode(sessionId: sessionId, value: mode);
-          break;
-        }
-      }
-    } else {
-      final curMode = await bind.sessionGetKeyboardMode(sessionId: sessionId);
-      if (curMode != null) {
-        if (bind.sessionIsKeyboardModeSupported(
-            sessionId: sessionId, mode: curMode)) {
-          return;
-        }
-      }
-
-      // If current keyboard mode is not supported, change to another one.
-      for (final mode in [kKeyMapMode, kKeyTranslateMode, kKeyLegacyMode]) {
-        if (bind.sessionIsKeyboardModeSupported(
-            sessionId: sessionId, mode: mode)) {
-          bind.sessionSetKeyboardMode(sessionId: sessionId, value: mode);
-          break;
-        }
-      }
     }
   }
 

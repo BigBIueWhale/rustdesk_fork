@@ -102,7 +102,6 @@ extern "C" size_t MacAuthorizationExternalFormLength() {
     return sizeof(AuthorizationExternalForm);
 }
 
-static const size_t kRustDeskRequestDigestLength = 32;
 static const char *RustDeskSetUnattendedPasswordRight() {
     return "com.carriez.RustDesk.set-unattended-password";
 }
@@ -154,26 +153,13 @@ static bool EnsureRustDeskSetUnattendedPasswordRight() {
     return status == errAuthorizationSuccess;
 }
 
-static bool RequestDigestIsValid(const uint8_t *requestDigest, size_t requestDigestLen) {
-    return requestDigest != NULL && requestDigestLen == kRustDeskRequestDigestLength;
-}
-
-static void RequestPromptForDigest(const uint8_t *requestDigest, char *buffer, size_t len) {
-    snprintf(buffer, len,
-             "Authorize RustDesk unattended password change request %02x%02x%02x%02x",
-             requestDigest[0], requestDigest[1], requestDigest[2], requestDigest[3]);
-}
-
 extern "C" bool MacEnsureServiceOwnedUnattendedPasswordAuthorizationRight() {
     return EnsureRustDeskSetUnattendedPasswordRight();
 }
 
-extern "C" bool MacCreateAdminAuthorizationExternalFormForRequest(const uint8_t *requestDigest,
-                                                                  size_t requestDigestLen,
-                                                                  uint8_t *buffer,
-                                                                  size_t len) {
-    if (!RequestDigestIsValid(requestDigest, requestDigestLen) ||
-        buffer == NULL || len != sizeof(AuthorizationExternalForm)) {
+extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm(uint8_t *buffer,
+                                                                                 size_t len) {
+    if (buffer == NULL || len != sizeof(AuthorizationExternalForm)) {
         return false;
     }
     if (!RustDeskSetUnattendedPasswordRightExists()) {
@@ -189,15 +175,11 @@ extern "C" bool MacCreateAdminAuthorizationExternalFormForRequest(const uint8_t 
 
     AuthorizationItem authItem = {RustDeskSetUnattendedPasswordRight(), 0, NULL, 0};
     AuthorizationRights authRights = {1, &authItem};
-    char prompt[96];
-    RequestPromptForDigest(requestDigest, prompt, sizeof(prompt));
-    AuthorizationItem envItem = {kAuthorizationEnvironmentPrompt, (UInt32)strlen(prompt), prompt, 0};
-    AuthorizationEnvironment environment = {1, &envItem};
     AuthorizationFlags flags = kAuthorizationFlagDefaults |
                                 kAuthorizationFlagInteractionAllowed |
                                 kAuthorizationFlagPreAuthorize |
                                 kAuthorizationFlagExtendRights;
-    status = AuthorizationCopyRights(authRef, &authRights, &environment, flags, NULL);
+    status = AuthorizationCopyRights(authRef, &authRights, kAuthorizationEmptyEnvironment, flags, NULL);
     if (status == errAuthorizationSuccess) {
         AuthorizationExternalForm externalForm;
         status = AuthorizationMakeExternalForm(authRef, &externalForm);
@@ -210,12 +192,9 @@ extern "C" bool MacCreateAdminAuthorizationExternalFormForRequest(const uint8_t 
     return status == errAuthorizationSuccess;
 }
 
-extern "C" bool MacVerifyAdminAuthorizationExternalFormForRequest(const uint8_t *buffer,
-                                                                  size_t len,
-                                                                  const uint8_t *requestDigest,
-                                                                  size_t requestDigestLen) {
-    if (buffer == NULL || len != sizeof(AuthorizationExternalForm) ||
-        !RequestDigestIsValid(requestDigest, requestDigestLen)) {
+extern "C" bool MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm(const uint8_t *buffer,
+                                                                                 size_t len) {
+    if (buffer == NULL || len != sizeof(AuthorizationExternalForm)) {
         return false;
     }
     if (!EnsureRustDeskSetUnattendedPasswordRight()) {

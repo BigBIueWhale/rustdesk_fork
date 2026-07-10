@@ -65,17 +65,13 @@ extern "C" {
     fn MacCheckAdminAuthorization() -> BOOL;
     fn MacAuthorizationExternalFormLength() -> usize;
     fn MacEnsureServiceOwnedUnattendedPasswordAuthorizationRight() -> BOOL;
-    fn MacCreateAdminAuthorizationExternalFormForRequest(
-        request_digest: *const u8,
-        request_digest_len: usize,
+    fn MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm(
         buffer: *mut u8,
         len: usize,
     ) -> BOOL;
-    fn MacVerifyAdminAuthorizationExternalFormForRequest(
+    fn MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm(
         buffer: *const u8,
         len: usize,
-        request_digest: *const u8,
-        request_digest_len: usize,
     ) -> BOOL;
     fn MacGetModeNum(display: u32, numModes: *mut u32) -> BOOL;
     fn MacGetModes(
@@ -928,29 +924,15 @@ fn authorization_external_form_len() -> ResultType<usize> {
     Ok(len)
 }
 
-fn validate_service_owned_unattended_password_request_digest(request_digest: &[u8]) -> bool {
-    request_digest.len() == 32
-}
-
 pub fn ensure_service_owned_unattended_password_authorization_right() -> bool {
     unsafe { MacEnsureServiceOwnedUnattendedPasswordAuthorizationRight() == YES }
 }
 
-pub fn service_owned_unattended_password_authorization(
-    request_digest: &[u8],
-) -> ResultType<Vec<u8>> {
-    if !validate_service_owned_unattended_password_request_digest(request_digest) {
-        bail!(
-            "Unexpected macOS service-owned password request digest length: {}",
-            request_digest.len()
-        );
-    }
+pub fn service_owned_unattended_password_authorization() -> ResultType<Vec<u8>> {
     let len = authorization_external_form_len()?;
     let mut authorization = vec![0u8; len];
     if unsafe {
-        MacCreateAdminAuthorizationExternalFormForRequest(
-            request_digest.as_ptr(),
-            request_digest.len(),
+        MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm(
             authorization.as_mut_ptr(),
             len,
         )
@@ -962,17 +944,7 @@ pub fn service_owned_unattended_password_authorization(
     }
 }
 
-pub fn verify_service_owned_unattended_password_authorization(
-    authorization: &[u8],
-    request_digest: &[u8],
-) -> bool {
-    if !validate_service_owned_unattended_password_request_digest(request_digest) {
-        log::warn!(
-            "Rejected macOS service-owned password authorization with unexpected request digest length: {}",
-            request_digest.len()
-        );
-        return false;
-    }
+pub fn verify_service_owned_unattended_password_authorization(authorization: &[u8]) -> bool {
     let Ok(expected_len) = authorization_external_form_len() else {
         return false;
     };
@@ -985,11 +957,9 @@ pub fn verify_service_owned_unattended_password_authorization(
         return false;
     }
     unsafe {
-        MacVerifyAdminAuthorizationExternalFormForRequest(
+        MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm(
             authorization.as_ptr(),
             authorization.len(),
-            request_digest.as_ptr(),
-            request_digest.len(),
         ) == YES
     }
 }

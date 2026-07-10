@@ -212,9 +212,26 @@ grep -q 'macos_store_service_owned_password_request' "$REPO/src/ipc.rs" || r_s11
 grep -q 'macos_take_service_owned_password_request' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-finish-consume-missing"
 grep -q 'peer_pid()' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-peer-pid-missing"
 grep -q 'peer_uid()' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-peer-uid-missing"
-grep -q 'macos_service_owned_unattended_password_digest' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-request-digest-missing"
-grep -q 'MACOS_SERVICE_OWNED_PASSWORD_REQUEST_CONTEXT' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-digest-context-missing"
-grep -q 'service_owned_unattended_password_authorization(&password_digest)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-ui-auth-not-digest-bound"
+grep -q 'BeginMacosServiceOwnedUnattendedPasswordChange(String)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-begin-does-not-carry-value"
+grep -q 'password: Option<String>' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-pending-value-missing"
+grep -q 'fn take_password(&mut self) -> ResultType<String>' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-pending-value-not-take-only"
+grep -q 'impl Drop for MacosServiceOwnedPasswordRequest' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-pending-value-not-zeroed"
+grep -q 'MACOS_SERVICE_OWNED_PASSWORD_MAX_BYTES' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-value-cap-missing"
+grep -q 'password.len() > MACOS_SERVICE_OWNED_PASSWORD_MAX_BYTES' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-value-cap-not-enforced"
+grep -q 'fn macos_schedule_service_owned_password_request_expiry' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-expiry-task-missing"
+grep -q 'macos_schedule_service_owned_password_request_expiry(request_id.clone())' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-expiry-task-not-armed"
+grep -q 'tokio::time::sleep(MACOS_SERVICE_OWNED_PASSWORD_REQUEST_TTL).await' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-expiry-task-not-timed"
+grep -q 'macos_store_service_owned_password_request(stream, password)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-begin-not-storing-value"
+grep -q 'commit_service_owned_unattended_password_change(password).await' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-finish-not-committing-stored-value"
+grep -q 'service_owned_unattended_password_authorization()' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-ui-auth-not-action-only"
+grep -q 'authorization: Vec::new()' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-ui-auth-failure-not-cancelled"
+macos_finish_variant=$(awk '/FinishMacosServiceOwnedUnattendedPasswordChange \{/,/^    \},/' "$REPO/src/ipc.rs")
+if echo "$macos_finish_variant" | grep -q 'password:'; then
+  r_s11b2="$r_s11b2 macos-service-password-finish-still-carries-value"
+fi
+if grep -qE 'macos_service_owned_unattended_password_digest|MACOS_SERVICE_OWNED_PASSWORD_REQUEST_CONTEXT|password_digest' "$REPO/src/ipc.rs"; then
+  r_s11b2="$r_s11b2 macos-service-password-stale-digest-binding"
+fi
 grep -q 'macos_service_owned_password_authorization_right_is_ready' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-right-readiness-gate-missing"
 grep -q 'MacEnsureServiceOwnedUnattendedPasswordAuthorizationRight' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-setup-missing"
 grep -q 'AuthorizationRightSet(NULL' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-set-missing"
@@ -225,25 +242,28 @@ grep -q 'CFSTR("timeout")' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 ma
 grep -q 'const int32_t timeout = 0' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-timeout-not-zero"
 grep -q 'CFSTR("group")' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-group-key-missing"
 grep -q 'CFSTR("admin")' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-admin-group-missing"
-grep -q 'MacCreateAdminAuthorizationExternalFormForRequest' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-auth-create-missing"
+grep -q 'MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-auth-create-missing"
 grep -q 'AuthorizationMakeExternalForm' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-externalize-missing"
-grep -q 'MacVerifyAdminAuthorizationExternalFormForRequest' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-auth-verify-missing"
+grep -q 'MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-auth-verify-missing"
 grep -q 'AuthorizationCreateFromExternalForm' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-internalize-missing"
 grep -q 'kAuthorizationFlagDefaults, NULL' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-daemon-verification-may-interact"
 grep -q 'RustDeskSetUnattendedPasswordRight' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-custom-right-missing"
 grep -q 'com.carriez.RustDesk.set-unattended-password' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-name-missing"
-grep -q 'RequestDigestIsValid' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-digest-validation-missing"
-grep -q 'kAuthorizationEnvironmentPrompt' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-digest-prompt-missing"
-grep -q 'request_digest: \&\[u8\]' "$REPO/src/platform/macos.rs" || r_s11b2="$r_s11b2 macos-service-password-rust-api-not-digest-bound"
+if grep -qE 'RequestDigestIsValid|kAuthorizationEnvironmentPrompt|MacCreateAdminAuthorizationExternalFormForRequest|MacVerifyAdminAuthorizationExternalFormForRequest' "$REPO/src/platform/macos.mm"; then
+  r_s11b2="$r_s11b2 macos-service-password-stale-digest-native-auth"
+fi
+if grep -q 'request_digest' "$REPO/src/platform/macos.rs"; then
+  r_s11b2="$r_s11b2 macos-service-password-rust-api-still-digest-bound"
+fi
 grep -q 'ensure_service_owned_unattended_password_authorization_right' "$REPO/src/platform/macos.rs" || r_s11b2="$r_s11b2 macos-service-password-rust-right-setup-missing"
-grep -q 'MacCreateAdminAuthorizationExternalFormForRequest' "$REPO/src/platform/macos.rs" || r_s11b2="$r_s11b2 macos-service-password-rust-auth-create-missing"
-grep -q 'MacVerifyAdminAuthorizationExternalFormForRequest' "$REPO/src/platform/macos.rs" || r_s11b2="$r_s11b2 macos-service-password-rust-auth-verify-missing"
+grep -q 'MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm' "$REPO/src/platform/macos.rs" || r_s11b2="$r_s11b2 macos-service-password-rust-auth-create-missing"
+grep -q 'MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm' "$REPO/src/platform/macos.rs" || r_s11b2="$r_s11b2 macos-service-password-rust-auth-verify-missing"
 grep -q 'handle_macos_service_owned_unattended_password_begin' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-begin-handler-missing"
 grep -q 'handle_macos_service_owned_unattended_password_finish' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-finish-handler-missing"
 grep -q 'crate::platform::is_installed() && crate::platform::is_installed_daemon(false)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-install-state-gate-missing"
 grep -q 'Self::RootUnixPeer => true' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-commit-not-root-gated"
-macos_auth_create_block=$(awk '/MacCreateAdminAuthorizationExternalFormForRequest/,/^}/' "$REPO/src/platform/macos.mm")
-macos_auth_verify_block=$(awk '/MacVerifyAdminAuthorizationExternalFormForRequest/,/^}/' "$REPO/src/platform/macos.mm")
+macos_auth_create_block=$(awk '/MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm/,/^}/' "$REPO/src/platform/macos.mm")
+macos_auth_verify_block=$(awk '/MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm/,/^}/' "$REPO/src/platform/macos.mm")
 if echo "$macos_auth_create_block$macos_auth_verify_block" | grep -q 'kAuthorizationRightExecute'; then
   r_s11b2="$r_s11b2 macos-service-password-uses-generic-execute-right"
 fi
@@ -253,11 +273,8 @@ fi
 if grep -q 'RequestMacosServiceOwnedUnattendedPasswordChange' "$REPO/src/ipc.rs"; then
   r_s11b2="$r_s11b2 macos-service-password-old-single-message-request-present"
 fi
-if grep -q 'extern "C" bool MacCreateAdminAuthorizationExternalForm(' "$REPO/src/platform/macos.mm"; then
-  r_s11b2="$r_s11b2 macos-service-password-old-auth-create-present"
-fi
-if grep -q 'extern "C" bool MacVerifyAdminAuthorizationExternalForm(' "$REPO/src/platform/macos.mm"; then
-  r_s11b2="$r_s11b2 macos-service-password-old-auth-verify-present"
+if grep -qE 'extern "C" bool MacCreateAdminAuthorizationExternalForm\(|extern "C" bool MacVerifyAdminAuthorizationExternalForm\(' "$REPO/src/platform/macos.mm"; then
+  r_s11b2="$r_s11b2 macos-service-password-old-auth-present"
 fi
 grep -q '"permanent-password" => authority.allows_main_channel_user_owned_password_write()' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 password-still-generic-config-key"
 grep -q '"permanent-password" => authority.allows_main_channel_password_write()' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 password-still-generic-config-key"
@@ -292,7 +309,7 @@ if [ -n "$r_s11b2" ]; then
   echo "  FAIL R-S11b-2a/R-S11b-3a macOS service-owned IPC closure:$r_s11b2"
   rc=1
 else
-  note "ok  R-S11b-2/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password config writes are absent; typed user-owned password/options writes are denied by source policy; trust-anchor/proxy credential option keys are pinned empty; trusted-device/key-confirmation writers are absent; macOS service-owned password provisioning uses one-shot peer-bound requests, a nonshared timeout-zero custom Authorization Services right, request-digest confirmation, noninteractive external-form verification, and root-service commit; whole-config IPC is absent; storage/salt sync is denied"
+  note "ok  R-S11b-2/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password config writes are absent; typed user-owned password/options writes are denied by source policy; trust-anchor/proxy credential option keys are pinned empty; trusted-device/key-confirmation writers are absent; macOS service-owned password provisioning stores the proposed value in a one-shot same-peer request, finishes with authorization only, uses a nonshared timeout-zero custom Authorization Services right, verifies the external form noninteractively, and commits only the stored value through the root service; whole-config IPC is absent; storage/salt sync is denied"
 fi
 
 echo "== (2b-iii) R-S11c-4a macOS CM pre-login filesystem IPC rejected =="

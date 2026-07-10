@@ -42,9 +42,7 @@ use winapi::{
     um::{
         errhandlingapi::GetLastError,
         handleapi::{CloseHandle, INVALID_HANDLE_VALUE},
-        libloaderapi::{
-            GetProcAddress, LoadLibraryA, LoadLibraryExA, LOAD_LIBRARY_SEARCH_SYSTEM32,
-        },
+        libloaderapi::{GetProcAddress, LOAD_LIBRARY_SEARCH_SYSTEM32},
         minwinbase::STILL_ACTIVE,
         processthreadsapi::{
             GetCurrentProcess, GetCurrentProcessId, GetExitCodeProcess, OpenProcess,
@@ -58,8 +56,8 @@ use winapi::{
         winnt::{
             SecurityImpersonation, TokenElevation, TokenImpersonation, TokenType,
             ES_AWAYMODE_REQUIRED, ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED,
-            FILE_ATTRIBUTE_TEMPORARY, FILE_SHARE_READ, HANDLE, PROCESS_ALL_ACCESS,
-            PROCESS_QUERY_LIMITED_INFORMATION, TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_TYPE,
+            FILE_ATTRIBUTE_TEMPORARY, FILE_SHARE_READ, HANDLE, PROCESS_QUERY_LIMITED_INFORMATION,
+            TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_TYPE,
         },
         winreg::HKEY_CURRENT_USER,
         winuser::*,
@@ -4231,94 +4229,6 @@ pub fn is_x64() -> bool {
         GetNativeSystemInfo(&mut sys_info as _);
     }
     unsafe { sys_info.u.s().wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 }
-}
-
-pub fn try_kill_rustdesk_main_window_process() -> ResultType<()> {
-    // Kill rustdesk.exe without extra arg, should only be called by --server
-    // We can find the exact process which occupies the ipc, see more from https://github.com/winsiderss/systeminformer
-    let app_name = crate::get_app_name().to_lowercase();
-    log::info!("try kill main window process");
-    use hbb_common::sysinfo::System;
-    let mut sys = System::new();
-    sys.refresh_processes();
-    let my_uid = sys
-        .process((std::process::id() as usize).into())
-        .map(|x| x.user_id())
-        .unwrap_or_default();
-    let my_pid = std::process::id();
-    if app_name.is_empty() {
-        bail!("app name is empty");
-    }
-    for (_, p) in sys.processes().iter() {
-        let p_name = p.name().to_lowercase();
-        // name equal
-        if !(p_name == app_name || p_name == app_name.clone() + ".exe") {
-            continue;
-        }
-        // arg more than 1
-        if p.cmd().len() < 1 {
-            continue;
-        }
-        // first arg contain app name
-        if !p.cmd()[0].to_lowercase().contains(&p_name) {
-            continue;
-        }
-        // only one arg or the second arg is empty uni link
-        let is_empty_uni = p.cmd().len() == 2 && crate::common::is_empty_uni_link(&p.cmd()[1]);
-        if !(p.cmd().len() == 1 || is_empty_uni) {
-            continue;
-        }
-        // skip self
-        if p.pid().as_u32() == my_pid {
-            continue;
-        }
-        // because we call it with --server, so we can check user_id, remove this if call it with user process
-        if p.user_id() == my_uid {
-            log::info!("user id equal, continue");
-            continue;
-        }
-        log::info!("try kill process: {:?}, pid = {:?}", p.cmd(), p.pid());
-        nt_terminate_process(p.pid().as_u32())?;
-        log::info!("kill process success: {:?}, pid = {:?}", p.cmd(), p.pid());
-        return Ok(());
-    }
-    bail!("failed to find rustdesk main window process");
-}
-
-fn nt_terminate_process(process_id: DWORD) -> ResultType<()> {
-    type NtTerminateProcess = unsafe extern "system" fn(HANDLE, DWORD) -> DWORD;
-    unsafe {
-        let h_module = if is_win_10_or_greater() {
-            LoadLibraryExA(
-                CString::new("ntdll.dll")?.as_ptr(),
-                std::ptr::null_mut(),
-                LOAD_LIBRARY_SEARCH_SYSTEM32,
-            )
-        } else {
-            LoadLibraryA(CString::new("ntdll.dll")?.as_ptr())
-        };
-        if !h_module.is_null() {
-            let f_nt_terminate_process: NtTerminateProcess = std::mem::transmute(GetProcAddress(
-                h_module,
-                CString::new("NtTerminateProcess")?.as_ptr(),
-            ));
-            let h_token = OpenProcess(PROCESS_ALL_ACCESS, 0, process_id);
-            if !h_token.is_null() {
-                if f_nt_terminate_process(h_token, 1) == 0 {
-                    log::info!("terminate process {} success", process_id);
-                    CloseHandle(h_token);
-                    return Ok(());
-                } else {
-                    CloseHandle(h_token);
-                    bail!("NtTerminateProcess {} failed", process_id);
-                }
-            } else {
-                bail!("OpenProcess {} failed", process_id);
-            }
-        } else {
-            bail!("Failed to load ntdll.dll");
-        }
-    }
 }
 
 pub fn try_set_window_foreground(window: HWND) {

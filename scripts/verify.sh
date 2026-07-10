@@ -1243,6 +1243,10 @@ windows_runtime_process_blocks=$(
 if echo "$windows_runtime_process_blocks" | grep -Eq 'Command::new\("cmd"\)|tasklist|findstr|taskkill /F /IM|/c"\)|/C"'; then
   r_s11d3="$r_s11d3 runtime-process-shell-regressed"
 fi
+if grep -RInE 'stop_main_window_process|try_kill_rustdesk_main_window_process|NtTerminateProcess|PROCESS_ALL_ACCESS|ipc is occupied by another process, try kill it' src/server.rs src/platform/windows.rs >/tmp/rd_verify_r_s11d3_process_kill.$$; then
+  r_s11d3="$r_s11d3 main-window-process-kill-fallback-leftover:$(cat /tmp/rd_verify_r_s11d3_process_kill.$$)"
+fi
+rm -f /tmp/rd_verify_r_s11d3_process_kill.$$
 if grep -RInE 'Command::new\("cmd"\)|tasklist \| findstr consent\.exe' src/platform/windows.rs >/tmp/rd_verify_r_s11d3.$$; then
   cat /tmp/rd_verify_r_s11d3.$$
   rm -f /tmp/rd_verify_r_s11d3.$$
@@ -1251,7 +1255,7 @@ else
   rm -f /tmp/rd_verify_r_s11d3.$$
 fi
 if [ -n "$r_s11d3" ]; then echo "  FAIL R-S11d-3 Windows runtime process command provenance:$r_s11d3"; rc=1; else
-  echo "  ok  R-S11d-3 Windows service-adjacent process probes use ToolHelp/OpenProcess/TerminateProcess, not cmd tasklist/taskkill"; fi
+  echo "  ok  R-S11d-3 Windows service-adjacent process probes use ToolHelp/OpenProcess/TerminateProcess, not cmd tasklist/taskkill; IPC bind failure has no process-kill fallback"; fi
 
 echo "== (3b-iii-a6b) Windows dormant diagnostic message-box side effects are absent (R-S11d-28) =="
 r_s11d28=

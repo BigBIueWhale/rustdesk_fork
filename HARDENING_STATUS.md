@@ -790,10 +790,13 @@ unreachable and a source/test/AST gate prevents reintroduction.
   shell `taskkill`; they enumerate exact image names with a ToolHelp process snapshot, close snapshot/process
   handles through a local RAII guard, and terminate stale broker processes through `OpenProcess(PROCESS_TERMINATE)`
   plus `TerminateProcess`. Cleanup remains best-effort for service startup, but enumeration and per-process
-  failures are logged instead of hidden behind a spawned shell. Verification closure: `scripts/verify.sh` asserts
-  the exact-name ToolHelp enumerator, RAII handle guard, native termination helper, the `consent.exe` and broker
-  call sites, absence of shell probes in the runtime blocks, absence of `Command::new("cmd")` in
-  `src/platform/windows.rs`, and this ledger/requirements disposition.
+  failures are logged instead of hidden behind a spawned shell. The service-start IPC bind-failure path no longer
+  tries to close an unknown IPC occupant or terminate a basename/argv-matched "main window" process through
+  `NtTerminateProcess` / `PROCESS_ALL_ACCESS`; it reports the occupied IPC endpoint and exits fail-closed.
+  Verification closure: `scripts/verify.sh` asserts the exact-name ToolHelp enumerator, RAII handle guard, native
+  termination helper, the `consent.exe` and broker call sites, absence of shell probes in the runtime blocks,
+  absence of `Command::new("cmd")` in `src/platform/windows.rs`, absence of the main-window process-kill fallback,
+  and this ledger/requirements disposition.
 - **R-S11d-4 — Windows MSI runtime-generated executable cleanup completion authority — CLOSED 2026-07-10.**
   Platform: Windows MSI deferred non-impersonated uninstall/update custom action. Endpoint/action:
   `RemoveRuntimeGeneratedFiles` removing `RuntimeBroker_rustdesk.exe` from the installed Program Files

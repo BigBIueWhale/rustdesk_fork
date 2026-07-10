@@ -742,8 +742,7 @@ pub async fn start_server(is_server: bool) {
             if let Err(err) = crate::ipc::start("") {
                 log::error!("Failed to start ipc: {}", err);
                 if crate::is_server() {
-                    log::error!("ipc is occupied by another process, try kill it");
-                    std::thread::spawn(stop_main_window_process).join().ok();
+                    log::error!("ipc is occupied by another process");
                 }
                 std::process::exit(-1);
             }
@@ -822,20 +821,6 @@ pub async fn start_ipc_url_server() {
         }
         Err(err) => {
             log::error!("{}", err);
-        }
-    }
-}
-
-#[tokio::main(flavor = "current_thread")]
-pub async fn stop_main_window_process() {
-    if let Ok(mut conn) = crate::ipc::connect(1000, "").await {
-        conn.send(&crate::ipc::Data::Close).await.ok();
-    }
-    #[cfg(windows)]
-    {
-        // in case above failure, e.g. zombie process
-        if let Err(e) = crate::platform::try_kill_rustdesk_main_window_process() {
-            log::error!("kill failed: {}", e);
         }
     }
 }

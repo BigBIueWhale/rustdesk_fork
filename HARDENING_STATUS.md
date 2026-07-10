@@ -755,6 +755,17 @@ unreachable and a source/test/AST gate prevents reintroduction.
   bare RDP command launch, absence of password argv/env plumbing, native `CredReadW`/`CredWriteW`/`CredDeleteW`
   use, session-scoped generic credential policy, lease/drop restoration, prompt fallback, and this
   ledger/requirements disposition.
+- **R-S11d-9 — Windows terminal default-shell command provenance — CLOSED 2026-07-10.** Platform:
+  Windows terminal helper and direct terminal service. Endpoint/action: opening the default shell for an
+  authenticated terminal session. Boundary: remote-triggered only after Terminal authorization; installed-service
+  mode launches the helper and shell as the current logon user rather than SYSTEM, and direct mode uses the
+  process owner. Attack surface closed: default shell selection no longer accepts a current-directory
+  `pwsh.exe`, no longer reads `COMSPEC`, and no longer falls back to a bare `cmd.exe`. Windows shell selection is
+  fallible, resolves `%SystemRoot%\System32` with `GetSystemDirectoryW`, tries only absolute PowerShell Core
+  locations and `System32` Windows PowerShell / `cmd.exe`, and fails the terminal-open path if no trusted shell is
+  present. Verification closure: `scripts/verify.sh` asserts fallible shell selection, `GetSystemDirectoryW`
+  use, the absolute trusted candidate set, fail-closed propagation in both helper and direct terminal paths,
+  absence of `COMSPEC`/bare `pwsh.exe`/bare `cmd.exe` fallback, and this ledger/requirements disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

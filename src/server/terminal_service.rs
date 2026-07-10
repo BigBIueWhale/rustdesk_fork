@@ -106,7 +106,7 @@ pub fn generate_service_id() -> String {
     format!("ts_{}", uuid::Uuid::new_v4())
 }
 
-fn get_default_shell() -> String {
+fn get_default_shell() -> Result<String> {
     #[cfg(target_os = "windows")]
     {
         // Use shared implementation from terminal_helper
@@ -117,7 +117,7 @@ fn get_default_shell() -> String {
         // First try the SHELL environment variable
         if let Ok(shell) = std::env::var("SHELL") {
             if !shell.is_empty() {
-                return shell;
+                return Ok(shell);
             }
         }
 
@@ -125,12 +125,12 @@ fn get_default_shell() -> String {
         let shells = ["/bin/bash", "/bin/zsh", "/bin/sh"];
         for shell in &shells {
             if std::path::Path::new(shell).exists() {
-                return shell.to_string();
+                return Ok(shell.to_string());
             }
         }
 
         // Final fallback to /bin/sh which should exist on all POSIX systems
-        "/bin/sh".to_string()
+        Ok("/bin/sh".to_string())
     }
 }
 
@@ -1173,7 +1173,7 @@ impl TerminalServiceProxy {
         let pty_pair = pty_system.openpty(pty_size).context("Failed to open PTY")?;
 
         // Use default shell for the platform
-        let shell = get_default_shell();
+        let shell = get_default_shell()?;
         log::debug!("Using shell: {}", shell);
 
         #[allow(unused_mut)]

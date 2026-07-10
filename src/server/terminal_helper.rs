@@ -26,10 +26,15 @@ use hbb_common::{
 };
 use portable_pty::{CommandBuilder, MasterPty, PtySize};
 use std::{
-    ffi::{c_void, OsStr},
+    ffi::{c_void, OsStr, OsString},
     fs::File,
     io::{Read, Write},
-    os::windows::{ffi::OsStrExt, io::FromRawHandle, raw::HANDLE as RawHandle},
+    os::windows::{
+        ffi::{OsStrExt, OsStringExt},
+        io::FromRawHandle,
+        raw::HANDLE as RawHandle,
+    },
+    path::PathBuf,
     ptr,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -66,6 +71,7 @@ use windows::{
                 ConnectNamedPipe, CreateNamedPipeW, GetNamedPipeClientProcessId,
                 PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_WAIT,
             },
+            SystemInformation::GetSystemDirectoryW,
             Threading::{
                 CreateEventW, CreateProcessAsUserW, WaitForSingleObject, CREATE_NO_WINDOW,
                 CREATE_UNICODE_ENVIRONMENT, PROCESS_CREATION_FLAGS, PROCESS_INFORMATION,
@@ -293,30 +299,52 @@ pub fn encode_resize_message(rows: u16, cols: u16) -> Vec<u8> {
     encode_helper_message(MSG_TYPE_RESIZE, &payload)
 }
 
+fn trusted_system_dir() -> Result<PathBuf> {
+    let mut buffer = [0u16; 260];
+    let len = unsafe { GetSystemDirectoryW(Some(&mut buffer)) } as usize;
+    if len == 0 {
+        return Err(anyhow!(
+            "GetSystemDirectoryW failed: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    if len >= buffer.len() {
+        return Err(anyhow!("GetSystemDirectoryW returned an oversized path"));
+    }
+    Ok(PathBuf::from(OsString::from_wide(&buffer[..len])))
+}
+
+fn shell_path_string(path: PathBuf) -> Result<String> {
+    let display = path.display().to_string();
+    path.into_os_string().into_string().map_err(|_| {
+        anyhow!(
+            "trusted terminal shell path is not valid UTF-8: {}",
+            display
+        )
+    })
+}
+
 /// Get the default shell for Windows.
-pub fn get_default_shell() -> String {
-    // Try PowerShell Core first (absolute paths only)
-    let pwsh_paths = [
-        "pwsh.exe",
-        r"C:\Program Files\PowerShell\7\pwsh.exe",
-        r"C:\Program Files\PowerShell\6\pwsh.exe",
+pub fn get_default_shell() -> Result<String> {
+    let system_dir = trusted_system_dir()?;
+    let shell_paths = [
+        PathBuf::from(r"C:\Program Files\PowerShell\7\pwsh.exe"),
+        PathBuf::from(r"C:\Program Files\PowerShell\6\pwsh.exe"),
+        system_dir
+            .join("WindowsPowerShell")
+            .join("v1.0")
+            .join("powershell.exe"),
+        system_dir.join("cmd.exe"),
     ];
 
-    for path in &pwsh_paths {
-        if std::path::Path::new(path).exists() {
-            log::debug!("Found PowerShell Core: {}", path);
-            return path.to_string();
+    for path in shell_paths {
+        if path.is_file() {
+            log::debug!("Found trusted terminal shell: {}", path.display());
+            return shell_path_string(path);
         }
     }
 
-    // Try Windows PowerShell
-    let powershell_path = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe";
-    if std::path::Path::new(powershell_path).exists() {
-        return powershell_path.to_string();
-    }
-
-    // Fallback to cmd.exe
-    std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string())
+    Err(anyhow!("no trusted Windows terminal shell found"))
 }
 
 fn utf8_shell_args(shell: &str) -> Vec<String> {
@@ -922,7 +950,7 @@ pub fn run_terminal_helper(args: &[String]) -> Result<()> {
     let pty_system = portable_pty::native_pty_system();
     let pty_pair = pty_system.openpty(pty_size).context("Failed to open PTY")?;
 
-    let shell = get_default_shell();
+    let shell = get_default_shell()?;
     log::debug!("Using shell: {}", shell);
 
     let mut cmd = CommandBuilder::new(&shell);

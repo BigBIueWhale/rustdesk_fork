@@ -520,6 +520,23 @@ if grep -Fq '/pass:' src/port_forward.rs || grep -qE 'std::env::(set_var|var)\("
 fi
 grep -q 'Windows RDP viewer credential command provenance' requirements.html || r_s11d="$r_s11d rdp-requirements-disposition-missing"
 grep -q 'R-S11d-8 — Windows RDP viewer credential command provenance' HARDENING_STATUS.md || r_s11d="$r_s11d rdp-hardening-ledger-missing"
+grep -Fq 'pub fn get_default_shell() -> Result<String>' src/server/terminal_helper.rs || r_s11d="$r_s11d terminal-shell:helper-not-fallible"
+grep -Fq 'fn get_default_shell() -> Result<String>' src/server/terminal_service.rs || r_s11d="$r_s11d terminal-shell:service-not-fallible"
+grep -Fq 'GetSystemDirectoryW(Some(&mut buffer))' src/server/terminal_helper.rs || r_s11d="$r_s11d terminal-shell:no-systemdir-resolution"
+grep -Fq 'PathBuf::from(r"C:\Program Files\PowerShell\7\pwsh.exe")' src/server/terminal_helper.rs || r_s11d="$r_s11d terminal-shell:pwsh7-absolute-candidate-missing"
+grep -Fq 'PathBuf::from(r"C:\Program Files\PowerShell\6\pwsh.exe")' src/server/terminal_helper.rs || r_s11d="$r_s11d terminal-shell:pwsh6-absolute-candidate-missing"
+grep -Fq '.join("WindowsPowerShell")' src/server/terminal_helper.rs || r_s11d="$r_s11d terminal-shell:system32-powershell-candidate-missing"
+grep -Fq 'system_dir.join("cmd.exe")' src/server/terminal_helper.rs || r_s11d="$r_s11d terminal-shell:system32-cmd-candidate-missing"
+grep -Fq 'Err(anyhow!("no trusted Windows terminal shell found"))' src/server/terminal_helper.rs || r_s11d="$r_s11d terminal-shell:no-fail-closed-error"
+grep -Fq 'let shell = get_default_shell()?;' src/server/terminal_helper.rs || r_s11d="$r_s11d terminal-shell:helper-open-not-fail-closed"
+grep -Fq 'let shell = get_default_shell()?;' src/server/terminal_service.rs || r_s11d="$r_s11d terminal-shell:direct-open-not-fail-closed"
+if grep -Fq 'COMSPEC' src/server/terminal_helper.rs src/server/terminal_service.rs \
+  || grep -qE '^[[:space:]]*"pwsh\.exe",[[:space:]]*$' src/server/terminal_helper.rs \
+  || grep -Fq 'unwrap_or_else(|_| "cmd.exe".to_string())' src/server/terminal_helper.rs src/server/terminal_service.rs; then
+  r_s11d="$r_s11d terminal-shell:ambient-or-bare-shell-fallback"
+fi
+grep -q 'Windows terminal default-shell command provenance' requirements.html || r_s11d="$r_s11d terminal-shell-requirements-disposition-missing"
+grep -q 'R-S11d-9 — Windows terminal default-shell command provenance' HARDENING_STATUS.md || r_s11d="$r_s11d terminal-shell-hardening-ledger-missing"
 grep -q 'Windows MSI runtime-generated executable cleanup completion authority' requirements.html || r_s11d="$r_s11d runtime-generated-cleanup-requirements-disposition-missing"
 grep -q 'R-S11d-4 — Windows MSI runtime-generated executable cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d runtime-generated-cleanup-hardening-ledger-missing"
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else

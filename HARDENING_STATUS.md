@@ -1095,6 +1095,17 @@ unreachable and a source/test/AST gate prevents reintroduction.
   the executable-directory `custom.txt` copy/load sink are absent from `src/platform/windows.rs`. Verification
   closure: `scripts/verify.sh` rejects reintroduced staging symbols, the staging directory name, the executable-dir
   copy sink, and requires this ledger/requirements disposition.
+- **R-S11d-28 — Windows dormant diagnostic message-box deletion — CLOSED 2026-07-11.** Platform:
+  Windows runtime diagnostic residue. Endpoint/action: unused Rust `my_println!` macro and its Windows-only
+  `message_box` helper. Boundary: dormant diagnostic text path ↔ environment-selected file/clipboard/UI side
+  effects in privileged-capable Windows processes. Attack surface closed: the unused macro and helper are deleted
+  rather than retained with environment switches. The helper had no live caller and was not an exported FFI,
+  generated Flutter bridge, or cross-platform platform-trait requirement, but it still read `NO_DIALOG`,
+  `PRINT_OUT`, and `WRITE_TO_FILE`, could write diagnostic text to an environment-selected path, could suppress the
+  dialog, and wrote to the clipboard while discarding errors. The peer protocol/UI `MessageBox` flow is unrelated
+  and remains intact. Verification closure: `scripts/verify.sh` rejects `my_println!`, `macro_rules! my_println`,
+  the Windows `message_box` helper, the diagnostic environment knobs, and the old diagnostic strings, and requires
+  this ledger/requirements disposition.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's

@@ -1238,7 +1238,7 @@ grep -q 'Windows runtime process command provenance' requirements.html || r_s11d
 grep -q 'R-S11d-3 — Windows runtime process command provenance' HARDENING_STATUS.md || r_s11d3="$r_s11d3 hardening-ledger-missing"
 windows_runtime_process_blocks=$(
   awk '/pub fn is_process_consent_running/,/pub struct WakeLock/' src/platform/windows.rs
-  awk '/pub fn try_kill_broker/,/pub fn message_box/' src/platform/windows.rs
+  awk '/pub fn try_kill_broker/,/pub fn alloc_console/' src/platform/windows.rs
 )
 if echo "$windows_runtime_process_blocks" | grep -Eq 'Command::new\("cmd"\)|tasklist|findstr|taskkill /F /IM|/c"\)|/C"'; then
   r_s11d3="$r_s11d3 runtime-process-shell-regressed"
@@ -1252,6 +1252,21 @@ else
 fi
 if [ -n "$r_s11d3" ]; then echo "  FAIL R-S11d-3 Windows runtime process command provenance:$r_s11d3"; rc=1; else
   echo "  ok  R-S11d-3 Windows service-adjacent process probes use ToolHelp/OpenProcess/TerminateProcess, not cmd tasklist/taskkill"; fi
+
+echo "== (3b-iii-a6b) Windows dormant diagnostic message-box side effects are absent (R-S11d-28) =="
+r_s11d28=
+if grep -RInE 'macro_rules![[:space:]]*my_println|my_println!' src >/tmp/rd_verify_r_s11d28_macro.$$; then
+  r_s11d28="$r_s11d28 diagnostic-macro-leftover:$(cat /tmp/rd_verify_r_s11d28_macro.$$)"
+fi
+rm -f /tmp/rd_verify_r_s11d28_macro.$$
+if grep -nE 'pub fn message_box|NO_DIALOG|PRINT_OUT|WRITE_TO_FILE|RustDesk Output|Above text has been copied to clipboard' src/platform/windows.rs >/tmp/rd_verify_r_s11d28_msgbox.$$; then
+  r_s11d28="$r_s11d28 windows-message-box-diagnostic-leftover:$(cat /tmp/rd_verify_r_s11d28_msgbox.$$)"
+fi
+rm -f /tmp/rd_verify_r_s11d28_msgbox.$$
+grep -Fq 'Windows dormant diagnostic message-box deletion' requirements.html || r_s11d28="$r_s11d28 requirements-disposition-missing"
+grep -Fq 'R-S11d-28 — Windows dormant diagnostic message-box deletion' HARDENING_STATUS.md || r_s11d28="$r_s11d28 hardening-ledger-missing"
+if [ -n "$r_s11d28" ]; then echo "  FAIL R-S11d-28 Windows dormant diagnostic message-box deletion:$r_s11d28"; rc=1; else
+  echo "  ok  R-S11d-28 dormant Windows diagnostic message-box/file/clipboard side effects are absent"; fi
 
 # (3b-iii-b) R-S11b-1/R-S11b-2c/R-S11c-1f: Linux/macOS `_service` is a privileged service-control channel,
 # not a root<->user Config/Config2 bus. The world-connectable service socket may keep only narrow,

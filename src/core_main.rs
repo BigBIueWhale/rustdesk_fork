@@ -10,18 +10,6 @@ use hbb_common::{config, log};
 #[cfg(windows)]
 use tauri_winrt_notification::{Duration, Sound, Toast};
 
-#[macro_export]
-macro_rules! my_println{
-    ($($arg:tt)*) => {
-        #[cfg(not(windows))]
-        println!("{}", format_args!($($arg)*));
-        #[cfg(windows)]
-        crate::platform::message_box(
-            &format!("{}", format_args!($($arg)*))
-        );
-    };
-}
-
 /// shared by flutter and sciter main function
 ///
 /// [Note]

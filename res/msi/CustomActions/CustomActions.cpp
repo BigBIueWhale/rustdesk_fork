@@ -11,25 +11,6 @@
 
 #pragma comment(lib, "Shlwapi.lib")
 
-UINT __stdcall CustomActionHello(
-    __in MSIHANDLE hInstall)
-{
-    HRESULT hr = S_OK;
-    DWORD er = ERROR_SUCCESS;
-
-    hr = WcaInitialize(hInstall, "CustomActionHello");
-    ExitOnFailure(hr, "Failed to initialize");
-
-    WcaLog(LOGMSG_STANDARD, "Initialized.");
-
-    // TODO: Add your custom action code here.
-    WcaLog(LOGMSG_STANDARD, "================= Example CustomAction Hello");
-
-LExit:
-    er = SUCCEEDED(hr) ? ERROR_SUCCESS : ERROR_INSTALL_FAILURE;
-    return WcaFinalize(er);
-}
-
 // Helper function to safely delete a file using handle-based deletion.
 // Directories are refused after opening the handle.
 BOOL SafeDeleteItem(LPCWSTR fullPath)
@@ -195,17 +176,24 @@ UINT __stdcall RemoveRuntimeGeneratedFiles(
     ExitOnFailure(hr, "failed to read install folder from custom action data: %ls", pwz);
 
     if (installFolder == NULL || installFolder[0] == L'\0') {
-        WcaLog(LOGMSG_STANDARD, "Install folder path is empty, skipping runtime cleanup.");
-        goto LExit;
+        WcaLog(LOGMSG_STANDARD, "Install folder path is empty; refusing runtime cleanup.");
+        hr = E_FAIL;
+        ExitOnFailure(hr, "Runtime cleanup install folder is empty");
     }
 
     if (PathIsRootW(installFolder)) {
         WcaLog(LOGMSG_STANDARD, "Refusing runtime cleanup in root folder '%ls'.", installFolder);
-        goto LExit;
+        hr = E_FAIL;
+        ExitOnFailure(hr, "Runtime cleanup install folder is a filesystem root");
     }
 
     WcaLog(LOGMSG_STANDARD, "Removing runtime-generated files from install folder: %ls", installFolder);
-    DeleteRuntimeGeneratedFile(installFolder, L"RuntimeBroker_rustdesk.exe");
+    if (!DeleteRuntimeGeneratedFile(installFolder, L"RuntimeBroker_rustdesk.exe"))
+    {
+        hr = E_FAIL;
+        ExitOnFailure(hr, "Failed to remove runtime-generated broker executable");
+    }
+    WcaLog(LOGMSG_STANDARD, "Runtime-generated file cleanup completed.");
 
 LExit:
     ReleaseStr(pwzData);

@@ -1,7 +1,6 @@
 LIBRARY "CustomActions"
 
 EXPORTS
-    CustomActionHello
     RemoveRuntimeGeneratedFiles
     TerminateProcesses
     AddFirewallRules

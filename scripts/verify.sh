@@ -419,6 +419,17 @@ grep -q 'HRESULT_FROM_WIN32(lastErrorCode)' res/msi/CustomActions/CustomActions.
 grep -Fq 'reinterpret_cast<const BYTE*>(&valueData)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:sas-registry-value-pointer-wrong"
 grep -q 'HRESULT_FROM_WIN32(result)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:sas-registry-errors-not-propagated"
 grep -q 'if (!QueryServiceStatusExW(serviceName, &serviceStatus))' res/msi/CustomActions/ServiceUtils.cpp || r_s11d="$r_s11d msi:service-status-query-not-guarded"
+grep -Fq 'if (!DeleteRuntimeGeneratedFile(installFolder, L"RuntimeBroker_rustdesk.exe"))' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:runtime-broker-cleanup-result-not-checked"
+grep -q 'Failed to remove runtime-generated broker executable' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:runtime-broker-cleanup-not-fatal"
+grep -q 'Id="RemoveRuntimeGeneratedFiles".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:runtime-generated-cleanup-return-not-checked"
+if grep -q 'Id="RemoveRuntimeGeneratedFiles".*Return="ignore"' res/msi/Package/Fragments/CustomActions.wxs; then
+  r_s11d="$r_s11d msi:runtime-generated-cleanup-return-ignored"
+fi
+if rg -n 'CustomActionHello|Example CustomAction Hello|TODO: Add your custom action code here' res/msi >/tmp/rd_verify_r_s11d_msi_noop.$$; then
+  cat /tmp/rd_verify_r_s11d_msi_noop.$$
+  r_s11d="$r_s11d msi:sample-custom-action-leftover"
+fi
+rm -f /tmp/rd_verify_r_s11d_msi_noop.$$
 grep -q 'CreateProcessW(exePath, commandLine, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, workDir, &startupInfo, &pi)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-not-absolute-createprocess"
 grep -q 'WaitForSingleObject(pi.hProcess, 120000)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-not-waited"
 grep -q 'GetExitCodeProcess(pi.hProcess, &exitCode)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-exit-code-not-checked"
@@ -442,8 +453,10 @@ grep -q 'Windows Amyuni IDD helper launch provenance' requirements.html || r_s11
 grep -q 'R-S11d-1 — Windows Amyuni IDD helper launch provenance' HARDENING_STATUS.md || r_s11d="$r_s11d amyuni-hardening-ledger-missing"
 grep -q 'Windows Amyuni IDD cleanup completion authority' requirements.html || r_s11d="$r_s11d amyuni-cleanup-requirements-disposition-missing"
 grep -q 'R-S11d-2 — Windows Amyuni IDD cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d amyuni-cleanup-hardening-ledger-missing"
+grep -q 'Windows MSI runtime-generated executable cleanup completion authority' requirements.html || r_s11d="$r_s11d runtime-generated-cleanup-requirements-disposition-missing"
+grep -q 'R-S11d-4 — Windows MSI runtime-generated executable cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d runtime-generated-cleanup-hardening-ledger-missing"
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else
-  echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service/SAS custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path and MSI cleanup observes helper completion"; fi
+  echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service/SAS custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path; MSI cleanup observes Amyuni and runtime-generated executable completion"; fi
 
 echo "== (3b-iii-a6) Windows runtime process probes avoid shell tasklist/taskkill (R-S11d-3) =="
 r_s11d3=

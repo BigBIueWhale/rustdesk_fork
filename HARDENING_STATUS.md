@@ -679,6 +679,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   the exact-name ToolHelp enumerator, RAII handle guard, native termination helper, the `consent.exe` and broker
   call sites, absence of shell probes in the runtime blocks, absence of `Command::new("cmd")` in
   `src/platform/windows.rs`, and this ledger/requirements disposition.
+- **R-S11d-4 — Windows MSI runtime-generated executable cleanup completion authority — CLOSED 2026-07-10.**
+  Platform: Windows MSI deferred non-impersonated uninstall/update custom action. Endpoint/action:
+  `RemoveRuntimeGeneratedFiles` removing `RuntimeBroker_rustdesk.exe` from the installed Program Files
+  directory. Boundary: installed runtime-generated executable payload ↔ privileged MSI cleanup state. Attack
+  surface closed: the cleanup no longer silently continues after malformed empty install-folder data, root-folder
+  targets, or a failed broker deletion. The action treats empty/root install folders as fatal packaging errors,
+  requires the existing handle-based no-follow `DeleteRuntimeGeneratedFile` path to report success for the broker
+  payload, keeps absent files as a successful no-op, and declares the WiX action `Return="check"`. The scheduled
+  no-op `CustomActionHello` sample action is deleted from the custom-action DLL exports, WiX declaration, and
+  execute sequence. Verification closure: `scripts/verify.sh` asserts the checked broker-delete branch, fatal
+  cleanup message, checked WiX return, absence of the old ignored return, absence of the sample custom action,
+  and this ledger/requirements disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

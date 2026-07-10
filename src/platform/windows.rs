@@ -1220,89 +1220,95 @@ async fn send_close_async(postfix: &str) -> ResultType<()> {
     Ok(())
 }
 
+const SOFTWARE_SAS_GENERATION_NONE: u32 = 0;
+const SOFTWARE_SAS_GENERATION_SERVICES: u32 = 1;
+const SOFTWARE_SAS_GENERATION_EASE_OF_ACCESS: u32 = 2;
+const SOFTWARE_SAS_GENERATION_SERVICES_AND_EASE_OF_ACCESS: u32 =
+    SOFTWARE_SAS_GENERATION_SERVICES | SOFTWARE_SAS_GENERATION_EASE_OF_ACCESS;
+
+lazy_static::lazy_static! {
+    static ref SEND_SAS_POLICY_MUTEX: Mutex<()> = Mutex::new(());
+}
+
+enum OriginalSasPolicy {
+    Absent,
+    Present(u32),
+}
+
 // https://docs.microsoft.com/en-us/windows/win32/api/sas/nf-sas-sendsas
 // https://www.cnblogs.com/doutu/p/4892726.html
-pub fn send_sas() {
+pub fn send_sas() -> ResultType<()> {
     #[link(name = "sas")]
     extern "system" {
         pub fn SendSAS(AsUser: BOOL);
     }
-    unsafe {
-        log::info!("SAS received");
 
-        // Check and temporarily set SoftwareSASGeneration if needed
-        let mut original_value: Option<u32> = None;
-        let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-
-        if let Ok(policy_key) = hklm.open_subkey_with_flags(
+    log::info!("SAS received");
+    let _sas_policy_guard = SEND_SAS_POLICY_MUTEX.lock().unwrap();
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let policy_key = hklm
+        .open_subkey_with_flags(
             "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
             KEY_READ | KEY_WRITE,
-        ) {
-            // Read current value
-            match policy_key.get_value::<u32, _>("SoftwareSASGeneration") {
-                Ok(value) => {
-                    /*
-                    - 0 = None (disabled)
-                    - 1 = Services
-                    - 2 = Ease of Access applications
-                    - 3 = Services and Ease of Access applications (Both)
-                                      */
-                    if value != 1 && value != 3 {
-                        original_value = Some(value);
-                        log::info!("SoftwareSASGeneration is {}, setting to 1", value);
-                        // Set to 1 for SendSAS to work
-                        if let Err(e) = policy_key.set_value("SoftwareSASGeneration", &1u32) {
-                            log::error!("Failed to set SoftwareSASGeneration: {}", e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::info!(
-                        "SoftwareSASGeneration not found or error reading: {}, setting to 1",
-                        e
-                    );
-                    original_value = Some(0); // Mark that we need to restore (delete) it
-                                              // Create and set to 1
-                    if let Err(e) = policy_key.set_value("SoftwareSASGeneration", &1u32) {
-                        log::error!("Failed to set SoftwareSASGeneration: {}", e);
-                    }
-                }
-            }
-        } else {
-            log::error!("Failed to open registry key for SoftwareSASGeneration");
+        )
+        .map_err(|err| anyhow!("Failed to open SoftwareSASGeneration policy key: {err}"))?;
+
+    let original_policy = match policy_key.get_value::<u32, _>("SoftwareSASGeneration") {
+        Ok(value)
+            if value == SOFTWARE_SAS_GENERATION_SERVICES
+                || value == SOFTWARE_SAS_GENERATION_SERVICES_AND_EASE_OF_ACCESS =>
+        {
+            None
         }
+        Ok(value)
+            if value == SOFTWARE_SAS_GENERATION_NONE
+                || value == SOFTWARE_SAS_GENERATION_EASE_OF_ACCESS =>
+        {
+            let temporary_value = value | SOFTWARE_SAS_GENERATION_SERVICES;
+            log::info!(
+                "SoftwareSASGeneration is {}, temporarily setting to {}",
+                value,
+                temporary_value
+            );
+            policy_key
+                .set_value("SoftwareSASGeneration", &temporary_value)
+                .map_err(|err| anyhow!("Failed to set SoftwareSASGeneration: {err}"))?;
+            Some(OriginalSasPolicy::Present(value))
+        }
+        Ok(value) => bail!("Unsupported SoftwareSASGeneration value: {value}"),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            log::info!("SoftwareSASGeneration is absent, temporarily setting to 1");
+            policy_key
+                .set_value("SoftwareSASGeneration", &1u32)
+                .map_err(|err| anyhow!("Failed to set SoftwareSASGeneration: {err}"))?;
+            Some(OriginalSasPolicy::Absent)
+        }
+        Err(err) => bail!("Failed to read SoftwareSASGeneration: {err}"),
+    };
 
-        // Send SAS
+    unsafe {
         SendSAS(FALSE);
+    }
 
-        // Restore original value if we changed it
-        if let Some(original) = original_value {
-            if let Ok(policy_key) = hklm.open_subkey_with_flags(
-                "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
-                KEY_WRITE,
-            ) {
-                if original == 0 {
-                    // It didn't exist before, delete it
-                    if let Err(e) = policy_key.delete_value("SoftwareSASGeneration") {
-                        log::error!("Failed to delete SoftwareSASGeneration: {}", e);
-                    } else {
-                        log::info!("Deleted SoftwareSASGeneration (restored to original state)");
-                    }
-                } else {
-                    // Restore the original value
-                    if let Err(e) = policy_key.set_value("SoftwareSASGeneration", &original) {
-                        log::error!(
-                            "Failed to restore SoftwareSASGeneration to {}: {}",
-                            original,
-                            e
-                        );
-                    } else {
-                        log::info!("Restored SoftwareSASGeneration to {}", original);
-                    }
-                }
+    if let Some(original_policy) = original_policy {
+        match original_policy {
+            OriginalSasPolicy::Absent => {
+                policy_key
+                    .delete_value("SoftwareSASGeneration")
+                    .map_err(|err| anyhow!("Failed to delete SoftwareSASGeneration: {err}"))?;
+                log::info!("Deleted SoftwareSASGeneration");
+            }
+            OriginalSasPolicy::Present(original) => {
+                policy_key
+                    .set_value("SoftwareSASGeneration", &original)
+                    .map_err(|err| {
+                        anyhow!("Failed to restore SoftwareSASGeneration to {original}: {err}")
+                    })?;
+                log::info!("Restored SoftwareSASGeneration to {}", original);
             }
         }
     }
+    Ok(())
 }
 
 lazy_static::lazy_static! {
@@ -1961,7 +1967,6 @@ fn get_after_install(
     {netsh} advfirewall firewall add rule name=\"{app_name} Service\" dir=out action=allow program=\"{exe}\" enable=yes
     {netsh} advfirewall firewall add rule name=\"{app_name} Service\" dir=in action=allow program=\"{exe}\" enable=yes
     {create_service}
-    {reg} add HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System /f /v SoftwareSASGeneration /t REG_DWORD /d 1
     ",
         chcp = tools.chcp,
         reg = tools.reg,

@@ -1944,7 +1944,7 @@ async fn send_sas() -> ResultType<()> {
             "SAS in the physical console session requires a receiver-authorized service capability"
         );
     } else {
-        crate::platform::send_sas();
+        crate::platform::send_sas()?;
     };
     Ok(())
 }

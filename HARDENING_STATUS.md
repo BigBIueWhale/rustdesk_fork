@@ -664,9 +664,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   elevated child consumes them, uses the same fixed-root helper from `install_me`, `install_service`, and
   `run_after_install`, and makes `sc` service-creation failures leave the elevated command marker intact so the
   caller sees failure. MSI uses private `App.InstallFolder` under `ProgramFiles6432Folder`, has no public
-  `INSTALLFOLDER`/`INSTALLFOLDER_INNER`/`WIXUI_INSTALLDIR`/browse surface, and has no service/registry shell
-  fallback; service creation/start/stop/delete and `SoftwareSASGeneration` registry setup use checked native APIs
-  and fail closed on native API failure or stale service deletion. Verification closure: `scripts/verify.sh`
+  `INSTALLFOLDER`/`INSTALLFOLDER_INNER`/`WIXUI_INSTALLDIR`/browse surface, and has no service shell
+  fallback; service creation/start/stop/delete use checked native APIs and fail closed on native API failure or
+  stale service deletion. Verification closure: `scripts/verify.sh`
   asserts known-folder Program Files resolution, custom-path rejection, trusted system `cmd.exe` resolution,
   write/delete sharing denial on EXE command staging, fixed Flutter install entry, fixed-root EXE service entry
   points, fatal EXE `sc` errors, MSI private install root, absence of MSI browse/public install-folder routing,
@@ -868,6 +868,26 @@ unreachable and a source/test/AST gate prevents reintroduction.
   asserts mandatory marker creation, elevated exit-status success checking, marker-state checking, absence of
   the old ignored-status shape, service install/uninstall failure reporting, and this ledger/requirements
   disposition.
+- **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
+  Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
+  LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's
+  profile/config and installer UI properties ↔ per-machine service presence and machine policy. Attack surface
+  closed: MSI no longer reads `[AppDataFolder]...\config\...\toml` or any `stop-service` property to decide
+  whether to create/start the service. The MSI service path now follows the fork's pinned runtime policy:
+  create/start the per-machine service on install/repair/upgrade unless the build is outgoing-only, and scope
+  stop/delete to uninstall or upgrade cleanup. The obsolete `STOP_SERVICE`, `SetPropertyServiceStop`,
+  `SetPropertyFromConfig`, `SetPropertyIsServiceRunning`, `TryDeleteStartupShortcut`, and `ReadConfig` custom
+  action surfaces are deleted. Persistent installer writes to `SoftwareSASGeneration` are deleted from both MSI
+  and EXE installer paths; no uninstall-time blind delete is added because prior installers did not record
+  ownership or the original machine-policy value. Runtime SAS is the sole remaining `SoftwareSASGeneration`
+  mutation path: it serializes local policy mutation, accepts only the documented policy values, distinguishes
+  absent from present values, fails before `SendSAS` on open/read/set failure, preserves administrator value
+  `0` as `0`, preserves the Ease of Access allowance by temporarily changing value `2` to `3`, restores or
+  deletes after `SendSAS`, and returns an error if restoration fails. Verification closure:
+  `scripts/verify.sh` asserts the MSI service conditions, scoped service stop/delete, absence of the deleted
+  MSI service/SAS custom actions and config reader, absence of persistent installer SAS writes, the runtime
+  original-policy state machine, serialized known-value-only temporary policy mutation, fail-closed
+  read/set/restore handling, caller error propagation, and this ledger/requirements disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

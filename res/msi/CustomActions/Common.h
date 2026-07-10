@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Windows.h>
-#include <string>
 
 HRESULT AddFirewallRule(bool add, LPWSTR exeName, LPWSTR exeFile);
 
@@ -11,8 +10,6 @@ bool MyCreateServiceW(LPCWSTR serviceName, LPCWSTR displayName, LPCWSTR binaryPa
 bool MyDeleteServiceW(LPCWSTR serviceName);
 bool MyStartServiceW(LPCWSTR serviceName);
 bool MyStopServiceW(LPCWSTR serviceName);
-
-std::wstring ReadConfig(const std::wstring& filename, const std::wstring& key);
 
 enum DriverUninstallStatus {
     DriverUninstallNotPresent,

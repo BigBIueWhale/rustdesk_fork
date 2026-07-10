@@ -462,7 +462,6 @@ fi
 rm -f /tmp/rd_verify_r_s11d_msi_shell.$$
 grep -q 'Id="CreateStartService".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:create-service-return-not-checked"
 grep -q 'Id="TryStopDeleteService".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:delete-service-return-not-checked"
-grep -q 'Id="AddRegSoftwareSASGeneration".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:sas-registry-return-not-checked"
 grep -q 'Id="AddFirewallRules".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:add-firewall-return-not-checked"
 grep -q 'Id="RemoveFirewallRules".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:remove-firewall-return-not-checked"
 if grep -qE 'Id="(CreateStartService|TryStopDeleteService|AddRegSoftwareSASGeneration|AddFirewallRules|RemoveFirewallRules)".*Return="ignore"' res/msi/Package/Fragments/CustomActions.wxs; then
@@ -491,8 +490,6 @@ grep -Fq 'ERROR_NOT_FOUND' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r
 grep -Fq 'ERROR_PATH_NOT_FOUND' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-absent-path-not-found-not-noop"
 grep -q 'Service still exists after deletion' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-not-verified"
 grep -q 'HRESULT_FROM_WIN32(lastErrorCode)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-errors-not-propagated"
-grep -Fq 'reinterpret_cast<const BYTE*>(&valueData)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:sas-registry-value-pointer-wrong"
-grep -q 'HRESULT_FROM_WIN32(result)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:sas-registry-errors-not-propagated"
 grep -q 'if (!QueryServiceStatusExW(serviceName, &serviceStatus))' res/msi/CustomActions/ServiceUtils.cpp || r_s11d="$r_s11d msi:service-status-query-not-guarded"
 grep -Fq 'if (!DeleteRuntimeGeneratedFile(installFolder, L"RuntimeBroker_rustdesk.exe"))' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:runtime-broker-cleanup-result-not-checked"
 grep -q 'Failed to remove runtime-generated broker executable' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:runtime-broker-cleanup-not-fatal"
@@ -637,7 +634,7 @@ grep -q 'R-S11d-12 — Windows privacy broker and user shortcut process provenan
 grep -q 'Windows MSI runtime-generated executable cleanup completion authority' requirements.html || r_s11d="$r_s11d runtime-generated-cleanup-requirements-disposition-missing"
 grep -q 'R-S11d-4 — Windows MSI runtime-generated executable cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d runtime-generated-cleanup-hardening-ledger-missing"
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else
-  echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service/SAS custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path; MSI cleanup observes Amyuni and runtime-generated executable completion; unsupported 32-bit WMIC process probes are absent"; fi
+  echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path; MSI cleanup observes Amyuni and runtime-generated executable completion; unsupported 32-bit WMIC process probes are absent"; fi
 
 echo "== (3b-iii-a5d2) Windows service/session token launch binds executable identity (R-S11d-13) =="
 r_s11d13=
@@ -741,6 +738,44 @@ grep -Fq 'Windows EXE elevated batch completion accounting' requirements.html ||
 grep -Fq 'R-S11d-15 — Windows EXE elevated batch completion accounting' HARDENING_STATUS.md || r_s11d15="$r_s11d15 hardening-ledger-missing"
 if [ -n "$r_s11d15" ]; then echo "  FAIL R-S11d-15 Windows EXE elevated batch completion accounting:$r_s11d15"; rc=1; else
   echo "  ok  R-S11d-15 Windows elevated EXE batches require marker creation, successful exit status, marker removal, and false-on-failure service wrappers"; fi
+
+echo "== (3b-iii-a5d5) Windows MSI service state and SAS policy are not persistent user-config side effects (R-S11d-16) =="
+r_s11d16=
+grep -Fq '<Custom Action="CreateStartService" Before="InstallFinalize" Condition="(NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)) AND (NOT CC_CONNECTION_TYPE=&quot;outgoing&quot;)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:create-service-condition-not-always-service"
+grep -Fq '<Custom Action="CreateStartService.SetParam" Before="CreateStartService" Condition="(NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)) AND (NOT CC_CONNECTION_TYPE=&quot;outgoing&quot;)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:create-service-setparam-condition-not-always-service"
+grep -Fq '<Custom Action="LaunchAppTray" After="InstallFinalize" Condition="(LAUNCH_TRAY_APP=&quot;Y&quot; OR LAUNCH_TRAY_APP=&quot;1&quot;) AND (NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)) AND (NOT CC_CONNECTION_TYPE=&quot;outgoing&quot;)"/>' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:launch-tray-still-service-stop-gated"
+grep -Fq '<Custom Action="TryStopDeleteService" Before="RemoveRuntimeGeneratedFiles.SetParam" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:stop-delete-service-not-remove-upgrade-scoped"
+grep -Fq '<Custom Action="TryStopDeleteService.SetParam" Before="TryStopDeleteService" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:stop-delete-service-setparam-not-remove-upgrade-scoped"
+if grep -RInE 'STOP_SERVICE|SetPropertyServiceStop|SetPropertyFromConfig|SetPropertyIsServiceRunning|TryDeleteStartupShortcut|ReadConfig|AddRegSoftwareSASGeneration|SoftwareSASGeneration' res/msi >/tmp/rd_verify_r_s11d16_msi.$$; then
+  cat /tmp/rd_verify_r_s11d16_msi.$$
+  r_s11d16="$r_s11d16 msi:persistent-service-or-sas-switch-leftover"
+fi
+rm -f /tmp/rd_verify_r_s11d16_msi.$$
+if grep -Eq 'reg[}"]?[[:space:]]+add[^\n]*SoftwareSASGeneration|AddRegSoftwareSASGeneration|RegSetValueExW\(.*SoftwareSASGeneration' src/platform/windows.rs res/msi/CustomActions/CustomActions.cpp; then
+  r_s11d16="$r_s11d16 persistent-sas-installer-write-leftover"
+fi
+grep -Fq 'enum OriginalSasPolicy' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-original-policy-enum-missing"
+grep -Fq 'OriginalSasPolicy::Absent' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-absent-state-missing"
+grep -Fq 'Present(u32),' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-present-state-missing"
+grep -Fq 'static ref SEND_SAS_POLICY_MUTEX: Mutex<()> = Mutex::new(());' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-policy-mutex-missing"
+grep -Fq 'let _sas_policy_guard = SEND_SAS_POLICY_MUTEX.lock().unwrap();' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-policy-mutation-not-serialized"
+grep -Fq 'SOFTWARE_SAS_GENERATION_SERVICES_AND_EASE_OF_ACCESS' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-known-policy-values-missing"
+grep -Fq 'let temporary_value = value | SOFTWARE_SAS_GENERATION_SERVICES;' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-ease-of-access-policy-not-preserved"
+grep -Fq 'Ok(value) => bail!("Unsupported SoftwareSASGeneration value: {value}")' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-unknown-policy-not-rejected"
+grep -Fq 'pub fn send_sas() -> ResultType<()> {' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-platform-result-missing"
+grep -Fq 'Err(err) if err.kind() == io::ErrorKind::NotFound' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-missing-value-not-separated-from-read-error"
+grep -Fq 'Err(err) => bail!("Failed to read SoftwareSASGeneration: {err}")' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-read-error-not-fail-closed"
+grep -Fq '.map_err(|err| anyhow!("Failed to set SoftwareSASGeneration: {err}"))?' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-set-failure-not-fatal"
+grep -Fq '.delete_value("SoftwareSASGeneration")' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-absent-restore-delete-missing"
+grep -Fq '.set_value("SoftwareSASGeneration", &original)' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-present-restore-missing"
+grep -Fq 'crate::platform::send_sas()?;' src/server/input_service.rs || r_s11d16="$r_s11d16 input-service-sas-error-not-propagated"
+if grep -Eq 'pub fn send_sas\(\) \{|original_value: Option<u32>|original == 0|log::error!\("Failed to (set|open|restore|delete) SoftwareSASGeneration' src/platform/windows.rs; then
+  r_s11d16="$r_s11d16 sas-hidden-fallback-or-zero-as-absent-leftover"
+fi
+grep -Fq 'Windows MSI service-state and SAS policy persistence' requirements.html || r_s11d16="$r_s11d16 requirements-disposition-missing"
+grep -Fq 'R-S11d-16 — Windows MSI service-state and SAS policy persistence' HARDENING_STATUS.md || r_s11d16="$r_s11d16 hardening-ledger-missing"
+if [ -n "$r_s11d16" ]; then echo "  FAIL R-S11d-16 Windows MSI service-state and SAS policy persistence:$r_s11d16"; rc=1; else
+  echo "  ok  R-S11d-16 MSI has no per-user stop-service switch or persistent SAS policy writer; runtime SAS uses serialized fail-closed temporary set/restore"; fi
 
 echo "== (3b-iii-a5e) Windows EXE elevated batch binds external tools to System32 (R-S11d-5) =="
 r_s11d5=

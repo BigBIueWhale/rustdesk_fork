@@ -212,11 +212,45 @@ fn main() {
 
 #[cfg(windows)]
 mod win {
-    use std::{fs, os::windows::process::CommandExt, path::Path, process::Command};
+    use std::{
+        ffi::OsString,
+        fs,
+        os::windows::{ffi::OsStringExt, process::CommandExt},
+        path::{Path, PathBuf},
+        process::Command,
+    };
+
+    use windows::Win32::System::SystemInformation::GetSystemDirectoryW;
 
     // Used for privacy mode(magnifier impl).
     pub const RUNTIME_BROKER_EXE: &'static str = "C:\\Windows\\System32\\RuntimeBroker.exe";
     pub const WIN_TOPMOST_INJECTED_PROCESS_EXE: &'static str = "RuntimeBroker_rustdesk.exe";
+
+    fn trusted_system_dir() -> Result<PathBuf, String> {
+        let mut buffer = [0u16; 260];
+        let len = unsafe { GetSystemDirectoryW(Some(&mut buffer)) } as usize;
+        if len == 0 {
+            return Err(format!(
+                "GetSystemDirectoryW failed: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        if len >= buffer.len() {
+            return Err("GetSystemDirectoryW returned an oversized path".to_owned());
+        }
+        Ok(PathBuf::from(OsString::from_wide(&buffer[..len])))
+    }
+
+    fn trusted_system_tool_path(tool: &str) -> Result<PathBuf, String> {
+        if tool.contains('\\') || tool.contains('/') || tool.contains('"') || tool.trim() != tool {
+            return Err(format!("invalid trusted system tool name: {tool}"));
+        }
+        let path = trusted_system_dir()?.join(tool);
+        if !path.is_file() {
+            return Err(format!("trusted system tool not found: {}", path.display()));
+        }
+        Ok(path)
+    }
 
     pub(super) fn copy_runtime_broker(dir: &Path) {
         let src = RUNTIME_BROKER_EXE;
@@ -231,10 +265,20 @@ mod win {
                 }
             }
         }
-        let _allow_err = Command::new("taskkill")
-            .args(&["/F", "/IM", "RuntimeBroker_rustdesk.exe"])
-            .creation_flags(winapi::um::winbase::CREATE_NO_WINDOW)
-            .output();
+        match trusted_system_tool_path("taskkill.exe") {
+            Ok(taskkill) => {
+                if let Err(err) = Command::new(taskkill)
+                    .args(&["/F", "/IM", "RuntimeBroker_rustdesk.exe"])
+                    .creation_flags(winapi::um::winbase::CREATE_NO_WINDOW)
+                    .output()
+                {
+                    eprintln!("RuntimeBroker cleanup failed: {}", err);
+                }
+            }
+            Err(err) => {
+                eprintln!("Skipping RuntimeBroker cleanup: {}", err);
+            }
+        }
         let _allow_err = std::fs::copy(src, &format!("{}\\{}", dir.to_string_lossy(), tgt));
     }
 

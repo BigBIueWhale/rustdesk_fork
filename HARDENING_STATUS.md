@@ -766,6 +766,17 @@ unreachable and a source/test/AST gate prevents reintroduction.
   present. Verification closure: `scripts/verify.sh` asserts fallible shell selection, `GetSystemDirectoryW`
   use, the absolute trusted candidate set, fail-closed propagation in both helper and direct terminal paths,
   absence of `COMSPEC`/bare `pwsh.exe`/bare `cmd.exe` fallback, and this ledger/requirements disposition.
+- **R-S11d-10 — Windows portable RuntimeBroker cleanup command provenance — CLOSED 2026-07-10.**
+  Platform: Windows portable launcher/installer. Endpoint/action: best-effort termination of stale
+  `RuntimeBroker_rustdesk.exe` before copying the runtime broker payload. Boundary: local same-user portable
+  launch/install flow; if a user deliberately starts the portable installer elevated, the launched cleanup tool
+  inherits that approved local elevation, but the action is not remote-triggered and not service-owned. Attack
+  surface closed: the portable launcher no longer starts `taskkill` through current-directory/PATH search.
+  `taskkill.exe` is resolved from `GetSystemDirectoryW`, checked as a file, and used without any ambient fallback.
+  Cleanup remains best-effort because an absent stale broker process is an acceptable state; spawn-resolution
+  errors are reported rather than hidden. Verification closure: `scripts/verify.sh` asserts trusted
+  `taskkill.exe` resolution, `GetSystemDirectoryW` use, absence of bare taskkill launch, reported spawn errors,
+  and this ledger/requirements disposition.
 
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,

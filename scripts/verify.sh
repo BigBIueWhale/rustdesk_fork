@@ -537,6 +537,14 @@ if grep -Fq 'COMSPEC' src/server/terminal_helper.rs src/server/terminal_service.
 fi
 grep -q 'Windows terminal default-shell command provenance' requirements.html || r_s11d="$r_s11d terminal-shell-requirements-disposition-missing"
 grep -q 'R-S11d-9 — Windows terminal default-shell command provenance' HARDENING_STATUS.md || r_s11d="$r_s11d terminal-shell-hardening-ledger-missing"
+grep -Fq 'trusted_system_tool_path("taskkill.exe")' libs/portable/src/main.rs || r_s11d="$r_s11d portable-taskkill:not-trusted-system-tool"
+grep -Fq 'GetSystemDirectoryW(Some(&mut buffer))' libs/portable/src/main.rs || r_s11d="$r_s11d portable-taskkill:no-systemdir-resolution"
+grep -Fq 'RuntimeBroker cleanup failed' libs/portable/src/main.rs || r_s11d="$r_s11d portable-taskkill:spawn-error-not-reported"
+if grep -Fq 'Command::new("taskkill")' libs/portable/src/main.rs || grep -Fq 'Command::new("taskkill.exe")' libs/portable/src/main.rs; then
+  r_s11d="$r_s11d portable-taskkill:bare-launch"
+fi
+grep -q 'Windows portable RuntimeBroker cleanup command provenance' requirements.html || r_s11d="$r_s11d portable-taskkill-requirements-disposition-missing"
+grep -q 'R-S11d-10 — Windows portable RuntimeBroker cleanup command provenance' HARDENING_STATUS.md || r_s11d="$r_s11d portable-taskkill-hardening-ledger-missing"
 grep -q 'Windows MSI runtime-generated executable cleanup completion authority' requirements.html || r_s11d="$r_s11d runtime-generated-cleanup-requirements-disposition-missing"
 grep -q 'R-S11d-4 — Windows MSI runtime-generated executable cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d runtime-generated-cleanup-hardening-ledger-missing"
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else

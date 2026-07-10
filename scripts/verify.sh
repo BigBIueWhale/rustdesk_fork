@@ -832,6 +832,30 @@ grep -Fq 'R-S11d-18 — Windows EXE elevated batch cmd-state hardening' HARDENIN
 if [ -n "$r_s11d18" ]; then echo "  FAIL R-S11d-18 Windows EXE elevated batch cmd-state hardening:$r_s11d18"; rc=1; else
   echo "  ok  R-S11d-18 Windows elevated EXE batches use cmd /D /V:OFF /S /C and reject expansion-sensitive generated paths"; fi
 
+echo "== (3b-iii-a5d4c) Windows EXE uninstall cleanup uses known-folder literal paths (R-S11d-19) =="
+r_s11d19=
+grep -Fq 'fn get_install_info() -> (String, String, String)' src/platform/windows.rs || r_s11d19="$r_s11d19 stale-install-info-start-menu-field-left"
+grep -Fq 'fn get_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> ResultType<String>' src/platform/windows.rs || r_s11d19="$r_s11d19 uninstall-builder-not-fallible"
+grep -Fq 'let uninstall_str = get_uninstall(false, &tools)?;' src/platform/windows.rs || r_s11d19="$r_s11d19 install-path-does-not-propagate-uninstall-build-failure"
+grep -Fq 'run_cmds(get_uninstall(kill_self, &tools)?, true, "uninstall")' src/platform/windows.rs || r_s11d19="$r_s11d19 uninstall-path-does-not-propagate-uninstall-build-failure"
+grep -Fq 'batch_literal_text(&path, "installed path")?' src/platform/windows.rs || r_s11d19="$r_s11d19 installed-path-not-batch-literal-guarded"
+grep -Fq 'let start_menu = quoted_batch_path(&common_programs_app_dir()?)?;' src/platform/windows.rs || r_s11d19="$r_s11d19 start-menu-cleanup-not-known-folder-quoted"
+grep -Fq 'let public_desktop_shortcut = quoted_batch_path(&public_desktop_app_shortcut_path()?)?;' src/platform/windows.rs || r_s11d19="$r_s11d19 public-desktop-cleanup-not-known-folder-quoted"
+grep -Fq 'let startup_tray_shortcut = quoted_batch_path(&common_startup_tray_shortcut_path()?)?;' src/platform/windows.rs || r_s11d19="$r_s11d19 startup-cleanup-not-known-folder-quoted"
+grep -Fq 'match common_startup_tray_shortcut_path().and_then(|path| quoted_batch_path(&path))' src/platform/windows.rs || r_s11d19="$r_s11d19 service-uninstall-startup-cleanup-not-known-folder"
+grep -Fq '.and_then(|path| quoted_batch_path(&path))' src/platform/windows.rs || r_s11d19="$r_s11d19 service-uninstall-startup-cleanup-not-quoted"
+grep -Fq 'if exist {public_desktop_shortcut} del /f /q {public_desktop_shortcut}' src/platform/windows.rs || r_s11d19="$r_s11d19 public-desktop-cleanup-command-not-literal"
+grep -Fq 'if exist {startup_tray_shortcut} del /f /q {startup_tray_shortcut}' src/platform/windows.rs || r_s11d19="$r_s11d19 startup-cleanup-command-not-literal"
+if grep -nE '%(ProgramData|PROGRAMDATA|PUBLIC)%' src/platform/windows.rs >/tmp/rd_verify_r_s11d19_envroots.$$; then
+  cat /tmp/rd_verify_r_s11d19_envroots.$$
+  r_s11d19="$r_s11d19 env-expanded-cleanup-root-leftover"
+fi
+rm -f /tmp/rd_verify_r_s11d19_envroots.$$
+grep -Fq 'Windows EXE uninstall cleanup known-folder authority' requirements.html || r_s11d19="$r_s11d19 requirements-disposition-missing"
+grep -Fq 'R-S11d-19 — Windows EXE uninstall cleanup known-folder authority' HARDENING_STATUS.md || r_s11d19="$r_s11d19 hardening-ledger-missing"
+if [ -n "$r_s11d19" ]; then echo "  FAIL R-S11d-19 Windows EXE uninstall cleanup known-folder authority:$r_s11d19"; rc=1; else
+  echo "  ok  R-S11d-19 Windows EXE uninstall cleanup uses known-folder literal paths and no env-expanded ProgramData/Public roots"; fi
+
 echo "== (3b-iii-a5d5) Windows MSI service state and SAS policy are not persistent user-config side effects (R-S11d-16) =="
 r_s11d16=
 grep -Fq '<Custom Action="CreateStartService" Before="InstallFinalize" Condition="(NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)) AND (NOT CC_CONNECTION_TYPE=&quot;outgoing&quot;)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:create-service-condition-not-always-service"
@@ -905,9 +929,15 @@ grep -Fq 'FOLDERID_CommonStartup' src/platform/windows.rs || r_s11d6="$r_s11d6 c
 grep -Fq 'fn create_shortcut_command_file(' src/platform/windows.rs || r_s11d6="$r_s11d6 shortcut-command-helper-missing"
 grep -Fq 'fn installer_script_literal(value: &str, label: &str) -> ResultType<String>' src/platform/windows.rs || r_s11d6="$r_s11d6 shortcut-script-literal-guard-missing"
 grep -Fq 'fn run_shortcut_script_cmd(script_path: &str, tools: &WindowsSystemTools) -> String' src/platform/windows.rs || r_s11d6="$r_s11d6 checked-shortcut-runner-missing"
-grep -Fq 'public_desktop_dir()?.join(format!("{app_name}.lnk"))' src/platform/windows.rs || r_s11d6="$r_s11d6 desktop-shortcut-not-final-known-folder"
-grep -Fq 'common_programs_dir()?.join(&app_name)' src/platform/windows.rs || r_s11d6="$r_s11d6 start-menu-shortcut-not-final-known-folder"
-grep -Fq 'common_startup_dir()?.join(format!("{app_name} Tray.lnk"))' src/platform/windows.rs || r_s11d6="$r_s11d6 tray-shortcut-not-final-known-folder"
+grep -Fq 'fn public_desktop_app_shortcut_path() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d6="$r_s11d6 desktop-shortcut-helper-missing"
+grep -Fq 'Ok(public_desktop_dir()?.join(format!("{}.lnk", crate::get_app_name())))' src/platform/windows.rs || r_s11d6="$r_s11d6 desktop-shortcut-not-final-known-folder"
+grep -Fq 'fn common_programs_app_dir() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d6="$r_s11d6 start-menu-helper-missing"
+grep -Fq 'Ok(common_programs_dir()?.join(crate::get_app_name()))' src/platform/windows.rs || r_s11d6="$r_s11d6 start-menu-shortcut-not-final-known-folder"
+grep -Fq 'fn common_startup_tray_shortcut_path() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d6="$r_s11d6 tray-shortcut-helper-missing"
+grep -Fq 'Ok(common_startup_dir()?.join(format!("{} Tray.lnk", crate::get_app_name())))' src/platform/windows.rs || r_s11d6="$r_s11d6 tray-shortcut-not-final-known-folder"
+grep -Fq '&public_desktop_app_shortcut_path()?' src/platform/windows.rs || r_s11d6="$r_s11d6 desktop-shortcut-callsite-not-helper"
+grep -Fq 'let start_menu = common_programs_app_dir()?;' src/platform/windows.rs || r_s11d6="$r_s11d6 start-menu-shortcut-callsite-not-helper"
+grep -Fq '&common_startup_tray_shortcut_path()?' src/platform/windows.rs || r_s11d6="$r_s11d6 tray-shortcut-callsite-not-helper"
 grep -Fq 'Path::new(&path).join(format!("Uninstall {app_name}.lnk"))' src/platform/windows.rs || r_s11d6="$r_s11d6 install-dir-uninstall-shortcut-not-final"
 grep -Fq 'if errorlevel 1 exit /b 1' src/platform/windows.rs || r_s11d6="$r_s11d6 shortcut-cscript-not-fail-closed"
 if grep -nE 'sLinkFile = "\{tmp_path\}|copy /Y .*\.lnk|tmp_path.*\.lnk|fn get_tray_shortcut' src/platform/windows.rs >/tmp/rd_verify_r_s11d6_staging.$$; then

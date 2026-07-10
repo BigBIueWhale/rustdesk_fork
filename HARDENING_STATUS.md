@@ -910,9 +910,26 @@ unreachable and a source/test/AST gate prevents reintroduction.
   directory candidate list, literal/path guards, rejected expansion/metacharacter set, safe temp/ProgramData/
   user-accessible checks, create-error tracking, marker quoting, `/D /V:OFF /S /C` command invocation on both
   already-elevated and UAC `runas` paths, absence of the old bare `/C` invocation shape, and this
-  ledger/requirements disposition. Separate Windows findings not
-  closed by this item remain open for later slices: env-expanded uninstall cleanup roots, per-command batch
-  postconditions, and the MSI `CC_CONNECTION_TYPE` public-property service-mode gate.
+  ledger/requirements disposition. Separate Windows findings not closed by this item were tracked separately:
+  R-S11d-19 closes env-expanded uninstall cleanup roots; per-command batch postconditions and the MSI
+  `CC_CONNECTION_TYPE` public-property service-mode gate remain open for later slices.
+- **R-S11d-19 — Windows EXE uninstall cleanup known-folder authority — CLOSED 2026-07-10.**
+  Platform: Windows EXE uninstall and service-uninstall elevated command paths. Endpoint/action: cleanup of
+  all-users Start Menu, Public Desktop, and Common Startup shortcuts/directories after uninstall or service
+  removal. Boundary: caller/elevated process environment ↔ protected all-users shell folders. Attack surface
+  closed: elevated cleanup no longer expands `%ProgramData%`, `%PROGRAMDATA%`, or `%PUBLIC%` inside the batch
+  body to decide which protected shell-folder paths to delete. The stale start-menu field was removed from
+  `get_install_info`; install, uninstall, service install, and service uninstall now share fallible
+  `SHGetKnownFolderPath` helpers for Public Desktop, Common Programs, and Common Startup. `get_uninstall` is
+  fallible, guards the installed path as batch-literal text, quotes known-folder cleanup targets through the
+  same elevated batch path guard, and propagates known-folder/quoting failures to callers. `uninstall_service`
+  resolves and quotes the Common Startup tray shortcut before composing the elevated command and returns
+  `false` on failure. Verification closure: `scripts/verify.sh` asserts the narrowed `get_install_info` tuple,
+  fallible uninstall builder/callers, installed-path literal guard, known-folder quoted cleanup paths, service
+  uninstall known-folder cleanup, absence of `%ProgramData%` / `%PROGRAMDATA%` / `%PUBLIC%` roots in
+  `src/platform/windows.rs`, and this ledger/requirements disposition. Separate Windows findings not closed by
+  this item remain open for later slices: per-command batch postconditions and the MSI `CC_CONNECTION_TYPE`
+  public-property service-mode gate.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's

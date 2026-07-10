@@ -1351,7 +1351,7 @@ pub fn is_share_rdp() -> bool {
 }
 
 pub(crate) fn set_service_owned_share_rdp(enable: bool) -> ResultType<()> {
-    let (subkey, _, _, _) = get_install_info();
+    let (subkey, _, _) = get_install_info();
     let subkey = subkey.replace("HKEY_LOCAL_MACHINE\\", "");
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let key = hklm.open_subkey_with_flags(subkey, KEY_SET_VALUE)?;
@@ -1620,11 +1620,11 @@ fn get_reg_of_hkcr(subkey: &str, name: &str) -> Option<String> {
     None
 }
 
-pub fn get_install_info() -> (String, String, String, String) {
+pub fn get_install_info() -> (String, String, String) {
     get_install_info_with_subkey(get_valid_subkey())
 }
 
-fn get_default_install_info() -> (String, String, String, String) {
+fn get_default_install_info() -> (String, String, String) {
     get_install_info_with_subkey(get_subkey(&crate::get_app_name(), false))
 }
 
@@ -1675,6 +1675,14 @@ fn common_startup_dir() -> ResultType<PathBuf> {
     )
 }
 
+fn common_programs_app_dir() -> ResultType<PathBuf> {
+    Ok(common_programs_dir()?.join(crate::get_app_name()))
+}
+
+fn common_startup_tray_shortcut_path() -> ResultType<PathBuf> {
+    Ok(common_startup_dir()?.join(format!("{} Tray.lnk", crate::get_app_name())))
+}
+
 fn program_data_dir() -> ResultType<PathBuf> {
     known_folder_path(&FOLDERID_ProgramData, "SHGetKnownFolderPath(ProgramData)")
 }
@@ -1684,6 +1692,10 @@ fn public_desktop_dir() -> ResultType<PathBuf> {
         &FOLDERID_PublicDesktop,
         "SHGetKnownFolderPath(Public Desktop)",
     )
+}
+
+fn public_desktop_app_shortcut_path() -> ResultType<PathBuf> {
+    Ok(public_desktop_dir()?.join(format!("{}.lnk", crate::get_app_name())))
 }
 
 fn default_install_path_buf() -> ResultType<PathBuf> {
@@ -1857,18 +1869,14 @@ pub fn check_update_broker_process() -> ResultType<()> {
     Ok(())
 }
 
-fn get_install_info_with_subkey(subkey: String) -> (String, String, String, String) {
+fn get_install_info_with_subkey(subkey: String) -> (String, String, String) {
     let mut path = get_reg_of(&subkey, "InstallLocation");
     if path.is_empty() {
         path = get_default_install_path();
     }
     path = path.trim_end_matches('\\').to_owned();
-    let start_menu = format!(
-        "%ProgramData%\\Microsoft\\Windows\\Start Menu\\Programs\\{}",
-        crate::get_app_name()
-    );
     let exe = format!("{}\\{}.exe", path, crate::get_app_name());
-    (subkey, path, start_menu, exe)
+    (subkey, path, exe)
 }
 
 fn copy_raw_cmd(
@@ -1999,11 +2007,11 @@ fn get_after_install(
 
 pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> ResultType<()> {
     let tools = WindowsSystemTools::resolve()?;
-    let uninstall_str = get_uninstall(false, &tools);
+    let uninstall_str = get_uninstall(false, &tools)?;
     let path = fixed_service_install_path(&path)?
         .to_string_lossy()
         .into_owned();
-    let (subkey, _path, _start_menu, exe) = get_default_install_info();
+    let (subkey, _path, exe) = get_default_install_info();
     let mut exe = exe;
     exe = exe.replace(&_path, &path);
     let mut version_major = "0";
@@ -2029,7 +2037,7 @@ pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> Res
     let mut shortcut_cmds = String::new();
     if options.contains("desktopicon") {
         let desktop_shortcut = create_shortcut_command_file(
-            &public_desktop_dir()?.join(format!("{app_name}.lnk")),
+            &public_desktop_app_shortcut_path()?,
             &exe,
             None,
             None,
@@ -2046,7 +2054,7 @@ pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> Res
         reg_value_desktop_shortcuts = "1".to_owned();
     }
     if options.contains("startmenu") {
-        let start_menu = common_programs_dir()?.join(&app_name);
+        let start_menu = common_programs_app_dir()?;
         let quoted_start_menu = quoted_batch_path(&start_menu)?;
         shortcut_cmds.push_str(&format!(
             "
@@ -2086,7 +2094,7 @@ if not exist {quoted_start_menu} exit /b 1
     }
     if !config::is_outgoing_only() {
         let tray_shortcut = create_shortcut_command_file(
-            &common_startup_dir()?.join(format!("{app_name} Tray.lnk")),
+            &common_startup_tray_shortcut_path()?,
             &exe,
             Some("--tray"),
             None,
@@ -2252,45 +2260,52 @@ fn command_with_system_tool(
     None
 }
 
-fn get_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> String {
+fn get_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> ResultType<String> {
     let reg_uninstall_string = get_reg("UninstallString");
     if reg_uninstall_string.to_lowercase().contains("msiexec.exe") {
         if let Some(command) =
             command_with_system_tool(&reg_uninstall_string, "msiexec.exe", &tools.msiexec)
         {
-            return command;
+            return Ok(command);
         }
-        return reg_uninstall_string;
+        return Ok(reg_uninstall_string);
     }
 
     let mut uninstall_cert_cmd = "".to_string();
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(exe_path) = exe.to_str() {
-            uninstall_cert_cmd = format!("\"{}\" --uninstall-cert", exe_path);
+    match std::env::current_exe() {
+        Ok(exe) => {
+            uninstall_cert_cmd = format!("{} --uninstall-cert", quoted_batch_path(&exe)?);
+        }
+        Err(err) => {
+            log::warn!("Failed to resolve current exe for certificate uninstall: {err}");
         }
     }
-    let (subkey, path, start_menu, _) = get_install_info();
-    format!(
+    let (subkey, path, _) = get_install_info();
+    batch_literal_text(&path, "installed path")?;
+    let path = format!("\"{path}\"");
+    let start_menu = quoted_batch_path(&common_programs_app_dir()?)?;
+    let public_desktop_shortcut = quoted_batch_path(&public_desktop_app_shortcut_path()?)?;
+    let startup_tray_shortcut = quoted_batch_path(&common_startup_tray_shortcut_path()?)?;
+    Ok(format!(
         "
     {before_uninstall}
     {uninstall_cert_cmd}
     {reg} delete {subkey} /f
     {uninstall_amyuni_idd}
-    if exist \"{path}\" rd /s /q \"{path}\"
-    if exist \"{start_menu}\" rd /s /q \"{start_menu}\"
-    if exist \"%PUBLIC%\\Desktop\\{app_name}.lnk\" del /f /q \"%PUBLIC%\\Desktop\\{app_name}.lnk\"
-    if exist \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{app_name} Tray.lnk\" del /f /q \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{app_name} Tray.lnk\"
+    if exist {path} rd /s /q {path}
+    if exist {start_menu} rd /s /q {start_menu}
+    if exist {public_desktop_shortcut} del /f /q {public_desktop_shortcut}
+    if exist {startup_tray_shortcut} del /f /q {startup_tray_shortcut}
     ",
-        before_uninstall=get_before_uninstall(kill_self, tools),
+        before_uninstall = get_before_uninstall(kill_self, tools),
         reg = tools.reg,
-        uninstall_amyuni_idd=get_uninstall_amyuni_idd(),
-        app_name = crate::get_app_name(),
-    )
+        uninstall_amyuni_idd = get_uninstall_amyuni_idd(),
+    ))
 }
 
 pub fn uninstall_me(kill_self: bool) -> ResultType<()> {
     let tools = WindowsSystemTools::resolve()?;
-    run_cmds(get_uninstall(kill_self, &tools), true, "uninstall")
+    run_cmds(get_uninstall(kill_self, &tools)?, true, "uninstall")
 }
 
 struct InstallerCommandFile {
@@ -2609,12 +2624,12 @@ pub fn add_recent_document(path: &str) {
 }
 
 pub fn is_installed() -> bool {
-    let (_, _, _, exe) = get_install_info();
+    let (_, _, exe) = get_install_info();
     std::fs::metadata(exe).is_ok()
 }
 
 pub fn get_reg(name: &str) -> String {
-    let (subkey, _, _, _) = get_install_info();
+    let (subkey, _, _) = get_install_info();
     get_reg_of(&subkey, name)
 }
 
@@ -3658,12 +3673,20 @@ pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
         }
     };
     let filter = format!(" /FI \"PID ne {}\"", get_current_pid());
+    let startup_tray_shortcut =
+        match common_startup_tray_shortcut_path().and_then(|path| quoted_batch_path(&path)) {
+            Ok(path) => path,
+            Err(err) => {
+                log::error!("Failed to resolve common startup shortcut path: {err}");
+                return false;
+            }
+        };
     let cmds = format!(
         "
     {chcp} 65001
     {sc} stop {app_name}
     {sc} delete {app_name}
-    if exist \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{app_name} Tray.lnk\" del /f /q \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{app_name} Tray.lnk\"
+    if exist {startup_tray_shortcut} del /f /q {startup_tray_shortcut}
     {taskkill} /F /IM {broker_exe}
     {taskkill} /F /IM {app_name}.exe{filter}
     ",
@@ -3671,6 +3694,7 @@ pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
         sc = tools.sc,
         taskkill = tools.taskkill,
         app_name = crate::get_app_name(),
+        startup_tray_shortcut = startup_tray_shortcut,
         broker_exe = WIN_TOPMOST_INJECTED_PROCESS_EXE,
     );
     if let Err(err) = run_cmds(cmds, false, "uninstall") {
@@ -3702,9 +3726,7 @@ pub fn install_service() -> bool {
         log::error!("Fixed Windows service executable does not exist: {exe}");
         return false;
     }
-    let tray_shortcut_path = match common_startup_dir()
-        .map(|dir| dir.join(format!("{} Tray.lnk", crate::get_app_name())))
-    {
+    let tray_shortcut_path = match common_startup_tray_shortcut_path() {
         Ok(path) => path,
         Err(err) => {
             log::error!("Failed to resolve common startup shortcut path: {err}");
@@ -3849,7 +3871,7 @@ fn get_create_service(exe: &str, tools: &WindowsSystemTools) -> String {
 }
 
 fn run_after_run_cmds(silent: bool) {
-    let (_, _, _, exe) = get_install_info();
+    let (_, _, exe) = get_install_info();
     if !silent {
         log::debug!("Spawn new window");
         allow_err!(std::process::Command::new(&exe).spawn());
@@ -4313,7 +4335,7 @@ pub fn is_msi_installed() -> std::io::Result<bool> {
 }
 
 pub fn is_cur_exe_the_installed() -> bool {
-    let (_, _, _, exe) = get_install_info();
+    let (_, _, exe) = get_install_info();
     // Check if is installed, because `exe` is the default path if is not installed.
     if !std::fs::metadata(&exe).is_ok() {
         return false;

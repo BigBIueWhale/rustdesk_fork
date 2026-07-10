@@ -16,6 +16,7 @@ import shutil
 
 g_indent_unit = "\t"
 g_version = ""
+APP_NAME_IDENTIFIER_RE = re.compile(r"^[A-Za-z](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?$")
 # Placeholder only: init_global_vars() overwrites this with the built exe's deterministic --build-date
 # (SOURCE_DATE_EPOCH-derived) before any consumer reads it. Kept wall-clock-free so no build-day value
 # can ever reach the .msi bytes even on an unexpected code path (R-B2).
@@ -106,6 +107,10 @@ def make_parser():
         help="The app manufacturer.",
     )
     return parser
+
+
+def app_name_is_valid(app_name):
+    return bool(APP_NAME_IDENTIFIER_RE.fullmatch(app_name))
 
 
 def read_lines_and_start_index(file_path, tag_start, tag_end):
@@ -551,6 +556,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     app_name = args.app_name
+    if not app_name_is_valid(app_name):
+        print(
+            "invalid --app-name: expected 1-64 ASCII letters, digits, or hyphens; "
+            "the first character must be a letter and the last must be a letter or digit",
+            file=sys.stderr,
+        )
+        sys.exit(-1)
+
     dist_dir = Path(sys.argv[0]).parent.joinpath(args.dist_dir).resolve()
 
     if not prepare_resources():

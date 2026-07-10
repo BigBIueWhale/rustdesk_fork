@@ -103,6 +103,9 @@ echo "== (3b-ii) api-server resolution dials-nobody behavior test (R-SV6(d)) =="
 echo "== (3b-iv) trust-anchor option is pinned empty and get_key is constant (R-A4/R-X4/R-S11b-3) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config common::tests::get_key_uses_pinned_anchor_and_rejects_option_override --color never
 
+echo "== (3b-iv-a) custom-client app-name is a constrained system identifier (R-S11d-26) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config common::tests::custom_client_app_name_identifier_contract --color never
+
 # (3b-iii) R-S11 / Appendix C #15: the MAIN IPC channel (UI⇄service, 0o0600 same-uid) is a config-
 # integrity boundary. main_channel_admits_state_mutation is a POSITIVE allowlist over mutating
 # arms. The legacy generic write shapes are absent: no Data::Config((name, Some(value))) for
@@ -950,6 +953,28 @@ grep -Fq 'Windows EXE elevated batch command postconditions' requirements.html |
 grep -Fq 'R-S11d-20 — Windows EXE elevated batch command postconditions' HARDENING_STATUS.md || r_s11d20="$r_s11d20 hardening-ledger-missing"
 if [ -n "$r_s11d20" ]; then echo "  FAIL R-S11d-20 Windows EXE elevated batch command postconditions:$r_s11d20"; rc=1; else
   echo "  ok  R-S11d-20 Windows elevated EXE batch bodies fail fast for required operations and verify persistent file/service/registry/firewall cleanup state"; fi
+
+echo "== (3b-iii-a5d4e) Windows app-name is a constrained system identifier (R-S11d-26) =="
+r_s11d26=
+grep -Fq 'const MAX_CUSTOM_CLIENT_APP_NAME_LEN: usize = 64;' src/common.rs || r_s11d26="$r_s11d26 rust:max-len-missing"
+grep -Fq 'fn custom_client_app_name_is_valid(app_name: &str) -> bool' src/common.rs || r_s11d26="$r_s11d26 rust:validator-missing"
+grep -Fq 'bytes[0].is_ascii_alphabetic()' src/common.rs || r_s11d26="$r_s11d26 rust:first-char-not-alpha"
+grep -Fq 'bytes[bytes.len() - 1].is_ascii_alphanumeric()' src/common.rs || r_s11d26="$r_s11d26 rust:last-char-not-alnum"
+grep -Fq '*byte == b'\''-'\''' src/common.rs || r_s11d26="$r_s11d26 rust:hyphen-grammar-missing"
+custom_app_name_block=$(awk '/data.remove\("app-name"\)/,/APP_NAME.write/' src/common.rs)
+echo "$custom_app_name_block" | grep -Fq 'let Some(app_name) = app_name.as_str() else' || r_s11d26="$r_s11d26 rust:non-string-app-name-not-fatal"
+echo "$custom_app_name_block" | grep -Fq 'if !custom_client_app_name_is_valid(app_name)' || r_s11d26="$r_s11d26 rust:signed-app-name-not-validated"
+echo "$custom_app_name_block" | grep -Fq 'return;' || r_s11d26="$r_s11d26 rust:invalid-app-name-not-rejecting-payload"
+[ "$(grep -Fc 'config::APP_NAME.write().unwrap() = app_name.to_owned();' src/common.rs)" -eq 1 ] || r_s11d26="$r_s11d26 rust:unexpected-app-name-write-count"
+grep -Fq 'fn custom_client_app_name_identifier_contract()' src/common.rs || r_s11d26="$r_s11d26 rust:validator-test-missing"
+grep -Fq 'APP_NAME_IDENTIFIER_RE = re.compile(r"^[A-Za-z](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?$")' res/msi/preprocess.py || r_s11d26="$r_s11d26 msi:validator-regex-missing"
+grep -Fq 'def app_name_is_valid(app_name):' res/msi/preprocess.py || r_s11d26="$r_s11d26 msi:validator-function-missing"
+grep -Fq 'if not app_name_is_valid(app_name):' res/msi/preprocess.py || r_s11d26="$r_s11d26 msi:app-name-not-validated-before-use"
+grep -Fq '"invalid --app-name: expected 1-64 ASCII letters, digits, or hyphens; "' res/msi/preprocess.py || r_s11d26="$r_s11d26 msi:error-contract-missing"
+grep -Fq 'Windows app-name identity contract' requirements.html || r_s11d26="$r_s11d26 requirements-disposition-missing"
+grep -Fq 'R-S11d-26 — Windows app-name identity contract' HARDENING_STATUS.md || r_s11d26="$r_s11d26 hardening-ledger-missing"
+if [ -n "$r_s11d26" ]; then echo "  FAIL R-S11d-26 Windows app-name identity contract:$r_s11d26"; rc=1; else
+  echo "  ok  R-S11d-26 signed custom-client and MSI app names are constrained ASCII system identifiers before reaching service/protocol/path/batch sinks"; fi
 
 echo "== (3b-iii-a5d4a) Windows MSI service mode is package authority, not caller connection type (R-S11d-21) =="
 r_s11d21=

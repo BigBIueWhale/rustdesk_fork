@@ -1214,6 +1214,21 @@ pub fn get_dst_align_rgba() -> usize {
     1
 }
 
+const MAX_CUSTOM_CLIENT_APP_NAME_LEN: usize = 64;
+
+fn custom_client_app_name_is_valid(app_name: &str) -> bool {
+    let bytes = app_name.as_bytes();
+    if bytes.is_empty() || bytes.len() > MAX_CUSTOM_CLIENT_APP_NAME_LEN {
+        return false;
+    }
+    if !bytes[0].is_ascii_alphabetic() || !bytes[bytes.len() - 1].is_ascii_alphanumeric() {
+        return false;
+    }
+    bytes
+        .iter()
+        .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'-')
+}
+
 pub fn read_custom_client(config: &str) {
     let Ok(data) = decode64(config) else {
         log::error!("Failed to decode custom client config");
@@ -1236,9 +1251,15 @@ pub fn read_custom_client(config: &str) {
     };
 
     if let Some(app_name) = data.remove("app-name") {
-        if let Some(app_name) = app_name.as_str() {
-            *config::APP_NAME.write().unwrap() = app_name.to_owned();
+        let Some(app_name) = app_name.as_str() else {
+            log::error!("Invalid custom client app-name");
+            return;
+        };
+        if !custom_client_app_name_is_valid(app_name) {
+            log::error!("Invalid custom client app-name");
+            return;
         }
+        *config::APP_NAME.write().unwrap() = app_name.to_owned();
     }
 
     let mut map_display_settings = HashMap::new();
@@ -1447,6 +1468,39 @@ mod tests {
             RS_PUB_KEY,
             "R-A4: the anchor is constant across the sync flag"
         );
+    }
+
+    #[test]
+    fn custom_client_app_name_identifier_contract() {
+        for app_name in ["RustDesk", "RustDesk-Admin", "A", "A1", "A-1"] {
+            assert!(custom_client_app_name_is_valid(app_name), "{app_name}");
+        }
+
+        let max_len = format!("A{}1", "a".repeat(62));
+        assert!(custom_client_app_name_is_valid(&max_len));
+
+        let too_long = format!("A{}1", "a".repeat(63));
+        assert!(!custom_client_app_name_is_valid(&too_long));
+
+        for app_name in [
+            "",
+            "-RustDesk",
+            "RustDesk-",
+            "1RustDesk",
+            "RustDesk Admin",
+            "RustDesk_Admin",
+            "RustDesk.Admin",
+            "RustDesk+Admin",
+            "RustDesk&Admin",
+            "RustDesk\"Admin",
+            "RustDesk%Admin",
+            "RustDesk/Admin",
+            "RustDesk\\Admin",
+            "RustDesk\nAdmin",
+            "RustDeské",
+        ] {
+            assert!(!custom_client_app_name_is_valid(app_name), "{app_name:?}");
+        }
     }
 
     #[inline]

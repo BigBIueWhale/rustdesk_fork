@@ -1073,6 +1073,16 @@ unreachable and a source/test/AST gate prevents reintroduction.
   policy; this entry is only the install/update fallback. Verification closure: `scripts/verify.sh` asserts the
   direct SetupAPI install call, the `reboot_required` branch, fatal install reboot-required error, absence of the old
   discarded install result shape, and this ledger/requirements disposition.
+- **R-S11d-26 — Windows app-name identity contract — CLOSED 2026-07-11.** Platform: Windows
+  signed custom-client runtime config and MSI packaging. Endpoint/action: custom `app-name` reaching executable
+  names, install paths, URI scheme, service name, HKCR/HKLM registry keys, firewall rule labels, shortcuts, and
+  elevated EXE batch text. Boundary: signed/build-time branding input ↔ privileged Windows system identifiers.
+  Attack surface closed: `app-name` is no longer accepted as arbitrary display text. Signed custom-client parsing
+  now rejects non-string or invalid `app-name` before applying any payload settings, and MSI preprocessing rejects
+  invalid `--app-name` before generating package resources. The contract is a 1-64 byte ASCII identifier: first
+  character letter, last character letter or digit, and only letters/digits/hyphen in between. Verification
+  closure: `scripts/verify.sh` asserts the Rust validator and unit test, the guarded signed-config `APP_NAME`
+  assignment, the MSI regex/front-door check, and this ledger/requirements disposition.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's

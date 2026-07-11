@@ -5,9 +5,16 @@ use crate::{
 use hbb_common::{allow_err, log, tokio::time::Instant};
 use std::{
     cmp::min,
+    ffi::{CString, OsStr},
     fs::{File, FileTimes},
-    io::{BufWriter, Write},
-    os::macos::fs::FileTimesExt,
+    io::{self, BufWriter, Write},
+    os::{
+        macos::fs::FileTimesExt,
+        unix::{
+            ffi::OsStrExt,
+            io::{AsRawFd, FromRawFd, RawFd},
+        },
+    },
     path::{Path, PathBuf},
     sync::{
         mpsc::{Receiver, RecvTimeoutError},
@@ -21,6 +28,7 @@ const RECV_RETRY_TIMES: usize = 3;
 
 const DOWNLOAD_EXTENSION: &str = "rddownload";
 const RECEIVE_WAIT_TIMEOUT: Duration = Duration::from_millis(5_000);
+const UNIQUE_NAME_ATTEMPTS: usize = 9_999_999;
 
 // https://stackoverflow.com/a/15112784/1926020
 // "1984-01-24 08:00:00 +0000"
@@ -46,6 +54,7 @@ struct PasteTaskProgress {
     download_file_index: i32,
     download_file_size: u64,
     download_file_path: String,
+    download_file_relative_path: Option<PathBuf>,
     download_file_current_size: u64,
     file_handle: Option<BufWriter<File>>,
     error: Option<CliprdrError>,
@@ -55,6 +64,7 @@ struct PasteTaskProgress {
 struct PasteTaskHandle {
     progress: PasteTaskProgress,
     target_dir: PathBuf,
+    target_dir_handle: File,
     files: Vec<FileDescription>,
 }
 
@@ -73,16 +83,301 @@ impl Drop for PasteTask {
     }
 }
 
-fn ensure_contained_path(target_dir: &Path, path: &Path) -> Result<(), CliprdrError> {
-    if path.starts_with(target_dir) {
+fn common_error(description: impl Into<String>) -> CliprdrError {
+    CliprdrError::CommonError {
+        description: description.into(),
+    }
+}
+
+fn file_error(path: &Path, err: io::Error) -> CliprdrError {
+    CliprdrError::FileError {
+        path: path.to_string_lossy().to_string(),
+        err,
+    }
+}
+
+fn io_invalid_input(message: impl Into<String>) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidInput, message.into())
+}
+
+fn cstring_from_os_str(value: &OsStr, context: &str) -> io::Result<CString> {
+    CString::new(value.as_bytes()).map_err(|err| {
+        io_invalid_input(format!(
+            "invalid macOS paste {context} path component contains NUL: {err}"
+        ))
+    })
+}
+
+fn duplicate_fd(fd: RawFd) -> io::Result<File> {
+    let duplicated = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
+    if duplicated < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(unsafe { File::from_raw_fd(duplicated) })
+}
+
+fn open_child_dir_no_follow(parent_fd: RawFd, name: &CString) -> io::Result<File> {
+    let fd = unsafe {
+        libc::openat(
+            parent_fd,
+            name.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+        )
+    };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let dir = unsafe { File::from_raw_fd(fd) };
+    let mut stat: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(dir.as_raw_fd(), &mut stat) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if (stat.st_mode & libc::S_IFMT) != libc::S_IFDIR {
+        return Err(io_invalid_input(
+            "macOS paste parent component is not a directory",
+        ));
+    }
+    Ok(dir)
+}
+
+fn mkdir_child_if_missing(parent_fd: RawFd, name: &CString) -> io::Result<()> {
+    let rc = unsafe { libc::mkdirat(parent_fd, name.as_ptr(), 0o777 as libc::mode_t) };
+    if rc == 0 {
+        return Ok(());
+    }
+    let err = io::Error::last_os_error();
+    if err.raw_os_error() == Some(libc::EEXIST) {
         Ok(())
     } else {
-        Err(CliprdrError::InvalidRequest {
-            description: format!(
-                "macOS paste path escaped target directory: target={:?}, path={:?}",
-                target_dir, path
-            ),
-        })
+        Err(err)
+    }
+}
+
+fn open_dir_path_no_follow(path: &Path) -> io::Result<File> {
+    let mut dir = if path.is_absolute() {
+        File::open(Path::new("/"))?
+    } else {
+        File::open(Path::new("."))?
+    };
+
+    for component in path.components() {
+        match component {
+            std::path::Component::RootDir => {}
+            std::path::Component::Normal(name) => {
+                let name = cstring_from_os_str(name, "target-directory")?;
+                dir = open_child_dir_no_follow(dir.as_raw_fd(), &name)?;
+            }
+            std::path::Component::CurDir
+            | std::path::Component::ParentDir
+            | std::path::Component::Prefix(_) => {
+                return Err(io_invalid_input(format!(
+                    "unsupported macOS paste target directory shape: {}",
+                    path.display()
+                )));
+            }
+        }
+    }
+
+    Ok(dir)
+}
+
+fn open_relative_parent_dir_no_follow(
+    base_fd: RawFd,
+    relative_path: &Path,
+    create_missing: bool,
+) -> io::Result<(File, CString)> {
+    let mut dir = duplicate_fd(base_fd)?;
+    let mut components = relative_path.components().peekable();
+
+    while let Some(component) = components.next() {
+        let std::path::Component::Normal(name) = component else {
+            return Err(io_invalid_input(format!(
+                "unsafe macOS paste relative path: {}",
+                relative_path.display()
+            )));
+        };
+        let name = cstring_from_os_str(name, "relative")?;
+        if components.peek().is_none() {
+            return Ok((dir, name));
+        }
+        if create_missing {
+            mkdir_child_if_missing(dir.as_raw_fd(), &name)?;
+        }
+        dir = open_child_dir_no_follow(dir.as_raw_fd(), &name)?;
+    }
+
+    Err(io_invalid_input("empty macOS paste relative path"))
+}
+
+fn ensure_relative_dir_no_follow(base_fd: RawFd, relative_path: &Path) -> io::Result<()> {
+    let mut dir = duplicate_fd(base_fd)?;
+    let mut has_component = false;
+
+    for component in relative_path.components() {
+        let std::path::Component::Normal(name) = component else {
+            return Err(io_invalid_input(format!(
+                "unsafe macOS paste directory path: {}",
+                relative_path.display()
+            )));
+        };
+        has_component = true;
+        let name = cstring_from_os_str(name, "directory")?;
+        mkdir_child_if_missing(dir.as_raw_fd(), &name)?;
+        dir = open_child_dir_no_follow(dir.as_raw_fd(), &name)?;
+    }
+
+    if has_component {
+        Ok(())
+    } else {
+        Err(io_invalid_input("empty macOS paste directory path"))
+    }
+}
+
+fn stat_is_regular(stat: &libc::stat) -> bool {
+    (stat.st_mode & libc::S_IFMT) == libc::S_IFREG
+}
+
+fn open_relative_file_exclusive_no_follow(
+    base_fd: RawFd,
+    relative_path: &Path,
+) -> io::Result<File> {
+    let (parent, name) = open_relative_parent_dir_no_follow(base_fd, relative_path, true)?;
+    let fd = unsafe {
+        libc::openat(
+            parent.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_WRONLY
+                | libc::O_CREAT
+                | libc::O_EXCL
+                | libc::O_CLOEXEC
+                | libc::O_NOFOLLOW
+                | libc::O_NOCTTY,
+            0o666 as libc::mode_t,
+        )
+    };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let file = unsafe { File::from_raw_fd(fd) };
+    let mut stat: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(file.as_raw_fd(), &mut stat) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if !stat_is_regular(&stat) {
+        return Err(io_invalid_input(
+            "opened macOS paste target is not a regular file",
+        ));
+    }
+    Ok(file)
+}
+
+fn unlink_relative_file_no_follow(base_fd: RawFd, relative_path: &Path) -> io::Result<()> {
+    let (parent, name) = open_relative_parent_dir_no_follow(base_fd, relative_path, false)?;
+    let rc = unsafe { libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), 0) };
+    if rc == 0 {
+        return Ok(());
+    }
+    let err = io::Error::last_os_error();
+    if err.kind() == io::ErrorKind::NotFound {
+        Ok(())
+    } else {
+        Err(err)
+    }
+}
+
+fn rename_relative_file_exclusive_no_follow(
+    base_fd: RawFd,
+    from_relative_path: &Path,
+    to_relative_path: &Path,
+) -> io::Result<()> {
+    let (from_parent, from_name) =
+        open_relative_parent_dir_no_follow(base_fd, from_relative_path, false)?;
+    let (to_parent, to_name) =
+        open_relative_parent_dir_no_follow(base_fd, to_relative_path, false)?;
+    let rc = unsafe {
+        libc::renameatx_np(
+            from_parent.as_raw_fd(),
+            from_name.as_ptr(),
+            to_parent.as_raw_fd(),
+            to_name.as_ptr(),
+            libc::RENAME_EXCL,
+        )
+    };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+fn is_name_collision(err: &io::Error) -> bool {
+    err.raw_os_error() == Some(libc::EEXIST) || err.kind() == io::ErrorKind::AlreadyExists
+}
+
+fn append_download_extension(path: &Path) -> PathBuf {
+    PathBuf::from(format!("{}.{}", path.to_string_lossy(), DOWNLOAD_EXTENSION))
+}
+
+fn indexed_candidate_path(path: &Path, r#type: FileType, index: usize) -> Option<PathBuf> {
+    if index == 0 {
+        return Some(path.to_path_buf());
+    }
+
+    match r#type {
+        FileType::File => {
+            let file_name = if let Some(ext) = path.extension() {
+                let stem = path.file_stem()?.to_string_lossy();
+                format!("{}-{}.{}", stem, index, ext.to_string_lossy())
+            } else {
+                format!("{} ({})", path.file_name()?.to_string_lossy(), index)
+            };
+            Some(path.with_file_name(file_name))
+        }
+        FileType::Directory => Some(path.with_file_name(format!(
+            "{} ({})",
+            path.file_name()?.to_string_lossy(),
+            index
+        ))),
+        FileType::Symlink => None,
+    }
+}
+
+fn progress_attr_name() -> io::Result<CString> {
+    CString::new(ATTR_PROGRESS_FRACTION_COMPLETED)
+        .map_err(|err| io_invalid_input(format!("invalid progress xattr name: {err}")))
+}
+
+fn set_progress_fraction_for_file(file: &File, fraction_completed: f64) -> io::Result<()> {
+    let attr = progress_attr_name()?;
+    let value = fraction_completed.to_string();
+    let rc = unsafe {
+        libc::fsetxattr(
+            file.as_raw_fd(),
+            attr.as_ptr(),
+            value.as_bytes().as_ptr() as *const libc::c_void,
+            value.len(),
+            0,
+            0,
+        )
+    };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+fn remove_progress_fraction_for_file(file: &File) -> io::Result<()> {
+    let attr = progress_attr_name()?;
+    let rc = unsafe { libc::fremovexattr(file.as_raw_fd(), attr.as_ptr(), 0) };
+    if rc == 0 {
+        return Ok(());
+    }
+    let err = io::Error::last_os_error();
+    if err.raw_os_error() == Some(libc::ENOATTR) {
+        Ok(())
+    } else {
+        Err(err)
     }
 }
 
@@ -117,6 +412,8 @@ impl PasteTask {
             return Ok(());
         }
         let total_size = files.iter().map(|f| f.size).sum();
+        let target_dir_handle =
+            open_dir_path_no_follow(&target_dir).map_err(|e| file_error(&target_dir, e))?;
         let mut task_handle = PasteTaskHandle {
             progress: PasteTaskProgress {
                 list_index: -1,
@@ -127,15 +424,17 @@ impl PasteTask {
                 download_file_index: Self::INVALID_FILE_INDEX,
                 download_file_size: 0,
                 download_file_path: "".to_owned(),
+                download_file_relative_path: None,
                 download_file_current_size: 0,
                 file_handle: None,
                 error: None,
                 is_canceled: false,
             },
             target_dir,
+            target_dir_handle,
             files,
         };
-        task_handle.update_next(0).ok();
+        task_handle.update_next(0)?;
         if task_handle.is_finished() {
             task_handle.on_finished();
         } else {
@@ -279,6 +578,9 @@ impl PasteTaskHandle {
         if is_start || (self.progress.offset + size) >= self.progress.download_file_size {
             if !is_start {
                 self.on_done();
+                if self.progress.error.is_some() {
+                    return Ok(());
+                }
             }
             for i in (self.progress.list_index + 1)..self.files.len() as i32 {
                 let Some(file_desc) = self.files.get(i as usize) else {
@@ -289,14 +591,14 @@ impl PasteTaskHandle {
                 match file_desc.kind {
                     FileType::File => {
                         if file_desc.size == 0 {
-                            if let Some(new_file_path) =
-                                Self::get_new_filename(&self.target_dir, file_desc)?
-                            {
-                                if let Ok(f) = std::fs::File::create(&new_file_path) {
-                                    f.set_len(0).ok();
-                                    Self::set_file_metadata(&f, file_desc);
-                                }
-                            };
+                            let (new_relative_path, f) = self.create_unique_file(file_desc)?;
+                            if let Err(e) = f.set_len(0) {
+                                return Err(file_error(
+                                    &self.target_dir.join(new_relative_path),
+                                    e,
+                                ));
+                            }
+                            Self::set_file_metadata(&f, file_desc);
                         } else {
                             self.progress.list_index = i;
                             self.progress.offset = 0;
@@ -305,10 +607,13 @@ impl PasteTaskHandle {
                         }
                     }
                     FileType::Directory => {
-                        let path = self.contained_target_path(&file_desc.name)?;
-                        if !path.exists() {
-                            std::fs::create_dir_all(path).ok();
-                        }
+                        let relative_path =
+                            FileDescription::normalize_relative_name(&file_desc.name)?;
+                        ensure_relative_dir_no_follow(
+                            self.target_dir_handle.as_raw_fd(),
+                            &relative_path,
+                        )
+                        .map_err(|e| file_error(&self.target_dir.join(relative_path), e))?;
                     }
                     FileType::Symlink => {
                         // to-do: handle symlink
@@ -333,19 +638,22 @@ impl PasteTaskHandle {
         if let Some(file) = self.progress.file_handle.as_ref() {
             let creation_time =
                 SystemTime::UNIX_EPOCH + Duration::from_secs(TIMESTAMP_FOR_FILE_PROGRESS_COMPLETED);
-            file.get_ref()
+            if let Err(e) = file
+                .get_ref()
                 .set_times(FileTimes::new().set_created(creation_time))
-                .ok();
-            xattr::set(
-                &self.progress.download_file_path,
-                ATTR_PROGRESS_FRACTION_COMPLETED,
-                "0.0".as_bytes(),
-            )
-            .ok();
+            {
+                log::debug!("Failed to set macOS paste progress timestamp: {e}");
+            }
+            if let Err(e) = set_progress_fraction_for_file(file.get_ref(), 0.0) {
+                log::debug!("Failed to set macOS paste progress xattr: {e}");
+            }
         }
     }
 
     fn update_progress_completed(&mut self, fraction_completed: Option<f64>) {
+        let Some(file) = self.progress.file_handle.as_ref() else {
+            return;
+        };
         let fraction_completed = fraction_completed.unwrap_or_else(|| {
             let current_size = self.progress.download_file_current_size as f64;
             let total_size = self.progress.download_file_size as f64;
@@ -355,18 +663,8 @@ impl PasteTaskHandle {
                 1.0
             }
         });
-        xattr::set(
-            &self.progress.download_file_path,
-            ATTR_PROGRESS_FRACTION_COMPLETED,
-            &fraction_completed.to_string().as_bytes(),
-        )
-        .ok();
-    }
-
-    #[inline]
-    fn remove_progress_completed(path: &str) {
-        if !path.is_empty() {
-            xattr::remove(path, ATTR_PROGRESS_FRACTION_COMPLETED).ok();
+        if let Err(e) = set_progress_fraction_for_file(file.get_ref(), fraction_completed) {
+            log::debug!("Failed to update macOS paste progress xattr: {e}");
         }
     }
 
@@ -381,93 +679,55 @@ impl PasteTaskHandle {
             });
         };
 
-        let original_file_path = self.contained_target_path(&file.name)?;
-        let Some(download_file_path) = Self::get_first_filename(
-            format!(
-                "{}.{}",
-                original_file_path.to_string_lossy(),
-                DOWNLOAD_EXTENSION
-            ),
-            file.kind,
-        ) else {
-            return Err(CliprdrError::CommonError {
-                description: format!(
-                    "Failed to get download file path: {}",
-                    original_file_path.to_string_lossy()
-                ),
-            });
-        };
-        let download_file_path = PathBuf::from(download_file_path);
-        ensure_contained_path(&self.target_dir, &download_file_path)?;
-        let Some(download_path_parent) = download_file_path.parent() else {
-            return Err(CliprdrError::CommonError {
-                description: format!(
-                    "Failed to get parent of the download file path: {}",
-                    original_file_path.to_string_lossy()
-                ),
-            });
-        };
-        if !download_path_parent.exists() {
-            if let Err(e) = std::fs::create_dir_all(download_path_parent) {
-                return Err(CliprdrError::FileError {
-                    path: download_path_parent.to_string_lossy().to_string(),
-                    err: e,
-                });
-            }
-        }
-        match std::fs::File::create(&download_file_path) {
-            Ok(handle) => {
-                let writer = BufWriter::with_capacity(BLOCK_SIZE as usize * 2, handle);
-                self.progress.download_file_index = self.progress.list_index;
-                self.progress.download_file_size = file.size;
-                self.progress.download_file_path = download_file_path.to_string_lossy().to_string();
-                self.progress.download_file_current_size = 0;
-                self.progress.file_handle = Some(writer);
-                self.start_progress_completed();
-            }
-            Err(e) => {
-                self.progress.error = Some(CliprdrError::FileError {
-                    path: download_file_path.to_string_lossy().to_string(),
-                    err: e,
-                });
-            }
-        };
+        let original_relative_path = FileDescription::normalize_relative_name(&file.name)?;
+        let download_relative_path = append_download_extension(&original_relative_path);
+        let (download_relative_path, handle) =
+            self.create_unique_file_at(&download_relative_path, file.kind)?;
+        let download_file_path = self.target_dir.join(&download_relative_path);
+        let writer = BufWriter::with_capacity(BLOCK_SIZE as usize * 2, handle);
+        self.progress.download_file_index = self.progress.list_index;
+        self.progress.download_file_size = file.size;
+        self.progress.download_file_path = download_file_path.to_string_lossy().to_string();
+        self.progress.download_file_relative_path = Some(download_relative_path);
+        self.progress.download_file_current_size = 0;
+        self.progress.file_handle = Some(writer);
+        self.start_progress_completed();
         Ok(())
     }
 
-    fn get_first_filename(path: String, r#type: FileType) -> Option<String> {
-        let p = Path::new(&path);
-        if !p.exists() {
-            return Some(path);
-        } else {
-            for i in 1..9999999 {
-                let new_path = match r#type {
-                    FileType::File => {
-                        if let Some(ext) = p.extension() {
-                            let new_name = format!(
-                                "{}-{}.{}",
-                                p.file_stem().unwrap_or_default().to_string_lossy(),
-                                i,
-                                ext.to_string_lossy()
-                            );
-                            p.with_file_name(new_name).to_string_lossy().to_string()
-                        } else {
-                            format!("{} ({})", path, i)
-                        }
-                    }
-                    FileType::Directory => format!("{} ({})", path, i),
-                    FileType::Symlink => {
-                        // to-do: handle symlink
-                        return None;
-                    }
-                };
-                if !Path::new(&new_path).exists() {
-                    return Some(new_path);
-                }
+    fn create_unique_file(
+        &self,
+        file_desc: &FileDescription,
+    ) -> Result<(PathBuf, File), CliprdrError> {
+        let relative_path = FileDescription::normalize_relative_name(&file_desc.name)?;
+        self.create_unique_file_at(&relative_path, file_desc.kind)
+    }
+
+    fn create_unique_file_at(
+        &self,
+        relative_path: &Path,
+        r#type: FileType,
+    ) -> Result<(PathBuf, File), CliprdrError> {
+        for i in 0..UNIQUE_NAME_ATTEMPTS {
+            let Some(candidate) = indexed_candidate_path(relative_path, r#type, i) else {
+                return Err(common_error(
+                    "failed to derive macOS paste target file name",
+                ));
+            };
+            match open_relative_file_exclusive_no_follow(
+                self.target_dir_handle.as_raw_fd(),
+                &candidate,
+            ) {
+                Ok(file) => return Ok((candidate, file)),
+                Err(e) if is_name_collision(&e) => continue,
+                Err(e) => return Err(file_error(&self.target_dir.join(candidate), e)),
             }
         }
-        // unreachable
-        None
+
+        Err(common_error(format!(
+            "failed to reserve unique macOS paste target path under {}",
+            self.target_dir.display()
+        )))
     }
 
     fn progress_percent(&self) -> ProgressPercent {
@@ -517,24 +777,44 @@ impl PasteTaskHandle {
 
     fn on_cancelled(&mut self) {
         self.progress.file_handle = None;
-        std::fs::remove_file(&self.progress.download_file_path).ok();
+        if let Some(download_file_relative_path) = self.progress.download_file_relative_path.take()
+        {
+            if let Err(e) = unlink_relative_file_no_follow(
+                self.target_dir_handle.as_raw_fd(),
+                &download_file_relative_path,
+            ) {
+                log::debug!("Failed to remove cancelled macOS paste download file: {e}");
+            }
+        }
+        self.progress.download_file_path.clear();
+        self.progress.download_file_index = PasteTask::INVALID_FILE_INDEX;
     }
 
     fn on_done(&mut self) {
-        self.update_progress_completed(Some(1.0));
-        Self::remove_progress_completed(&self.progress.download_file_path);
-
-        let Some(file) = self.progress.file_handle.as_mut() else {
+        let Some(mut file) = self.progress.file_handle.take() else {
             return;
         };
         if self.progress.download_file_index == PasteTask::INVALID_FILE_INDEX {
+            self.progress.file_handle = Some(file);
             return;
         }
 
         if let Err(e) = file.flush() {
+            let path = self.progress.download_file_path.clone();
             log::error!("Failed to flush file: {:?}", e);
+            self.progress.error = Some(CliprdrError::FileError { path, err: e });
+            if let Some(download_file_relative_path) =
+                self.progress.download_file_relative_path.take()
+            {
+                if let Err(e) = unlink_relative_file_no_follow(
+                    self.target_dir_handle.as_raw_fd(),
+                    &download_file_relative_path,
+                ) {
+                    log::debug!("Failed to remove unflushed macOS paste download file: {e}");
+                }
+            }
+            return;
         }
-        self.progress.file_handle = None;
 
         let Some(file_desc) = self.files.get(self.progress.download_file_index as usize) else {
             // unreachable
@@ -544,44 +824,60 @@ impl PasteTaskHandle {
             );
             return;
         };
-        let rename_to_path = match Self::get_new_filename(&self.target_dir, file_desc) {
-            Ok(Some(path)) => path,
-            Ok(None) => return,
-            Err(e) => {
-                log::error!("Unsafe macOS paste target path: {}", e);
-                self.progress.error = Some(e);
-                return;
-            }
+
+        if let Err(e) = set_progress_fraction_for_file(file.get_ref(), 1.0) {
+            log::debug!("Failed to finish macOS paste progress xattr: {e}");
+        }
+        if let Err(e) = remove_progress_fraction_for_file(file.get_ref()) {
+            log::debug!("Failed to remove macOS paste progress xattr: {e}");
+        }
+        Self::set_file_metadata(file.get_ref(), file_desc);
+        drop(file);
+
+        let Some(download_file_relative_path) = self.progress.download_file_relative_path.take()
+        else {
+            let error = common_error("missing macOS paste download file path");
+            log::error!("{}", error);
+            self.progress.error = Some(error);
+            return;
         };
-        match std::fs::rename(&self.progress.download_file_path, &rename_to_path) {
-            Ok(_) => Self::set_file_metadata2(&rename_to_path, file_desc),
+        match self.rename_download_to_unique_final(&download_file_relative_path, file_desc) {
+            Ok(_) => {}
             Err(e) => {
-                log::error!("Failed to rename file: {:?}", e);
+                log::error!("Failed to finalize macOS paste file: {}", e);
+                self.progress.error = Some(e);
             }
         }
         self.progress.download_file_path = "".to_owned();
         self.progress.download_file_index = PasteTask::INVALID_FILE_INDEX;
     }
 
-    fn get_new_filename(
-        target_dir: &Path,
+    fn rename_download_to_unique_final(
+        &self,
+        download_file_relative_path: &Path,
         file_desc: &FileDescription,
-    ) -> Result<Option<PathBuf>, CliprdrError> {
-        let normalized = FileDescription::normalize_relative_name(&file_desc.name)?;
-        let mut rename_to_path = target_dir.join(normalized);
-        ensure_contained_path(target_dir, &rename_to_path)?;
-        if rename_to_path.exists() {
-            let Some(new_path) = Self::get_first_filename(
-                rename_to_path.to_string_lossy().to_string(),
-                file_desc.kind,
-            ) else {
-                log::error!("Failed to get new file name: {}", rename_to_path.display());
-                return Ok(None);
+    ) -> Result<PathBuf, CliprdrError> {
+        let final_relative_path = FileDescription::normalize_relative_name(&file_desc.name)?;
+        for i in 0..UNIQUE_NAME_ATTEMPTS {
+            let Some(candidate) = indexed_candidate_path(&final_relative_path, file_desc.kind, i)
+            else {
+                return Err(common_error("failed to derive macOS paste final file name"));
             };
-            rename_to_path = PathBuf::from(new_path);
-            ensure_contained_path(target_dir, &rename_to_path)?;
+            match rename_relative_file_exclusive_no_follow(
+                self.target_dir_handle.as_raw_fd(),
+                download_file_relative_path,
+                &candidate,
+            ) {
+                Ok(()) => return Ok(candidate),
+                Err(e) if is_name_collision(&e) => continue,
+                Err(e) => return Err(file_error(&self.target_dir.join(candidate), e)),
+            }
         }
-        Ok(Some(rename_to_path))
+
+        Err(common_error(format!(
+            "failed to choose unique macOS paste final path under {}",
+            self.target_dir.display()
+        )))
     }
 
     #[inline]
@@ -590,27 +886,9 @@ impl PasteTaskHandle {
             .set_accessed(file_desc.atime)
             .set_modified(file_desc.last_modified)
             .set_created(file_desc.creation_time);
-        f.set_times(times).ok();
-    }
-
-    #[inline]
-    fn set_file_metadata2(path: &Path, file_desc: &FileDescription) {
-        let times = FileTimes::new()
-            .set_accessed(file_desc.atime)
-            .set_modified(file_desc.last_modified)
-            .set_created(file_desc.creation_time);
-        File::options()
-            .write(true)
-            .open(path)
-            .map(|f| f.set_times(times))
-            .ok();
-    }
-
-    fn contained_target_path(&self, name: &Path) -> Result<PathBuf, CliprdrError> {
-        let normalized = FileDescription::normalize_relative_name(name)?;
-        let path = self.target_dir.join(normalized);
-        ensure_contained_path(&self.target_dir, &path)?;
-        Ok(path)
+        if let Err(e) = f.set_times(times) {
+            log::debug!("Failed to set macOS paste file metadata: {e}");
+        }
     }
 
     fn send_file_contents_request(&mut self) -> Result<(), CliprdrError> {
@@ -658,6 +936,15 @@ impl PasteTaskHandle {
             let mut write_len = 0;
             while write_len < data.len() {
                 match file.write(&data[write_len..]) {
+                    Ok(0) => {
+                        return Err(CliprdrError::FileError {
+                            path: self.progress.download_file_path.clone(),
+                            err: std::io::Error::new(
+                                std::io::ErrorKind::WriteZero,
+                                "failed to write macOS paste file contents",
+                            ),
+                        });
+                    }
                     Ok(len) => {
                         write_len += len;
                     }

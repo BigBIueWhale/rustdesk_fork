@@ -3387,6 +3387,34 @@ echo "== (3c-ii-b) peer UI text length/rate admission (R-T0) =="
 # download/final rename state touches the parent process filesystem.
 echo "== (3c-iii-a) unix file-copy descriptor relative-name sanitizer (Appendix C #2b) =="
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib relative_name_sanitizer_rejects_escape_paths --color never
+paste_task_rs=libs/clipboard/src/platform/unix/macos/paste_task.rs
+r_s11e12=
+grep -qF 'fn open_dir_path_no_follow(path: &Path) -> io::Result<File>' "$paste_task_rs" || r_s11e12="$r_s11e12 no-target-dir-nofollow-open"
+grep -qF 'fn open_relative_parent_dir_no_follow(' "$paste_task_rs" || r_s11e12="$r_s11e12 no-relative-parent-nofollow-walk"
+grep -qF 'fn open_relative_file_exclusive_no_follow(' "$paste_task_rs" || r_s11e12="$r_s11e12 no-exclusive-file-open"
+grep -qF 'fn rename_relative_file_exclusive_no_follow(' "$paste_task_rs" || r_s11e12="$r_s11e12 no-exclusive-rename"
+grep -qF 'libc::O_NOFOLLOW' "$paste_task_rs" || r_s11e12="$r_s11e12 no-onofollow"
+grep -qF 'libc::O_EXCL' "$paste_task_rs" || r_s11e12="$r_s11e12 no-exclusive-create"
+grep -qF 'libc::renameatx_np' "$paste_task_rs" || r_s11e12="$r_s11e12 no-renameatx-np"
+grep -qF 'libc::RENAME_EXCL' "$paste_task_rs" || r_s11e12="$r_s11e12 no-rename-excl"
+grep -qF 'libc::fsetxattr' "$paste_task_rs" || r_s11e12="$r_s11e12 progress-xattr-not-fd-bound"
+grep -qF 'libc::fremovexattr' "$paste_task_rs" || r_s11e12="$r_s11e12 progress-xattr-remove-not-fd-bound"
+grep -qF 'unlink_relative_file_no_follow' "$paste_task_rs" || r_s11e12="$r_s11e12 no-relative-unlink"
+grep -qF 'download_file_relative_path: Option<PathBuf>' "$paste_task_rs" || r_s11e12="$r_s11e12 no-relative-download-state"
+grep -qF 'task_handle.update_next(0)?;' "$paste_task_rs" || r_s11e12="$r_s11e12 initial-filesystem-errors-masked"
+grep -qF 'macOS clipboard-file paste no-follow finalize' requirements.html || r_s11e12="$r_s11e12 requirements-disposition-missing"
+grep -qF 'R-S11e-12 — macOS clipboard-file paste no-follow finalize' HARDENING_STATUS.md || r_s11e12="$r_s11e12 hardening-ledger-missing"
+if grep -nE 'std::fs::File::create|std::fs::create_dir_all|std::fs::rename|std::fs::remove_file|File::options\(\)|xattr::(set|remove)|update_next\(0\)\.ok' "$paste_task_rs" >/tmp/rd_verify_r_s11e12.$$; then
+  cat /tmp/rd_verify_r_s11e12.$$
+  r_s11e12="$r_s11e12 path-based-paste-filesystem-op"
+fi
+rm -f /tmp/rd_verify_r_s11e12.$$
+if [ -n "$r_s11e12" ]; then
+  echo "  FAIL R-S11e-12 macOS clipboard-file paste no-follow finalize:$r_s11e12"
+  rc=1
+else
+  echo "  ok  R-S11e-12 macOS clipboard-file paste uses fd-relative no-follow create/unlink/xattr/finalize with no path-based write fallback"
+fi
 
 # (3c-iii-b) Linux FUSE clipboard mount points live under /tmp, but must not
 # adopt symlinked/foreign-owned temp state or recreate upstream's 0777 chmod.

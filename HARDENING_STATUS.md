@@ -36,6 +36,10 @@ display-control validation, FUSE mount-point no-follow setup, Linux euid-0
 FUSE refusal, fixed-helper clipboard FUSE fd passing, bounded FileContents
 response queue, and the FILEDESCRIPTOR path-traversal sanitizer
 (`sanitize_relative_names`) with its count cap (`MAX_FILE_DESCRIPTORS`). The
+macOS clipboard-file paste worker additionally anchors peer-requested file
+creation, progress xattrs, cancellation cleanup, and final rename to an opened
+target-directory handle with no-follow/exclusive fd-relative operations
+(R-S11e-12).
 file-clipboard serve/confirm paths are additionally arithmetic/index-safe — the
 peer-supplied `file_num` is bounded before indexing in `set_stream_offset`, the
 CLIPRDR file-read clamps `length` to the remaining bytes with no `offset+length`
@@ -1658,6 +1662,25 @@ unreachable and a source/test/AST gate prevents reintroduction.
   gates the authenticator, exact-argv helper, LocalSystem receiver proof, source ordering before
   `Data::CommitServiceOwnedUnattendedPasswordChange(value)`, the retained receiver-side LocalSystem commit gate,
   and this requirements/ledger disposition.
+- **R-S11e-12 — macOS clipboard-file paste no-follow finalize — CLOSED 2026-07-11.**
+  Platform: macOS desktop with `unix-file-copy-paste`. Endpoint/action: CLIPRDR file paste after a local
+  Finder/pasteboard paste operation asks the authenticated peer for `FILEDESCRIPTOR` metadata and file contents.
+  Boundary: hostile-peer descriptor/content names ↔ local filesystem writes under the user's paste destination.
+  Attack surface closed: the paste worker no longer re-resolves peer-influenced paths with `File::create`,
+  `create_dir_all`, `std::fs::rename`, path xattrs, path metadata reopen, or path removal. This was not a hidden
+  remote-to-root path in the normal installed macOS model because the controlled server is a user LaunchAgent, but
+  it was still the wrong primitive for a peer-controlled filesystem write surface adjacent to R-S8/R-A5. The worker
+  now opens the paste target directory through a component walk using `openat(O_DIRECTORY|O_NOFOLLOW)`, keeps that
+  handle as the authority anchor, creates any peer-requested parent directories with `mkdirat` plus no-follow
+  re-open, reserves zero-size and `.rddownload` files with `openat(O_CREAT|O_EXCL|O_NOFOLLOW)`, records relative
+  download paths for cleanup, updates and removes Finder progress xattrs through `fsetxattr`/`fremovexattr` on the
+  open file descriptor, removes cancelled temp files with `unlinkat`, and finalizes downloads with
+  `renameatx_np(..., RENAME_EXCL)` while retrying numbered destination names on actual collisions. Initial
+  filesystem setup errors are propagated instead of masked by `update_next(0).ok()`, and a zero-byte write from the
+  file sink is treated as `WriteZero`. Verification closure: `scripts/verify.sh` and
+  `scripts/apple-conform-check.sh` gate the target-dir no-follow open, relative parent walk, exclusive file open,
+  exclusive final rename, fd-bound xattr operations, relative cleanup state, unmasked initialization, requirements
+  disposition, and absence of the deleted path-based write/finalize fallback.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff

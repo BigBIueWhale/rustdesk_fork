@@ -61,6 +61,7 @@ pub fn init_fuse_context(is_client: bool) -> Result<(), CliprdrError> {
     if fuse_context_lock.is_some() {
         return Ok(());
     }
+    require_unprivileged_linux_fuse()?;
     let mount_point = if is_client {
         FUSE_MOUNT_POINT_CLIENT.clone()
     } else {
@@ -100,6 +101,26 @@ pub fn init_fuse_context(is_client: bool) -> Result<(), CliprdrError> {
     };
     *fuse_context_lock = Some(ctx);
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn require_unprivileged_linux_fuse() -> Result<(), CliprdrError> {
+    let euid = unsafe { libc::geteuid() };
+    if linux_clipboard_fuse_euid_allowed(euid) {
+        return Ok(());
+    }
+    log::warn!("refusing Linux clipboard FUSE initialization in euid-0 process");
+    Err(CliprdrError::CliprdrInit)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn require_unprivileged_linux_fuse() -> Result<(), CliprdrError> {
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn linux_clipboard_fuse_euid_allowed(euid: libc::uid_t) -> bool {
+    euid != 0
 }
 
 pub fn uninit_fuse_context(is_client: bool) {
@@ -447,5 +468,12 @@ mod tests {
     fn fuse_mount_path_cstring_rejects_nul() {
         let path = PathBuf::from(OsString::from_vec(b"/tmp/rustdesk/bad\0name".to_vec()));
         assert!(fuse_mount_path_cstring(&path).is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_clipboard_fuse_rejects_euid_zero() {
+        assert!(!linux_clipboard_fuse_euid_allowed(0));
+        assert!(linux_clipboard_fuse_euid_allowed(1));
     }
 }

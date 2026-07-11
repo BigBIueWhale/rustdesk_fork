@@ -2494,6 +2494,22 @@ fi
 if [ -n "$r_s11c10o" ]; then echo "  FAIL R-S11c-10o Linux clipboard FUSE stale unmount provenance:$r_s11c10o"; rc=1; else
   echo "  ok  R-S11c-10o Linux clipboard FUSE stale unmount uses direct umount2(UMOUNT_NOFOLLOW), not PATH-selected umount"; fi
 
+echo "== (3b-iii-h9c3b) Linux clipboard FUSE refuses euid-0 processes (R-S11c-10q) =="
+r_s11c10q=
+fuse_init_prefix=$(awk '/pub fn init_fuse_context/,/prepare_fuse_mount_point/' libs/clipboard/src/platform/unix/fuse/mod.rs)
+echo "$fuse_init_prefix" | grep -qF 'require_unprivileged_linux_fuse()?;' || r_s11c10q="$r_s11c10q root-euid-check-not-before-mountpoint-setup"
+grep -qF 'fn require_unprivileged_linux_fuse() -> Result<(), CliprdrError>' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10q="$r_s11c10q no-linux-euid-gate-helper"
+grep -qF 'let euid = unsafe { libc::geteuid() };' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10q="$r_s11c10q no-geteuid-check"
+grep -qF 'fn linux_clipboard_fuse_euid_allowed(euid: libc::uid_t) -> bool' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10q="$r_s11c10q no-pure-euid-policy-helper"
+grep -qF 'euid != 0' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10q="$r_s11c10q euid-zero-not-rejected"
+grep -qF 'linux_clipboard_fuse_rejects_euid_zero' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10q="$r_s11c10q no-euid-zero-regression-test"
+grep -q 'Linux clipboard FUSE root-process denial' requirements.html || r_s11c10q="$r_s11c10q requirements-disposition-missing"
+grep -q 'R-S11c-10q closes the Linux clipboard FUSE root-process path' HARDENING_STATUS.md || r_s11c10q="$r_s11c10q hardening-ledger-missing"
+grep -q 'euid 0 refuse to initialize clipboard' libs/clipboard/README.md || r_s11c10q="$r_s11c10q clipboard-readme-not-updated"
+grep -q 'euid-0 FUSE initialization is refused' deny.toml || r_s11c10q="$r_s11c10q deny-accept-reason-not-updated"
+if [ -n "$r_s11c10q" ]; then echo "  FAIL R-S11c-10q Linux clipboard FUSE root-process denial:$r_s11c10q"; rc=1; else
+  echo "  ok  R-S11c-10q Linux clipboard FUSE initialization fails closed in euid-0 processes"; fi
+
 echo "== (3b-iii-h9c4) Linux self-relaunch avoids AppImage APPDIR/AppRun fallback (R-S11c-10p) =="
 r_s11c10p=
 grep -qF 'pub fn run_me_with_env<T, I, K, V>' src/common.rs || r_s11c10p="$r_s11c10p no-self-relaunch-helper"

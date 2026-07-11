@@ -32,8 +32,8 @@ the controlled-side security options; the §19 Flutter GUI conformance and the
 implemented. The §4.2/§20 post-key DoS bounds are in place: bounded peer video
 display/decode queues, Opus/zstd input caps and the R-S7 decompressed-output
 ceiling, bounded peer screenshot/PeerInfo/UI-text/file-transfer admission,
-display-control validation, FUSE mount-point no-follow setup, the service
-unit's FUSE-only `mount`/`umount` syscall exception, bounded FileContents
+display-control validation, FUSE mount-point no-follow setup, Linux euid-0
+FUSE refusal, the service unit's FUSE-only `mount`/`umount` syscall exception, bounded FileContents
 response queue, and the FILEDESCRIPTOR path-traversal sanitizer
 (`sanitize_relative_names`) with its count cap (`MAX_FILE_DESCRIPTORS`). The
 file-clipboard serve/confirm paths are additionally arithmetic/index-safe — the
@@ -1410,6 +1410,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `run_me_with_env` helper no longer honors ambient `APPDIR` or launches `AppRun` for Linux child-process
   relaunch. CM, whiteboard, tray, and same-user service-owned child launches now use the current executable
   only while preserving the explicit authority-token environment supplied by their callers.
+  R-S11c-10q closes the Linux clipboard FUSE root-process path in
+  `libs/clipboard/src/platform/unix/fuse/mod.rs`: before mountpoint setup or `fuser::spawn_mount2`, Linux
+  clipboard FUSE initialization checks the process euid and fails closed for euid 0. The normal installed
+  desktop path remains the non-root user `--server` child launched by the root `--service`; headless/root
+  `--server` and root-launched viewer/client processes keep text clipboard and file transfer, but cannot
+  initialize CLIPRDR file-copy FUSE as root. The remaining full cure is a fixed-target fd-passing FUSE mount
+  helper so daemon-wide `CAP_SYS_ADMIN` can leave the long-lived service model; this slice prevents any
+  RustDesk euid-0 process from being the FUSE mount owner until that helper exists.
   Remaining closure:
   no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
   root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
@@ -1420,7 +1428,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   root/service helper command provenance is closed by R-S11c-10k; Linux `--server` tray cleanup is closed
   by R-S11c-10l; shared Linux helper command provenance and delayed reopen shell removal are closed by
   R-S11c-10m; Linux headless CM uid lookup is closed by R-S11c-10n; Linux clipboard FUSE stale unmount is
-  closed by R-S11c-10o; Linux self-relaunch AppImage fallback is closed by R-S11c-10p.
+  closed by R-S11c-10o; Linux self-relaunch AppImage fallback is closed by R-S11c-10p; Linux clipboard FUSE
+  root-process denial is closed by R-S11c-10q.
 - **R-S11b-4 — config secrecy statement after IPC closure — CLOSED 2026-07-09.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary

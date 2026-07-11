@@ -158,3 +158,5 @@ the FUSE server will figure out the file system tree and rearrange its content.
   - stale clipboard FUSE mounts are cleared with a direct no-follow
     [`umount2()`](https://man7.org/linux/man-pages/man2/umount.2.html)
     syscall before mounting again.
+  - Linux RustDesk processes running as euid 0 refuse to initialize clipboard
+    FUSE; the file-copy FUSE path is for the non-root user server/viewer path.

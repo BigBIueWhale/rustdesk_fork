@@ -89,23 +89,8 @@ rc=0
 
 echo "== (0) verifier scratch files use one private workspace (R-S11c-10w) =="
 r_s11c10w=
-grep -qF 'VERIFY_TMP=$(umask 077 && mktemp -d /tmp/rustdesk-verify.XXXXXXXXXX)' scripts/verify.sh || r_s11c10w="$r_s11c10w no-private-workspace-create"
-grep -qF 'readonly VERIFY_TMP' scripts/verify.sh || r_s11c10w="$r_s11c10w workspace-not-readonly"
-grep -qF "trap cleanup_verify_tmp EXIT" scripts/verify.sh || r_s11c10w="$r_s11c10w no-exit-cleanup"
-grep -qF "trap 'exit 129' HUP" scripts/verify.sh || r_s11c10w="$r_s11c10w no-hup-failure"
-grep -qF "trap 'exit 130' INT" scripts/verify.sh || r_s11c10w="$r_s11c10w no-int-failure"
-grep -qF "trap 'exit 143' TERM" scripts/verify.sh || r_s11c10w="$r_s11c10w no-term-failure"
-grep -qF 'trap - EXIT HUP INT TERM' scripts/verify.sh || r_s11c10w="$r_s11c10w cleanup-traps-not-disarmed"
-grep -qF 'if ! rm -rf -- "$VERIFY_TMP"; then' scripts/verify.sh || r_s11c10w="$r_s11c10w cleanup-not-fail-closed"
-grep -qF 'metadata = os.lstat(sys.argv[1])' scripts/verify.sh || r_s11c10w="$r_s11c10w nofollow-metadata-proof-missing"
-grep -qF 'not stat.S_ISDIR(metadata.st_mode)' scripts/verify.sh || r_s11c10w="$r_s11c10w directory-type-not-enforced"
-grep -qF 'metadata.st_uid != os.geteuid()' scripts/verify.sh || r_s11c10w="$r_s11c10w owner-not-enforced"
-grep -qF 'stat.S_IMODE(metadata.st_mode) != 0o700' scripts/verify.sh || r_s11c10w="$r_s11c10w mode-not-enforced"
-if grep -nE '/tmp/(r[d]_verify|r_s11b3|r_s11c23)' scripts/verify.sh; then
-  r_s11c10w="$r_s11c10w predictable-scratch-name-present"
-fi
-if grep -nE '[0-9]*(>>?|<<?)[[:space:]]*"?/t[m]p/' scripts/verify.sh; then
-  r_s11c10w="$r_s11c10w direct-public-temp-redirection-present"
+if ! python3 scripts/verify-verifier-workspace.py --repo . --self-test; then
+  r_s11c10w="$r_s11c10w source-structure-or-mutation-gate-failed"
 fi
 grep -qF 'R-S11c-10w — verifier private scratch workspace authority' HARDENING_STATUS.md || r_s11c10w="$r_s11c10w hardening-ledger-missing"
 grep -qF 'Verifier private scratch workspace authority' requirements.html || r_s11c10w="$r_s11c10w requirements-disposition-missing"

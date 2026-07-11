@@ -2105,9 +2105,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   and places every generated checker output beneath it. One EXIT cleanup preserves the verifier's status, signal
   traps exit with the conventional nonzero signal statuses, cleanup disarms all traps before checked recursive
   removal, and cleanup failure changes the result to failure. The old PID-suffixed/fixed names and scattered
-  per-file cleanup branches are absent. The R-S11c-10w gate asserts the workspace, owner/mode check, signal/exit
-  cleanup, requirements/ledger disposition, absence of the old prefixes, and absence of direct public-`/tmp`
-  redirection.
+  per-file cleanup branches are absent. A separate structural verifier proves the exact full-line create, cleanup,
+  signal, and metadata blocks without embedding its assertion literals in `verify.sh`; mutation-negative self-tests
+  delete every required real line in memory and require rejection. The gate also rejects fixed-string self-inspection,
+  old scratch prefixes, every direct public-`/tmp` redirection, and missing requirements/ledger disposition.
   R-S11c-10x — Apple checker private host scratch authority — closes the host-side
   `scripts/apple-conform-check.sh` public-temp class. The supported Apple source-conformance checker, also invoked by
   `scripts/verify-release.sh`, redirected seven fixed/PID-suffixed diagnostic basenames and the per-target
@@ -3234,7 +3235,7 @@ The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-c925672a3497cc4c6455572ac8b6021b658a9fb3c22b2dcdc4c29fac351f9f0d  requirements.html
+9732629d23a27fc1777173451514081e179bb5827981dc0dead7f74d9ee2cca3  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

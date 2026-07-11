@@ -237,9 +237,9 @@ echo "$connect_with_path_block" | grep -Fq 'ensure_linux_service_server_is_trust
 grep -Fq 'Linux _service client-side server authentication' requirements.html || r_s11="$r_s11 linux-service-client-auth-requirements-missing"
 grep -Fq 'R-S11e-6 — Linux _service client-side server authentication' HARDENING_STATUS.md || r_s11="$r_s11 linux-service-client-auth-ledger-missing"
 grep -Fq 'pub(crate) fn ensure_macos_service_server_is_trusted' src/ipc/auth.rs || r_s11="$r_s11 macos-service-server-client-auth-missing"
-echo "$macos_service_server_client_auth_block" | grep -Fq 'peer_uid != 0' || r_s11="$r_s11 macos-service-server-client-auth-not-root-gated"
-echo "$macos_service_server_client_auth_block" | grep -Fq 'peer_exe_canonical_path_by_pid(peer_pid)' || r_s11="$r_s11 macos-service-server-client-auth-no-peer-exe"
-echo "$macos_service_server_client_auth_block" | grep -Fq 'macos_privileged_helper_is_expected_and_trusted(&peer_exe)' || r_s11="$r_s11 macos-service-server-client-auth-not-helper-trusted"
+echo "$macos_service_server_client_auth_block" | grep -Fq 'identity.uid != 0' || r_s11="$r_s11 macos-service-server-client-auth-not-root-gated"
+echo "$macos_service_server_client_auth_block" | grep -Fq 'macos_peer_process_identity("macOS _service server")' || r_s11="$r_s11 macos-service-server-client-auth-no-audit-token-identity"
+echo "$macos_service_server_client_auth_block" | grep -Fq 'macos_peer_is_trusted_privileged_helper(&identity)' || r_s11="$r_s11 macos-service-server-client-auth-not-helper-trusted"
 echo "$connect_with_path_block" | grep -Fq 'postfix == crate::POSTFIX_SERVICE' || r_s11="$r_s11 macos-service-connect-not-postfix-scoped"
 echo "$connect_with_path_block" | grep -Fq 'ensure_macos_service_server_is_trusted(&connection)' || r_s11="$r_s11 macos-service-connect-not-client-authenticated"
 grep -Fq 'macOS _service client-side server authentication' requirements.html || r_s11="$r_s11 macos-service-client-auth-requirements-missing"
@@ -1699,8 +1699,12 @@ grep -q 'metadata.uid() == 0' src/ipc.rs                                        
 grep -q 'metadata.gid() == 0' src/ipc.rs                                           || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-wheel-missing"
 grep -q 'metadata.permissions().mode() & 0o022 == 0' src/ipc.rs                    || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-mode-missing"
 grep -q 'macos_path_has_no_extended_acl' src/ipc.rs                                || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-acl-missing"
+echo "$macos_snapshot_peer_block" | grep -q 'macos_peer_process_identity("macOS service-owned password snapshot requester")' || r_s11b2="$r_s11b2 macos-service-password-snapshot-audit-token-identity-missing"
 echo "$macos_snapshot_peer_block" | grep -q 'tokio::task::spawn_blocking'          || r_s11b2="$r_s11b2 macos-service-password-snapshot-proof-not-spawn-blocking"
-echo "$macos_snapshot_peer_block" | grep -q 'macos_peer_is_service_owned_server_blocking(peer_uid, peer_pid)' || r_s11b2="$r_s11b2 macos-service-password-snapshot-proof-blocking-target-missing"
+echo "$macos_snapshot_peer_block" | grep -q 'macos_peer_is_service_owned_server_blocking(identity)' || r_s11b2="$r_s11b2 macos-service-password-snapshot-proof-blocking-target-missing"
+if echo "$macos_snapshot_peer_block" | grep -q 'macos_peer_is_service_owned_server_blocking(peer_uid, peer_pid)'; then
+  r_s11b2="$r_s11b2 macos-service-password-snapshot-old-pid-target-present"
+fi
 grep -Fq 'fn macos_service_owned_server_live_argv_is_expected(cmd: &[String]) -> bool' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-live-argv-helper-missing"
 grep -Fq 'cmd.len() == 3' src/ipc.rs                                             || r_s11b2="$r_s11b2 macos-service-password-live-argv-not-exact-length"
 echo "$macos_snapshot_peer_block" | grep -Fq 'macos_service_owned_server_live_argv_is_expected(process.cmd())' || r_s11b2="$r_s11b2 macos-service-password-live-argv-helper-not-wired"
@@ -1808,8 +1812,8 @@ grep -q 'crate::platform::is_installed() && crate::platform::is_installed_daemon
 grep -Fq 'const MACOS_PRIVILEGED_HELPER_EXEC: &str =' src/ipc/auth.rs              || r_s11b2="$r_s11b2 macos-service-ipc-helper-const-missing"
 grep -Fq '/Library/PrivilegedHelperTools/com.carriez.rustdesk_service' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-helper-path-missing"
 grep -Fq 'fn macos_installed_app_executable_path() -> PathBuf' src/ipc/auth.rs      || r_s11b2="$r_s11b2 macos-service-ipc-installed-app-path-missing"
-grep -Fq 'fn macos_privileged_helper_is_expected_and_trusted(current_exe: &Path) -> bool' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-helper-trust-missing"
-grep -Fq 'fn macos_installed_app_is_expected_and_trusted(peer_exe: &Path) -> bool' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-app-trust-missing"
+grep -Fq 'fn macos_privileged_helper_path_is_expected_and_trusted(current_exe: &Path) -> bool' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-helper-trust-missing"
+grep -Fq 'fn macos_installed_app_path_is_expected_and_trusted(peer_exe: &Path) -> bool' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-app-trust-missing"
 grep -Fq 'fs::symlink_metadata(path)' src/ipc/auth.rs                            || r_s11b2="$r_s11b2 macos-service-ipc-symlink-metadata-missing"
 grep -Fq 'metadata.file_type().is_symlink()' src/ipc/auth.rs                     || r_s11b2="$r_s11b2 macos-service-ipc-symlink-gate-missing"
 grep -Fq 'macos_root_wheel_not_group_world_writable(&metadata)' src/ipc/auth.rs  || r_s11b2="$r_s11b2 macos-service-ipc-helper-root-wheel-mode-missing"
@@ -1825,6 +1829,20 @@ if grep -Fq 'Command::new(MACOS_LS)' src/ipc/auth.rs \
   || grep -Fq 'Command::new("ls")' src/platform/macos.rs src/ipc.rs src/ipc/auth.rs; then
   r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-ls-parser-present"
 fi
+grep -Fq 'security-framework = "2.10"' Cargo.toml || r_s11b2="$r_s11b2 macos-security-framework-direct-dependency-missing"
+grep -Fq 'const MACOS_AUDIT_TOKEN_BYTES: usize = 32;' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-audit-token-size-missing"
+grep -Fq 'libc::LOCAL_PEEREPID' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-effective-peer-pid-missing"
+grep -Fq 'libc::LOCAL_PEERTOKEN' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-peer-audit-token-missing"
+if grep -Fq 'libc::LOCAL_PEERPID' src/ipc/auth.rs; then
+  r_s11b2="$r_s11b2 macos-legacy-peerpid-present"
+fi
+grep -Fq 'pub(crate) struct MacosPeerProcessIdentity' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-peer-identity-type-missing"
+grep -Fq 'fn peer_audit_token_from_fd(fd: RawFd) -> Option<[u8; MACOS_AUDIT_TOKEN_BYTES]>' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-peer-audit-token-reader-missing"
+grep -Fq 'pub(crate) fn macos_peer_process_identity' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-peer-identity-capture-missing"
+grep -Fq 'attributes.set_audit_token(audit_token.as_concrete_TypeRef())' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-sec-guest-audit-attribute-missing"
+grep -Fq 'MacosSecCode::copy_guest_with_attribues' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-sec-code-audit-token-lookup-missing"
+grep -Fq 'code.check_validity(MacosCodeSigningFlags::STRICT_VALIDATE, &requirement)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-sec-code-strict-validation-missing"
+grep -Fq 'requirement.strip_prefix' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-code-requirement-normalization-missing"
 grep -Fq 'macos_privileged_helper_satisfies_code_requirement(expected)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-helper-code-requirement-missing"
 grep -Fq 'macos_installed_app_satisfies_code_requirement(&app_bundle)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-app-code-requirement-missing"
 grep -Fq 'macos_service_ipc_allows_installed_app_and_privileged_helper' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-installed-helper-pair-missing"
@@ -1896,10 +1914,17 @@ then
 fi
 grep -Fq 'macOS _service accept-loop blocking-proof offload' requirements.html || r_s11b2="$r_s11b2 macos-service-ipc-offload-requirements-missing"
 grep -Fq 'R-S11e-4 — macOS _service accept-loop blocking-proof offload' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-service-ipc-offload-ledger-missing"
+grep -Fq 'macOS _service audit-token peer code identity' requirements.html || r_s11b2="$r_s11b2 macos-service-ipc-audit-token-requirements-missing"
+grep -Fq 'R-S11e-9 — macOS _service audit-token peer code identity' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-service-ipc-audit-token-ledger-missing"
 macos_service_identity_block=$(awk '/fn macos_service_ipc_allows_installed_app_and_privileged_helper/,/^}/' src/ipc/auth.rs)
-echo "$macos_service_identity_block" | grep -Fq 'postfix != crate::POSTFIX_SERVICE' || r_s11b2="$r_s11b2 macos-service-ipc-postfix-gate-missing"
-echo "$macos_service_identity_block" | grep -Fq 'macos_privileged_helper_is_expected_and_trusted(current_exe)' || r_s11b2="$r_s11b2 macos-service-ipc-current-helper-not-verified"
-echo "$macos_service_identity_block" | grep -Fq 'macos_installed_app_is_expected_and_trusted(peer_exe)' || r_s11b2="$r_s11b2 macos-service-ipc-peer-app-not-verified"
+echo "$macos_service_identity_block" | grep -Fq 'postfix == crate::POSTFIX_SERVICE' || r_s11b2="$r_s11b2 macos-service-ipc-postfix-gate-missing"
+echo "$macos_service_identity_block" | grep -Fq 'macos_privileged_helper_path_is_expected_and_trusted(current_exe)' || r_s11b2="$r_s11b2 macos-service-ipc-current-helper-not-verified"
+echo "$macos_service_identity_block" | grep -Fq 'macos_peer_is_trusted_installed_app(peer_identity)' || r_s11b2="$r_s11b2 macos-service-ipc-peer-app-not-verified"
+grep -Fq 'ensure_peer_executable_matches_current_macos_identity(&identity' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-snapshot-not-audit-token-backed"
+grep -Fq 'macos_peer_process_identity("macOS _service peer")' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-snapshot-identity-capture-missing"
+grep -Fq 'macos_peer_process_identity("macOS _service server")' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-client-server-identity-capture-missing"
+grep -Fq 'macos_peer_process_identity("macOS service-owned password snapshot requester")' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-runtime-snapshot-identity-capture-missing"
+grep -Fq 'ipc_auth::macos_peer_is_trusted_installed_app(&identity)' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-runtime-snapshot-not-audit-token-backed"
 if grep -q 'macos_service_ipc_allows_gui_and_service_binaries' src/ipc/auth.rs; then
   r_s11b2="$r_s11b2 macos-service-ipc-old-gui-service-binary-model-present"
 fi
@@ -1945,14 +1970,14 @@ if echo "$user_scope_fn" | grep -q '"--password"'; then
   r_s11b2="$r_s11b2 password-still-root-routes-to-user-main-ipc"
 fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 service-owned password IPC closure:$r_s11b2"; rc=1; else
-  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux client-authenticates the connected root --service receiver before sending a service-owned password request, then uses polkit/root-service commit with structured policy/package assurance; Windows uses pipe-client token elevation plus LocalSystem service commit; macOS admits _service only for the installed app executable talking to the trusted PrivilegedHelperTools helper, offloads budgeted receiver-side blocking proof from the _service accept loop before the first read, client-authenticates the connected _service server, obtains the custom nonshared timeout-zero Authorization Services right before sending the password, verifies the external form noninteractively in the LaunchDaemon, writes the authorized value directly into the root LaunchDaemon credential store without a pending secret cache, rejects the old macOS main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after exact live argv plus pid/path and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
+  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux client-authenticates the connected root --service receiver before sending a service-owned password request, then uses polkit/root-service commit with structured policy/package assurance; Windows uses pipe-client token elevation plus LocalSystem service commit; macOS admits _service only for the audit-token trusted installed app talking to the audit-token trusted PrivilegedHelperTools helper, offloads budgeted receiver-side blocking proof from the _service accept loop before the first read, client-authenticates the connected _service server, obtains the custom nonshared timeout-zero Authorization Services right before sending the password, verifies the external form noninteractively in the LaunchDaemon, writes the authorized value directly into the root LaunchDaemon credential store without a pending secret cache, rejects the old macOS main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after audit-token app proof, exact live argv, and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
 
 # R-S11b-4: config/PRS secrecy after IPC closure. The balanced-PAKE PRS is
 # connect-equivalent at rest, so the code-owned boundary is:
 #   * no PRS/key material is exported over main IPC;
 #   * service-owned receivers deny generic main-IPC password-storage/salt snapshots;
 #   * macOS's service-owned LaunchAgent receives the root credential only through a typed
-#     launchd-pid/path-verified _service runtime snapshot that never enters persisted Config;
+#     audit-token-verified _service runtime snapshot that never enters persisted Config;
 #   * Unix config writes create owner-only files;
 #   * Windows config paths get a protected current-user/SYSTEM DACL instead of inheriting broad parent ACLs.
 echo "== R-S11b-4 config/PRS secrecy boundary =="
@@ -2313,7 +2338,7 @@ for command in osascript launchctl open ls ioreg codesign; do
     r_s11c5="$r_s11c5 macos-path-selected-$command"
   fi
 done
-for system_path in /usr/bin/osascript /bin/launchctl /usr/bin/open /usr/sbin/ioreg /usr/bin/codesign; do
+for system_path in /usr/bin/osascript /bin/launchctl /usr/bin/open /usr/sbin/ioreg; do
   grep -F "\"$system_path\"" "${macos_helper_command_sources[@]}" >/dev/null || r_s11c5="$r_s11c5 macos-absolute-${system_path##*/}-missing"
 done
 grep -Fq 'const MACOS_OPEN: &str = "/usr/bin/open";' src/ipc.rs || r_s11c5="$r_s11c5 macos-ipc-open-absolute-missing"
@@ -2321,7 +2346,7 @@ grep -Fq 'Command::new(MACOS_OPEN)' src/ipc.rs || r_s11c5="$r_s11c5 macos-ipc-re
 grep -Fq 'const MACOS_PRIVILEGED_HELPER_EXEC: &str =' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-const-missing"
 grep -Fq '/Library/PrivilegedHelperTools/com.carriez.rustdesk_service' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-path-missing"
 grep -Fq 'const MACOS_PRIVILEGED_HELPER_DIR: &str = "/Library/PrivilegedHelperTools";' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-dir-const-missing"
-grep -Fq 'const MACOS_CODESIGN: &str = "/usr/bin/codesign";' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-codesign-absolute-missing"
+grep -Fq 'security-framework = "2.10"' Cargo.toml || r_s11c5="$r_s11c5 macos-security-framework-direct-dependency-missing"
 grep -Fq 'const MACOS_PRIVILEGED_HELPER_REQUIREMENT: &str =' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-code-requirement-const-missing"
 grep -Fq 'certificate leaf[subject.OU] = "HZF9JMC8YN"' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-teamid-requirement-missing"
 grep -Fq 'identifier "service" or identifier "com.carriez.rustdesk_service"' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-identifier-requirement-missing"
@@ -2346,8 +2371,8 @@ grep -Fq '<string>com.carriez.rustdesk</string>' src/platform/privileges_scripts
 grep -Fq 'macOS privileged service template identity input' requirements.html || r_s11c5="$r_s11c5 macos-template-identity-requirements-missing"
 grep -Fq 'R-S11c-21 — macOS privileged service template identity input' HARDENING_STATUS.md || r_s11c5="$r_s11c5 macos-template-identity-ledger-missing"
 grep -Fq 'fn macos_installed_app_bundle_path() -> PathBuf' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-app-bundle-path-helper-missing"
-grep -Fq 'fn macos_privileged_helper_is_expected_and_trusted(current_exe: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-trust-missing"
-grep -Fq 'fn macos_installed_app_is_expected_and_trusted(peer_exe: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-app-trust-missing"
+grep -Fq 'fn macos_privileged_helper_path_is_expected_and_trusted(current_exe: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-trust-missing"
+grep -Fq 'fn macos_installed_app_path_is_expected_and_trusted(peer_exe: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-app-trust-missing"
 grep -Fq 'fn macos_path_has_no_extended_acl(path: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-acl-check-missing"
 grep -Fq 'CString::new(path.as_os_str().as_bytes().to_vec())' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-acl-cstring-missing"
 grep -Fq 'acl_get_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-acl-get-link-missing"
@@ -2361,7 +2386,11 @@ grep -Fq 'R-S11c-18 — macOS privileged installer ACL enforcement provenance' H
 grep -Fq 'fn macos_path_has_expected_type_and_permissions(' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-mode-check-helper-missing"
 grep -Fq 'fn macos_privileged_helper_satisfies_code_requirement(path: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-codesign-check-missing"
 grep -Fq 'fn macos_installed_app_satisfies_code_requirement(path: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-app-codesign-check-missing"
-grep -Fq 'Command::new(MACOS_CODESIGN)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-codesign-not-absolute"
+grep -Fq 'MacosSecStaticCode::from_path(&url, MacosCodeSigningFlags::NONE)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-static-code-check-not-native"
+grep -Fq 'code.check_validity(MacosCodeSigningFlags::STRICT_VALIDATE, &requirement)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-code-requirement-not-strict"
+if grep -Fq 'Command::new(MACOS_CODESIGN)' src/ipc/auth.rs || grep -Fq 'const MACOS_CODESIGN' src/ipc/auth.rs; then
+  r_s11c5="$r_s11c5 macos-rust-codesign-subprocess-present"
+fi
 if grep -Fq 'Command::new(MACOS_LS)' src/ipc/auth.rs \
   || grep -Fq 'const MACOS_LS' src/ipc/auth.rs \
   || grep -Fq 'Command::new("/bin/ls")' "${macos_helper_command_sources[@]}" \
@@ -2377,14 +2406,14 @@ grep -Fq 'macos_root_owned_not_group_world_writable(&metadata)' src/ipc/auth.rs 
 grep -Fq 'require_executable && metadata.permissions().mode() & 0o111 == 0' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-exec-mode-gate-missing"
 grep -Fq 'macos_privileged_helper_satisfies_code_requirement(expected)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-code-requirement-not-enforced"
 macos_service_identity_block=$(awk '/fn macos_service_ipc_allows_installed_app_and_privileged_helper/,/^}/' src/ipc/auth.rs)
-echo "$macos_service_identity_block" | grep -Fq 'macos_privileged_helper_is_expected_and_trusted(current_exe)' || r_s11c5="$r_s11c5 macos-service-ipc-current-helper-not-verified"
-echo "$macos_service_identity_block" | grep -Fq 'macos_installed_app_is_expected_and_trusted(peer_exe)' || r_s11c5="$r_s11c5 macos-service-ipc-peer-app-not-verified"
-macos_app_trust_block=$(awk '/fn macos_installed_app_is_expected_and_trusted/,/^}/' src/ipc/auth.rs)
+echo "$macos_service_identity_block" | grep -Fq 'macos_privileged_helper_path_is_expected_and_trusted(current_exe)' || r_s11c5="$r_s11c5 macos-service-ipc-current-helper-not-verified"
+echo "$macos_service_identity_block" | grep -Fq 'macos_peer_is_trusted_installed_app(peer_identity)' || r_s11c5="$r_s11c5 macos-service-ipc-peer-app-not-verified"
+macos_app_trust_block=$(awk '/fn macos_installed_app_path_is_expected_and_trusted/,/^}/' src/ipc/auth.rs)
 echo "$macos_app_trust_block" | grep -Fq 'macos_installed_app_executable_path()' || r_s11c5="$r_s11c5 macos-app-executable-path-not-checked"
 echo "$macos_app_trust_block" | grep -Fq 'macos_path_has_expected_type_and_permissions(&app_executable, false, true, false)' || r_s11c5="$r_s11c5 macos-app-executable-permissions-not-checked"
 echo "$macos_app_trust_block" | grep -Fq 'macos_installed_app_satisfies_code_requirement(&app_bundle)' || r_s11c5="$r_s11c5 macos-app-code-requirement-not-enforced"
-line_app_check=$(grep -n 'macos_installed_app_is_expected_and_trusted(peer_exe)' src/ipc/auth.rs | tail -n 1 | cut -d: -f1)
-line_helper_check=$(grep -n 'macos_privileged_helper_is_expected_and_trusted(current_exe)' src/ipc/auth.rs | tail -n 1 | cut -d: -f1)
+line_app_check=$(grep -n 'macos_peer_is_trusted_installed_app(peer_identity)' src/ipc/auth.rs | tail -n 1 | cut -d: -f1)
+line_helper_check=$(grep -n 'macos_privileged_helper_path_is_expected_and_trusted(current_exe)' src/ipc/auth.rs | tail -n 1 | cut -d: -f1)
 if [ -z "$line_app_check" ] || [ -z "$line_helper_check" ] || [ "$line_app_check" -ge "$line_helper_check" ]; then
   r_s11c5="$r_s11c5 macos-service-ipc-helper-checked-before-app-peer"
 fi

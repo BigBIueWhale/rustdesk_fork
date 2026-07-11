@@ -644,7 +644,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   and parses that plist for the exact `ProgramArguments`/`RunAtLoad`/`KeepAlive` shape; this slice makes the live
   process proof match that exact job shape by rejecting any command vector other than the three-entry
   `argv[0]`, `--server`, `--service-owned-server` form. This is correctness hardening rather than a confirmed
-  local-to-root path because launchd pid/path and root-owned plist proof were already load-bearing. Verification
+  local-to-root path because installed-app code identity and root-owned launchd plist proof were already load-bearing;
+  R-S11e-9 subsequently binds that installed-app proof to the socket audit token rather than a PID/path re-observation. Verification
   closure: the Rust tests reject extra live argv, a wrong live service marker, and extra plist
   `ProgramArguments`; both source gates require the exact live argv helper, its snapshot-peer wiring, the
   exact-length check, the wrong-marker test, the extra-argument tests, and absence of the old raw indexed proof
@@ -1444,9 +1445,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   authorized value directly into the root LaunchDaemon credential
   store without a pending plaintext cache, rejects the old
   macOS main-server commit fallback, and serves that root credential to the service-owned LaunchAgent only as a
-  launchd-owned runtime snapshot after exact live argv plus pid/path and parsed root-owned plist command-shape proof;
-  macOS `_service` clients also authenticate the connected server as the root trusted privileged helper before
-  sending password-change or runtime-snapshot messages, and the snapshot cannot be persisted into user config.
+  launchd-owned runtime snapshot after socket audit-token installed-app code proof, exact live argv, and parsed
+  root-owned plist command-shape proof; macOS `_service` clients also authenticate the connected server as the root
+  trusted privileged helper with audit-token code identity before sending password-change or runtime-snapshot messages,
+  and the snapshot cannot be persisted into user config.
 - **R-S11e — Linux polkit policy/package assurance — CLOSED 2026-07-10.**
   Platform: Linux `.deb` installed-service mode. Endpoint/action: the single local admin-authorized
   service-owned unattended-password change. Boundary: user-session process and distro-local polkit policy
@@ -1488,11 +1490,12 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `/tmp/<app>-service/ipc_service` race cannot receive the plaintext candidate password before authorization, and
   cannot feed attacker-chosen runtime password storage/salt to the service-owned LaunchAgent. `connect_with_path()`
   authenticates the macOS `POSTFIX_SERVICE` peer before any service protocol message is sent or read: peer uid must
-  be root, peer pid/executable must resolve, and the executable must be the trusted
+  be root, the socket-bound `LOCAL_PEERTOKEN` must resolve through Security.framework to live peer code satisfying
+  the pinned helper requirement with strict validation, and the resulting code path must be the trusted
   `/Library/PrivilegedHelperTools/com.carriez.rustdesk_service` helper with root:wheel ownership, non-writable
-  helper directory/file, executable bit, no symlinks, no extended ACLs, and the pinned helper code-signing
-  requirement. There is no unauthenticated compatibility fallback. Verification closure: `scripts/verify.sh` and
-  `scripts/apple-conform-check.sh` require the client-side helper proof, root uid gate, peer executable proof,
+  helper directory/file, executable bit, no symlinks, and no extended ACLs. The effective peer pid is logged metadata,
+  not the code authority. There is no unauthenticated compatibility fallback. Verification closure: `scripts/verify.sh`
+  and `scripts/apple-conform-check.sh` require the client-side helper proof, root uid gate, audit-token code proof,
   connect-path wiring, and requirements/ledger disposition.
 - **R-S11e-3 — Linux helper canonical target provenance — CLOSED 2026-07-11.**
   Platform: Linux `.deb` installed-service mode and shared Linux helper paths when invoked by privileged processes.
@@ -1511,11 +1514,11 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Platform: macOS installed-service mode. Endpoint/action: receiver-side admission for the world-connectable
   `_service` IPC listener. Boundary: local IPC connect attempts ↔ root LaunchDaemon service availability and
   credential-authority admission. Attack surface closed: the current-thread `_service` listener no longer performs
-  filesystem metadata, ACL, current/peer executable, and `/usr/bin/codesign --verify` work inline before spawning the
-  per-connection task. The accepted socket's kernel peer uid/pid facts are captured as a typed
-  `ServiceScopedIpcAuthorization` snapshot; the accept path obtains a nonblocking bounded authorization slot and passes
-  it to the macOS connection task, which runs the existing fail-closed executable/code-signing proof in
-  `tokio::task::spawn_blocking` and returns before the first `stream.next().await` if authorization fails. If the
+  filesystem metadata, ACL, peer executable, and code-signing proof inline before spawning the per-connection task.
+  The accepted socket's uid and `MacosPeerProcessIdentity` are captured as a typed `ServiceScopedIpcAuthorization`
+  snapshot; the accept path obtains a nonblocking bounded authorization slot and passes it to the macOS connection
+  task, which runs the fail-closed audit-token executable/code-signing proof in `tokio::task::spawn_blocking` and
+  returns before the first `stream.next().await` if authorization fails. If the
   authorization budget is exhausted, the listener drops the connection before spawning a task. No `_service` message is read before that
   proof succeeds, Linux keeps its existing synchronous service admission path, and the `_url` sender proof remains
   separate. Verification closure: `scripts/verify.sh` and `scripts/apple-conform-check.sh` require the snapshot type,
@@ -1587,6 +1590,23 @@ unreachable and a source/test/AST gate prevents reintroduction.
   readiness request/result, service-channel allowlist, client ordering from authenticated `_service` connect to
   readiness to `AuthorizationCopyRights` to password send, exact native dictionary validation, absence of the old
   existence-only helper, and this requirements/ledger disposition.
+- **R-S11e-9 — macOS _service audit-token peer code identity — CLOSED 2026-07-11.**
+  Platform: macOS installed-service mode. Endpoint/action: `_service` client-side server authentication,
+  receiver-side service-scoped admission, and the service-owned password runtime snapshot requester. Boundary:
+  local Unix-domain socket peers ↔ root privileged helper/app credential authority. Attack surface closed: macOS
+  `_service` code identity no longer depends on re-observing an effective pid/path or shelling out to filesystem
+  `codesign` after accept. The connected socket's uid, `LOCAL_PEEREPID` metadata, and `LOCAL_PEERTOKEN` are captured
+  as `MacosPeerProcessIdentity`; Security.framework resolves live peer code from the audit token through
+  `SecCodeCopyGuestWithAttributes(kSecGuestAttributeAudit)`; app/helper requirements are validated with
+  `SecCodeCheckValidity(..., STRICT_VALIDATE)`; and the path from `SecCodeCopyPath` is used only for secondary
+  installed-location, owner, mode, symlink, and ACL checks. `_service` client auth now requires a root peer whose
+  audit-token code is the trusted privileged helper; receiver admission snapshots carry the audit token into the
+  blocking verifier before any `_service` frame is read; and the password runtime snapshot requester must be the
+  audit-token trusted installed app before launchd argv/plist proof is considered. There is no unauthenticated,
+  PID-only, path-only, or subprocess-code-signing fallback. Verification closure: `scripts/verify.sh` and
+  `scripts/apple-conform-check.sh` gate the direct `security-framework` dependency, `LOCAL_PEERTOKEN`,
+  `LOCAL_PEEREPID`, legacy `LOCAL_PEERPID` absence, audit-token identity capture, native strict validation, Rust
+  `MACOS_CODESIGN` absence, service-client/server/snapshot wiring, and this requirements/ledger disposition.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows
@@ -1750,8 +1770,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   password-storage/salt snapshot requests are denied for service-owned receivers by the same
   `current_process_allows_main_channel_permanent_password_storage_sync()` authority gate used by
   R-S11b-2. macOS's service-owned LaunchAgent root-credential delivery is not a generic snapshot path: it is the
-  typed R-S11b-2e `_service` runtime snapshot, accepted only after launchd pid/path proof and parsed
-  root-owned plist command-shape proof for the LaunchAgent job, and applied only to
+  typed R-S11b-2e `_service` runtime snapshot, accepted only after socket audit-token installed-app proof, exact live
+  argv, and parsed root-owned plist command-shape proof for the LaunchAgent job, and applied only to
   `RUNTIME_PERMANENT_PASSWORD_PRS`, never to serialized `Config`.
   R-S11b-4b closes the Unix at-rest file-mode half: `libs/hbb_common/src/config.rs::store_path`
   routes non-Windows writes through `confy::store_path_perms(..., 0o600)`, and

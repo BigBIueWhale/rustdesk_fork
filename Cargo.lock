@@ -6308,6 +6308,7 @@ dependencies = [
  "rust-pulsectl",
  "samplerate",
  "scrap",
+ "security-framework 2.10.0",
  "serde 1.0.228",
  "serde_derive",
  "serde_json 1.0.118",

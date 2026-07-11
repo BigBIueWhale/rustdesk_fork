@@ -1,10 +1,18 @@
 use crate::ipc::{Connection, ConnectionTmpl};
+#[cfg(target_os = "macos")]
+use core_foundation::{base::TCFType, data::CFData, url::CFURL};
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 use hbb_common::{anyhow, bail, log, ResultType};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use hbb_common::{
     libc,
     tokio::io::{AsyncRead, AsyncWrite},
+};
+#[cfg(target_os = "macos")]
+use security_framework::os::macos::code_signing::{
+    Flags as MacosCodeSigningFlags, GuestAttributes as MacosGuestAttributes,
+    SecCode as MacosSecCode, SecRequirement as MacosSecRequirement,
+    SecStaticCode as MacosSecStaticCode,
 };
 #[cfg(target_os = "linux")]
 use serde_derive::{Deserialize, Serialize};
@@ -22,8 +30,6 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::RawFd;
 #[cfg(windows)]
 use std::os::windows::io::AsRawHandle;
-#[cfg(target_os = "macos")]
-use std::process::Command;
 #[cfg(windows)]
 use std::{collections::BTreeSet, ffi::c_void};
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
@@ -76,11 +82,11 @@ const MACOS_PRIVILEGED_HELPER_EXEC: &str =
 #[cfg(target_os = "macos")]
 const MACOS_PRIVILEGED_HELPER_DIR: &str = "/Library/PrivilegedHelperTools";
 #[cfg(target_os = "macos")]
-const MACOS_CODESIGN: &str = "/usr/bin/codesign";
-#[cfg(target_os = "macos")]
 const MACOS_PRIVILEGED_HELPER_REQUIREMENT: &str = r#"=anchor apple generic and certificate leaf[subject.OU] = "HZF9JMC8YN" and (identifier "service" or identifier "com.carriez.rustdesk_service")"#;
 #[cfg(target_os = "macos")]
 const MACOS_INSTALLED_APP_REQUIREMENT: &str = r#"=anchor apple generic and certificate leaf[subject.OU] = "HZF9JMC8YN" and identifier "com.carriez.rustdesk""#;
+#[cfg(target_os = "macos")]
+const MACOS_AUDIT_TOKEN_BYTES: usize = 32;
 #[cfg(target_os = "macos")]
 type MacosAcl = *mut c_void;
 #[cfg(target_os = "macos")]
@@ -114,6 +120,27 @@ struct WindowsIpcDaclSids {
 
 #[cfg(target_os = "macos")]
 struct MacosAclGuard(MacosAcl);
+
+#[cfg(target_os = "macos")]
+#[derive(Clone)]
+pub(crate) struct MacosPeerProcessIdentity {
+    uid: u32,
+    pid: u32,
+    audit_token: [u8; MACOS_AUDIT_TOKEN_BYTES],
+}
+
+#[cfg(target_os = "macos")]
+impl MacosPeerProcessIdentity {
+    #[inline]
+    pub(crate) fn uid(&self) -> u32 {
+        self.uid
+    }
+
+    #[inline]
+    pub(crate) fn pid(&self) -> u32 {
+        self.pid
+    }
+}
 
 #[cfg(target_os = "macos")]
 impl Drop for MacosAclGuard {
@@ -508,19 +535,107 @@ fn macos_path_has_expected_type_and_permissions(
 }
 
 #[cfg(target_os = "macos")]
-fn macos_code_satisfies_requirement(path: &Path, requirement: &str, description: &str) -> bool {
-    match Command::new(MACOS_CODESIGN)
-        .args(["--verify", "--strict", "-R", requirement])
-        .arg(path)
-        .status()
-    {
-        Ok(status) if status.success() => true,
-        Ok(status) => {
-            log::error!("macOS {description} code-signing check failed with status {status}");
+fn macos_code_requirement(requirement: &str, description: &str) -> ResultType<MacosSecRequirement> {
+    let requirement = requirement.strip_prefix('=').unwrap_or(requirement);
+    requirement.parse::<MacosSecRequirement>().map_err(|err| {
+        anyhow::anyhow!("Failed to parse macOS {description} code requirement: {err:?}").into()
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn macos_static_code_satisfies_requirement(
+    path: &Path,
+    is_dir: bool,
+    requirement: &str,
+    description: &str,
+) -> bool {
+    let Some(url) = CFURL::from_path(path, is_dir) else {
+        log::error!(
+            "Failed to build macOS {description} code-signing URL for '{}'",
+            path.display()
+        );
+        return false;
+    };
+    let requirement = match macos_code_requirement(requirement, description) {
+        Ok(requirement) => requirement,
+        Err(err) => {
+            log::error!("{err}");
+            return false;
+        }
+    };
+    let code = match MacosSecStaticCode::from_path(&url, MacosCodeSigningFlags::NONE) {
+        Ok(code) => code,
+        Err(err) => {
+            log::error!(
+                "Failed to resolve macOS {description} static code '{}': {err:?}",
+                path.display()
+            );
+            return false;
+        }
+    };
+    match code.check_validity(MacosCodeSigningFlags::STRICT_VALIDATE, &requirement) {
+        Ok(()) => true,
+        Err(err) => {
+            log::error!("macOS {description} static code-signing check failed: {err:?}");
             false
         }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_peer_code(
+    identity: &MacosPeerProcessIdentity,
+    description: &str,
+) -> ResultType<MacosSecCode> {
+    let audit_token = CFData::from_buffer(&identity.audit_token);
+    let mut attributes = MacosGuestAttributes::new();
+    attributes.set_audit_token(audit_token.as_concrete_TypeRef());
+    MacosSecCode::copy_guest_with_attribues(None, &attributes, MacosCodeSigningFlags::NONE)
+        .map_err(|err| {
+            anyhow::anyhow!(
+                "Failed to resolve macOS {description} peer code from audit token: pid={}, uid={}, err={err:?}",
+                identity.pid,
+                identity.uid
+            )
+            .into()
+        })
+}
+
+#[cfg(target_os = "macos")]
+fn macos_peer_code_path(code: &MacosSecCode, description: &str) -> ResultType<PathBuf> {
+    let url = code.path(MacosCodeSigningFlags::NONE).map_err(|err| {
+        anyhow::anyhow!("Failed to resolve macOS {description} peer code path: {err:?}")
+    })?;
+    let path = url.to_path().ok_or_else(|| {
+        anyhow::anyhow!("macOS {description} peer code path is not a filesystem path")
+    })?;
+    fs::canonicalize(&path).map_err(|err| {
+        anyhow::anyhow!(
+            "Failed to canonicalize macOS {description} peer code path '{}': {}",
+            path.display(),
+            err
+        )
+        .into()
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn macos_peer_code_satisfies_requirement(
+    code: &MacosSecCode,
+    requirement: &str,
+    description: &str,
+) -> bool {
+    let requirement = match macos_code_requirement(requirement, description) {
+        Ok(requirement) => requirement,
         Err(err) => {
-            log::error!("Failed to run macOS {description} code-signing check: {err}");
+            log::error!("{err}");
+            return false;
+        }
+    };
+    match code.check_validity(MacosCodeSigningFlags::STRICT_VALIDATE, &requirement) {
+        Ok(()) => true,
+        Err(err) => {
+            log::error!("macOS {description} peer code-signing check failed: {err:?}");
             false
         }
     }
@@ -529,8 +644,9 @@ fn macos_code_satisfies_requirement(path: &Path, requirement: &str, description:
 #[cfg(target_os = "macos")]
 #[inline]
 fn macos_privileged_helper_satisfies_code_requirement(path: &Path) -> bool {
-    macos_code_satisfies_requirement(
+    macos_static_code_satisfies_requirement(
         path,
+        false,
         MACOS_PRIVILEGED_HELPER_REQUIREMENT,
         "privileged helper",
     )
@@ -539,12 +655,17 @@ fn macos_privileged_helper_satisfies_code_requirement(path: &Path) -> bool {
 #[cfg(target_os = "macos")]
 #[inline]
 fn macos_installed_app_satisfies_code_requirement(path: &Path) -> bool {
-    macos_code_satisfies_requirement(path, MACOS_INSTALLED_APP_REQUIREMENT, "installed app")
+    macos_static_code_satisfies_requirement(
+        path,
+        true,
+        MACOS_INSTALLED_APP_REQUIREMENT,
+        "installed app",
+    )
 }
 
 #[cfg(target_os = "macos")]
 #[inline]
-fn macos_privileged_helper_is_expected_and_trusted(current_exe: &Path) -> bool {
+fn macos_privileged_helper_path_is_expected_and_trusted(current_exe: &Path) -> bool {
     let expected = Path::new(MACOS_PRIVILEGED_HELPER_EXEC);
     if !macos_executable_matches_expected_path(current_exe, expected) {
         return false;
@@ -565,7 +686,7 @@ fn macos_privileged_helper_is_expected_and_trusted(current_exe: &Path) -> bool {
 
 #[cfg(target_os = "macos")]
 #[inline]
-fn macos_installed_app_is_expected_and_trusted(peer_exe: &Path) -> bool {
+fn macos_installed_app_path_is_expected_and_trusted(peer_exe: &Path) -> bool {
     let app_bundle = macos_installed_app_bundle_path();
     let app_contents = app_bundle.join("Contents");
     let app_macos = app_contents.join("MacOS");
@@ -585,19 +706,62 @@ fn macos_installed_app_is_expected_and_trusted(peer_exe: &Path) -> bool {
 }
 
 #[cfg(target_os = "macos")]
+fn macos_peer_code_path_satisfies(
+    identity: &MacosPeerProcessIdentity,
+    requirement: &str,
+    description: &str,
+    path_is_trusted: impl FnOnce(&Path) -> bool,
+) -> bool {
+    let code = match macos_peer_code(identity, description) {
+        Ok(code) => code,
+        Err(err) => {
+            log::error!("{err}");
+            return false;
+        }
+    };
+    if !macos_peer_code_satisfies_requirement(&code, requirement, description) {
+        return false;
+    }
+    let path = match macos_peer_code_path(&code, description) {
+        Ok(path) => path,
+        Err(err) => {
+            log::error!("{err}");
+            return false;
+        }
+    };
+    path_is_trusted(&path)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn macos_peer_is_trusted_installed_app(identity: &MacosPeerProcessIdentity) -> bool {
+    macos_peer_code_path_satisfies(
+        identity,
+        MACOS_INSTALLED_APP_REQUIREMENT,
+        "installed app",
+        macos_installed_app_path_is_expected_and_trusted,
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn macos_peer_is_trusted_privileged_helper(identity: &MacosPeerProcessIdentity) -> bool {
+    macos_peer_code_path_satisfies(
+        identity,
+        MACOS_PRIVILEGED_HELPER_REQUIREMENT,
+        "privileged helper",
+        macos_privileged_helper_path_is_expected_and_trusted,
+    )
+}
+
+#[cfg(target_os = "macos")]
 #[inline]
 fn macos_service_ipc_allows_installed_app_and_privileged_helper(
-    peer_exe: &Path,
+    peer_identity: &MacosPeerProcessIdentity,
     current_exe: &Path,
     postfix: &str,
 ) -> bool {
-    if postfix != crate::POSTFIX_SERVICE {
-        return false;
-    }
-    if !macos_installed_app_is_expected_and_trusted(peer_exe) {
-        return false;
-    }
-    macos_privileged_helper_is_expected_and_trusted(current_exe)
+    postfix == crate::POSTFIX_SERVICE
+        && macos_peer_is_trusted_installed_app(peer_identity)
+        && macos_privileged_helper_path_is_expected_and_trusted(current_exe)
 }
 
 #[cfg(target_os = "macos")]
@@ -607,21 +771,17 @@ pub(crate) fn ensure_macos_service_server_is_trusted<T>(
 where
     T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
 {
-    let peer_uid = stream
-        .peer_uid()
-        .ok_or_else(|| anyhow::anyhow!("Failed to resolve macOS _service server uid"))?;
-    if peer_uid != 0 {
-        bail!("macOS _service server is not root: peer_uid={peer_uid}");
-    }
-    let peer_pid = stream
-        .peer_pid()
-        .ok_or_else(|| anyhow::anyhow!("Failed to resolve macOS _service server pid"))?;
-    let peer_exe = peer_exe_canonical_path_by_pid(peer_pid)?;
-    if !macos_privileged_helper_is_expected_and_trusted(&peer_exe) {
+    let identity = stream.macos_peer_process_identity("macOS _service server")?;
+    if identity.uid != 0 {
         bail!(
-            "macOS _service server is not the trusted privileged helper: peer_pid={}, peer_exe='{}'",
-            peer_pid,
-            peer_exe.display()
+            "macOS _service server is not root: peer_uid={}",
+            identity.uid
+        );
+    }
+    if !macos_peer_is_trusted_privileged_helper(&identity) {
+        bail!(
+            "macOS _service server is not the trusted privileged helper: peer_pid={}",
+            identity.pid
         );
     }
     Ok(())
@@ -747,7 +907,7 @@ fn peer_pid_from_fd(fd: RawFd) -> Option<u32> {
             libc::getsockopt(
                 fd,
                 libc::SOL_LOCAL,
-                libc::LOCAL_PEERPID,
+                libc::LOCAL_PEEREPID,
                 &mut pid as *mut _ as *mut libc::c_void,
                 &mut len,
             )
@@ -757,6 +917,27 @@ fn peer_pid_from_fd(fd: RawFd) -> Option<u32> {
         } else {
             None
         }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[inline]
+fn peer_audit_token_from_fd(fd: RawFd) -> Option<[u8; MACOS_AUDIT_TOKEN_BYTES]> {
+    let mut token = [0u8; MACOS_AUDIT_TOKEN_BYTES];
+    let mut len = token.len() as _;
+    let rc = unsafe {
+        libc::getsockopt(
+            fd,
+            libc::SOL_LOCAL,
+            libc::LOCAL_PEERTOKEN,
+            token.as_mut_ptr() as *mut libc::c_void,
+            &mut len,
+        )
+    };
+    if rc == 0 && len as usize == token.len() {
+        Some(token)
+    } else {
+        None
     }
 }
 
@@ -1350,18 +1531,43 @@ fn ensure_peer_executable_matches_current_by_pid(peer_pid: u32, postfix: &str) -
     if executable_paths_match(&peer_exe, &current_exe) {
         return Ok(());
     }
-    #[cfg(target_os = "macos")]
-    if macos_service_ipc_allows_installed_app_and_privileged_helper(
-        &peer_exe,
-        &current_exe,
+    bail!(
+        "Peer executable path mismatch on ipc channel '{}': peer_pid={}, peer_exe='{}', current_exe='{}'",
         postfix,
-    ) {
+        peer_pid,
+        peer_exe.display(),
+        current_exe.display()
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[inline]
+fn ensure_peer_executable_matches_current_macos_identity(
+    identity: &MacosPeerProcessIdentity,
+    postfix: &str,
+) -> ResultType<()> {
+    let code = macos_peer_code(identity, "IPC peer")?;
+    let peer_exe = macos_peer_code_path(&code, "IPC peer")?;
+    let current_exe = current_exe_canonical_path()?;
+    if executable_paths_match(&peer_exe, &current_exe) {
+        if postfix != crate::POSTFIX_SERVICE
+            || (macos_peer_code_satisfies_requirement(
+                &code,
+                MACOS_PRIVILEGED_HELPER_REQUIREMENT,
+                "privileged helper",
+            ) && macos_privileged_helper_path_is_expected_and_trusted(&current_exe))
+        {
+            return Ok(());
+        }
+    }
+    if macos_service_ipc_allows_installed_app_and_privileged_helper(identity, &current_exe, postfix)
+    {
         return Ok(());
     }
     bail!(
         "Peer executable path mismatch on ipc channel '{}': peer_pid={}, peer_exe='{}', current_exe='{}'",
         postfix,
-        peer_pid,
+        identity.pid,
         peer_exe.display(),
         current_exe.display()
     );
@@ -1380,8 +1586,8 @@ pub(crate) fn ensure_peer_executable_matches_current_by_pid_opt(
 }
 
 // R-X13 (§8): ensure_peer_executable_matches_current_by_fd (the FD-based exe-match used ONLY by the
-// uinput peer authorizer) is removed with the uinput module. The _service authorizer uses the
-// _by_pid variant; peer_pid_from_fd / ensure_peer_executable_matches_current_by_pid remain.
+// uinput peer authorizer) is removed with the uinput module. Linux _service and non-service
+// helper channels still use the _by_pid variant; macOS _service uses the audit-token identity path.
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 const UNAUTHORIZED_IPC_LOG_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
@@ -1491,7 +1697,10 @@ pub(crate) fn log_rejected_windows_ipc_connection(
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) struct ServiceScopedIpcAuthorization {
     postfix: String,
+    #[cfg(target_os = "linux")]
     peer_pid: Option<u32>,
+    #[cfg(target_os = "macos")]
+    macos_peer_identity: Option<MacosPeerProcessIdentity>,
     peer_uid: Option<u32>,
     active_uid: Option<u32>,
     uid_authorized: bool,
@@ -1502,11 +1711,23 @@ pub(crate) fn service_scoped_ipc_authorization_snapshot(
     stream: &Connection,
     postfix: &str,
 ) -> ServiceScopedIpcAuthorization {
+    #[cfg(target_os = "linux")]
     let peer_pid = stream.peer_pid();
+    #[cfg(target_os = "macos")]
+    let macos_peer_identity = match stream.macos_peer_process_identity("macOS _service peer") {
+        Ok(identity) => Some(identity),
+        Err(err) => {
+            log::warn!("Rejected macOS _service IPC peer: {err}");
+            None
+        }
+    };
     let (uid_authorized, peer_uid, active_uid) = stream.service_authorization_status();
     ServiceScopedIpcAuthorization {
         postfix: postfix.to_owned(),
+        #[cfg(target_os = "linux")]
         peer_pid,
+        #[cfg(target_os = "macos")]
+        macos_peer_identity,
         peer_uid,
         active_uid,
         uid_authorized,
@@ -1525,6 +1746,29 @@ pub(crate) fn authorize_service_scoped_ipc_authorization_snapshot(
         );
         return false;
     }
+    #[cfg(target_os = "macos")]
+    {
+        let Some(identity) = authorization.macos_peer_identity else {
+            log::warn!(
+                "Rejected unauthorized connection on protected service-scoped IPC channel due to missing macOS peer identity: postfix={}",
+                authorization.postfix
+            );
+            return false;
+        };
+        if let Err(err) =
+            ensure_peer_executable_matches_current_macos_identity(&identity, &authorization.postfix)
+        {
+            log::warn!(
+                "Rejected unauthorized connection on protected service-scoped IPC channel due to executable mismatch: postfix={}, peer_pid={}, err={}",
+                authorization.postfix,
+                identity.pid,
+                err
+            );
+            return false;
+        }
+        return true;
+    }
+    #[cfg(target_os = "linux")]
     if let Err(err) = ensure_peer_executable_matches_current_by_pid_opt(
         authorization.peer_pid,
         &authorization.postfix,
@@ -1736,6 +1980,27 @@ where
 
     pub(crate) fn peer_pid(&self) -> Option<u32> {
         peer_pid_from_fd(self.inner.get_ref().as_raw_fd())
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(crate) fn macos_peer_process_identity(
+        &self,
+        description: &str,
+    ) -> ResultType<MacosPeerProcessIdentity> {
+        let fd = self.inner.get_ref().as_raw_fd();
+        let uid = self
+            .peer_uid()
+            .ok_or_else(|| anyhow::anyhow!("Failed to resolve {description} uid"))?;
+        let pid = self
+            .peer_pid()
+            .ok_or_else(|| anyhow::anyhow!("Failed to resolve {description} effective pid"))?;
+        let audit_token = peer_audit_token_from_fd(fd)
+            .ok_or_else(|| anyhow::anyhow!("Failed to resolve {description} audit token"))?;
+        Ok(MacosPeerProcessIdentity {
+            uid,
+            pid,
+            audit_token,
+        })
     }
 }
 

@@ -1845,18 +1845,17 @@ fn macos_service_owned_password_authorization_right_is_ready() -> bool {
 
 #[cfg(target_os = "macos")]
 async fn macos_peer_is_service_owned_server(stream: &Connection) -> bool {
-    let Some(peer_pid) = stream.peer_pid() else {
-        log::warn!("Rejected macOS service-owned password snapshot request: peer pid unavailable");
-        return false;
+    let identity = match stream
+        .macos_peer_process_identity("macOS service-owned password snapshot requester")
+    {
+        Ok(identity) => identity,
+        Err(err) => {
+            log::warn!("Rejected macOS service-owned password snapshot request: {err}");
+            return false;
+        }
     };
-    let Some(peer_uid) = stream.peer_uid() else {
-        log::warn!("Rejected macOS service-owned password snapshot request: peer uid unavailable");
-        return false;
-    };
-    match tokio::task::spawn_blocking(move || {
-        macos_peer_is_service_owned_server_blocking(peer_uid, peer_pid)
-    })
-    .await
+    match tokio::task::spawn_blocking(move || macos_peer_is_service_owned_server_blocking(identity))
+        .await
     {
         Ok(accepted) => accepted,
         Err(err) => {
@@ -1876,7 +1875,18 @@ fn macos_service_owned_server_live_argv_is_expected(cmd: &[String]) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn macos_peer_is_service_owned_server_blocking(peer_uid: u32, peer_pid: u32) -> bool {
+fn macos_peer_is_service_owned_server_blocking(
+    identity: ipc_auth::MacosPeerProcessIdentity,
+) -> bool {
+    if !ipc_auth::macos_peer_is_trusted_installed_app(&identity) {
+        log::warn!(
+            "Rejected macOS service-owned password snapshot request: peer code is not the trusted installed app, peer_pid={}",
+            identity.pid()
+        );
+        return false;
+    }
+    let peer_uid = identity.uid();
+    let peer_pid = identity.pid();
     let app_name = crate::get_app_name();
     let system = hbb_common::sysinfo::System::new_all();
     let Some(process) = system
@@ -1902,6 +1912,7 @@ fn macos_peer_is_service_owned_server_blocking(peer_uid: u32, peer_pid: u32) -> 
         return false;
     }
     macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid)
+        && ipc_auth::macos_peer_is_trusted_installed_app(&identity)
 }
 
 #[cfg(target_os = "macos")]

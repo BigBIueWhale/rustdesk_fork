@@ -1072,7 +1072,6 @@ grep -Fq 'fn get_install_info() -> (String, String, String)' src/platform/window
 grep -Fq 'fn get_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> ResultType<String>' src/platform/windows.rs || r_s11d19="$r_s11d19 uninstall-builder-not-fallible"
 grep -Fq 'let uninstall_str = get_uninstall(false, &tools)?;' src/platform/windows.rs || r_s11d19="$r_s11d19 install-path-does-not-propagate-uninstall-build-failure"
 grep -Fq 'run_cmds(get_uninstall(kill_self, &tools)?, true, "uninstall")' src/platform/windows.rs || r_s11d19="$r_s11d19 uninstall-path-does-not-propagate-uninstall-build-failure"
-grep -Fq 'batch_literal_text(&path, "installed path")?' src/platform/windows.rs || r_s11d19="$r_s11d19 installed-path-not-batch-literal-guarded"
 grep -Fq 'let start_menu = quoted_batch_path(&common_programs_app_dir()?)?;' src/platform/windows.rs || r_s11d19="$r_s11d19 start-menu-cleanup-not-known-folder-quoted"
 grep -Fq 'let public_desktop_shortcut = quoted_batch_path(&public_desktop_app_shortcut_path()?)?;' src/platform/windows.rs || r_s11d19="$r_s11d19 public-desktop-cleanup-not-known-folder-quoted"
 grep -Fq 'let startup_tray_shortcut = quoted_batch_path(&common_startup_tray_shortcut_path()?)?;' src/platform/windows.rs || r_s11d19="$r_s11d19 startup-cleanup-not-known-folder-quoted"
@@ -1089,6 +1088,34 @@ grep -Fq 'Windows EXE uninstall cleanup known-folder authority' requirements.htm
 grep -Fq 'R-S11d-19 — Windows EXE uninstall cleanup known-folder authority' HARDENING_STATUS.md || r_s11d19="$r_s11d19 hardening-ledger-missing"
 if [ -n "$r_s11d19" ]; then echo "  FAIL R-S11d-19 Windows EXE uninstall cleanup known-folder authority:$r_s11d19"; rc=1; else
   echo "  ok  R-S11d-19 Windows EXE uninstall cleanup uses known-folder literal paths and no env-expanded ProgramData/Public roots"; fi
+
+echo "== (3b-iii-a5d4c2) Windows EXE non-MSI uninstall install-root authority (R-S11d-36) =="
+r_s11d36=
+get_uninstall_body=$(awk '/fn get_uninstall\(kill_self: bool, tools: &WindowsSystemTools\) -> ResultType<String> \{/{flag=1} flag{print} flag && /^}/{exit}' src/platform/windows.rs)
+grep -Fq 'fn get_uninstall_registry_subkey() -> String' src/platform/windows.rs || r_s11d36="$r_s11d36 uninstall-registry-subkey-helper-missing"
+grep -Fq 'get_install_info_with_subkey(get_uninstall_registry_subkey())' src/platform/windows.rs || r_s11d36="$r_s11d36 install-info-no-longer-uses-registry-helper"
+grep -Fq 'fn fixed_service_install_dir_batch_path() -> ResultType<String>' src/platform/windows.rs || r_s11d36="$r_s11d36 fixed-install-dir-batch-helper-missing"
+grep -Fq 'quoted_batch_path(&fixed_service_install_path("")?)' src/platform/windows.rs || r_s11d36="$r_s11d36 fixed-install-dir-not-quoted-from-fixed-root"
+echo "$get_uninstall_body" | grep -Fq 'let subkey = get_uninstall_registry_subkey();' || r_s11d36="$r_s11d36 uninstall-registry-cleanup-not-using-registry-helper"
+echo "$get_uninstall_body" | grep -Fq 'let install_dir = fixed_service_install_dir_batch_path()?;' || r_s11d36="$r_s11d36 uninstall-install-dir-not-fixed-root"
+echo "$get_uninstall_body" | grep -Fq 'format!("if exist {install_dir} rd /s /q {install_dir}")' || r_s11d36="$r_s11d36 uninstall-install-dir-delete-not-fixed-dir"
+echo "$get_uninstall_body" | grep -Fq '&install_dir' || r_s11d36="$r_s11d36 uninstall-install-dir-delete-not-postchecked-against-fixed-dir"
+if echo "$get_uninstall_body" | grep -Fq 'get_install_info()'; then
+  r_s11d36="$r_s11d36 uninstall-still-derives-filesystem-target-from-install-info"
+fi
+if echo "$get_uninstall_body" | grep -Fq 'InstallLocation'; then
+  r_s11d36="$r_s11d36 uninstall-still-mentions-installlocation"
+fi
+if echo "$get_uninstall_body" | grep -Fq 'batch_literal_text(&path, "installed path")'; then
+  r_s11d36="$r_s11d36 registry-path-literal-guard-leftover"
+fi
+if echo "$get_uninstall_body" | grep -Fq 'let (subkey, path, _) = get_install_info();'; then
+  r_s11d36="$r_s11d36 old-registry-path-tuple-leftover"
+fi
+grep -Fq 'Windows EXE non-MSI uninstall install-root cleanup authority' requirements.html || r_s11d36="$r_s11d36 requirements-disposition-missing"
+grep -Fq 'R-S11d-36 — Windows EXE non-MSI uninstall install-root cleanup authority' HARDENING_STATUS.md || r_s11d36="$r_s11d36 hardening-ledger-missing"
+if [ -n "$r_s11d36" ]; then echo "  FAIL R-S11d-36 Windows EXE non-MSI uninstall install-root authority:$r_s11d36"; rc=1; else
+  echo "  ok  R-S11d-36 Windows EXE non-MSI uninstall removes only the fixed Program Files service root"; fi
 
 echo "== (3b-iii-a5d4d) Windows EXE elevated batch command bodies fail closed (R-S11d-20) =="
 r_s11d20=

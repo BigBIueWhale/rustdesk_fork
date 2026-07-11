@@ -1155,15 +1155,15 @@ unreachable and a source/test/AST gate prevents reintroduction.
   body to decide which protected shell-folder paths to delete. The stale start-menu field was removed from
   `get_install_info`; install, uninstall, service install, and service uninstall now share fallible
   `SHGetKnownFolderPath` helpers for Public Desktop, Common Programs, and Common Startup. `get_uninstall` is
-  fallible, guards the installed path as batch-literal text, quotes known-folder cleanup targets through the
-  same elevated batch path guard, and propagates known-folder/quoting failures to callers. `uninstall_service`
-  resolves and quotes the Common Startup tray shortcut before composing the elevated command and returns
-  `false` on failure. Verification closure: `scripts/verify.sh` asserts the narrowed `get_install_info` tuple,
-  fallible uninstall builder/callers, installed-path literal guard, known-folder quoted cleanup paths, service
-  uninstall known-folder cleanup, absence of `%ProgramData%` / `%PROGRAMDATA%` / `%PUBLIC%` roots in
-  `src/platform/windows.rs`, and this ledger/requirements disposition. Separate Windows findings not closed by
-  this item are tracked separately: R-S11d-20 closes elevated batch command postconditions, and R-S11d-21 closes
-  the MSI `CC_CONNECTION_TYPE` public-property service-mode gate.
+  fallible, quotes known-folder cleanup targets through the elevated batch path guard, and propagates
+  known-folder/quoting failures to callers. `uninstall_service` resolves and quotes the Common Startup tray
+  shortcut before composing the elevated command and returns `false` on failure. Verification closure:
+  `scripts/verify.sh` asserts the narrowed `get_install_info` tuple, fallible uninstall builder/callers,
+  known-folder quoted cleanup paths, service uninstall known-folder cleanup, absence of `%ProgramData%` /
+  `%PROGRAMDATA%` / `%PUBLIC%` roots in `src/platform/windows.rs`, and this ledger/requirements disposition.
+  Separate Windows findings not closed by this item are tracked separately: R-S11d-20 closes elevated batch
+  command postconditions, R-S11d-21 closes the MSI `CC_CONNECTION_TYPE` public-property service-mode gate, and
+  R-S11d-36 closes non-MSI install-directory cleanup authority.
 - **R-S11d-20 — Windows EXE elevated batch command postconditions — CLOSED 2026-07-10.**
   Platform: Windows EXE install, update-broker, uninstall, service-install, and service-uninstall elevated
   batch bodies. Endpoint/action: generated `.bat` fragments that copy binaries, create install directories,
@@ -1396,6 +1396,22 @@ unreachable and a source/test/AST gate prevents reintroduction.
   or command tail. Verification closure: `scripts/verify.sh` gates the Windows Installer API feature, product-code
   parser, GUID validator, product-name proof, command reconstruction, absence of the prefix-only binder, absence of
   the raw `checked_msi_uninstall_command(reg_uninstall_string)` fallback, and this requirements/ledger disposition.
+- **R-S11d-36 — Windows EXE non-MSI uninstall install-root cleanup authority — CLOSED 2026-07-11.** Platform:
+  Windows EXE install/reinstall pre-cleanup and `--uninstall` non-MSI cleanup. Endpoint/action: elevated
+  `get_uninstall` batch removal of the installed directory with `rd /s /q`. Boundary: HKLM uninstall registry
+  metadata from a prior non-MSI install ↔ destructive elevated filesystem cleanup. Attack surface closed:
+  `InstallLocation` is no longer filesystem deletion authority. The uninstall registry subkey may still be selected
+  for compatibility registry reads, prior MSI detection, `share_rdp`, and removal of the uninstall registry key, but
+  the non-MSI install-directory cleanup path now resolves only the fixed Program Files service root through
+  `fixed_service_install_path("")`, quotes it through the elevated batch path guard, and uses that quoted fixed root
+  as the absence-checked `rd /s /q` target. `get_uninstall` does not call `get_install_info()`, does not mention
+  `InstallLocation`, and has no fallback that validates or accepts a registry-selected cleanup directory. This is a
+  privileged-state correctness closure rather than a newly proven default-ACL standard-user-to-SYSTEM primitive:
+  HKLM uninstall metadata is normally administrator-owned, but legacy metadata is not allowed to choose a destructive
+  elevated filesystem root. Verification closure: `scripts/verify.sh` asserts the explicit uninstall-registry helper,
+  the fixed install-directory batch helper, the `get_uninstall` fixed-root removal command, registry-key cleanup via
+  the registry helper, absence of `get_install_info()` / `InstallLocation` / the old registry-path literal guard in
+  `get_uninstall`, and this requirements/ledger disposition.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's

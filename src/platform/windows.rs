@@ -1364,7 +1364,7 @@ pub fn is_share_rdp() -> bool {
 }
 
 pub(crate) fn set_service_owned_share_rdp(enable: bool) -> ResultType<()> {
-    let (subkey, _, _) = get_install_info();
+    let subkey = get_uninstall_registry_subkey();
     let subkey = subkey.replace("HKEY_LOCAL_MACHINE\\", "");
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let key = hklm.open_subkey_with_flags(subkey, KEY_SET_VALUE)?;
@@ -1592,7 +1592,7 @@ fn get_subkey(name: &str, wow: bool) -> String {
     }
 }
 
-fn get_valid_subkey() -> String {
+fn get_uninstall_registry_subkey() -> String {
     let subkey = get_subkey(IS1, false);
     if !get_reg_of(&subkey, "InstallLocation").is_empty() {
         return subkey;
@@ -1636,7 +1636,7 @@ fn get_reg_of_hkcr(subkey: &str, name: &str) -> Option<String> {
 }
 
 pub fn get_install_info() -> (String, String, String) {
-    get_install_info_with_subkey(get_valid_subkey())
+    get_install_info_with_subkey(get_uninstall_registry_subkey())
 }
 
 fn get_default_install_info() -> (String, String, String) {
@@ -1862,6 +1862,10 @@ pub(crate) fn trusted_system_tool_path(tool: &str) -> ResultType<PathBuf> {
 fn quoted_batch_path(path: &Path) -> ResultType<String> {
     let text = batch_path_text(path, "batch path")?;
     Ok(format!("\"{text}\""))
+}
+
+fn fixed_service_install_dir_batch_path() -> ResultType<String> {
+    quoted_batch_path(&fixed_service_install_path("")?)
 }
 
 fn batch_path_text(path: &Path, label: &str) -> ResultType<String> {
@@ -2731,15 +2735,16 @@ fn get_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> ResultType<Stri
         "{} --uninstall-amyuni-idd",
         quoted_batch_path(&exe)?
     ));
-    let (subkey, path, _) = get_install_info();
-    batch_literal_text(&path, "installed path")?;
-    let path = format!("\"{path}\"");
+    let subkey = get_uninstall_registry_subkey();
+    let install_dir = fixed_service_install_dir_batch_path()?;
     let start_menu = quoted_batch_path(&common_programs_app_dir()?)?;
     let public_desktop_shortcut = quoted_batch_path(&public_desktop_app_shortcut_path()?)?;
     let startup_tray_shortcut = quoted_batch_path(&common_startup_tray_shortcut_path()?)?;
     let delete_uninstall_key = delete_reg_key_absent_ok(&tools.reg, &subkey);
-    let remove_install_dir =
-        delete_batch_path_absent_ok(format!("if exist {path} rd /s /q {path}"), &path);
+    let remove_install_dir = delete_batch_path_absent_ok(
+        format!("if exist {install_dir} rd /s /q {install_dir}"),
+        &install_dir,
+    );
     let remove_start_menu = delete_batch_path_absent_ok(
         format!("if exist {start_menu} rd /s /q {start_menu}"),
         &start_menu,
@@ -3167,7 +3172,7 @@ pub fn is_installed() -> bool {
 }
 
 pub fn get_reg(name: &str) -> String {
-    let (subkey, _, _) = get_install_info();
+    let subkey = get_uninstall_registry_subkey();
     get_reg_of(&subkey, name)
 }
 

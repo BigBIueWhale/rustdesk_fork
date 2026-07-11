@@ -247,7 +247,10 @@ fn service_install_context(
         log::error!("Embedded macOS install.scpt is missing");
         return None;
     };
-    let Some(install_script_body) = install_script.contents_utf8().map(correct_app_name) else {
+    let Some(install_script_body) = install_script
+        .contents_utf8()
+        .map(render_macos_service_template)
+    else {
         log::error!("Embedded macOS install.scpt is not valid UTF-8");
         return None;
     };
@@ -256,7 +259,10 @@ fn service_install_context(
         log::error!("Embedded macOS daemon.plist is missing");
         return None;
     };
-    let Some(daemon_plist_body) = daemon_plist.contents_utf8().map(correct_app_name) else {
+    let Some(daemon_plist_body) = daemon_plist
+        .contents_utf8()
+        .map(render_macos_service_template)
+    else {
         log::error!("Embedded macOS daemon.plist is not valid UTF-8");
         return None;
     };
@@ -265,7 +271,10 @@ fn service_install_context(
         log::error!("Embedded macOS agent.plist is missing");
         return None;
     };
-    let Some(agent_plist_body) = agent_plist.contents_utf8().map(correct_app_name) else {
+    let Some(agent_plist_body) = agent_plist
+        .contents_utf8()
+        .map(render_macos_service_template)
+    else {
         log::error!("Embedded macOS agent.plist is not valid UTF-8");
         return None;
     };
@@ -404,14 +413,37 @@ fn run_service_install(context: ServiceInstallContext) -> bool {
     restart_launch_agent(&context.agent_plist_file, &server_launch_agent_label())
 }
 
-fn correct_app_name(s: &str) -> String {
-    let mut s = s.to_owned();
-    if let Some(bundleid) = get_bundle_id() {
-        s = s.replace("com.carriez.rustdesk", &bundleid);
-    }
-    s = s.replace("rustdesk", &crate::get_app_name().to_lowercase());
-    s = s.replace("RustDesk", &crate::get_app_name());
-    s
+fn render_macos_service_template(s: &str) -> String {
+    let app_name = crate::get_app_name();
+    let full_name = crate::get_full_name();
+    let service_label = format!("{full_name}_service");
+    let server_label = format!("{full_name}_server");
+    let app_executable = format!("/Applications/{app_name}.app/Contents/MacOS/{app_name}");
+    let app_macos_dir = format!("/Applications/{app_name}.app/Contents/MacOS/");
+    let log_dir = format!("/Library/Logs/{app_name}");
+    let support_dir = format!("/Library/Application Support/{app_name}");
+    let root_prefs_dir = format!("/var/root/Library/Preferences/{full_name}");
+    let install_prompt = format!("{app_name} wants to install daemon and agent");
+    let uninstall_prompt = format!("{app_name} wants to unload daemon");
+
+    s.replace(
+        "/Applications/RustDesk.app/Contents/MacOS/RustDesk",
+        &app_executable,
+    )
+    .replace("/Applications/RustDesk.app/Contents/MacOS/", &app_macos_dir)
+    .replace("/Library/Logs/RustDesk", &log_dir)
+    .replace("/Library/Application Support/RustDesk", &support_dir)
+    .replace(
+        "/var/root/Library/Preferences/com.carriez.RustDesk",
+        &root_prefs_dir,
+    )
+    .replace("com.carriez.RustDesk_service", &service_label)
+    .replace("com.carriez.RustDesk_server", &server_label)
+    .replace(
+        "RustDesk wants to install daemon and agent",
+        &install_prompt,
+    )
+    .replace("RustDesk wants to unload daemon", &uninstall_prompt)
 }
 
 pub fn uninstall_service(show_new_window: bool, sync: bool) -> bool {
@@ -424,7 +456,10 @@ pub fn uninstall_service(show_new_window: bool, sync: bool) -> bool {
         log::error!("Embedded macOS uninstall.scpt is missing");
         return false;
     };
-    let Some(script_body) = script_file.contents_utf8().map(correct_app_name) else {
+    let Some(script_body) = script_file
+        .contents_utf8()
+        .map(render_macos_service_template)
+    else {
         log::error!("Embedded macOS uninstall.scpt is not valid UTF-8");
         return false;
     };
@@ -1139,29 +1174,5 @@ impl WakeLock {
             .as_mut()
             .map(|h| h.set_display(display))
             .ok_or(anyhow!("no AwakeHandle"))?
-    }
-}
-
-fn get_bundle_id() -> Option<String> {
-    unsafe {
-        let bundle: id = msg_send![class!(NSBundle), mainBundle];
-        if bundle.is_null() {
-            return None;
-        }
-
-        let bundle_id: id = msg_send![bundle, bundleIdentifier];
-        if bundle_id.is_null() {
-            return None;
-        }
-
-        let c_str: *const std::os::raw::c_char = msg_send![bundle_id, UTF8String];
-        if c_str.is_null() {
-            return None;
-        }
-
-        let bundle_id_str = std::ffi::CStr::from_ptr(c_str)
-            .to_string_lossy()
-            .to_string();
-        Some(bundle_id_str)
     }
 }

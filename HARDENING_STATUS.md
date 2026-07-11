@@ -665,6 +665,25 @@ unreachable and a source/test/AST gate prevents reintroduction.
   the Linux verifier environment; both source gates require the trusted Unix shell resolver, root/mode/executable
   checks, tests, requirements/ledger disposition, and absence of `SHELL`, bare shell, or unconditional `/bin/sh`
   success fallback in the Unix terminal shell block.
+- **R-S11c-21 — macOS privileged service template identity input — CLOSED 2026-07-11.**
+  Platform: macOS admin-authorized service install/uninstall source path. Surfaces:
+  `src/platform/macos.rs`, `src/platform/privileges_scripts/install.scpt`, `uninstall.scpt`,
+  `daemon.plist`, `agent.plist`, `scripts/verify.sh`, and `scripts/apple-conform-check.sh`. Boundary:
+  active-user app metadata and signed custom-client app-name state ↔ root-executed AppleScript/plist service
+  authority. Attack surface closed: privileged script/plist rendering no longer reads the live
+  `NSBundle.bundleIdentifier` / `CFBundleIdentifier` and no longer performs broad `rustdesk`/`RustDesk`
+  source replacement that can rewrite fixed helper/app identifiers. The old path was
+  `get_bundle_id()` → `correct_app_name()` → substituted AppleScript/plist source →
+  `/usr/bin/osascript -e` → `do shell script ... with administrator privileges`. It is deleted, not
+  authority-wrapped. The renderer now substitutes only explicit app-name-derived data: launchd service/server
+  labels, app executable and working-directory paths, support/log/root-preference paths, and user-facing prompt
+  text. The helper executable path, helper designated requirement, LaunchDaemon/LaunchAgent associated bundle
+  identifier, and runtime app designated requirement stay fixed to `com.carriez.rustdesk` /
+  `com.carriez.rustdesk_service`, matching the `_service` IPC trust constants. Verification closure:
+  `scripts/verify.sh` and `scripts/apple-conform-check.sh` reject `get_bundle_id`, `bundleIdentifier`, the old
+  `correct_app_name` renderer, any lowercase fixed-identifier rewrite in the renderer, missing explicit app-path
+  and label substitutions, non-fixed associated bundle identifiers in the plists, and missing
+  requirements/ledger disposition.
 - **R-S11c-16 — Desktop service lifecycle completion authority — CLOSED 2026-07-10.**
   Platforms: Linux and macOS desktop service wrappers, plus the shared desktop service CLI dispatcher. Surfaces:
   `core_main` `--install-service` / `--uninstall-service`, Linux `systemctl` service lifecycle helpers, macOS

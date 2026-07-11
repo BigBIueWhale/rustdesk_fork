@@ -2230,6 +2230,24 @@ grep -Fq 'certificate leaf[subject.OU] = "HZF9JMC8YN"' src/ipc/auth.rs || r_s11c
 grep -Fq 'identifier "service" or identifier "com.carriez.rustdesk_service"' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-identifier-requirement-missing"
 grep -Fq 'const MACOS_INSTALLED_APP_REQUIREMENT: &str =' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-app-code-requirement-const-missing"
 grep -Fq 'identifier "com.carriez.rustdesk"' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-app-identifier-requirement-missing"
+grep -Fq 'fn render_macos_service_template(s: &str) -> String' "$macos_rs" || r_s11c5="$r_s11c5 macos-service-template-renderer-missing"
+if grep -qE 'fn correct_app_name|fn get_bundle_id|bundleIdentifier' "$macos_rs"; then
+  r_s11c5="$r_s11c5 macos-privileged-template-live-bundle-id-rewrite-present"
+fi
+macos_template_renderer=$(awk '/fn render_macos_service_template\(s: &str\) -> String/,/^}/' "$macos_rs")
+echo "$macos_template_renderer" | grep -Fq '"/Applications/RustDesk.app/Contents/MacOS/RustDesk"' || r_s11c5="$r_s11c5 macos-template-app-executable-source-missing"
+echo "$macos_template_renderer" | grep -Fq '&app_executable' || r_s11c5="$r_s11c5 macos-template-app-executable-target-missing"
+echo "$macos_template_renderer" | grep -Fq '"com.carriez.RustDesk_service"' || r_s11c5="$r_s11c5 macos-template-service-label-source-missing"
+echo "$macos_template_renderer" | grep -Fq '&service_label' || r_s11c5="$r_s11c5 macos-template-service-label-target-missing"
+echo "$macos_template_renderer" | grep -Fq '"com.carriez.RustDesk_server"' || r_s11c5="$r_s11c5 macos-template-server-label-source-missing"
+echo "$macos_template_renderer" | grep -Fq '&server_label' || r_s11c5="$r_s11c5 macos-template-server-label-target-missing"
+if echo "$macos_template_renderer" | grep -qE 'replace\("com\.carriez\.rustdesk"|replace\("rustdesk"'; then
+  r_s11c5="$r_s11c5 macos-template-fixed-lowercase-identifier-rewritten"
+fi
+grep -Fq '<string>com.carriez.rustdesk</string>' src/platform/privileges_scripts/daemon.plist || r_s11c5="$r_s11c5 macos-daemon-associated-bundle-id-not-fixed"
+grep -Fq '<string>com.carriez.rustdesk</string>' src/platform/privileges_scripts/agent.plist || r_s11c5="$r_s11c5 macos-agent-associated-bundle-id-not-fixed"
+grep -Fq 'macOS privileged service template identity input' requirements.html || r_s11c5="$r_s11c5 macos-template-identity-requirements-missing"
+grep -Fq 'R-S11c-21 — macOS privileged service template identity input' HARDENING_STATUS.md || r_s11c5="$r_s11c5 macos-template-identity-ledger-missing"
 grep -Fq 'fn macos_installed_app_bundle_path() -> PathBuf' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-app-bundle-path-helper-missing"
 grep -Fq 'fn macos_privileged_helper_is_expected_and_trusted(current_exe: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-trust-missing"
 grep -Fq 'fn macos_installed_app_is_expected_and_trusted(peer_exe: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-app-trust-missing"

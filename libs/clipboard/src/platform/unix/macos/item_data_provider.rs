@@ -1,4 +1,4 @@
-use super::pasteboard_context::{PasteObserverInfo, TEMP_FILE_PREFIX};
+use super::pasteboard_context::{create_placeholder_file, PasteObserverInfo};
 use objc2::{
     declare_class, msg_send_id, mutability,
     rc::Id,
@@ -10,11 +10,18 @@ use objc2_app_kit::{
     NSPasteboardTypeFileURL,
 };
 use objc2_foundation::NSString;
-use std::{io::Result, sync::mpsc::Sender};
+use std::{
+    fs::File,
+    io::Result,
+    path::PathBuf,
+    sync::{mpsc::Sender, Arc},
+};
 
 pub(super) struct Ivars {
     task_info: PasteObserverInfo,
     tx: Sender<Result<PasteObserverInfo>>,
+    placeholder_dir: PathBuf,
+    placeholder_dir_handle: Arc<File>,
 }
 
 declare_class!(
@@ -42,13 +49,18 @@ declare_class!(
             r#type: &NSPasteboardType,
         ) {
             if r#type == NSPasteboardTypeFileURL {
-                let path = format!("/tmp/{}{}", TEMP_FILE_PREFIX, uuid::Uuid::new_v4().to_string());
-                match std::fs::File::create(&path) {
-                    Ok(_) => {
-                        let url = format!("file:///{}", &path);
-                            item.setString_forType(&NSString::from_str(&url), &NSPasteboardTypeFileURL);
+                match create_placeholder_file(
+                    &self.ivars().placeholder_dir_handle,
+                    &self.ivars().placeholder_dir,
+                ) {
+                    Ok(path) => {
+                        let url = format!("file://{}", path.to_string_lossy());
+                        item.setString_forType(
+                            &NSString::from_str(&url),
+                            &NSPasteboardTypeFileURL,
+                        );
                         let mut task_info = self.ivars().task_info.clone();
-                        task_info.source_path = path;
+                        task_info.source_path = path.to_string_lossy().to_string();
                         self.ivars().tx.send(Ok(task_info)).ok();
                     }
                     Err(e) => {
@@ -69,9 +81,16 @@ declare_class!(
 pub(super) fn create_pasteboard_file_url_provider(
     task_info: PasteObserverInfo,
     tx: Sender<Result<PasteObserverInfo>>,
+    placeholder_dir: PathBuf,
+    placeholder_dir_handle: Arc<File>,
 ) -> Id<PasteboardFileUrlProvider> {
     let provider = PasteboardFileUrlProvider::alloc();
-    let provider = provider.set_ivars(Ivars { task_info, tx });
+    let provider = provider.set_ivars(Ivars {
+        task_info,
+        tx,
+        placeholder_dir,
+        placeholder_dir_handle,
+    });
     let provider: Id<PasteboardFileUrlProvider> = unsafe { msg_send_id![super(provider), init] };
     provider
 }

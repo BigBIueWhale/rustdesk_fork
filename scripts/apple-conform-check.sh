@@ -93,6 +93,9 @@ APPLE_RS=(
   src/privacy_mode/macos.rs
   src/whiteboard/macos.rs
   libs/hbb_common/src/platform/macos.rs
+  libs/clipboard/src/platform/unix/macos/item_data_provider.rs
+  libs/clipboard/src/platform/unix/macos/paste_observer.rs
+  libs/clipboard/src/platform/unix/macos/pasteboard_context.rs
   libs/clipboard/src/platform/unix/macos/paste_task.rs
   libs/enigo/src/macos/macos_impl.rs
 )
@@ -974,6 +977,52 @@ if [ -n "$r_s11e12" ]; then
   rc=1
 else
   note "ok  R-S11e-12 macOS clipboard-file paste uses fd-relative no-follow create/unlink/xattr/finalize with no path-based write fallback"
+fi
+
+echo "== (2b-iv-e) R-S11e-13 macOS clipboard-file paste placeholder temp authority =="
+pasteboard_context_rs="$REPO/libs/clipboard/src/platform/unix/macos/pasteboard_context.rs"
+item_data_provider_rs="$REPO/libs/clipboard/src/platform/unix/macos/item_data_provider.rs"
+paste_observer_rs="$REPO/libs/clipboard/src/platform/unix/macos/paste_observer.rs"
+pasteboard_readme="$REPO/libs/clipboard/src/platform/unix/macos/README.md"
+r_s11e13=
+grep -qF 'const PLACEHOLDER_DIR_PREFIX: &str = "rustdesk-clipboard-";' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-private-dir-prefix"
+grep -qF 'fn create_placeholder_dir() -> io::Result<(PathBuf, File)>' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-private-dir-creator"
+grep -qF 'std::env::temp_dir()' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-user-temp-base"
+grep -qF 'libc::mkdir(dir_c.as_ptr(), 0o700 as libc::mode_t)' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-private-dir-mkdir"
+grep -qF 'libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-private-dir-nofollow-open"
+grep -qF 'libc::fchmod(dir.as_raw_fd(), 0o700 as libc::mode_t)' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-private-dir-mode-normalize"
+grep -qF 'stat.st_uid != current_euid' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-private-dir-owner-check"
+grep -qF 'stat.st_mode & 0o077 != 0' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-private-dir-group-other-reject"
+grep -qF 'pub(super) fn create_placeholder_file(' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-placeholder-file-creator"
+grep -qF 'libc::openat(' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-openat-placeholder-create"
+grep -qF 'libc::O_EXCL' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-exclusive-placeholder-create"
+grep -qF '0o600 as libc::mode_t' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-owner-only-placeholder-mode"
+grep -qF 'fn remove_placeholder_file(' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-placeholder-unlink-helper"
+grep -qF 'libc::unlinkat' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-unlinkat-placeholder-cleanup"
+grep -qF 'fn count_placeholder_files(placeholder_dir: &Path) -> io::Result<usize>' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-fail-closed-placeholder-count"
+grep -qF 'count_placeholder_files(&self.placeholder_dir)' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 temp-count-not-private-dir"
+grep -qF 'observer.init(move |task_info|' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 paste-result-not-capturing-private-authority"
+grep -qF 'remove_placeholder_file_logged(' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 source-cleanup-not-private-authority"
+grep -qF 'create_placeholder_file(' "$item_data_provider_rs" || r_s11e13="$r_s11e13 provider-not-using-private-creator"
+grep -qF 'placeholder_dir_handle: Arc<File>' "$item_data_provider_rs" || r_s11e13="$r_s11e13 provider-missing-dir-handle"
+grep -qF 'type PasteCallback = Box<dyn Fn(&PasteObserverInfo) + Send + '\''static>;' "$paste_observer_rs" || r_s11e13="$r_s11e13 observer-callback-not-capturable"
+grep -qF 'private per-context temporary directory' "$pasteboard_readme" || r_s11e13="$r_s11e13 readme-not-updated"
+grep -qF 'macOS clipboard-file paste placeholder temp authority' "$REPO/requirements.html" || r_s11e13="$r_s11e13 requirements-disposition-missing"
+grep -qF 'R-S11e-13 — macOS clipboard-file paste placeholder temp authority' "$REPO/HARDENING_STATUS.md" || r_s11e13="$r_s11e13 hardening-ledger-missing"
+if grep -nE 'format!\("/tmp/|read_dir\("/tmp"\)|std::fs::File::create\(&path\)|std::fs::remove_file\(path\)' "$pasteboard_context_rs" "$item_data_provider_rs" >/tmp/rd_apple_r_s11e13.$$; then
+  cat /tmp/rd_apple_r_s11e13.$$
+  r_s11e13="$r_s11e13 global-or-path-placeholder-op"
+fi
+if grep -nF 'std::fs::remove_file(&task_info.source_path)' "$pasteboard_context_rs" >/tmp/rd_apple_r_s11e13_source.$$; then
+  cat /tmp/rd_apple_r_s11e13_source.$$
+  r_s11e13="$r_s11e13 source-placeholder-path-cleanup"
+fi
+rm -f /tmp/rd_apple_r_s11e13.$$ /tmp/rd_apple_r_s11e13_source.$$
+if [ -n "$r_s11e13" ]; then
+  echo "  FAIL R-S11e-13 macOS clipboard-file paste placeholder temp authority:$r_s11e13"
+  rc=1
+else
+  note "ok  R-S11e-13 macOS clipboard-file paste placeholders use a private per-context temp dir with fd-relative exclusive create/unlink"
 fi
 
 # (2c) Appendix C #2b is an ACCEPTED, documented residual: the fork SHOULD (not MUST) sandbox the decode

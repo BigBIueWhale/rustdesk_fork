@@ -39,7 +39,9 @@ response queue, and the FILEDESCRIPTOR path-traversal sanitizer
 macOS clipboard-file paste worker additionally anchors peer-requested file
 creation, progress xattrs, cancellation cleanup, and final rename to an opened
 target-directory handle with no-follow/exclusive fd-relative operations
-(R-S11e-12).
+(R-S11e-12), and its pasteboard placeholder URLs live in a private per-context
+temporary directory with fd-relative exclusive create/unlink instead of global
+`/tmp/.rustdesk_*` state (R-S11e-13).
 file-clipboard serve/confirm paths are additionally arithmetic/index-safe — the
 peer-supplied `file_num` is bounded before indexing in `set_stream_offset`, the
 CLIPRDR file-read clamps `length` to the remaining bytes with no `offset+length`
@@ -1681,6 +1683,23 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `scripts/apple-conform-check.sh` gate the target-dir no-follow open, relative parent walk, exclusive file open,
   exclusive final rename, fd-bound xattr operations, relative cleanup state, unmasked initialization, requirements
   disposition, and absence of the deleted path-based write/finalize fallback.
+- **R-S11e-13 — macOS clipboard-file paste placeholder temp authority — CLOSED 2026-07-11.**
+  Platform: macOS desktop with `unix-file-copy-paste`. Endpoint/action: pasteboard placeholder file URLs used to
+  trigger Finder's file-paste flow before CLIPRDR file contents are requested. Boundary: local pasteboard/temp
+  namespace state ↔ the RustDesk-owned placeholder that authorizes the later paste observation. Attack surface
+  closed: placeholder files are no longer global `/tmp/.rustdesk_*` names created with path-based `File::create`,
+  counted across all of `/tmp`, or source-cleaned by path. This was not a newly proven remote-to-root path because
+  the normal installed macOS controlled side is a user LaunchAgent, but the old namespace was the wrong authority
+  primitive for a pasteboard file URL that other same-user processes can observe or race. `pasteboard_context.rs`
+  now creates a unique `rustdesk-clipboard-<euid>-<uuid>` directory under the current user's temporary directory with
+  `mkdir(0700)`, opens it with `O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC`, normalizes/verifies owner-only mode and euid
+  ownership through `fchmod`/`fstat`, and keeps that directory handle as the placeholder authority. The provider
+  creates placeholders only through `openat(O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC)` mode `0600`; temp counting is
+  scoped to the private directory and fails closed on read errors; source cleanup uses `unlinkat` through the same
+  handle; and the paste observer accepts a captured callback so paste-result cleanup carries the private authority.
+  Verification closure: `scripts/verify.sh` and `scripts/apple-conform-check.sh` retain the touched Apple clipboard
+  sources and gate the private directory, fd-relative create/unlink, scoped counting, README/requirements
+  disposition, and absence of global `/tmp` placeholder creation/counting or source-placeholder path cleanup.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff

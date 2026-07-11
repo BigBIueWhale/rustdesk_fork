@@ -10,6 +10,8 @@ use std::{
     time::Duration,
 };
 
+type PasteCallback = Box<dyn Fn(&PasteObserverInfo) + Send + 'static>;
+
 enum FseventControl {
     Start,
     Stop,
@@ -53,7 +55,10 @@ impl PasteObserver {
         }
     }
 
-    pub fn init(&mut self, cb_pasted: fn(&PasteObserverInfo) -> ()) -> ResultType<()> {
+    pub fn init<F>(&mut self, cb_pasted: F) -> ResultType<()>
+    where
+        F: Fn(&PasteObserverInfo) + Send + 'static,
+    {
         let Some(home_dir) = dirs::home_dir() else {
             bail!("No home dir is set, do not observe.");
         };
@@ -63,7 +68,7 @@ impl PasteObserver {
             self.exit.clone(),
             self.observer_info.clone(),
             rx_observer,
-            cb_pasted,
+            Box::new(cb_pasted),
         );
         self.handle_observer_thread = Some(handle_observer);
         let (tx_control, rx_control) = channel::<FseventControl>();
@@ -92,7 +97,7 @@ impl PasteObserver {
         exit: Arc<Mutex<bool>>,
         observer_info: Arc<Mutex<Option<PasteObserverInfo>>>,
         rx_observer: Receiver<fsevent::Event>,
-        cb_pasted: fn(&PasteObserverInfo) -> (),
+        cb_pasted: PasteCallback,
     ) -> thread::JoinHandle<()> {
         thread::spawn(move || loop {
             match rx_observer.recv_timeout(Duration::from_millis(300)) {

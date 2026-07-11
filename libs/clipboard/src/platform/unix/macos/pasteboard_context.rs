@@ -14,8 +14,14 @@ use objc2::{msg_send_id, rc::autoreleasepool, rc::Id, runtime::ProtocolObject, C
 use objc2_app_kit::{NSPasteboard, NSPasteboardTypeFileURL};
 use objc2_foundation::{NSArray, NSString};
 use std::{
+    ffi::{CString, OsStr},
+    fs::File,
     io,
-    path::Path,
+    os::unix::{
+        ffi::OsStrExt,
+        io::{AsRawFd, FromRawFd},
+    },
+    path::{Path, PathBuf},
     sync::{
         mpsc::{channel, Receiver, RecvTimeoutError, Sender},
         Arc, Mutex,
@@ -29,6 +35,8 @@ lazy_static::lazy_static! {
 }
 
 pub const TEMP_FILE_PREFIX: &str = ".rustdesk_";
+const PLACEHOLDER_DIR_PREFIX: &str = "rustdesk-clipboard-";
+const PLACEHOLDER_CREATE_ATTEMPTS: usize = 16;
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub(super) struct PasteObserverInfo {
@@ -49,6 +57,222 @@ struct ContextInfo {
     handle: thread::JoinHandle<()>,
 }
 
+fn placeholder_invalid_input(message: impl Into<String>) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidInput, message.into())
+}
+
+fn cstring_from_os_str(value: &OsStr, context: &str) -> io::Result<CString> {
+    CString::new(value.as_bytes()).map_err(|err| {
+        placeholder_invalid_input(format!(
+            "invalid macOS clipboard {context} contains NUL: {err}"
+        ))
+    })
+}
+
+fn cstring_from_path(path: &Path, context: &str) -> io::Result<CString> {
+    cstring_from_os_str(path.as_os_str(), context)
+}
+
+fn macos_temp_base_dir() -> io::Result<PathBuf> {
+    let base = std::env::temp_dir();
+    if !base.is_absolute()
+        || base.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir | std::path::Component::Prefix(_)
+            )
+        })
+    {
+        return Err(placeholder_invalid_input(format!(
+            "unsupported macOS clipboard temp directory shape: {}",
+            base.display()
+        )));
+    }
+    Ok(base)
+}
+
+fn open_private_placeholder_dir(path: &Path) -> io::Result<File> {
+    let path_c = cstring_from_path(path, "placeholder-directory path")?;
+    let fd = unsafe {
+        libc::open(
+            path_c.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+        )
+    };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let dir = unsafe { File::from_raw_fd(fd) };
+    if unsafe { libc::fchmod(dir.as_raw_fd(), 0o700 as libc::mode_t) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let mut stat: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(dir.as_raw_fd(), &mut stat) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if (stat.st_mode & libc::S_IFMT) != libc::S_IFDIR {
+        return Err(placeholder_invalid_input(
+            "macOS clipboard placeholder path is not a directory",
+        ));
+    }
+    let current_euid = unsafe { libc::geteuid() };
+    if stat.st_uid != current_euid {
+        return Err(placeholder_invalid_input(format!(
+            "macOS clipboard placeholder directory owner {} does not match euid {}",
+            stat.st_uid, current_euid
+        )));
+    }
+    if stat.st_mode & 0o077 != 0 {
+        return Err(placeholder_invalid_input(
+            "macOS clipboard placeholder directory is accessible by group or other users",
+        ));
+    }
+    Ok(dir)
+}
+
+fn create_placeholder_dir() -> io::Result<(PathBuf, File)> {
+    let base = macos_temp_base_dir()?;
+    let current_euid = unsafe { libc::geteuid() };
+    for _ in 0..PLACEHOLDER_CREATE_ATTEMPTS {
+        let dir = base.join(format!(
+            "{}{}-{}",
+            PLACEHOLDER_DIR_PREFIX,
+            current_euid,
+            uuid::Uuid::new_v4()
+        ));
+        let dir_c = cstring_from_path(&dir, "placeholder-directory path")?;
+        let rc = unsafe { libc::mkdir(dir_c.as_ptr(), 0o700 as libc::mode_t) };
+        if rc == 0 {
+            match open_private_placeholder_dir(&dir) {
+                Ok(handle) => return Ok((dir, handle)),
+                Err(err) => {
+                    if let Err(remove_err) = std::fs::remove_dir(&dir) {
+                        log::debug!(
+                            "Failed to remove rejected macOS clipboard placeholder directory {}: {remove_err}",
+                            dir.display()
+                        );
+                    }
+                    return Err(err);
+                }
+            }
+        }
+        let err = io::Error::last_os_error();
+        if err.kind() != io::ErrorKind::AlreadyExists {
+            return Err(err);
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "failed to create a unique macOS clipboard placeholder directory",
+    ))
+}
+
+pub(super) fn create_placeholder_file(
+    placeholder_dir_handle: &File,
+    placeholder_dir: &Path,
+) -> io::Result<PathBuf> {
+    for _ in 0..PLACEHOLDER_CREATE_ATTEMPTS {
+        let name = format!("{}{}", TEMP_FILE_PREFIX, uuid::Uuid::new_v4());
+        let name_c = cstring_from_os_str(OsStr::new(&name), "placeholder-file name")?;
+        let fd = unsafe {
+            libc::openat(
+                placeholder_dir_handle.as_raw_fd(),
+                name_c.as_ptr(),
+                libc::O_WRONLY
+                    | libc::O_CREAT
+                    | libc::O_EXCL
+                    | libc::O_CLOEXEC
+                    | libc::O_NOFOLLOW
+                    | libc::O_NOCTTY,
+                0o600 as libc::mode_t,
+            )
+        };
+        if fd >= 0 {
+            drop(unsafe { File::from_raw_fd(fd) });
+            return Ok(placeholder_dir.join(name));
+        }
+        let err = io::Error::last_os_error();
+        if err.kind() != io::ErrorKind::AlreadyExists {
+            return Err(err);
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "failed to create a unique macOS clipboard placeholder file",
+    ))
+}
+
+fn placeholder_file_name<'a>(placeholder_dir: &Path, path: &'a Path) -> Option<&'a OsStr> {
+    if path.parent()? != placeholder_dir {
+        return None;
+    }
+    let name = path.file_name()?;
+    if name.as_bytes().starts_with(TEMP_FILE_PREFIX.as_bytes()) {
+        Some(name)
+    } else {
+        None
+    }
+}
+
+fn remove_placeholder_file(
+    placeholder_dir_handle: &File,
+    placeholder_dir: &Path,
+    path: &Path,
+) -> io::Result<bool> {
+    let Some(name) = placeholder_file_name(placeholder_dir, path) else {
+        return Ok(false);
+    };
+    let name = cstring_from_os_str(name, "placeholder-file name")?;
+    let rc = unsafe { libc::unlinkat(placeholder_dir_handle.as_raw_fd(), name.as_ptr(), 0) };
+    if rc == 0 {
+        return Ok(true);
+    }
+    let err = io::Error::last_os_error();
+    if err.kind() == io::ErrorKind::NotFound {
+        Ok(true)
+    } else {
+        Err(err)
+    }
+}
+
+fn count_placeholder_files(placeholder_dir: &Path) -> io::Result<usize> {
+    let mut count = 0;
+    for entry in std::fs::read_dir(placeholder_dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        if let Some(file_name) = entry.file_name().to_str() {
+            if file_name.starts_with(TEMP_FILE_PREFIX) {
+                count += 1;
+            }
+        }
+    }
+    Ok(count)
+}
+
+fn remove_placeholder_file_logged(
+    placeholder_dir_handle: &File,
+    placeholder_dir: &Path,
+    path: &Path,
+) {
+    match remove_placeholder_file(placeholder_dir_handle, placeholder_dir, path) {
+        Ok(true) => {}
+        Ok(false) => {
+            log::debug!(
+                "Ignoring non-placeholder macOS clipboard cleanup path {}",
+                path.display()
+            );
+        }
+        Err(err) => {
+            log::debug!(
+                "Failed to remove macOS clipboard placeholder file {}: {err}",
+                path.display()
+            );
+        }
+    }
+}
+
 pub struct PasteboardContext {
     pasteboard: Id<NSPasteboard>,
     observer: Arc<Mutex<PasteObserver>>,
@@ -57,6 +281,8 @@ pub struct PasteboardContext {
     remove_file_handle: Option<thread::JoinHandle<()>>,
     tx_paste_task: Sender<FileContentsResponse>,
     paste_task: Arc<Mutex<PasteTask>>,
+    placeholder_dir: PathBuf,
+    placeholder_dir_handle: Arc<File>,
 }
 
 unsafe impl Send for PasteboardContext {}
@@ -69,6 +295,16 @@ impl Drop for PasteboardContext {
             if tx_handle.tx.send(Ok(PasteObserverInfo::exit_msg())).is_ok() {
                 tx_handle.handle.join().ok();
             }
+        }
+        self.tx_remove_file.take();
+        if let Some(remove_file_handle) = self.remove_file_handle.take() {
+            remove_file_handle.join().ok();
+        }
+        if let Err(err) = std::fs::remove_dir(&self.placeholder_dir) {
+            log::debug!(
+                "Failed to remove macOS clipboard placeholder directory {}: {err}",
+                self.placeholder_dir.display()
+            );
         }
     }
 }
@@ -98,7 +334,11 @@ impl CliprdrServiceContext for PasteboardContext {
 impl PasteboardContext {
     fn init(&mut self) {
         let (tx_remove_file, rx_remove_file) = channel();
-        let handle_remove_file = Self::init_thread_remove_file(rx_remove_file);
+        let handle_remove_file = Self::init_thread_remove_file(
+            rx_remove_file,
+            self.placeholder_dir.clone(),
+            self.placeholder_dir_handle.clone(),
+        );
         self.tx_remove_file = Some(tx_remove_file.clone());
         self.remove_file_handle = Some(handle_remove_file);
 
@@ -135,7 +375,11 @@ impl PasteboardContext {
         })
     }
 
-    fn init_thread_remove_file(rx: Receiver<String>) -> thread::JoinHandle<()> {
+    fn init_thread_remove_file(
+        rx: Receiver<String>,
+        placeholder_dir: PathBuf,
+        placeholder_dir_handle: Arc<File>,
+    ) -> thread::JoinHandle<()> {
         thread::spawn(move || {
             let mut cur_file: Option<String> = None;
             loop {
@@ -143,7 +387,11 @@ impl PasteboardContext {
                     Ok(path) => {
                         if let Some(file) = cur_file.take() {
                             if !file.is_empty() {
-                                std::fs::remove_file(&file).ok();
+                                remove_placeholder_file_logged(
+                                    &placeholder_dir_handle,
+                                    &placeholder_dir,
+                                    Path::new(&file),
+                                );
                             }
                         }
                         if !path.is_empty() {
@@ -153,7 +401,11 @@ impl PasteboardContext {
                     Err(e) => {
                         if let Some(file) = cur_file.take() {
                             if !file.is_empty() {
-                                std::fs::remove_file(&file).ok();
+                                remove_placeholder_file_logged(
+                                    &placeholder_dir_handle,
+                                    &placeholder_dir,
+                                    Path::new(&file),
+                                );
                             }
                         }
                         if e == RecvTimeoutError::Disconnected {
@@ -173,31 +425,20 @@ impl PasteboardContext {
         true
     }
 
-    fn temp_files_count() -> usize {
-        let mut count = 0;
-        if let Ok(entries) = std::fs::read_dir("/tmp") {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
-                    if path.is_file() {
-                        if let Some(file_name) = path.file_name() {
-                            if let Some(file_name_str) = file_name.to_str() {
-                                if file_name_str.starts_with(TEMP_FILE_PREFIX) {
-                                    count += 1;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        count
+    fn temp_files_count(&self) -> io::Result<usize> {
+        count_placeholder_files(&self.placeholder_dir)
     }
 
     fn server_clip_file_(&mut self, conn_id: i32, msg: ClipboardFile) -> Result<(), CliprdrError> {
         match msg {
             ClipboardFile::FormatList { format_list } => {
-                let temp_files = Self::temp_files_count();
+                let temp_files =
+                    self.temp_files_count()
+                        .map_err(|err| CliprdrError::CommonError {
+                            description: format!(
+                                "failed to inspect macOS clipboard placeholder directory: {err}"
+                            ),
+                        })?;
                 if temp_files >= 3 {
                     // The temp files should be 0 or 1 in normal case.
                     // We should not continue to paste files if there are more than 3 temp files.
@@ -286,6 +527,8 @@ impl PasteboardContext {
                 target_path: "".to_string(),
             },
             tx,
+            self.placeholder_dir.clone(),
+            self.placeholder_dir_handle.clone(),
         );
         unsafe {
             let types = NSArray::from_vec(vec![NSString::from_str(
@@ -388,7 +631,11 @@ impl PasteboardContext {
     }
 }
 
-fn handle_paste_result(task_info: &PasteObserverInfo) {
+fn handle_paste_result(
+    task_info: &PasteObserverInfo,
+    placeholder_dir: &Path,
+    placeholder_dir_handle: &File,
+) {
     log::info!(
         "file {} is pasted to {}",
         &task_info.source_path,
@@ -407,8 +654,17 @@ fn handle_paste_result(task_info: &PasteObserverInfo) {
         .unwrap()
         .replace(task_info.clone());
     // to-do: add a timeout to clear data in `PASTE_OBSERVER_INFO`.
-    std::fs::remove_file(&task_info.source_path).ok();
-    std::fs::remove_file(&task_info.target_path).ok();
+    remove_placeholder_file_logged(
+        placeholder_dir_handle,
+        placeholder_dir,
+        Path::new(&task_info.source_path),
+    );
+    if let Err(err) = std::fs::remove_file(&task_info.target_path) {
+        log::debug!(
+            "Failed to remove macOS clipboard paste placeholder target {}: {err}",
+            &task_info.target_path
+        );
+    }
     let data = ClipboardFile::FormatDataRequest {
         requested_format_id: task_info.file_descriptor_id,
     };
@@ -422,8 +678,16 @@ pub fn create_pasteboard_context() -> ResultType<Box<PasteboardContext>> {
     let Some(pasteboard) = pasteboard else {
         bail!("failed to get general pasteboard");
     };
+    let (placeholder_dir, placeholder_dir_handle) = create_placeholder_dir()?;
+    let placeholder_dir_handle = Arc::new(placeholder_dir_handle);
     let mut observer = PasteObserver::new();
-    observer.init(handle_paste_result)?;
+    {
+        let placeholder_dir = placeholder_dir.clone();
+        let placeholder_dir_handle = placeholder_dir_handle.clone();
+        observer.init(move |task_info| {
+            handle_paste_result(task_info, &placeholder_dir, &placeholder_dir_handle)
+        })?;
+    }
     let (tx, rx) = channel();
     let mut context = Box::new(PasteboardContext {
         pasteboard,
@@ -433,6 +697,8 @@ pub fn create_pasteboard_context() -> ResultType<Box<PasteboardContext>> {
         remove_file_handle: None,
         tx_paste_task: tx,
         paste_task: Arc::new(Mutex::new(PasteTask::new(rx))),
+        placeholder_dir,
+        placeholder_dir_handle,
     });
     context.init();
     Ok(context)
@@ -441,27 +707,21 @@ pub fn create_pasteboard_context() -> ResultType<Box<PasteboardContext>> {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn test_temp_files_count() {
-        let mut c = super::PasteboardContext::temp_files_count();
+    fn test_private_placeholder_dir_file_count_and_cleanup() {
+        let (placeholder_dir, placeholder_dir_handle) =
+            super::create_placeholder_dir().expect("create placeholder dir");
+        assert_eq!(0, super::count_placeholder_files(&placeholder_dir).unwrap());
 
-        let mut created_files = vec![];
-        for _ in 0..10 {
-            let path = format!(
-                "/tmp/{}{}",
-                super::TEMP_FILE_PREFIX,
-                uuid::Uuid::new_v4().to_string()
-            );
-            if std::fs::File::create(&path).is_ok() {
-                created_files.push(path);
-                c += 1;
-            }
-        }
+        let path = super::create_placeholder_file(&placeholder_dir_handle, &placeholder_dir)
+            .expect("create placeholder file");
+        assert_eq!(1, super::count_placeholder_files(&placeholder_dir).unwrap());
+        assert!(super::placeholder_file_name(&placeholder_dir, &path).is_some());
+        assert!(
+            super::remove_placeholder_file(&placeholder_dir_handle, &placeholder_dir, &path)
+                .expect("remove placeholder file")
+        );
+        assert_eq!(0, super::count_placeholder_files(&placeholder_dir).unwrap());
 
-        assert_eq!(c, super::PasteboardContext::temp_files_count());
-
-        // Clean up the created files.
-        for file in created_files {
-            std::fs::remove_file(&file).ok();
-        }
+        std::fs::remove_dir(placeholder_dir).expect("remove placeholder dir");
     }
 }

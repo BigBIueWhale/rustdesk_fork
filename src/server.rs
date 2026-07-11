@@ -460,17 +460,7 @@ pub async fn create_tcp_connection(
     let id = server.write().unwrap().get_new_id();
 
     #[cfg(target_os = "macos")]
-    {
-        use std::process::Command;
-        if let Ok(task) = Command::new("/usr/bin/caffeinate")
-            .arg("-u")
-            .arg("-t 5")
-            .spawn()
-        {
-            super::CHILD_PROCESS.lock().unwrap().push(task);
-        }
-        log::info!("wake up macos");
-    }
+    crate::platform::declare_remote_user_activity();
     // R-A1: no application message is processed on an unkeyed stream, on every build
     // (R-R2b — unconditional, not behind a flag). By here the single mandatory CPace
     // handshake above has run UNCONDITIONALLY (keyed, or bailed fail-closed) — CPace is

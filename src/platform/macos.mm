@@ -1,6 +1,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <AppKit/AppKit.h>
 #import <IOKit/hidsystem/IOHIDLib.h>
+#import <IOKit/pwr_mgt/IOPMLib.h>
 #include <Security/Authorization.h>
 #include <Security/AuthorizationDB.h>
 #include <Security/AuthorizationTags.h>
@@ -27,6 +28,21 @@ extern "C" bool CanUseNewApiForScreenCaptureCheck() {
 extern "C" uint32_t majorVersion() {
     NSOperatingSystemVersion version = [[NSProcessInfo processInfo] operatingSystemVersion];
     return version.majorVersion;
+}
+
+extern "C" bool MacDeclareRemoteUserActivity() {
+    static std::mutex activityMutex;
+    static IOPMAssertionID assertionID = kIOPMNullAssertionID;
+    std::lock_guard<std::mutex> lock(activityMutex);
+    IOReturn result = IOPMAssertionDeclareUserActivity(
+        CFSTR("RustDesk remote session"),
+        kIOPMUserActiveRemote,
+        &assertionID);
+    if (result != kIOReturnSuccess) {
+        NSLog(@"IOPMAssertionDeclareUserActivity failed: 0x%x", result);
+        return false;
+    }
+    return true;
 }
 
 extern "C" bool IsCanScreenRecording(bool prompt) {

@@ -65,6 +65,7 @@ extern "C" {
     fn MacCheckAdminAuthorization() -> BOOL;
     fn MacAuthorizationExternalFormLength() -> usize;
     fn MacEnsureServiceOwnedUnattendedPasswordAuthorizationRight() -> BOOL;
+    fn MacDeclareRemoteUserActivity() -> BOOL;
     fn MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm(
         buffer: *mut u8,
         len: usize,
@@ -878,6 +879,12 @@ pub fn is_locked() -> bool {
     }
 }
 
+pub fn declare_remote_user_activity() {
+    if unsafe { MacDeclareRemoteUserActivity() } != YES {
+        log::warn!("Failed to declare macOS remote user activity");
+    }
+}
+
 pub fn is_root() -> bool {
     crate::username() == "root"
 }
@@ -900,23 +907,25 @@ where
         bail!("No valid active console uid");
     }
     let cmd = std::env::current_exe()?;
-    let mut args = vec![
-        OsString::from("asuser"),
-        OsString::from(uid.as_str()),
-        OsString::from("/usr/bin/env"),
-    ];
+    let mut command = std::process::Command::new(MACOS_LAUNCHCTL);
+    command.arg("asuser").arg(uid.as_str()).arg(cmd);
     for (key, value) in envs {
-        let mut env = OsString::from(key.as_ref());
-        env.push("=");
-        env.push(value.as_ref());
-        args.push(env);
+        let key = key.as_ref();
+        if !macos_launch_env_key_is_allowed(key) {
+            bail!("Refusing unsupported macOS launch environment key: {key:?}");
+        }
+        command.env(key, value.as_ref());
     }
-    args.push(cmd.into_os_string());
-    args.extend(arg.iter().map(|value| OsString::from(*value)));
-    let task = std::process::Command::new(MACOS_LAUNCHCTL)
-        .args(args)
-        .spawn()?;
+    command.args(arg);
+    let task = command.spawn()?;
     Ok(Some(task))
+}
+
+fn macos_launch_env_key_is_allowed(key: &OsStr) -> bool {
+    key == OsStr::new(crate::common::CM_LAUNCH_TOKEN_ENV)
+        || key == OsStr::new(crate::common::CM_LAUNCH_PARENT_ENV)
+        || key == OsStr::new(crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV)
+        || key == OsStr::new(crate::common::WHITEBOARD_LAUNCH_PARENT_ENV)
 }
 
 pub fn lock_screen() {

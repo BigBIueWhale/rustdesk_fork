@@ -19,6 +19,7 @@ fn build_mac() {
         }
     }
     b.flag("-std=c++17").file(file).compile("macos");
+    println!("cargo:rustc-link-lib=framework=IOKit");
     println!("cargo:rerun-if-changed={}", file);
 }
 

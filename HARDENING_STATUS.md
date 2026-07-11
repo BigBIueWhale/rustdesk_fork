@@ -1607,6 +1607,22 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `scripts/apple-conform-check.sh` gate the direct `security-framework` dependency, `LOCAL_PEERTOKEN`,
   `LOCAL_PEEREPID`, legacy `LOCAL_PEERPID` absence, audit-token identity capture, native strict validation, Rust
   `MACOS_CODESIGN` absence, service-client/server/snapshot wiring, and this requirements/ledger disposition.
+- **R-S11e-10 — macOS residual process launch provenance — CLOSED 2026-07-11.**
+  Platform: macOS desktop/server source. Endpoint/action: post-keying wake/user-activity notification and
+  root-capable `launchctl asuser` helper launch for CM/whiteboard bootstrap. Boundary: authenticated Remote
+  connection or service-owned server helper launch ↔ local process creation/provenance. Attack surface closed:
+  the connected-session wake path no longer spawns `/usr/bin/caffeinate -u -t 5`; it calls the native
+  `MacDeclareRemoteUserActivity` bridge, which invokes
+  `IOPMAssertionDeclareUserActivity(..., kIOPMUserActiveRemote, ...)` through IOKit. The macOS bootstrap launcher
+  no longer inserts `/usr/bin/env KEY=VALUE ...` as an argv bridge. `run_as_user_with_env` now executes
+  `/bin/launchctl asuser <uid> <current_exe> ...`, applies the launcher-owned token variables through
+  `Command::env`, and rejects every environment key except the CM and whiteboard launch-token/parent keys. This was
+  not a newly proven ordinary-user-to-root path: the installed macOS service-owned server is the LaunchAgent user
+  process, and the old helper paths did not accept peer-chosen executable text. It closes residual subprocess and
+  future-call-site authority ambiguity so the macOS helper surfaces remain typed and source-gated. Verification
+  closure: `scripts/verify.sh` and `scripts/apple-conform-check.sh` gate the explicit IOKit link, native
+  user-activity helper, remote-user activity type, server wiring, absence of `caffeinate`, absence of the
+  `/usr/bin/env` bridge, the environment-key allowlist, and this requirements/ledger disposition.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows

@@ -2341,6 +2341,20 @@ done
 for system_path in /usr/bin/osascript /bin/launchctl /usr/bin/open /usr/sbin/ioreg; do
   grep -F "\"$system_path\"" "${macos_helper_command_sources[@]}" >/dev/null || r_s11c5="$r_s11c5 macos-absolute-${system_path##*/}-missing"
 done
+grep -Fq 'println!("cargo:rustc-link-lib=framework=IOKit");' build.rs || r_s11c5="$r_s11c5 macos-iokit-link-missing"
+grep -Fq '#import <IOKit/pwr_mgt/IOPMLib.h>' src/platform/macos.mm || r_s11c5="$r_s11c5 macos-iopmlib-import-missing"
+grep -Fq 'extern "C" bool MacDeclareRemoteUserActivity()' src/platform/macos.mm || r_s11c5="$r_s11c5 macos-user-activity-native-helper-missing"
+grep -Fq 'IOPMAssertionDeclareUserActivity(' src/platform/macos.mm || r_s11c5="$r_s11c5 macos-user-activity-iopm-call-missing"
+grep -Fq 'kIOPMUserActiveRemote' src/platform/macos.mm || r_s11c5="$r_s11c5 macos-user-activity-not-remote"
+grep -Fq 'crate::platform::declare_remote_user_activity();' src/server.rs || r_s11c5="$r_s11c5 macos-server-native-user-activity-not-wired"
+if grep -Fq 'caffeinate' src/server.rs src/platform/macos.rs; then
+  r_s11c5="$r_s11c5 macos-caffeinate-subprocess-present"
+fi
+grep -Fq 'fn macos_launch_env_key_is_allowed(key: &OsStr) -> bool' "$macos_rs" || r_s11c5="$r_s11c5 macos-launch-env-key-allowlist-missing"
+grep -Fq 'command.env(key, value.as_ref())' "$macos_rs" || r_s11c5="$r_s11c5 macos-launch-env-command-env-missing"
+if grep -Fq '/usr/bin/env' "$macos_rs"; then
+  r_s11c5="$r_s11c5 macos-run-as-user-env-helper-present"
+fi
 grep -Fq 'const MACOS_OPEN: &str = "/usr/bin/open";' src/ipc.rs || r_s11c5="$r_s11c5 macos-ipc-open-absolute-missing"
 grep -Fq 'Command::new(MACOS_OPEN)' src/ipc.rs || r_s11c5="$r_s11c5 macos-ipc-reopen-not-absolute"
 grep -Fq 'const MACOS_PRIVILEGED_HELPER_EXEC: &str =' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-const-missing"
@@ -2370,6 +2384,8 @@ grep -Fq '<string>com.carriez.rustdesk</string>' src/platform/privileges_scripts
 grep -Fq '<string>com.carriez.rustdesk</string>' src/platform/privileges_scripts/agent.plist || r_s11c5="$r_s11c5 macos-agent-associated-bundle-id-not-fixed"
 grep -Fq 'macOS privileged service template identity input' requirements.html || r_s11c5="$r_s11c5 macos-template-identity-requirements-missing"
 grep -Fq 'R-S11c-21 — macOS privileged service template identity input' HARDENING_STATUS.md || r_s11c5="$r_s11c5 macos-template-identity-ledger-missing"
+grep -Fq 'macOS residual process launch provenance' requirements.html || r_s11c5="$r_s11c5 macos-residual-process-launch-requirements-missing"
+grep -Fq 'R-S11e-10 — macOS residual process launch provenance' HARDENING_STATUS.md || r_s11c5="$r_s11c5 macos-residual-process-launch-ledger-missing"
 grep -Fq 'fn macos_installed_app_bundle_path() -> PathBuf' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-app-bundle-path-helper-missing"
 grep -Fq 'fn macos_privileged_helper_path_is_expected_and_trusted(current_exe: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-trust-missing"
 grep -Fq 'fn macos_installed_app_path_is_expected_and_trusted(peer_exe: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-app-trust-missing"

@@ -1310,9 +1310,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   are accepted only by user-owned receivers; service-marked receivers reject typed user-owned writes, the
   whole-config IPC variant is absent, and standalone salt read/storage-salt sync are denied by
   R-S11b-2a/R-S11c-1a. User-owned `--server` paths remain
-  user-owned. Linux installed-service provisioning is closed by R-S11b-2c/R-S11c-1d: a polkit-authorized
-  `_service` request is the only enabled service-owned password path, and the final commit is accepted only
-  by a service-owned server from a root peer. Windows installed-service provisioning is closed by
+  user-owned. Linux installed-service provisioning is closed by R-S11b-2c/R-S11c-1d plus R-S11e-6:
+  clients authenticate the connected root `--service` receiver before sending the service-owned password
+  request, that request is the only enabled service-owned password path, polkit authorizes it, and the final
+  commit is accepted only by a service-owned server from a root peer. Windows installed-service provisioning is closed by
   R-S11b-2d/R-S11c-1e: the `_service` request requires an elevated connected pipe-client token, and the final
   main-server commit is accepted only from a LocalSystem service peer. macOS installed-service provisioning is
   closed by R-S11b-2e/R-S11c-1f: the `_service` path authenticates the connected root helper, obtains the explicit
@@ -1414,6 +1415,21 @@ unreachable and a source/test/AST gate prevents reintroduction.
   root service. Verification closure: `scripts/verify.sh` gates launch-parent propagation in both Linux
   service-server launch paths, the receiver authenticator, exact argv helper, live ancestor proof, commit-path
   ordering, the argv regression test, and this requirements/ledger disposition.
+- **R-S11e-6 — Linux _service client-side server authentication — CLOSED 2026-07-11.**
+  Platform: Linux `.deb` installed-service mode. Endpoint/action: GUI/CLI service-owned unattended-password
+  requests over the shared `_service` Unix socket. Boundary: user-session password setter ↔ root service credential
+  authority. Attack surface closed: the client no longer sends `Data::RequestServiceOwnedUnattendedPasswordChange`
+  to a socket-path peer before proving that the connected receiver is the root RustDesk service. A local fake
+  `_service` listener that wins the shared socket path while the legitimate root-owned service socket/parent is
+  absent cannot receive the proposed plaintext password. `connect_with_path` authenticates Linux
+  `POSTFIX_SERVICE` peers before returning the connection: SO_PEERCRED-derived pid/uid must prove uid 0, the peer
+  executable must match the current executable, live argv must be exactly the service command shape
+  `argv[1] == "--service"`, and the peer executable plus parent directory must be root-owned, executable where
+  applicable, and not group/world-writable. Missing, non-root, wrong-executable, wrong-argv, or writable-path
+  receivers fail closed before any `_service` frame carrying the password leaves the client. Verification closure:
+  `scripts/verify.sh` gates the Linux `_service` client authenticator, root uid gate, exact service argv helper,
+  root-owned executable/parent trust predicates and tests, `connect_with_path` wiring, request-before-send ordering
+  through authenticated `connect_service`, and this requirements/ledger disposition.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows

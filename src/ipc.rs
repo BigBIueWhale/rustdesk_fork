@@ -41,9 +41,9 @@ use ipc_auth::{active_uid, authorize_service_scoped_ipc_connection};
 #[cfg(target_os = "linux")]
 pub(crate) use ipc_auth::{
     authenticate_cm_endpoint, authenticate_linux_service_owned_main_server,
-    current_process_identity, ensure_peer_process_identity_matches, linux_proc_start_time,
-    linux_proc_stat_start_time, peer_process_identity, peer_process_identity_is_live,
-    PeerProcessIdentity,
+    current_process_identity, ensure_linux_service_server_is_trusted,
+    ensure_peer_process_identity_matches, linux_proc_start_time, linux_proc_stat_start_time,
+    peer_process_identity, peer_process_identity_is_live, PeerProcessIdentity,
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) use ipc_auth::{authorize_cm_ipc_connection, authorize_whiteboard_ipc_connection};
@@ -2611,11 +2611,15 @@ async fn connect_with_path(
     {
         let client = timeout(ms_timeout, Endpoint::connect(path)).await??;
         let connection = ConnectionTmpl::new(client);
+        #[cfg(target_os = "linux")]
+        if postfix == crate::POSTFIX_SERVICE {
+            ensure_linux_service_server_is_trusted(&connection)?;
+        }
         #[cfg(target_os = "macos")]
         if postfix == crate::POSTFIX_SERVICE {
             ensure_macos_service_server_is_trusted(&connection)?;
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         let _ = postfix;
         Ok(connection)
     }

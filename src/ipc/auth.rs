@@ -16,7 +16,7 @@ use std::fmt;
 use std::os::unix::ffi::OsStrExt;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::fs::MetadataExt;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::fs::PermissionsExt;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::io::RawFd;
@@ -884,6 +884,79 @@ fn linux_proc_cmdline_args(pid: u32) -> ResultType<Vec<String>> {
         .filter(|part| !part.is_empty())
         .map(|part| String::from_utf8_lossy(part).into_owned())
         .collect())
+}
+
+#[cfg(target_os = "linux")]
+fn linux_service_process_argv_is_expected(args: &[String]) -> bool {
+    args.len() == 2 && args.get(1).map(String::as_str) == Some("--service")
+}
+
+#[cfg(target_os = "linux")]
+fn linux_trusted_service_executable_file_metadata(is_file: bool, uid: u32, mode: u32) -> bool {
+    is_file && uid == 0 && mode & 0o022 == 0 && mode & 0o111 != 0
+}
+
+#[cfg(target_os = "linux")]
+fn linux_trusted_service_executable_parent_metadata(is_dir: bool, uid: u32, mode: u32) -> bool {
+    is_dir && uid == 0 && mode & 0o022 == 0
+}
+
+#[cfg(target_os = "linux")]
+fn linux_service_executable_is_trusted(path: &Path) -> bool {
+    let Some(parent) = path.parent() else {
+        return false;
+    };
+    let Ok(parent_metadata) = fs::metadata(parent) else {
+        return false;
+    };
+    if !linux_trusted_service_executable_parent_metadata(
+        parent_metadata.is_dir(),
+        parent_metadata.uid(),
+        parent_metadata.permissions().mode(),
+    ) {
+        return false;
+    }
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    linux_trusted_service_executable_file_metadata(
+        metadata.is_file(),
+        metadata.uid(),
+        metadata.permissions().mode(),
+    )
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn ensure_linux_service_server_is_trusted<T>(
+    stream: &ConnectionTmpl<T>,
+) -> ResultType<PeerProcessIdentity>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
+{
+    let identity = peer_process_identity(stream, crate::POSTFIX_SERVICE)?;
+    if identity.uid != 0 {
+        bail!(
+            "Linux _service server is not root: peer_uid={}",
+            identity.uid
+        );
+    }
+    let args = linux_proc_cmdline_args(identity.pid)?;
+    if !linux_service_process_argv_is_expected(&args) {
+        bail!(
+            "Linux _service server argv mismatch: pid={}, args={:?}",
+            identity.pid,
+            args
+        );
+    }
+    let peer_exe = peer_exe_canonical_path_by_pid(identity.pid)?;
+    if !linux_service_executable_is_trusted(&peer_exe) {
+        bail!(
+            "Linux _service server executable is not trusted root-owned state: pid={}, peer_exe='{}'",
+            identity.pid,
+            peer_exe.display()
+        );
+    }
+    Ok(identity)
 }
 
 #[cfg(target_os = "linux")]
@@ -1793,6 +1866,70 @@ mod tests {
             "--cm".to_owned(),
             crate::common::SERVICE_OWNED_SERVER_ARG.to_owned(),
         ]));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_linux_service_process_argv_is_exact() {
+        assert!(super::linux_service_process_argv_is_expected(&[
+            "/usr/bin/rustdesk".to_owned(),
+            "--service".to_owned(),
+        ]));
+        assert!(!super::linux_service_process_argv_is_expected(&[
+            "/usr/bin/rustdesk".to_owned(),
+        ]));
+        assert!(!super::linux_service_process_argv_is_expected(&[
+            "/usr/bin/rustdesk".to_owned(),
+            "--server".to_owned(),
+        ]));
+        assert!(!super::linux_service_process_argv_is_expected(&[
+            "/usr/bin/rustdesk".to_owned(),
+            "--service".to_owned(),
+            "--extra".to_owned(),
+        ]));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn linux_trusted_service_executable_metadata_requires_root_unwritable_executable_file() {
+        assert!(super::linux_trusted_service_executable_file_metadata(
+            true, 0, 0o755
+        ));
+        assert!(!super::linux_trusted_service_executable_file_metadata(
+            false, 0, 0o755
+        ));
+        assert!(!super::linux_trusted_service_executable_file_metadata(
+            true, 1000, 0o755
+        ));
+        assert!(!super::linux_trusted_service_executable_file_metadata(
+            true, 0, 0o775
+        ));
+        assert!(!super::linux_trusted_service_executable_file_metadata(
+            true, 0, 0o777
+        ));
+        assert!(!super::linux_trusted_service_executable_file_metadata(
+            true, 0, 0o644
+        ));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn linux_trusted_service_executable_parent_requires_root_unwritable_directory() {
+        assert!(super::linux_trusted_service_executable_parent_metadata(
+            true, 0, 0o755
+        ));
+        assert!(!super::linux_trusted_service_executable_parent_metadata(
+            false, 0, 0o755
+        ));
+        assert!(!super::linux_trusted_service_executable_parent_metadata(
+            true, 1000, 0o755
+        ));
+        assert!(!super::linux_trusted_service_executable_parent_metadata(
+            true, 0, 0o775
+        ));
+        assert!(!super::linux_trusted_service_executable_parent_metadata(
+            true, 0, 0o777
+        ));
     }
 
     #[test]

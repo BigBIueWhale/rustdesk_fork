@@ -226,18 +226,26 @@ echo "$windows_main_peer_authority_block" | grep -q 'MainIpcPeerAuthority::for_w
 windows_service_close_block=$(awk '/ipc::Data::Close => \{/,/ipc::Data::Test =>/' src/platform/windows.rs)
 echo "$windows_service_close_block" | grep -q 'windows_pipe_client_token_is_local_system' || r_s11="$r_s11 windows-service-close-not-localsystem-gated"
 echo "$windows_service_close_block" | grep -q 'Rejected Windows _service close: caller is not LocalSystem' || r_s11="$r_s11 windows-service-close-rejection-missing"
+linux_service_server_client_auth_block=$(awk '/pub\(crate\) fn ensure_linux_service_server_is_trusted/,/^}/' src/ipc/auth.rs)
 macos_service_server_client_auth_block=$(awk '/pub\(crate\) fn ensure_macos_service_server_is_trusted/,/^}/' src/ipc/auth.rs)
-macos_connect_with_path_block=$(awk '/async fn connect_with_path/,/^}/' src/ipc.rs)
+connect_with_path_block=$(awk '/async fn connect_with_path/,/^}/' src/ipc.rs)
+grep -Fq 'pub(crate) fn ensure_linux_service_server_is_trusted' src/ipc/auth.rs || r_s11="$r_s11 linux-service-server-client-auth-missing"
+echo "$linux_service_server_client_auth_block" | grep -Fq 'identity.uid != 0' || r_s11="$r_s11 linux-service-server-client-auth-not-root-gated"
+echo "$linux_service_server_client_auth_block" | grep -Fq 'linux_service_process_argv_is_expected(&args)' || r_s11="$r_s11 linux-service-server-client-auth-not-service-argv-gated"
+echo "$linux_service_server_client_auth_block" | grep -Fq 'linux_service_executable_is_trusted(&peer_exe)' || r_s11="$r_s11 linux-service-server-client-auth-no-root-owned-exec-proof"
+echo "$connect_with_path_block" | grep -Fq 'ensure_linux_service_server_is_trusted(&connection)' || r_s11="$r_s11 linux-service-connect-not-client-authenticated"
+grep -Fq 'Linux _service client-side server authentication' requirements.html || r_s11="$r_s11 linux-service-client-auth-requirements-missing"
+grep -Fq 'R-S11e-6 — Linux _service client-side server authentication' HARDENING_STATUS.md || r_s11="$r_s11 linux-service-client-auth-ledger-missing"
 grep -Fq 'pub(crate) fn ensure_macos_service_server_is_trusted' src/ipc/auth.rs || r_s11="$r_s11 macos-service-server-client-auth-missing"
 echo "$macos_service_server_client_auth_block" | grep -Fq 'peer_uid != 0' || r_s11="$r_s11 macos-service-server-client-auth-not-root-gated"
 echo "$macos_service_server_client_auth_block" | grep -Fq 'peer_exe_canonical_path_by_pid(peer_pid)' || r_s11="$r_s11 macos-service-server-client-auth-no-peer-exe"
 echo "$macos_service_server_client_auth_block" | grep -Fq 'macos_privileged_helper_is_expected_and_trusted(&peer_exe)' || r_s11="$r_s11 macos-service-server-client-auth-not-helper-trusted"
-echo "$macos_connect_with_path_block" | grep -Fq 'postfix == crate::POSTFIX_SERVICE' || r_s11="$r_s11 macos-service-connect-not-postfix-scoped"
-echo "$macos_connect_with_path_block" | grep -Fq 'ensure_macos_service_server_is_trusted(&connection)' || r_s11="$r_s11 macos-service-connect-not-client-authenticated"
+echo "$connect_with_path_block" | grep -Fq 'postfix == crate::POSTFIX_SERVICE' || r_s11="$r_s11 macos-service-connect-not-postfix-scoped"
+echo "$connect_with_path_block" | grep -Fq 'ensure_macos_service_server_is_trusted(&connection)' || r_s11="$r_s11 macos-service-connect-not-client-authenticated"
 grep -Fq 'macOS _service client-side server authentication' requirements.html || r_s11="$r_s11 macos-service-client-auth-requirements-missing"
 grep -Fq 'R-S11e-2 — macOS _service client-side server authentication' HARDENING_STATUS.md || r_s11="$r_s11 macos-service-client-auth-ledger-missing"
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel state-mutation allowlist:$r_s11"; rc=1; else
-  echo "  ok  R-S11/R-S11b/R-S11c main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options are user-owned scoped; service-owned close is root/LocalSystem-gated on main IPC and Windows _service; macOS _service clients authenticate the connected privileged helper before service-owned password traffic; the policy table is exhaustive with no wildcard fallback; gate binds Linux/macOS AND the Windows main pipe)"; fi
+  echo "  ok  R-S11/R-S11b/R-S11c main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options are user-owned scoped; service-owned close is root/LocalSystem-gated on main IPC and Windows _service; Linux _service clients authenticate the connected root --service receiver before service-owned password traffic; macOS _service clients authenticate the connected privileged helper before service-owned password traffic; the policy table is exhaustive with no wildcard fallback; gate binds Linux/macOS AND the Windows main pipe)"; fi
 rm -f /tmp/rd_verify_identity_writers.$$ /tmp/rd_verify_mac_address.$$
 
 echo "== (3b-iii-a1) desktop at-rest wrapper does not mint service identity material (R-S11b-3f) =="
@@ -1498,6 +1506,34 @@ grep -q 'SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV' src/ipc/auth.rs                
 grep -q 'linux_process_has_ancestor(identity.pid, expected_parent)' src/ipc/auth.rs   || r_s11b2="$r_s11b2 linux-service-main-server-ancestor-proof-missing"
 grep -q 'authenticate_linux_service_owned_main_server(&c)' src/ipc.rs                 || r_s11b2="$r_s11b2 linux-service-commit-sent-before-server-proof"
 grep -q 'test_linux_service_owned_server_argv_is_exact' src/ipc/auth.rs               || r_s11b2="$r_s11b2 linux-service-main-server-argv-test-missing"
+linux_service_server_client_auth_block=$(awk '/pub\(crate\) fn ensure_linux_service_server_is_trusted/,/^}/' src/ipc/auth.rs)
+connect_with_path_block=$(awk '/async fn connect_with_path/,/^}/' src/ipc.rs)
+grep -Fq 'pub(crate) fn ensure_linux_service_server_is_trusted' src/ipc/auth.rs       || r_s11b2="$r_s11b2 linux-service-server-client-auth-missing"
+echo "$linux_service_server_client_auth_block" | grep -Fq 'identity.uid != 0'         || r_s11b2="$r_s11b2 linux-service-server-client-auth-not-root-gated"
+echo "$linux_service_server_client_auth_block" | grep -Fq 'linux_service_process_argv_is_expected(&args)' || r_s11b2="$r_s11b2 linux-service-server-client-auth-not-service-argv-gated"
+echo "$linux_service_server_client_auth_block" | grep -Fq 'linux_service_executable_is_trusted(&peer_exe)' || r_s11b2="$r_s11b2 linux-service-server-client-auth-no-root-owned-exec-proof"
+grep -q 'test_linux_service_process_argv_is_exact' src/ipc/auth.rs                    || r_s11b2="$r_s11b2 linux-service-server-argv-test-missing"
+grep -q 'linux_trusted_service_executable_metadata_requires_root_unwritable_executable_file' src/ipc/auth.rs || r_s11b2="$r_s11b2 linux-service-server-exec-metadata-test-missing"
+grep -q 'linux_trusted_service_executable_parent_requires_root_unwritable_directory' src/ipc/auth.rs || r_s11b2="$r_s11b2 linux-service-server-parent-metadata-test-missing"
+echo "$connect_with_path_block" | grep -Fq 'ensure_linux_service_server_is_trusted(&connection)' || r_s11b2="$r_s11b2 linux-service-connect-not-client-authenticated"
+if ! python3 - <<'PY'
+from pathlib import Path
+src = Path("src/ipc.rs").read_text()
+connect_start = src.index("async fn connect_with_path")
+connect_end = src.index("\n}\n\n#[cfg(windows)]\nasync fn connect_windows_named_pipe", connect_start) + 2
+connect_body = src[connect_start:connect_end]
+auth = connect_body.find("ensure_linux_service_server_is_trusted(&connection)?")
+ok = connect_body.find("Ok(connection)")
+password_start = src.index("async fn set_service_owned_unattended_password_with_ack")
+password_end = src.index("#[cfg(target_os = \"windows\")]", password_start)
+password_body = src[password_start:password_end]
+connect = password_body.find("connect_service(ms_timeout).await?")
+send = password_body.find("Data::RequestServiceOwnedUnattendedPasswordChange(v)")
+raise SystemExit(0 if auth != -1 and ok != -1 and auth < ok and connect != -1 and send != -1 and connect < send else 1)
+PY
+then
+  r_s11b2="$r_s11b2 linux-service-password-request-sends-before-service-proof"
+fi
 if ! python3 scripts/verify-polkit-policy.py --repo . >/tmp/rd_verify_polkit_policy.$$ 2>&1; then
   cat /tmp/rd_verify_polkit_policy.$$
   r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"
@@ -1506,9 +1542,11 @@ rm -f /tmp/rd_verify_polkit_policy.$$
 grep -Fq 'R-S11e — Linux polkit policy/package assurance' HARDENING_STATUS.md        || r_s11b2="$r_s11b2 linux-polkit-assurance-ledger-missing"
 grep -Fq 'R-S11e-1 — Linux pkcheck executable provenance' HARDENING_STATUS.md        || r_s11b2="$r_s11b2 linux-pkcheck-provenance-ledger-missing"
 grep -Fq 'R-S11e-5 — Linux service-owned main-server commit receiver proof' HARDENING_STATUS.md || r_s11b2="$r_s11b2 linux-service-main-server-proof-ledger-missing"
+grep -Fq 'R-S11e-6 — Linux _service client-side server authentication' HARDENING_STATUS.md || r_s11b2="$r_s11b2 linux-service-client-auth-ledger-missing"
 grep -Fq 'Linux polkit policy/package assurance' requirements.html                   || r_s11b2="$r_s11b2 linux-polkit-assurance-requirements-missing"
 grep -Fq 'Linux pkcheck executable provenance' requirements.html                     || r_s11b2="$r_s11b2 linux-pkcheck-provenance-requirements-missing"
 grep -Fq 'Linux service-owned main-server commit receiver proof' requirements.html   || r_s11b2="$r_s11b2 linux-service-main-server-proof-requirements-missing"
+grep -Fq 'Linux _service client-side server authentication' requirements.html        || r_s11b2="$r_s11b2 linux-service-client-auth-requirements-missing"
 grep -q 'windows_peer_is_authorized_for_service_owned_password_change' src/ipc.rs    || r_s11b2="$r_s11b2 windows-service-password-authorizer-missing"
 grep -q 'windows_pipe_client_token_is_elevated' src/ipc/auth.rs                     || r_s11b2="$r_s11b2 windows-service-password-token-elevation-missing"
 grep -q 'windows_pipe_client_token_is_local_system' src/ipc/auth.rs                  || r_s11b2="$r_s11b2 windows-service-password-localsystem-token-missing"
@@ -1778,7 +1816,7 @@ if echo "$user_scope_fn" | grep -q '"--password"'; then
   r_s11b2="$r_s11b2 password-still-root-routes-to-user-main-ipc"
 fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 service-owned password IPC closure:$r_s11b2"; rc=1; else
-  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux uses polkit/root-service commit with structured policy/package assurance; Windows uses pipe-client token elevation plus LocalSystem service commit; macOS admits _service only for the installed app executable talking to the trusted PrivilegedHelperTools helper, offloads budgeted receiver-side blocking proof from the _service accept loop before the first read, client-authenticates the connected _service server, obtains the custom nonshared timeout-zero Authorization Services right before sending the password, verifies the external form noninteractively in the LaunchDaemon, writes the authorized value directly into the root LaunchDaemon credential store without a pending secret cache, rejects the old macOS main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after exact live argv plus pid/path and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
+  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux client-authenticates the connected root --service receiver before sending a service-owned password request, then uses polkit/root-service commit with structured policy/package assurance; Windows uses pipe-client token elevation plus LocalSystem service commit; macOS admits _service only for the installed app executable talking to the trusted PrivilegedHelperTools helper, offloads budgeted receiver-side blocking proof from the _service accept loop before the first read, client-authenticates the connected _service server, obtains the custom nonshared timeout-zero Authorization Services right before sending the password, verifies the external form noninteractively in the LaunchDaemon, writes the authorized value directly into the root LaunchDaemon credential store without a pending secret cache, rejects the old macOS main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after exact live argv plus pid/path and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
 
 # R-S11b-4: config/PRS secrecy after IPC closure. The balanced-PAKE PRS is
 # connect-equivalent at rest, so the code-owned boundary is:

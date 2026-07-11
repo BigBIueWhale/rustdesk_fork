@@ -60,8 +60,9 @@ ProtectKernelTunables=yes
 RestrictRealtime=yes
 LockPersonality=yes
 SystemCallArchitectures=native
-# @system-service plus direct FUSE mount/unmount syscalls used by Linux file clipboard;
-# keep reboot/swap and the broader @mount namespace/root-changing set out.
+# @system-service plus mount/umount for the authenticated owner's root terminal.
+# Linux file clipboard uses fixed-path fusermount fd passing, not RustDesk mount(2).
+# Keep reboot/swap and the broader @mount namespace/root-changing set out.
 SystemCallFilter=@system-service mount umount umount2
 SystemCallFilter=~@reboot @swap
 # MemoryDenyWriteExecute (W^X for the root service): block any runtime W+X mmap/mprotect

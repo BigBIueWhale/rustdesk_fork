@@ -148,15 +148,15 @@ the FUSE server will figure out the file system tree and rearrange its content.
 - To better fit for preserving permissions on unix-like platforms,
   a reserved area of FileDescriptor PDU
 
-- you may notice
-  the mountpoint is still occupied after the application quits.
-  That's because the FUSE server was not mounted with `AUTO_UNMOUNT`.
-  - It's hard to implement gressful shutdown for a multi-processed program
-  - `AUTO_UNMOUNT` was not enabled by default and requires enable
-    `user_allow_other` in configure. Letting users edit such global
-    configuration to use this feature might not be a good idea.
+- Linux file-copy FUSE is mounted through a trusted fixed-path `fusermount3`
+  or `fusermount` helper resolved to a checked canonical target, using the
+  `_FUSE_COMMFD` fd-passing protocol, then served through
+  `fuser::Session::from_fd` with owner-only access. RustDesk does not call
+  fuser's `spawn_mount2` direct `mount(2)` path.
+  - `AUTO_UNMOUNT` is not enabled because fuser widens the kernel mount to
+    `allow_other` for that mode. RustDesk owns teardown explicitly instead.
   - stale clipboard FUSE mounts are cleared with a direct no-follow
     [`umount2()`](https://man7.org/linux/man-pages/man2/umount.2.html)
-    syscall before mounting again.
+    attempt and the same fixed-path `fusermount -u -q -z --` helper fallback.
   - Linux RustDesk processes running as euid 0 refuse to initialize clipboard
     FUSE; the file-copy FUSE path is for the non-root user server/viewer path.

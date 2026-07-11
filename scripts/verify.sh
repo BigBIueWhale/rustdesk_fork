@@ -2478,12 +2478,17 @@ grep -qF 'fn fuse_mount_path_cstring(mount_point: &Path) -> Result<CString, Clip
 grep -qF 'CString::new(mount_point.as_os_str().as_bytes())' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="$r_s11c10o mount-path-not-cstring-checked"
 grep -qF 'libc::umount2(mount_c.as_ptr(), libc::UMOUNT_NOFOLLOW)' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="$r_s11c10o stale-unmount-not-syscall-nofollow"
 grep -qF 'unmount_stale_fuse_mount(mount_point);' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="$r_s11c10o prepare-does-not-use-stale-unmount-helper"
+grep -qF 'fn fixed_fusermount_unmount(mount_point: &Path) -> Result<(), CliprdrError>' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="$r_s11c10o no-fixed-helper-unmount-fallback"
+grep -qF 'arg("-u")' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="$r_s11c10o no-fusermount-unmount-flag"
+grep -qF 'arg("-q")' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="$r_s11c10o no-fusermount-quiet-flag"
+grep -qF 'arg("-z")' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="$r_s11c10o no-fusermount-lazy-flag"
 grep -qF 'fuse_mount_path_cstring_rejects_nul' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="$r_s11c10o no-nul-path-regression-test"
 grep -q 'Linux clipboard FUSE stale unmount provenance' requirements.html || r_s11c10o="$r_s11c10o requirements-disposition-missing"
 grep -q 'R-A6 helper-provenance companion' requirements.html || r_s11c10o="$r_s11c10o requirements-helper-provenance-missing"
 grep -q 'R-S11c-10o closes the Linux clipboard FUSE stale-unmount provenance path' HARDENING_STATUS.md || r_s11c10o="$r_s11c10o hardening-ledger-missing"
 grep -qF 'direct no-follow' libs/clipboard/README.md || r_s11c10o="$r_s11c10o clipboard-readme-not-updated"
 grep -qF 'umount2()' libs/clipboard/README.md || r_s11c10o="$r_s11c10o clipboard-readme-not-updated"
+grep -qF 'fixed-path `fusermount -u -q -z --` helper fallback' libs/clipboard/README.md || r_s11c10o="$r_s11c10o clipboard-readme-no-fixed-fallback"
 if grep -RInE 'Command::new\("umount"\)|std::process::Command::new\("umount"\)|process::Command::new\("umount"\)' libs/clipboard/src/platform/unix/fuse/mod.rs >/tmp/rd_verify_r_s11c10o.$$; then
   cat /tmp/rd_verify_r_s11c10o.$$
   rm -f /tmp/rd_verify_r_s11c10o.$$
@@ -2509,6 +2514,49 @@ grep -q 'euid 0 refuse to initialize clipboard' libs/clipboard/README.md || r_s1
 grep -q 'euid-0 FUSE initialization is refused' deny.toml || r_s11c10q="$r_s11c10q deny-accept-reason-not-updated"
 if [ -n "$r_s11c10q" ]; then echo "  FAIL R-S11c-10q Linux clipboard FUSE root-process denial:$r_s11c10q"; rc=1; else
   echo "  ok  R-S11c-10q Linux clipboard FUSE initialization fails closed in euid-0 processes"; fi
+
+echo "== (3b-iii-h9c3c) Linux clipboard FUSE uses fixed-helper fd passing (R-S11c-10r) =="
+r_s11c10r=
+grep -qF 'fn mount_with_fixed_fusermount(' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-fixed-helper-mount"
+grep -qF 'const FUSE_COMMFD_ENV: &str = "_FUSE_COMMFD";' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-fuse-commfd-env"
+grep -qF '"/usr/bin/fusermount3"' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-usr-bin-fusermount3"
+grep -qF '"/bin/fusermount3"' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-bin-fusermount3"
+grep -qF '"/usr/bin/fusermount"' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-usr-bin-fusermount"
+grep -qF 'fs::canonicalize(path)' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r helper-target-not-canonicalized"
+grep -qF 'Command::new(&helper)' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r helper-not-executed-by-verified-path"
+grep -qF '.env(FUSE_COMMFD_ENV, child_socket.as_raw_fd().to_string())' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r fuse-commfd-not-passed"
+grep -qF 'fn receive_fusermount_fd(socket: &UnixStream) -> Result<OwnedFd, CliprdrError>' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-fd-receiver"
+grep -qF 'libc::SCM_RIGHTS' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-scm-rights-validation"
+grep -qF 'libc::MSG_CTRUNC' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-control-truncation-check"
+grep -qF 'set_fd_cloexec(child_socket.as_raw_fd(), false)?;' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r child-fd-not-inheritable"
+grep -qF 'set_fd_cloexec(fuse_fd.as_raw_fd(), true)' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r fuse-fd-not-cloexec"
+grep -qF 'fuser::Session::from_fd(' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-session-from-fd"
+grep -qF 'fuser::SessionACL::Owner' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-owner-acl"
+grep -qF 'struct ClipboardFuseSession' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-owned-session-guard"
+grep -qF 'JoinHandle<io::Result<()>>' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-fallible-thread-join"
+grep -qF 'trusted_fusermount_metadata(true, 0, 0o4755)' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-trusted-helper-metadata-test"
+grep -qF 'trusted_fusermount_path_rejects_relative_path' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-relative-helper-test"
+grep -qF 'clipboard_fuse_mount_options_are_owner_only' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-owner-only-option-test"
+grep -qF 'MountOption::AllowOther]).is_err()' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r allow-other-not-rejected"
+grep -qF 'MountOption::AutoUnmount]).is_err()' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r auto-unmount-not-rejected"
+grep -q 'R-S11c-10r removes fuser' requirements.html || r_s11c10r="$r_s11c10r requirements-disposition-missing"
+grep -q 'R-S11c-10r closes the Linux clipboard FUSE direct-mount/PATH-helper abstraction' HARDENING_STATUS.md || r_s11c10r="$r_s11c10r hardening-ledger-missing"
+grep -q 'fixed-path fusermount fd-passing path' deny.toml || r_s11c10r="$r_s11c10r deny-accept-reason-not-updated"
+if grep -qF 'fuser::spawn_mount2' libs/clipboard/src/platform/unix/fuse/mod.rs; then
+  r_s11c10r="$r_s11c10r spawn-mount2-still-used"
+fi
+if grep -RInE 'Command::new\("fusermount3?"\)|std::process::Command::new\("fusermount3?"\)|process::Command::new\("fusermount3?"\)' libs/clipboard/src/platform/unix/fuse/mod.rs >/tmp/rd_verify_r_s11c10r.$$; then
+  cat /tmp/rd_verify_r_s11c10r.$$
+  rm -f /tmp/rd_verify_r_s11c10r.$$
+  r_s11c10r="$r_s11c10r path-selected-fusermount-helper"
+else
+  rm -f /tmp/rd_verify_r_s11c10r.$$
+fi
+if grep -qF '.join().unwrap' libs/clipboard/src/platform/unix/fuse/mod.rs; then
+  r_s11c10r="$r_s11c10r panic-join-path"
+fi
+if [ -n "$r_s11c10r" ]; then echo "  FAIL R-S11c-10r Linux clipboard FUSE fixed-helper fd passing:$r_s11c10r"; rc=1; else
+  echo "  ok  R-S11c-10r Linux clipboard FUSE uses fixed-helper fd passing and owner-only fuser session"; fi
 
 echo "== (3b-iii-h9c4) Linux self-relaunch avoids AppImage APPDIR/AppRun fallback (R-S11c-10p) =="
 r_s11c10p=
@@ -4080,16 +4128,20 @@ if [ -n "$r_sv10" ]; then
 else
   echo "  ok  R-SV10 LocalConfig funnel clean (enable-check-update excised; pre-elevate-service windows-gated)"
 fi
-# R-D3a (§17): the root service unit carries the launcher sandbox. Linux file
-# clipboard is shipped and uses FUSE, so the syscall policy admits only the
-# direct FUSE mount/unmount calls and keeps denied syscalls fail-closed.
+# R-D3a (§17): the root service unit carries the launcher sandbox. The explicit
+# mount/umount allowance preserves authenticated owner terminal semantics; Linux
+# file clipboard uses fixed-helper fd passing and does not justify direct mount(2).
 r_d3a_missing=
 grep -qE '^CapabilityBoundingSet='      res/rustdesk.service || r_d3a_missing="$r_d3a_missing CapabilityBoundingSet"
 grep -qE '^RestrictAddressFamilies=AF_UNIX AF_INET$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing RestrictAddressFamilies-v4only"
-grep -qE '^SystemCallFilter=@system-service mount umount umount2$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter-fuse-mounts"
+grep -qE '^SystemCallFilter=@system-service mount umount umount2$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter-owner-terminal-mounts"
 grep -qE '^SystemCallFilter=~@reboot @swap$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter-subtraction"
-grep -qF 'direct FUSE mount/unmount syscalls' res/rustdesk.service || r_d3a_missing="$r_d3a_missing unit-fuse-syscall-comment"
-grep -qF 'direct native <code>mount</code>/<code>umount</code>/<code>umount2</code> syscalls' requirements.html || r_d3a_missing="$r_d3a_missing requirements-fuse-syscall-scope"
+grep -qF 'authenticated owner'\''s root terminal' res/rustdesk.service || r_d3a_missing="$r_d3a_missing unit-terminal-syscall-comment"
+grep -qF 'Linux file clipboard uses fixed-path fusermount fd passing' res/rustdesk.service || r_d3a_missing="$r_d3a_missing unit-fixed-fuse-helper-comment"
+grep -qF 'not clipboard FUSE' requirements.html || r_d3a_missing="$r_d3a_missing requirements-terminal-syscall-scope"
+grep -qF 'Linux CLIPRDR/FUSE mounts through fixed absolute' requirements.html || r_d3a_missing="$r_d3a_missing requirements-fixed-fuse-helper-scope"
+grep -qF 'Dropping <code>CAP_SYS_ADMIN</code> or mount syscalls from the long-lived service is a separate terminal-model split' requirements.html || r_d3a_missing="$r_d3a_missing requirements-terminal-cap-split"
+grep -qF 'direct native <code>mount</code>/<code>umount</code>/<code>umount2</code> syscalls' requirements.html && r_d3a_missing="$r_d3a_missing stale-requirements-fuse-direct-syscalls"
 grep -RInE 'legacy FUSE mount (path|calls|syscalls)' res/rustdesk.service scripts/verify.sh requirements.html >/tmp/rd_verify_r_d3a_fuse_legacy.$$ &&
   r_d3a_missing="$r_d3a_missing stale-legacy-fuse-mount-wording"
 rm -f /tmp/rd_verify_r_d3a_fuse_legacy.$$
@@ -4106,7 +4158,7 @@ grep -q 'PR_SET_MDWE' examples/mdwe_codec_probe.rs           || r_d3a_missing="$
 if [ -n "$r_d3a_missing" ]; then
   echo "  FAIL R-D3a: systemd sandbox / validated-MDWE incomplete:$r_d3a_missing"; rc=1
 else
-  echo "  ok  R-D3a systemd sandbox + FUSE-only mount exception + MemoryDenyWriteExecute present"
+  echo "  ok  R-D3a systemd sandbox keeps owner-terminal mount semantics; clipboard FUSE uses fixed-helper fd passing"
 fi
 # R-T7 (§20): every frame on a KEYED (Dual) stream MUST be AEAD-authenticated — the ≤1-byte
 # decrypt bypass is removed (the one path by which a byte could reach the application parser

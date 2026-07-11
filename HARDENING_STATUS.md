@@ -1700,6 +1700,24 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Verification closure: `scripts/verify.sh` and `scripts/apple-conform-check.sh` retain the touched Apple clipboard
   sources and gate the private directory, fd-relative create/unlink, scoped counting, README/requirements
   disposition, and absence of global `/tmp` placeholder creation/counting or source-placeholder path cleanup.
+- **R-S11e-14 — Linux root/headless FileTransfer owner authority — CLOSED / ACCEPTED / GATED 2026-07-11.**
+  Platform: Linux installed service and root/headless service-owned `--server` modes. Endpoint/action:
+  `LoginRequest.FileTransfer`, `Data::AuthorizedFS`, and FileTransfer read/write/list/delete/rename jobs. Boundary:
+  authenticated owner session ↔ serving `--server`/CM process filesystem authority. Finding disposition: the
+  follow-up audit found no unprivileged local-to-root IPC mutation path and no unauthenticated remote path. It found
+  an intentional R-S8 policy fact: where the serving process is root/service-owned, FileTransfer executes at that
+  process credential. This is accepted rather than denied or demoted because the CPace-authenticated peer is the
+  trusted owner, FileTransfer is the single full-filesystem owner mode, and a runtime confinement/demotion knob would
+  contradict R-S8/R-S12 unless the project philosophy changes. Closure condition: FileTransfer must remain post-CPace,
+  file-only, CM-token-bound, and budgeted/path-hardened. The Linux FileTransfer login arm admits the session only
+  through the local file-transfer permission gate and has no root/headless special denial or demotion branch;
+  `AuthConnType::FileTransfer` receives CM file authority only with the server-validated connection token; legacy
+  desktop `Data::FS` is reject-only; FileTransfer capability confinement clears desktop input, block-input, privacy,
+  restart, recording, and host-audio; Unix headless FileTransfer reports the process owner while the "no active console
+  user" refusal remains Windows-peer-only; and the R-S8 no-follow/budget/job-provenance gates continue to cover the
+  actual filesystem operations. Verification closure: `scripts/verify.sh` gates this requirements/ledger disposition,
+  the FileTransfer login shape, CM `Remote`/`FileTransfer` file-authority binding, Unix headless username/refusal
+  guards, and the FileTransfer capability confinement set. No runtime behavior changed in this slice.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff

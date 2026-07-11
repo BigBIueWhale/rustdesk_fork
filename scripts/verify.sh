@@ -5266,6 +5266,41 @@ if [ -z "$ftx" ]; then
 else
   echo "  FAIL R-F1/R-F2 file-transfer headless-unix guards weakened:$ftx"; rc=1
 fi
+
+echo "== (3b-iii-h9d) Linux root/headless FileTransfer owner authority is explicit (R-S11e-14/R-S8) =="
+r_s11e14=
+grep -qF 'Linux root/headless FileTransfer owner authority' requirements.html || r_s11e14="$r_s11e14 requirements-appendix-row-missing"
+grep -qF 'R-S11e-14 — Linux root/headless FileTransfer owner authority' HARDENING_STATUS.md || r_s11e14="$r_s11e14 hardening-ledger-missing"
+grep -qF 'file transfer legitimately operates at that privilege (root on the exposed box)' requirements.html || r_s11e14="$r_s11e14 r-s8-root-filetransfer-policy-missing"
+grep -qF 'MUST NOT</span> add a confinement <em>option</em>' requirements.html || r_s11e14="$r_s11e14 r-s8-no-confinement-option-policy-missing"
+grep -qF 'root/headless RustDesk processes keep text clipboard and file transfer' requirements.html || r_s11e14="$r_s11e14 root-headless-filetransfer-retention-missing"
+ft_login_block=$(awk '/Some\(login_request::Union::FileTransfer\(ft\)\)/,/self\.file_transfer = Some/' "$conn")
+echo "$ft_login_block" | grep -qF 'Self::permission(' || r_s11e14="$r_s11e14 filetransfer-login-not-permission-gated"
+echo "$ft_login_block" | grep -qF 'keys::OPTION_ENABLE_FILE_TRANSFER' || r_s11e14="$r_s11e14 filetransfer-login-not-filetransfer-option-gated"
+echo "$ft_login_block" | grep -qF 'self.file_transfer = Some((ft.dir, ft.show_hidden));' || r_s11e14="$r_s11e14 filetransfer-login-not-admitted"
+if echo "$ft_login_block" | grep -Eq 'is_root|is_prelogin|run_as_user|is_headless_no_console_user|SERVICE_OWNED_SERVER_ARG|service_owned|No active console user'; then
+  r_s11e14="$r_s11e14 filetransfer-login-has-root-headless-deny-or-demotion-branch"
+fi
+auth_conn_type_block=$(awk '/let auth_conn_type = if self\.file_transfer\.is_some\(\)/,/self\.authed_conn_id = Some/' "$conn")
+echo "$auth_conn_type_block" | grep -qF 'AuthConnType::FileTransfer' || r_s11e14="$r_s11e14 auth-conn-type-not-filetransfer"
+echo "$auth_conn_type_block" | grep -qF 'AuthConnType::Remote | AuthConnType::FileTransfer' || r_s11e14="$r_s11e14 cm-file-not-remote-or-filetransfer"
+cm_auth_type_block=$(awk '/impl CmAuthConnType/,/^}/' src/ipc.rs)
+echo "$cm_auth_type_block" | grep -qF 'Self::Remote | Self::FileTransfer' || r_s11e14="$r_s11e14 cm-auth-type-not-filetransfer-capable"
+cm_file_authority_block=$(awk '/fn from_login/,/fn allows_fs/' src/ui_cm_interface.rs)
+echo "$cm_file_authority_block" | grep -qF 'conn_type.allows_file_authority()' || r_s11e14="$r_s11e14 cm-file-authority-not-conn-type-bound"
+echo "$cm_file_authority_block" | grep -qF 'authority.file' || r_s11e14="$r_s11e14 cm-file-authority-not-server-file-bound"
+ft_confine_block=$(awk '/AuthConnType::FileTransfer => \{/,/AuthConnType::ViewCamera/' "$conn")
+for cleared_capability in 'self.keyboard = false;' 'self.block_input = false;' 'self.privacy_mode = false;' 'self.restart = false;' 'self.recording = false;' 'self.audio = false;'; do
+  echo "$ft_confine_block" | grep -qF "$cleared_capability" || r_s11e14="$r_s11e14 filetransfer-not-clearing-${cleared_capability%% *}"
+done
+if echo "$ft_confine_block" | grep -Eq 'self\.(file|clipboard) = false'; then
+  r_s11e14="$r_s11e14 filetransfer-lost-file-or-clipboard-capability"
+fi
+if [ -z "$r_s11e14" ]; then
+  echo "  ok  R-S11e-14 Linux root/headless FileTransfer is the authenticated owner's R-S8 file authority: admitted post-CPace, CM-token-bound, file-only, and not replaced by a runtime deny/demotion/confinement branch"
+else
+  echo "  FAIL R-S11e-14 Linux root/headless FileTransfer authority model:$r_s11e14"; rc=1
+fi
 # R-T11 (§20): the PUBLIC listener (listen_any_v4) MUST bind WITHOUT SO_REUSEPORT — a single-
 # instance service needs no kernel load-balance group, and REUSEPORT lets another same-uid (root)
 # process silently join the group and steal inbound connections (invisible to R-A4's own-process

@@ -18,7 +18,7 @@ use std::{
     ffi::{OsStr, OsString},
     fs,
     os::unix::fs::{FileTypeExt, MetadataExt},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     process::{Child, Command},
     string::String,
     sync::atomic::{AtomicBool, Ordering},
@@ -86,10 +86,11 @@ lazy_static::lazy_static! {
             let val = "1";
             let expected = format!("{key}={val}");
             match (sudo_path(), env_path()) {
-                (Some(sudo), Some(env)) => Command::new(sudo)
+                (Some(sudo), Some(env)) => Command::new(&sudo)
                     // -n for non-interactive to avoid password prompt
                     .env(&key, val)
-                    .args(["-n", "-E", env])
+                    .args(["-n", "-E"])
+                    .arg(&env)
                     .output()
                     .map(|o| {
                         o.status.success()
@@ -1158,7 +1159,7 @@ where
     let valid_envs = valid_sudo_envs(envs);
     let xdg_runtime_dir = format!("/run/user/{uid}");
     if *SUDO_E_PRESERVES_ENV {
-        let task = Command::new(sudo_path)
+        let task = Command::new(&sudo_path)
             .env("XDG_RUNTIME_DIR", &xdg_runtime_dir)
             .envs(
                 valid_envs
@@ -1177,11 +1178,11 @@ where
         let Some(env_path) = env_path() else {
             bail!("env was not found at a trusted fixed path");
         };
-        let mut sudo = Command::new(sudo_path);
+        let mut sudo = Command::new(&sudo_path);
         sudo.arg("-u")
             .arg(&username)
             .arg("--")
-            .arg(env_path)
+            .arg(&env_path)
             .arg(format!("XDG_RUNTIME_DIR={xdg_runtime_dir}"));
 
         for (k, v) in valid_envs {
@@ -2474,41 +2475,78 @@ pub fn reopen_after_service_stop(secs: u32) {
     }
 }
 
-fn trusted_fixed_executable(path: &Path) -> bool {
-    let Ok(metadata) = fs::metadata(path) else {
-        return false;
-    };
-    metadata.is_file() && metadata.uid() == 0 && metadata.mode() & 0o022 == 0
+fn linux_helper_path_is_clean_absolute(path: &Path) -> bool {
+    path.is_absolute()
+        && path
+            .components()
+            .all(|component| matches!(component, Component::RootDir | Component::Normal(_)))
 }
 
-fn trusted_command_path(paths: &'static [&'static str]) -> Option<&'static str> {
+fn trusted_command_file_metadata(is_file: bool, uid: u32, mode: u32) -> bool {
+    is_file && uid == 0 && mode & 0o022 == 0 && mode & 0o111 != 0
+}
+
+fn trusted_command_parent_metadata(is_dir: bool, uid: u32, mode: u32) -> bool {
+    is_dir && uid == 0 && mode & 0o022 == 0
+}
+
+fn trusted_command_file(metadata: &fs::Metadata) -> bool {
+    trusted_command_file_metadata(metadata.is_file(), metadata.uid(), metadata.mode())
+}
+
+fn trusted_command_parent(metadata: &fs::Metadata) -> bool {
+    trusted_command_parent_metadata(metadata.is_dir(), metadata.uid(), metadata.mode())
+}
+
+fn trusted_fixed_executable_path(path: &Path) -> Option<PathBuf> {
+    if !linux_helper_path_is_clean_absolute(path) {
+        return None;
+    }
+    let candidate_parent = path.parent()?;
+    if !trusted_command_parent(&fs::metadata(candidate_parent).ok()?) {
+        return None;
+    }
+    let canonical = fs::canonicalize(path).ok()?;
+    if !linux_helper_path_is_clean_absolute(&canonical) {
+        return None;
+    }
+    let canonical_parent = canonical.parent()?;
+    if !trusted_command_parent(&fs::metadata(canonical_parent).ok()?) {
+        return None;
+    }
+    if !trusted_command_file(&fs::metadata(&canonical).ok()?) {
+        return None;
+    }
+    Some(canonical)
+}
+
+fn trusted_command_path(paths: &'static [&'static str]) -> Option<PathBuf> {
     paths
         .iter()
-        .copied()
-        .find(|path| trusted_fixed_executable(Path::new(path)))
+        .find_map(|path| trusted_fixed_executable_path(Path::new(path)))
 }
 
-fn sudo_path() -> Option<&'static str> {
+fn sudo_path() -> Option<PathBuf> {
     trusted_command_path(&SUDO_PATHS)
 }
 
-fn env_path() -> Option<&'static str> {
+fn env_path() -> Option<PathBuf> {
     trusted_command_path(&ENV_PATHS)
 }
 
-fn w_path() -> Option<&'static str> {
+fn w_path() -> Option<PathBuf> {
     trusted_command_path(&W_PATHS)
 }
 
-fn xrandr_path() -> Option<&'static str> {
+fn xrandr_path() -> Option<PathBuf> {
     trusted_command_path(&XRANDR_PATHS)
 }
 
-fn xdg_screensaver_path() -> Option<&'static str> {
+fn xdg_screensaver_path() -> Option<PathBuf> {
     trusted_command_path(&XDG_SCREENSAVER_PATHS)
 }
 
-fn systemctl_path() -> Option<&'static str> {
+fn systemctl_path() -> Option<PathBuf> {
     trusted_command_path(&SYSTEMCTL_PATHS)
 }
 
@@ -2595,6 +2633,27 @@ mod service_lifecycle_tests {
                 assert!(path.starts_with("/usr/bin/") || path.starts_with("/bin/"));
             }
         }
+    }
+
+    #[test]
+    fn r_s11c10k_command_resolver_rejects_relative_parent_and_missing_paths() {
+        assert!(trusted_command_path(&["sudo"]).is_none());
+        assert!(trusted_command_path(&["/usr/bin/../bin/sudo"]).is_none());
+        assert!(trusted_command_path(&["/definitely/not/rustdesk/sudo"]).is_none());
+    }
+
+    #[test]
+    fn r_s11c10k_command_metadata_requires_root_unwritable_executable() {
+        assert!(trusted_command_file_metadata(true, 0, 0o755));
+        assert!(!trusted_command_file_metadata(false, 0, 0o755));
+        assert!(!trusted_command_file_metadata(true, 1, 0o755));
+        assert!(!trusted_command_file_metadata(true, 0, 0o775));
+        assert!(!trusted_command_file_metadata(true, 0, 0o644));
+
+        assert!(trusted_command_parent_metadata(true, 0, 0o755));
+        assert!(!trusted_command_parent_metadata(false, 0, 0o755));
+        assert!(!trusted_command_parent_metadata(true, 1, 0o755));
+        assert!(!trusted_command_parent_metadata(true, 0, 0o775));
     }
 
     #[test]

@@ -2443,18 +2443,29 @@ if [ -n "$r_s11c10i" ]; then echo "  FAIL R-S11c-10i Linux service lifecycle sys
   echo "  ok  R-S11c-10i Linux service lifecycle uses fixed systemctl paths, argv-only start/stop/enable/disable, and no user-config import into root service state"; fi
 
 echo "== (3b-iii-h9b) Linux privileged helper command provenance is fixed-path (R-S11c-10k) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config platform::linux::service_lifecycle_tests::r_s11c10k --color never
 r_s11c10k=
 grep -q 'const SUDO_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-sudo-paths"
 grep -q 'const ENV_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-env-paths"
 grep -q 'const W_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-w-paths"
 grep -q 'const XDG_SCREENSAVER_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-xdg-screensaver-paths"
 grep -q 'fn trusted_command_path' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-trusted-command-resolver"
+grep -q 'fn trusted_fixed_executable_path(path: &Path) -> Option<PathBuf>' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-canonical-trusted-command-resolver"
+grep -q 'fn linux_helper_path_is_clean_absolute(path: &Path) -> bool' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-clean-absolute-path-policy"
+grep -q 'fs::canonicalize(path)' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-helper-canonicalization"
+grep -q 'trusted_command_parent(&fs::metadata(candidate_parent).ok()?)' src/platform/linux.rs || r_s11c10k="$r_s11c10k candidate-parent-not-trusted"
+grep -q 'trusted_command_parent(&fs::metadata(canonical_parent).ok()?)' src/platform/linux.rs || r_s11c10k="$r_s11c10k canonical-parent-not-trusted"
+grep -q 'trusted_command_file(&fs::metadata(&canonical).ok()?)' src/platform/linux.rs || r_s11c10k="$r_s11c10k canonical-file-not-trusted"
+grep -q 'mode & 0o111 != 0' src/platform/linux.rs || r_s11c10k="$r_s11c10k helper-executable-bit-not-required"
+grep -q 'find_map(|path| trusted_fixed_executable_path(Path::new(path)))' src/platform/linux.rs || r_s11c10k="$r_s11c10k resolver-not-returning-canonical-path"
 grep -q 'fn sudo_path() -> Option' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-sudo-resolver"
 grep -q 'fn valid_sudo_envs' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-sudo-env-validator"
-grep -q 'Command::new(sudo_path)' src/platform/linux.rs || r_s11c10k="$r_s11c10k sudo-not-fixed-path"
+grep -q 'Command::new(&sudo_path)' src/platform/linux.rs || r_s11c10k="$r_s11c10k sudo-not-canonical-path"
 grep -q 'Command::new(w).arg(user).output()' src/platform/linux.rs || r_s11c10k="$r_s11c10k w-not-fixed-path"
 grep -q 'display_from_x11_socket_dir_for_user(user, Path::new("/tmp/.X11-unix"))' src/platform/linux.rs || r_s11c10k="$r_s11c10k x11-socket-fallback-not-native"
 grep -q 'current_exe_process_cmdlines()' src/platform/linux.rs || r_s11c10k="$r_s11c10k cm-detection-not-proc-backed"
+grep -Fq 'Linux helper canonical target provenance' requirements.html || r_s11c10k="$r_s11c10k canonical-helper-requirements-missing"
+grep -Fq 'R-S11e-3 — Linux helper canonical target provenance' HARDENING_STATUS.md || r_s11c10k="$r_s11c10k canonical-helper-ledger-missing"
 if grep -RInE 'Command::new\("(sudo|ps|w|ls|xrandr|xdg-screensaver)"\)|Command::new\(CMD_(PS|SH)\.as_str\(\)\)|Command::new\("which"\)' src/platform/linux.rs >/tmp/rd_verify_r_s11c10k.$$; then
   cat /tmp/rd_verify_r_s11c10k.$$
   rm -f /tmp/rd_verify_r_s11c10k.$$
@@ -2470,10 +2481,17 @@ echo "== (3b-iii-h9c) Linux shared helper command provenance has no shell/path f
 r_s11c10m=
 grep -q 'const LOGINCTL_PATHS' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m no-fixed-loginctl-paths"
 grep -q 'const NOTIFY_SEND_PATHS' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m no-fixed-notify-send-paths"
-grep -q 'fn trusted_fixed_executable(path: &Path) -> bool' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m no-shared-trusted-exec-check"
+grep -q 'fn trusted_fixed_executable_path(path: &Path) -> Option<PathBuf>' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m no-shared-canonical-trusted-exec-check"
+grep -q 'fn linux_helper_path_is_clean_absolute(path: &Path) -> bool' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-no-clean-absolute-policy"
 grep -q 'path.is_absolute()' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-allows-relative"
-grep -q 'metadata.uid() == 0' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-not-root-owned"
-grep -q 'metadata.mode() & 0o022 == 0' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-allows-writable"
+grep -q 'std::fs::canonicalize(path)' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-no-canonicalization"
+grep -q 'trusted_command_parent(&std::fs::metadata(candidate_parent).ok()?)' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-candidate-parent-not-trusted"
+grep -q 'trusted_command_parent(&std::fs::metadata(canonical_parent).ok()?)' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-canonical-parent-not-trusted"
+grep -q 'trusted_command_file(&std::fs::metadata(&canonical).ok()?)' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-canonical-file-not-trusted"
+grep -q 'uid == 0' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-not-root-owned"
+grep -q 'mode & 0o022 == 0' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-allows-writable"
+grep -q 'mode & 0o111 != 0' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-executable-bit-not-required"
+grep -q 'find_map(|path| trusted_fixed_executable_path(Path::new(path)))' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-resolver-not-returning-canonical-path"
 grep -q 'Command::new(loginctl)' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m loginctl-not-fixed-path-argv"
 grep -q 'fn spawn_message_command' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m system-message-not-fixed-path-helper"
 grep -q 'pub const REOPEN_AFTER_SERVICE_STOP_ARG' src/platform/linux.rs || r_s11c10m="$r_s11c10m no-delayed-reopen-argv-mode"

@@ -2,7 +2,7 @@ use crate::ResultType;
 use std::{
     io,
     os::unix::fs::MetadataExt,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     process::Command,
 };
 use users::{get_current_uid, get_user_by_uid, os::unix::UserExt};
@@ -100,21 +100,55 @@ fn unescape_os_release_quoted_value(value: &str) -> String {
     out
 }
 
-fn trusted_fixed_executable(path: &Path) -> bool {
-    if !path.is_absolute() {
-        return false;
-    }
-    let Ok(metadata) = std::fs::metadata(path) else {
-        return false;
-    };
-    metadata.is_file() && metadata.uid() == 0 && metadata.mode() & 0o022 == 0
+fn linux_helper_path_is_clean_absolute(path: &Path) -> bool {
+    path.is_absolute()
+        && path
+            .components()
+            .all(|component| matches!(component, Component::RootDir | Component::Normal(_)))
 }
 
-fn trusted_command_path(paths: &'static [&'static str]) -> Option<&'static str> {
+fn trusted_command_file_metadata(is_file: bool, uid: u32, mode: u32) -> bool {
+    is_file && uid == 0 && mode & 0o022 == 0 && mode & 0o111 != 0
+}
+
+fn trusted_command_parent_metadata(is_dir: bool, uid: u32, mode: u32) -> bool {
+    is_dir && uid == 0 && mode & 0o022 == 0
+}
+
+fn trusted_command_file(metadata: &std::fs::Metadata) -> bool {
+    trusted_command_file_metadata(metadata.is_file(), metadata.uid(), metadata.mode())
+}
+
+fn trusted_command_parent(metadata: &std::fs::Metadata) -> bool {
+    trusted_command_parent_metadata(metadata.is_dir(), metadata.uid(), metadata.mode())
+}
+
+fn trusted_fixed_executable_path(path: &Path) -> Option<PathBuf> {
+    if !linux_helper_path_is_clean_absolute(path) {
+        return None;
+    }
+    let candidate_parent = path.parent()?;
+    if !trusted_command_parent(&std::fs::metadata(candidate_parent).ok()?) {
+        return None;
+    }
+    let canonical = std::fs::canonicalize(path).ok()?;
+    if !linux_helper_path_is_clean_absolute(&canonical) {
+        return None;
+    }
+    let canonical_parent = canonical.parent()?;
+    if !trusted_command_parent(&std::fs::metadata(canonical_parent).ok()?) {
+        return None;
+    }
+    if !trusted_command_file(&std::fs::metadata(&canonical).ok()?) {
+        return None;
+    }
+    Some(canonical)
+}
+
+fn trusted_command_path(paths: &'static [&'static str]) -> Option<PathBuf> {
     paths
         .iter()
-        .copied()
-        .find(|path| trusted_fixed_executable(Path::new(path)))
+        .find_map(|path| trusted_fixed_executable_path(Path::new(path)))
 }
 
 // Deprecated. Use `hbb_common::platform::linux::is_kde_session()` instead for now.
@@ -532,10 +566,25 @@ mod tests {
     #[test]
     fn r_s11c10m_command_resolver_rejects_relative_and_missing_paths() {
         assert_eq!(trusted_command_path(&["loginctl"]), None);
+        assert_eq!(trusted_command_path(&["/usr/bin/../bin/loginctl"]), None);
         assert_eq!(
             trusted_command_path(&["/definitely/not/rustdesk/loginctl"]),
             None
         );
+    }
+
+    #[test]
+    fn r_s11c10m_command_metadata_requires_root_unwritable_executable() {
+        assert!(trusted_command_file_metadata(true, 0, 0o755));
+        assert!(!trusted_command_file_metadata(false, 0, 0o755));
+        assert!(!trusted_command_file_metadata(true, 1, 0o755));
+        assert!(!trusted_command_file_metadata(true, 0, 0o775));
+        assert!(!trusted_command_file_metadata(true, 0, 0o644));
+
+        assert!(trusted_command_parent_metadata(true, 0, 0o755));
+        assert!(!trusted_command_parent_metadata(false, 0, 0o755));
+        assert!(!trusted_command_parent_metadata(true, 1, 0o755));
+        assert!(!trusted_command_parent_metadata(true, 0, 0o775));
     }
 
     #[test]

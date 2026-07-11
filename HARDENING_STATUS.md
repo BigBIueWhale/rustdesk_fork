@@ -1362,6 +1362,19 @@ unreachable and a source/test/AST gate prevents reintroduction.
   requirement. There is no unauthenticated compatibility fallback. Verification closure: `scripts/verify.sh` and
   `scripts/apple-conform-check.sh` require the client-side helper proof, root uid gate, peer executable proof,
   connect-path wiring, and requirements/ledger disposition.
+- **R-S11e-3 — Linux helper canonical target provenance — CLOSED 2026-07-11.**
+  Platform: Linux `.deb` installed-service mode and shared Linux helper paths when invoked by privileged processes.
+  Endpoint/action: fixed helper launches such as the root-to-user `sudo`/`env` server launch, `w`/`xrandr`/
+  `xdg-screensaver`/`systemctl` app-side helpers, and shared `loginctl`/notification helpers. Boundary: privileged
+  RustDesk process execution authority ↔ local filesystem helper resolution. Attack surface closed: fixed helper
+  resolution no longer verifies metadata through one path and executes the original candidate string. Resolvers reject
+  relative and parent-traversal candidates, require the candidate parent directory to be root-owned and not
+  group/world-writable, canonicalize the helper, require the canonical path and canonical parent to remain clean
+  absolute trusted state, require the canonical executable to be a root-owned regular executable with no group/world
+  write bits, and return the canonical `PathBuf` that is passed to `Command::new`. This closes the symlink-chain
+  target-swap class for privileged helper launches without changing helper command semantics. Verification closure:
+  `scripts/verify.sh` runs app-side and shared helper resolver tests and requires canonicalization, candidate/canonical
+  parent trust, executable-bit checks, canonical return wiring, and requirements/ledger disposition.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows
@@ -1455,8 +1468,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `.deb` maintainer scripts to source before hashing artifacts, and the unit/supervisor stop path is
   cgroup/SIGTERM-first with a bounded forced-stop backstop. R-S11c-10k closes Linux root/service helper command provenance:
   the root-to-user `sudo` transition, `env` fallback, `w`, `xrandr`, `xdg-screensaver`, and `systemctl`
-  resolve only trusted fixed `/usr/bin`/`/bin` candidates that are root-owned and not
-  group/world-writable; `--cm` detection is `/proc`/current-exe/argv-backed instead of `ps`; and the X11
+  resolve only trusted fixed `/usr/bin`/`/bin` candidates and now execute the trusted canonical target after
+  candidate-parent, canonical-parent, root-owned, non-writable, and executable-bit checks; `--cm` detection is
+  `/proc`/current-exe/argv-backed instead of `ps`; and the X11
   socket fallback reads `/tmp/.X11-unix` socket metadata plus passwd ownership instead of parsing `ls`.
   R-S11c-10l closes the Linux `--server` tray cleanup: `src/core_main.rs` no longer launches PATH-selected
   `pkill -f`; it calls `platform::stop_tray_processes()`, which selects only current-executable processes
@@ -1464,7 +1478,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   R-S11c-10m closes the shared Linux helper command-provenance residue in
   `libs/hbb_common/src/platform/linux.rs` plus the delayed service-reopen path: shared `loginctl` and
   crash-notification helpers no longer use `which`, bare command names, or Flatpak host spawning; they select
-  fixed absolute candidates only when the target executable is root-owned and not group/world-writable.
+  fixed absolute candidates only when the candidate parent, canonical parent, and canonical executable are trusted,
+  and they execute the returned canonical path.
   The unused public `run_cmds`/`run_cmds_trim_newline` shell API and `shell_quote` helper are deleted.
   Linux service uninstall no longer sequences delayed reopen through `sh -c "sleep ...; exec ..."`; it spawns
   the current executable in an internal argv-only `--reopen-after-service-stop <seconds>` mode, whose receiver
@@ -2575,14 +2590,15 @@ second normative closure in this area: R-S16's read funnel now explicitly includ
 (`Config::get_options` / UI cache / CLI `--option` / IPC `Data::Options(None)`), with pinned policy
 overlaid last. The 2026-07-11 macOS service-owned-password hardening added parsed
 LaunchAgent plist command-shape proof to the R-S11b-2e/R-S11c-1f requirement and R-S11e-2
-client-side `_service` server authentication. The other
+client-side `_service` server authentication; the Linux helper-provenance follow-up added R-S11e-3 canonical
+target binding for fixed helper launches. The other
 requirements.html edits are disclosure/inventory updates, and the
 native-codec-watch ledger is re-confirmed valid against each.
 The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-6fa5c5fef76e9b5cb85f6b6826f28a220e175070f7f2bdd01b0b7f663d428fdd  requirements.html
+3162b7bbe68ada369f557d215e0c5315e1025d10f3669cd81110de3f601cbee7  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

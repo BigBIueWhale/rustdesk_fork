@@ -1521,6 +1521,16 @@ grep -Fq 'metadata.file_type().is_symlink()' src/ipc/auth.rs                    
 grep -Fq 'macos_root_wheel_not_group_world_writable(&metadata)' src/ipc/auth.rs  || r_s11b2="$r_s11b2 macos-service-ipc-helper-root-wheel-mode-missing"
 grep -Fq 'macos_root_owned_not_group_world_writable(&metadata)' src/ipc/auth.rs  || r_s11b2="$r_s11b2 macos-service-ipc-app-root-owned-mode-missing"
 grep -Fq 'fn macos_path_has_no_extended_acl(path: &Path) -> bool' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-check-missing"
+grep -Fq 'acl_get_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-not-native"
+grep -Fq 'acl_valid_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED, acl)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-not-validated"
+grep -Fq 'acl_get_entry(acl, MACOS_ACL_FIRST_ENTRY, &mut entry)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-entry-check-missing"
+grep -Fq 'MacosAclGuard' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-free-guard-missing"
+if grep -Fq 'Command::new(MACOS_LS)' src/ipc/auth.rs \
+  || grep -Fq 'const MACOS_LS' src/ipc/auth.rs \
+  || grep -Fq 'Command::new("/bin/ls")' src/platform/macos.rs src/ipc.rs src/ipc/auth.rs \
+  || grep -Fq 'Command::new("ls")' src/platform/macos.rs src/ipc.rs src/ipc/auth.rs; then
+  r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-ls-parser-present"
+fi
 grep -Fq 'macos_privileged_helper_satisfies_code_requirement(expected)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-helper-code-requirement-missing"
 grep -Fq 'macos_installed_app_satisfies_code_requirement(&app_bundle)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-app-code-requirement-missing"
 grep -Fq 'macos_service_ipc_allows_installed_app_and_privileged_helper' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-installed-helper-pair-missing"
@@ -1931,7 +1941,6 @@ grep -Fq 'const MACOS_PRIVILEGED_HELPER_EXEC: &str =' src/ipc/auth.rs || r_s11c5
 grep -Fq '/Library/PrivilegedHelperTools/com.carriez.rustdesk_service' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-path-missing"
 grep -Fq 'const MACOS_PRIVILEGED_HELPER_DIR: &str = "/Library/PrivilegedHelperTools";' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-dir-const-missing"
 grep -Fq 'const MACOS_CODESIGN: &str = "/usr/bin/codesign";' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-codesign-absolute-missing"
-grep -Fq 'const MACOS_LS: &str = "/bin/ls";' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-ls-absolute-missing"
 grep -Fq 'const MACOS_PRIVILEGED_HELPER_REQUIREMENT: &str =' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-code-requirement-const-missing"
 grep -Fq 'certificate leaf[subject.OU] = "HZF9JMC8YN"' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-teamid-requirement-missing"
 grep -Fq 'identifier "service" or identifier "com.carriez.rustdesk_service"' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-identifier-requirement-missing"
@@ -1941,11 +1950,23 @@ grep -Fq 'fn macos_installed_app_bundle_path() -> PathBuf' src/ipc/auth.rs || r_
 grep -Fq 'fn macos_privileged_helper_is_expected_and_trusted(current_exe: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-trust-missing"
 grep -Fq 'fn macos_installed_app_is_expected_and_trusted(peer_exe: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-app-trust-missing"
 grep -Fq 'fn macos_path_has_no_extended_acl(path: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-acl-check-missing"
+grep -Fq 'CString::new(path.as_os_str().as_bytes().to_vec())' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-acl-cstring-missing"
+grep -Fq 'acl_get_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-acl-get-link-missing"
+grep -Fq 'acl_valid_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED, acl)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-acl-valid-link-missing"
+grep -Fq 'acl_get_entry(acl, MACOS_ACL_FIRST_ENTRY, &mut entry)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-acl-entry-missing"
+grep -Fq 'acl_free(self.0)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-acl-free-missing"
+grep -Fq 'macOS runtime service ACL inspection provenance' requirements.html || r_s11c5="$r_s11c5 macos-runtime-acl-requirements-missing"
+grep -Fq 'R-S11c-17 — macOS runtime service ACL inspection provenance' HARDENING_STATUS.md || r_s11c5="$r_s11c5 macos-runtime-acl-ledger-missing"
 grep -Fq 'fn macos_path_has_expected_type_and_permissions(' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-mode-check-helper-missing"
 grep -Fq 'fn macos_privileged_helper_satisfies_code_requirement(path: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-codesign-check-missing"
 grep -Fq 'fn macos_installed_app_satisfies_code_requirement(path: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-app-codesign-check-missing"
 grep -Fq 'Command::new(MACOS_CODESIGN)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-codesign-not-absolute"
-grep -Fq 'Command::new(MACOS_LS)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-acl-check-not-absolute"
+if grep -Fq 'Command::new(MACOS_LS)' src/ipc/auth.rs \
+  || grep -Fq 'const MACOS_LS' src/ipc/auth.rs \
+  || grep -Fq 'Command::new("/bin/ls")' "${macos_helper_command_sources[@]}" \
+  || grep -Fq 'Command::new("ls")' "${macos_helper_command_sources[@]}"; then
+  r_s11c5="$r_s11c5 macos-runtime-acl-ls-parser-present"
+fi
 grep -Fq 'MACOS_PRIVILEGED_HELPER_REQUIREMENT' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-requirement-not-used"
 grep -Fq 'MACOS_INSTALLED_APP_REQUIREMENT' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-app-requirement-not-used"
 grep -Fq 'fs::symlink_metadata(path)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-symlink-metadata-missing"

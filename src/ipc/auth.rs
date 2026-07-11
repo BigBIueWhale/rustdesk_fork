@@ -8,8 +8,12 @@ use hbb_common::{
 };
 #[cfg(target_os = "linux")]
 use serde_derive::{Deserialize, Serialize};
+#[cfg(target_os = "macos")]
+use std::ffi::{c_void, CString};
 #[cfg(target_os = "linux")]
 use std::fmt;
+#[cfg(target_os = "macos")]
+use std::os::unix::ffi::OsStrExt;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::fs::MetadataExt;
 #[cfg(target_os = "macos")]
@@ -74,16 +78,50 @@ const MACOS_PRIVILEGED_HELPER_DIR: &str = "/Library/PrivilegedHelperTools";
 #[cfg(target_os = "macos")]
 const MACOS_CODESIGN: &str = "/usr/bin/codesign";
 #[cfg(target_os = "macos")]
-const MACOS_LS: &str = "/bin/ls";
-#[cfg(target_os = "macos")]
 const MACOS_PRIVILEGED_HELPER_REQUIREMENT: &str = r#"=anchor apple generic and certificate leaf[subject.OU] = "HZF9JMC8YN" and (identifier "service" or identifier "com.carriez.rustdesk_service")"#;
 #[cfg(target_os = "macos")]
 const MACOS_INSTALLED_APP_REQUIREMENT: &str = r#"=anchor apple generic and certificate leaf[subject.OU] = "HZF9JMC8YN" and identifier "com.carriez.rustdesk""#;
+#[cfg(target_os = "macos")]
+type MacosAcl = *mut c_void;
+#[cfg(target_os = "macos")]
+type MacosAclEntry = *mut c_void;
+#[cfg(target_os = "macos")]
+const MACOS_ACL_TYPE_EXTENDED: libc::c_int = 0x0000_0100;
+#[cfg(target_os = "macos")]
+const MACOS_ACL_FIRST_ENTRY: libc::c_int = 0;
+
+#[cfg(target_os = "macos")]
+extern "C" {
+    fn acl_get_link_np(path_p: *const libc::c_char, acl_type: libc::c_int) -> MacosAcl;
+    fn acl_get_entry(
+        acl: MacosAcl,
+        entry_id: libc::c_int,
+        entry_p: *mut MacosAclEntry,
+    ) -> libc::c_int;
+    fn acl_valid_link_np(
+        path_p: *const libc::c_char,
+        acl_type: libc::c_int,
+        acl: MacosAcl,
+    ) -> libc::c_int;
+    fn acl_free(obj_p: *mut c_void) -> libc::c_int;
+}
 
 #[cfg(windows)]
 struct WindowsIpcDaclSids {
     server_sids: Vec<String>,
     client_sids: Vec<String>,
+}
+
+#[cfg(target_os = "macos")]
+struct MacosAclGuard(MacosAcl);
+
+#[cfg(target_os = "macos")]
+impl Drop for MacosAclGuard {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = acl_free(self.0);
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -396,32 +434,38 @@ fn macos_root_owned_not_group_world_writable(metadata: &fs::Metadata) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn macos_path_has_no_extended_acl(path: &Path) -> bool {
-    match Command::new(MACOS_LS).arg("-lde").arg(path).output() {
-        Ok(output) if output.status.success() => {
-            output
-                .stdout
-                .split(|byte| *byte == b'\n')
-                .filter(|line| !line.is_empty())
-                .count()
-                == 1
-        }
-        Ok(output) => {
-            log::error!(
-                "macOS ACL inspection failed for '{}' with status {}",
-                path.display(),
-                output.status
-            );
-            false
-        }
+pub(crate) fn macos_path_has_no_extended_acl(path: &Path) -> bool {
+    let path_c = match CString::new(path.as_os_str().as_bytes().to_vec()) {
+        Ok(path_c) => path_c,
         Err(err) => {
             log::error!(
-                "Failed to inspect macOS ACLs for '{}': {err}",
-                path.display()
+                "Rejected macOS ACL inspection for path containing NUL '{}': {}",
+                path.display(),
+                err
             );
-            false
+            return false;
         }
+    };
+    let acl = unsafe { acl_get_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED) };
+    if acl.is_null() {
+        log::error!(
+            "Failed to retrieve macOS extended ACL for '{}': {}",
+            path.display(),
+            std::io::Error::last_os_error()
+        );
+        return false;
     }
+    let _acl_guard = MacosAclGuard(acl);
+    if unsafe { acl_valid_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED, acl) } != 0 {
+        log::error!(
+            "Rejected invalid macOS extended ACL for '{}': {}",
+            path.display(),
+            std::io::Error::last_os_error()
+        );
+        return false;
+    }
+    let mut entry: MacosAclEntry = std::ptr::null_mut();
+    (unsafe { acl_get_entry(acl, MACOS_ACL_FIRST_ENTRY, &mut entry) }) != 0
 }
 
 #[cfg(target_os = "macos")]

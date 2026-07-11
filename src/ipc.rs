@@ -91,8 +91,6 @@ use std::{
 const MACOS_OPEN: &str = "/usr/bin/open";
 #[cfg(target_os = "macos")]
 const MACOS_LAUNCHCTL: &str = "/bin/launchctl";
-#[cfg(target_os = "macos")]
-const MACOS_LS: &str = "/bin/ls";
 
 #[cfg(windows)]
 use std::{
@@ -1907,39 +1905,6 @@ fn macos_service_owned_server_launch_agent_plist() -> String {
 }
 
 #[cfg(target_os = "macos")]
-fn macos_path_has_no_extended_acl(path: &std::path::Path) -> bool {
-    match std::process::Command::new(MACOS_LS)
-        .arg("-lde")
-        .arg(path)
-        .output()
-    {
-        Ok(output) if output.status.success() => {
-            output
-                .stdout
-                .split(|byte| *byte == b'\n')
-                .filter(|line| !line.is_empty())
-                .count()
-                == 1
-        }
-        Ok(output) => {
-            log::error!(
-                "macOS ACL inspection failed for '{}' with status {}",
-                path.display(),
-                output.status
-            );
-            false
-        }
-        Err(err) => {
-            log::error!(
-                "Failed to inspect macOS ACLs for '{}': {err}",
-                path.display()
-            );
-            false
-        }
-    }
-}
-
-#[cfg(target_os = "macos")]
 enum MacosTrustedPathKind {
     File,
     Directory,
@@ -1964,7 +1929,7 @@ fn macos_root_wheel_path_is_trusted(
         && metadata.uid() == 0
         && metadata.gid() == 0
         && metadata.permissions().mode() & 0o022 == 0
-        && macos_path_has_no_extended_acl(path)
+        && ipc_auth::macos_path_has_no_extended_acl(path)
 }
 
 #[cfg(target_os = "macos")]

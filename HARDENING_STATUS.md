@@ -556,6 +556,22 @@ unreachable and a source/test/AST gate prevents reintroduction.
   root-owned directory setup, quoted plist writes, quoted privileged plist paths, trusted signed-app plus
   PrivilegedHelperTools `_service` IPC identity, absence of the old same-directory `service` binary exception,
   absolute local helper tool paths, and the `/dev/console`/`getpwuid_r` active-user lookup.
+- **R-S11c-17 — macOS runtime service ACL inspection provenance — CLOSED 2026-07-11.**
+  Platform: macOS runtime service IPC and service-owned LaunchAgent credential snapshot proof. Surfaces:
+  `src/ipc/auth.rs` installed-app/helper trust checks and `src/ipc.rs` LaunchAgent plist trust checks. Boundary:
+  root/helper-side runtime trust decision ↔ local filesystem ACL state. Attack surface closed: the Rust runtime
+  path no longer spawns `/bin/ls -lde` or parses `ls` output to decide whether a root-owned service path has
+  extended ACL entries. This was not a confirmed command-injection primitive because the old command path was
+  absolute and the checked path was argv-passed, but root-side authorization must not depend on a formatter
+  subprocess for authority-bearing ACL state. Closure: `macos_path_has_no_extended_acl` is a single shared
+  `ipc_auth` helper that builds a checked C path, retrieves the exact no-follow extended ACL with
+  `acl_get_link_np(..., ACL_TYPE_EXTENDED)`, validates the ACL with `acl_valid_link_np`, rejects any first entry
+  returned by `acl_get_entry`, frees the ACL through a drop guard, and fails closed on NUL paths, ACL retrieval
+  failure, or validation failure. `src/ipc.rs` now calls that shared helper for LaunchAgent plist parent/file
+  trust instead of carrying a second parser. Verification closure: `scripts/verify.sh` and
+  `scripts/apple-conform-check.sh` assert the native ACL API shape, the shared free guard, and absence of
+  `MACOS_LS` / `Command::new(MACOS_LS)` from the Rust runtime trust path. The privileged installer script ACL
+  checks remain part of the separate `install.scpt` shell-based installation surface tracked under R-S11c-5.
 - **R-S11c-16 — Desktop service lifecycle completion authority — CLOSED 2026-07-10.**
   Platforms: Linux and macOS desktop service wrappers, plus the shared desktop service CLI dispatcher. Surfaces:
   `core_main` `--install-service` / `--uninstall-service`, Linux `systemctl` service lifecycle helpers, macOS

@@ -755,6 +755,24 @@ grep -q 'R-S11d-4 — Windows MSI runtime-generated executable cleanup completio
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else
   echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; post-elevated relaunch is bound to the fixed installed executable; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path; MSI cleanup observes Amyuni and runtime-generated executable completion; portable installer source staging is elevated/protected/manifest-cleaned; unsupported 32-bit WMIC process probes are absent"; fi
 
+echo "== (3b-iii-a5a1) Unix terminal default shell uses trusted absolute executable paths (R-S11c-20) =="
+r_s11c20=
+unix_terminal_shell_block=$(awk '/fn get_default_shell\(\) -> Result<String>/,/^#\[cfg\(target_os = "macos"\)\]/' src/server/terminal_service.rs)
+grep -Fq 'fn trusted_unix_terminal_shell_path(path: &Path) -> Option<PathBuf>' src/server/terminal_service.rs || r_s11c20="$r_s11c20 trusted-resolver-missing"
+grep -Fq 'const UNIX_TERMINAL_SHELLS' src/server/terminal_service.rs || r_s11c20="$r_s11c20 candidate-set-missing"
+grep -Fq 'metadata.uid() == 0' src/server/terminal_service.rs || r_s11c20="$r_s11c20 not-root-owned-gated"
+grep -Fq 'metadata.mode() & 0o022 == 0' src/server/terminal_service.rs || r_s11c20="$r_s11c20 writable-mode-not-gated"
+grep -Fq 'metadata.mode() & 0o111 != 0' src/server/terminal_service.rs || r_s11c20="$r_s11c20 executable-mode-not-gated"
+grep -Fq 'trusted_unix_terminal_shell_rejects_relative_and_parent_paths' src/server/terminal_service.rs || r_s11c20="$r_s11c20 bad-path-test-missing"
+grep -Fq 'trusted_unix_terminal_shell_returns_absolute_candidate_when_available' src/server/terminal_service.rs || r_s11c20="$r_s11c20 candidate-test-missing"
+if echo "$unix_terminal_shell_block" | grep -qE 'std::env::var\("SHELL"\)|Ok\("/bin/sh"\.to_string\(\)\)|return Ok\(shell\)|CommandBuilder::new\("(sh|bash|zsh)"\)'; then
+  r_s11c20="$r_s11c20 ambient-or-bare-shell-fallback"
+fi
+grep -q 'Unix terminal default-shell command provenance' requirements.html || r_s11c20="$r_s11c20 requirements-disposition-missing"
+grep -q 'R-S11c-20 — Unix terminal default-shell command provenance' HARDENING_STATUS.md || r_s11c20="$r_s11c20 hardening-ledger-missing"
+if [ -n "$r_s11c20" ]; then echo "  FAIL R-S11c-20 Unix terminal shell command provenance:$r_s11c20"; rc=1; else
+  echo "  ok  R-S11c-20 Unix terminal shell selection uses trusted absolute root-owned candidates and no SHELL/PATH fallback"; fi
+
 echo "== (3b-iii-a5d2) Windows service/session token launch binds executable identity (R-S11d-13) =="
 r_s11d13=
 grep -Fq 'HANDLE LaunchProcessWin(LPCWSTR application, LPCWSTR cmd' src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-signature-not-explicit-application"

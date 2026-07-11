@@ -17,6 +17,13 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(not(target_os = "windows"))]
+use std::{
+    fs,
+    os::unix::fs::MetadataExt,
+    path::{Component, Path},
+};
+
 // Windows-specific imports from terminal_helper module
 #[cfg(target_os = "windows")]
 use super::terminal_helper::{
@@ -36,6 +43,24 @@ const COMPRESS_THRESHOLD: usize = 512; // Compress terminal data larger than thi
                                        // Default max bytes for reconnection buffer replay.
 const DEFAULT_RECONNECT_BUFFER_BYTES: usize = 8 * 1024;
 const MAX_SIGWINCH_PHASE_ATTEMPTS: u8 = 3; // Max attempts per SIGWINCH phase before giving up
+
+#[cfg(target_os = "android")]
+const UNIX_TERMINAL_SHELLS: [&str; 1] = ["/system/bin/sh"];
+#[cfg(target_os = "macos")]
+const UNIX_TERMINAL_SHELLS: [&str; 3] = ["/bin/zsh", "/bin/bash", "/bin/sh"];
+#[cfg(all(
+    not(target_os = "android"),
+    not(target_os = "macos"),
+    not(target_os = "windows")
+))]
+const UNIX_TERMINAL_SHELLS: [&str; 6] = [
+    "/bin/bash",
+    "/usr/bin/bash",
+    "/bin/zsh",
+    "/usr/bin/zsh",
+    "/bin/sh",
+    "/usr/bin/sh",
+];
 
 /// Two-phase SIGWINCH trigger for TUI app redraw on reconnection.
 ///
@@ -106,6 +131,58 @@ pub fn generate_service_id() -> String {
     format!("ts_{}", uuid::Uuid::new_v4())
 }
 
+#[cfg(not(target_os = "windows"))]
+fn unix_path_is_clean_absolute(path: &Path) -> bool {
+    path.is_absolute()
+        && path
+            .components()
+            .all(|component| matches!(component, Component::RootDir | Component::Normal(_)))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn trusted_unix_shell_file(metadata: &fs::Metadata) -> bool {
+    metadata.is_file()
+        && metadata.uid() == 0
+        && metadata.mode() & 0o022 == 0
+        && metadata.mode() & 0o111 != 0
+}
+
+#[cfg(not(target_os = "windows"))]
+fn trusted_unix_shell_parent(metadata: &fs::Metadata) -> bool {
+    metadata.is_dir() && metadata.uid() == 0 && metadata.mode() & 0o022 == 0
+}
+
+#[cfg(not(target_os = "windows"))]
+fn trusted_unix_terminal_shell_path(path: &Path) -> Option<PathBuf> {
+    if !unix_path_is_clean_absolute(path) {
+        return None;
+    }
+    let candidate_parent = path.parent()?;
+    if !trusted_unix_shell_parent(&fs::metadata(candidate_parent).ok()?) {
+        return None;
+    }
+    let canonical = fs::canonicalize(path).ok()?;
+    if !unix_path_is_clean_absolute(&canonical) {
+        return None;
+    }
+    let canonical_parent = canonical.parent()?;
+    if !trusted_unix_shell_parent(&fs::metadata(canonical_parent).ok()?) {
+        return None;
+    }
+    if !trusted_unix_shell_file(&fs::metadata(&canonical).ok()?) {
+        return None;
+    }
+    Some(canonical)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn unix_shell_path_string(path: PathBuf) -> Result<String> {
+    let display = path.display().to_string();
+    path.into_os_string()
+        .into_string()
+        .map_err(|_| anyhow!("trusted Unix terminal shell path is not valid UTF-8: {display}"))
+}
+
 fn get_default_shell() -> Result<String> {
     #[cfg(target_os = "windows")]
     {
@@ -114,23 +191,14 @@ fn get_default_shell() -> Result<String> {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        // First try the SHELL environment variable
-        if let Ok(shell) = std::env::var("SHELL") {
-            if !shell.is_empty() {
-                return Ok(shell);
+        for candidate in UNIX_TERMINAL_SHELLS {
+            let path = Path::new(candidate);
+            if let Some(shell) = trusted_unix_terminal_shell_path(path) {
+                log::debug!("Found trusted Unix terminal shell: {}", shell.display());
+                return unix_shell_path_string(shell);
             }
         }
-
-        // Check for common shells in order of preference
-        let shells = ["/bin/bash", "/bin/zsh", "/bin/sh"];
-        for shell in &shells {
-            if std::path::Path::new(shell).exists() {
-                return Ok(shell.to_string());
-            }
-        }
-
-        // Final fallback to /bin/sh which should exist on all POSIX systems
-        Ok("/bin/sh".to_string())
+        Err(anyhow!("no trusted Unix terminal shell found"))
     }
 }
 
@@ -2056,6 +2124,42 @@ impl TerminalServiceProxy {
 #[cfg(test)]
 mod tests {
     use super::{find_utf8_split_point, OutputBuffer, Utf8ChunkAccumulator, MAX_BUFFER_LINES};
+    #[cfg(not(target_os = "windows"))]
+    use super::{
+        trusted_unix_terminal_shell_path, unix_path_is_clean_absolute, UNIX_TERMINAL_SHELLS,
+    };
+    #[cfg(not(target_os = "windows"))]
+    use std::path::Path;
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn unix_terminal_shell_candidates_are_clean_absolute_paths() {
+        for candidate in UNIX_TERMINAL_SHELLS {
+            assert!(unix_path_is_clean_absolute(Path::new(candidate)));
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn trusted_unix_terminal_shell_rejects_relative_and_parent_paths() {
+        assert!(trusted_unix_terminal_shell_path(Path::new("sh")).is_none());
+        assert!(trusted_unix_terminal_shell_path(Path::new("/bin/../bin/sh")).is_none());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn trusted_unix_terminal_shell_returns_absolute_candidate_when_available() {
+        let mut found = false;
+        for candidate in UNIX_TERMINAL_SHELLS {
+            if let Some(shell) = trusted_unix_terminal_shell_path(Path::new(candidate)) {
+                assert!(shell.is_absolute());
+                assert!(unix_path_is_clean_absolute(&shell));
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "expected one trusted Unix terminal shell candidate");
+    }
 
     #[test]
     fn utf8_split_point_returns_full_len_for_complete_input() {

@@ -601,6 +601,22 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `ProgramArguments`; both source gates require the exact live argv helper, its snapshot-peer wiring, the
   exact-length check, the wrong-marker test, the extra-argument tests, and absence of the old raw indexed proof
   shape in the blocking peer check.
+- **R-S11c-20 — Unix terminal default-shell command provenance — CLOSED 2026-07-11.**
+  Platforms: Linux, macOS, Android source path, and other non-Windows Unix terminal service builds. Surfaces:
+  `src/server/terminal_service.rs`, `scripts/verify.sh`, and `scripts/apple-conform-check.sh`. Boundary:
+  authenticated Terminal session launch ↔ privileged-capable service process environment. Attack surface closed:
+  Unix terminal shell selection no longer reads the process `SHELL` environment variable and no longer returns
+  `/bin/sh` as an unconditional success fallback. The terminal capability remains the intentional full-control
+  shell for the PAKE-authenticated owner; this slice only fixes the executable provenance of the shell used to
+  provide that capability. Closure: the Unix resolver selects only fixed absolute shell candidates, rejects
+  relative or parent-traversal paths, canonicalizes the selected path, requires both the candidate/canonical parent
+  directory and executable to be root-owned and not group/world-writable, requires executable mode bits, and fails
+  terminal open when no trusted candidate is present. This is correctness hardening rather than a confirmed local
+  privilege escalation in the shipped Linux systemd unit because the unit does not pass `SHELL`. Verification
+  closure: Rust tests cover absolute candidate shape, relative/parent-path rejection, and a trusted candidate in
+  the Linux verifier environment; both source gates require the trusted Unix shell resolver, root/mode/executable
+  checks, tests, requirements/ledger disposition, and absence of `SHELL`, bare shell, or unconditional `/bin/sh`
+  success fallback in the Unix terminal shell block.
 - **R-S11c-16 — Desktop service lifecycle completion authority — CLOSED 2026-07-10.**
   Platforms: Linux and macOS desktop service wrappers, plus the shared desktop service CLI dispatcher. Surfaces:
   `core_main` `--install-service` / `--uninstall-service`, Linux `systemctl` service lifecycle helpers, macOS

@@ -3248,13 +3248,16 @@ if grep -RInE '\|\|[[:space:]]*true|deb-systemd-(invoke|helper).*\|\|' res/DEBIA
   r_s11c10j="$r_s11c10j maintscript:masked-lifecycle-failure"
 fi
 rm -f /tmp/rd_verify_r_s11c10j_mask.$$
+python3 scripts/verify-debian-package-authority.py --repo . --self-test || r_s11c10j="$r_s11c10j package:payload-authority"
+grep -qF 'R-S11c-10t closes the Linux Debian package payload ownership authority' HARDENING_STATUS.md || r_s11c10j="$r_s11c10j package:ledger-missing"
+grep -qF 'Linux Debian package payload ownership authority' requirements.html || r_s11c10j="$r_s11c10j package:requirements-missing"
 if grep -n 'os.system(' build.py | grep -v 'exit_code = os.system(cmd)' >/tmp/rd_verify_r_s11c10j_build_os_system.$$; then
   cat /tmp/rd_verify_r_s11c10j_build_os_system.$$
   r_s11c10j="$r_s11c10j build.py:unchecked-os-system"
 fi
 rm -f /tmp/rd_verify_r_s11c10j_build_os_system.$$
 grep -q "system2('/bin/rm -rf tmpdeb')" build.py || r_s11c10j="$r_s11c10j build.py:no-clean-staging-root"
-if grep -nE 'tmpdeb/usr/bin/rustdesk[^\n]*\|\|[[:space:]]*true|dpkg-deb -b tmpdeb rustdesk\.deb;[[:space:]]*/bin/rm -rf tmpdeb' build.py >/tmp/rd_verify_r_s11c10j_build_mask.$$; then
+if grep -nE 'tmpdeb/usr/bin/rustdesk[^\n]*\|\|[[:space:]]*true|dpkg-deb[^\n]*-b tmpdeb rustdesk\.deb;[[:space:]]*/bin/rm -rf tmpdeb' build.py >/tmp/rd_verify_r_s11c10j_build_mask.$$; then
   cat /tmp/rd_verify_r_s11c10j_build_mask.$$
   r_s11c10j="$r_s11c10j build.py:masked-debian-build-failure"
 fi
@@ -3272,7 +3275,7 @@ if echo "$linux_child_stop_block" | grep -q 'allow_err!(ps.kill())'; then
   r_s11c10j="$r_s11c10j linux:managed-server-child-sigkill-regressed"
 fi
 if [ -n "$r_s11c10j" ]; then echo "  FAIL R-S11c-10j/R-T9 Debian package lifecycle/systemd stop:$r_s11c10j"; rc=1; else
-  echo "  ok  R-S11c-10j/R-T9 Debian scripts use checked deb-systemd unit helpers plus fixed system manager reloads with no masked lifecycle failures and purge the stock root RustDesk config tree; build.py stages checked control scripts; unit has cgroup-scoped SIGTERM/TimeoutStopSec with no pkill ExecStop; Linux supervisor SIGTERMs child servers before forced stop"; fi
+  echo "  ok  R-S11c-10j/R-T9 Debian scripts use checked deb-systemd unit helpers plus fixed system manager reloads with no masked lifecycle failures and purge the stock root RustDesk config tree; build.py stages checked control scripts and root-normalizes package payload ownership; unit has cgroup-scoped SIGTERM/TimeoutStopSec with no pkill ExecStop; Linux supervisor SIGTERMs child servers before forced stop"; fi
 
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() are now only typed password

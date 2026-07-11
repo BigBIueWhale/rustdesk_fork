@@ -1997,6 +1997,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Debian bundle layout and the existing `$ORIGIN/lib` install RPATH, with explicit immediate/local binding. Missing
   bundled core or missing `rustdesk_core_main` now makes the runner exit nonzero. The legacy package-manager advice
   path is deleted, so a load failure no longer probes `PATH` for `apt`, `dnf`, `yum`, `zypper`, or `pacman`.
+  R-S11c-10t closes the Linux Debian package payload ownership authority in `build.py`,
+  `scripts/build-debian.sh`, and `scripts/verify-debian-package-authority.py`: direct Debian package creation no
+  longer lets staging-tree uid/gid become installed root-service authority. Every `build.py` Debian package creation
+  path uses `dpkg-deb --root-owner-group -b`; the release wrapper validates the emitted archive before hashing it;
+  and the source gate inspects the data/control tar members directly, requiring the root-loaded `/usr/share/rustdesk`
+  tree, service unit, polkit policy, and maintainer scripts to be root-owned, non-group/world-writable, type-correct,
+  and link-free where authority-bearing. Synthetic negative tests prove the verifier rejects user-owned payloads and
+  writable package parents.
   Remaining closure:
   no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
   root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
@@ -2009,7 +2017,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   R-S11c-10m; Linux headless CM uid lookup is closed by R-S11c-10n; Linux clipboard FUSE stale unmount is
   closed by R-S11c-10o; Linux self-relaunch AppImage fallback is closed by R-S11c-10p; Linux clipboard FUSE
   root-process denial is closed by R-S11c-10q; Linux clipboard FUSE fixed-helper fd-passing mount is closed
-  by R-S11c-10r; Linux Flutter runner core-library load provenance is closed by R-S11c-10s.
+  by R-S11c-10r; Linux Flutter runner core-library load provenance is closed by R-S11c-10s; Linux Debian package
+  payload ownership authority is closed by R-S11c-10t.
 - **R-S11b-4 — config secrecy statement after IPC closure — CLOSED 2026-07-09.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary

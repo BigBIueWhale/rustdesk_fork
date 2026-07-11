@@ -228,6 +228,7 @@ CFG
     deb="$(ls -1 "$REPO_ROOT"/rustdesk-*.deb 2>/dev/null | head -1 || true)"
     [ -n "$deb" ] && [ -f "$deb" ] || die "no rustdesk-*.deb produced — build.py did not emit a package (flutter build linux likely failed); see the build output above"
     cp "$deb" "$OUT_DIR/rustdesk-${profile}.deb"
+    python3 "$SCRIPT_DIR/verify-debian-package-authority.py" --repo "$REPO_ROOT" --deb "$OUT_DIR/rustdesk-${profile}.deb"
     python3 "$SCRIPT_DIR/verify-polkit-policy.py" --repo "$REPO_ROOT" --deb "$OUT_DIR/rustdesk-${profile}.deb"
     verify_deb_control_scripts "$OUT_DIR/rustdesk-${profile}.deb"
     sha256sum "$OUT_DIR/rustdesk-${profile}.deb" | tee "$OUT_DIR/rustdesk-${profile}.deb.sha256"

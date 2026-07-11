@@ -675,7 +675,19 @@ if grep -qE 'ShellExecuteW\(NULL, L"open", (exe|exePath|L"netsh")' res/msi/Custo
 fi
 grep -q 'struct DeviceInstaller64Paths' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-path-struct-missing"
 grep -q 'fn get_deviceinstaller64_paths' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-absolute-path-helper-missing"
+grep -Fq 'fn trusted_install_dir() -> ResultType<PathBuf>' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-fixed-install-root-proof-missing"
+grep -Fq 'let install_dir = crate::platform::windows::fixed_service_install_path("")?' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-helper-not-bound-to-fixed-service-root"
+grep -Fq 'require_existing_directory_no_reparse(&install_dir, "Windows service install directory")' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-service-root-reparse-not-rejected"
+grep -Fq 'optional_existing_directory_no_reparse(&work_dir, "Amyuni IDD directory")?' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-helper-dir-reparse-not-rejected"
+grep -Fq 'optional_existing_file_no_reparse(&exe_path, "Amyuni IDD helper")?' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-helper-reparse-not-rejected"
+grep -Fq 'require_existing_file_no_reparse(&inf_path, "Amyuni IDD INF")?' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-inf-reparse-not-rejected"
 grep -q 'paths.exe_path.as_ptr()' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-helper-not-absolute"
+if grep -Fq 'if let Ok(Some(paths)) = get_deviceinstaller64_paths()' src/virtual_display_manager.rs; then
+  r_s11d="$r_s11d runtime:amyuni-helper-trust-failure-swallowed"
+fi
+if grep -Fq 'let inf_path = inf_path.to_string_lossy().to_string();' src/virtual_display_manager.rs; then
+  r_s11d="$r_s11d runtime:amyuni-inf-path-lossy-fallback"
+fi
 if grep -qE 'ShellExecuteA|let mut exe_file = INSTALLER_EXE_FILE\.bytes|ShellExecuteW\([^;]*INSTALLER_EXE_FILE' src/virtual_display_manager.rs; then
   r_s11d="$r_s11d runtime:amyuni-helper-bare-name-launch"
 fi
@@ -870,7 +882,7 @@ grep -q 'R-S11d-31 — Windows privacy broker served-session authority' HARDENIN
 grep -q 'Windows MSI runtime-generated executable cleanup completion authority' requirements.html || r_s11d="$r_s11d runtime-generated-cleanup-requirements-disposition-missing"
 grep -q 'R-S11d-4 — Windows MSI runtime-generated executable cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d runtime-generated-cleanup-hardening-ledger-missing"
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else
-  echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; post-elevated relaunch is bound to the fixed installed executable; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path; MSI cleanup observes Amyuni and runtime-generated executable completion; portable installer source staging is elevated/protected/manifest-cleaned; unsupported 32-bit WMIC process probes are absent"; fi
+  echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; post-elevated relaunch is bound to the fixed installed executable; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path from the fixed service root and rejects reparse-backed helper/INF objects; MSI cleanup observes Amyuni and runtime-generated executable completion; portable installer source staging is elevated/protected/manifest-cleaned; unsupported 32-bit WMIC process probes are absent"; fi
 
 echo "== (3b-iii-a5a1) Unix terminal default shell uses trusted absolute executable paths (R-S11c-20) =="
 r_s11c20=
@@ -1289,6 +1301,18 @@ grep -Fq 'DeviceInstaller64RebootPolicy::Accept' src/virtual_display_manager.rs 
 grep -Fq 'DeviceInstaller64RebootPolicy::Reject' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-install-reboot-policy-missing"
 grep -Fq 'const DEVICEINSTALLER64_TIMEOUT_MS: u32 = 120_000;' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-timeout-not-pinned"
 grep -Fq 'fn deviceinstaller64_command_line(paths: &DeviceInstaller64Paths, args: &str) -> Vec<u16>' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-command-line-not-owned"
+grep -Fq 'fn trusted_install_dir() -> ResultType<PathBuf>' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-fixed-root-proof-missing"
+grep -Fq 'let install_dir = crate::platform::windows::fixed_service_install_path("")?' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-not-bound-to-fixed-service-root"
+grep -Fq 'struct WindowsPathIdentity' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-identity-proof-missing"
+grep -Fq 'CreateFileW(' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-identity-open-not-handle-based"
+grep -Fq 'GetFileInformationByHandle(handle, &mut info)' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-identity-query-not-handle-based"
+grep -Fq 'path_identity(current_dir, "Windows current executable directory")?' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-current-dir-identity-not-checked"
+grep -Fq 'path_identity(&install_dir, "Windows service install directory")?' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-install-dir-identity-not-checked"
+grep -Fq 'path_identity(&current_exe, "Windows current executable")?' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-current-exe-identity-not-checked"
+grep -Fq 'path_identity(&expected_exe, "Windows fixed service executable")?' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-expected-exe-identity-not-checked"
+grep -Fq 'if let Some(paths) = get_deviceinstaller64_paths()?' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-trust-result-not-propagated"
+grep -Fq 'let inf_path = get_amyuni_inf_path()?' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-setupapi-inf-not-trusted"
+grep -Fq 'require_existing_file_no_reparse(&inf_path, "Amyuni IDD INF")?' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-setupapi-inf-reparse-not-rejected"
 grep -Fq 'CreateProcessW(' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-not-createprocess"
 grep -Fq 'paths.exe_path.as_ptr(),' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-application-path-not-bound"
 grep -Fq 'command_line.as_mut_ptr(),' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-command-line-not-mutable"
@@ -1308,6 +1332,13 @@ rm -f /tmp/rd_verify_r_s11d23_install_policy.$$
 if grep -Fq 'fn get_uninstall_amyuni_idd()' src/platform/windows.rs; then
   r_s11d23="$r_s11d23 amyuni-skip-on-current-exe-failure-leftover"
 fi
+if grep -Fq 'if let Ok(Some(paths)) = get_deviceinstaller64_paths()' src/virtual_display_manager.rs; then
+  r_s11d23="$r_s11d23 amyuni-helper-trust-failure-swallowed"
+fi
+if rg -n 'fn path_text|to_string_lossy\(\)|fs::canonicalize' src/virtual_display_manager.rs >/tmp/rd_verify_r_s11d23_lossy_path.$$; then
+  r_s11d23="$r_s11d23 amyuni-helper-lossy-path-proof"
+fi
+rm -f /tmp/rd_verify_r_s11d23_lossy_path.$$
 if rg -U 'allow_err!\(\s*crate::virtual_display_manager::amyuni_idd::uninstall_driver\(\)\s*\)' src/core_main.rs >/tmp/rd_verify_r_s11d23_allow_err.$$; then
   cat /tmp/rd_verify_r_s11d23_allow_err.$$
   r_s11d23="$r_s11d23 amyuni-cli-ignored-error-leftover"
@@ -1322,7 +1353,7 @@ fi
 grep -Fq 'Windows EXE Amyuni IDD cleanup completion authority' requirements.html || r_s11d23="$r_s11d23 requirements-disposition-missing"
 grep -Fq 'R-S11d-23 — Windows EXE Amyuni IDD cleanup completion authority' HARDENING_STATUS.md || r_s11d23="$r_s11d23 hardening-ledger-missing"
 if [ -n "$r_s11d23" ]; then echo "  FAIL R-S11d-23 Windows EXE Amyuni IDD cleanup completion authority:$r_s11d23"; rc=1; else
-  echo "  ok  R-S11d-23 EXE uninstall Amyuni cleanup waits for helper completion, propagates errors, and is fail-fast in the elevated batch"; fi
+  echo "  ok  R-S11d-23 EXE uninstall Amyuni cleanup waits for helper completion, propagates errors, and binds runtime helper authority to fixed-root file identities"; fi
 
 echo "== (3b-iii-a5d4e) Windows stale RustDesk IDD install helper is reject-only (R-S11d-24) =="
 r_s11d24=
@@ -1347,7 +1378,8 @@ if rg -U 'let _ =\s*unsafe \{ win_device::install_driver\(&inf_path, HARDWARE_ID
 fi
 rm -f /tmp/rd_verify_r_s11d25_setupapi_install.$$
 setupapi_install_block=$(awk '/Installing driver by SetupAPI/,/\*is_async = false;/' src/virtual_display_manager.rs)
-printf '%s\n' "$setupapi_install_block" | grep -Fq 'unsafe { win_device::install_driver(&inf_path, HARDWARE_ID, &mut reboot_required)? };' || r_s11d25="$r_s11d25 setupapi-install-call-missing"
+grep -Fq 'let inf_path = get_amyuni_inf_path()?' src/virtual_display_manager.rs || r_s11d25="$r_s11d25 setupapi-inf-not-trusted"
+printf '%s\n' "$setupapi_install_block" | grep -Fq 'unsafe { win_device::install_driver(inf_path, HARDWARE_ID, &mut reboot_required)? };' || r_s11d25="$r_s11d25 setupapi-install-call-missing"
 printf '%s\n' "$setupapi_install_block" | grep -Fq 'if reboot_required {' || r_s11d25="$r_s11d25 setupapi-install-reboot-branch-missing"
 printf '%s\n' "$setupapi_install_block" | grep -Fq 'bail!("SetupAPI driver install requires reboot before the driver can be used");' || r_s11d25="$r_s11d25 setupapi-install-reboot-bail-outside-block"
 grep -Fq 'Windows Amyuni SetupAPI install reboot-required completion' requirements.html || r_s11d25="$r_s11d25 requirements-disposition-missing"

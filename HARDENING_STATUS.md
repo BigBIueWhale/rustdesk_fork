@@ -956,18 +956,23 @@ unreachable and a source/test/AST gate prevents reintroduction.
   checked MSI privileged custom-action returns, native service-delete verification, absence of MSI
   `sc`/`cmd.exe`/`reg` shell fallbacks, post-elevated relaunch executable authority via R-S11d-30,
   privacy broker served-session authority via R-S11d-31, and this ledger/requirements disposition.
-- **R-S11d-1 — Windows Amyuni IDD helper launch provenance — CLOSED 2026-07-10.** Platform:
+- **R-S11d-1 — Windows Amyuni IDD helper launch provenance — CLOSED 2026-07-10; tightened 2026-07-11.** Platform:
   Windows MSI deferred custom action and runtime virtual-display helper path. Endpoint/action:
   `deviceinstaller64.exe` under `usbmmidd_v2`, launched to install/remove the Amyuni virtual-display driver.
   Boundary: installed Program Files helper payload ↔ privileged MSI/custom-action or service/runtime helper
   execution. Attack surface closed: both launch paths now execute the checked absolute helper executable path.
   The MSI action checks that `usbmmidd_v2` is a directory, checks that the helper path is a
-  file, and passes `exePath` as the `CreateProcessW` application path rather than the bare helper name. The runtime helper carries both the working
-  directory and absolute executable path as wide strings and executes `paths.exe_path`, with the old ANSI
-  bare-name `ShellExecuteA` surface removed. Verification closure: `scripts/verify.sh` asserts the MSI
-  `exePath` CreateProcess call, rejects the old bare-name call, asserts the runtime absolute-path helper and
-  `paths.exe_path` launch, rejects `ShellExecuteA`/bare `INSTALLER_EXE_FILE` launch, and checks this
-  ledger/requirements disposition.
+  file, and passes `exePath` as the `CreateProcessW` application path rather than the bare helper name. The
+  runtime helper now derives `usbmmidd_v2`, `deviceinstaller64.exe`, and `usbmmIdd.inf` only from the fixed
+  Program Files service root returned by `fixed_service_install_path("")`, requires handle-level identity between
+  the running executable directory and that fixed service root plus identity between the running executable and the
+  fixed installed service executable, rejects reparse/symlink-backed helper directories, helper files, and INF
+  files, propagates helper-path trust failures instead of falling through to SetupAPI, and executes
+  `paths.exe_path` as the `CreateProcessW` application path. Verification closure: `scripts/verify.sh` asserts
+  the MSI `exePath` CreateProcess call, rejects the old bare-name call, asserts the runtime fixed-root file-identity
+  proof, non-reparse helper/INF checks, absolute-path helper launch, and `paths.exe_path` launch, rejects swallowed
+  helper trust failures, lossy path/INF fallback, `ShellExecuteA`, and bare `INSTALLER_EXE_FILE` launch, and checks
+  this ledger/requirements disposition.
 - **R-S11d-2 — Windows Amyuni IDD cleanup completion authority — CLOSED 2026-07-10.** Platform:
   Windows MSI deferred non-impersonated uninstall/update custom action. Endpoint/action:
   `RemoveAmyuniIdd` removing the `usbmmidd` Amyuni virtual-display device through SetupAPI and, on AMD64, the
@@ -1240,7 +1245,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `BOOL` contract, Rust status propagation, nonzero CLI exit on failure, checked uninstall batch command, fatal
   current-exe resolution, checked Blob read, bounded Blob match, explicit malformed-store prefix, absence of the
   old void-return/read-result/ignored-error/all-access shapes, and this ledger/requirements disposition.
-- **R-S11d-23 — Windows EXE Amyuni IDD cleanup completion authority — CLOSED 2026-07-10.**
+- **R-S11d-23 — Windows EXE Amyuni IDD cleanup completion authority — CLOSED 2026-07-10; tightened 2026-07-11.**
   Platform: Windows EXE uninstall and runtime AMD64 Amyuni helper launch. Endpoint/action: elevated uninstall batch
   invoking `--uninstall-amyuni-idd`, the top-level `--uninstall` dispatcher, the Rust
   `amyuni_idd::uninstall_driver()` CLI arm, and runtime `deviceinstaller64.exe` install/remove fallback. Boundary:
@@ -1253,11 +1258,15 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `ShellExecuteW` fire-and-forget; it builds a quoted mutable command line, starts the checked absolute
   `deviceinstaller64.exe` path with `CreateProcessW`, waits with the same two-minute bound used by MSI, reads the
   child exit code, accepts `ERROR_SUCCESS_REBOOT_REQUIRED` only for remove/cleanup, rejects reboot-required on
-  install/update before trying to use the driver, and propagates launch/wait/exit-code failures. Optional helper
-  payload absence before selecting the helper remains a no-op; selected native/helper cleanup failure does not.
-  Verification closure: `scripts/verify.sh` asserts checked elevated-batch command construction, fatal shared
+  install/update before trying to use the driver, and propagates launch/wait/exit-code failures. Helper payload
+  absence before selecting the helper remains a no-op only after handle identity proves the running executable
+  directory is the fixed service root and the running executable is the fixed installed service executable;
+  malformed, reparse-backed, inaccessible, or wrong-root helper/INF state fails closed rather than silently falling
+  through to another driver-install authority. Verification closure: `scripts/verify.sh` asserts checked elevated-batch
+  command construction, fatal shared
   `current_exe` resolution, top-level and helper CLI nonzero exits, explicit helper command-line ownership,
-  `CreateProcessW` application-path binding, bounded wait, exit-code read, remove-vs-install reboot policy, absence
+  fixed-root runtime helper file-identity proof, trusted INF lookup, `CreateProcessW` application-path binding,
+  bounded wait, exit-code read, remove-vs-install reboot policy, absence of swallowed helper trust failures, absence
   of the old skipped-command helper, absence of `ShellExecuteW` in the runtime helper, and this ledger/requirements
   disposition.
 - **R-S11d-24 — Windows stale RustDesk IDD install helper completion — CLOSED 2026-07-10.**

@@ -1741,7 +1741,7 @@ fn normalized_windows_path_text(path: &Path) -> String {
         .to_ascii_lowercase()
 }
 
-fn fixed_service_install_path(requested_path: &str) -> ResultType<PathBuf> {
+pub(crate) fn fixed_service_install_path(requested_path: &str) -> ResultType<PathBuf> {
     let default = default_install_path_buf()?;
     if requested_path.trim().is_empty() {
         return Ok(default);

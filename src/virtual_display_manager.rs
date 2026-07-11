@@ -384,11 +384,12 @@ pub mod rustdesk_idd {
 pub mod amyuni_idd {
     use super::windows;
     use crate::platform::{reg_display_settings, win_device};
-    use hbb_common::{bail, lazy_static, log, tokio::time::Instant, ResultType};
+    use hbb_common::{anyhow::anyhow, bail, lazy_static, log, tokio::time::Instant, ResultType};
     use std::{
         ffi::OsStr,
-        io, mem,
-        os::windows::ffi::OsStrExt,
+        fs, io, mem,
+        os::windows::{ffi::OsStrExt, fs::MetadataExt},
+        path::{Path, PathBuf},
         ptr::null_mut,
         sync::{atomic, Arc, Mutex},
         time::Duration,
@@ -400,17 +401,23 @@ pub mod amyuni_idd {
             winerror::{ERROR_NO_MORE_ITEMS, ERROR_SUCCESS_REBOOT_REQUIRED, WAIT_TIMEOUT},
         },
         um::{
-            handleapi::CloseHandle,
+            fileapi::{
+                CreateFileW, GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, OPEN_EXISTING,
+            },
+            handleapi::{CloseHandle, INVALID_HANDLE_VALUE},
             processthreadsapi::{
                 CreateProcessW, GetExitCodeProcess, PROCESS_INFORMATION, STARTUPINFOW,
             },
             synchapi::WaitForSingleObject,
-            winbase::{CREATE_NO_WINDOW, WAIT_OBJECT_0},
-            winnt::HANDLE,
+            winbase::{CREATE_NO_WINDOW, FILE_FLAG_BACKUP_SEMANTICS, WAIT_OBJECT_0},
+            winnt::{
+                FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, HANDLE,
+            },
         },
     };
 
-    const INF_PATH: &str = r#"usbmmidd_v2\usbmmIdd.inf"#;
+    const IDD_DRIVER_DIR: &str = "usbmmidd_v2";
+    const INF_FILE: &str = "usbmmIdd.inf";
     const INTERFACE_GUID: GUID = GUID {
         Data1: 0xb5ffd75f,
         Data2: 0xda40,
@@ -421,6 +428,7 @@ pub mod amyuni_idd {
     const PLUG_MONITOR_IO_CONTROL_CDOE: u32 = 2307084;
     const INSTALLER_EXE_FILE: &str = "deviceinstaller64.exe";
     const DEVICEINSTALLER64_TIMEOUT_MS: u32 = 120_000;
+    const FILE_ATTRIBUTE_REPARSE_POINT_FLAG: u32 = 0x400;
 
     struct DeviceInstaller64Paths {
         work_dir: Vec<u16>,
@@ -444,6 +452,13 @@ pub mod amyuni_idd {
         }
     }
 
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct WindowsPathIdentity {
+        volume_serial_number: u32,
+        file_index_high: u32,
+        file_index_low: u32,
+    }
+
     lazy_static::lazy_static! {
         static ref LOCK: Arc<Mutex<()>> = Default::default();
         static ref LAST_PLUG_IN_HEADLESS_TIME: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
@@ -461,6 +476,43 @@ pub mod amyuni_idd {
         value.encode_wide().chain(std::iter::once(0)).collect()
     }
 
+    fn path_identity(path: &Path, label: &str) -> ResultType<WindowsPathIdentity> {
+        let path_w = wide_null(path.as_os_str());
+        let handle = unsafe {
+            CreateFileW(
+                path_w.as_ptr(),
+                FILE_READ_ATTRIBUTES,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                null_mut(),
+                OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS,
+                null_mut(),
+            )
+        };
+        if handle == INVALID_HANDLE_VALUE {
+            bail!(
+                "Failed to open {label} for identity '{}': {}",
+                path.display(),
+                io::Error::last_os_error()
+            );
+        }
+        let _guard = HandleGuard(handle);
+        let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { mem::zeroed() };
+        let ok = unsafe { GetFileInformationByHandle(handle, &mut info) };
+        if ok == 0 {
+            bail!(
+                "Failed to query {label} identity '{}': {}",
+                path.display(),
+                io::Error::last_os_error()
+            );
+        }
+        Ok(WindowsPathIdentity {
+            volume_serial_number: info.dwVolumeSerialNumber,
+            file_index_high: info.nFileIndexHigh,
+            file_index_low: info.nFileIndexLow,
+        })
+    }
+
     fn deviceinstaller64_command_line(paths: &DeviceInstaller64Paths, args: &str) -> Vec<u16> {
         let mut command_line = Vec::with_capacity(paths.exe_path.len() + args.len() + 4);
         command_line.push('"' as u16);
@@ -474,17 +526,115 @@ pub mod amyuni_idd {
         command_line
     }
 
+    fn has_reparse_point(metadata: &fs::Metadata) -> bool {
+        metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT_FLAG != 0
+    }
+
+    fn require_regular_dir_metadata(
+        path: &Path,
+        label: &str,
+        metadata: &fs::Metadata,
+    ) -> ResultType<()> {
+        if !metadata.is_dir() || metadata.file_type().is_symlink() || has_reparse_point(metadata) {
+            bail!("{label} is not a trusted directory: {}", path.display());
+        }
+        Ok(())
+    }
+
+    fn require_regular_file_metadata(
+        path: &Path,
+        label: &str,
+        metadata: &fs::Metadata,
+    ) -> ResultType<()> {
+        if !metadata.is_file() || metadata.file_type().is_symlink() || has_reparse_point(metadata) {
+            bail!("{label} is not a trusted file: {}", path.display());
+        }
+        Ok(())
+    }
+
+    fn require_existing_directory_no_reparse(path: &Path, label: &str) -> ResultType<()> {
+        let metadata = fs::symlink_metadata(path)
+            .map_err(|err| anyhow!("{label} is not accessible '{}': {err}", path.display()))?;
+        require_regular_dir_metadata(path, label, &metadata)
+    }
+
+    fn require_existing_file_no_reparse(path: &Path, label: &str) -> ResultType<()> {
+        let metadata = fs::symlink_metadata(path)
+            .map_err(|err| anyhow!("{label} is not accessible '{}': {err}", path.display()))?;
+        require_regular_file_metadata(path, label, &metadata)
+    }
+
+    fn optional_existing_directory_no_reparse(path: &Path, label: &str) -> ResultType<bool> {
+        match fs::symlink_metadata(path) {
+            Ok(metadata) => {
+                require_regular_dir_metadata(path, label, &metadata)?;
+                Ok(true)
+            }
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(err) => {
+                Err(anyhow!("{label} is not accessible '{}': {err}", path.display()).into())
+            }
+        }
+    }
+
+    fn optional_existing_file_no_reparse(path: &Path, label: &str) -> ResultType<bool> {
+        match fs::symlink_metadata(path) {
+            Ok(metadata) => {
+                require_regular_file_metadata(path, label, &metadata)?;
+                Ok(true)
+            }
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(err) => {
+                Err(anyhow!("{label} is not accessible '{}': {err}", path.display()).into())
+            }
+        }
+    }
+
+    fn trusted_install_dir() -> ResultType<PathBuf> {
+        let current_exe = std::env::current_exe()
+            .map_err(|err| anyhow!("Failed to resolve current executable: {err}"))?;
+        let current_dir = current_exe
+            .parent()
+            .ok_or_else(|| anyhow!("Cannot get parent of current exe file."))?;
+        let install_dir = crate::platform::windows::fixed_service_install_path("")?;
+        let expected_exe = install_dir.join(format!("{}.exe", crate::get_app_name()));
+
+        require_existing_directory_no_reparse(&install_dir, "Windows service install directory")?;
+        require_existing_directory_no_reparse(current_dir, "Windows current executable directory")?;
+        require_existing_file_no_reparse(&current_exe, "Windows current executable")?;
+        require_existing_file_no_reparse(&expected_exe, "Windows fixed service executable")?;
+
+        if path_identity(current_dir, "Windows current executable directory")?
+            != path_identity(&install_dir, "Windows service install directory")?
+        {
+            bail!(
+                "Amyuni IDD helper requires the fixed installed service directory: {}",
+                install_dir.display()
+            );
+        }
+        if path_identity(&current_exe, "Windows current executable")?
+            != path_identity(&expected_exe, "Windows fixed service executable")?
+        {
+            bail!(
+                "Amyuni IDD helper requires the fixed installed service executable: {}",
+                expected_exe.display()
+            );
+        }
+
+        Ok(install_dir)
+    }
+
+    fn trusted_amyuni_work_dir() -> ResultType<PathBuf> {
+        Ok(trusted_install_dir()?.join(IDD_DRIVER_DIR))
+    }
+
     fn get_deviceinstaller64_paths() -> ResultType<Option<DeviceInstaller64Paths>> {
-        let cur_exe = std::env::current_exe()?;
-        let Some(cur_dir) = cur_exe.parent() else {
-            bail!("Cannot get parent of current exe file.");
-        };
-        let work_dir = cur_dir.join("usbmmidd_v2");
-        if !work_dir.is_dir() {
+        let work_dir = trusted_amyuni_work_dir()?;
+        if !optional_existing_directory_no_reparse(&work_dir, "Amyuni IDD directory")? {
             return Ok(None);
         }
         let exe_path = work_dir.join(INSTALLER_EXE_FILE);
-        if !exe_path.is_file() {
+        if !optional_existing_file_no_reparse(&exe_path, "Amyuni IDD helper")? {
             return Ok(None);
         }
 
@@ -494,8 +644,16 @@ pub mod amyuni_idd {
         }))
     }
 
+    fn get_amyuni_inf_path() -> ResultType<PathBuf> {
+        let work_dir = trusted_amyuni_work_dir()?;
+        require_existing_directory_no_reparse(&work_dir, "Amyuni IDD directory")?;
+        let inf_path = work_dir.join(INF_FILE);
+        require_existing_file_no_reparse(&inf_path, "Amyuni IDD INF")?;
+        Ok(inf_path)
+    }
+
     pub fn uninstall_driver() -> ResultType<()> {
-        if let Ok(Some(paths)) = get_deviceinstaller64_paths() {
+        if let Some(paths) = get_deviceinstaller64_paths()? {
             if crate::platform::windows::is_x64() {
                 log::info!("Uninstalling driver by deviceinstaller64.exe");
                 install_if_x86_on_x64(
@@ -595,7 +753,7 @@ pub mod amyuni_idd {
             return Ok(());
         }
 
-        if let Ok(Some(paths)) = get_deviceinstaller64_paths() {
+        if let Some(paths) = get_deviceinstaller64_paths()? {
             if crate::platform::windows::is_x64() {
                 log::info!("Installing driver by deviceinstaller64.exe");
                 install_if_x86_on_x64(
@@ -608,19 +766,17 @@ pub mod amyuni_idd {
             }
         }
 
-        let exe_file = std::env::current_exe()?;
-        let Some(cur_dir) = exe_file.parent() else {
-            bail!("Cannot get parent of current exe file");
-        };
-        let inf_path = cur_dir.join(INF_PATH);
-        if !inf_path.exists() {
-            bail!("Driver inf file not found.");
-        }
-        let inf_path = inf_path.to_string_lossy().to_string();
+        let inf_path = get_amyuni_inf_path()?;
+        let inf_path = inf_path.to_str().ok_or_else(|| {
+            anyhow!(
+                "Amyuni IDD INF path is not valid UTF-8: {}",
+                inf_path.display()
+            )
+        })?;
 
         log::info!("Installing driver by SetupAPI");
         let mut reboot_required = false;
-        unsafe { win_device::install_driver(&inf_path, HARDWARE_ID, &mut reboot_required)? };
+        unsafe { win_device::install_driver(inf_path, HARDWARE_ID, &mut reboot_required)? };
         if reboot_required {
             bail!("SetupAPI driver install requires reboot before the driver can be used");
         }

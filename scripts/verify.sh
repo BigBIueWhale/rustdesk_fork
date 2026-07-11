@@ -4040,17 +4040,36 @@ if grep -qF '["config", "password"].contains(uri.authority)' flutter/lib/common.
 else
   echo "  FAIL R-X6: the rustdesk://config + rustdesk://password WRITE authorities are not provably excised"; rc=1
 fi
-# R-X6 Android manifest hardening (committed d4cb686 + f8ddac8) — lock it against regrowth. The dropped
-# tokens survive only in explanatory comments, so gate on LIVE <uses-permission>/<service> declarations +
-# the allowBackup/requestLegacyExternalStorage attributes + the cleartext-deny network-security-config.
+# R-X6/R-S14 Android manifest hardening — lock both source intent and final-APK artifact proof against
+# regrowth. Library manifests are allowed to contain legacy declarations only when the app manifest removes
+# them with merge markers; the signed APK is checked by build-android.sh through verify-android-apk-manifest.py.
 AMF=flutter/android/app/src/main/AndroidManifest.xml
-if grep -qF 'android:allowBackup="false"' "$AMF" \
-   && ! grep -qE '(uses-permission|<service)[^>]*(SYSTEM_ALERT_WINDOW|READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|FloatingWindowService)' "$AMF" \
-   && ! grep -qE 'android:requestLegacyExternalStorage' "$AMF" \
-   && grep -qF 'cleartextTrafficPermitted="false"' flutter/android/app/src/main/res/xml/network_security_config.xml; then
-  echo "  ok  R-X6 Android manifest hardened (allowBackup=false; no live overlay/legacy-storage/floating-svc decl; cleartext-deny)"
+android_manifest_hardening=""
+grep -qF 'xmlns:tools="http://schemas.android.com/tools"' "$AMF" || android_manifest_hardening="$android_manifest_hardening tools-namespace"
+grep -qF 'android:allowBackup="false"' "$AMF" || android_manifest_hardening="$android_manifest_hardening allowBackup"
+grep -qF '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />' "$AMF" || android_manifest_hardening="$android_manifest_hardening read-storage-remove"
+grep -qF '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />' "$AMF" || android_manifest_hardening="$android_manifest_hardening write-storage-remove"
+grep -qF '<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" tools:node="remove" />' "$AMF" || android_manifest_hardening="$android_manifest_hardening overlay-remove"
+if grep -E '<uses-permission[^>]+android:name="android.permission.(READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|SYSTEM_ALERT_WINDOW)"' "$AMF" | grep -v 'tools:node="remove"' | grep -q .; then
+  android_manifest_hardening="$android_manifest_hardening live-forbidden-permission"
+fi
+grep -qE '<service[^>]*FloatingWindowService' "$AMF" && android_manifest_hardening="$android_manifest_hardening floating-service"
+grep -qE 'android:requestLegacyExternalStorage' "$AMF" && android_manifest_hardening="$android_manifest_hardening legacy-storage"
+grep -A5 'android:name=".PermissionRequestTransparentActivity"' "$AMF" | grep -qF 'android:exported="false"' || android_manifest_hardening="$android_manifest_hardening permission-activity-export"
+grep -A5 'android:name=".MainService"' "$AMF" | grep -qF 'android:exported="false"' || android_manifest_hardening="$android_manifest_hardening main-service-export"
+grep -A3 'android:name="androidx.profileinstaller.ProfileInstallReceiver"' "$AMF" | grep -qF 'tools:node="remove"' || android_manifest_hardening="$android_manifest_hardening profileinstall-remove"
+grep -qF 'cleartextTrafficPermitted="false"' flutter/android/app/src/main/res/xml/network_security_config.xml || android_manifest_hardening="$android_manifest_hardening cleartext-deny"
+python3 -c 'import ast, pathlib; ast.parse(pathlib.Path("scripts/verify-android-apk-manifest.py").read_text(encoding="utf-8"))' || android_manifest_hardening="$android_manifest_hardening apk-manifest-helper-syntax"
+grep -qF 'verify-android-apk-manifest.py' scripts/build-android.sh || android_manifest_hardening="$android_manifest_hardening build-android-helper-call"
+grep -qF -- '--aapt2 /online/android-sdk/build-tools/' scripts/build-android.sh || android_manifest_hardening="$android_manifest_hardening build-android-aapt2"
+grep -qF 'FORBIDDEN_COMPONENTS = {' scripts/verify-android-apk-manifest.py || android_manifest_hardening="$android_manifest_hardening forbidden-component-policy"
+grep -qF 'androidx.profileinstaller.ProfileInstallReceiver' scripts/verify-android-apk-manifest.py || android_manifest_hardening="$android_manifest_hardening profileinstall-policy"
+grep -qF 'FORBIDDEN_USES_PERMISSIONS = {' scripts/verify-android-apk-manifest.py || android_manifest_hardening="$android_manifest_hardening forbidden-permission-policy"
+grep -qF 'ALLOWED_COMPONENTS =' scripts/verify-android-apk-manifest.py || android_manifest_hardening="$android_manifest_hardening component-inventory-policy"
+if [ -z "$android_manifest_hardening" ]; then
+  echo "  ok  R-X6/R-S14 Android manifest hardened (source removes forbidden merges; internal components explicit; signed APK verifier wired)"
 else
-  echo "  FAIL R-X6: Android manifest hardening regressed (allowBackup / a live SYSTEM_ALERT_WINDOW|storage|FloatingWindowService decl / requestLegacyExternalStorage / network-security-config)"; rc=1
+  echo "  FAIL R-X6/R-S14: Android manifest hardening regressed:$android_manifest_hardening"; rc=1
 fi
 # R-X6 Android: the dead floating-window / SYSTEM_ALERT_WINDOW Dart UI is excised (commit 917ebd0; the
 # native FloatingWindowService was cut in f8ddac8). Assert no LIVE kSystemAlertWindow reference regrows in

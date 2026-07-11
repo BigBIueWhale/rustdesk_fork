@@ -104,6 +104,7 @@ sign_apk() {
     log "signing the APK with the stable local key (alias $KEY_ALIAS, R-B2)"
     docker run --rm \
         --network=none \
+        -v "$REPO_ROOT:/src:ro" \
         -v "$OUT_DIR:/out" \
         -v "$KEYSTORE:/ks/keystore.jks:ro" \
         -v "$KEYSTORE_PASS_FILE:/ks/pass:ro" \
@@ -115,6 +116,9 @@ sign_apk() {
                 --ks-pass file:/ks/pass --v2-signing-enabled true \
                 --out /out/rustdesk-arm64.apk /out/rustdesk-arm64-unsigned.apk
             apksigner verify --verbose /out/rustdesk-arm64.apk
+            python3 /src/scripts/verify-android-apk-manifest.py \
+                --apk /out/rustdesk-arm64.apk \
+                --aapt2 /online/android-sdk/build-tools/'"${ANDROID_BUILD_TOOLS}"'/aapt2
         '
     rm -f "$OUT_DIR/rustdesk-arm64-unsigned.apk"
     sha256sum "$OUT_DIR/rustdesk-arm64.apk" | tee "$OUT_DIR/rustdesk-arm64.apk.sha256"

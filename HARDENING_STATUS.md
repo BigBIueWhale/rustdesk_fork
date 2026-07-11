@@ -207,6 +207,23 @@ closure: `scripts/verify.sh` gates both lifecycle callers, the shared teardown s
 the retained `START_NOT_STICKY` restart barrier. This is not a root/LPE path; it completes the Android
 R-D7a/R-S14 resource-lifetime invariant for retained capture grants.
 
+**R-X6/R-S14 Android final APK manifest authority — CLOSED / GATED (2026-07-11).**
+Platform: Android release APK. Endpoint/action: the single merged `AndroidManifest.xml` packaged into the
+signed APK, after app/source/library manifest merging. Boundary: co-installed apps and library-provided
+manifest declarations ↔ RustDesk app components, permissions, and controlled-side foreground services.
+Attack surface closed: the shipped APK is no longer trusted by source XML inspection alone. The app
+manifest removes merged `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `SYSTEM_ALERT_WINDOW`, and
+`androidx.profileinstaller.ProfileInstallReceiver`; `PermissionRequestTransparentActivity` and
+`MainService` are explicitly `android:exported="false"`. `scripts/build-android.sh` now runs
+`scripts/verify-android-apk-manifest.py` after `apksigner verify` and before hashing the signed APK.
+The verifier parses `aapt2 dump xmltree` from the pinned SDK and requires package/minSdk/targetSdk,
+`allowBackup=false`, the approved permission set, the exact final component inventory, and only
+`MainActivity` exported with the launcher plus `rustdesk` deep-link filters. Any forbidden permission,
+ProfileInstaller receiver, unexpected component, missing explicit exported flag, exported service,
+exported receiver, exported provider, or additional exported activity fails the Android build. This is
+not a root/LPE path; it makes the package authority claim true for the release artifact rather than only
+for the source manifest.
+
 **R-S15 — viewer PeerConfig write authority — status: CLOSED / GATED (2026-07-10).**
 Platforms: all viewer-capable targets. Endpoint/action: post-PAKE peer messages that reach the viewer's
 per-peer config store. Boundary: password-correct but hostile peer ↔ operator-owned persisted viewer

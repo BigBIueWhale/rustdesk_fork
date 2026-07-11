@@ -3042,9 +3042,12 @@ echo "== (3c-iii-b) Linux FUSE clipboard mount-point component validation (R-S11
 
 # (3c-iii-c) Linux FUSE FileContentsResponse delivery is peer-driven after
 # PAKE. Each response is byte-capped before protobuf conversion, but the local
-# handoff queue must also be bounded so many capped blobs cannot accumulate.
-echo "== (3c-iii-c) Linux FUSE file-content response queue bound (R-T0/R-S7) =="
+# handoff queue must also be bounded so many capped blobs cannot accumulate, and
+# responses must be bound to the connection that originated the FUSE read.
+echo "== (3c-iii-c) Linux FUSE file-content response queue/provenance (R-T0/R-S7/R-S19) =="
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib fuse_response_queue --color never
+"${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib file_content_response_requires_matching_connection_id --color never
+"${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib read_node_routes_response_after_request --color never
 
 # (3c-iii-d) the CLIPRDR file-contents SERVE read clamps the peer-requested length to the file's
 # remaining bytes via min() — NOT `offset + length > file.size`, which WRAPS for a peer cb_requested=-1
@@ -5348,26 +5351,68 @@ grep -qF 'pub(crate) const FUSE_RESPONSE_QUEUE_CAPACITY: usize = 8;' libs/clipbo
   r_fuse_response_queue="$r_fuse_response_queue capacity"
 grep -qF 'std::sync::mpsc::sync_channel(FUSE_RESPONSE_QUEUE_CAPACITY)' libs/clipboard/src/platform/unix/fuse/cs.rs ||
   r_fuse_response_queue="$r_fuse_response_queue sync-channel"
-grep -qF 'SyncSender<ClipboardFile>' libs/clipboard/src/platform/unix/fuse/cs.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue cs-sync-sender"
-grep -qF 'tx: SyncSender<ClipboardFile>' libs/clipboard/src/platform/unix/fuse/mod.rs ||
-  r_fuse_response_queue="$r_fuse_response_queue context-sync-sender"
-grep -qF '.try_send(clip)' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+grep -qF 'pub(crate) struct FuseFileContentResponse' libs/clipboard/src/platform/unix/fuse/cs.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue no-provenance-response-type"
+grep -qF 'pub conn_id: i32' libs/clipboard/src/platform/unix/fuse/cs.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue no-response-conn-id"
+grep -qF 'struct FuseFileContentResponseKey' libs/clipboard/src/platform/unix/fuse/cs.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue no-response-route-key"
+grep -qF 'stream_id: i32' libs/clipboard/src/platform/unix/fuse/cs.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue no-response-stream-id"
+grep -qF 'pub(crate) struct FuseFileContentResponseRouter' libs/clipboard/src/platform/unix/fuse/cs.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue no-response-router"
+grep -qF 'routes: HashMap<FuseFileContentResponseKey, FuseFileContentResponseRoute>' libs/clipboard/src/platform/unix/fuse/cs.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue response-router-not-keyed"
+grep -qF 'response_router: FuseFileContentResponseRouter' libs/clipboard/src/platform/unix/fuse/cs.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue server-missing-response-router"
+grep -qF 'response_router: FuseFileContentResponseRouter' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue context-missing-response-router"
+grep -qF 'fn register(' libs/clipboard/src/platform/unix/fuse/cs.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue no-response-route-register"
+grep -qF 'pub(crate) fn dispatch(&self, response: FuseFileContentResponse)' libs/clipboard/src/platform/unix/fuse/cs.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue no-response-route-dispatch"
+grep -qF 'pub fn handle_file_content_response(' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue no-response-handler"
+handler_sig=$(awk '/pub fn handle_file_content_response\(/,/-> Result/ {print}' libs/clipboard/src/platform/unix/fuse/mod.rs)
+printf '%s\n' "$handler_sig" | grep -qF 'conn_id: i32' ||
+  r_fuse_response_queue="$r_fuse_response_queue handler-signature-drops-conn-id"
+grep -qF '.dispatch(FuseFileContentResponse { conn_id, clip })' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue handler-bypasses-router"
+grep -qF 'let stream_id: i32 = rand::random();' libs/clipboard/src/platform/unix/fuse/cs.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue no-fresh-read-stream-id"
+grep -qF '.register(node.conn_id, stream_id)' libs/clipboard/src/platform/unix/fuse/cs.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue read-node-not-key-routed"
+grep -qF '.try_send(response.clip)' libs/clipboard/src/platform/unix/fuse/cs.rs ||
   r_fuse_response_queue="$r_fuse_response_queue nonblocking-admission"
-grep -qF 'FUSE file-content response queue is full; dropping peer response' libs/clipboard/src/platform/unix/fuse/mod.rs ||
+grep -qF 'FUSE file-content response queue is full; dropping peer response' libs/clipboard/src/platform/unix/fuse/cs.rs ||
   r_fuse_response_queue="$r_fuse_response_queue full-shed-log"
 grep -qF 'fuse_response_queue_is_bounded' libs/clipboard/src/platform/unix/fuse/cs.rs ||
   r_fuse_response_queue="$r_fuse_response_queue bounded-queue-test"
+grep -qF 'file_content_response_requires_matching_connection_id' libs/clipboard/src/platform/unix/fuse/cs.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue no-conn-id-regression-test"
+grep -qF 'read_node_routes_response_after_request' libs/clipboard/src/platform/unix/fuse/cs.rs ||
+  r_fuse_response_queue="$r_fuse_response_queue no-read-node-route-test"
+grep -A4 'fuse::handle_file_content_response(' src/clipboard_file.rs | grep -qF 'conn_id' ||
+  r_fuse_response_queue="$r_fuse_response_queue response-call-drops-conn-id"
+if grep -qF 'rx: Receiver<FuseFileContentResponse>' libs/clipboard/src/platform/unix/fuse/cs.rs; then
+  r_fuse_response_queue="$r_fuse_response_queue global-response-receiver"
+fi
+if grep -qF 'SyncSender<FuseFileContentResponse>' libs/clipboard/src/platform/unix/fuse/cs.rs libs/clipboard/src/platform/unix/fuse/mod.rs; then
+  r_fuse_response_queue="$r_fuse_response_queue global-response-sender"
+fi
+if grep -qF 'node.stream_id' libs/clipboard/src/platform/unix/fuse/cs.rs; then
+  r_fuse_response_queue="$r_fuse_response_queue node-scoped-stream-id"
+fi
 if grep -qF 'std::sync::mpsc::channel()' libs/clipboard/src/platform/unix/fuse/cs.rs; then
   r_fuse_response_queue="$r_fuse_response_queue unbounded-channel"
 fi
-if grep -qF '.send(clip)' libs/clipboard/src/platform/unix/fuse/mod.rs; then
+if grep -qF '.send(clip)' libs/clipboard/src/platform/unix/fuse/cs.rs libs/clipboard/src/platform/unix/fuse/mod.rs; then
   r_fuse_response_queue="$r_fuse_response_queue blocking-send"
 fi
 if [ -n "$r_fuse_response_queue" ]; then
   echo "  FAIL R-T0/R-S7: Linux FUSE file-content response queue bound regressed:$r_fuse_response_queue"; rc=1
 else
-  echo "  ok  R-T0/R-S7 Linux FUSE file-content responses use a bounded queue with nonblocking peer admission"
+  echo "  ok  R-T0/R-S7/R-S19 Linux FUSE file-content responses use bounded active routes keyed by connection and stream"
 fi
 # R-R2a (§12 / sovereignty): the .deb + systemd is the SOLE Linux package model. The AppImage
 # recipe (whose `update-information` self-updater collides with R-X1 "the fork ships its own

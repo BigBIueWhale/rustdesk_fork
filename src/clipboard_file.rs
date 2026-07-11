@@ -507,6 +507,7 @@ pub mod unix_file_clip {
                 if fuse::init_fuse_context(true).is_ok() {
                     hbb_common::allow_err!(fuse::handle_file_content_response(
                         side == ClipboardSide::Client,
+                        conn_id,
                         clip
                     ));
                 } else {

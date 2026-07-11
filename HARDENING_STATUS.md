@@ -152,6 +152,27 @@ guard, result-bearing close, state-owned close condition, CM result gate, and te
 reset guard. This is not a root/LPE path; it closes the remaining voice-call state
 member of the R-S19 capability-confinement class.
 
+**R-S19 Linux FUSE file-content response provenance — CLOSED / GATED (2026-07-11).**
+Platform: Linux `unix-file-copy-paste`. Endpoint/action: CLIPRDR
+`FileContentsResponse` delivery into the local FUSE file-clipboard read path.
+Boundary: one authenticated file-clipboard-capable connection ↔ another concurrent
+file-clipboard-capable connection sharing the process-wide FUSE context for the same
+side. Attack surface closed: `FuseServer::read_node` generates a fresh stream id
+for each read, registers a bounded active response route keyed by `(conn_id,
+stream_id)` before sending `FileContentsRequest`, and `src/clipboard_file.rs`
+passes the response-supplying connection id into
+`handle_file_content_response`. The handler dispatches `FuseFileContentResponse { conn_id, clip }`
+only to the matching active route; responses that do not match the fresh active key
+are dropped before they can occupy another read path. Verification
+closure: `libs/clipboard` has regression tests for bounded route admission, wrong
+connection/stream rejection, stale route removal, duplicate-route rejection, and a
+real `read_node` request/response path where wrong-connection and wrong-stream replies
+are ignored before the correct response supplies the bytes. `scripts/verify.sh` asserts
+the keyed router type, caller wiring, active-route registration, bounded nonblocking
+admission, fresh per-read stream ids, stale global-queue absence, and regression tests.
+This is not a root/LPE path; it closes a Linux file-clipboard cross-session
+capability/provenance member of R-S19.
+
 **R-S15 — viewer PeerConfig write authority — status: CLOSED / GATED (2026-07-10).**
 Platforms: all viewer-capable targets. Endpoint/action: post-PAKE peer messages that reach the viewer's
 per-peer config store. Boundary: password-correct but hostile peer ↔ operator-owned persisted viewer

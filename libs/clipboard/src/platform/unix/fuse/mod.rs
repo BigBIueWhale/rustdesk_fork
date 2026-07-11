@@ -2,7 +2,7 @@ mod cs;
 
 use super::filetype::FileDescription;
 use crate::{ClipboardFile, CliprdrError};
-use cs::FuseServer;
+use cs::{FuseFileContentResponse, FuseFileContentResponseRouter, FuseServer};
 use fuser::MountOption;
 use hbb_common::{config::APP_NAME, log};
 use parking_lot::Mutex;
@@ -17,10 +17,7 @@ use std::{
     },
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::{
-        mpsc::{SyncSender, TrySendError},
-        Arc,
-    },
+    sync::Arc,
     thread::{self, JoinHandle},
     time::Duration,
 };
@@ -84,7 +81,7 @@ pub fn init_fuse_context(is_client: bool) -> Result<(), CliprdrError> {
     };
 
     let mount_point = std::path::PathBuf::from(&*mount_point);
-    let (server, tx) = FuseServer::new(FUSE_TIMEOUT);
+    let (server, response_router) = FuseServer::new(FUSE_TIMEOUT);
     let server = Arc::new(Mutex::new(server));
 
     prepare_fuse_mount_point(&mount_point)?;
@@ -98,7 +95,7 @@ pub fn init_fuse_context(is_client: bool) -> Result<(), CliprdrError> {
 
     let ctx = FuseContext {
         server,
-        tx,
+        response_router,
         mount_point,
         session,
         conn_id: 0,
@@ -148,6 +145,7 @@ pub fn format_data_response_to_urls(
 
 pub fn handle_file_content_response(
     is_client: bool,
+    conn_id: i32,
     clip: ClipboardFile,
 ) -> Result<(), CliprdrError> {
     // we don't know its corresponding request, no resend can be performed
@@ -158,18 +156,8 @@ pub fn handle_file_content_response(
     };
     ctx.as_ref()
         .ok_or(CliprdrError::CliprdrInit)?
-        .tx
-        .try_send(clip)
-        .map_err(|e| match e {
-            TrySendError::Full(_) => {
-                log::warn!("FUSE file-content response queue is full; dropping peer response");
-                CliprdrError::ClipboardOccupied
-            }
-            TrySendError::Disconnected(_) => {
-                log::error!("failed to send file contents response to fuse: channel closed");
-                CliprdrError::ClipboardInternalError
-            }
-        })?;
+        .response_router
+        .dispatch(FuseFileContentResponse { conn_id, clip })?;
     Ok(())
 }
 
@@ -186,7 +174,7 @@ pub fn empty_local_files(is_client: bool, conn_id: i32) -> bool {
 
 struct FuseContext {
     server: Arc<Mutex<FuseServer>>,
-    tx: SyncSender<ClipboardFile>,
+    response_router: FuseFileContentResponseRouter,
     mount_point: PathBuf,
     session: Mutex<Option<ClipboardFuseSession>>,
     // Indicates the connection ID of that set the clipboard content

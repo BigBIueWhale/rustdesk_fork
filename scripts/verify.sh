@@ -1398,8 +1398,7 @@ grep -q 'pub(crate) fn service_channel_admits_message' src/ipc.rs || r_s11b="$r_
 grep -q 'Data::Test => true' src/ipc.rs || r_s11b="$r_s11b service-gate-misses-test"
 grep -q 'Data::RequestServiceOwnedUnattendedPasswordChange(_) => true' src/ipc.rs || r_s11b="$r_s11b linux-service-password-request-not-typed"
 service_message_gate=$(awk '/pub\(crate\) fn service_channel_admits_message/,/^}/' src/ipc.rs)
-echo "$service_message_gate" | grep -q 'Data::BeginMacosServiceOwnedUnattendedPasswordChange' || r_s11b="$r_s11b macos-service-password-begin-not-typed"
-echo "$service_message_gate" | grep -q 'Data::FinishMacosServiceOwnedUnattendedPasswordChange { .. }' || r_s11b="$r_s11b macos-service-password-finish-not-typed"
+echo "$service_message_gate" | grep -q 'Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. }' || r_s11b="$r_s11b macos-service-password-authorized-request-not-typed"
 echo "$service_message_gate" | grep -q 'Data::MacosServiceOwnedPermanentPasswordSnapshotRequest' || r_s11b="$r_s11b macos-service-password-runtime-snapshot-not-typed"
 service_dispatch_block=$(awk '/service_channel_admits_message\(&data\)/,/continue;/' src/ipc.rs)
 echo "$service_dispatch_block" | grep -q 'service_channel_admits_message(&data)' || r_s11b="$r_s11b service-loop-not-wired"
@@ -1426,7 +1425,7 @@ if grep -qE 'wait_initial_config_sync|sync_and_watch_config_dir|CONFIG_SYNC_(INT
   r_s11b="$r_s11b service-config-sync-loop-present"
 fi
 if [ -n "$r_s11b" ]; then echo "  FAIL R-S11b-1 _service whole-config bus removal:$r_s11b"; rc=1; else
-  echo "  ok  R-S11b-1/R-S11b-2c/R-S11c-1f _service admits liveness plus typed Linux service-owned password requests and macOS begin/finish/runtime-snapshot service-owned password requests; stale-socket probe uses Test; root/user whole-config sync loop, SyncConfig IPC variant, and whole-config import are absent"; fi
+  echo "  ok  R-S11b-1/R-S11b-2c/R-S11c-1f _service admits liveness plus typed Linux service-owned password requests and macOS authorized request/runtime-snapshot service-owned password requests; stale-socket probe uses Test; root/user whole-config sync loop, SyncConfig IPC variant, and whole-config import are absent"; fi
 
 # (3b-iii-c) R-S11b-2a/R-S11b-2c/R-S11c-1a: service-owned unattended passwords are not ordinary config IPC.
 # Service launch paths mark their --server child; the receiver uses that marker to deny
@@ -1436,10 +1435,10 @@ if [ -n "$r_s11b" ]; then echo "  FAIL R-S11b-1 _service whole-config bus remova
 # installed-service password changes use the same typed request/commit split, but the `_service` receiver
 # proves an elevated RustDesk caller by named-pipe client-token impersonation and the main server accepts the
 # final commit only from a LocalSystem service peer. macOS installed-service password changes use a typed
-# begin/challenge/finish `_service` exchange: the LaunchDaemon stores the proposed password in a one-shot
-# same-peer request, enforces a nonshared timeout-zero RustDesk Authorization Services right, verifies the
-# external form without interaction, and stores only the authorized pending value in the root LaunchDaemon
-# credential store. The service-owned LaunchAgent receives a runtime-only root-credential snapshot only when
+# `_service` request that carries the proposed password only after the client has obtained the nonshared
+# timeout-zero RustDesk Authorization Services right; the LaunchDaemon verifies that external form without
+# interaction before writing the value into the root LaunchDaemon credential store. The service-owned
+# LaunchAgent receives a runtime-only root-credential snapshot only when
 # launchd reports the requesting pid as the expected root-installed LaunchAgent job. The user-owned path remains user-owned, and --password
 # dispatches to the owner-aware typed operation.
 echo "== (3b-iii-c) service-owned permanent password rejects ordinary IPC (R-S11b-2a/R-S11c-1a) =="
@@ -1456,18 +1455,16 @@ grep -q 'Data::SetUserOwnedPermanentPassword(_) => {' src/ipc.rs                
 grep -A3 'Data::SetUserOwnedPermanentPassword(_) => {' src/ipc.rs | grep -q 'authority.allows_main_channel_user_owned_password_write()' || r_s11b2="$r_s11b2 typed-password-write-not-authority-gated"
 grep -q 'Data::SetUserOwnedPermanentPasswordResult(false)' src/ipc.rs                || r_s11b2="$r_s11b2 typed-password-reject-nack-missing"
 grep -q 'RequestServiceOwnedUnattendedPasswordChange(String)' src/ipc.rs             || r_s11b2="$r_s11b2 service-password-request-missing"
-grep -q 'BeginMacosServiceOwnedUnattendedPasswordChange' src/ipc.rs                 || r_s11b2="$r_s11b2 macos-service-password-begin-missing"
-grep -q 'MacosServiceOwnedUnattendedPasswordChallenge {' src/ipc.rs                 || r_s11b2="$r_s11b2 macos-service-password-challenge-missing"
-grep -q 'FinishMacosServiceOwnedUnattendedPasswordChange {' src/ipc.rs              || r_s11b2="$r_s11b2 macos-service-password-finish-missing"
+grep -q 'RequestMacosServiceOwnedUnattendedPasswordChange {' src/ipc.rs             || r_s11b2="$r_s11b2 macos-service-password-authorized-request-missing"
+grep -q 'password: String' src/ipc.rs                                               || r_s11b2="$r_s11b2 macos-service-password-request-value-missing"
+grep -q 'authorization: Vec<u8>' src/ipc.rs                                         || r_s11b2="$r_s11b2 macos-service-password-request-auth-missing"
 grep -q 'MacosServiceOwnedPermanentPasswordSnapshotRequest' src/ipc.rs              || r_s11b2="$r_s11b2 macos-service-password-snapshot-request-missing"
 grep -q 'MacosServiceOwnedPermanentPasswordSnapshot {' src/ipc.rs                   || r_s11b2="$r_s11b2 macos-service-password-snapshot-response-missing"
 grep -q 'CommitServiceOwnedUnattendedPasswordChange(String)' src/ipc.rs              || r_s11b2="$r_s11b2 service-password-commit-missing"
 grep -q 'ServiceOwnedUnattendedPasswordChangeResult(bool)' src/ipc.rs                || r_s11b2="$r_s11b2 service-password-result-missing"
 grep -q 'Data::RequestServiceOwnedUnattendedPasswordChange(_) => false' src/ipc.rs   || r_s11b2="$r_s11b2 service-password-request-not-denied-on-main"
 main_channel_mutation_policy=$(awk '/pub\(crate\) fn main_channel_admits_state_mutation/,/^}/' src/ipc.rs)
-echo "$main_channel_mutation_policy" | grep -q 'Data::BeginMacosServiceOwnedUnattendedPasswordChange' || r_s11b2="$r_s11b2 macos-service-password-begin-not-denied-on-main"
-echo "$main_channel_mutation_policy" | grep -q 'Data::MacosServiceOwnedUnattendedPasswordChallenge { .. }' || r_s11b2="$r_s11b2 macos-service-password-challenge-not-denied-on-main"
-echo "$main_channel_mutation_policy" | grep -q 'Data::FinishMacosServiceOwnedUnattendedPasswordChange { .. }' || r_s11b2="$r_s11b2 macos-service-password-finish-not-denied-on-main"
+echo "$main_channel_mutation_policy" | grep -q 'Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. }' || r_s11b2="$r_s11b2 macos-service-password-request-not-denied-on-main"
 echo "$main_channel_mutation_policy" | grep -q 'Data::MacosServiceOwnedPermanentPasswordSnapshotRequest => false' || r_s11b2="$r_s11b2 macos-service-password-snapshot-not-denied-on-main"
 echo "$main_channel_mutation_policy" | grep -q 'Data::CommitServiceOwnedUnattendedPasswordChange(_) => false' || r_s11b2="$r_s11b2 macos-service-password-commit-not-denied-on-main"
 grep -A5 'Data::CommitServiceOwnedUnattendedPasswordChange(_) => {' src/ipc.rs | grep -q 'peer_authority.allows_service_owned_unattended_password_commit()' || r_s11b2="$r_s11b2 service-password-commit-not-root-peer-gated"
@@ -1509,23 +1506,17 @@ grep -q 'Self::WindowsLocalSystemPeer => true' src/ipc.rs                       
 grep -q 'handle_windows_service_owned_unattended_password_request' src/platform/windows.rs || r_s11b2="$r_s11b2 windows-service-password-service-loop-not-wired"
 grep -q 'RequestServiceOwnedUnattendedPasswordChange(value)' src/platform/windows.rs || r_s11b2="$r_s11b2 windows-service-password-request-not-dispatched"
 grep -q 'crate::platform::is_elevated(None).unwrap_or(false)' src/ipc.rs             || r_s11b2="$r_s11b2 windows-service-password-ui-not-elevation-gated"
-grep -q 'MACOS_SERVICE_OWNED_PASSWORD_PENDING' src/ipc.rs                           || r_s11b2="$r_s11b2 macos-service-password-pending-map-missing"
-grep -q 'MACOS_SERVICE_OWNED_PASSWORD_MAX_PENDING' src/ipc.rs                       || r_s11b2="$r_s11b2 macos-service-password-pending-cap-missing"
-grep -q 'macos_store_service_owned_password_request' src/ipc.rs                     || r_s11b2="$r_s11b2 macos-service-password-begin-store-missing"
-grep -q 'macos_take_service_owned_password_request' src/ipc.rs                      || r_s11b2="$r_s11b2 macos-service-password-finish-consume-missing"
-grep -q 'peer_pid()' src/ipc.rs                                                     || r_s11b2="$r_s11b2 macos-service-password-peer-pid-missing"
-grep -q 'peer_uid()' src/ipc.rs                                                     || r_s11b2="$r_s11b2 macos-service-password-peer-uid-missing"
-grep -q 'BeginMacosServiceOwnedUnattendedPasswordChange(String)' src/ipc.rs        || r_s11b2="$r_s11b2 macos-service-password-begin-does-not-carry-value"
-grep -q 'password: Option<String>' src/ipc.rs                                      || r_s11b2="$r_s11b2 macos-service-password-pending-value-missing"
-grep -q 'fn take_password(&mut self) -> ResultType<String>' src/ipc.rs             || r_s11b2="$r_s11b2 macos-service-password-pending-value-not-take-only"
-grep -q 'impl Drop for MacosServiceOwnedPasswordRequest' src/ipc.rs                || r_s11b2="$r_s11b2 macos-service-password-pending-value-not-zeroed"
+if grep -qE 'BeginMacosServiceOwnedUnattendedPasswordChange|MacosServiceOwnedUnattendedPasswordChallenge|FinishMacosServiceOwnedUnattendedPasswordChange' src/ipc.rs; then
+  r_s11b2="$r_s11b2 macos-service-password-old-begin-finish-flow-present"
+fi
+if grep -qE 'MACOS_SERVICE_OWNED_PASSWORD_PENDING|MACOS_SERVICE_OWNED_PASSWORD_MAX_PENDING|MacosServiceOwnedPasswordRequest|macos_store_service_owned_password_request|macos_take_service_owned_password_request|macos_schedule_service_owned_password_request_expiry|MACOS_SERVICE_OWNED_PASSWORD_REQUEST_TTL|password: Option<String>' src/ipc.rs; then
+  r_s11b2="$r_s11b2 macos-service-password-pending-cache-present"
+fi
 grep -q 'MACOS_SERVICE_OWNED_PASSWORD_MAX_BYTES' src/ipc.rs                        || r_s11b2="$r_s11b2 macos-service-password-value-cap-missing"
 grep -q 'password.len() > MACOS_SERVICE_OWNED_PASSWORD_MAX_BYTES' src/ipc.rs       || r_s11b2="$r_s11b2 macos-service-password-value-cap-not-enforced"
-grep -q 'fn macos_schedule_service_owned_password_request_expiry' src/ipc.rs       || r_s11b2="$r_s11b2 macos-service-password-expiry-task-missing"
-grep -q 'macos_schedule_service_owned_password_request_expiry(request_id.clone())' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-expiry-task-not-armed"
-grep -q 'tokio::time::sleep(MACOS_SERVICE_OWNED_PASSWORD_REQUEST_TTL).await' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-expiry-task-not-timed"
-grep -q 'macos_store_service_owned_password_request(stream, password)' src/ipc.rs  || r_s11b2="$r_s11b2 macos-service-password-begin-not-storing-value"
-grep -q 'Config::set_permanent_password(&password)' src/ipc.rs                    || r_s11b2="$r_s11b2 macos-service-password-finish-not-writing-root-store"
+grep -q 'macos_service_owned_password_value_is_valid(&password)' src/ipc.rs       || r_s11b2="$r_s11b2 macos-service-password-value-cap-not-wired"
+grep -q 'handle_macos_service_owned_unattended_password_request' src/ipc.rs        || r_s11b2="$r_s11b2 macos-service-password-request-handler-missing"
+grep -q 'Config::set_permanent_password(&password)' src/ipc.rs                    || r_s11b2="$r_s11b2 macos-service-password-request-not-writing-root-store"
 if grep -q 'commit_service_owned_unattended_password_change(password).await' src/ipc.rs; then
   r_s11b2="$r_s11b2 macos-service-password-stale-main-server-commit"
 fi
@@ -1588,10 +1579,21 @@ grep -q 'test_set_permanent_password_persists_when_value_matches_preset' libs/hb
 grep -q 'effective_permanent_password_prs' src/direct_service.rs                   || r_s11b2="$r_s11b2 macos-service-password-listener-not-effective-prs"
 grep -q 'let prs = effective_permanent_password_prs().await' src/server.rs         || r_s11b2="$r_s11b2 macos-service-password-cpace-not-effective-prs"
 grep -q 'service_owned_unattended_password_authorization()' src/ipc.rs             || r_s11b2="$r_s11b2 macos-service-password-ui-auth-not-action-only"
-grep -q 'authorization: Vec::new()' src/ipc.rs                                     || r_s11b2="$r_s11b2 macos-service-password-ui-auth-failure-not-cancelled"
-macos_finish_variant=$(awk '/FinishMacosServiceOwnedUnattendedPasswordChange \{/,/^    \},/' src/ipc.rs)
-if echo "$macos_finish_variant" | grep -q 'password:'; then
-  r_s11b2="$r_s11b2 macos-service-password-finish-still-carries-value"
+if grep -q 'authorization: Vec::new()' src/ipc.rs; then
+  r_s11b2="$r_s11b2 macos-service-password-auth-failure-cancel-fallback-present"
+fi
+if ! python3 - <<'PY'
+from pathlib import Path
+src = Path("src/ipc.rs").read_text()
+start = src.index("async fn set_service_owned_unattended_password_with_ack")
+end = src.index("#[cfg(target_os = \"windows\")]", start)
+body = src[start:end]
+auth = body.find("service_owned_unattended_password_authorization()")
+send = body.find("Data::RequestMacosServiceOwnedUnattendedPasswordChange")
+raise SystemExit(0 if auth != -1 and send != -1 and auth < send else 1)
+PY
+then
+  r_s11b2="$r_s11b2 macos-service-password-ui-sends-value-before-authorization"
 fi
 if grep -qE 'macos_service_owned_unattended_password_digest|MACOS_SERVICE_OWNED_PASSWORD_REQUEST_CONTEXT|password_digest' src/ipc.rs; then
   r_s11b2="$r_s11b2 macos-service-password-stale-digest-binding"
@@ -1622,8 +1624,7 @@ fi
 grep -q 'ensure_service_owned_unattended_password_authorization_right' src/platform/macos.rs || r_s11b2="$r_s11b2 macos-service-password-rust-right-setup-missing"
 grep -q 'MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm' src/platform/macos.rs || r_s11b2="$r_s11b2 macos-service-password-rust-auth-create-missing"
 grep -q 'MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm' src/platform/macos.rs || r_s11b2="$r_s11b2 macos-service-password-rust-auth-verify-missing"
-grep -q 'handle_macos_service_owned_unattended_password_begin' src/ipc.rs           || r_s11b2="$r_s11b2 macos-service-password-begin-handler-missing"
-grep -q 'handle_macos_service_owned_unattended_password_finish' src/ipc.rs          || r_s11b2="$r_s11b2 macos-service-password-finish-handler-missing"
+grep -q 'handle_macos_service_owned_unattended_password_request' src/ipc.rs         || r_s11b2="$r_s11b2 macos-service-password-request-handler-missing"
 grep -q 'crate::platform::is_installed() && crate::platform::is_installed_daemon(false)' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-install-state-gate-missing"
 grep -Fq 'const MACOS_PRIVILEGED_HELPER_EXEC: &str =' src/ipc/auth.rs              || r_s11b2="$r_s11b2 macos-service-ipc-helper-const-missing"
 grep -Fq '/Library/PrivilegedHelperTools/com.carriez.rustdesk_service' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-helper-path-missing"
@@ -1667,9 +1668,6 @@ fi
 if echo "$macos_auth_verify_block" | grep -q 'kAuthorizationFlagInteractionAllowed'; then
   r_s11b2="$r_s11b2 macos-service-password-daemon-verification-can-interact"
 fi
-if grep -q 'RequestMacosServiceOwnedUnattendedPasswordChange' src/ipc.rs; then
-  r_s11b2="$r_s11b2 macos-service-password-old-single-message-request-present"
-fi
 if grep -qE 'extern "C" bool MacCreateAdminAuthorizationExternalForm\(|extern "C" bool MacVerifyAdminAuthorizationExternalForm\(' src/platform/macos.mm; then
   r_s11b2="$r_s11b2 macos-service-password-old-auth-present"
 fi
@@ -1700,7 +1698,7 @@ if echo "$user_scope_fn" | grep -q '"--password"'; then
   r_s11b2="$r_s11b2 password-still-root-routes-to-user-main-ipc"
 fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 service-owned password IPC closure:$r_s11b2"; rc=1; else
-  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux uses polkit/root-service commit with structured policy/package assurance; Windows uses pipe-client token elevation plus LocalSystem service commit; macOS stores the proposed value in a one-shot same-peer request, admits _service only for the installed app executable talking to the trusted PrivilegedHelperTools helper, finishes with authorization only, uses a nonshared timeout-zero custom Authorization Services right, verifies the external form noninteractively, writes the authorized value into the root LaunchDaemon credential store, rejects the old macOS main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after exact live argv plus pid/path and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
+  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux uses polkit/root-service commit with structured policy/package assurance; Windows uses pipe-client token elevation plus LocalSystem service commit; macOS admits _service only for the installed app executable talking to the trusted PrivilegedHelperTools helper, client-authenticates the connected _service server, obtains the custom nonshared timeout-zero Authorization Services right before sending the password, verifies the external form noninteractively in the LaunchDaemon, writes the authorized value directly into the root LaunchDaemon credential store without a pending secret cache, rejects the old macOS main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after exact live argv plus pid/path and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
 
 # R-S11b-4: config/PRS secrecy after IPC closure. The balanced-PAKE PRS is
 # connect-equivalent at rest, so the code-owned boundary is:

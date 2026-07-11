@@ -255,11 +255,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   source test `windows_service_owned_password_commit_requires_localsystem_peer` covers the main-channel policy.
 - **R-S11b-2e/R-S11c-1f — macOS service-owned unattended password provisioning — CLOSED 2026-07-09; tightened 2026-07-11.**
   Platform: macOS LaunchDaemon/LaunchAgent installed service. Endpoint/action:
-  `Data::BeginMacosServiceOwnedUnattendedPasswordChange(String)` over `_service`, a root LaunchDaemon
-  `Data::MacosServiceOwnedUnattendedPasswordChallenge { request_id }`, then
-  `Data::FinishMacosServiceOwnedUnattendedPasswordChange { request_id, authorization }`, followed by root
-  LaunchDaemon storage and a typed `Data::MacosServiceOwnedPermanentPasswordSnapshotRequest` runtime refresh
-  from the service-owned LaunchAgent. Boundary: active desktop/CLI process ↔ root LaunchDaemon `_service`
+  `Data::RequestMacosServiceOwnedUnattendedPasswordChange { password, authorization }` over `_service`,
+  followed by root LaunchDaemon storage and a typed `Data::MacosServiceOwnedPermanentPasswordSnapshotRequest`
+  runtime refresh from the service-owned LaunchAgent. Boundary: active desktop/CLI process ↔ root LaunchDaemon `_service`
   ↔ service-owned `--server` process that honors the unattended credential. The `_service` executable identity gate models the deployed
   installation: the peer is the installed app executable under `/Applications/<App>.app/Contents/MacOS/<App>`,
   with root-owned, non-symlink, non-group/world-writable bundle/executable components and the pinned Developer ID
@@ -268,18 +266,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `/Library/PrivilegedHelperTools/com.carriez.rustdesk_service`; the old same-directory app-bundle `service`
   exception is absent. Attack surface closed: service-owned password provisioning no
   longer fails closed on macOS for lack of a privileged path, and it does not fall back to ordinary main IPC,
-  generic config writes, or the Authorization Services generic rule. Before issuing a challenge and before
-  verifying the finish message, the LaunchDaemon creates/updates the RustDesk-specific
-  `com.carriez.RustDesk.set-unattended-password` authorization right as admin-only, non-shared, and timeout
-  zero. The UI refuses to create an external form unless that explicit right exists. The LaunchDaemon stores the
-  proposed password in a bounded, TTL-expiring, zero-on-drop pending request bound to the same `_service` peer
-  pid/uid and returns only the request id. The UI obtains an Authorization Services external form for the RustDesk
-  right and finishes with only the request id plus that external form; if authorization fails, the UI sends the
-  same finish shape with an empty authorization token so the service consumes the request. The finish message
-  cannot carry a replacement password. The LaunchDaemon consumes only the same-peer pending request, internalizes
-  the external form, verifies the right without interaction, destroys the rights, and writes the stored pending
-  password into the root LaunchDaemon credential store; an explicit set is persisted as local durable storage
-  even when the value equals a preset. The old macOS main-server
+  generic config writes, or the Authorization Services generic rule. The UI connects to `_service` through the
+  authenticated trusted-helper client path, obtains an Authorization Services external form for the RustDesk-specific
+  `com.carriez.RustDesk.set-unattended-password` right, and only then sends the proposed password and external
+  form in one typed request. The LaunchDaemon creates/updates that right as admin-only, non-shared, and timeout
+  zero, internalizes the external form, verifies the right without interaction, destroys the rights, enforces the
+  password-size bound, and writes the authorized password directly into the root LaunchDaemon credential store;
+  no request-id state machine or pending plaintext secret cache exists. An explicit set is persisted as local
+  durable storage even when the value equals a preset. The old macOS main-server
   `Data::CommitServiceOwnedUnattendedPasswordChange` path rejects and cannot write. The service-owned
   LaunchAgent receives the root credential only as a runtime snapshot after the LaunchDaemon proves that the
   `_service` peer is the installed app/trusted-helper pair, has the exact live `--server --service-owned-server`
@@ -293,9 +287,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   macOS service-owned password flow messages are denied, ordinary user-owned password writes remain denied for
   service-owned receivers, and rejection ACKs fail closed. Verification closure:
   `scripts/verify.sh` and `scripts/apple-conform-check.sh`
-  assert the macOS begin/challenge/finish shape, `_service` allowlist, main-channel denial, pending request map
-  and caps, pending-value storage, zero-on-drop, TTL expiry, authorization-failure cancellation, peer pid/uid
-  binding, finish-without-password shape, explicit non-shared timeout-zero Authorization Services right, no
+  assert the macOS single authorized request shape, `_service` allowlist, main-channel denial, absence of the old
+  begin/challenge/finish and pending-cache machinery, authorization-before-send ordering, password-size bound,
+  explicit non-shared timeout-zero Authorization Services right, no
   request-digest prompt/verification API, no `kAuthorizationRightExecute` fallback in the service password
   functions, non-interactive `AuthorizationCreateFromExternalForm` verification, signed/root-owned installed-app
   peer identity, trusted PrivilegedHelperTools `_service` current-helper identity, absence of the old same-directory
@@ -1320,10 +1314,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   by a service-owned server from a root peer. Windows installed-service provisioning is closed by
   R-S11b-2d/R-S11c-1e: the `_service` request requires an elevated connected pipe-client token, and the final
   main-server commit is accepted only from a LocalSystem service peer. macOS installed-service provisioning is
-  closed by R-S11b-2e/R-S11c-1f: the `_service` path is a begin/challenge/finish exchange where the root
-  LaunchDaemon stores the proposed value in a bounded, TTL-expiring, zero-on-drop same-peer request, finishes
-  with authorization only, verifies an explicit non-shared timeout-zero RustDesk Authorization Services right
-  noninteractively, writes the authorized value into the root LaunchDaemon credential store, rejects the old
+  closed by R-S11b-2e/R-S11c-1f: the `_service` path authenticates the connected root helper, obtains the explicit
+  non-shared timeout-zero RustDesk Authorization Services right before sending the password, verifies that external
+  form noninteractively in the LaunchDaemon, writes the authorized value directly into the root LaunchDaemon credential
+  store without a pending plaintext cache, rejects the old
   macOS main-server commit fallback, and serves that root credential to the service-owned LaunchAgent only as a
   launchd-owned runtime snapshot after exact live argv plus pid/path and parsed root-owned plist command-shape proof;
   macOS `_service` clients also authenticate the connected server as the root trusted privileged helper before
@@ -2602,17 +2596,17 @@ first spec change in this run that is not disclosure-only. The 2026-07-10 IPC/op
 second normative closure in this area: R-S16's read funnel now explicitly includes whole-map option reads
 (`Config::get_options` / UI cache / CLI `--option` / IPC `Data::Options(None)`), with pinned policy
 overlaid last. The 2026-07-11 macOS service-owned-password hardening added parsed
-LaunchAgent plist command-shape proof to the R-S11b-2e/R-S11c-1f requirement and R-S11e-2
-client-side `_service` server authentication; the Linux helper-provenance follow-up added R-S11e-3 canonical
-target binding for fixed helper launches; the Windows elevated command-file follow-up added R-S11d-32 identity and
-content binding across the close/reopen handoff. The other
+LaunchAgent plist command-shape proof, R-S11e-2 client-side `_service` server authentication, and direct
+authorization-before-password service requests with no pending plaintext cache; the Linux helper-provenance
+follow-up added R-S11e-3 canonical target binding for fixed helper launches; the Windows elevated command-file
+follow-up added R-S11d-32 identity and content binding across the close/reopen handoff. The other
 requirements.html edits are disclosure/inventory updates, and the
 native-codec-watch ledger is re-confirmed valid against each.
 The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-c0018e3bfc8a7f0e4459284c5638026a93f0d13df65133889e2819e5fd3ab200  requirements.html
+999a61de66f380098d91da7dce4bbe691b07866329212f90f62ded86967741ca  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

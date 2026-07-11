@@ -179,6 +179,7 @@ objc_id = "0.1"
 piet = "0.6"
 piet-coregraphics = "0.6"
 foreign-types = "0.3"
+plist = "1.6.1"
 
 [target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
 tray-icon = { git = "https://github.com/tauri-apps/tray-icon", version = "0.21.3" }
@@ -259,6 +260,7 @@ os-version = "0.2"
 [dev-dependencies]
 hound = "3.5"
 docopt = "1.1"
+plist = "1.6.1"
 
 [package.metadata.bundle]
 name = "RustDesk"

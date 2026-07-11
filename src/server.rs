@@ -69,6 +69,26 @@ mod service;
 mod video_qos;
 pub mod video_service;
 
+pub async fn effective_permanent_password_prs() -> String {
+    #[cfg(target_os = "macos")]
+    if crate::common::is_service_owned_server_process() {
+        match crate::ipc::refresh_macos_service_owned_permanent_password_snapshot(1_000).await {
+            Ok(true) => return Config::get_permanent_password_prs(),
+            Ok(false) => return String::new(),
+            Err(err) => {
+                log::debug!("Failed to refresh macOS service-owned password snapshot: {err}");
+                if let Err(clear_err) = Config::set_permanent_password_storage_for_runtime("", "") {
+                    log::warn!(
+                        "Failed to clear stale macOS service-owned password snapshot: {clear_err}"
+                    );
+                }
+                return String::new();
+            }
+        }
+    }
+    Config::get_permanent_password_prs()
+}
+
 pub type Childs = Arc<Mutex<Vec<std::process::Child>>>;
 type ConnMap = HashMap<i32, ConnInner>;
 
@@ -397,7 +417,7 @@ pub async fn create_tcp_connection(
         // the live permanent password read fresh per connection (R-P1/R-S16); an
         // empty PRS fails closed (R-S9). Note: the matching viewer must run the
         // CPace initiator (client.rs) — fork peers only, no downgrade (R-P11).
-        let prs = Config::get_permanent_password_prs();
+        let prs = effective_permanent_password_prs().await;
         if prs.is_empty() {
             bail!("Refusing connection: no permanent password set (R-S9)");
         }

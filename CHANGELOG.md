@@ -5,6 +5,28 @@ All notable changes to the hardened fork, newest first. Each entry's heading is 
 truth for the exact code a release contains is the **commit** it was built from, linked in the GitHub
 release notes.
 
+## 1.4.7-hardened.5 — 2026-07-11
+
+### Service-owned unattended passwords
+- Made the macOS root LaunchDaemon the durable owner of installed-service unattended password storage.
+- Removed the old macOS main-IPC commit fallback: the service-owned LaunchAgent now receives only a typed
+  runtime password snapshot, never authority to write the credential.
+- Bound macOS runtime snapshots to the installed LaunchAgent job: the root service checks the live peer
+  process, launchd `gui/<uid>/<label>` pid/path, root:wheel plist file and parent trust, ACL absence, and
+  parsed LaunchAgent `Label`, `ProgramArguments`, `RunAtLoad`, and `KeepAlive` shape before returning a
+  snapshot.
+- Kept the snapshot runtime-only: it rebuilds only the in-memory PRS overlay used by listener parking,
+  CPace, and password status, and it is never serialized into user config. Empty root storage returns an
+  empty snapshot.
+- Fixed explicit password changes that match a preset value so they still persist as local durable storage.
+
+### Verification
+- Added behavior tests for macOS LaunchAgent plist proof, runtime snapshot non-persistence, and the
+  preset-match persistence case.
+- Tightened `verify.sh` and `apple-conform-check.sh` to gate the macOS snapshot proof in the specific
+  implementation blocks, including live argv, `spawn_blocking`, launchctl pid/path, parsed plist shape,
+  empty snapshots, and runtime overlay behavior.
+
 ## 1.4.7-hardened.4 — 2026-07-08
 
 ### Remote control of RustDesk itself

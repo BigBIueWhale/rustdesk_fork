@@ -575,7 +575,10 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
         // re-binds and re-runs assert_socket_surface. The per-connection gate (server.rs,
         // R-S9) already refuses every connection in this window, so no listener is ever an
         // access path without a password — the socket simply tracks the credential.
-        if Config::get_permanent_password_prs().is_empty() {
+        if crate::server::effective_permanent_password_prs()
+            .await
+            .is_empty()
+        {
             if listener.is_some() {
                 log::warn!(
                     "R-S9: permanent password cleared at runtime — dropping the direct listener until one is set again"

@@ -89,6 +89,10 @@ use std::{
 
 #[cfg(target_os = "macos")]
 const MACOS_OPEN: &str = "/usr/bin/open";
+#[cfg(target_os = "macos")]
+const MACOS_LAUNCHCTL: &str = "/bin/launchctl";
+#[cfg(target_os = "macos")]
+const MACOS_LS: &str = "/bin/ls";
 
 #[cfg(windows)]
 use std::{
@@ -413,6 +417,13 @@ pub enum Data {
     FinishMacosServiceOwnedUnattendedPasswordChange {
         request_id: String,
         authorization: Vec<u8>,
+    },
+    #[cfg(target_os = "macos")]
+    MacosServiceOwnedPermanentPasswordSnapshotRequest,
+    #[cfg(target_os = "macos")]
+    MacosServiceOwnedPermanentPasswordSnapshot {
+        storage: String,
+        salt: String,
     },
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     CommitServiceOwnedUnattendedPasswordChange(String),
@@ -998,11 +1009,13 @@ pub(crate) fn main_channel_admits_state_mutation(
         Data::SetUserOwnedPermanentPassword(_) => {
             authority.allows_main_channel_user_owned_password_write()
         }
-        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         Data::CommitServiceOwnedUnattendedPasswordChange(_) => {
             authority.allows_service_owned_unattended_password_commit()
                 && peer_authority.allows_service_owned_unattended_password_commit()
         }
+        #[cfg(target_os = "macos")]
+        Data::CommitServiceOwnedUnattendedPasswordChange(_) => false,
         #[cfg(target_os = "windows")]
         Data::RequestServiceOwnedShareRdp(_) => false,
         #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -1010,7 +1023,8 @@ pub(crate) fn main_channel_admits_state_mutation(
         #[cfg(target_os = "macos")]
         Data::BeginMacosServiceOwnedUnattendedPasswordChange(_)
         | Data::MacosServiceOwnedUnattendedPasswordChallenge { .. }
-        | Data::FinishMacosServiceOwnedUnattendedPasswordChange { .. } => false,
+        | Data::FinishMacosServiceOwnedUnattendedPasswordChange { .. }
+        | Data::MacosServiceOwnedPermanentPasswordSnapshotRequest => false,
         // Whole-options writes are ordinary user-owned configuration writes. A service-owned server
         // enforces machine policy and must not accept them over the generic main IPC config bus.
         Data::Options(Some(_)) => authority.allows_main_channel_options_write(),
@@ -1074,6 +1088,8 @@ pub(crate) fn main_channel_admits_state_mutation(
         | Data::TerminalSessionCount(_) => true,
         #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         Data::ServiceOwnedUnattendedPasswordChangeResult(_) => true,
+        #[cfg(target_os = "macos")]
+        Data::MacosServiceOwnedPermanentPasswordSnapshot { .. } => true,
         #[cfg(target_os = "windows")]
         Data::ServiceOwnedShareRdpResult(_)
         | Data::ClipboardFile(_)
@@ -1144,7 +1160,8 @@ pub(crate) fn service_channel_admits_message(data: &Data) -> bool {
         Data::RequestServiceOwnedUnattendedPasswordChange(_) => true,
         #[cfg(target_os = "macos")]
         Data::BeginMacosServiceOwnedUnattendedPasswordChange(_)
-        | Data::FinishMacosServiceOwnedUnattendedPasswordChange { .. } => true,
+        | Data::FinishMacosServiceOwnedUnattendedPasswordChange { .. }
+        | Data::MacosServiceOwnedPermanentPasswordSnapshotRequest => true,
         _ => false,
     }
 }
@@ -1595,9 +1612,9 @@ async fn linux_peer_is_authorized_for_service_owned_password_change(stream: &Con
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 async fn commit_service_owned_unattended_password_change(value: String) -> ResultType<bool> {
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(target_os = "linux")]
     let _scope = UserMainIpcScope::new();
     let ms_timeout = 1_000;
     let mut c = connect(ms_timeout, "").await?;
@@ -1812,6 +1829,363 @@ fn macos_service_owned_password_authorization_right_is_ready() -> bool {
 }
 
 #[cfg(target_os = "macos")]
+async fn macos_peer_is_service_owned_server(stream: &Connection) -> bool {
+    let Some(peer_pid) = stream.peer_pid() else {
+        log::warn!("Rejected macOS service-owned password snapshot request: peer pid unavailable");
+        return false;
+    };
+    let Some(peer_uid) = stream.peer_uid() else {
+        log::warn!("Rejected macOS service-owned password snapshot request: peer uid unavailable");
+        return false;
+    };
+    match tokio::task::spawn_blocking(move || {
+        macos_peer_is_service_owned_server_blocking(peer_uid, peer_pid)
+    })
+    .await
+    {
+        Ok(accepted) => accepted,
+        Err(err) => {
+            log::warn!(
+                "Rejected macOS service-owned password snapshot request: peer proof task failed: {err}"
+            );
+            false
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_peer_is_service_owned_server_blocking(peer_uid: u32, peer_pid: u32) -> bool {
+    let app_name = crate::get_app_name();
+    let system = hbb_common::sysinfo::System::new_all();
+    let Some(process) = system
+        .processes()
+        .values()
+        .find(|process| process.pid().as_u32() == peer_pid)
+    else {
+        log::warn!(
+            "Rejected macOS service-owned password snapshot request: peer process disappeared, peer_pid={peer_pid}"
+        );
+        return false;
+    };
+    if !process.name().eq_ignore_ascii_case(&app_name) {
+        log::warn!(
+            "Rejected macOS service-owned password snapshot request: peer process is not {app_name}, peer_pid={peer_pid}"
+        );
+        return false;
+    }
+    if process.cmd().get(1).map_or(true, |arg| arg != "--server")
+        || process
+            .cmd()
+            .get(2)
+            .map_or(true, |arg| arg != crate::common::SERVICE_OWNED_SERVER_ARG)
+    {
+        log::warn!(
+            "Rejected macOS service-owned password snapshot request: peer process is not service-owned --server, peer_pid={peer_pid}"
+        );
+        return false;
+    }
+    macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_service_owned_server_launch_agent_label() -> String {
+    format!("{}_server", crate::get_full_name())
+}
+
+#[cfg(target_os = "macos")]
+fn macos_service_owned_server_launch_agent_executable() -> String {
+    let app_name = crate::get_app_name();
+    format!("/Applications/{app_name}.app/Contents/MacOS/{app_name}")
+}
+
+#[cfg(target_os = "macos")]
+fn macos_service_owned_server_launch_agent_plist() -> String {
+    format!(
+        "/Library/LaunchAgents/{}.plist",
+        macos_service_owned_server_launch_agent_label()
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn macos_path_has_no_extended_acl(path: &std::path::Path) -> bool {
+    match std::process::Command::new(MACOS_LS)
+        .arg("-lde")
+        .arg(path)
+        .output()
+    {
+        Ok(output) if output.status.success() => {
+            output
+                .stdout
+                .split(|byte| *byte == b'\n')
+                .filter(|line| !line.is_empty())
+                .count()
+                == 1
+        }
+        Ok(output) => {
+            log::error!(
+                "macOS ACL inspection failed for '{}' with status {}",
+                path.display(),
+                output.status
+            );
+            false
+        }
+        Err(err) => {
+            log::error!(
+                "Failed to inspect macOS ACLs for '{}': {err}",
+                path.display()
+            );
+            false
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+enum MacosTrustedPathKind {
+    File,
+    Directory,
+}
+
+#[cfg(target_os = "macos")]
+fn macos_root_wheel_path_is_trusted(
+    path: &std::path::Path,
+    expected_kind: MacosTrustedPathKind,
+) -> bool {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return false;
+    };
+    let expected_type = match expected_kind {
+        MacosTrustedPathKind::File => metadata.is_file(),
+        MacosTrustedPathKind::Directory => metadata.is_dir(),
+    };
+    expected_type
+        && !metadata.file_type().is_symlink()
+        && metadata.uid() == 0
+        && metadata.gid() == 0
+        && metadata.permissions().mode() & 0o022 == 0
+        && macos_path_has_no_extended_acl(path)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_service_owned_server_launch_agent_plist_is_trusted(path: &std::path::Path) -> bool {
+    let Some(parent) = path.parent() else {
+        return false;
+    };
+    macos_root_wheel_path_is_trusted(parent, MacosTrustedPathKind::Directory)
+        && macos_root_wheel_path_is_trusted(path, MacosTrustedPathKind::File)
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_service_owned_server_launch_agent_plist_value_is_expected(
+    value: &plist::Value,
+    expected_label: &str,
+    expected_executable: &str,
+) -> bool {
+    let Some(dict) = value.as_dictionary() else {
+        return false;
+    };
+    if dict.get("Label").and_then(|value| value.as_string()) != Some(expected_label) {
+        return false;
+    }
+    let Some(program_arguments) = dict.get("ProgramArguments").and_then(|value| value.as_array())
+    else {
+        return false;
+    };
+    let expected_arguments = [
+        expected_executable,
+        "--server",
+        crate::common::SERVICE_OWNED_SERVER_ARG,
+    ];
+    if program_arguments.len() != expected_arguments.len() {
+        return false;
+    }
+    if !program_arguments
+        .iter()
+        .zip(expected_arguments.iter())
+        .all(|(actual, expected)| actual.as_string() == Some(*expected))
+    {
+        return false;
+    }
+    if dict.get("RunAtLoad").and_then(|value| value.as_boolean()) != Some(true) {
+        return false;
+    }
+    let Some(keep_alive) = dict.get("KeepAlive").and_then(|value| value.as_dictionary()) else {
+        return false;
+    };
+    if keep_alive.len() != 2 {
+        return false;
+    }
+    keep_alive
+        .get("SuccessfulExit")
+        .and_then(|value| value.as_boolean())
+        == Some(false)
+        && keep_alive
+            .get("AfterInitialDemand")
+            .and_then(|value| value.as_boolean())
+            == Some(false)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_service_owned_server_launch_agent_plist_content_is_expected(
+    path: &std::path::Path,
+) -> bool {
+    let expected_label = macos_service_owned_server_launch_agent_label();
+    let expected_executable = macos_service_owned_server_launch_agent_executable();
+    match plist::Value::from_file(path) {
+        Ok(value)
+            if macos_service_owned_server_launch_agent_plist_value_is_expected(
+                &value,
+                &expected_label,
+                &expected_executable,
+            ) =>
+        {
+            true
+        }
+        Ok(_) => {
+            log::warn!(
+                "Rejected macOS service-owned password snapshot request: LaunchAgent plist does not match service-owned server command shape: {}",
+                path.display()
+            );
+            false
+        }
+        Err(err) => {
+            log::warn!(
+                "Rejected macOS service-owned password snapshot request: failed to parse LaunchAgent plist '{}': {err}",
+                path.display()
+            );
+            false
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_launchctl_print_value<'a>(output: &'a str, name: &str) -> Option<&'a str> {
+    output.lines().find_map(|line| {
+        let line = line.trim();
+        let (key, value) = line.split_once('=')?;
+        let value = value.trim().trim_end_matches(';').trim().trim_matches('"');
+        (key.trim().eq_ignore_ascii_case(name)).then_some(value)
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn macos_launch_agent_owns_service_owned_server_pid(peer_uid: u32, peer_pid: u32) -> bool {
+    let label = macos_service_owned_server_launch_agent_label();
+    let expected_plist = macos_service_owned_server_launch_agent_plist();
+    let expected_plist_path = std::path::Path::new(&expected_plist);
+    if !macos_service_owned_server_launch_agent_plist_is_trusted(expected_plist_path) {
+        log::warn!(
+            "Rejected macOS service-owned password snapshot request: LaunchAgent plist is not trusted: {expected_plist}"
+        );
+        return false;
+    }
+    if !macos_service_owned_server_launch_agent_plist_content_is_expected(expected_plist_path) {
+        return false;
+    }
+
+    let target = format!("gui/{peer_uid}/{label}");
+    let output = match std::process::Command::new(MACOS_LAUNCHCTL)
+        .arg("print")
+        .arg(&target)
+        .output()
+    {
+        Ok(output) if output.status.success() => output,
+        Ok(output) => {
+            log::warn!(
+                "Rejected macOS service-owned password snapshot request: launchctl print {target} failed with status {}",
+                output.status
+            );
+            return false;
+        }
+        Err(err) => {
+            log::warn!(
+                "Rejected macOS service-owned password snapshot request: failed to run launchctl print {target}: {err}"
+            );
+            return false;
+        }
+    };
+    let output = String::from_utf8_lossy(&output.stdout);
+    let reported_pid =
+        macos_launchctl_print_value(&output, "pid").and_then(|pid| pid.parse::<u32>().ok());
+    let reported_path = macos_launchctl_print_value(&output, "path");
+    if reported_pid != Some(peer_pid) || reported_path != Some(expected_plist.as_str()) {
+        log::warn!(
+            "Rejected macOS service-owned password snapshot request: LaunchAgent target={target} reported pid={reported_pid:?} path={reported_path:?}"
+        );
+        return false;
+    }
+    true
+}
+
+#[cfg(target_os = "macos")]
+async fn handle_macos_service_owned_permanent_password_snapshot_request(
+    channel: IpcChannel,
+    stream: &mut Connection,
+) {
+    let (storage, salt) = if channel == IpcChannel::Service
+        && macos_peer_is_service_owned_server(stream).await
+    {
+        let (storage, salt) = Config::get_local_permanent_password_storage_and_salt();
+        if storage.is_empty() {
+            (String::new(), String::new())
+        } else {
+            (storage, salt)
+        }
+    } else {
+        log::warn!("Rejected macOS service-owned password snapshot request");
+        (String::new(), String::new())
+    };
+    allow_err!(
+        stream
+            .send(&Data::MacosServiceOwnedPermanentPasswordSnapshot { storage, salt })
+            .await
+    );
+}
+
+#[cfg(target_os = "macos")]
+async fn permanent_password_is_set_for_current_process() -> bool {
+    if crate::common::is_service_owned_server_process() {
+        return refresh_macos_service_owned_permanent_password_snapshot_for_status().await;
+    }
+    Config::has_permanent_password()
+}
+
+#[cfg(target_os = "macos")]
+async fn permanent_password_is_preset_for_current_process() -> bool {
+    if crate::common::is_service_owned_server_process() {
+        let _ = refresh_macos_service_owned_permanent_password_snapshot_for_status().await;
+    }
+    Config::is_using_preset_password()
+}
+
+#[cfg(target_os = "macos")]
+async fn refresh_macos_service_owned_permanent_password_snapshot_for_status() -> bool {
+    match refresh_macos_service_owned_permanent_password_snapshot(1_000).await {
+        Ok(is_set) => is_set,
+        Err(err) => {
+            log::debug!("Failed to refresh macOS service-owned password status snapshot: {err}");
+            if let Err(clear_err) = Config::set_permanent_password_storage_for_runtime("", "") {
+                log::warn!(
+                    "Failed to clear macOS service-owned password status snapshot after refresh failure: {clear_err}"
+                );
+            }
+            false
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+async fn permanent_password_is_set_for_current_process() -> bool {
+    Config::has_permanent_password()
+}
+
+#[cfg(not(target_os = "macos"))]
+async fn permanent_password_is_preset_for_current_process() -> bool {
+    Config::is_using_preset_password()
+}
+
+#[cfg(target_os = "macos")]
 async fn handle_macos_service_owned_unattended_password_begin(
     channel: IpcChannel,
     password: String,
@@ -1857,15 +2231,13 @@ async fn handle_macos_service_owned_unattended_password_finish(
                 macos_peer_is_authorized_for_service_owned_password_change(&authorization)
                     && match request.take_password() {
                         Ok(password) => {
-                            match commit_service_owned_unattended_password_change(password).await {
-                                Ok(committed) => committed,
-                                Err(err) => {
-                                    log::warn!(
-                                        "Rejected macOS service-owned unattended password change: service-to-server commit failed: {err}"
-                                    );
-                                    false
-                                }
+                            let committed = Config::set_permanent_password(&password);
+                            if !committed {
+                                log::warn!(
+                                    "Rejected macOS service-owned unattended password change: root credential store rejected the update"
+                                );
                             }
+                            committed
                         }
                         Err(err) => {
                             log::warn!(
@@ -2079,17 +2451,19 @@ async fn handle(data: Data, stream: &mut Connection, channel: IpcChannel) {
                     None
                 }
             } else if name == "permanent-password-set" {
-                Some(if Config::has_permanent_password() {
+                Some(if permanent_password_is_set_for_current_process().await {
                     "Y".to_owned()
                 } else {
                     "N".to_owned()
                 })
             } else if name == "permanent-password-is-preset" {
-                Some(if Config::is_using_preset_password() {
-                    "Y".to_owned()
-                } else {
-                    "N".to_owned()
-                })
+                Some(
+                    if permanent_password_is_preset_for_current_process().await {
+                        "Y".to_owned()
+                    } else {
+                        "N".to_owned()
+                    },
+                )
             } else if name == "permanent-password-user-owned-writable" {
                 Some(
                     if current_process_allows_user_owned_permanent_password_write()
@@ -2166,6 +2540,12 @@ async fn handle(data: Data, stream: &mut Connection, channel: IpcChannel) {
             )
             .await;
         }
+        #[cfg(target_os = "macos")]
+        Data::MacosServiceOwnedPermanentPasswordSnapshotRequest => {
+            handle_macos_service_owned_permanent_password_snapshot_request(channel, stream).await;
+        }
+        #[cfg(target_os = "macos")]
+        Data::MacosServiceOwnedPermanentPasswordSnapshot { .. } => {}
         #[cfg(target_os = "windows")]
         Data::RequestServiceOwnedUnattendedPasswordChange(_) => {
             allow_err!(
@@ -2174,7 +2554,7 @@ async fn handle(data: Data, stream: &mut Connection, channel: IpcChannel) {
                     .await
             );
         }
-        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         Data::CommitServiceOwnedUnattendedPasswordChange(value) => {
             let accepted = channel == IpcChannel::Main
                 && current_process_allows_service_owned_unattended_password_commit(stream)
@@ -2186,6 +2566,17 @@ async fn handle(data: Data, stream: &mut Connection, channel: IpcChannel) {
             allow_err!(
                 stream
                     .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(accepted))
+                    .await
+            );
+        }
+        #[cfg(target_os = "macos")]
+        Data::CommitServiceOwnedUnattendedPasswordChange(_) => {
+            log::warn!(
+                "Rejected macOS service-owned unattended password commit: root LaunchDaemon storage is authoritative"
+            );
+            allow_err!(
+                stream
+                    .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(false))
                     .await
             );
         }
@@ -2751,6 +3142,25 @@ async fn sync_permanent_password_storage_from_daemon_async() -> ResultType<()> {
     apply_permanent_password_storage_and_salt_payload(v.as_deref())
 }
 
+#[cfg(target_os = "macos")]
+pub async fn refresh_macos_service_owned_permanent_password_snapshot(
+    ms_timeout: u64,
+) -> ResultType<bool> {
+    let mut c = connect_service(ms_timeout).await?;
+    c.send(&Data::MacosServiceOwnedPermanentPasswordSnapshotRequest)
+        .await?;
+    match c.next_timeout(ms_timeout).await? {
+        Some(Data::MacosServiceOwnedPermanentPasswordSnapshot { storage, salt }) => {
+            Config::set_permanent_password_storage_for_runtime(&storage, &salt)?;
+            Ok(Config::has_permanent_password())
+        }
+        _ => {
+            Config::set_permanent_password_storage_for_runtime("", "")?;
+            Ok(false)
+        }
+    }
+}
+
 pub fn is_permanent_password_set() -> bool {
     match get_config("permanent-password-set") {
         Ok(Some(v)) => {
@@ -3181,6 +3591,170 @@ mod test {
         assert!(std::mem::size_of::<Data>() <= 120);
     }
 
+    fn macos_service_owned_launch_agent_test_plist(label: &str, args: &[&str]) -> plist::Value {
+        let args_xml = args
+            .iter()
+            .map(|arg| format!("            <string>{arg}</string>\n"))
+            .collect::<String>();
+        let xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+        <key>Label</key>
+        <string>{label}</string>
+        <key>KeepAlive</key>
+        <dict>
+            <key>SuccessfulExit</key>
+            <false />
+            <key>AfterInitialDemand</key>
+            <false />
+        </dict>
+        <key>RunAtLoad</key>
+        <true />
+        <key>ProgramArguments</key>
+        <array>
+{args_xml}        </array>
+    </dict>
+</plist>
+"#
+        );
+        plist::Value::from_reader_xml(xml.as_bytes()).unwrap()
+    }
+
+    #[test]
+    fn macos_service_owned_launch_agent_plist_validation_accepts_expected_program_arguments() {
+        let label = "com.carriez.RustDesk_server";
+        let executable = "/Applications/RustDesk.app/Contents/MacOS/RustDesk";
+        let value = macos_service_owned_launch_agent_test_plist(
+            label,
+            &[
+                executable,
+                "--server",
+                crate::common::SERVICE_OWNED_SERVER_ARG,
+            ],
+        );
+
+        assert!(macos_service_owned_server_launch_agent_plist_value_is_expected(
+            &value, label, executable
+        ));
+    }
+
+    #[test]
+    fn macos_service_owned_launch_agent_plist_validation_rejects_missing_service_arg() {
+        let label = "com.carriez.RustDesk_server";
+        let executable = "/Applications/RustDesk.app/Contents/MacOS/RustDesk";
+        let value =
+            macos_service_owned_launch_agent_test_plist(label, &[executable, "--server"]);
+
+        assert!(!macos_service_owned_server_launch_agent_plist_value_is_expected(
+            &value, label, executable
+        ));
+    }
+
+    #[test]
+    fn macos_service_owned_launch_agent_plist_validation_rejects_wrong_executable() {
+        let label = "com.carriez.RustDesk_server";
+        let executable = "/Applications/RustDesk.app/Contents/MacOS/RustDesk";
+        let value = macos_service_owned_launch_agent_test_plist(
+            label,
+            &[
+                "/tmp/RustDesk",
+                "--server",
+                crate::common::SERVICE_OWNED_SERVER_ARG,
+            ],
+        );
+
+        assert!(!macos_service_owned_server_launch_agent_plist_value_is_expected(
+            &value, label, executable
+        ));
+    }
+
+    #[test]
+    fn macos_service_owned_launch_agent_plist_validation_rejects_wrong_label() {
+        let label = "com.carriez.RustDesk_server";
+        let executable = "/Applications/RustDesk.app/Contents/MacOS/RustDesk";
+        let value = macos_service_owned_launch_agent_test_plist(
+            "com.attacker.RustDesk_server",
+            &[
+                executable,
+                "--server",
+                crate::common::SERVICE_OWNED_SERVER_ARG,
+            ],
+        );
+
+        assert!(!macos_service_owned_server_launch_agent_plist_value_is_expected(
+            &value, label, executable
+        ));
+    }
+
+    #[test]
+    fn macos_service_owned_launch_agent_plist_validation_rejects_run_at_load_false() {
+        let label = "com.carriez.RustDesk_server";
+        let executable = "/Applications/RustDesk.app/Contents/MacOS/RustDesk";
+        let mut value = macos_service_owned_launch_agent_test_plist(
+            label,
+            &[
+                executable,
+                "--server",
+                crate::common::SERVICE_OWNED_SERVER_ARG,
+            ],
+        );
+        value
+            .as_dictionary_mut()
+            .unwrap()
+            .insert("RunAtLoad".to_owned(), plist::Value::Boolean(false));
+
+        assert!(!macos_service_owned_server_launch_agent_plist_value_is_expected(
+            &value, label, executable
+        ));
+    }
+
+    #[test]
+    fn macos_service_owned_launch_agent_plist_validation_rejects_missing_keep_alive() {
+        let label = "com.carriez.RustDesk_server";
+        let executable = "/Applications/RustDesk.app/Contents/MacOS/RustDesk";
+        let mut value = macos_service_owned_launch_agent_test_plist(
+            label,
+            &[
+                executable,
+                "--server",
+                crate::common::SERVICE_OWNED_SERVER_ARG,
+            ],
+        );
+        value.as_dictionary_mut().unwrap().remove("KeepAlive");
+
+        assert!(!macos_service_owned_server_launch_agent_plist_value_is_expected(
+            &value, label, executable
+        ));
+    }
+
+    #[test]
+    fn macos_service_owned_launch_agent_plist_validation_rejects_extra_keep_alive_key() {
+        let label = "com.carriez.RustDesk_server";
+        let executable = "/Applications/RustDesk.app/Contents/MacOS/RustDesk";
+        let mut value = macos_service_owned_launch_agent_test_plist(
+            label,
+            &[
+                executable,
+                "--server",
+                crate::common::SERVICE_OWNED_SERVER_ARG,
+            ],
+        );
+        value
+            .as_dictionary_mut()
+            .unwrap()
+            .get_mut("KeepAlive")
+            .unwrap()
+            .as_dictionary_mut()
+            .unwrap()
+            .insert("OtherCondition".to_owned(), plist::Value::Boolean(true));
+
+        assert!(!macos_service_owned_server_launch_agent_plist_value_is_expected(
+            &value, label, executable
+        ));
+    }
+
     // R-S11 / Appendix C #15: the MAIN-channel config-write allowlist MUST reject generic
     // struct-field/proxy writes while admitting the per-key writes that legitimately stay. R-S11b adds
     // that ordinary password and options writes are user-owned only; service-owned unattended
@@ -3304,8 +3878,24 @@ mod test {
                 ),
                 "R-S11c-1: macOS service-owned password finish requests go to _service, not main IPC"
             );
+            assert!(
+                !main_channel_admits_state_mutation(
+                    &Data::MacosServiceOwnedPermanentPasswordSnapshotRequest,
+                    service_owned,
+                    root_peer
+                ),
+                "R-S11c-1: macOS service-owned password snapshots go to _service, not main IPC"
+            );
+            assert!(
+                !main_channel_admits_state_mutation(
+                    &Data::CommitServiceOwnedUnattendedPasswordChange("pw".to_owned()),
+                    service_owned,
+                    root_peer
+                ),
+                "R-S11c-1: macOS service-owned password commits are rooted in the LaunchDaemon store, not the LaunchAgent main IPC"
+            );
         }
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        #[cfg(target_os = "linux")]
         {
             let root_peer = MainIpcPeerAuthority::RootUnixPeer;
             assert!(
@@ -3464,6 +4054,13 @@ mod test {
                 }
             ),
             "R-S11c-1: macOS _service accepts the typed Authorization Services password finish request in addition to liveness"
+        );
+        #[cfg(target_os = "macos")]
+        assert!(
+            service_channel_admits_message(
+                &Data::MacosServiceOwnedPermanentPasswordSnapshotRequest
+            ),
+            "R-S11c-1: macOS _service accepts the typed service-owned password snapshot request in addition to liveness"
         );
         assert!(
             !service_channel_admits_message(&Data::Options(None)),

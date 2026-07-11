@@ -174,7 +174,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Boundary: active user ↔ root/LaunchDaemon service. Attack surface closed: a local active-user process no
   longer receives or replaces whole service `Config`/`Config2` over `_service`. Source closure:
   `src/ipc.rs` admits only narrow typed messages on `_service` via `service_channel_admits_message`
-  (`Data::Test`, plus Linux's R-S11b-2c service-owned unattended-password request);
+  (`Data::Test`, Linux's R-S11b-2c service-owned unattended-password request, and macOS's
+  begin/finish/runtime-snapshot service-owned unattended-password messages);
   `src/ipc.rs` deletes the `Data::SyncConfig` IPC variant; `src/ipc/fs.rs` probes `_service`
   liveness with `Data::Test`, not config reads; `src/server.rs` deletes
   `wait_initial_config_sync`/`sync_and_watch_config_dir` and the root↔user service-config watch loop.
@@ -256,10 +257,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Platform: macOS LaunchDaemon/LaunchAgent installed service. Endpoint/action:
   `Data::BeginMacosServiceOwnedUnattendedPasswordChange(String)` over `_service`, a root LaunchDaemon
   `Data::MacosServiceOwnedUnattendedPasswordChallenge { request_id }`, then
-  `Data::FinishMacosServiceOwnedUnattendedPasswordChange { request_id, authorization }`, followed by
-  `Data::CommitServiceOwnedUnattendedPasswordChange(String)` from the root LaunchDaemon into the service-owned
-  main server. Boundary: active desktop/CLI process ↔ root LaunchDaemon `_service` ↔ service-owned `--server`
-  process that honors the unattended credential. The `_service` executable identity gate models the deployed
+  `Data::FinishMacosServiceOwnedUnattendedPasswordChange { request_id, authorization }`, followed by root
+  LaunchDaemon storage and a typed `Data::MacosServiceOwnedPermanentPasswordSnapshotRequest` runtime refresh
+  from the service-owned LaunchAgent. Boundary: active desktop/CLI process ↔ root LaunchDaemon `_service`
+  ↔ service-owned `--server` process that honors the unattended credential. The `_service` executable identity gate models the deployed
   installation: the peer is the installed app executable under `/Applications/<App>.app/Contents/MacOS/<App>`,
   with root-owned, non-symlink, non-group/world-writable bundle/executable components and the pinned Developer ID
   Team ID plus app identifier requirement, and the receiver is the root-owned, non-symlink,
@@ -276,19 +277,32 @@ unreachable and a source/test/AST gate prevents reintroduction.
   right and finishes with only the request id plus that external form; if authorization fails, the UI sends the
   same finish shape with an empty authorization token so the service consumes the request. The finish message
   cannot carry a replacement password. The LaunchDaemon consumes only the same-peer pending request, internalizes
-  the external form, verifies the right without interaction, destroys the rights, and then forwards the stored
-  pending password. The main server accepts the final commit only when the
-  receiver is service-owned and the committing peer is root. Main-channel macOS service-owned password flow
-  messages are denied, ordinary user-owned password writes remain denied for service-owned receivers, and
-  rejection ACKs fail closed. Verification closure: `scripts/verify.sh` and `scripts/apple-conform-check.sh`
+  the external form, verifies the right without interaction, destroys the rights, and writes the stored pending
+  password into the root LaunchDaemon credential store; an explicit set is persisted as local durable storage
+  even when the value equals a preset. The old macOS main-server
+  `Data::CommitServiceOwnedUnattendedPasswordChange` path rejects and cannot write. The service-owned
+  LaunchAgent receives the root credential only as a runtime snapshot after the LaunchDaemon proves that the
+  `_service` peer is the installed app/trusted-helper pair, is a live `--server --service-owned-server`
+  process, is the pid launchd reports for the expected root-owned
+  `/Library/LaunchAgents/..._server.plist` label in `gui/<uid>/<label>`, and is bound to a parsed plist
+  whose parent and file are root:wheel, non-symlink, non-group/world-writable, ACL-free, and whose
+  `Label`, `ProgramArguments`, `RunAtLoad`, and `KeepAlive` shape exactly describe the service-owned
+  LaunchAgent. Empty root local storage returns an empty snapshot; preset/hard-settings
+  fallback is absent. The LaunchAgent applies the snapshot to an in-memory PRS overlay that is read by listener
+  parking, CPace, and password-set status, and that overlay is never written into user config. Main-channel
+  macOS service-owned password flow messages are denied, ordinary user-owned password writes remain denied for
+  service-owned receivers, and rejection ACKs fail closed. Verification closure:
+  `scripts/verify.sh` and `scripts/apple-conform-check.sh`
   assert the macOS begin/challenge/finish shape, `_service` allowlist, main-channel denial, pending request map
   and caps, pending-value storage, zero-on-drop, TTL expiry, authorization-failure cancellation, peer pid/uid
   binding, finish-without-password shape, explicit non-shared timeout-zero Authorization Services right, no
   request-digest prompt/verification API, no `kAuthorizationRightExecute` fallback in the service password
   functions, non-interactive `AuthorizationCreateFromExternalForm` verification, signed/root-owned installed-app
   peer identity, trusted PrivilegedHelperTools `_service` current-helper identity, absence of the old same-directory
-  `service` binary exception, root-peer commit gate, installed-daemon exposure gate, and service handler wiring; the
-  Unix source tests cover main-channel commit policy and `_service` request admission.
+  `service` binary exception, root-store write, launchd-owned runtime snapshot with parsed root-owned plist
+  command-shape proof, runtime overlay non-persistence,
+  installed-daemon exposure gate, and service handler wiring; the Unix source tests cover main-channel commit
+  rejection and `_service` request admission.
 - **R-S11b-3a — service-marked server rejects ordinary options IPC — CLOSED 2026-07-08.** Platforms:
   Windows installed service-launched `--server`, Linux root-service-launched root or active-user `--server`,
   and macOS LaunchAgent `--server` source path. Endpoint/action: main IPC `Data::Options(Some(_))`.
@@ -1207,7 +1221,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   closed by R-S11b-2e/R-S11c-1f: the `_service` path is a begin/challenge/finish exchange where the root
   LaunchDaemon stores the proposed value in a bounded, TTL-expiring, zero-on-drop same-peer request, finishes
   with authorization only, verifies an explicit non-shared timeout-zero RustDesk Authorization Services right
-  noninteractively, and performs a final main-server commit accepted only from a root service peer.
+  noninteractively, writes the authorized value into the root LaunchDaemon credential store, rejects the old
+  macOS main-server commit fallback, and serves that root credential to the service-owned LaunchAgent only as a
+  launchd-owned runtime snapshot after pid/path and parsed root-owned plist command-shape proof; the snapshot
+  cannot be persisted into user config.
 - **R-S11e — Linux polkit policy/package assurance — CLOSED 2026-07-10.**
   Platform: Linux `.deb` installed-service mode. Endpoint/action: the single local admin-authorized
   service-owned unattended-password change. Boundary: user-session process and distro-local polkit policy
@@ -1367,7 +1384,11 @@ unreachable and a source/test/AST gate prevents reintroduction.
   desktop main channel: `src/ipc.rs` exports no `password_prs` or key-pair material, and the remaining
   password-storage/salt snapshot requests are denied for service-owned receivers by the same
   `current_process_allows_main_channel_permanent_password_storage_sync()` authority gate used by
-  R-S11b-2. R-S11b-4b closes the Unix at-rest file-mode half: `libs/hbb_common/src/config.rs::store_path`
+  R-S11b-2. macOS's service-owned LaunchAgent root-credential delivery is not a generic snapshot path: it is the
+  typed R-S11b-2e `_service` runtime snapshot, accepted only after launchd pid/path proof and parsed
+  root-owned plist command-shape proof for the LaunchAgent job, and applied only to
+  `RUNTIME_PERMANENT_PASSWORD_PRS`, never to serialized `Config`.
+  R-S11b-4b closes the Unix at-rest file-mode half: `libs/hbb_common/src/config.rs::store_path`
   routes non-Windows writes through `confy::store_path_perms(..., 0o600)`, and
   `config::tests::store_path_writes_owner_only_permissions` behavior-tests the resulting mode. R-S11b-4c closes
   the Windows at-rest file-mode half: `libs/hbb_common/src/config.rs` now protects config directories before
@@ -1375,8 +1396,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   file that cannot first be secured. The Windows DACL is explicit and protected, grants full access only to
   LocalSystem and the current process user SID, deduplicates the LocalSystem case, and does not rely on inherited
   `%APPDATA%`/profile ACLs. Verification closure: `scripts/verify.sh` runs the Unix mode test and the Windows SDDL
-  shape test, asserts no IPC PRS/key export, service-owned storage/salt denial, Unix 0600 writer shape, Windows
-  protected-DACL API wiring, Windows load/store fail-closed hooks, and the absence of broad Windows principals in
+  shape test, asserts no main-IPC PRS/key export, service-owned storage/salt denial, the launchd-bound macOS
+  runtime snapshot overlay, Unix 0600 writer shape, Windows protected-DACL API wiring, Windows load/store
+  fail-closed hooks, and the absence of broad Windows principals in
   the config DACL source. Any future stronger storage (TPM/OS keychain) is defense-in-depth, not the cure for the
   IPC class.
 
@@ -2410,12 +2432,14 @@ the CWE-863 class of which CVE-2026-58056 is one instance; see the R-S19 status 
 first spec change in this run that is not disclosure-only. The 2026-07-10 IPC/options audit added the
 second normative closure in this area: R-S16's read funnel now explicitly includes whole-map option reads
 (`Config::get_options` / UI cache / CLI `--option` / IPC `Data::Options(None)`), with pinned policy
-overlaid last. The other requirements.html edits are disclosure/inventory updates, and the
+overlaid last. The 2026-07-11 macOS service-owned-password runtime snapshot hardening added parsed
+LaunchAgent plist command-shape proof to the R-S11b-2e/R-S11c-1f requirement. The other
+requirements.html edits are disclosure/inventory updates, and the
 native-codec-watch ledger is re-confirmed valid against each.
 The current snapshot (matching the `scripts/native-codec-watch.sh` pin) is:
 
 ```text
-51bffb3e9d8ae5a85461b986664eb946c6faba18e56187f8342d903beb456d85  requirements.html
+4815dd1ab75e2f5c4404e4a47486018f4adc6d3d904975b8b780c683206c9bcf  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

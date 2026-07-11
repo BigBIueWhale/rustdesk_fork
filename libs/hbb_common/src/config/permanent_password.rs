@@ -33,6 +33,7 @@ pub fn compute_permanent_password_h1(
     h1
 }
 
+#[cfg(test)]
 pub(super) fn constant_time_eq_32(a: &[u8; 32], b: &[u8; 32]) -> bool {
     sodiumoxide::utils::memcmp(a, b)
 }
@@ -279,24 +280,6 @@ fn local_permanent_password_storage_matches_plain(storage: &str, salt: &str, inp
     storage == input
 }
 
-pub(super) fn preset_permanent_password_storage_matches_plain(
-    storage: &str,
-    salt: &str,
-    input: &str,
-) -> bool {
-    if storage.is_empty() || input.is_empty() {
-        return false;
-    }
-    if salt.is_empty() {
-        return storage == input;
-    }
-    let Some(stored_h1) = decode_preset_password_h1_from_storage(storage) else {
-        return false;
-    };
-    let h1 = compute_permanent_password_h1(input, salt);
-    constant_time_eq_32(&h1, &stored_h1)
-}
-
 pub fn decode_permanent_password_h1_from_storage(
     storage: &str,
 ) -> Option<[u8; PERMANENT_PASSWORD_H1_LEN]> {
@@ -411,23 +394,6 @@ mod tests {
     }
 
     #[test]
-    fn test_hbbs_00_hashed_preset_password_storage_matches_plain_with_salt() {
-        let salt = "salt123";
-        let h1 = compute_permanent_password_h1("p@ssw0rd", salt);
-        let storage = encode_hbbs_preset_password_storage_from_h1(&h1);
-
-        assert!(preset_permanent_password_storage_is_usable_for_auth(
-            &storage, salt
-        ));
-        assert!(preset_permanent_password_storage_matches_plain(
-            &storage, salt, "p@ssw0rd"
-        ));
-        assert!(!preset_permanent_password_storage_matches_plain(
-            &storage, salt, "wrong"
-        ));
-    }
-
-    #[test]
     fn test_encrypted_hash_storage_is_not_accepted_as_preset_storage() {
         let salt = "salt123";
         let h1 = compute_permanent_password_h1("p@ssw0rd", salt);
@@ -435,9 +401,6 @@ mod tests {
 
         assert!(!preset_permanent_password_storage_is_usable_for_auth(
             &storage, salt
-        ));
-        assert!(!preset_permanent_password_storage_matches_plain(
-            &storage, salt, "p@ssw0rd"
         ));
     }
 
@@ -448,12 +411,6 @@ mod tests {
 
         assert!(preset_permanent_password_storage_is_usable_for_auth(
             &storage, ""
-        ));
-        assert!(preset_permanent_password_storage_matches_plain(
-            &storage, "", &storage
-        ));
-        assert!(!preset_permanent_password_storage_matches_plain(
-            &storage, "", "p@ssw0rd"
         ));
     }
 
@@ -477,11 +434,6 @@ mod tests {
         assert!(preset_permanent_password_storage_is_usable_for_auth(
             storage, ""
         ));
-        assert!(preset_permanent_password_storage_matches_plain(
-            storage,
-            "",
-            "01not-a-valid-hash"
-        ));
     }
 
     #[test]
@@ -490,11 +442,6 @@ mod tests {
             assert!(!preset_permanent_password_storage_is_usable_for_auth(
                 storage,
                 "preset-salt"
-            ));
-            assert!(!preset_permanent_password_storage_matches_plain(
-                storage,
-                "preset-salt",
-                storage
             ));
         }
     }

@@ -6297,6 +6297,7 @@ dependencies = [
  "percent-encoding",
  "piet",
  "piet-coregraphics",
+ "plist",
  "portable-pty",
  "rdev",
  "repng",

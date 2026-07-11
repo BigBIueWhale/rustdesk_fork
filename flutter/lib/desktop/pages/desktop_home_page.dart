@@ -750,9 +750,7 @@ void setPasswordDialog({VoidCallback? notEmptyCallback}) async {
   var errMsg1 = "";
   final localPasswordSet =
       (await bind.mainGetCommon(key: "local-permanent-password-set")) == "true";
-  final permanentPasswordSet =
-      (await bind.mainGetCommon(key: "permanent-password-set")) == "true";
-  final presetPassword = permanentPasswordSet && !localPasswordSet;
+  final presetPassword = await bind.isPresetPassword();
   var canSubmit = false;
   final RxString rxPass = "".obs;
   final rules = [

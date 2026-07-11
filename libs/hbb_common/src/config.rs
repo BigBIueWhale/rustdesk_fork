@@ -30,8 +30,8 @@ pub use permanent_password::{
 use permanent_password::{
     decode_permanent_password_h1_from_hashed_storage, decrypt_permanent_password_prs_storage,
     decrypt_permanent_password_str_or_original, derive_permanent_password_storages,
-    encrypt_permanent_password_prs_storage, password_is_empty_or_not_hashed,
-    preset_permanent_password_storage_matches_plain, DEFAULT_SALT_LEN, PASSWORD_ENC_VERSION,
+    encrypt_permanent_password_prs_storage, password_is_empty_or_not_hashed, DEFAULT_SALT_LEN,
+    PASSWORD_ENC_VERSION,
 };
 
 use crate::{
@@ -81,6 +81,7 @@ lazy_static::lazy_static! {
     pub static ref OVERWRITE_LOCAL_SETTINGS: RwLock<HashMap<String, String>> = Default::default();
     pub static ref HARD_SETTINGS: RwLock<HashMap<String, String>> = Default::default();
     pub static ref BUILTIN_SETTINGS: RwLock<HashMap<String, String>> = Default::default();
+    static ref RUNTIME_PERMANENT_PASSWORD_PRS: RwLock<Option<String>> = RwLock::new(None);
 }
 
 #[cfg(target_os = "android")]
@@ -1769,19 +1770,12 @@ impl Config {
 
     /// Sets the local permanent password.
     ///
-    /// Returns `true` when the password is accepted or already matches the effective
-    /// preset password. Returns `false` when changing the password is disabled or
-    /// the new password cannot be prepared for storage.
+    /// Returns `true` when the password is accepted or already matches local durable
+    /// storage. Returns `false` when changing the password is disabled or the new
+    /// password cannot be prepared for storage.
     pub fn set_permanent_password(password: &str) -> bool {
         if Self::is_disable_change_permanent_password() {
             return false;
-        }
-        let (preset_storage, preset_salt) = Self::get_preset_password_storage_and_salt();
-        if preset_permanent_password_storage_matches_plain(&preset_storage, &preset_salt, password)
-        {
-            if CONFIG.read().unwrap().password.is_empty() {
-                return true;
-            }
         }
 
         let mut config = CONFIG.write().unwrap();
@@ -1825,6 +1819,9 @@ impl Config {
     /// The CPace layer applies NFC and the non-empty check (R-P1/R-S9); on this ASCII
     /// base64 string the NFC pass is a harmless no-op.
     pub fn get_permanent_password_prs() -> String {
+        if let Some(prs) = RUNTIME_PERMANENT_PASSWORD_PRS.read().unwrap().as_ref() {
+            return prs.clone();
+        }
         decrypt_permanent_password_prs_storage(&CONFIG.read().unwrap().password_prs)
             .unwrap_or_default()
     }
@@ -1848,6 +1845,19 @@ impl Config {
         }
 
         config.store();
+        Ok(true)
+    }
+
+    pub fn set_permanent_password_storage_for_runtime(
+        storage: &str,
+        salt: &str,
+    ) -> crate::ResultType<bool> {
+        let prs = Self::permanent_password_prs_from_storage(storage, salt)?;
+        let mut runtime_prs = RUNTIME_PERMANENT_PASSWORD_PRS.write().unwrap();
+        if runtime_prs.as_deref() == Some(prs.as_str()) {
+            return Ok(false);
+        }
+        *runtime_prs = Some(prs);
         Ok(true)
     }
 
@@ -1878,13 +1888,7 @@ impl Config {
                 "Refusing to persist permanent password storage without salt"
             ));
         }
-        // Decode the raw 32 PRS bytes out of the (machine-UUID-encrypted) storage envelope. This both
-        // validates the payload is a current-format credential THIS machine can decrypt AND yields the
-        // bytes to rebuild the live PRS below.
-        let Some(raw) = decode_permanent_password_h1_from_storage(storage) else {
-            log::error!("Rejecting non-current permanent password storage sync payload");
-            return Err(anyhow!("Invalid permanent password storage sync payload"));
-        };
+        let prs_string = Self::permanent_password_prs_from_storage(storage, salt)?;
         // R-S9: the service->user sync carries ONLY `storage` (config.password) + salt, never
         // config.password_prs. config.password and config.password_prs encode the SAME 32 PRS bytes,
         // so rebuild password_prs from the decoded bytes here. This keeps the two at-rest forms in step:
@@ -1892,7 +1896,6 @@ impl Config {
         // next --server restart reads a live PRS and listens (R-S9) with the current password. Rebuilding it
         // is what makes a set/rotate durable across restarts on the headless/root box (which has no
         // whole-config root<->user repair path).
-        let prs_string = base64::encode(raw, base64::Variant::Original);
         let Some(prs_storage) = encrypt_permanent_password_prs_storage(&prs_string) else {
             return Err(anyhow!(
                 "Failed to rebuild the CPace PRS storage from the synced permanent password"
@@ -1914,7 +1917,24 @@ impl Config {
         Ok(true)
     }
 
+    fn permanent_password_prs_from_storage(storage: &str, salt: &str) -> Result<String> {
+        if storage.is_empty() {
+            return Ok(String::new());
+        }
+        if salt.is_empty() {
+            return Err(anyhow!("Refusing permanent password storage without salt"));
+        }
+        let Some(raw) = decode_permanent_password_h1_from_storage(storage) else {
+            log::error!("Rejecting non-current permanent password storage payload");
+            return Err(anyhow!("Invalid permanent password storage payload"));
+        };
+        Ok(base64::encode(raw, base64::Variant::Original))
+    }
+
     pub fn has_permanent_password() -> bool {
+        if let Some(prs) = RUNTIME_PERMANENT_PASSWORD_PRS.read().unwrap().as_ref() {
+            return !prs.is_empty();
+        }
         let (local_storage, _local_salt) = Self::get_local_permanent_password_storage_and_salt();
         if !local_storage.is_empty() {
             // F2 (coherence): CPace keys from the LIVE PRS (get_permanent_password_prs →
@@ -1934,6 +1954,9 @@ impl Config {
     }
 
     pub fn is_using_preset_password() -> bool {
+        if RUNTIME_PERMANENT_PASSWORD_PRS.read().unwrap().is_some() {
+            return false;
+        }
         let (local_storage, _) = Self::get_local_permanent_password_storage_and_salt();
         local_storage.is_empty() && Self::has_usable_preset_password()
     }
@@ -3754,6 +3777,33 @@ mod tests {
         );
     }
 
+    #[test]
+    fn runtime_password_snapshot_does_not_persist() {
+        let _lock = CONFIG_STATE_TEST_LOCK.lock().unwrap();
+        let file = Config::file_("");
+        let _file_guard = ConfigFileRestoreGuard::new(file.clone());
+        fs::remove_file(&file).ok();
+        let _state_guard = ConfigStateTestGuard::new(Config::default(), HashMap::new());
+        let (storage, prs_storage) =
+            derive_permanent_password_storages("runtime snapshot password").unwrap();
+
+        assert!(
+            Config::set_permanent_password_storage_for_runtime(&storage, "runtime-salt").unwrap()
+        );
+        assert_eq!(
+            Config::get_permanent_password_prs(),
+            decrypt_permanent_password_prs_storage(&prs_storage).unwrap()
+        );
+        let config = CONFIG.read().unwrap();
+        assert!(config.password.is_empty());
+        assert!(config.password_prs.is_empty());
+        drop(config);
+        Config::get().store();
+        let saved_config: Config = load_path(file);
+        assert!(saved_config.password.is_empty());
+        assert!(saved_config.password_prs.is_empty());
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn config_patch_root_home_uses_passwd_home() {
@@ -3769,6 +3819,7 @@ mod tests {
     struct ConfigStateTestGuard {
         original_config: Config,
         original_hard_settings: HashMap<String, String>,
+        original_runtime_prs: Option<String>,
     }
 
     struct ConfigFileRestoreGuard {
@@ -3780,11 +3831,14 @@ mod tests {
         fn new(config: Config, hard_settings: HashMap<String, String>) -> Self {
             let original_config = Config::get();
             let original_hard_settings = HARD_SETTINGS.read().unwrap().clone();
+            let original_runtime_prs = RUNTIME_PERMANENT_PASSWORD_PRS.read().unwrap().clone();
             *CONFIG.write().unwrap() = config;
             *HARD_SETTINGS.write().unwrap() = hard_settings;
+            *RUNTIME_PERMANENT_PASSWORD_PRS.write().unwrap() = None;
             Self {
                 original_config,
                 original_hard_settings,
+                original_runtime_prs,
             }
         }
     }
@@ -3793,6 +3847,7 @@ mod tests {
         fn drop(&mut self) {
             *CONFIG.write().unwrap() = self.original_config.clone();
             *HARD_SETTINGS.write().unwrap() = self.original_hard_settings.clone();
+            *RUNTIME_PERMANENT_PASSWORD_PRS.write().unwrap() = self.original_runtime_prs.clone();
         }
     }
 
@@ -3913,6 +3968,30 @@ mod tests {
             assert!(Config::has_permanent_password());
             assert!(Config::is_using_preset_password());
         });
+    }
+
+    #[test]
+    fn test_set_permanent_password_persists_when_value_matches_preset() {
+        let _lock = CONFIG_STATE_TEST_LOCK.lock().unwrap();
+        let file = Config::file_("");
+        let _file_guard = ConfigFileRestoreGuard::new(file.clone());
+        fs::remove_file(&file).ok();
+        let salt = "preset-salt";
+        let h1 = compute_permanent_password_h1("p@ssw0rd", salt);
+        let preset_storage = "00".to_owned() + &base64::encode(h1, base64::Variant::Original);
+        let hard_settings = HashMap::from([
+            ("password".to_owned(), preset_storage),
+            ("salt".to_owned(), salt.to_owned()),
+        ]);
+        let _state_guard = ConfigStateTestGuard::new(Config::default(), hard_settings);
+
+        assert!(Config::is_using_preset_password());
+        assert!(Config::set_permanent_password("p@ssw0rd"));
+        assert!(Config::has_local_permanent_password());
+        assert!(!Config::is_using_preset_password());
+        let saved_config: Config = load_path(file);
+        assert!(!saved_config.password.is_empty());
+        assert!(!saved_config.password_prs.is_empty());
     }
 
     #[test]

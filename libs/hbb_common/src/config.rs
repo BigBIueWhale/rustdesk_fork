@@ -597,9 +597,8 @@ fn keep_encrypted_storage_if_plaintext_unchanged(plain: &str, stored: &str) -> S
 
 // F1: preserve a present-but-corrupt config for operator recovery instead of letting a
 // fresh default overwrite it. Rename it aside to a timestamped `<name>.corrupt.<nanos>`
-// SIBLING (same dir) so the exact bytes survive, then callers may write a fresh default at
-// the now-vacated path (a create, never an overwrite of the corrupt file). The timestamp
-// makes repeated corruption events never clobber an earlier backup, so nothing is ever lost.
+// sibling, harden the recovery file, then let callers create a fresh config at the vacated
+// path. Repeated corruption events never clobber an earlier backup.
 fn preserve_corrupt_config(file: &Path) {
     let ts = SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -612,17 +611,93 @@ fn preserve_corrupt_config(file: &Path) {
     let mut backup = file.to_path_buf();
     backup.set_file_name(format!("{name}.corrupt.{ts}"));
     match fs::rename(file, &backup) {
-        Ok(()) => log::error!(
-            "Preserved corrupt config '{}' as '{}' for recovery (original not overwritten)",
-            file.display(),
-            backup.display()
-        ),
+        Ok(()) => {
+            if let Err(err) = harden_preserved_config_file(&backup) {
+                log::error!(
+                    "Preserved corrupt config '{}' as '{}', but failed to harden recovery file: {err}",
+                    file.display(),
+                    backup.display()
+                );
+                return;
+            }
+            log::error!(
+                "Preserved corrupt config '{}' as '{}' for recovery (original not overwritten)",
+                file.display(),
+                backup.display()
+            );
+        }
         Err(e) => log::error!(
             "Could not preserve corrupt config '{}' ({e}); leaving it in place — \
              Config::load refuses to overwrite a present config it read as default",
             file.display()
         ),
     }
+}
+
+#[cfg(unix)]
+fn harden_preserved_config_file(path: &Path) -> Result<()> {
+    use std::os::unix::{
+        fs::{MetadataExt, OpenOptionsExt},
+        io::AsRawFd,
+    };
+
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(crate::libc::O_CLOEXEC | crate::libc::O_NOFOLLOW)
+        .open(path)
+        .map_err(|err| {
+            anyhow!(
+                "Failed to open preserved config '{}' for hardening: {err}",
+                path.display()
+            )
+        })?;
+    let metadata = file.metadata().map_err(|err| {
+        anyhow!(
+            "Failed to inspect preserved config '{}': {err}",
+            path.display()
+        )
+    })?;
+    if !metadata.file_type().is_file() {
+        return Err(anyhow!(
+            "Preserved config '{}' is not a regular file",
+            path.display()
+        ));
+    }
+    if unsafe { crate::libc::fchmod(file.as_raw_fd(), 0o600 as crate::libc::mode_t) } != 0 {
+        return Err(anyhow!(
+            "Failed to set owner-only permissions on preserved config '{}': {}",
+            path.display(),
+            io::Error::last_os_error()
+        ));
+    }
+    let mode = file
+        .metadata()
+        .map_err(|err| {
+            anyhow!(
+                "Failed to re-check preserved config '{}': {err}",
+                path.display()
+            )
+        })?
+        .mode()
+        & 0o777;
+    if mode != 0o600 {
+        return Err(anyhow!(
+            "Preserved config '{}' mode is {:o}, expected 600",
+            path.display(),
+            mode
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn harden_preserved_config_file(path: &Path) -> Result<()> {
+    windows_config_acl::harden_config_file(path)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn harden_preserved_config_file(_path: &Path) -> Result<()> {
+    Ok(())
 }
 
 #[cfg(any(windows, test))]
@@ -1180,27 +1255,13 @@ fn preserve_raw_config_file(path: &Path, label: &str) {
     backup.set_file_name(format!("{name}.corrupt.{stamp}"));
     match fs::rename(path, &backup) {
         Ok(()) => {
-            #[cfg(windows)]
-            if let Err(err) = windows_config_acl::harden_config_file(&backup) {
+            if let Err(err) = harden_preserved_config_file(&backup) {
                 log::error!(
-                    "Preserved corrupt {label} '{}' as '{}', but failed to harden backup ACL: {err}",
+                    "Preserved corrupt {label} '{}' as '{}', but failed to harden recovery file: {err}",
                     path.display(),
                     backup.display()
                 );
                 return;
-            }
-
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                if let Err(err) = fs::set_permissions(&backup, fs::Permissions::from_mode(0o600)) {
-                    log::error!(
-                        "Preserved corrupt {label} '{}' as '{}', but failed to set owner-only permissions: {err}",
-                        path.display(),
-                        backup.display()
-                    );
-                    return;
-                }
             }
 
             log::error!(
@@ -4334,28 +4395,40 @@ mod tests {
 
     #[test]
     fn raw_encrypted_json_load_failure_preserves_payload_for_recovery() {
+        #[cfg(unix)]
+        use std::os::unix::fs::PermissionsExt;
+
         let dir = unique_tmp_dir("raw-corrupt");
         let file = dir.join("ab");
         let corrupt_json = symmetric_crypt(&compress(b"not-json"), true).unwrap();
         store_raw_config_bytes(file.clone(), &corrupt_json).unwrap();
+        #[cfg(unix)]
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
 
         let err = load_encrypted_json_config::<Ab>(&file, "address book").unwrap_err();
         assert!(err.to_string().contains("Failed to parse address book"));
         preserve_raw_config_file(&file, "address book");
 
         assert!(!file.exists());
-        let preserved = fs::read_dir(&dir)
+        let backups: Vec<PathBuf> = fs::read_dir(&dir)
             .unwrap()
             .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
             .filter(|entry| {
                 entry
                     .file_name()
-                    .to_string_lossy()
-                    .starts_with("ab.corrupt.")
+                    .and_then(|name| name.to_str())
+                    .map(|name| name.starts_with("ab.corrupt."))
+                    .unwrap_or(false)
             })
-            .count();
+            .collect();
+        assert_eq!(backups.len(), 1);
+        #[cfg(unix)]
+        {
+            let mode = fs::metadata(&backups[0]).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
         fs::remove_dir_all(&dir).ok();
-        assert_eq!(preserved, 1);
     }
 
     #[test]
@@ -4404,6 +4477,9 @@ mod tests {
 
     #[test]
     fn test_load_path_present_but_corrupt_is_preserved_not_overwritten() {
+        #[cfg(unix)]
+        use std::os::unix::fs::PermissionsExt;
+
         // F1: a PRESENT-but-unparseable file is corruption → a fail-closed default is returned,
         // the exact corrupt bytes are PRESERVED aside for recovery, and the original path is
         // never overwritten by a default (it is vacated for a clean self-heal instead).
@@ -4411,9 +4487,15 @@ mod tests {
         let file = dir.join("corrupt.toml");
         let corrupt_bytes = b"= = = this is not valid toml [[[".to_vec();
         fs::write(&file, &corrupt_bytes).unwrap();
+        #[cfg(unix)]
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
 
         let loaded: ConfigLoad<Config2> = load_path_with_status(file.clone());
-        assert_eq!(loaded.value, Config2::default(), "a corrupt load yields a fail-closed default");
+        assert_eq!(
+            loaded.value,
+            Config2::default(),
+            "a corrupt load yields a fail-closed default"
+        );
         assert_eq!(loaded.status, ConfigLoadStatus::Corrupt);
         assert!(
             !file.exists(),
@@ -4434,7 +4516,30 @@ mod tests {
             corrupt_bytes,
             "the corrupt bytes are preserved verbatim for operator recovery"
         );
+        #[cfg(unix)]
+        {
+            let mode = fs::metadata(&backup).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
         fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preserved_config_hardening_rejects_symlink_targets() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let dir = unique_tmp_dir("recovery-symlink");
+        let target = dir.join("target");
+        let link = dir.join("link");
+        fs::write(&target, b"secret").unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o644)).unwrap();
+        symlink(&target, &link).unwrap();
+
+        assert!(harden_preserved_config_file(&link).is_err());
+        let mode = fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        fs::remove_dir_all(&dir).ok();
+        assert_eq!(mode, 0o644);
     }
 
     #[test]

@@ -597,13 +597,16 @@ unreachable and a source/test/AST gate prevents reintroduction.
   their existing encrypted compressed raw-byte format, but writes now go through a
   temp-and-replace raw helper that prepares the Windows config ACL, writes owner-only `0600` files on Unix,
   uses `MoveFileExW` replace-existing/write-through semantics on Windows, hardens the final Windows file, and
-  logs store/load/remove failures. Present-but-unreadable or corrupt raw encrypted payloads are preserved as
-  sibling recovery files instead of being deleted. Verification closure: `scripts/verify.sh` asserts the typed
+  logs store/load/remove failures. Present-but-unreadable or corrupt TOML/raw encrypted payloads are preserved as
+  sibling recovery files instead of being deleted, then immediately rehardened through a shared recovery-file
+  helper: Unix opens the preserved file with `O_NOFOLLOW`, verifies the opened object is a regular file, and
+  applies descriptor `fchmod(0600)`; Windows applies the same protected config DACL used for normal config files.
+  Verification closure: `scripts/verify.sh` asserts the typed
   peer-config load status, exact-path loaded-and-semantically-default empty-peer cleanup, the raw helper shape,
   Windows ACL preparation, Unix owner-only permissions, Windows replace-existing/write-through replacement,
-  corrupt-payload preservation, absence of direct `File::create(Self::path())` / ignored `write_all` in those
-  stores, and the raw-store permission, replacement, recovery, transient-load, RDP-password, and alias-path
-  cleanup-policy regression tests.
+  corrupt-payload preservation and hardening, absence of direct `File::create(Self::path())` / ignored `write_all`
+  in those stores, and the raw/TOML recovery permission, symlink-rejection, replacement, transient-load,
+  RDP-password, and alias-path cleanup-policy regression tests.
 - **R-S11c-2a/R-S11c-3a — Windows `_service` raw session/SAS commands removed — CLOSED 2026-07-08.**
   Platform: Windows installed service. Endpoint/action: `_service` named pipe messages formerly carrying
   `Data::UserSid(Some(_))` for service-owned session switching and `Data::SAS` for SYSTEM-mediated
@@ -2075,7 +2078,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   runtime snapshot overlay, Unix 0600 writer shape, Windows protected-DACL API wiring, Windows load/store
   fail-closed hooks, and the absence of broad Windows principals in
   the config DACL source. Any future stronger storage (TPM/OS keychain) is defense-in-depth, not the cure for the
-  IPC class.
+  IPC class. R-S11b-4d also hardens corrupt-config recovery files: preserved TOML/raw encrypted payload backups are
+  rehardened immediately after rename with Unix `O_NOFOLLOW` plus descriptor `fchmod(0600)` or the Windows protected
+  config DACL, so weak inherited source permissions do not persist into recovery artifacts.
 
 **Checked during this audit and not opened under R-S11b/R-S11c:** Android exported components/service
 surfaces remain contained by manifest/exported-permission shape; iOS has no controlled-side/root IPC surface

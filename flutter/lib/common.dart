@@ -2150,7 +2150,10 @@ StreamSubscription? listenUniLinks({handleByFlutter = true}) {
       if (handleByFlutter) {
         handleUriLink(uri: uri);
       } else {
-        bind.sendUrlScheme(url: uri.toString());
+        final forwardUrl = urlLinkToForwardUrl(uri);
+        if (forwardUrl != null) {
+          bind.sendUrlScheme(url: forwardUrl);
+        }
       }
     } else {
       print("uni listen error: uri is empty.");
@@ -2321,6 +2324,38 @@ void confirmDeepLinkConnect(String id, VoidCallback onConfirm) {
     onSubmit: onConfirm,
     hasCancel: true,
   );
+}
+
+String? urlLinkToForwardUrl(Uri uri) {
+  final args = urlLinkToCmdArgs(uri);
+  if (args == null) {
+    return null;
+  }
+  final prefix = bind.mainUriPrefixSync();
+  if (args.isEmpty) {
+    return prefix;
+  }
+  if (args.length != 2 || !args[0].startsWith('--')) {
+    return null;
+  }
+  final authority = args[0].substring(2);
+  const allowedAuthorities = {
+    "connect",
+    "play",
+    "file-transfer",
+    "view-camera",
+    "port-forward",
+    "rdp",
+    "terminal",
+  };
+  final id = args[1];
+  if (!allowedAuthorities.contains(authority) ||
+      id.isEmpty ||
+      hasRelayRouteSyntax(id)) {
+    return null;
+  }
+  // R-X6: the desktop URL IPC handoff carries only the normalized connect address.
+  return "$prefix$authority/$id";
 }
 
 List<String>? urlLinkToCmdArgs(Uri uri) {

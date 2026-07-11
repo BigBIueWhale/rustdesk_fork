@@ -1642,6 +1642,16 @@ unreachable and a source/test/AST gate prevents reintroduction.
   gates the authenticator, exact-argv helper, LocalSystem receiver proof, source ordering before
   `Data::CommitServiceOwnedUnattendedPasswordChange(value)`, the retained receiver-side LocalSystem commit gate,
   and this requirements/ledger disposition.
+- **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
+  Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
+  to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
+  and main-process parser. Attack surface closed: the non-main/connection-manager forwarding branch no longer
+  serializes raw `uri.toString()` into `_url` IPC before stripping. It calls `urlLinkToForwardUrl`, reuses
+  `urlLinkToCmdArgs`, rejects config/password write authorities and relay syntax, accepts only connect
+  authorities, and forwards a freshly rendered address-only `rustdesk://<authority>/<id>` URL. This closes a
+  local same-user IPC disclosure and authority-hygiene gap, not a remote or root escalation path. Verification
+  closure: `scripts/verify.sh` gates the canonicalizing helper, listener wiring, address-only renderer, absence
+  of raw URI forwarding, and this requirements/ledger disposition.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows
@@ -2891,7 +2901,7 @@ The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-8bf75c3b360e4e81603abab6e85fdf58e3cbbe62326651ca00e476c8a37cc298  requirements.html
+4e03ebbd946fd1e4e8fa5edf71246f7fdd7fb010bd0cbfce63f3647add2546dc  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

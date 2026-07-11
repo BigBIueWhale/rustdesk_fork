@@ -3730,6 +3730,24 @@ elif ! grep -qF 'connect-only and MUST NOT carry an embedded' flutter/lib/common
 else
   echo "  ok  R-X6 Dart deep-link parser strips embedded key/password/relay"
 fi
+# R-X6 (desktop IPC handoff): when a secondary Flutter/runner instance forwards a uni-link to the
+# main process, the IPC payload must be the same address-only canonical link, not `uri.toString()`.
+# Otherwise `rustdesk://...?password=...` is stripped before connect but still leaks through local IPC.
+r_x6_url_handoff=""
+grep -qF 'String? urlLinkToForwardUrl(Uri uri)' flutter/lib/common.dart || r_x6_url_handoff="$r_x6_url_handoff helper-missing"
+grep -qF 'final forwardUrl = urlLinkToForwardUrl(uri);' flutter/lib/common.dart || r_x6_url_handoff="$r_x6_url_handoff listener-not-canonicalizing"
+grep -qF 'bind.sendUrlScheme(url: forwardUrl);' flutter/lib/common.dart || r_x6_url_handoff="$r_x6_url_handoff listener-not-forwarding-clean-url"
+grep -qF 'return "$prefix$authority/$id";' flutter/lib/common.dart || r_x6_url_handoff="$r_x6_url_handoff helper-not-rendering-address-only-url"
+grep -qF 'Desktop URL IPC raw deep-link material handoff' requirements.html || r_x6_url_handoff="$r_x6_url_handoff requirements-disposition-missing"
+grep -qF 'R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization' HARDENING_STATUS.md || r_x6_url_handoff="$r_x6_url_handoff ledger-disposition-missing"
+if grep -qF 'bind.sendUrlScheme(url: uri.toString())' flutter/lib/common.dart; then
+  r_x6_url_handoff="$r_x6_url_handoff raw-uri-forwarding"
+fi
+if [ -n "$r_x6_url_handoff" ]; then
+  echo "  FAIL R-X6: desktop URL IPC handoff can carry raw deep-link material:$r_x6_url_handoff"; rc=1
+else
+  echo "  ok  R-X6 desktop URL IPC handoff canonicalizes to an address-only link before forwarding"
+fi
 # R-X6 (stricter) — the handleUriLink DESKTOP/CLI args-list branch MUST NOT parse an embedded --password
 # nor forward any password into the deep-link/CLI connect. The mobile branch (urlLinkToCmdArgs) already
 # omits it; this locks the desktop/CLI (common.dart) + mobile (home_page.dart handleUnilink) branches to the same clean shape. A password baked into a rustdesk://

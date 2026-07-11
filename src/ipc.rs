@@ -86,6 +86,12 @@ use std::{
     collections::HashMap,
     sync::atomic::{AtomicBool, Ordering},
 };
+#[cfg(target_os = "linux")]
+use std::{
+    fs,
+    os::unix::fs::MetadataExt,
+    path::{Component, Path, PathBuf},
+};
 
 #[cfg(target_os = "macos")]
 const MACOS_OPEN: &str = "/usr/bin/open";
@@ -1541,6 +1547,64 @@ enum IpcChannel {
 
 #[cfg(target_os = "linux")]
 const SET_UNATTENDED_PASSWORD_POLKIT_ACTION: &str = "com.carriez.RustDesk.set-unattended-password";
+#[cfg(target_os = "linux")]
+const PKCHECK_PATH: &str = "/usr/bin/pkcheck";
+
+#[cfg(target_os = "linux")]
+fn linux_path_is_clean_absolute(path: &Path) -> bool {
+    path.is_absolute()
+        && path
+            .components()
+            .all(|component| matches!(component, Component::RootDir | Component::Normal(_)))
+}
+
+#[cfg(target_os = "linux")]
+fn linux_trusted_command_file_metadata(is_file: bool, uid: u32, mode: u32) -> bool {
+    is_file && uid == 0 && mode & 0o022 == 0 && mode & 0o111 != 0
+}
+
+#[cfg(target_os = "linux")]
+fn linux_trusted_command_parent_metadata(is_dir: bool, uid: u32, mode: u32) -> bool {
+    is_dir && uid == 0 && mode & 0o022 == 0
+}
+
+#[cfg(target_os = "linux")]
+fn linux_trusted_command_file(metadata: &fs::Metadata) -> bool {
+    linux_trusted_command_file_metadata(metadata.is_file(), metadata.uid(), metadata.mode())
+}
+
+#[cfg(target_os = "linux")]
+fn linux_trusted_command_parent(metadata: &fs::Metadata) -> bool {
+    linux_trusted_command_parent_metadata(metadata.is_dir(), metadata.uid(), metadata.mode())
+}
+
+#[cfg(target_os = "linux")]
+fn linux_trusted_authority_command_path(path: &Path) -> Option<PathBuf> {
+    if !linux_path_is_clean_absolute(path) {
+        return None;
+    }
+    let candidate_parent = path.parent()?;
+    if !linux_trusted_command_parent(&fs::metadata(candidate_parent).ok()?) {
+        return None;
+    }
+    let canonical = fs::canonicalize(path).ok()?;
+    if !linux_path_is_clean_absolute(&canonical) {
+        return None;
+    }
+    let canonical_parent = canonical.parent()?;
+    if !linux_trusted_command_parent(&fs::metadata(canonical_parent).ok()?) {
+        return None;
+    }
+    if !linux_trusted_command_file(&fs::metadata(&canonical).ok()?) {
+        return None;
+    }
+    Some(canonical)
+}
+
+#[cfg(target_os = "linux")]
+fn trusted_linux_pkcheck_path() -> Option<PathBuf> {
+    linux_trusted_authority_command_path(Path::new(PKCHECK_PATH))
+}
 
 #[cfg(target_os = "linux")]
 fn linux_polkit_subject_for_peer(stream: &Connection) -> ResultType<String> {
@@ -1556,7 +1620,14 @@ fn linux_polkit_subject_for_peer(stream: &Connection) -> ResultType<String> {
 
 #[cfg(target_os = "linux")]
 fn linux_pkcheck_authorizes_service_owned_password_change(subject: String) -> bool {
-    let status = std::process::Command::new("/usr/bin/pkcheck")
+    let Some(pkcheck) = trusted_linux_pkcheck_path() else {
+        log::warn!(
+            "Rejected service-owned unattended password change: no trusted pkcheck executable at {}",
+            PKCHECK_PATH
+        );
+        return false;
+    };
+    let status = std::process::Command::new(pkcheck)
         .arg("--action-id")
         .arg(SET_UNATTENDED_PASSWORD_POLKIT_ACTION)
         .arg("--process")
@@ -4212,6 +4283,42 @@ mod test {
     fn linux_proc_stat_start_time_rejects_missing_start_time() {
         let stat = "123 (rustdesk) S 1 2 3";
         assert!(linux_proc_stat_start_time(123, stat).is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_pkcheck_path_is_clean_absolute() {
+        assert!(linux_path_is_clean_absolute(Path::new(PKCHECK_PATH)));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_authority_command_path_rejects_relative_and_parent_paths() {
+        assert!(linux_trusted_authority_command_path(Path::new("pkcheck")).is_none());
+        assert!(
+            linux_trusted_authority_command_path(Path::new("/usr/bin/../bin/pkcheck")).is_none()
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_trusted_command_metadata_requires_root_unwritable_executable_file() {
+        assert!(linux_trusted_command_file_metadata(true, 0, 0o755));
+        assert!(!linux_trusted_command_file_metadata(false, 0, 0o755));
+        assert!(!linux_trusted_command_file_metadata(true, 1000, 0o755));
+        assert!(!linux_trusted_command_file_metadata(true, 0, 0o775));
+        assert!(!linux_trusted_command_file_metadata(true, 0, 0o777));
+        assert!(!linux_trusted_command_file_metadata(true, 0, 0o644));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_trusted_command_parent_requires_root_unwritable_directory() {
+        assert!(linux_trusted_command_parent_metadata(true, 0, 0o755));
+        assert!(!linux_trusted_command_parent_metadata(false, 0, 0o755));
+        assert!(!linux_trusted_command_parent_metadata(true, 1000, 0o755));
+        assert!(!linux_trusted_command_parent_metadata(true, 0, 0o775));
+        assert!(!linux_trusted_command_parent_metadata(true, 0, 0o777));
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]

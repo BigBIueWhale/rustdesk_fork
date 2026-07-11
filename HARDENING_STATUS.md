@@ -1334,6 +1334,19 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Verification closure: `scripts/verify-polkit-policy.py`, called from `scripts/verify.sh` and
   `scripts/build-debian.sh`, enforces the source and package invariants above, and `scripts/verify.sh`
   requires this ledger/requirements disposition.
+- **R-S11e-1 — Linux pkcheck executable provenance — CLOSED 2026-07-11.**
+  Platform: Linux `.deb` installed-service mode. Endpoint/action: the same local admin-authorized service-owned
+  unattended-password change covered by R-S11e. Boundary: root service credential authority ↔ local polkit
+  authorization checker executable. Attack surface closed: the root service no longer launches a raw
+  `/usr/bin/pkcheck` string as the authority-bearing authorization helper. It resolves only the fixed absolute
+  `PKCHECK_PATH`, rejects relative or parent-traversal path shapes, canonicalizes the selected path, requires both
+  candidate and canonical parent directories to be root-owned and not group/world-writable, requires the canonical
+  executable to be a root-owned regular file, not group/world-writable, and executable, and fails the service-owned
+  password change closed if no trusted helper is present. This is correctness hardening rather than a confirmed LPE:
+  replacing `/usr/bin/pkcheck` or its parent already implies root-equivalent local compromise on normal Debian/Ubuntu
+  systems. Verification closure: `scripts/verify.sh` requires the trusted resolver, root/mode/executable checks, pure
+  metadata/path regression tests, the requirements/ledger disposition, and absence of the old direct
+  `Command::new("/usr/bin/pkcheck")` launch shape.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows

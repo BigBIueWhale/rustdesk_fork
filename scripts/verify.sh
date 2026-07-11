@@ -1426,7 +1426,18 @@ echo "$main_channel_mutation_policy" | grep -q 'Data::CommitServiceOwnedUnattend
 grep -A5 'Data::CommitServiceOwnedUnattendedPasswordChange(_) => {' src/ipc.rs | grep -q 'peer_authority.allows_service_owned_unattended_password_commit()' || r_s11b2="$r_s11b2 service-password-commit-not-root-peer-gated"
 grep -q 'current_process_allows_service_owned_unattended_password_commit' src/ipc.rs || r_s11b2="$r_s11b2 service-password-handler-commit-gate-missing"
 grep -q 'linux_peer_is_authorized_for_service_owned_password_change' src/ipc.rs      || r_s11b2="$r_s11b2 linux-polkit-authorizer-missing"
-grep -q '/usr/bin/pkcheck' src/ipc.rs                                                || r_s11b2="$r_s11b2 linux-pkcheck-missing"
+grep -q 'const PKCHECK_PATH: &str = "/usr/bin/pkcheck";' src/ipc.rs                  || r_s11b2="$r_s11b2 linux-pkcheck-path-missing"
+grep -q 'fn trusted_linux_pkcheck_path() -> Option<PathBuf>' src/ipc.rs              || r_s11b2="$r_s11b2 linux-pkcheck-trusted-resolver-missing"
+grep -q 'fn linux_trusted_authority_command_path(path: &Path) -> Option<PathBuf>' src/ipc.rs || r_s11b2="$r_s11b2 linux-pkcheck-authority-command-resolver-missing"
+grep -q 'metadata.uid()' src/ipc.rs                                                  || r_s11b2="$r_s11b2 linux-pkcheck-root-owner-check-missing"
+grep -q 'mode & 0o022 == 0' src/ipc.rs                                               || r_s11b2="$r_s11b2 linux-pkcheck-writable-mode-check-missing"
+grep -q 'mode & 0o111 != 0' src/ipc.rs                                               || r_s11b2="$r_s11b2 linux-pkcheck-executable-mode-check-missing"
+grep -q 'let Some(pkcheck) = trusted_linux_pkcheck_path()' src/ipc.rs                || r_s11b2="$r_s11b2 linux-pkcheck-authorizer-not-using-trusted-path"
+grep -q 'linux_authority_command_path_rejects_relative_and_parent_paths' src/ipc.rs  || r_s11b2="$r_s11b2 linux-pkcheck-bad-path-test-missing"
+grep -q 'linux_trusted_command_metadata_requires_root_unwritable_executable_file' src/ipc.rs || r_s11b2="$r_s11b2 linux-pkcheck-file-metadata-test-missing"
+if grep -Fq 'Command::new("/usr/bin/pkcheck")' src/ipc.rs; then
+  r_s11b2="$r_s11b2 linux-pkcheck-absolute-string-launch-leftover"
+fi
 grep -q -- '.arg("--process")' src/ipc.rs                                            || r_s11b2="$r_s11b2 linux-pkcheck-process-subject-missing"
 grep -q -- '.arg("--allow-user-interaction")' src/ipc.rs                             || r_s11b2="$r_s11b2 linux-pkcheck-interaction-missing"
 grep -q 'rsplit_once(") ")' src/ipc/auth.rs                                          || r_s11b2="$r_s11b2 linux-proc-stat-safe-parse-missing"
@@ -1439,7 +1450,9 @@ if ! python3 scripts/verify-polkit-policy.py --repo . >/tmp/rd_verify_polkit_pol
 fi
 rm -f /tmp/rd_verify_polkit_policy.$$
 grep -Fq 'R-S11e — Linux polkit policy/package assurance' HARDENING_STATUS.md        || r_s11b2="$r_s11b2 linux-polkit-assurance-ledger-missing"
+grep -Fq 'R-S11e-1 — Linux pkcheck executable provenance' HARDENING_STATUS.md        || r_s11b2="$r_s11b2 linux-pkcheck-provenance-ledger-missing"
 grep -Fq 'Linux polkit policy/package assurance' requirements.html                   || r_s11b2="$r_s11b2 linux-polkit-assurance-requirements-missing"
+grep -Fq 'Linux pkcheck executable provenance' requirements.html                     || r_s11b2="$r_s11b2 linux-pkcheck-provenance-requirements-missing"
 grep -q 'windows_peer_is_authorized_for_service_owned_password_change' src/ipc.rs    || r_s11b2="$r_s11b2 windows-service-password-authorizer-missing"
 grep -q 'windows_pipe_client_token_is_elevated' src/ipc/auth.rs                     || r_s11b2="$r_s11b2 windows-service-password-token-elevation-missing"
 grep -q 'windows_pipe_client_token_is_local_system' src/ipc/auth.rs                  || r_s11b2="$r_s11b2 windows-service-password-localsystem-token-missing"

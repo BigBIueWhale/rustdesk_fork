@@ -108,7 +108,8 @@ APPLE_OTHER=(
   flutter/ios/Runner.xcodeproj/project.pbxproj
   flutter/macos/Runner/Info.plist
   flutter/macos/Runner/Release.entitlements
-  flutter/macos/Runner/DebugProfile.entitlements
+  flutter/macos/Runner/Profile.entitlements
+  flutter/macos/Runner/Debug.entitlements
   flutter/macos/Podfile.lock
   flutter/macos/Runner.xcodeproj/project.pbxproj
 )
@@ -1170,9 +1171,13 @@ if load_plist("flutter/ios/Runner/Runner.entitlements") != {}:
 
 EXPECTED_RELEASE_ENTITLEMENTS = {
     "com.apple.security.app-sandbox": False,
-    "com.apple.security.cs.allow-jit": True,
     "com.apple.security.device.audio-input": True,
     "com.apple.security.network.client": True,
+}
+EXPECTED_PROFILE_ENTITLEMENTS = {
+    "com.apple.security.app-sandbox": False,
+    "com.apple.security.device.audio-input": True,
+    "com.apple.security.network.server": True,
 }
 EXPECTED_DEBUG_ENTITLEMENTS = {
     "com.apple.security.app-sandbox": False,
@@ -1182,8 +1187,10 @@ EXPECTED_DEBUG_ENTITLEMENTS = {
 }
 if load_plist("flutter/macos/Runner/Release.entitlements") != EXPECTED_RELEASE_ENTITLEMENTS:
     fail("flutter/macos/Runner/Release.entitlements: entitlement allow-list/value mismatch")
-if load_plist("flutter/macos/Runner/DebugProfile.entitlements") != EXPECTED_DEBUG_ENTITLEMENTS:
-    fail("flutter/macos/Runner/DebugProfile.entitlements: entitlement allow-list/value mismatch")
+if load_plist("flutter/macos/Runner/Profile.entitlements") != EXPECTED_PROFILE_ENTITLEMENTS:
+    fail("flutter/macos/Runner/Profile.entitlements: entitlement allow-list/value mismatch")
+if load_plist("flutter/macos/Runner/Debug.entitlements") != EXPECTED_DEBUG_ENTITLEMENTS:
+    fail("flutter/macos/Runner/Debug.entitlements: entitlement allow-list/value mismatch")
 
 # APPLE_POD_ALLOWLISTS: exact top-level pod + checksum allow-lists for R-SV8/R-A6.
 EXPECTED_IOS_PODS = [

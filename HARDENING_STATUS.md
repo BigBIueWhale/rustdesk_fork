@@ -179,6 +179,19 @@ admission, fresh per-read stream ids, stale global-queue absence, and regression
 This is not a root/LPE path; it closes a Linux file-clipboard cross-session
 capability/provenance member of R-S19.
 
+**R-S14 macOS hardened-runtime JIT entitlement minimization — CLOSED / GATED (2026-07-11).**
+Platform: retained macOS source-conformance path. Endpoint/action: Xcode entitlement selection for
+Debug, Profile, and Release hardened-runtime builds. Boundary: future macOS app process executable-memory
+rights ↔ the minimum entitlement set required by that build configuration. Attack surface closed:
+the old combined `DebugProfile.entitlements` file is deleted. Debug now uses `Debug.entitlements`
+and is the only configuration with `com.apple.security.cs.allow-jit`; Profile uses
+`Profile.entitlements` with network-server profiler support but no JIT exception; Release uses
+`Release.entitlements` with no JIT exception. The Xcode project binds each configuration to its own
+entitlement file, and `scripts/apple-conform-check.sh` exact-matches the three macOS entitlement maps
+plus the empty iOS entitlement map. This is not a root/LPE path; it removes an unnecessary
+hardening-runtime executable-memory exception from Profile/Release while preserving the Debug-only
+JIT case.
+
 **R-S15 — viewer PeerConfig write authority — status: CLOSED / GATED (2026-07-10).**
 Platforms: all viewer-capable targets. Endpoint/action: post-PAKE peer messages that reach the viewer's
 per-peer config store. Boundary: password-correct but hostile peer ↔ operator-owned persisted viewer

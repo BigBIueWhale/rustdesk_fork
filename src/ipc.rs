@@ -67,6 +67,8 @@ pub(crate) fn authorize_url_ipc_sender(stream: &Connection) -> bool {
 pub(crate) fn authorize_url_ipc_sender(stream: &Connection) -> bool {
     authorize_windows_url_ipc_connection(stream, "_url")
 }
+#[cfg(target_os = "macos")]
+use hbb_common::tokio::sync::{OwnedSemaphorePermit, Semaphore};
 #[cfg(target_os = "linux")]
 use ipc_fs::terminal_count_candidate_uids;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -82,6 +84,8 @@ use serde_derive::{Deserialize, Serialize};
 use std::cell::Cell;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(target_os = "macos")]
+use std::sync::{Arc, OnceLock};
 use std::{
     collections::HashMap,
     sync::atomic::{AtomicBool, Ordering},
@@ -97,6 +101,10 @@ use std::{
 const MACOS_OPEN: &str = "/usr/bin/open";
 #[cfg(target_os = "macos")]
 const MACOS_LAUNCHCTL: &str = "/bin/launchctl";
+#[cfg(target_os = "macos")]
+const MACOS_SERVICE_IPC_AUTHORIZATION_BUDGET: usize = 4;
+#[cfg(target_os = "macos")]
+static MACOS_SERVICE_IPC_AUTHORIZATION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
 
 #[cfg(windows)]
 use std::{
@@ -147,6 +155,42 @@ impl UserMainIpcScope {
 impl Drop for UserMainIpcScope {
     fn drop(&mut self) {
         USE_USER_MAIN_IPC.with(|use_user_main| use_user_main.set(self.previous));
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn try_acquire_macos_service_ipc_authorization_slot() -> Option<OwnedSemaphorePermit> {
+    let semaphore = MACOS_SERVICE_IPC_AUTHORIZATION_SLOTS
+        .get_or_init(|| Arc::new(Semaphore::new(MACOS_SERVICE_IPC_AUTHORIZATION_BUDGET)))
+        .clone();
+    match semaphore.try_acquire_owned() {
+        Ok(permit) => Some(permit),
+        Err(_) => {
+            log::debug!(
+                "Rejected macOS _service IPC connection because service authorization work is at capacity"
+            );
+            None
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+async fn authorize_macos_service_scoped_ipc_connection_for_task(
+    stream: &Connection,
+    postfix: &str,
+    _authorization_slot: OwnedSemaphorePermit,
+) -> bool {
+    let authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(stream, postfix);
+    match tokio::task::spawn_blocking(move || {
+        ipc_auth::authorize_service_scoped_ipc_authorization_snapshot(authorization)
+    })
+    .await
+    {
+        Ok(authorized) => authorized,
+        Err(err) => {
+            log::error!("macOS _service IPC authorization task failed: {err}");
+            false
+        }
     }
 }
 
@@ -601,12 +645,23 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                 Ok(stream) => {
                     let mut stream = Connection::new(stream);
                     let postfix = postfix.to_owned();
-                    #[cfg(any(target_os = "linux", target_os = "macos"))]
+                    #[cfg(target_os = "linux")]
                     if config::is_service_ipc_postfix(&postfix) {
                         if !authorize_service_scoped_ipc_connection(&stream, &postfix) {
                             continue;
                         }
                     }
+                    #[cfg(target_os = "macos")]
+                    let macos_service_ipc_authorization_slot =
+                        if config::is_service_ipc_postfix(&postfix) {
+                            let Some(slot) = try_acquire_macos_service_ipc_authorization_slot()
+                            else {
+                                continue;
+                            };
+                            Some(slot)
+                        } else {
+                            None
+                        };
                     #[cfg(windows)]
                     if postfix.is_empty() {
                         // Windows main IPC (`postfix == ""`) is authorized here.
@@ -617,6 +672,18 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                         }
                     }
                     tokio::spawn(async move {
+                        #[cfg(target_os = "macos")]
+                        if let Some(authorization_slot) = macos_service_ipc_authorization_slot {
+                            if !authorize_macos_service_scoped_ipc_connection_for_task(
+                                &stream,
+                                &postfix,
+                                authorization_slot,
+                            )
+                            .await
+                            {
+                                return;
+                            }
+                        }
                         loop {
                             match stream.next().await {
                                 Err(err) => {

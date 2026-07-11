@@ -175,7 +175,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   longer receives or replaces whole service `Config`/`Config2` over `_service`. Source closure:
   `src/ipc.rs` admits only narrow typed messages on `_service` via `service_channel_admits_message`
   (`Data::Test`, Linux's R-S11b-2c service-owned unattended-password request, and macOS's
-  begin/finish/runtime-snapshot service-owned unattended-password messages);
+  authorized request/runtime-snapshot service-owned unattended-password messages);
   `src/ipc.rs` deletes the `Data::SyncConfig` IPC variant; `src/ipc/fs.rs` probes `_service`
   liveness with `Data::Test`, not config reads; `src/server.rs` deletes
   `wait_initial_config_sync`/`sync_and_watch_config_dir` and the root↔user service-config watch loop.
@@ -293,7 +293,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   request-digest prompt/verification API, no `kAuthorizationRightExecute` fallback in the service password
   functions, non-interactive `AuthorizationCreateFromExternalForm` verification, signed/root-owned installed-app
   peer identity, trusted PrivilegedHelperTools `_service` current-helper identity, absence of the old same-directory
-  `service` binary exception, root-store write, launchd-owned runtime snapshot with exact live argv plus parsed
+  `service` binary exception, budgeted macOS `_service` blocking-proof offload, root-store write,
+  launchd-owned runtime snapshot with exact live argv plus parsed
   root-owned plist command-shape proof, runtime overlay non-persistence,
   installed-daemon exposure gate, and service handler wiring; the Unix source tests cover main-channel commit
   rejection and `_service` request admission.
@@ -1357,7 +1358,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `Command::new("/usr/bin/pkcheck")` launch shape.
 - **R-S11e-2 — macOS _service client-side server authentication — CLOSED 2026-07-11.**
   Platform: macOS installed-service mode. Endpoint/action: clients of the shared `_service` IPC socket, including
-  service-owned unattended-password begin/finish and the LaunchAgent runtime password snapshot request. Boundary:
+  the service-owned unattended-password authorized request and the LaunchAgent runtime password snapshot request. Boundary:
   installed app / service-owned LaunchAgent ↔ root privileged helper credential authority. Attack surface closed:
   `_service` clients no longer trust the socket path alone. A local same-user fake server that wins the
   `/tmp/<app>-service/ipc_service` race cannot receive the plaintext candidate password before authorization, and
@@ -1382,6 +1383,21 @@ unreachable and a source/test/AST gate prevents reintroduction.
   target-swap class for privileged helper launches without changing helper command semantics. Verification closure:
   `scripts/verify.sh` runs app-side and shared helper resolver tests and requires canonicalization, candidate/canonical
   parent trust, executable-bit checks, canonical return wiring, and requirements/ledger disposition.
+- **R-S11e-4 — macOS _service accept-loop blocking-proof offload — CLOSED 2026-07-11.**
+  Platform: macOS installed-service mode. Endpoint/action: receiver-side admission for the world-connectable
+  `_service` IPC listener. Boundary: local IPC connect attempts ↔ root LaunchDaemon service availability and
+  credential-authority admission. Attack surface closed: the current-thread `_service` listener no longer performs
+  filesystem metadata, ACL, current/peer executable, and `/usr/bin/codesign --verify` work inline before spawning the
+  per-connection task. The accepted socket's kernel peer uid/pid facts are captured as a typed
+  `ServiceScopedIpcAuthorization` snapshot; the accept path obtains a nonblocking bounded authorization slot and passes
+  it to the macOS connection task, which runs the existing fail-closed executable/code-signing proof in
+  `tokio::task::spawn_blocking` and returns before the first `stream.next().await` if authorization fails. If the
+  authorization budget is exhausted, the listener drops the connection before spawning a task. No `_service` message is read before that
+  proof succeeds, Linux keeps its existing synchronous service admission path, and the `_url` sender proof remains
+  separate. Verification closure: `scripts/verify.sh` and `scripts/apple-conform-check.sh` require the snapshot type,
+  snapshot verifier, macOS authorization-slot budget, `spawn_blocking` task authorizer, start-loop ordering
+  (nonblocking slot before `tokio::spawn`, blocking proof inside the task, and authorization before first read), absence of the old combined
+  Linux/macOS pre-spawn service gate, and requirements/ledger disposition.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows
@@ -2606,7 +2622,7 @@ The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-999a61de66f380098d91da7dce4bbe691b07866329212f90f62ded86967741ca  requirements.html
+8bf75c3b360e4e81603abab6e85fdf58e3cbbe62326651ca00e476c8a37cc298  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

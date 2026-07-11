@@ -1649,6 +1649,74 @@ fi
 grep -Fq 'macos_privileged_helper_satisfies_code_requirement(expected)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-helper-code-requirement-missing"
 grep -Fq 'macos_installed_app_satisfies_code_requirement(&app_bundle)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-app-code-requirement-missing"
 grep -Fq 'macos_service_ipc_allows_installed_app_and_privileged_helper' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-installed-helper-pair-missing"
+grep -Fq 'struct ServiceScopedIpcAuthorization' src/ipc/auth.rs                    || r_s11b2="$r_s11b2 service-ipc-authorization-snapshot-type-missing"
+grep -Fq 'pub(crate) fn service_scoped_ipc_authorization_snapshot' src/ipc/auth.rs || r_s11b2="$r_s11b2 service-ipc-authorization-snapshot-capture-missing"
+grep -Fq 'pub(crate) fn authorize_service_scoped_ipc_authorization_snapshot' src/ipc/auth.rs || r_s11b2="$r_s11b2 service-ipc-authorization-snapshot-verifier-missing"
+grep -Fq 'const MACOS_SERVICE_IPC_AUTHORIZATION_BUDGET: usize = 4;' src/ipc.rs     || r_s11b2="$r_s11b2 macos-service-ipc-auth-budget-missing"
+grep -Fq 'static MACOS_SERVICE_IPC_AUTHORIZATION_SLOTS: OnceLock<Arc<Semaphore>>' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-ipc-auth-slots-missing"
+grep -Fq 'fn try_acquire_macos_service_ipc_authorization_slot() -> Option<OwnedSemaphorePermit>' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-ipc-auth-slot-acquire-missing"
+grep -Fq 'async fn authorize_macos_service_scoped_ipc_connection_for_task' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-ipc-task-authorizer-missing"
+grep -Fq 'tokio::task::spawn_blocking(move ||' src/ipc.rs                         || r_s11b2="$r_s11b2 macos-service-ipc-auth-not-spawn-blocking"
+if ! python3 - <<'PY'
+from pathlib import Path
+src = Path("src/ipc.rs").read_text()
+try:
+    start = src.index("pub async fn start")
+    end = src.index("pub async fn new_listener", start)
+except ValueError:
+    raise SystemExit(1)
+body = src[start:end]
+spawn = body.find("tokio::spawn(async move")
+mac_slot = body.find("let macos_service_ipc_authorization_slot")
+slot_acquire = body.find("try_acquire_macos_service_ipc_authorization_slot()", 0, spawn)
+task_auth = body.find("authorize_macos_service_scoped_ipc_connection_for_task", spawn)
+first_read = body.find("stream.next().await", spawn)
+direct = body.find("authorize_service_scoped_ipc_connection(&stream, &postfix)")
+linux_cfg = body.rfind('#[cfg(target_os = "linux")]', 0, direct)
+old_cfg = '#[cfg(any(target_os = "linux", target_os = "macos"))]' in body[:spawn]
+macos_auth_before_spawn = body.find("authorize_macos_service_scoped_ipc_connection_for_task", 0, spawn) != -1
+macos_snapshot_before_spawn = body.find("service_scoped_ipc_authorization_snapshot", 0, spawn) != -1
+ok = (
+    spawn != -1
+    and mac_slot != -1
+    and slot_acquire != -1
+    and task_auth != -1
+    and first_read != -1
+    and mac_slot < slot_acquire < spawn
+    and spawn < task_auth < first_read
+    and direct != -1
+    and linux_cfg != -1
+    and linux_cfg < direct
+    and not old_cfg
+    and not macos_auth_before_spawn
+    and not macos_snapshot_before_spawn
+)
+raise SystemExit(0 if ok else 1)
+PY
+then
+  r_s11b2="$r_s11b2 macos-service-ipc-authorization-not-task-scoped-before-read"
+fi
+if ! python3 - <<'PY'
+from pathlib import Path
+src = Path("src/ipc.rs").read_text()
+try:
+    start = src.index("async fn authorize_macos_service_scoped_ipc_connection_for_task")
+    end = src.index("#[inline]", start)
+except ValueError:
+    raise SystemExit(1)
+body = src[start:end]
+snapshot = body.find("service_scoped_ipc_authorization_snapshot")
+blocking = body.find("tokio::task::spawn_blocking")
+verify = body.find("authorize_service_scoped_ipc_authorization_snapshot", blocking)
+permit = body.find("_authorization_slot: OwnedSemaphorePermit")
+ok = permit != -1 and snapshot != -1 and blocking != -1 and verify != -1 and permit < snapshot < blocking < verify
+raise SystemExit(0 if ok else 1)
+PY
+then
+  r_s11b2="$r_s11b2 macos-service-ipc-blocking-proof-not-budgeted-or-snapshot-backed"
+fi
+grep -Fq 'macOS _service accept-loop blocking-proof offload' requirements.html || r_s11b2="$r_s11b2 macos-service-ipc-offload-requirements-missing"
+grep -Fq 'R-S11e-4 — macOS _service accept-loop blocking-proof offload' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-service-ipc-offload-ledger-missing"
 macos_service_identity_block=$(awk '/fn macos_service_ipc_allows_installed_app_and_privileged_helper/,/^}/' src/ipc/auth.rs)
 echo "$macos_service_identity_block" | grep -Fq 'postfix != crate::POSTFIX_SERVICE' || r_s11b2="$r_s11b2 macos-service-ipc-postfix-gate-missing"
 echo "$macos_service_identity_block" | grep -Fq 'macos_privileged_helper_is_expected_and_trusted(current_exe)' || r_s11b2="$r_s11b2 macos-service-ipc-current-helper-not-verified"
@@ -1698,7 +1766,7 @@ if echo "$user_scope_fn" | grep -q '"--password"'; then
   r_s11b2="$r_s11b2 password-still-root-routes-to-user-main-ipc"
 fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 service-owned password IPC closure:$r_s11b2"; rc=1; else
-  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux uses polkit/root-service commit with structured policy/package assurance; Windows uses pipe-client token elevation plus LocalSystem service commit; macOS admits _service only for the installed app executable talking to the trusted PrivilegedHelperTools helper, client-authenticates the connected _service server, obtains the custom nonshared timeout-zero Authorization Services right before sending the password, verifies the external form noninteractively in the LaunchDaemon, writes the authorized value directly into the root LaunchDaemon credential store without a pending secret cache, rejects the old macOS main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after exact live argv plus pid/path and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
+  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux uses polkit/root-service commit with structured policy/package assurance; Windows uses pipe-client token elevation plus LocalSystem service commit; macOS admits _service only for the installed app executable talking to the trusted PrivilegedHelperTools helper, offloads budgeted receiver-side blocking proof from the _service accept loop before the first read, client-authenticates the connected _service server, obtains the custom nonshared timeout-zero Authorization Services right before sending the password, verifies the external form noninteractively in the LaunchDaemon, writes the authorized value directly into the root LaunchDaemon credential store without a pending secret cache, rejects the old macOS main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after exact live argv plus pid/path and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
 
 # R-S11b-4: config/PRS secrecy after IPC closure. The balanced-PAKE PRS is
 # connect-equivalent at rest, so the code-owned boundary is:

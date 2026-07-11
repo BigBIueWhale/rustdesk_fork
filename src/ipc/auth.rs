@@ -1308,23 +1308,62 @@ pub(crate) fn log_rejected_windows_ipc_connection(
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-pub(crate) fn authorize_service_scoped_ipc_connection(stream: &Connection, postfix: &str) -> bool {
+pub(crate) struct ServiceScopedIpcAuthorization {
+    postfix: String,
+    peer_pid: Option<u32>,
+    peer_uid: Option<u32>,
+    active_uid: Option<u32>,
+    uid_authorized: bool,
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn service_scoped_ipc_authorization_snapshot(
+    stream: &Connection,
+    postfix: &str,
+) -> ServiceScopedIpcAuthorization {
     let peer_pid = stream.peer_pid();
-    let (authorized, peer_uid, active_uid) = stream.service_authorization_status();
-    if !authorized {
-        log_rejected_service_connection(postfix, peer_uid, active_uid);
+    let (uid_authorized, peer_uid, active_uid) = stream.service_authorization_status();
+    ServiceScopedIpcAuthorization {
+        postfix: postfix.to_owned(),
+        peer_pid,
+        peer_uid,
+        active_uid,
+        uid_authorized,
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn authorize_service_scoped_ipc_authorization_snapshot(
+    authorization: ServiceScopedIpcAuthorization,
+) -> bool {
+    if !authorization.uid_authorized {
+        log_rejected_service_connection(
+            &authorization.postfix,
+            authorization.peer_uid,
+            authorization.active_uid,
+        );
         return false;
     }
-    if let Err(err) = ensure_peer_executable_matches_current_by_pid_opt(peer_pid, postfix) {
+    if let Err(err) = ensure_peer_executable_matches_current_by_pid_opt(
+        authorization.peer_pid,
+        &authorization.postfix,
+    ) {
         log::warn!(
             "Rejected unauthorized connection on protected service-scoped IPC channel due to executable mismatch: postfix={}, peer_pid={:?}, err={}",
-            postfix,
-            peer_pid,
+            authorization.postfix,
+            authorization.peer_pid,
             err
         );
         return false;
     }
     true
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn authorize_service_scoped_ipc_connection(stream: &Connection, postfix: &str) -> bool {
+    authorize_service_scoped_ipc_authorization_snapshot(service_scoped_ipc_authorization_snapshot(
+        stream, postfix,
+    ))
 }
 
 #[cfg(windows)]

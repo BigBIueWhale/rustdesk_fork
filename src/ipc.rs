@@ -1182,6 +1182,7 @@ pub(crate) fn main_channel_admits_state_mutation(
         #[cfg(target_os = "windows")]
         Data::ServiceOwnedShareRdpResult(_)
         | Data::ClipboardFile(_)
+        | Data::AuthorizedClipboardNonFile { .. }
         | Data::ClipboardNonFile(_)
         | Data::SyncWinCpuUsage(_)
         | Data::ControlledSessionCount(_)

@@ -2367,6 +2367,7 @@ echo "== (3b-iii-f1) Windows CM non-file clipboard requires connection-bound aut
 r_s11c22=
 grep -Fq 'pub struct CmClipboardAuthority' src/ipc.rs || r_s11c22="$r_s11c22 clipboard-authority-type-missing"
 grep -Fq 'AuthorizedClipboardNonFile {' src/ipc.rs || r_s11c22="$r_s11c22 authorized-clipboard-request-variant-missing"
+grep -Fq '| Data::AuthorizedClipboardNonFile { .. }' src/ipc.rs || r_s11c22="$r_s11c22 main-channel-mutation-classification-missing"
 grep -Fq 'pub clipboard: bool' src/ipc.rs || r_s11c22="$r_s11c22 cm-authority-clipboard-bit-missing"
 grep -Fq 'fn allows_clipboard_authority' src/ipc.rs || r_s11c22="$r_s11c22 clipboard-conn-type-helper-missing"
 grep -Fq 'matches!(self, Self::Remote)' src/ipc.rs || r_s11c22="$r_s11c22 clipboard-authority-not-remote-only"

@@ -2294,6 +2294,16 @@ fi
 grep -q 'pub fn run_as_user_with_env' src/platform/macos.rs || r_s11c11="$r_s11c11 macos-token-env-launcher-missing"
 grep -q 'pub fn run_as_user_with_env' src/platform/windows.rs || r_s11c11="$r_s11c11 windows-token-env-launcher-missing"
 grep -q 'CM_LAUNCH_TOKEN_ENV' src/common.rs || r_s11c11="$r_s11c11 cm-launch-token-env-constant-missing"
+cm_launch_token_cfg=$(awk '/pub const CM_LAUNCH_TOKEN_ENV/ { print prev; exit } { prev=$0 }' src/common.rs)
+cm_launch_parent_cfg=$(awk '/pub const CM_LAUNCH_PARENT_ENV/ { print prev; exit } { prev=$0 }' src/common.rs)
+case "$cm_launch_token_cfg" in
+  *'#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]'*) ;;
+  *) r_s11c11="$r_s11c11 cm-launch-token-env-not-windows-cfgd" ;;
+esac
+case "$cm_launch_parent_cfg" in
+  *'#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]'*) ;;
+  *) r_s11c11="$r_s11c11 cm-launch-parent-env-not-windows-cfgd" ;;
+esac
 cm_listener_auth_block=$(awk '/authorize_cm_ipc_connection\(&stream\)/,/tokio::spawn/' src/ui_cm_interface.rs)
 cm_listener_proof_line=$(echo "$cm_listener_auth_block" | grep -n 'answer_cm_endpoint_challenge(&mut stream).await' | head -1 | cut -d: -f1)
 cm_listener_spawn_line=$(echo "$cm_listener_auth_block" | grep -n 'tokio::spawn' | head -1 | cut -d: -f1)

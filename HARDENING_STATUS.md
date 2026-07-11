@@ -1806,6 +1806,19 @@ unreachable and a source/test/AST gate prevents reintroduction.
   actual filesystem operations. Verification closure: `scripts/verify.sh` gates this requirements/ledger disposition,
   the FileTransfer login shape, CM `Remote`/`FileTransfer` file-authority binding, Unix headless username/refusal
   guards, and the FileTransfer capability confinement set. No runtime behavior changed in this slice.
+- **R-S11e-15 — Linux pkcheck request-time peer identity binding — CLOSED 2026-07-11.**
+  Platform: Linux `.deb` installed-service mode. Endpoint/action: local admin-authorized
+  service-owned unattended-password changes through the shared `_service` socket. Boundary: untrusted local IPC
+  subject ↔ root service polkit authorization and credential commit authority. Attack surface closed: the root
+  service no longer builds the `pkcheck --process pid,start-time,uid` subject from split observations after the
+  accept-time executable proof. `linux_polkit_subject_for_peer` now derives the subject from
+  `peer_process_identity(stream, POSTFIX_SERVICE)`, so the request-time subject proof revalidates the SO_PEERCRED
+  pid/uid, proves the connected peer is still the current executable, checks the live `/proc` uid still matches the
+  socket uid, and uses that same identity's process start time for the race-resistant polkit subject. This is
+  correctness hardening rather than a newly proven default LPE: the old path still had the active-user/root UID gate,
+  same-executable accept proof, trusted fixed `pkcheck`, `auth_admin` policy, and service-owned receiver commit proof.
+  Verification closure: `scripts/verify.sh` gates the live peer-identity subject, the start-time accessor, the
+  requirements/ledger disposition, and absence of the old direct `linux_proc_start_time(peer_pid)` subject assembly.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -3071,7 +3084,7 @@ The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-1dc8b83021e3d701a4a598d91aba9a626366b0e2620820ad15207fb978bf5ea1  requirements.html
+00198a612914d7fcaaf4ca27a783cb75945b0aaf94f76f1a48c258d3e0ba7970  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

@@ -1019,6 +1019,10 @@ impl PeerProcessIdentity {
         self.uid
     }
 
+    pub(crate) fn start_time(&self) -> &str {
+        &self.start_time
+    }
+
     #[cfg(test)]
     pub(crate) fn for_test(pid: u32, uid: u32, start_time: String, first_arg: String) -> Self {
         Self {

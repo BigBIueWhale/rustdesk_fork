@@ -13,7 +13,7 @@ use bytes::Bytes;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use clipboard::ClipboardFile;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-use hbb_common::anyhow::{self, anyhow};
+use hbb_common::anyhow;
 use hbb_common::{
     allow_err, bail, bytes,
     bytes_codec::BytesCodec,
@@ -46,8 +46,8 @@ use ipc_auth::{active_uid, authorize_service_scoped_ipc_connection};
 pub(crate) use ipc_auth::{
     authenticate_cm_endpoint, authenticate_linux_service_owned_main_server,
     current_process_identity, ensure_linux_service_server_is_trusted,
-    ensure_peer_process_identity_matches, linux_proc_start_time, linux_proc_stat_start_time,
-    peer_process_identity, peer_process_identity_is_live, PeerProcessIdentity,
+    ensure_peer_process_identity_matches, linux_proc_stat_start_time, peer_process_identity,
+    peer_process_identity_is_live, PeerProcessIdentity,
 };
 #[cfg(windows)]
 use ipc_auth::{
@@ -1692,14 +1692,13 @@ fn trusted_linux_pkcheck_path() -> Option<PathBuf> {
 
 #[cfg(target_os = "linux")]
 fn linux_polkit_subject_for_peer(stream: &Connection) -> ResultType<String> {
-    let peer_pid = stream
-        .peer_pid()
-        .ok_or_else(|| anyhow!("Failed to resolve peer pid for service-owned password change"))?;
-    let peer_uid = stream
-        .peer_uid()
-        .ok_or_else(|| anyhow!("Failed to resolve peer uid for service-owned password change"))?;
-    let start_time = linux_proc_start_time(peer_pid)?;
-    Ok(format!("{peer_pid},{start_time},{peer_uid}"))
+    let identity = peer_process_identity(stream, crate::POSTFIX_SERVICE)?;
+    Ok(format!(
+        "{},{},{}",
+        identity.pid(),
+        identity.start_time(),
+        identity.uid()
+    ))
 }
 
 #[cfg(target_os = "linux")]

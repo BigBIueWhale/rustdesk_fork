@@ -904,7 +904,7 @@ pub fn has_vram() -> bool {
 
 // R-R2b / R-G1 (§18/§19): supported_hwdecodings (the H264/H265 decode-ability the excised Default-Codec
 // radios read via the main_supported_hwdecodings FFI, removed with them) is excised — the FFI was its
-// sole caller. hwcodec/vram/mediacodec are compiled out and AV1/libaom is runtime-quarantined, so it only ever returned
+// sole caller. hwcodec/vram/mediacodec are compiled out and AV1/libaom is absent, so it only ever returned
 // (false, false). scrap::codec::Decoder::supported_decodings — the LIVE protocol decode-ability path —
 // is deliberately retained; only this UI-only wrapper is gone.
 

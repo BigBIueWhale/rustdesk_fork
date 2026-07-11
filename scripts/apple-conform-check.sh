@@ -1254,7 +1254,7 @@ target="$1"; features="$2"; triplet="$3"
 stub=/tmp/apple-vcpkg
 rm -rf "$stub"
 mkdir -p "$stub/installed/$triplet/include" "$stub/installed/$triplet/lib"
-for d in opus vpx libyuv aom; do
+for d in opus vpx libyuv; do
   [ -d "/usr/include/$d" ] && ln -s "/usr/include/$d" "$stub/installed/$triplet/include/$d"
 done
 export VCPKG_ROOT="$stub"
@@ -1287,7 +1287,7 @@ target="$1"; features="$2"; triplet="$3"
 stub=/tmp/apple-vcpkg
 rm -rf "$stub"
 mkdir -p "$stub/installed/$triplet/include" "$stub/installed/$triplet/lib"
-for d in opus vpx libyuv aom; do
+for d in opus vpx libyuv; do
   [ -d "/usr/include/$d" ] && ln -s "/usr/include/$d" "$stub/installed/$triplet/include/$d"
 done
 export VCPKG_ROOT="$stub"

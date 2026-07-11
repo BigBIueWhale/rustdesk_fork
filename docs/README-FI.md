@@ -33,8 +33,8 @@ Desktop-versiot käyttävät [sciter](https://sciter.com/) graafisena käyttöli
 
 - Asenna [vcpkg](https://github.com/microsoft/vcpkg), ja aseta `VCPKG_ROOT`-ympäristömuuttuja oikein
 
-  - Windows: vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static
-  - Linux/MacOS: vcpkg install libvpx libyuv opus aom
+  - Windows: vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static
+  - Linux/MacOS: vcpkg install libvpx libyuv opus
 
 - suorita `cargo run`
 
@@ -67,7 +67,7 @@ git checkout 2023.04.15
 cd ..
 vcpkg/bootstrap-vcpkg.sh
 export VCPKG_ROOT=$HOME/vcpkg
-vcpkg/vcpkg install libvpx libyuv opus aom
+vcpkg/vcpkg install libvpx libyuv opus
 ```
 
 ### Korjaa libvpx (Fedora)

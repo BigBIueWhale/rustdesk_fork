@@ -51,8 +51,8 @@ Lütfen Sciter dinamik kütüphanesini kendiniz indirin.
 
 - [vcpkg](https://github.com/microsoft/vcpkg) yükleyin ve `VCPKG_ROOT` ortam değişkenini doğru bir şekilde ayarlayın.
 
-  - Windows: vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static
-  - Linux/macOS: vcpkg install libvpx libyuv opus aom
+  - Windows: vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static
+  - Linux/macOS: vcpkg install libvpx libyuv opus
 
 - `cargo run` komutunu çalıştırın.
 
@@ -95,7 +95,7 @@ git checkout 2023.04.15
 cd ..
 vcpkg/bootstrap-vcpkg.sh
 export VCPKG_ROOT=$HOME/vcpkg
-vcpkg/vcpkg install libvpx libyuv opus aom
+vcpkg/vcpkg install libvpx libyuv opus
 ```
 
 ### libvpx'i Düzeltin (Fedora için)

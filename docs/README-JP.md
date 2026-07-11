@@ -47,8 +47,8 @@ Sciter dynamic libraryを事前にダウンロードしてください。
 - [vcpkg](https://github.com/microsoft/vcpkg)をインストールし、環境変数に`VCPKG_ROOT`を設定します。  
 その後、以下のコマンドを実行します。
 
-  - Windowsの場合: vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static
-  - Linux/macOSの場合: vcpkg install libvpx libyuv opus aom
+  - Windowsの場合: vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static
+  - Linux/macOSの場合: vcpkg install libvpx libyuv opus
 
 - `cargo run`を実行します。
 
@@ -91,7 +91,7 @@ git checkout 2023.04.15
 cd ..
 vcpkg/bootstrap-vcpkg.sh
 export VCPKG_ROOT=$HOME/vcpkg
-vcpkg/vcpkg install libvpx libyuv opus aom
+vcpkg/vcpkg install libvpx libyuv opus
 ```
 
 ### libvpxの修正 (Fedoraのみ)

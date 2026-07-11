@@ -11,7 +11,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 LEDGER=docs/NATIVE-CODEC-WATCH.md
-expected_packages=(aom cpu-features libjpeg-turbo libvpx libyuv oboe opus)
+expected_packages=(cpu-features libjpeg-turbo libvpx libyuv oboe opus)
 rc=0
 
 fail() {
@@ -47,8 +47,6 @@ require_file "$LEDGER"
 require_file requirements.html
 require_file vcpkg.json
 require_file scripts/pins.env
-require_file res/vcpkg/aom/vcpkg.json
-require_file res/vcpkg/aom/portfile.cmake
 require_file res/vcpkg/libvpx/vcpkg.json
 require_file res/vcpkg/libvpx/portfile.cmake
 require_file res/vcpkg/libyuv/vcpkg.json
@@ -60,9 +58,7 @@ require_file res/vcpkg/opus/portfile.cmake
 . scripts/pins.env
 
 : "${VCPKG_BASELINE:?native-codec-watch: VCPKG_BASELINE unset in scripts/pins.env}"
-: "${AOM_COMMIT:?native-codec-watch: AOM_COMMIT unset in scripts/pins.env}"
 : "${LIBYUV_COMMIT:?native-codec-watch: LIBYUV_COMMIT unset in scripts/pins.env}"
-: "${SHA512_AOM_3_12_1:?native-codec-watch: SHA512_AOM_3_12_1 unset in scripts/pins.env}"
 : "${SHA512_LIBYUV:?native-codec-watch: SHA512_LIBYUV unset in scripts/pins.env}"
 
 actual_baseline=$(json_string_value baseline vcpkg.json)
@@ -100,6 +96,8 @@ require_literal "Cargo/RustSec and Dart/OSV gates do not cover these vcpkg C/C++
 require_literal "This gate is not the decoder sandbox." "$LEDGER"
 require_literal "VCPKG_BASELINE: $VCPKG_BASELINE" "$LEDGER"
 require_literal "Forbidden native decoder expansion remains: no \`ffmpeg\`, no \`mfx-dispatch\`, no" "$LEDGER"
+require_literal "Retired library: aom" "$LEDGER"
+require_literal "AV1/libaom dependency removal" "$LEDGER"
 
 for pkg in "${expected_packages[@]}"; do
   require_literal "Package: $pkg" "$LEDGER"
@@ -109,16 +107,12 @@ if grep -qE '\b(PENDING|TODO|TBD)\b' "$LEDGER"; then
   fail "$LEDGER contains a pending/TODO/TBD marker"
 fi
 
-aom_version=$(json_string_value version-semver res/vcpkg/aom/vcpkg.json)
 libvpx_version=$(json_string_value version res/vcpkg/libvpx/vcpkg.json)
 libyuv_version=$(json_string_value version res/vcpkg/libyuv/vcpkg.json)
 opus_version=$(json_string_value version res/vcpkg/opus/vcpkg.json)
 libvpx_sha=$(first_sha512 res/vcpkg/libvpx/portfile.cmake)
 opus_sha=$(first_sha512 res/vcpkg/opus/portfile.cmake)
 
-require_literal "aom version: $aom_version" "$LEDGER"
-require_literal "AOM_COMMIT: $AOM_COMMIT" "$LEDGER"
-require_literal "aom SHA512: $SHA512_AOM_3_12_1" "$LEDGER"
 require_literal "libvpx version: $libvpx_version" "$LEDGER"
 require_literal "libvpx SHA512: $libvpx_sha" "$LEDGER"
 require_literal "libyuv version: $libyuv_version" "$LEDGER"
@@ -127,10 +121,6 @@ require_literal "libyuv SHA512: $SHA512_LIBYUV" "$LEDGER"
 require_literal "opus version: $opus_version" "$LEDGER"
 require_literal "opus SHA512: $opus_sha" "$LEDGER"
 
-grep -qF "REF $AOM_COMMIT" res/vcpkg/aom/portfile.cmake \
-  || fail "AOM_COMMIT is not present in res/vcpkg/aom/portfile.cmake"
-grep -qF "SHA512 $SHA512_AOM_3_12_1" res/vcpkg/aom/portfile.cmake \
-  || fail "SHA512_AOM_3_12_1 is not present in res/vcpkg/aom/portfile.cmake"
 grep -qF "REF $LIBYUV_COMMIT" res/vcpkg/libyuv/portfile.cmake \
   || fail "LIBYUV_COMMIT is not present in res/vcpkg/libyuv/portfile.cmake"
 grep -qF "SHA512 $SHA512_LIBYUV" res/vcpkg/libyuv/portfile.cmake \

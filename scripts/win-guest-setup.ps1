@@ -185,7 +185,7 @@ if ($src) {
     # `*>&1 | Tee` + ErrorActionPreference=Stop a benign warning would be a fatal NativeCommandError. A CHILD
     # process's stderr goes to the console, never this script's pipeline. Judge by ExitCode. (A hang -- e.g. a
     # source download that can't reach the net -- is caught by the 130m provision wait.)
-    $vp = Start-Process 'C:\vcpkg\vcpkg.exe' -ArgumentList 'install',"--overlay-ports=$ports",'--triplet','x64-windows-static','aom','libvpx','libyuv','opus','libjpeg-turbo','cpu-features' -Wait -PassThru -NoNewWindow
+    $vp = Start-Process 'C:\vcpkg\vcpkg.exe' -ArgumentList 'install',"--overlay-ports=$ports",'--triplet','x64-windows-static','libvpx','libyuv','opus','libjpeg-turbo','cpu-features' -Wait -PassThru -NoNewWindow
     if ($vp.ExitCode -ne 0) { Die "vcpkg install of the x64-windows natives failed (exit $($vp.ExitCode))" }
 } else {
     Log 'WARN: no SRC CD (res\vcpkg) found -- skipped the vcpkg-native warm; the offline build cannot link codecs'

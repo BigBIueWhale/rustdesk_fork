@@ -48,7 +48,7 @@ echo "== (1) generate the FRB Rust bridge from src/flutter_ffi.rs (FRB 1.80.1) =
   || { echo "FLUTTER-VERIFY: FAILED — FRB did not produce the Rust bridge"; exit 1; }
 
 echo "== (2) cargo check --features flutter,linux-pkg-config (rust 1.75) =="
-# linux-pkg-config routes scrap/the native opus/vpx/aom build.rs to the distro pkg-config
+# linux-pkg-config routes scrap/the native opus/vpx/yuv build.rs to the distro pkg-config
 # (the rd-devcheck libs) instead of vcpkg; flutter adds the FFI/UI surface. Together they
 # compile-verify the viewer-side + GUI Rust the linux-only devcheck cannot see.
 "${RUN[@]}" cargo check --features flutter,linux-pkg-config --color never

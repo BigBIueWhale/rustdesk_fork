@@ -12,7 +12,6 @@ use crate::mediacodec::{MediaCodecDecoder, H264_DECODER_SUPPORT, H265_DECODER_SU
 #[cfg(feature = "vram")]
 use crate::vram::*;
 use crate::{
-    aom::AomEncoderConfig,
     common::GoogleImage,
     vpxcodec::{self, VpxDecoder, VpxDecoderConfig, VpxEncoder, VpxEncoderConfig, VpxVideoCodecId},
     CodecFormat, EncodeInput, EncodeYuvFormat, ImageRgb, ImageTexture,
@@ -99,7 +98,6 @@ pub fn validate_native_video_frames(codec: &str, frames: &EncodedVideoFrames) ->
 #[derive(Debug, Clone)]
 pub enum EncoderCfg {
     VPX(VpxEncoderConfig),
-    AOM(AomEncoderConfig),
     #[cfg(feature = "hwcodec")]
     HWRAM(HwRamEncoderConfig),
     #[cfg(feature = "vram")]
@@ -185,8 +183,6 @@ impl Encoder {
             EncoderCfg::VPX(_) => Ok(Encoder {
                 codec: Box::new(VpxEncoder::new(config, i444)?),
             }),
-            EncoderCfg::AOM(_) => bail!("AV1 encoding is disabled by hardened codec policy"),
-
             #[cfg(feature = "hwcodec")]
             EncoderCfg::HWRAM(_) => match HwRamEncoder::new(config, i444) {
                 Ok(hw) => Ok(Encoder {
@@ -428,10 +424,6 @@ impl Encoder {
                 VpxVideoCodecId::VP8 => CodecFormat::VP8,
                 VpxVideoCodecId::VP9 => CodecFormat::VP9,
             },
-            EncoderCfg::AOM(_) => {
-                log::warn!("AV1 encoder fallback requested; using VP9 by hardened codec policy");
-                CodecFormat::VP9
-            }
             #[cfg(feature = "hwcodec")]
             EncoderCfg::HWRAM(hw) => {
                 let name = hw.name.to_lowercase();
@@ -475,7 +467,6 @@ impl Encoder {
                 VpxVideoCodecId::VP8 => false,
                 VpxVideoCodecId::VP9 => decodings.iter().all(|d| d.1.i444.vp9),
             },
-            EncoderCfg::AOM(_) => false,
             #[cfg(feature = "hwcodec")]
             EncoderCfg::HWRAM(_) => false,
             #[cfg(feature = "vram")]
@@ -1037,13 +1028,10 @@ pub fn codec_thread_num(limit: usize) -> usize {
         _ if res >= 2 => 2,
         _ => 1,
     };
-    // https://aomedia.googlesource.com/aom/+/refs/heads/main/av1/av1_cx_iface.c#677
-    // https://aomedia.googlesource.com/aom/+/refs/heads/main/aom_util/aom_thread.h#26
     // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp8/vp8_cx_iface.c#148
     // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp9/vp9_cx_iface.c#190
     // https://github.com/FFmpeg/FFmpeg/blob/7c16bf0829802534004326c8e65fb6cdbdb634fa/libavcodec/pthread.c#L65
     // https://github.com/FFmpeg/FFmpeg/blob/7c16bf0829802534004326c8e65fb6cdbdb634fa/libavcodec/pthread_internal.h#L26
-    // libaom: MAX_NUM_THREADS = 64
     // libvpx: MAX_NUM_THREADS = 64
     // ffmpeg: MAX_AUTO_THREADS = 16
     res = std::cmp::min(res, limit);

@@ -18,7 +18,7 @@ source "$SCRIPT_DIR/lib.sh"
 load_pins
 
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
-# The §3.2 x64-linux feature set minus hwcodec — CPU-only VP8/VP9, AV1/libaom runtime-quarantined (R-R2b/#87).
+# The §3.2 x64-linux feature set minus hwcodec — CPU-only VP8/VP9; AV1/libaom is not linked (R-R2b/#87/#88).
 FEATURES="--flutter --unix-file-copy-paste"
 # Determinism (R-B2): SOURCE_DATE_EPOCH is a FIXED pinned epoch (SOURCE_DATE_EPOCH_PIN in pins.env),
 # NOT a commit date — so the .deb depends only on the source tree; gen_version() honours it. (An
@@ -112,7 +112,7 @@ build_one() {
                 --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview >/dev/null
             LLVM_ROOT="$(echo "$TC"/clang+llvm-*)"
             export LIBCLANG_PATH="$LLVM_ROOT/lib"
-            # The native codecs (aom/vpx/yuv/opus) come from the vcpkg overlay tree that
+            # The native codecs (vpx/yuv/opus) come from the vcpkg overlay tree that
             # online-fetch'\''s stage_vcpkg_natives built (R-R1 pinned, x64-linux static).
             # scrap + magnum-opus link them from VCPKG_ROOT/installed/x64-linux (the shipped
             # feature set has linux-pkg-config OFF, so build.rs find_package needs VCPKG_ROOT).

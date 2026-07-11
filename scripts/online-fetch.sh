@@ -236,33 +236,33 @@ stage_pub_cache() {
     '
 }
 
-# ── The aom/libyuv vcpkg distfiles (R-B12(a)): captured as a REPRODUCIBLE git archive ───
-# libvpx/opus pin SHA512 via vcpkg_from_github; aom/libyuv fetch from googlesource, whose gitiles
+# ── The libyuv vcpkg distfile (R-B12(a)): captured as a REPRODUCIBLE git archive ───
+# libvpx/opus pin SHA512 via vcpkg_from_github; libyuv fetches from googlesource, whose gitiles
 # `+archive` tarballs are EMPIRICALLY non-reproducible (two fetches differ — even decompressed),
 # so the URL can't be SHA-pinned and R-R1 forbids vendoring. Capture a deterministic
 # `git archive --format=tar | gzip -n` of the pinned commit into ./online + verify its SHA512
-# against pins.env; the aom/libyuv overlay portfiles then consume /online/<port>-<commit>.tar.gz
+# against pins.env; the libyuv overlay portfile then consumes /online/libyuv-<commit>.tar.gz
 # (file://, SHA512-verified) on the Linux build hosts — both stage_vcpkg_natives + _arm64 mount the
-# SAME file. (The Windows golden VM has no ./online capture, so its portfile falls back to
+# SAME file. (The Windows golden VM has no ./online capture, so the portfile falls back to
 # vcpkg_from_git.) MUST run before stage_vcpkg_natives[_arm64]. The archive is byte-deterministic
-# given the image's git (these SHA512 were computed in this deb-builder, git 2.17.1 — re-pin if it
+# given the image's git (this SHA512 was computed in this deb-builder, git 2.17.1 — re-pin if it
 # changes; same class as the SHA256_VCPKG_120DEAC3 GitHub-archive caveat in pins.env).
 stage_vcpkg_distfiles() {
     require_cmd docker
     local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
     docker image inspect "$builder" >/dev/null 2>&1 || die "deb-builder image missing — build_deb_builder_image must run first"
-    local aom_tgz="$ONLINE_DIR/aom-${AOM_COMMIT}.tar.gz" yuv_tgz="$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz"
-    if [ -f "$aom_tgz" ] && [ -f "$yuv_tgz" ]; then
-        log "vcpkg distfiles (aom/libyuv) already captured, skipping"; return 0
+    local yuv_tgz="$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz"
+    if [ -f "$yuv_tgz" ]; then
+        log "vcpkg distfile (libyuv) already captured, skipping"; return 0
     fi
-    case "$SHA512_AOM_3_12_1$SHA512_LIBYUV" in
-        *"${SHA_PENDING}"*) die "aom/libyuv distfile SHA512 is the R-B12 sentinel — record it in pins.env first" ;;
+    case "$SHA512_LIBYUV" in
+        *"${SHA_PENDING}"*) die "libyuv distfile SHA512 is the R-B12 sentinel — record it in pins.env first" ;;
     esac
-    log "capturing the aom/libyuv vcpkg distfiles (reproducible git archive | gzip -n) -> ./online"
+    log "capturing the libyuv vcpkg distfile (reproducible git archive | gzip -n) -> ./online"
     docker run --rm \
         -v "$ONLINE_DIR:/online" \
-        -e AOM_COMMIT="$AOM_COMMIT" -e LIBYUV_COMMIT="$LIBYUV_COMMIT" \
-        -e SHA512_AOM_3_12_1="$SHA512_AOM_3_12_1" -e SHA512_LIBYUV="$SHA512_LIBYUV" \
+        -e LIBYUV_COMMIT="$LIBYUV_COMMIT" \
+        -e SHA512_LIBYUV="$SHA512_LIBYUV" \
         "$builder" bash -euo pipefail -c '
             gen() { # url commit out want-sha512
                 rm -rf /tmp/src; mkdir -p /tmp/src; cd /tmp/src; git init -q; git remote add origin "$1"
@@ -271,14 +271,13 @@ stage_vcpkg_distfiles() {
                 local got; got=$(sha512sum "$3" | cut -d" " -f1)
                 [ "$got" = "$4" ] || { echo "R-B12(a) SHA512 MISMATCH $3: got $got want $4" >&2; exit 1; }
             }
-            gen https://aomedia.googlesource.com/aom            "$AOM_COMMIT"    "/online/aom-${AOM_COMMIT}.tar.gz"       "$SHA512_AOM_3_12_1"
             gen https://chromium.googlesource.com/libyuv/libyuv "$LIBYUV_COMMIT" "/online/libyuv-${LIBYUV_COMMIT}.tar.gz" "$SHA512_LIBYUV"
-            echo "aom + libyuv distfiles captured + SHA512-verified"
+            echo "libyuv distfile captured + SHA512-verified"
         '
-    log "vcpkg distfiles captured (aom + libyuv, SHA512-verified)"
+    log "vcpkg distfile captured (libyuv, SHA512-verified)"
 }
 
-# ── The vcpkg-built native codecs (R-R1 pinned overlay ports): aom/vpx/yuv/opus ──
+# ── The vcpkg-built native codecs (R-R1 pinned overlay ports): vpx/yuv/opus ──
 # scrap + magnum-opus (libs/scrap/build.rs; the magnum-opus git dep) link these STATICALLY
 # from VCPKG_ROOT/installed/x64-linux when the linux-pkg-config feature is OFF — the shipped
 # .deb feature set (build-debian.sh: --flutter --unix-file-copy-paste). `vcpkg install`
@@ -294,7 +293,7 @@ stage_vcpkg_natives() {
         log "vcpkg native codecs already staged, skipping"; return 0
     fi
     [ -f "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" ] || die "vcpkg source archive missing — fetch_vcpkg_and_images must run first"
-    log "staging the vcpkg native codecs (aom/libvpx/libyuv/opus, x64-linux static) -> ./online/vcpkg/installed"
+    log "staging the vcpkg native codecs (libvpx/libyuv/opus, x64-linux static) -> ./online/vcpkg/installed"
     docker run --rm \
         -v "$ONLINE_DIR:/online" \
         -v "$REPO_ROOT/res/vcpkg:/overlay:ro" \
@@ -302,14 +301,13 @@ stage_vcpkg_natives() {
             VR=/tmp/vcpkg; mkdir -p "$VR"
             tar -C "$VR" --strip-components=1 -xzf /online/vcpkg-'"${VCPKG_BASELINE}"'.tar.gz
             export VCPKG_DISABLE_METRICS=1
-            # bionic'\''s default gcc-7.5 miscompiles aom AVX2 intrinsics
-            # (disflow_avx2.c: "incompatible types ... __m256i using int"); build the
-            # codecs with gcc-8 (upstream uses gcc-8 for the vcpkg natives too). The
+            # Build the native codecs with the pinned gcc-8 toolchain used by the
+            # offline deb-builder image, keeping C/C++ object generation stable. The
             # outputs are C-ABI static libs → link fine into the gcc/rust cargo build.
             export CC=/usr/bin/gcc-8 CXX=/usr/bin/g++-8
             "$VR"/bootstrap-vcpkg.sh -disableMetrics >/dev/null
             "$VR"/vcpkg install --triplet x64-linux --overlay-ports=/overlay \
-                aom libvpx libyuv opus
+                libvpx libyuv opus
             # Stage only the x64-linux install tree (lib/*.a + include/) that
             # scrap/magnum-opus link_vcpkg read via VCPKG_ROOT/installed/x64-linux.
             mkdir -p /online/vcpkg/installed
@@ -354,7 +352,7 @@ stage_vcpkg_natives_arm64() {
     fi
     [ -d "$ONLINE_DIR/android-ndk/toolchains" ] || die "android NDK not extracted — stage_android_ndk must run first"
     [ -f "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" ] || die "vcpkg source archive missing — fetch_vcpkg_and_images must run first"
-    log "staging the vcpkg arm64-android natives (aom/libvpx/libyuv/opus + oboe audio) -> ./online/vcpkg/installed/arm64-android"
+    log "staging the vcpkg arm64-android natives (libvpx/libyuv/opus + oboe audio) -> ./online/vcpkg/installed/arm64-android"
     docker run --rm \
         -v "$ONLINE_DIR:/online" \
         -v "$REPO_ROOT/res/vcpkg:/overlay:ro" \
@@ -365,7 +363,7 @@ stage_vcpkg_natives_arm64() {
             export VCPKG_DISABLE_METRICS=1
             "$VR"/bootstrap-vcpkg.sh -disableMetrics >/dev/null
             "$VR"/vcpkg install --triplet arm64-android --overlay-ports=/overlay \
-                aom libvpx libyuv opus oboe
+                libvpx libyuv opus oboe
             mkdir -p /online/vcpkg/installed
             rm -rf /online/vcpkg/installed/arm64-android
             cp -a "$VR"/installed/arm64-android /online/vcpkg/installed/arm64-android

@@ -48,8 +48,8 @@ Venligst last ned Sciters dynamiske bibliotek selv.
 
 - Installer [vcpkg](https://github.com/microsoft/vcpkg), og koriger `VCPKG_ROOT` env vaiabelen
 
-  - Windows: vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static
-  - Linux/macOS: vcpkg install libvpx libyuv opus aom
+  - Windows: vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static
+  - Linux/macOS: vcpkg install libvpx libyuv opus
 
 - Kjør `cargo run`
 
@@ -92,7 +92,7 @@ git checkout 2023.04.15
 cd ..
 vcpkg/bootstrap-vcpkg.sh
 export VCPKG_ROOT=$HOME/vcpkg
-vcpkg/vcpkg install libvpx libyuv opus aom
+vcpkg/vcpkg install libvpx libyuv opus
 ```
 
 ### Fiks libvpx (For Fedora)

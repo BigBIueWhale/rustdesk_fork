@@ -1591,7 +1591,7 @@ pub fn main_has_vram() -> SyncReturn<bool> {
 // R-R2b / R-G1 (§19): main_supported_hwdecodings (the {"h264","h265"} decode-ability query the
 // Default-Codec radios read) is excised with the last of those radios — the desktop set went at
 // 15778fc, the mobile set here (its sole surviving caller). hwcodec/vram/mediacodec are compiled out
-// and AV1/libaom is runtime-quarantined, so it only ever reported {false,false}; with no UI caller left it is dead.
+// and AV1/libaom is absent, so it only ever reported {false,false}; with no UI caller left it is dead.
 // ui_interface::supported_hwdecodings goes with it (this was its sole caller); scrap's
 // Decoder::supported_decodings — the live protocol decode-ability path — is untouched.
 

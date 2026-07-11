@@ -33,8 +33,8 @@ La labortabla versio uzas [sciter](https://sciter.com/) por la interfaco, bonvol
 
 - Instalu [vcpkg](https://github.com/microsoft/vcpkg), kaj agordu la medivariablon `VCPKG_ROOT` korekte
 
-  - Windows: vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static
-  - Linux/MacOS: vcpkg install libvpx libyuv opus aom
+  - Windows: vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static
+  - Linux/MacOS: vcpkg install libvpx libyuv opus
 
 - Plenumu `cargo run`
 
@@ -67,7 +67,7 @@ git checkout 2023.04.15
 cd ..
 vcpkg/bootstrap-vcpkg.sh
 export VCPKG_ROOT=$HOME/vcpkg
-vcpkg/vcpkg install libvpx libyuv opus aom
+vcpkg/vcpkg install libvpx libyuv opus
 ```
 
 ### Ripari libvpx (Por Fedora)

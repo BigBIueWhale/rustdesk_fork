@@ -5,7 +5,7 @@ vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 # stage_vcpkg_distfiles writes a reproducible `git archive | gzip -n` of the pinned commit into
 # ./online and this consumes it, SHA512-verified (scripts/pins.env: SHA512_LIBYUV); the full git
 # commit SHA-1 is the upstream content anchor. Hosts without the ./online capture (Windows golden
-# VM) fall back to the git-SHA-1 commit pin (git verifies the tree on checkout) — see aom portfile.
+# VM) fall back to the git-SHA-1 commit pin (git verifies the tree on checkout).
 set(_libyuv_archive "/online/libyuv-0faf8dd0e004520a61a603a4d2996d5ecc80dc3f.tar.gz")
 if(EXISTS "${_libyuv_archive}")
     vcpkg_download_distfile(_libyuv_tgz

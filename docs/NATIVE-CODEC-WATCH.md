@@ -1,7 +1,7 @@
 # Native Codec Advisory Watch
 
 Native-Codec-Watch-Version: 1
-Requirements hash: 5b6ce81203034366acc27e7f15df04ae0ed4d8559e19c200588a3c230dc86548
+Requirements hash: 61b2e05c43da4683fe77df1e109d2562b68d3fc466b794564da73631b303e483
 
 This ledger covers the native C/C++ codec and media-adjacent libraries pulled by
 `vcpkg.json`. Cargo/RustSec and Dart/OSV gates do not cover these vcpkg C/C++
@@ -17,7 +17,6 @@ decode paths cross an out-of-process, length-bounded, killable boundary.
 
 The root vcpkg manifest currently allows only these native packages:
 
-- Package: aom
 - Package: cpu-features
 - Package: libjpeg-turbo
 - Package: libvpx
@@ -30,37 +29,29 @@ Forbidden native decoder expansion remains: no `ffmpeg`, no `mfx-dispatch`, no
 
 VCPKG_BASELINE: 120deac3062162151622ca4860575a33844ba10b
 
-## Overlay-Pinned Libraries
+## Retired Libraries
 
-Package: aom
-Status: reviewed — OPEN ADVISORIES (CVE-2026-56208/56209/56210/56211, see below)
-Disposition: source-pinned overlay; AV1/libaom runtime quarantine in product
-paths; monitor upstream aom advisories while the library remains linked, and
-treat any newly proven runtime-reachable aom memory-safety advisory as
-release-blocking until patched or isolated.
-aom version: 3.12.1
-AOM_COMMIT: 10aece4157eb79315da205f39e19bf6ab3ee30d0
-aom SHA512: 59c3e3f3fbf649857fcba1af63593a06336377fed554f9696c1965580b95778ded76ac409b40589e1f44a94b9fea6df777b7c58760b7c3df6f8274b968b83a05
-Watch sources: aomedia upstream release/security notes, NVD/CVE, OSV, distro
-security trackers.
-OPEN ADVISORIES (recorded 2026-06-29, per the Debian security tracker —
-https://security-tracker.debian.org/tracker/source-package/aom — all FOUR open
-and UNFIXED across every Debian release, affecting aom 3.12.1 and later):
-  - CVE-2026-56211 : remote code execution in libaom
-  - CVE-2026-56209 : arbitrary address write in libaom
-  - CVE-2026-56210 : heap-buffer-overflow read in libaom
-  - CVE-2026-56208 : heap buffer overflow in libaom
-Current public descriptions and upstream patches localize these advisories to
-libaom encoder/control surfaces (SVC layer controls and LAP mode), not to a
-proven viewer decoder path. The fork therefore removes AV1/libaom as a runtime
-codec path instead of relying on a CVE classification shortcut. AV1 is not advertised in
-`SupportedEncoding`, not advertised in `SupportedDecoding`, not selected by stored
-`codec-preference`, not offered in the Flutter codec UI, not benchmarked at
-startup, not constructed by the server encoder config, and inbound peer `Av1s`
-frames are locally unsupported before the native decoder/recorder worker. VP9 is
-the software fallback. The aom overlay remains in the native-codec watch until a
-future dependency-removal slice drops the link entirely or a broader media
-sandbox isolates all native decode paths.
+Retired library: aom
+Status: removed
+Disposition: AV1/libaom dependency removal (closed 2026-07-11). The prior
+AV1/libaom runtime quarantine remains the product behavior, but the library is no
+longer linked or watched as a native package: `vcpkg.json` no longer lists `aom`,
+`res/vcpkg/aom` is deleted, `libs/scrap` has no `aom` module or FFI binding,
+`scrap` bindgen no longer generates `aom_ffi.rs`, and the offline Linux,
+Android, Windows, Apple source-conformance, and dev-check scripts do not install
+or stub `aom`. AV1 remains a protocol/wire enum only. It is not advertised,
+selected, encoded, decoded, benchmarked, or exposed in UI; inbound peer `Av1s`
+frames are locally unsupported before any native decoder or recorder worker.
+`verify.sh` and this ledger gate the removal so a future manifest, source, FFI,
+or build-script reintroduction fails closed.
+
+Historical rationale: CVE-2026-56208/56209/56210/56211 were recorded against
+libaom while the fork still carried the dependency. Current public records
+localize the reviewed issues to encoder/control surfaces, but this fork has no
+design requirement for AV1, so the correct final state is deletion rather than a
+permanent linked quarantine.
+
+## Overlay-Pinned Libraries
 
 Package: libvpx
 Status: reviewed — OPEN ADVISORY (CVE-2026-1861, see below)

@@ -43,8 +43,8 @@ Vui lòng tự tải thư viện `Sciter` về máy theo hướng dẫn cho từ
 
 - Tải và cài đặt [`vcpkg`](https://github.com/microsoft/vcpkg), và thiết lập biến môi trường `VCPKG_ROOT`.
 
-  - Windows: `vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static`
-  - Linux/MacOS: `vcpkg install libvpx libyuv opus aom`
+  - Windows: `vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static`
+  - Linux/MacOS: `vcpkg install libvpx libyuv opus`
 - Chạy lệnh `cargo run`
 
 ## [Build](https://rustdesk.com/docs/en/dev/build/)
@@ -78,7 +78,7 @@ git checkout 2023.04.15
 cd ..
 vcpkg/bootstrap-vcpkg.sh
 export VCPKG_ROOT=$HOME/vcpkg
-vcpkg/vcpkg install libvpx libyuv opus aom
+vcpkg/vcpkg install libvpx libyuv opus
 ```
 
 ### Cách sửa lỗi `libvpx` (Dành cho hệ điều hành Fedora)

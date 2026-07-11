@@ -2155,22 +2155,32 @@ researchers later found:
 
 Per the spec, Appendix C #2b — a full viewer decoding a hostile-but-password-correct
 peer's media through in-process C codecs (libvpx/libyuv/opus/zstd + Windows
-CLIPRDR; aom remains linked but AV1 is runtime-quarantined) — is dispositioned **`ACCEPT` + SHOULD-sandbox**: "a *universal residual*
+CLIPRDR; AV1/libaom is runtime-quarantined and no longer linked) — is dispositioned **`ACCEPT` + SHOULD-sandbox**: "a *universal residual*
 ... bounded operationally (connect only to peers you trust) ... recorded as a
 **documented residual** not closable by keying — the fork SHOULD sandbox the
 decode path." It is **not** a MUST.
 
 **AV1/libaom runtime quarantine (closed 2026-07-11).**
-The aom advisories recorded in `docs/NATIVE-CODEC-WATCH.md` remain tracked while
-the aom overlay is linked, but current public descriptions and upstream patches
-localize CVE-2026-56208/56209/56210/56211 to encoder/control surfaces rather than
-a proven viewer decoder path. The fork therefore closes the AV1 runtime exposure
-directly: AV1 is not advertised by encoder or decoder capability messages, not
-accepted from `codec-preference`, not offered in the desktop/mobile/toolbar UI,
-not benchmarked at startup, not constructed by the server encoder config, and
-hostile peer `Av1s` frames are locally unsupported before any native decoder or
-recorder worker is created. A stale AV1 preference falls back to the normal
-software policy, and VP9 remains the software fallback.
+Current public descriptions and upstream patches localize CVE-2026-56208/56209/
+56210/56211 to encoder/control surfaces rather than a proven viewer decoder path.
+The fork nevertheless closes the AV1 runtime exposure directly: AV1 is not
+advertised by encoder or decoder capability messages, not accepted from
+`codec-preference`, not offered in the desktop/mobile/toolbar UI, not benchmarked
+at startup, not constructed by the server encoder config, and hostile peer
+`Av1s` frames are locally unsupported before any native decoder or recorder
+worker is created. A stale AV1 preference falls back to the normal software
+policy, and VP9 remains the software fallback.
+
+**AV1/libaom dependency removal (closed 2026-07-11).**
+The runtime quarantine is backed by deletion of the native dependency itself:
+`vcpkg.json` no longer lists `aom`; `res/vcpkg/aom`, `libs/scrap/src/common/aom.rs`,
+and `libs/scrap/src/bindings/aom_ffi.h` are deleted; `libs/scrap/build.rs` no
+longer generates `aom_ffi.rs`; `EncoderCfg` has no AV1/libaom variant; and the
+offline Linux, Android, Windows, Apple source-conformance, dev-check, and README
+build paths do not install or stub `aom`. `docs/NATIVE-CODEC-WATCH.md` records
+`aom` as a retired library rather than a watched package, and `verify.sh` fails
+if a future source module, FFI binding, bindgen package, manifest entry, or ledger
+shape reintroduces libaom.
 
 **The remaining native-decode residual is still armed, not latent (recorded 2026-07-05 under the universal-deployment re-rating).**
 The pinned in-process decoders on the peer-reachable **viewer** path still carry

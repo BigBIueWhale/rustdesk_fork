@@ -9,7 +9,7 @@
 # environment is identical on any clone of this repo -- no "latest", no in-place
 # drift (R-B9). It establishes, in order:
 #   1. MSVC toolchain (cl/link, INCLUDE, LIB) from VS BuildTools vcvars64.bat
-#   2. vcpkg native deps (classic mode, static triplet): aom libvpx libyuv opus jpeg
+#   2. vcpkg native deps (classic mode, static triplet): libvpx libyuv opus jpeg
 #      (the R-R2b CPU-only software-codec set -- NO ffmpeg, NO mfx-dispatch/hwcodec)
 #   3. libclang for bindgen determinism (LLVM, pins.env)
 #   4. cargo + git on PATH (prepended so the pins win)

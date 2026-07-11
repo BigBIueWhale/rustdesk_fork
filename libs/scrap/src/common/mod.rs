@@ -50,7 +50,6 @@ pub const HW_STRIDE_ALIGN: usize = 0; // recommended by av_frame_get_buffer
 /// compressed-to-RGB expansion before resizing the output buffer.
 pub const MAX_NATIVE_VIDEO_DECODED_BYTES: usize = 160 * 1024 * 1024;
 
-pub mod aom;
 #[cfg(not(any(target_os = "ios")))]
 pub mod camera;
 pub mod record;

@@ -47,8 +47,8 @@ Kamu bisa mengunduh Sciter dynamic library disini.
 
 - Install [vcpkg](https://github.com/microsoft/vcpkg), dan atur variabel env `VCPKG_ROOT` dengan benar
 
-  - Windows: vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static
-  - Linux/MacOS: vcpkg install libvpx libyuv opus aom
+  - Windows: vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static
+  - Linux/MacOS: vcpkg install libvpx libyuv opus
 
 - jalankan `cargo run`
 
@@ -85,7 +85,7 @@ git checkout 2023.04.15
 cd ..
 vcpkg/bootstrap-vcpkg.sh
 export VCPKG_ROOT=$HOME/vcpkg
-vcpkg/vcpkg install libvpx libyuv opus aom
+vcpkg/vcpkg install libvpx libyuv opus
 ```
 
 ### Mengatasi masalah libvpx (Untuk Fedora)

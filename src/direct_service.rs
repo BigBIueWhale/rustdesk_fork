@@ -297,8 +297,8 @@ fn assert_socket_surface(port: u16) {
 ///     post-listen (R-A4 live surface: exactly 1×TCP v4, 0×UDP);
 ///   - on Linux, the seat0/greeter capture-session discovery R-S14/R-X14 needs.
 ///
-/// AV1 is source-quarantined by the codec policy, so this service entry stands up no
-/// libaom benchmark, encoder, or decoder at startup; VP9 is the software-video default.
+/// AV1 is wire-only and libaom is absent, so this service entry stands up no benchmark,
+/// encoder, or decoder for it at startup; VP9 is the software-video default.
 /// R-T1(a) (§20): self-enforce a per-process file-descriptor ceiling at startup so the flood/leak
 /// blast-radius bound holds under ANY launcher (systemd, a per-user supervisor, a bare container —
 /// R-D8), not only the unit's LimitNOFILE. Legitimate single-user use is a handful of sessions; a

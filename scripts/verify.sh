@@ -3097,16 +3097,15 @@ if [ -n "$av1_dead_paths" ]; then
   echo "$av1_dead_paths" | sed 's/^/      /'
   rc=1
 fi
-if grep -qF 'AomDecoder::new()' libs/scrap/src/common/codec.rs libs/scrap/examples/benchmark.rs 2>/dev/null; then
-  echo "  FAIL Appendix C #2b: AV1/libaom decoder must not be instantiated by runtime codec policy or local benchmark"
+aom_source_hits=$(grep -RInE 'pub mod aom|mod aom|aom::|AomEncoder|AomDecoder|AomEncoderConfig|aom_ffi|gen_vcpkg_package\("aom"|<aom/' \
+                    libs/scrap/src/common libs/scrap/src/bindings libs/scrap/build.rs src/server/video_service.rs libs/scrap/examples 2>/dev/null || true)
+if [ -n "$aom_source_hits" ]; then
+  echo "  FAIL Appendix C #2b: AV1/libaom source/build binding path must stay deleted:"
+  echo "$aom_source_hits" | sed 's/^/      /'
   rc=1
 fi
-if grep -qF 'AomEncoder::new' libs/scrap/examples/benchmark.rs 2>/dev/null; then
-  echo "  FAIL Appendix C #2b: AV1/libaom encoder benchmark must not instantiate libaom"
-  rc=1
-fi
-if grep -qF 'EncoderCfg::AOM(AomEncoderConfig' src/server/video_service.rs libs/scrap/examples/benchmark.rs 2>/dev/null; then
-  echo "  FAIL Appendix C #2b: server/video benchmark must not construct an AV1/libaom encoder config"
+if grep -qE '"name"[[:space:]]*:[[:space:]]*"aom"' vcpkg.json; then
+  echo "  FAIL Appendix C #2b: vcpkg.json must not link libaom"
   rc=1
 fi
 codec_pref_body=$(awk '/OPTION_CODEC_PREFERENCE =>/,/^            }/' libs/hbb_common/src/config.rs)
@@ -3130,6 +3129,12 @@ grep -qF 'AV1/libaom runtime quarantine' HARDENING_STATUS.md ||
   { echo "  FAIL Appendix C #2b: hardening status must record the AV1/libaom runtime quarantine"; rc=1; }
 grep -qF 'AV1/libaom runtime quarantine' docs/NATIVE-CODEC-WATCH.md ||
   { echo "  FAIL Appendix C #2b: native codec watch must record the AV1/libaom runtime quarantine"; rc=1; }
+grep -qF 'AV1/libaom dependency removal' requirements.html ||
+  { echo "  FAIL Appendix C #2b: requirements must record the AV1/libaom dependency removal"; rc=1; }
+grep -qF 'AV1/libaom dependency removal' HARDENING_STATUS.md ||
+  { echo "  FAIL Appendix C #2b: hardening status must record the AV1/libaom dependency removal"; rc=1; }
+grep -qF 'AV1/libaom dependency removal' docs/NATIVE-CODEC-WATCH.md ||
+  { echo "  FAIL Appendix C #2b: native codec watch must record the AV1/libaom dependency removal"; rc=1; }
 if grep -qE 'AV1 DECODER|aomdec|All lie in the \*\*decoder' docs/NATIVE-CODEC-WATCH.md HARDENING_STATUS.md; then
   echo "  FAIL Appendix C #2b: aom CVE ledger must not retain the old decoder-only classification"
   rc=1
@@ -5378,7 +5383,7 @@ fi
 # §18 / R-R2b (universal software codec): hwcodec/vram (the GPU/VRAM hardware-codec deps —
 # ffmpeg amf/nvcodec/qsv) AND mediacodec (Android's MediaCodec hardware decode/encode) — each a
 # native attack surface (Appendix C #2b) AND a build-reproducibility hazard — are compiled out of
-# EVERY build path; the fork is CPU-only software vpx with AV1/libaom runtime-quarantined. The optional
+# EVERY build path; the fork is CPU-only software vpx and AV1/libaom is not linked. The optional
 # feature DEFINITIONS in Cargo.toml/scrap are inert (never selected) — what this forbids is
 # any build script / CI job / driver that ENABLES them: a `--features …hwcodec/vram…`, a
 # `--hwcodec`/`--vram` flag, a RUSTDESK_FEATURES/extra_features carrying them, or a
@@ -5402,7 +5407,7 @@ fi
 # R-R2b (native deps): the vcpkg manifest must not pull the hardware-codec native
 # libraries — ffmpeg (the amf/nvcodec/qsv hwaccel backend) and mfx-dispatch (Intel
 # MediaSDK/QSV) — nor their hwaccel override pins (ffnvcodec, amd-amf). The fork's
-# vcpkg.json carries ONLY the CPU-only software set: aom libvpx libyuv opus
+# vcpkg.json carries ONLY the CPU-only software set: libvpx libyuv opus
 # libjpeg-turbo (+ android oboe/cpu-features). This locks the prune so a manifest edit
 # can't silently re-introduce the GPU/hardware-codec native attack surface — and the
 # multi-hour ffmpeg build that made the §12.2 Windows VM build infeasible. (The
@@ -5410,8 +5415,11 @@ fi
 if [ -f vcpkg.json ] && grep -qE '"(ffmpeg|mfx-dispatch|ffnvcodec|amd-amf)"' vcpkg.json; then
   echo "  FAIL §18/R-R2b: vcpkg.json still lists a hardware-codec native dep (ffmpeg/mfx-dispatch/ffnvcodec/amd-amf):"
   grep -nE '"(ffmpeg|mfx-dispatch|ffnvcodec|amd-amf)"' vcpkg.json | sed 's/^/      /'; rc=1
+elif [ -f vcpkg.json ] && grep -qE '"name"[[:space:]]*:[[:space:]]*"aom"' vcpkg.json; then
+  echo "  FAIL §18/R-R2b: vcpkg.json must not link retired AV1/libaom native dep:"
+  grep -nE '"name"[[:space:]]*:[[:space:]]*"aom"' vcpkg.json | sed 's/^/      /'; rc=1
 else
-  echo "  ok  §18/R-R2b vcpkg.json native set is CPU-only software codec (no ffmpeg/mfx-dispatch)"
+  echo "  ok  §18/R-R2b vcpkg.json native set is CPU-only software codec (no ffmpeg/mfx-dispatch/aom)"
 fi
 # R-R3 / Appendix D native-codec watch: cargo-audit/RustSec and Dart OSV scan do
 # not cover vcpkg C/C++ libraries. Keep this as an offline source/ledger sync
@@ -6190,34 +6198,32 @@ grep -q "RUSTDESK_CANARY_OFFLINE = '1'" scripts/build-windows.ps1          || r_
 if [ -n "$r_b10" ]; then echo "  FAIL R-B10 offline-build canary:$r_b10"; rc=1; else
   echo "  ok  R-B10 offline-build network canary present (build.rs, env-gated) + armed in every offline compile stage (debian/android/windows) — a reachable network during an --network=none build fails the compile"; fi
 
-# (6d) R-B12(a): the aom + libyuv vcpkg overlay distfiles are SHA512-pinned, not fetched by a bare
+# (6d) R-B12(a): the libyuv vcpkg overlay distfile is SHA512-pinned, not fetched by a bare
 # git REF. gitiles `+archive` is empirically non-reproducible (so a URL SHA-pin is impossible) and
 # R-R1 forbids vendoring — so online-fetch's stage_vcpkg_distfiles captures a REPRODUCIBLE
-# `git archive | gzip -n` of the pinned commit into ./online and the portfiles consume it
+# `git archive | gzip -n` of the pinned commit into ./online and the portfile consumes it
 # SHA512-verified (file://), with vcpkg_from_git as the capture-less (Windows-VM) fallback. Assert
-# each portfile carries a 128-hex SHA512 (the captured pin) AND a 40-hex commit REF (the fallback
+# the portfile carries a 128-hex SHA512 (the captured pin) AND a 40-hex commit REF (the fallback
 # anchor), the SHA512 equals the non-sentinel pins.env value, and the capture stage is defined+wired.
-echo "== (6d) R-B12(a) aom/libyuv vcpkg distfile SHA512 pinning =="
+echo "== (6d) R-B12(a) libyuv vcpkg distfile SHA512 pinning =="
 r_b12a=
-for port in aom libyuv; do
-  pf="res/vcpkg/$port/portfile.cmake"
-  grep -qE 'vcpkg_download_distfile' "$pf" || r_b12a="$r_b12a $port-no-download_distfile"
-  grep -qE 'SHA512 [0-9a-f]{128}' "$pf"    || r_b12a="$r_b12a $port-no-sha512"
-  grep -qE 'REF [0-9a-f]{40}' "$pf"         || r_b12a="$r_b12a $port-no-full-commit-fallback"
-done
-for var in SHA512_AOM_3_12_1 SHA512_LIBYUV; do
+pf="res/vcpkg/libyuv/portfile.cmake"
+grep -qE 'vcpkg_download_distfile' "$pf" || r_b12a="$r_b12a libyuv-no-download_distfile"
+grep -qE 'SHA512 [0-9a-f]{128}' "$pf"    || r_b12a="$r_b12a libyuv-no-sha512"
+grep -qE 'REF [0-9a-f]{40}' "$pf"         || r_b12a="$r_b12a libyuv-no-full-commit-fallback"
+for var in SHA512_LIBYUV; do
   val=$(grep -E "^$var=" scripts/pins.env | sed -E 's/^[^"]*"([^"]*)".*/\1/')
   case "$val" in
     ""|*PENDING*|*__*) r_b12a="$r_b12a $var-unset-or-sentinel" ;;
-    *) grep -qE "SHA512 $val" res/vcpkg/aom/portfile.cmake res/vcpkg/libyuv/portfile.cmake || r_b12a="$r_b12a $var-not-in-portfile" ;;
+    *) grep -qE "SHA512 $val" "$pf" || r_b12a="$r_b12a $var-not-in-portfile" ;;
   esac
 done
 grep -qE '^stage_vcpkg_distfiles\(\)' scripts/online-fetch.sh        || r_b12a="$r_b12a capture-stage-undefined"
 grep -qE '^[[:space:]]*stage_vcpkg_distfiles$' scripts/online-fetch.sh || r_b12a="$r_b12a capture-stage-not-wired"
 if [ -n "$r_b12a" ]; then
-  echo "  FAIL R-B12(a): aom/libyuv distfile pinning incomplete:$r_b12a"; rc=1
+  echo "  FAIL R-B12(a): libyuv distfile pinning incomplete:$r_b12a"; rc=1
 else
-  echo "  ok  R-B12(a) aom/libyuv vcpkg distfiles SHA512-pinned via ./online capture + full-commit fallback + stage wired"
+  echo "  ok  R-B12(a) libyuv vcpkg distfile SHA512-pinned via ./online capture + full-commit fallback + stage wired"
 fi
 
 echo "== (7) remote-configuration UI blocking excised (R-S16(d)/R-G1/R-D2) =="

@@ -33,8 +33,8 @@ Les versions de bureau utilisent [sciter](https://sciter.com/) pour l'interface 
 
 - Installez [vcpkg](https://github.com/microsoft/vcpkg), et définissez correctement la variable d'environnement `VCPKG_ROOT`.
 
-  - Windows : vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static
-  - Linux/macOS : vcpkg install libvpx libyuv opus aom
+  - Windows : vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static
+  - Linux/macOS : vcpkg install libvpx libyuv opus
 
 - Exécutez `cargo run`
 
@@ -67,7 +67,7 @@ git checkout 2023.04.15
 cd ..
 vcpkg/bootstrap-vcpkg.sh
 export VCPKG_ROOT=$HOME/vcpkg
-vcpkg/vcpkg install libvpx libyuv opus aom
+vcpkg/vcpkg install libvpx libyuv opus
 ```
 
 ### Corriger libvpx (Pour Fedora)

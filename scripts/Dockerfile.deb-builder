@@ -11,12 +11,11 @@
 # list, flutter-build.yml:1431), minus the fork-excised libpam0g-dev (R-X14) and the unused
 # tree/rpm, plus the offline-build basics (xz-utils/unzip/build-essential/yasm/python3) and
 # liblzma-dev (flutter). libssl-dev IS required — openssl-sys builds against the system OpenSSL
-# via pkg-config. The native codecs (aom/vpx/yuv/opus) are NOT apt deps: they come from the
+# via pkg-config. The native codecs (vpx/yuv/opus) are NOT apt deps: they come from the
 # vcpkg overlay (upstream even `apt-get remove`s libopus-dev so its self-compiled one wins) —
 # building them in online-fetch needs vcpkg's bootstrap-vcpkg.sh, which requires `zip` (the
-# already-present curl/unzip/tar are not enough), and gcc-8/g++-8: bionic's default gcc-7.5
-# miscompiles aom's AVX2 intrinsics (disflow_avx2.c), so stage_vcpkg_natives compiles the
-# codecs with gcc-8 (matching upstream's vcpkg path).
+# already-present curl/unzip/tar are not enough), and gcc-8/g++-8 for the pinned native-codec
+# build path used by stage_vcpkg_natives.
 #
 # NB (R-B2 refinement): the apt package versions are not individually pinned. bionic is EOL
 # and frozen, so they are effectively stable, and the SAME built image is reused for the

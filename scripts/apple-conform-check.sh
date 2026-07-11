@@ -353,6 +353,16 @@ macos_service_identity_block=$(awk '/fn macos_service_ipc_allows_installed_app_a
 echo "$macos_service_identity_block" | grep -Fq 'postfix != crate::POSTFIX_SERVICE' || r_s11b2="$r_s11b2 macos-service-ipc-postfix-gate-missing"
 echo "$macos_service_identity_block" | grep -Fq 'macos_privileged_helper_is_expected_and_trusted(current_exe)' || r_s11b2="$r_s11b2 macos-service-ipc-current-helper-not-verified"
 echo "$macos_service_identity_block" | grep -Fq 'macos_installed_app_is_expected_and_trusted(peer_exe)' || r_s11b2="$r_s11b2 macos-service-ipc-peer-app-not-verified"
+macos_service_server_client_auth_block=$(awk '/pub\(crate\) fn ensure_macos_service_server_is_trusted/,/^}/' "$REPO/src/ipc/auth.rs")
+macos_connect_with_path_block=$(awk '/async fn connect_with_path/,/^}/' "$REPO/src/ipc.rs")
+grep -Fq 'pub(crate) fn ensure_macos_service_server_is_trusted' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-server-client-auth-missing"
+echo "$macos_service_server_client_auth_block" | grep -Fq 'peer_uid != 0' || r_s11b2="$r_s11b2 macos-service-server-client-auth-not-root-gated"
+echo "$macos_service_server_client_auth_block" | grep -Fq 'peer_exe_canonical_path_by_pid(peer_pid)' || r_s11b2="$r_s11b2 macos-service-server-client-auth-no-peer-exe"
+echo "$macos_service_server_client_auth_block" | grep -Fq 'macos_privileged_helper_is_expected_and_trusted(&peer_exe)' || r_s11b2="$r_s11b2 macos-service-server-client-auth-not-helper-trusted"
+echo "$macos_connect_with_path_block" | grep -Fq 'postfix == crate::POSTFIX_SERVICE' || r_s11b2="$r_s11b2 macos-service-connect-not-postfix-scoped"
+echo "$macos_connect_with_path_block" | grep -Fq 'ensure_macos_service_server_is_trusted(&connection)' || r_s11b2="$r_s11b2 macos-service-connect-not-client-authenticated"
+grep -Fq 'macOS _service client-side server authentication' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-service-client-auth-requirements-missing"
+grep -Fq 'R-S11e-2 — macOS _service client-side server authentication' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-service-client-auth-ledger-missing"
 if grep -q 'macos_service_ipc_allows_gui_and_service_binaries' "$REPO/src/ipc/auth.rs"; then
   r_s11b2="$r_s11b2 macos-service-ipc-old-gui-service-binary-model-present"
 fi
@@ -407,7 +417,7 @@ if [ -n "$r_s11b2" ]; then
   echo "  FAIL R-S11b-2a/R-S11b-3a macOS service-owned IPC closure:$r_s11b2"
   rc=1
 else
-  note "ok  R-S11b-2/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password config writes are absent; typed user-owned password/options writes are denied by source policy; trust-anchor/proxy credential option keys are pinned empty; trusted-device/key-confirmation writers are absent; macOS service-owned password provisioning stores the proposed value in a one-shot same-peer request, admits _service only for the installed app executable talking to the trusted PrivilegedHelperTools helper, finishes with authorization only, uses a nonshared timeout-zero custom Authorization Services right, verifies the external form noninteractively, writes the authorized value into the root LaunchDaemon credential store, rejects the old main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after exact live argv plus pid/path and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied"
+  note "ok  R-S11b-2/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password config writes are absent; typed user-owned password/options writes are denied by source policy; trust-anchor/proxy credential option keys are pinned empty; trusted-device/key-confirmation writers are absent; macOS service-owned password provisioning stores the proposed value in a one-shot same-peer request, admits _service only for the installed app executable talking to the trusted PrivilegedHelperTools helper, client-authenticates the connected _service server as the root trusted helper before service-owned password traffic, finishes with authorization only, uses a nonshared timeout-zero custom Authorization Services right, verifies the external form noninteractively, writes the authorized value into the root LaunchDaemon credential store, rejects the old main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after exact live argv plus pid/path and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied"
 fi
 
 echo "== (2b-iii) R-S11c-4a macOS CM pre-login filesystem IPC rejected =="

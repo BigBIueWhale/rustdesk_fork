@@ -1313,7 +1313,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   noninteractively, writes the authorized value into the root LaunchDaemon credential store, rejects the old
   macOS main-server commit fallback, and serves that root credential to the service-owned LaunchAgent only as a
   launchd-owned runtime snapshot after exact live argv plus pid/path and parsed root-owned plist command-shape proof;
-  the snapshot cannot be persisted into user config.
+  macOS `_service` clients also authenticate the connected server as the root trusted privileged helper before
+  sending password-change or runtime-snapshot messages, and the snapshot cannot be persisted into user config.
 - **R-S11e — Linux polkit policy/package assurance — CLOSED 2026-07-10.**
   Platform: Linux `.deb` installed-service mode. Endpoint/action: the single local admin-authorized
   service-owned unattended-password change. Boundary: user-session process and distro-local polkit policy
@@ -1347,6 +1348,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   systems. Verification closure: `scripts/verify.sh` requires the trusted resolver, root/mode/executable checks, pure
   metadata/path regression tests, the requirements/ledger disposition, and absence of the old direct
   `Command::new("/usr/bin/pkcheck")` launch shape.
+- **R-S11e-2 — macOS _service client-side server authentication — CLOSED 2026-07-11.**
+  Platform: macOS installed-service mode. Endpoint/action: clients of the shared `_service` IPC socket, including
+  service-owned unattended-password begin/finish and the LaunchAgent runtime password snapshot request. Boundary:
+  installed app / service-owned LaunchAgent ↔ root privileged helper credential authority. Attack surface closed:
+  `_service` clients no longer trust the socket path alone. A local same-user fake server that wins the
+  `/tmp/<app>-service/ipc_service` race cannot receive the plaintext candidate password before authorization, and
+  cannot feed attacker-chosen runtime password storage/salt to the service-owned LaunchAgent. `connect_with_path()`
+  authenticates the macOS `POSTFIX_SERVICE` peer before any service protocol message is sent or read: peer uid must
+  be root, peer pid/executable must resolve, and the executable must be the trusted
+  `/Library/PrivilegedHelperTools/com.carriez.rustdesk_service` helper with root:wheel ownership, non-writable
+  helper directory/file, executable bit, no symlinks, no extended ACLs, and the pinned helper code-signing
+  requirement. There is no unauthenticated compatibility fallback. Verification closure: `scripts/verify.sh` and
+  `scripts/apple-conform-check.sh` require the client-side helper proof, root uid gate, peer executable proof,
+  connect-path wiring, and requirements/ledger disposition.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows
@@ -2558,16 +2573,18 @@ the CWE-863 class of which CVE-2026-58056 is one instance; see the R-S19 status 
 first spec change in this run that is not disclosure-only. The 2026-07-10 IPC/options audit added the
 second normative closure in this area: R-S16's read funnel now explicitly includes whole-map option reads
 (`Config::get_options` / UI cache / CLI `--option` / IPC `Data::Options(None)`), with pinned policy
-overlaid last. The 2026-07-11 macOS service-owned-password runtime snapshot hardening added parsed
-LaunchAgent plist command-shape proof to the R-S11b-2e/R-S11c-1f requirement. The other
+overlaid last. The 2026-07-11 macOS service-owned-password hardening added parsed
+LaunchAgent plist command-shape proof to the R-S11b-2e/R-S11c-1f requirement and R-S11e-2
+client-side `_service` server authentication. The other
 requirements.html edits are disclosure/inventory updates, and the
 native-codec-watch ledger is re-confirmed valid against each.
-The current snapshot (matching the `scripts/native-codec-watch.sh` pin) is:
+The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
+`scripts/native-codec-watch.sh`) is:
 
 ```text
-4815dd1ab75e2f5c4404e4a47486018f4adc6d3d904975b8b780c683206c9bcf  requirements.html
+6fa5c5fef76e9b5cb85f6b6826f28a220e175070f7f2bdd01b0b7f663d428fdd  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate
 exception is an audit-status disclosure update like this one, which re-pins the hash here,
-in `scripts/native-codec-watch.sh`, and in `docs/NATIVE-CODEC-WATCH.md`.
+and in `docs/NATIVE-CODEC-WATCH.md`.

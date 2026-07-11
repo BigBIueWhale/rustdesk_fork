@@ -30,6 +30,8 @@ use hbb_common::{
 };
 #[cfg(target_os = "macos")]
 pub(crate) use ipc_auth::authenticate_macos_cm_endpoint;
+#[cfg(target_os = "macos")]
+use ipc_auth::ensure_macos_service_server_is_trusted;
 #[cfg(windows)]
 pub(crate) use ipc_auth::ensure_peer_executable_matches_current_by_pid_opt;
 #[cfg(windows)]
@@ -2734,14 +2736,23 @@ async fn connect_with_path(
     postfix: &str,
 ) -> ResultType<ConnectionTmpl<ConnClient>> {
     #[cfg(windows)]
-    let client = timeout(ms_timeout, connect_windows_named_pipe(path)).await??;
+    {
+        let client = timeout(ms_timeout, connect_windows_named_pipe(path)).await??;
+        ensure_windows_ipc_server_matches_current(&client, postfix)?;
+        return Ok(ConnectionTmpl::new(client));
+    }
     #[cfg(not(windows))]
-    let _ = postfix;
-    #[cfg(not(windows))]
-    let client = timeout(ms_timeout, Endpoint::connect(path)).await??;
-    #[cfg(windows)]
-    ensure_windows_ipc_server_matches_current(&client, postfix)?;
-    Ok(ConnectionTmpl::new(client))
+    {
+        let client = timeout(ms_timeout, Endpoint::connect(path)).await??;
+        let connection = ConnectionTmpl::new(client);
+        #[cfg(target_os = "macos")]
+        if postfix == crate::POSTFIX_SERVICE {
+            ensure_macos_service_server_is_trusted(&connection)?;
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = postfix;
+        Ok(connection)
+    }
 }
 
 #[cfg(windows)]

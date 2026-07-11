@@ -594,6 +594,33 @@ fn macos_service_ipc_allows_installed_app_and_privileged_helper(
     macos_privileged_helper_is_expected_and_trusted(current_exe)
 }
 
+#[cfg(target_os = "macos")]
+pub(crate) fn ensure_macos_service_server_is_trusted<T>(
+    stream: &ConnectionTmpl<T>,
+) -> ResultType<()>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
+{
+    let peer_uid = stream
+        .peer_uid()
+        .ok_or_else(|| anyhow::anyhow!("Failed to resolve macOS _service server uid"))?;
+    if peer_uid != 0 {
+        bail!("macOS _service server is not root: peer_uid={peer_uid}");
+    }
+    let peer_pid = stream
+        .peer_pid()
+        .ok_or_else(|| anyhow::anyhow!("Failed to resolve macOS _service server pid"))?;
+    let peer_exe = peer_exe_canonical_path_by_pid(peer_pid)?;
+    if !macos_privileged_helper_is_expected_and_trusted(&peer_exe) {
+        bail!(
+            "macOS _service server is not the trusted privileged helper: peer_pid={}, peer_exe='{}'",
+            peer_pid,
+            peer_exe.display()
+        );
+    }
+    Ok(())
+}
+
 #[cfg(windows)]
 #[inline]
 pub(crate) fn is_allowed_windows_session_scoped_peer(

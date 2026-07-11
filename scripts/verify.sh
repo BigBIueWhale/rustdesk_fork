@@ -226,8 +226,18 @@ echo "$windows_main_peer_authority_block" | grep -q 'MainIpcPeerAuthority::for_w
 windows_service_close_block=$(awk '/ipc::Data::Close => \{/,/ipc::Data::Test =>/' src/platform/windows.rs)
 echo "$windows_service_close_block" | grep -q 'windows_pipe_client_token_is_local_system' || r_s11="$r_s11 windows-service-close-not-localsystem-gated"
 echo "$windows_service_close_block" | grep -q 'Rejected Windows _service close: caller is not LocalSystem' || r_s11="$r_s11 windows-service-close-rejection-missing"
+macos_service_server_client_auth_block=$(awk '/pub\(crate\) fn ensure_macos_service_server_is_trusted/,/^}/' src/ipc/auth.rs)
+macos_connect_with_path_block=$(awk '/async fn connect_with_path/,/^}/' src/ipc.rs)
+grep -Fq 'pub(crate) fn ensure_macos_service_server_is_trusted' src/ipc/auth.rs || r_s11="$r_s11 macos-service-server-client-auth-missing"
+echo "$macos_service_server_client_auth_block" | grep -Fq 'peer_uid != 0' || r_s11="$r_s11 macos-service-server-client-auth-not-root-gated"
+echo "$macos_service_server_client_auth_block" | grep -Fq 'peer_exe_canonical_path_by_pid(peer_pid)' || r_s11="$r_s11 macos-service-server-client-auth-no-peer-exe"
+echo "$macos_service_server_client_auth_block" | grep -Fq 'macos_privileged_helper_is_expected_and_trusted(&peer_exe)' || r_s11="$r_s11 macos-service-server-client-auth-not-helper-trusted"
+echo "$macos_connect_with_path_block" | grep -Fq 'postfix == crate::POSTFIX_SERVICE' || r_s11="$r_s11 macos-service-connect-not-postfix-scoped"
+echo "$macos_connect_with_path_block" | grep -Fq 'ensure_macos_service_server_is_trusted(&connection)' || r_s11="$r_s11 macos-service-connect-not-client-authenticated"
+grep -Fq 'macOS _service client-side server authentication' requirements.html || r_s11="$r_s11 macos-service-client-auth-requirements-missing"
+grep -Fq 'R-S11e-2 — macOS _service client-side server authentication' HARDENING_STATUS.md || r_s11="$r_s11 macos-service-client-auth-ledger-missing"
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel state-mutation allowlist:$r_s11"; rc=1; else
-  echo "  ok  R-S11/R-S11b/R-S11c main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options are user-owned scoped; service-owned close is root/LocalSystem-gated on main IPC and Windows _service; the policy table is exhaustive with no wildcard fallback; gate binds Linux/macOS AND the Windows main pipe)"; fi
+  echo "  ok  R-S11/R-S11b/R-S11c main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options are user-owned scoped; service-owned close is root/LocalSystem-gated on main IPC and Windows _service; macOS _service clients authenticate the connected privileged helper before service-owned password traffic; the policy table is exhaustive with no wildcard fallback; gate binds Linux/macOS AND the Windows main pipe)"; fi
 rm -f /tmp/rd_verify_identity_writers.$$ /tmp/rd_verify_mac_address.$$
 
 echo "== (3b-iii-a1) desktop at-rest wrapper does not mint service identity material (R-S11b-3f) =="

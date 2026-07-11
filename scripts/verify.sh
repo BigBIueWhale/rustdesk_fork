@@ -3114,6 +3114,32 @@ fi
 if [ -n "$r_s11c10r" ]; then echo "  FAIL R-S11c-10r Linux clipboard FUSE fixed-helper fd passing:$r_s11c10r"; rc=1; else
   echo "  ok  R-S11c-10r Linux clipboard FUSE uses fixed-helper fd passing and owner-only fuser session"; fi
 
+echo "== (3b-iii-h9c3d) Linux Flutter runner loads bundled Rust core by executable-relative path (R-S11c-10s) =="
+r_s11c10s=
+grep -qF '#define RUSTDESK_LIB_PATH "$ORIGIN/lib/librustdesk.so"' flutter/linux/main.cc || r_s11c10s="$r_s11c10s no-origin-core-path"
+grep -qF 'dlopen(RUSTDESK_LIB_PATH, RTLD_NOW | RTLD_LOCAL)' flutter/linux/main.cc || r_s11c10s="$r_s11c10s no-immediate-local-dlopen"
+grep -qF 'CMAKE_INSTALL_RPATH "$ORIGIN/lib"' flutter/linux/CMakeLists.txt || r_s11c10s="$r_s11c10s no-bundle-rpath"
+grep -q 'Linux Flutter runner Rust core library load provenance' requirements.html || r_s11c10s="$r_s11c10s requirements-disposition-missing"
+grep -q 'R-S11c-10s closes the Linux Flutter runner Rust core library load provenance' HARDENING_STATUS.md || r_s11c10s="$r_s11c10s hardening-ledger-missing"
+main_entry_block=$(awk '/int main\(int argc, char\*\* argv\)/,/g_application_run/' flutter/linux/main.cc)
+if ! echo "$main_entry_block" | grep -qF 'return 1;'; then
+  r_s11c10s="$r_s11c10s core-load-failure-not-fatal"
+fi
+if grep -qF '#define RUSTDESK_LIB_PATH "librustdesk.so"' flutter/linux/main.cc; then
+  r_s11c10s="$r_s11c10s bare-core-path"
+fi
+if grep -qF 'dlopen("librustdesk.so"' flutter/linux/main.cc; then
+  r_s11c10s="$r_s11c10s bare-dlopen-name"
+fi
+if grep -qF 'RTLD_LAZY' flutter/linux/main.cc; then
+  r_s11c10s="$r_s11c10s lazy-core-binding"
+fi
+if grep -Eq 'print_help_install_pkg|PkgMgrSearch|is_command_exists|getenv\("PATH"\)|strtok\(path_copy|apt-file search|dnf provides|yum provides|zypper wp|pacman -Qo|Please run' flutter/linux/main.cc; then
+  r_s11c10s="$r_s11c10s package-manager-path-probe"
+fi
+if [ -n "$r_s11c10s" ]; then echo "  FAIL R-S11c-10s Linux Flutter runner core-library provenance:$r_s11c10s"; rc=1; else
+  echo "  ok  R-S11c-10s Linux Flutter runner loads the bundled Rust core by executable-relative path and fails closed"; fi
+
 echo "== (3b-iii-h9c4) Linux self-relaunch avoids AppImage APPDIR/AppRun fallback (R-S11c-10p) =="
 r_s11c10p=
 grep -qF 'pub fn run_me_with_env<T, I, K, V>' src/common.rs || r_s11c10p="$r_s11c10p no-self-relaunch-helper"

@@ -82,9 +82,6 @@ class _ConnectionPageState extends State<ConnectionPage> {
       slivers: [
         SliverList(
             delegate: SliverChildListDelegate([
-          // R-G4 / R-G8: the "Download new version" update banner is removed (the version
-          // check is excised — R-SV3 — so stateGlobal.updateUrl is never set, and it linked
-          // to rustdesk.com/download, R-G8). _buildUpdateUI is deleted with it.
           _buildRemoteIDTextField(),
         ])),
         SliverFillRemaining(

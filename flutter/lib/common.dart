@@ -3641,16 +3641,6 @@ void earlyAssert() {
   assert('\1' == '1');
 }
 
-// R-G4 / R-SV2 / R-SV3 / §18: the auto-update + version-check is EXCISED. Upstream's
-// checkUpdate() (called at launch from runMainApp/runMobileApp) registered a
-// kCheckSoftwareUpdateFinish handler and called bind.mainGetSoftwareUpdateUrl() after 1s,
-// fetching api.rustdesk.com/version (device-fingerprinted, R-SV3) and arming the fetch-and-run
-// updater (R-X1 RCE). The function and BOTH its callers are removed (not no-op'd), so the app
-// makes NO version-check at launch — sovereign: dial nobody. The update GUI it fed (desktop
-// card, mobile _buildUpdateUI, the check-update/auto-update toggles, the UpdateProgress
-// downloader) is removed too; the residual main_get_software_update_url / main_update_me FFI
-// is the remaining §19/R-G4 follow-on.
-
 // https://github.com/flutter/flutter/issues/153560#issuecomment-2497160535
 // For TextField, TextFormField
 extension WorkaroundFreezeLinuxMint on Widget {

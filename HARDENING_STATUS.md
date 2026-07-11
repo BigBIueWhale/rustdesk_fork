@@ -1395,6 +1395,21 @@ unreachable and a source/test/AST gate prevents reintroduction.
   the deleted crate directory is absent, the workspace/dependency/lockfile/build-copy artifacts are absent, legacy
   RustDesk IDD platform-addition/UI names are absent from source/build metadata, `MonitorMode` is owned by
   `virtual_display_manager`, and this ledger/requirements disposition.
+- **R-S11d-39 — Windows obsolete updater authority excision — CLOSED 2026-07-12.**
+  Platform: Windows normal GUI startup plus the cross-platform Flutter FFI and UI residue of the removed
+  self-updater. Endpoint/action: an unconditional startup sweep over old `rustdesk-*.msi` and
+  `rustdesk-*.exe` files in `std::env::temp_dir()`, the uncalled `download-file-<version>` asset-name query,
+  its Windows registry probe, and updater-only Flutter state and translations. Boundary: a process that may
+  run elevated ↔ ambient temporary-directory files without producer, owner, or provenance proof. Attack
+  surface closed: the updater has no supported producer or consumer, so the fork deletes the sweep instead of
+  assigning ownership semantics to an obsolete facility. Normal startup no longer enumerates or deletes
+  installer-shaped files from ambient temporary storage; the dead FFI query, registry helper, state field,
+  comments, and four exclusively owned language keys are absent on every desktop platform. This was not
+  promoted to a confirmed default local-to-SYSTEM exploit: the observed deletion used `remove_file`, and no
+  supported updater path supplied a victim file. It was still invalid filesystem authority in a
+  privileged-capable process. Verification closure: `scripts/verify.sh` gates absence of the Rust sweep,
+  filename query, MSI probe, Dart state, updater-only translation entries, and this ledger/requirements
+  disposition; `scripts/dart-verify.sh` independently gates the Flutter state and UI strings.
 - **R-S11d-25 — Windows Amyuni SetupAPI install reboot-required completion — CLOSED 2026-07-10.**
   Platform: Windows runtime Amyuni virtual-display driver install fallback. Endpoint/action: direct SetupAPI
   `win_device::install_driver()` path used when the AMD64 `deviceinstaller64.exe` helper is unavailable. Boundary:
@@ -2916,8 +2931,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   the neutered `--assign` arm in `core_main.rs` (assembles then discards a body —
   dials nobody); dead `--quick_support` plumbing in `libs/portable`;
   `enable_trusted_devices` viewer plumbing (wired login-response→handler but unused)
-  and the `Dialog2FaField`/`kUseTemporaryPassword` Dart stubs; dead
-  `"Click to upgrade"`/`"Auto update"` translation entries in `src/lang/*.rs`.
+  and the `Dialog2FaField`/`kUseTemporaryPassword` Dart stubs.
   None affects behavior or opens a security path (reviewer + local re-confirm);
   each is a candidate for a later focused excision carrying its own build re-prove.
   **⤷ NOTE: this bullet sampled ~5 items; it is SUPERSEDED by the `## Incomplete`
@@ -3235,7 +3249,7 @@ The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-9732629d23a27fc1777173451514081e179bb5827981dc0dead7f74d9ee2cca3  requirements.html
+0dadf7781250d6d7dddb4ab3b97e491711117a0faadafa4474c41acd276a73dd  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

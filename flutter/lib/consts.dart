@@ -141,9 +141,6 @@ const String kOptionPeerCardUiType = "peer-card-ui-type";
 const String kOptionCurrentAbName = "current-ab-name";
 const String kOptionEnableConfirmClosingTabs = "enable-confirm-closing-tabs";
 const String kOptionAllowAlwaysSoftwareRender = "allow-always-software-render";
-// R-G4 / R-SV3 / §18: kOptionEnableCheckUpdate ("enable-check-update") and
-// kOptionAllowAutoUpdate ("allow-auto-update") are removed — the version-check + updater
-// are excised, so no GUI toggle references them (dial nobody).
 // R-X14 / R-G1 / §19: kOptionAllowLinuxHeadless ("allow-linux-headless") is removed — the
 // os_login->PAM desktop-session-start subsystem it gated is compiled out (R-X14) and the option
 // is pinned N (R-S16), so the settings checkbox that referenced it is deleted (not greyed).

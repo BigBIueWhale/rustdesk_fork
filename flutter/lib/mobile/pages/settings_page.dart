@@ -264,9 +264,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
     // exemption requested at service-start, server_model.toggleService), so the kept
     // auto-start capability is not left silently broken.
 
-    // R-G4 / R-SV3: the "Check for software update on startup" toggle is removed — the
-    // version-check + updater are excised, so there is nothing to toggle (dial nobody).
-
     enhancementsTiles.add(
       SettingsTile.switchTile(
         initialValue: _showTerminalExtraKeys,

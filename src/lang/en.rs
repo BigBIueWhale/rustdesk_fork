@@ -173,7 +173,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("screenshot-merged-screen-not-supported-tip", "Merging screenshots of multiple displays is currently not supported. Please switch to a single display and try again."),
         ("screenshot-action-tip", "Please select how to continue with the screenshot."),
         ("{}-to-update-tip", "{} will close now and install the new version."),
-        ("update-failed-check-msi-tip", "Installation method check failed. Please click the \"Download\" button to download from the release page and upgrade manually."),
         ("rel-mouse-not-supported-peer-tip", "Relative Mouse Mode is not supported by the connected peer."),
         ("rel-mouse-not-ready-tip", "Relative Mouse Mode is not ready yet. Please try again."),
         ("rel-mouse-lock-failed-tip", "Failed to lock cursor. Relative Mouse Mode has been disabled."),

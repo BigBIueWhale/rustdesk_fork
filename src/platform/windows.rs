@@ -4359,10 +4359,6 @@ fn get_directory_size_kb(path: &str) -> u64 {
     total_size / 1024
 }
 
-// R-X1 / R-SV2 / R-A6 (§18): the Windows self-updater cluster — update_me,
-// update_to, update_me_msi, and the updater-only helpers get_reg_msi_key /
-// kill_process_by_pids (the run_uac "--update" MSI re-install) — is excised,
-// not disabled. The fork ships signed releases (§12); there is no fetch-and-run path.
 fn get_import_config(_exe: &str) -> String {
     // R-X4: `--import-config` is excised from core_main (its arg-arm overwrote the entire config —
     // trust anchor + servers — from an attacker-suppliable file). The upstream installer's
@@ -4429,44 +4425,6 @@ fn run_after_elevated_service_cmds(installed_exe: &str, silent: bool) -> ResultT
     std::process::Command::new(exe).arg("--tray").spawn()?;
     std::thread::sleep(std::time::Duration::from_millis(300));
     Ok(())
-}
-
-#[inline]
-pub fn try_remove_temp_update_files() {
-    let temp_dir = std::env::temp_dir();
-    let Ok(entries) = std::fs::read_dir(&temp_dir) else {
-        log::debug!("Failed to read temp directory: {:?}", temp_dir);
-        return;
-    };
-
-    let one_hour = std::time::Duration::from_secs(60 * 60);
-    for entry in entries {
-        if let Ok(entry) = entry {
-            let path = entry.path();
-            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                // Match files like rustdesk-*.msi or rustdesk-*.exe
-                if file_name.starts_with("rustdesk-")
-                    && (file_name.ends_with(".msi") || file_name.ends_with(".exe"))
-                {
-                    // Skip files modified within the last hour to avoid deleting files being downloaded
-                    if let Ok(metadata) = std::fs::metadata(&path) {
-                        if let Ok(modified) = metadata.modified() {
-                            if let Ok(elapsed) = modified.elapsed() {
-                                if elapsed < one_hour {
-                                    continue;
-                                }
-                            }
-                        }
-                    }
-                    if let Err(e) = std::fs::remove_file(&path) {
-                        log::debug!("Failed to remove temp update file {:?}: {}", path, e);
-                    } else {
-                        log::info!("Removed temp update file: {:?}", path);
-                    }
-                }
-            }
-        }
-    }
 }
 
 #[inline]
@@ -4738,15 +4696,6 @@ fn get_pids<S: AsRef<str>>(name: S) -> ResultType<Vec<u32>> {
     }
 
     Ok(pids)
-}
-
-pub fn is_msi_installed() -> std::io::Result<bool> {
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    let uninstall_key = hklm.open_subkey(format!(
-        "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}",
-        crate::get_app_name()
-    ))?;
-    Ok(1 == uninstall_key.get_value::<u32, _>("WindowsInstaller")?)
 }
 
 pub fn is_cur_exe_the_installed() -> bool {

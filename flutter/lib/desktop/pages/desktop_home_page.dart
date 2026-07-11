@@ -313,12 +313,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   }
 
   Widget buildHelpCards() {
-    // R-G4 / R-G8 / §18: the auto-update download/version card is removed. The updater is
-    // excised (R-X1) and the version-check makes no egress (R-SV3 — the checkUpdate trigger
-    // is gone, so stateGlobal.updateUrl is never set and this card never showed); it also
-    // routed to https://rustdesk.com/download and a github.com/rustdesk release link, which
-    // a sovereign de-branded build does not advertise (R-G8). The updateUrl param and the
-    // Obx that watched it are removed with the card (the UpdateProgress downloader too).
     if (systemError.isNotEmpty) {
       return buildInstallCard("", systemError, "", () {});
     }
@@ -331,9 +325,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           await rustDeskWinManager.closeAllSubWindows();
           bind.mainGotoInstall();
         });
-        // R-X1 / R-SV2 (§18): the "Click to upgrade" self-update branch is removed — the fetch-and-
-        // run updater (main_update_me -> the platform update_me/update_me_msi root re-install) is
-        // excised; the fork ships SHA-pinned releases (R-B2), never self-updates.
       }
     } else if (isMacOS) {
       final isOutgoingOnly = bind.isOutgoingOnly();

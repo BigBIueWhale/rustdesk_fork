@@ -3860,6 +3860,19 @@ ra6_clean 'crate::updater|mod updater|"download-new-version"|"update-me"' 'R-X1 
 # update_me/update_from_dmg/extract_update_dmg in its Apple-cfg pass; all must be absent on EVERY
 # source (these clusters are cfg(macos)/cfg(windows), invisible to the Linux cargo check below).
 ra6_clean 'fn update_me\b|main_update_me|update_from_dmg|extract_update_dmg|update_me_msi|fn update_to\b' 'R-X1 self-updater fns (macOS DMG / Windows MSI / FFI)' || rc=1
+# R-S11d-39: no updater remains to own temporary installer files, choose package names, or consume
+# updater UI state. Keep the entire obsolete authority and its exclusive residue absent.
+r_s11d39=
+{ grep -RInE 'try_remove_temp_update_files|download-file-|is_msi_installed' src libs --include='*.rs' 2>/dev/null | grep -v '//' | grep -q .; } && r_s11d39="$r_s11d39 rust-updater-residue"
+grep -RInF 'updateUrl' flutter/lib --include='*.dart' 2>/dev/null | grep -v '//' | grep -q . && r_s11d39="$r_s11d39 dart-update-state"
+grep -RInE '^\s*\("(Click to upgrade|Auto update|Check for software update on startup|update-failed-check-msi-tip)",' src/lang --include='*.rs' 2>/dev/null | grep -q . && r_s11d39="$r_s11d39 dead-lang-keys"
+grep -qF 'R-S11d-39 — Windows obsolete updater authority excision — CLOSED 2026-07-12.' HARDENING_STATUS.md || r_s11d39="$r_s11d39 ledger-disposition"
+grep -qF '<tr><td>117</td><td><strong>Windows obsolete updater temporary-file authority</strong>' requirements.html || r_s11d39="$r_s11d39 requirements-disposition"
+if [ -n "$r_s11d39" ]; then
+  echo "  FAIL R-S11d-39 obsolete updater authority remains:$r_s11d39"; rc=1
+else
+  echo "  ok  R-S11d-39 obsolete updater authority fully excised (temp sweep + asset-name query + MSI probe + UI state/translations)"
+fi
 # R-B6/R-R2 (§19): the legacy Sciter UI is DELETED, not merely cfg-gated out of the shipped (--flutter)
 # artifacts — R-R2's "MUST delete the Sciter fork" + the §5 Excise bar ("cannot be re-enabled") outweigh
 # §19's lenient cfg-gated parenthetical. Flutter is the sole front-end. Previously ~9 gates here each
@@ -5976,12 +5989,9 @@ ra6_clean 'relay-hint' 'R-G6 relay-fallback hint emission' || rc=1
 # All removed from every one of the 51 lang tables. The R-X1/R-X7 RCE/feature gates above match the
 # FUNCTION / quoted-key tokens (e.g. `"download-new-version"`, whose CLOSING quote excludes the
 # `-failed-tip`/`-{}-tip` display-string siblings), which is why these translation entries outlived
-# the original sweep. NOTE: update-failed-check-msi-tip is DELIBERATELY NOT listed — unlike the
-# above it still has a live producer (flutter_ffi.rs main_get_common's `download-file-` handler, the
-# §12 win/mac packaging asset-name path, returns `error:update-failed-check-msi-tip`), so deleting
-# its table entries would orphan a referenced key. The `{}` placeholders are regex-escaped (\{\})
-# because ra6_clean matches with grep -E.
-ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-2fa-desc|enable-bot-tip|wrong-2fa-code|enter-2fa-title|cancel-2fa-confirm-tip|powered_by_me|Slogan_tip|download-new-version-failed-tip|new-version-of-\{\}-tip|upgrade_remote_rustdesk_client_to_\{\}_tip|upgrade_rustdesk_server_pro_to_\{\}_tip|whitelist_tip|Use IP Whitelisting|IP Whitelisting)"' '§19 dead lang keys' || rc=1
+# the original sweep. The `{}` placeholders are regex-escaped (\{\}) because ra6_clean matches
+# with grep -E.
+ra6_clean '"(relay_hint_tip|websocket_tip|enable-2fa-title|enable-2fa-desc|enable-bot-tip|wrong-2fa-code|enter-2fa-title|cancel-2fa-confirm-tip|powered_by_me|Slogan_tip|download-new-version-failed-tip|new-version-of-\{\}-tip|upgrade_remote_rustdesk_client_to_\{\}_tip|upgrade_rustdesk_server_pro_to_\{\}_tip|update-failed-check-msi-tip|Click to upgrade|Auto update|Check for software update on startup|whitelist_tip|Use IP Whitelisting|IP Whitelisting)"' '§19 dead lang keys' || rc=1
 # §19 dead-lang-key sweep (R-X9/R-X11 elevation/UAC UI): the peer-triggered elevation AND the Windows
 # attended-mode "accept and elevate" / UAC-prompt UI are excised — the host runs as a root systemd
 # service (R-D1/R-X10), so per-session elevation is dead. These 7 keys have no live translate() caller.

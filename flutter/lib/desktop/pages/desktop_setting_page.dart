@@ -430,9 +430,6 @@ class _GeneralState extends State<_General> {
               isServer: false,
             ),
           ),
-        // R-G4 / R-SV3 / §18: the "Check for software update on startup" and "Auto update"
-        // toggles are removed — the version-check + fetch-and-run updater are excised
-        // (R-X1), so there is nothing to enable (sovereign: dial nobody).
         if (isWindows && !bind.isOutgoingOnly())
           _OptionCheckBox(
             context,

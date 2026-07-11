@@ -1984,9 +1984,6 @@ pub fn main_goto_install() -> SyncReturn<bool> {
     SyncReturn(true)
 }
 
-// R-X1 / R-SV2 (§18): main_update_me (the FFI that drove the self-updater) is excised. The fork
-// ships SHA-pinned releases (R-B2), never self-updates.
-
 pub fn set_cur_session_id(session_id: SessionID) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         set_cur_session_id_(session_id, &session.get_keyboard_mode())
@@ -2242,41 +2239,7 @@ pub fn main_get_common(key: String) -> String {
     } else if key == "local-permanent-password-set" {
         return ui_interface::is_local_permanent_password_set().to_string();
     } else {
-        // R-SV1: the `download-data-` progress-poll key is gone with the dead
-        // the downloader module (orphaned by the R-X1 updater excision; nothing ever
-        // started a download). `download-file-` below only computes a release-asset
-        // filename string — no network — and stays for the win/mac packaging path.
-        if key.starts_with("download-file-") {
-            let _version = key.replace("download-file-", "");
-            #[cfg(target_os = "windows")]
-            return match (
-                crate::platform::windows::is_msi_installed(),
-                crate::common::is_custom_client(),
-            ) {
-                (Ok(true), false) => format!("rustdesk-{_version}-x86_64.msi"),
-                (Ok(true), true) | (Ok(false), _) => format!("rustdesk-{_version}-x86_64.exe"),
-                (Err(e), _) => {
-                    log::error!("Failed to check if is msi: {}", e);
-                    format!("error:update-failed-check-msi-tip")
-                }
-            };
-            #[cfg(target_os = "macos")]
-            {
-                return if cfg!(target_arch = "x86_64") {
-                    format!("rustdesk-{_version}-x86_64.dmg")
-                } else if cfg!(target_arch = "aarch64") {
-                    format!("rustdesk-{_version}-aarch64.dmg")
-                } else {
-                    "error:unsupported".to_owned()
-                };
-            }
-            #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-            {
-                "error:unsupported".to_owned()
-            }
-        } else {
-            "".to_owned()
-        }
+        "".to_owned()
     }
 }
 
@@ -2285,15 +2248,6 @@ pub fn main_get_common_sync(key: String) -> SyncReturn<String> {
 }
 
 pub fn main_set_common(_key: String, _value: String) {
-    // R-X1 / R-SV1: the Flutter-UI fetch-and-run twin is excised — the
-    // download-new-version / update-me / extract-update-dmg keys fetched a
-    // server-supplied URL and executed it privileged (via the deleted
-    // updater::get_download_file_from_url + platform::update_to /
-    // macos::extract_update_dmg). The fork ships its own releases (§12),
-    // SHA-256-verified (R-B2). The generic `remove-downloader`/`cancel-downloader`
-    // keys are gone too: the downloader path they drove is excised — once the
-    // updater was removed nothing ever started a download, so it was pure dead egress.
-
     #[cfg(target_os = "linux")]
     if _key == "clear-gnome-shortcuts-inhibitor-permission" {
         std::thread::spawn(move || {

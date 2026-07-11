@@ -118,7 +118,7 @@ dg_clean '_buildUpdateUI|UpdateProgress|handleUpdate' 'R-G4 dead update widgets'
 # R-G4 / R-SV3 / §18: the check-update / auto-update settings toggles are removed (the
 # version-check + updater are excised, so the option keys back nothing).
 dg_clean 'enable-check-update|allow-auto-update' 'R-G4/R-SV3 update-toggle option keys'
-dg_clean 'Download new version|Check for software update on startup' 'R-G4 update-UI strings'
+dg_clean 'Download new version|Click to upgrade|Auto update|Check for software update on startup|updateUrl' 'R-G4 update-UI state and strings'
 # R-G4 / §19: the OIDC SSO provider-login is removed — the "Login with Google/GitHub/…" widgets
 # (_IconOP / ButtonOP / WidgetOP / LoginWidgetOP / ConfigOP + kOpSvgList), the loginDialog
 # third-auth section, queryOidcLoginOptions, and the auth-*.svg provider icons. A direct-IP fork

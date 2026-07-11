@@ -1463,6 +1463,12 @@ if [ -n "$r_s11d24" ]; then echo "  FAIL R-S11d-24 Windows stale RustDesk IDD in
 echo "== (3b-iii-a5d4e2) Windows inactive RustDesk IDD loader is excised (R-S11d-38) =="
 r_s11d38=
 grep -Fq 'pub struct MonitorMode' src/virtual_display_manager.rs || r_s11d38="$r_s11d38 monitor-mode-not-owned-by-manager"
+grep -Fq 'use hbb_common::{platform::windows::is_windows_version_or_greater, ResultType};' src/virtual_display_manager.rs || r_s11d38="$r_s11d38 windows-version-predicate-import-not-exact"
+grep -Fq 'const IDD_PLUG_OUT_ALL_INDEX: i32 = -1;' src/virtual_display_manager.rs || r_s11d38="$r_s11d38 amyuni-plug-out-all-sentinel-missing"
+grep -Fq 'is_windows_version_or_greater(10, 0, 19041, 0, 0)' src/virtual_display_manager.rs || r_s11d38="$r_s11d38 windows-version-predicate-call-missing"
+if grep -Fq 'use hbb_common::{platform::windows, ResultType};' src/virtual_display_manager.rs; then
+  r_s11d38="$r_s11d38 hbb-windows-import-collides-with-private-module"
+fi
 grep -Fq 'use crate::virtual_display_manager::MonitorMode;' src/privacy_mode/win_virtual_display.rs || r_s11d38="$r_s11d38 privacy-mode-still-imports-deleted-crate"
 grep -Fq 'map.insert("idd_impl".into(), serde_json::json!(IDD_IMPL_AMYUNI));' src/virtual_display_manager.rs || r_s11d38="$r_s11d38 platform-addition-not-amyuni-only"
 grep -Fq 'self.idd_impl == "amyuni_idd"' src/client/io_loop.rs || r_s11d38="$r_s11d38 client-virtual-display-not-amyuni-only"
@@ -2374,6 +2380,7 @@ grep -Fq 'set_authed_conn_cm_clipboard_authority' src/server/connection.rs || r_
 grep -Fq 'refresh_cm_clipboard_authority' src/server/connection.rs || r_s11c22="$r_s11c22 option-refresh-clipboard-authority-missing"
 grep -Fq 'clipboard: conn.cm_clipboard && conn_type.allows_clipboard_authority()' src/server/connection.rs || r_s11c22="$r_s11c22 validation-not-bound-to-live-clipboard-bit"
 grep -Fq 'pub fn cm_clipboard_authorities' src/server/service.rs || r_s11c22="$r_s11c22 subscriber-clipboard-lease-accessor-missing"
+grep -Fq 'impl ServiceTmpl<ConnInner> {' src/server/service.rs || r_s11c22="$r_s11c22 clipboard-lease-accessor-not-conninner-specialized"
 grep -Fq '.filter_map(ConnInner::cm_clipboard_authority)' src/server/service.rs || r_s11c22="$r_s11c22 clipboard-lease-not-derived-from-subscribers"
 grep -Fq 'sp.cm_clipboard_authorities().into_iter().next()' src/server/clipboard_service.rs || r_s11c22="$r_s11c22 clipboard-service-not-using-subscriber-lease"
 grep -Fq 'authorized_clipboard_non_file_request' src/server/clipboard_service.rs || r_s11c22="$r_s11c22 clipboard-service-authorized-request-helper-missing"

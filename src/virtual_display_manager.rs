@@ -1,8 +1,9 @@
-use hbb_common::{platform::windows, ResultType};
+use hbb_common::{platform::windows::is_windows_version_or_greater, ResultType};
 
 pub const AMYUNI_IDD_DEVICE_STRING: &'static str = "USB Mobile Monitor Virtual Display\0";
 
 const IDD_IMPL_AMYUNI: &str = "amyuni_idd";
+const IDD_PLUG_OUT_ALL_INDEX: i32 = -1;
 
 #[derive(Debug, Copy, Clone)]
 pub struct MonitorMode {
@@ -22,7 +23,7 @@ pub fn get_cur_device_string() -> &'static str {
 pub fn is_virtual_display_supported() -> bool {
     #[cfg(target_os = "windows")]
     {
-        windows::is_windows_version_or_greater(10, 0, 19041, 0, 0)
+        is_windows_version_or_greater(10, 0, 19041, 0, 0)
     }
     #[cfg(not(target_os = "windows"))]
     {

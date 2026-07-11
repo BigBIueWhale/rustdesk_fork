@@ -320,12 +320,7 @@ class MainService : Service() {
     }
 
     override fun onDestroy() {
-        // F5 / R-S14: release the MediaProjection as the service is destroyed ("release when not
-        // running"). onDestroy is the common teardown sink for BOTH the app-driven Stop
-        // (MainActivity "stop_service" -> destroy() -> stopSelf -> onDestroy) and a system/OEM/
-        // battery kill; the inherited code released the projection on neither, leaking it until
-        // process death. Runs before checkMediaPermission() so the now-false _isReady is reported.
-        releaseMediaProjection()
+        releaseCaptureResources()
         checkMediaPermission()
         unregisterNetworkCallback()
         releaseNetworkKeepaliveWakeLock()
@@ -531,40 +526,39 @@ class MainService : Service() {
         FFI.setFrameRawEnable("video",false)
         _isStart = false
         MainActivity.rdClipboardManager?.setCaptureStarted(_isStart)
-        // release video
         if (reuseVirtualDisplay) {
-            // The virtual display video projection can be paused by calling `setSurface(null)`.
-            // https://developer.android.com/reference/android/hardware/display/VirtualDisplay.Callback
-            // https://learn.microsoft.com/en-us/dotnet/api/android.hardware.display.virtualdisplay.callback.onpaused?view=net-android-34.0
             virtualDisplay?.setSurface(null)
         } else {
             virtualDisplay?.release()
         }
-        // suface needs to be release after `imageReader.close()` to imageReader access released surface
-        // https://github.com/rustdesk/rustdesk/issues/4118#issuecomment-1515666629
         imageReader?.close()
         imageReader = null
         if (!reuseVirtualDisplay) {
             virtualDisplay = null
         }
-        // suface needs to be release after `imageReader.close()` to imageReader access released surface
+        // The surface must be released after `imageReader.close()`.
         // https://github.com/rustdesk/rustdesk/issues/4118#issuecomment-1515666629
         surface?.release()
+        surface = null
 
-        // release audio
         _isAudioStart = false
         audioRecordHandle.tryReleaseAudio()
     }
 
-    // F5 / R-S14 ("release when not running"): stop and drop the MediaProjection so a held capture
-    // grant cannot outlive the owning foreground service. Idempotent + null-safe — the single
-    // release sink both teardown paths use. The inherited code released it on NEITHER: the
-    // app-driven destroy() only null'd the reference (never .stop()), and the system-initiated
-    // onDestroy did nothing, so the projection leaked until process death.
+    @Synchronized
+    private fun releaseCaptureResources() {
+        stopCapture()
+        if (reuseVirtualDisplay) {
+            virtualDisplay?.release()
+            virtualDisplay = null
+        }
+        releaseMediaProjection()
+    }
+
     @Synchronized
     private fun releaseMediaProjection() {
         mediaProjection?.let {
-            Log.d(logTag, "F5: stopping MediaProjection")
+            Log.d(logTag, "stopping MediaProjection")
             it.stop()
         }
         mediaProjection = null
@@ -576,16 +570,7 @@ class MainService : Service() {
         _isReady = false
         _isAudioStart = false
 
-        stopCapture()
-
-        if (reuseVirtualDisplay) {
-            virtualDisplay?.release()
-            virtualDisplay = null
-        }
-
-        // F5: stop AND drop the projection (was: only `mediaProjection = null`, never .stop()).
-        // onDestroy (below, via stopSelf) is idempotently a no-op after this.
-        releaseMediaProjection()
+        releaseCaptureResources()
         checkMediaPermission()
         unregisterNetworkCallback()
         releaseNetworkKeepaliveWakeLock()

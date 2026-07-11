@@ -192,6 +192,21 @@ plus the empty iOS entitlement map. This is not a root/LPE path; it removes an u
 hardening-runtime executable-memory exception from Profile/Release while preserving the Debug-only
 JIT case.
 
+**R-S14 Android service-destroy capture-resource teardown — CLOSED / GATED (2026-07-11).**
+Platform: Android controlled-side foreground service. Endpoint/action: `MainService.onDestroy()`,
+explicit app Stop (`destroy()`), and the `MediaProjection`/`VirtualDisplay`/`ImageReader`/`Surface`
+objects created for screen capture. Boundary: foreground-service lifetime ↔ all capture resources
+derived from the user-granted projection token. Attack surface closed: service destruction no longer
+stops only the `MediaProjection` while leaving the rest of the capture pipeline to process death or
+implicit projection invalidation. `MainService.onDestroy()` and explicit `destroy()` both call
+`releaseCaptureResources()`, which runs `stopCapture()`, releases the retained reusable
+`VirtualDisplay`, and stops/clears `MediaProjection`; `stopCapture()` now nulls the released `Surface`
+so the shared teardown is idempotent when explicit Stop later reaches `onDestroy()`. Verification
+closure: `scripts/verify.sh` gates both lifecycle callers, the shared teardown sink, the
+`stopCapture()`/`VirtualDisplay.release()`/`releaseMediaProjection()` chain, the nulled `Surface`, and
+the retained `START_NOT_STICKY` restart barrier. This is not a root/LPE path; it completes the Android
+R-D7a/R-S14 resource-lifetime invariant for retained capture grants.
+
 **R-S15 — viewer PeerConfig write authority — status: CLOSED / GATED (2026-07-10).**
 Platforms: all viewer-capable targets. Endpoint/action: post-PAKE peer messages that reach the viewer's
 per-peer config store. Boundary: password-correct but hostile peer ↔ operator-owned persisted viewer

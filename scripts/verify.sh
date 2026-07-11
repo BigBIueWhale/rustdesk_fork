@@ -6252,12 +6252,26 @@ fi
 # its Drop (R-T4: stop capture / unblank on disconnect). The Android "reused grant" vector — a
 # foreground-service AUTO-RESTART re-entering capture WITHOUT a fresh PAKE session — is closed by
 # MainService.onStartCommand returning START_NOT_STICKY (not START_STICKY): a restart never resumes
-# capture on its own. Gate that the Android capture service stays NOT_STICKY.
+# capture on its own. The Android foreground service also owns every MediaProjection-derived capture
+# resource, so explicit Stop and Service.onDestroy must converge on one idempotent teardown sink.
 r_s14_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
-if grep -q 'START_NOT_STICKY' "$r_s14_kt" 2>/dev/null && ! grep -qE 'return[[:space:]]+START_STICKY\b' "$r_s14_kt" 2>/dev/null; then
-  echo "  ok  R-S14 Android capture service is START_NOT_STICKY (an auto-restart never re-enters capture outside a fresh PAKE session; desktop capture is per-Connection via R-A2 + R-T4)"
+r_s14_missing=
+grep -q 'START_NOT_STICKY' "$r_s14_kt" 2>/dev/null || r_s14_missing="$r_s14_missing android-not-not-sticky"
+grep -qE 'return[[:space:]]+START_STICKY\b' "$r_s14_kt" 2>/dev/null && r_s14_missing="$r_s14_missing android-sticky-return"
+on_destroy_block=$(sed -n '/override fun onDestroy()/,/super.onDestroy()/p' "$r_s14_kt")
+destroy_block=$(sed -n '/fun destroy()/,/stopSelf()/p' "$r_s14_kt")
+teardown_block=$(sed -n '/private fun releaseCaptureResources()/,/private fun releaseMediaProjection()/p' "$r_s14_kt")
+stop_capture_block=$(sed -n '/fun stopCapture()/,/private fun releaseCaptureResources()/p' "$r_s14_kt")
+printf '%s\n' "$on_destroy_block" | grep -qF 'releaseCaptureResources()' || r_s14_missing="$r_s14_missing onDestroy-no-capture-resource-teardown"
+printf '%s\n' "$destroy_block" | grep -qF 'releaseCaptureResources()' || r_s14_missing="$r_s14_missing destroy-no-shared-capture-resource-teardown"
+printf '%s\n' "$teardown_block" | grep -qF 'stopCapture()' || r_s14_missing="$r_s14_missing teardown-no-stopCapture"
+printf '%s\n' "$teardown_block" | grep -qF 'virtualDisplay?.release()' || r_s14_missing="$r_s14_missing teardown-no-reused-virtual-display-release"
+printf '%s\n' "$teardown_block" | grep -qF 'releaseMediaProjection()' || r_s14_missing="$r_s14_missing teardown-no-mediaProjection-stop"
+printf '%s\n' "$stop_capture_block" | grep -qF 'surface = null' || r_s14_missing="$r_s14_missing stopCapture-surface-not-nulled"
+if [ -n "$r_s14_missing" ]; then
+  echo "  FAIL R-S14: Android capture service restart/teardown invariant is incomplete:$r_s14_missing"; rc=1
 else
-  echo "  FAIL R-S14: MainService.onStartCommand must return START_NOT_STICKY (not START_STICKY) so an auto-restart cannot resume capture outside a PAKE session"; rc=1
+  echo "  ok  R-S14 Android capture service is START_NOT_STICKY and service destruction releases ImageReader/Surface/VirtualDisplay/MediaProjection through one shared teardown sink"
 fi
 # R-X7a / R-G1 (no inert pinned-policy SELECTOR survives — removed, not greyed): verification-method +
 # approve-mode are R-S16-pinned (use-permanent-password / password), so a UI that PRESENTS+WRITES them

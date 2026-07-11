@@ -42,7 +42,7 @@ RUN wget https://github.com/Kitware/CMake/releases/download/v3.30.6/cmake-3.30.6
 
 RUN git clone --branch 2023.04.15 --depth=1 https://github.com/microsoft/vcpkg && \
     /vcpkg/bootstrap-vcpkg.sh -disableMetrics && \
-    /vcpkg/vcpkg --disable-metrics install libvpx libyuv opus aom
+    /vcpkg/vcpkg --disable-metrics install libvpx libyuv opus
 
 RUN groupadd -r user && \
     useradd -r -g user user --home /home/user && \

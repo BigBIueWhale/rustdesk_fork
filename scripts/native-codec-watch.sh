@@ -107,6 +107,39 @@ if grep -qE '\b(PENDING|TODO|TBD)\b' "$LEDGER"; then
   fail "$LEDGER contains a pending/TODO/TBD marker"
 fi
 
+if [ -e res/vcpkg/aom ]; then
+  fail "retired aom overlay path res/vcpkg/aom reappeared"
+fi
+
+aom_scaffold_files=(
+  Dockerfile
+  README.md
+  build.py
+  vcpkg.json
+  libs/scrap/build.rs
+  scripts/Dockerfile.devcheck
+  scripts/Dockerfile.win-helper
+  scripts/build-debian.sh
+  scripts/build-android.sh
+  scripts/build-windows.ps1
+  scripts/win-guest-setup.ps1
+  scripts/online-fetch.sh
+  .github/workflows/flutter-build.yml.disabled
+)
+existing_aom_scaffold_files=()
+for file in "${aom_scaffold_files[@]}"; do
+  if [ -f "$file" ]; then
+    existing_aom_scaffold_files+=("$file")
+  fi
+done
+if ((${#existing_aom_scaffold_files[@]})); then
+  aom_scaffold_hits=$(grep -HInE '(^|[^[:alnum:]_])(aom|libaom|AOM_)([^[:alnum:]_]|$)' "${existing_aom_scaffold_files[@]}" 2>/dev/null || true)
+  if [ -n "$aom_scaffold_hits" ]; then
+    echo "$aom_scaffold_hits" | sed 's/^/      /'
+    fail "retired aom appears in tracked native build scaffolds"
+  fi
+fi
+
 libvpx_version=$(json_string_value version res/vcpkg/libvpx/vcpkg.json)
 libyuv_version=$(json_string_value version res/vcpkg/libyuv/vcpkg.json)
 opus_version=$(json_string_value version res/vcpkg/opus/vcpkg.json)

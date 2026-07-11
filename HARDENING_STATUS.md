@@ -2214,11 +2214,12 @@ The runtime quarantine is backed by deletion of the native dependency itself:
 `vcpkg.json` no longer lists `aom`; `res/vcpkg/aom`, `libs/scrap/src/common/aom.rs`,
 and `libs/scrap/src/bindings/aom_ffi.h` are deleted; `libs/scrap/build.rs` no
 longer generates `aom_ffi.rs`; `EncoderCfg` has no AV1/libaom variant; and the
-offline Linux, Android, Windows, Apple source-conformance, dev-check, and README
-build paths do not install or stub `aom`. `docs/NATIVE-CODEC-WATCH.md` records
-`aom` as a retired library rather than a watched package, and `verify.sh` fails
-if a future source module, FFI binding, bindgen package, manifest entry, or ledger
-shape reintroduces libaom.
+offline Linux, Android, Windows, Apple source-conformance, dev-check, README,
+Dockerfile, and tracked build-scaffold paths do not install, stub, or reference
+`aom`. `docs/NATIVE-CODEC-WATCH.md` records `aom` as a retired library rather
+than a watched package, and `verify.sh` fails if a future source module, FFI
+binding, bindgen package, overlay path, manifest entry, Dockerfile,
+build-scaffold, or ledger shape reintroduces libaom.
 
 **The remaining native-decode residual is still armed, not latent (recorded 2026-07-05 under the universal-deployment re-rating).**
 The pinned in-process decoders on the peer-reachable **viewer** path still carry

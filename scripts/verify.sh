@@ -3144,9 +3144,42 @@ if [ -n "$aom_source_hits" ]; then
   echo "$aom_source_hits" | sed 's/^/      /'
   rc=1
 fi
+if [ -e res/vcpkg/aom ]; then
+  echo "  FAIL Appendix C #2b: retired aom overlay path res/vcpkg/aom must stay deleted"
+  rc=1
+fi
 if grep -qE '"name"[[:space:]]*:[[:space:]]*"aom"' vcpkg.json; then
   echo "  FAIL Appendix C #2b: vcpkg.json must not link libaom"
   rc=1
+fi
+aom_build_scaffold_files=(
+  Dockerfile
+  README.md
+  build.py
+  vcpkg.json
+  libs/scrap/build.rs
+  scripts/Dockerfile.devcheck
+  scripts/Dockerfile.win-helper
+  scripts/build-debian.sh
+  scripts/build-android.sh
+  scripts/build-windows.ps1
+  scripts/win-guest-setup.ps1
+  scripts/online-fetch.sh
+  .github/workflows/flutter-build.yml.disabled
+)
+existing_aom_build_scaffold_files=()
+for file in "${aom_build_scaffold_files[@]}"; do
+  if [ -f "$file" ]; then
+    existing_aom_build_scaffold_files+=("$file")
+  fi
+done
+if ((${#existing_aom_build_scaffold_files[@]})); then
+  aom_build_scaffold_hits=$(grep -HInE '(^|[^[:alnum:]_])(aom|libaom|AOM_)([^[:alnum:]_]|$)' "${existing_aom_build_scaffold_files[@]}" 2>/dev/null || true)
+  if [ -n "$aom_build_scaffold_hits" ]; then
+    echo "  FAIL Appendix C #2b: retired aom/libaom must not appear in tracked native build scaffolds:"
+    echo "$aom_build_scaffold_hits" | sed 's/^/      /'
+    rc=1
+  fi
 fi
 codec_pref_body=$(awk '/OPTION_CODEC_PREFERENCE =>/,/^            }/' libs/hbb_common/src/config.rs)
 if echo "$codec_pref_body" | grep -q '"av1"'; then

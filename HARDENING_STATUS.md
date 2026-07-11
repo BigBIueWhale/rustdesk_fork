@@ -136,6 +136,22 @@ Accepted low-severity residual (no host action/capability): the video-QoS metada
 re-prove at this HEAD (a background build loop is handling it; the connection.rs/video_service.rs changes
 are in all builds, and the Windows/Kotlin edges are validated by the win-exe/apk builds).
 
+**R-S19 voice-call close/reset authority — CLOSED / GATED (2026-07-11).**
+Platforms: all connection.rs targets. Endpoint/action: peer `VoiceCallRequest(false)`,
+CM `Data::CloseVoiceCall`, voice-call accept/refuse, and connection teardown global
+voice-call input reset. Boundary: authenticated narrow session type
+(`FileTransfer`/`Terminal`) or its CM helper ↔ Remote/ViewCamera-only voice-call
+state. Attack surface closed: `can_drive_voice_call()` admits only Remote/ViewCamera;
+`handle_voice_call()` rejects non-voice session types before accepting/refusing;
+`close_voice_call()` is result-bearing and returns false unless the connection is
+Remote/ViewCamera and owns pending or active voice-call state; CM close sends a peer
+close notification only after that state closes; and `on_close` resets the global
+voice-call input device only for an active voice-call owner. Verification closure:
+`scripts/verify.sh` now asserts the helper, Remote/ViewCamera predicate, accept
+guard, result-bearing close, state-owned close condition, CM result gate, and teardown
+reset guard. This is not a root/LPE path; it closes the remaining voice-call state
+member of the R-S19 capability-confinement class.
+
 **R-S15 — viewer PeerConfig write authority — status: CLOSED / GATED (2026-07-10).**
 Platforms: all viewer-capable targets. Endpoint/action: post-PAKE peer messages that reach the viewer's
 per-peer config store. Boundary: password-correct but hostile peer ↔ operator-owned persisted viewer

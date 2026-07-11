@@ -4696,8 +4696,8 @@ fi
 #  (b) the on_message dispatcher is a 3-way AuthConnType allowlist — INPUT + remote-CONTROL
 #      (reboot / privacy-toggle / virtual-display) Remote-only, desktop CAPTURE Remote-or-ViewCamera;
 #  (c) the flag-gated sinks the guard's message set does not cover key on AuthConnType / voice_calling:
-#      host clipboard-TEXT write (Remote-only), peer->host audio (voice-call only), cursor/window
-#      capture (Remote-only).
+#      host clipboard-TEXT write (Remote-only), peer->host audio and voice-call state
+#      (Remote/ViewCamera voice owner only), cursor/window capture (Remote-only).
 rs19=
 conn=src/server/connection.rs
 grep -q 'fn confine_capabilities_to_conn_type' "$conn"                   || rs19="$rs19 no-derivation-fn"
@@ -4732,6 +4732,19 @@ echo "$capset" | grep -q 'MessageQuery'            || rs19="$rs19 messagequery-n
 grep -q 'self.clipboard && self.is_authed_remote_conn()' "$conn"       || rs19="$rs19 clipboard-text-not-remote-gated"
 grep -q '!self.disable_audio && self.voice_calling' "$conn"            || rs19="$rs19 audio-not-voice-gated"
 grep -q 'q == BoolOption::Yes && self.is_authed_remote_conn()' "$conn" || rs19="$rs19 cursor-window-not-remote-gated"
+grep -q 'fn can_drive_voice_call(&self) -> bool' "$conn"               || rs19="$rs19 voice-call-authority-helper-missing"
+grep -q 'self.is_authed_remote_conn() || self.is_authed_view_camera_conn()' "$conn" || rs19="$rs19 voice-call-not-remote-viewcamera-gated"
+handle_voice_body=$(awk '/pub async fn handle_voice_call/,/^    }/' "$conn")
+echo "$handle_voice_body" | grep -q 'if !self.can_drive_voice_call()'  || rs19="$rs19 voice-accept-not-authtype-gated"
+voice_close_body=$(awk '/pub async fn close_voice_call/,/^    }/' "$conn")
+echo "$voice_close_body" | grep -q 'pub async fn close_voice_call(&mut self) -> bool' || rs19="$rs19 voice-close-not-result-bearing"
+echo "$voice_close_body" | grep -q 'if !self.can_drive_voice_call()'    || rs19="$rs19 voice-close-not-authtype-gated"
+echo "$voice_close_body" | grep -q 'self.voice_call_request_timestamp.is_none()' || rs19="$rs19 voice-close-not-state-owned"
+echo "$voice_close_body" | grep -q 'if self.voice_calling {'            || rs19="$rs19 voice-close-global-reset-not-owner-gated"
+ipc_voice_close_body=$(awk '/ipc::Data::CloseVoiceCall/,/ipc::Data::ReadJobInitResult/' "$conn")
+echo "$ipc_voice_close_body" | grep -q 'if conn.close_voice_call().await' || rs19="$rs19 cm-voice-close-not-result-gated"
+on_close_voice_reset=$(awk '/async fn on_close/,/log::info!/' "$conn")
+echo "$on_close_voice_reset" | grep -q 'if self.voice_calling {'        || rs19="$rs19 connection-close-global-voice-reset-not-owner-gated"
 if [ -z "$rs19" ]; then
   echo "  ok  R-S19/CVE-2026-58056/CWE-863: capabilities confined by AuthConnType (derivation-before-options + 3-way guard + sink gates)"
 else

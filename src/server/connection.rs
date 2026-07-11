@@ -737,10 +737,10 @@ impl Connection {
                         }
                         ipc::Data::CloseVoiceCall(_reason) => {
                             log::debug!("Close the voice call from the ipc.");
-                            conn.close_voice_call().await;
-                            // Notify the peer that we closed the voice call.
-                            let msg = new_voice_call_request(false);
-                            conn.send(msg).await;
+                            if conn.close_voice_call().await {
+                                let msg = new_voice_call_request(false);
+                                conn.send(msg).await;
+                            }
                         }
                         ipc::Data::ReadJobInitResult { id, file_num, include_hidden, conn_id, result } => {
                             if conn_id == conn.inner.id() {
@@ -3018,7 +3018,7 @@ impl Connection {
                         // R-S19: voice calls are legit only for Remote/ViewCamera (the client refuses
                         // to offer them for file-transfer/terminal/port-forward, io_loop.rs) — do not
                         // even raise the operator's incoming-call prompt for other session types.
-                        if !self.is_authed_remote_conn() && !self.is_authed_view_camera_conn() {
+                        if !self.can_drive_voice_call() {
                             return true;
                         }
                         self.voice_call_request_timestamp = Some(
@@ -3653,6 +3653,9 @@ impl Connection {
     }
 
     pub async fn handle_voice_call(&mut self, accepted: bool) {
+        if !self.can_drive_voice_call() {
+            return;
+        }
         if let Some(ts) = self.voice_call_request_timestamp.take() {
             let msg = new_voice_call_response(ts.get(), accepted);
             if accepted {
@@ -3680,9 +3683,16 @@ impl Connection {
         }
     }
 
-    pub async fn close_voice_call(&mut self) {
-        crate::audio_service::set_voice_call_input_device(None, true);
-        // Notify the connection manager that the voice call has been closed.
+    pub async fn close_voice_call(&mut self) -> bool {
+        if !self.can_drive_voice_call()
+            || (!self.voice_calling && self.voice_call_request_timestamp.is_none())
+        {
+            return false;
+        }
+        if self.voice_calling {
+            crate::audio_service::set_voice_call_input_device(None, true);
+        }
+        self.voice_call_request_timestamp = None;
         self.send_to_cm(Data::CloseVoiceCall("".to_owned()));
         self.voice_calling = false;
         if self.is_authed_view_camera_conn() {
@@ -3692,6 +3702,7 @@ impl Connection {
                     .subscribe(super::audio_service::NAME, self.inner.clone(), false);
             }
         }
+        true
     }
 
     async fn update_options(&mut self, o: &OptionMessage) {
@@ -4091,16 +4102,9 @@ impl Connection {
             return;
         }
         self.closed = true;
-        // If voice A,B -> C, and A,B has voice call
-        // B disconnects, C will reset the voice call input.
-        //
-        // It may be acceptable, because it's not a common case,
-        // and it's immediately known when the input device changes.
-        // C can change the input device manually in cm interface.
-        //
-        // We can add a (Vec<conn_id>, input device) to avoid this.
-        // But it's not necessary now and we have to consider two audio services(client, server).
-        crate::audio_service::set_voice_call_input_device(None, true);
+        if self.voice_calling {
+            crate::audio_service::set_voice_call_input_device(None, true);
+        }
         log::info!("#{} Connection closed: {}", self.inner.id(), reason);
         if lock && self.lock_after_session_end && self.keyboard {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -4692,6 +4696,10 @@ impl Connection {
             return id.conn_type() == AuthConnType::ViewCamera;
         }
         false
+    }
+
+    fn can_drive_voice_call(&self) -> bool {
+        self.is_authed_remote_conn() || self.is_authed_view_camera_conn()
     }
 
     #[cfg(feature = "unix-file-copy-paste")]

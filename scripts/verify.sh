@@ -2813,11 +2813,11 @@ done
 grep -q 'deb-systemd-invoke stop "$unit"' res/DEBIAN/preinst  || r_s11c10j="$r_s11c10j preinst:no-helper-stop"
 grep -q '\[ -e "/etc/systemd/system/$unit" \] || \[ -e "/usr/lib/systemd/system/$unit" \] || \[ -e "/lib/systemd/system/$unit" \]' res/DEBIAN/preinst || r_s11c10j="$r_s11c10j preinst:no-old-unit-predicate"
 grep -q 'deb-systemd-helper enable "$unit"' res/DEBIAN/postinst || r_s11c10j="$r_s11c10j postinst:no-helper-enable"
-grep -q 'deb-systemd-invoke daemon-reload >/dev/null' res/DEBIAN/postinst || r_s11c10j="$r_s11c10j postinst:no-helper-daemon-reload"
+grep -q '/bin/systemctl --system daemon-reload >/dev/null' res/DEBIAN/postinst || r_s11c10j="$r_s11c10j postinst:no-manager-daemon-reload"
 grep -q 'deb-systemd-invoke start "$unit"' res/DEBIAN/postinst || r_s11c10j="$r_s11c10j postinst:no-helper-start"
 grep -q 'deb-systemd-invoke stop "$unit"' res/DEBIAN/prerm     || r_s11c10j="$r_s11c10j prerm:no-helper-stop"
 grep -q 'deb-systemd-helper disable "$unit"' res/DEBIAN/prerm  || r_s11c10j="$r_s11c10j prerm:no-helper-disable"
-grep -q 'deb-systemd-invoke daemon-reload >/dev/null' res/DEBIAN/prerm || r_s11c10j="$r_s11c10j prerm:no-helper-daemon-reload"
+grep -q '/bin/systemctl --system daemon-reload >/dev/null' res/DEBIAN/prerm || r_s11c10j="$r_s11c10j prerm:no-manager-daemon-reload"
 grep -q 'deb-systemd-helper purge "$unit"' res/DEBIAN/postrm   || r_s11c10j="$r_s11c10j postrm:no-helper-purge"
 grep -q 'pub static ref APP_NAME: RwLock<String> = RwLock::new("RustDesk".to_owned());' libs/hbb_common/src/config.rs || r_s11c10j="$r_s11c10j config:stock-app-name-not-rustdesk"
 grep -q 'directories_next::ProjectDirs::from("", &org, &APP_NAME.read().unwrap())' libs/hbb_common/src/config.rs || r_s11c10j="$r_s11c10j config:no-projectdirs-app-name-path"
@@ -2830,11 +2830,12 @@ grep -qE '^KillMode=control-group$' res/rustdesk.service       || r_s11c10j="$r_
 if grep -qE '^ExecStop=|pkill|KillMode=mixed' res/rustdesk.service; then
   r_s11c10j="$r_s11c10j unit:legacy-execstop-or-mixed-killmode"
 fi
-if grep -RInE 'INITSYS|/proc/1/exe|ps -ef|grep -E|awk|sed -i|service rustdesk|systemctl|--machine=' res/DEBIAN >/tmp/rd_verify_r_s11c10j_pkg.$$; then
+if grep -RInE 'INITSYS|/proc/1/exe|ps -ef|grep -E|awk|sed -i|service rustdesk|systemctl|--machine=' res/DEBIAN | grep -vF '/bin/systemctl --system daemon-reload >/dev/null' >/tmp/rd_verify_r_s11c10j_pkg.$$; then
   cat /tmp/rd_verify_r_s11c10j_pkg.$$
   r_s11c10j="$r_s11c10j maintscript:raw-service-discovery-or-systemctl"
 fi
 rm -f /tmp/rd_verify_r_s11c10j_pkg.$$
+python3 scripts/verify-debian-maintainer-scripts.py --scripts-dir res/DEBIAN || r_s11c10j="$r_s11c10j maintscript:lifecycle-semantics"
 if grep -RInE '\|\|[[:space:]]*true|deb-systemd-(invoke|helper).*\|\|' res/DEBIAN >/tmp/rd_verify_r_s11c10j_mask.$$; then
   cat /tmp/rd_verify_r_s11c10j_mask.$$
   r_s11c10j="$r_s11c10j maintscript:masked-lifecycle-failure"
@@ -2864,7 +2865,7 @@ if echo "$linux_child_stop_block" | grep -q 'allow_err!(ps.kill())'; then
   r_s11c10j="$r_s11c10j linux:managed-server-child-sigkill-regressed"
 fi
 if [ -n "$r_s11c10j" ]; then echo "  FAIL R-S11c-10j/R-T9 Debian package lifecycle/systemd stop:$r_s11c10j"; rc=1; else
-  echo "  ok  R-S11c-10j/R-T9 Debian scripts use checked deb-systemd helpers with no masked lifecycle failures and purge the stock root RustDesk config tree; build.py stages checked control scripts; unit has cgroup-scoped SIGTERM/TimeoutStopSec with no pkill ExecStop; Linux supervisor SIGTERMs child servers before forced stop"; fi
+  echo "  ok  R-S11c-10j/R-T9 Debian scripts use checked deb-systemd unit helpers plus fixed system manager reloads with no masked lifecycle failures and purge the stock root RustDesk config tree; build.py stages checked control scripts; unit has cgroup-scoped SIGTERM/TimeoutStopSec with no pkill ExecStop; Linux supervisor SIGTERMs child servers before forced stop"; fi
 
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() are now only typed password

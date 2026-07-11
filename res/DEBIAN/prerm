@@ -14,7 +14,7 @@ case "$1" in
         rm -f /etc/systemd/system/rustdesk.service
         rm -f /usr/lib/systemd/system/rustdesk.service
         rm -f /usr/lib/systemd/user/rustdesk.service
-        deb-systemd-invoke daemon-reload >/dev/null
+        /bin/systemctl --system daemon-reload >/dev/null
         ;;
 esac
 

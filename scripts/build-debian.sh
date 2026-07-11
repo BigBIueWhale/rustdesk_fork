@@ -64,6 +64,10 @@ verify_deb_control_scripts() {
         rm -rf "$tmp_control"
         die "built .deb maintainer scripts mask lifecycle failure"
     fi
+    python3 "$SCRIPT_DIR/verify-debian-maintainer-scripts.py" --scripts-dir "$tmp_control" || {
+        rm -rf "$tmp_control"
+        die "built .deb maintainer scripts fail lifecycle semantics"
+    }
     rm -rf "$tmp_control"
 }
 

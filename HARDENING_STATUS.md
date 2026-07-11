@@ -713,25 +713,27 @@ unreachable and a source/test/AST gate prevents reintroduction.
   that supervises the managed `--server` child.
   Boundary: privileged package-maintainer scripts and systemd stop semantics ↔ local process table and
   service-owned listener process. Attack surface closed: package scripts no longer parse `/proc/1/exe` with
-  `ls|awk`, call `service`/`systemctl` directly, sed-patch the installed unit, discover old user services with
+  `ls|awk`, call `service` or arbitrary `systemctl` unit actions directly, sed-patch the installed unit, discover old user services with
   `ps|grep|awk`, or interpolate a discovered user into `systemctl --machine=...`. Maintainer scripts use
-  `deb-systemd-helper` for enable/disable/purge state and `deb-systemd-invoke` for stop/start/daemon-reload,
-  with `init-system-helpers` declared in the generated Debian control file, and helper failures are no longer
-  converted to maintainer-script success. Fresh install does not stop a nonexistent old unit; upgrade stops an
-  existing old system unit before package transition; configure checks enable, daemon-reload, and start; remove
-  and deconfigure check stop/disable/daemon-reload before deleting entry points and unit files; purge checks
+  `deb-systemd-helper` for enable/disable/purge state, `deb-systemd-invoke` only for unit stop/start, and the
+  fixed manager command `/bin/systemctl --system daemon-reload` for daemon reloads, with `init-system-helpers`
+  declared in the generated Debian control file; helper and manager failures are no longer converted to
+  maintainer-script success. Fresh install does not stop a nonexistent old unit; upgrade stops an existing old
+  system unit before package transition; configure checks enable, manager reload, and start; remove and
+  deconfigure check stop/disable/manager-reload before deleting entry points and unit files; purge checks
   helper-state cleanup and removes the stock root service config tree at `/root/.config/RustDesk`, plus the
   historical lowercase `/root/.config/rustdesk` residue. `build.py` starts Debian package staging from a clean
   `tmpdeb`, uses checked control-script copy operations, and separates `dpkg-deb` from cleanup so package-build
   failure cannot be hidden by `rm -rf`. `scripts/build-debian.sh` extracts each emitted `.deb`, compares
-  `preinst`/`postinst`/`prerm`/`postrm` byte-for-byte with `res/DEBIAN`, and rejects any built maintainer script
-  that masks lifecycle helper failure. The unit no longer carries
+  `preinst`/`postinst`/`prerm`/`postrm` byte-for-byte with `res/DEBIAN`, runs the same maintainer-script
+  lifecycle validator over the built control scripts, and rejects any built maintainer script that masks
+  lifecycle helper failure or reintroduces invalid helper actions. The unit no longer carries
   `ExecStop=pkill -f "rustdesk --"` or `KillMode=mixed`; shutdown is cgroup-scoped `SIGTERM` with
   `TimeoutStopSec=30`/SIGKILL as the fixed backstop. The Linux service parent no longer uses
   `Child::kill()` as the first stop action for the managed `--server` child; it sends `SIGTERM`, waits a bounded
   eight seconds for the existing R-T9 drain, and only then forces the child. Verification closure:
-  `scripts/verify.sh` asserts the helper-layer package scripts, checked helper results, stock root config purge
-  path, checked Debian packaging operations, the `.deb` dependency, absence of legacy raw process/systemctl/pkill stop shapes, the
+  `scripts/verify.sh` asserts the helper-layer package scripts, checked helper/manager results, stock root config
+  purge path, checked Debian packaging operations, the `.deb` dependency, absence of legacy raw process/systemctl/pkill stop shapes, the
   cgroup-scoped unit stop mode, and the SIGTERM-first managed-child supervisor path; `scripts/build-debian.sh`
   enforces the built-control-script proof before hashing artifacts.
 - **R-S11c-7 — Linux `_pa` audio helper capability — CLOSED 2026-07-09.** Platform: Linux desktop while the
@@ -1518,9 +1520,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   service start/stop/enable/disable now invoke fixed trusted `systemctl` paths with direct argv, and service install
   does not import active-user config into root service state. R-S11c-10j closes the
   Debian package lifecycle and unit stop layer: maintainer scripts use checked
-  `deb-systemd-helper`/`deb-systemd-invoke` operations instead of raw init/systemctl/process-table probes,
-  `build.py` cannot mask Debian control-script/package-build failures, the release build compares emitted
-  `.deb` maintainer scripts to source before hashing artifacts, and the unit/supervisor stop path is
+  `deb-systemd-helper`/`deb-systemd-invoke` operations for unit state/actions plus a fixed checked system manager
+  reload instead of raw init/process-table probes or invalid helper actions, `build.py` cannot mask Debian
+  control-script/package-build failures, the release build compares emitted `.deb` maintainer scripts to source
+  and validates their lifecycle semantics before hashing artifacts, and the unit/supervisor stop path is
   cgroup/SIGTERM-first with a bounded forced-stop backstop. R-S11c-10k closes Linux root/service helper command provenance:
   the root-to-user `sudo` transition, `env` fallback, `w`, `xrandr`, `xdg-screensaver`, and `systemctl`
   resolve only trusted fixed `/usr/bin`/`/bin` candidates and now execute the trusted canonical target after

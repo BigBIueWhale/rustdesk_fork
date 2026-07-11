@@ -1438,9 +1438,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   commit is accepted only by a service-owned server from a root peer. Windows installed-service provisioning is closed by
   R-S11b-2d/R-S11c-1e: the `_service` request requires an elevated connected pipe-client token, and the final
   main-server commit is accepted only from a LocalSystem service peer. macOS installed-service provisioning is
-  closed by R-S11b-2e/R-S11c-1f: the `_service` path authenticates the connected root helper, obtains the explicit
-  non-shared timeout-zero RustDesk Authorization Services right before sending the password, verifies that external
-  form noninteractively in the LaunchDaemon, writes the authorized value directly into the root LaunchDaemon credential
+  closed by R-S11b-2e/R-S11c-1f: the `_service` path authenticates the connected root helper, asks that helper to
+  normalize the explicit non-shared timeout-zero RustDesk Authorization Services right before the UI obtains an
+  external form, verifies that exact-definition external form noninteractively in the LaunchDaemon, writes the
+  authorized value directly into the root LaunchDaemon credential
   store without a pending plaintext cache, rejects the old
   macOS main-server commit fallback, and serves that root credential to the service-owned LaunchAgent only as a
   launchd-owned runtime snapshot after exact live argv plus pid/path and parsed root-owned plist command-shape proof;
@@ -1569,6 +1570,23 @@ unreachable and a source/test/AST gate prevents reintroduction.
   gates the receiver authenticator, exact argv helper and test, same-uid/executable/argv checks, authenticated
   password query/write connector, service-owned-first routing in both capability and setter functions, and this
   requirements/ledger disposition.
+- **R-S11e-8 — macOS service-owned password right normalization before authorization — CLOSED 2026-07-11.**
+  Platform: macOS installed-service mode. Endpoint/action: service-owned unattended-password authorization through
+  Authorization Services and the root `_service` helper. Boundary: UI/CLI password entry and Authorization Services
+  policy database ↔ root LaunchDaemon credential authority. Attack surface closed: the UI no longer calls
+  `AuthorizationCopyRights` against a merely existing or stale `com.carriez.RustDesk.set-unattended-password` right.
+  After authenticating the connected `_service` peer as the trusted privileged helper, the client sends a no-secret
+  `MacosServiceOwnedPasswordRightReadyRequest`; the helper runs the existing exact right setup and returns
+  `MacosServiceOwnedPasswordRightReadyResult(bool)`. Only then does the UI create the external authorization form.
+  The native creator no longer accepts existence-only state: `MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm`
+  requires `RustDeskSetUnattendedPasswordRightMatchesExpected`, which reads the right definition and checks
+  `class=user`, `group=admin`, `shared=false`, `allow-root=false`, `authenticate-user=true`,
+  `session-owner=false`, `extract-password=false`, and `timeout=0` before prompting. Fresh authdb first use is
+  therefore seeded by the trusted helper before the prompt, and stale/weaker definitions fail closed instead of being used for
+  the authorization grant. Verification closure: `scripts/verify.sh` and `scripts/apple-conform-check.sh` gate the
+  readiness request/result, service-channel allowlist, client ordering from authenticated `_service` connect to
+  readiness to `AuthorizationCopyRights` to password send, exact native dictionary validation, absence of the old
+  existence-only helper, and this requirements/ledger disposition.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows

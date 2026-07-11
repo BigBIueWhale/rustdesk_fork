@@ -466,6 +466,10 @@ pub enum Data {
         authorization: Vec<u8>,
     },
     #[cfg(target_os = "macos")]
+    MacosServiceOwnedPasswordRightReadyRequest,
+    #[cfg(target_os = "macos")]
+    MacosServiceOwnedPasswordRightReadyResult(bool),
+    #[cfg(target_os = "macos")]
     MacosServiceOwnedPermanentPasswordSnapshotRequest,
     #[cfg(target_os = "macos")]
     MacosServiceOwnedPermanentPasswordSnapshot {
@@ -1090,6 +1094,7 @@ pub(crate) fn main_channel_admits_state_mutation(
         Data::RequestServiceOwnedUnattendedPasswordChange(_) => false,
         #[cfg(target_os = "macos")]
         Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. }
+        | Data::MacosServiceOwnedPasswordRightReadyRequest
         | Data::MacosServiceOwnedPermanentPasswordSnapshotRequest => false,
         // Whole-options writes are ordinary user-owned configuration writes. A service-owned server
         // enforces machine policy and must not accept them over the generic main IPC config bus.
@@ -1153,7 +1158,8 @@ pub(crate) fn main_channel_admits_state_mutation(
         #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         Data::ServiceOwnedUnattendedPasswordChangeResult(_) => true,
         #[cfg(target_os = "macos")]
-        Data::MacosServiceOwnedPermanentPasswordSnapshot { .. } => true,
+        Data::MacosServiceOwnedPasswordRightReadyResult(_)
+        | Data::MacosServiceOwnedPermanentPasswordSnapshot { .. } => true,
         #[cfg(target_os = "windows")]
         Data::ServiceOwnedShareRdpResult(_)
         | Data::ClipboardFile(_)
@@ -1195,6 +1201,14 @@ async fn send_main_channel_mutation_rejection_ack(data: &Data, stream: &mut Conn
                     .await
             );
         }
+        #[cfg(target_os = "macos")]
+        Data::MacosServiceOwnedPasswordRightReadyRequest => {
+            allow_err!(
+                stream
+                    .send(&Data::MacosServiceOwnedPasswordRightReadyResult(false))
+                    .await
+            );
+        }
         #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         Data::CommitServiceOwnedUnattendedPasswordChange(_) => {
             allow_err!(
@@ -1222,6 +1236,7 @@ pub(crate) fn service_channel_admits_message(data: &Data) -> bool {
         Data::RequestServiceOwnedUnattendedPasswordChange(_) => true,
         #[cfg(target_os = "macos")]
         Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. }
+        | Data::MacosServiceOwnedPasswordRightReadyRequest
         | Data::MacosServiceOwnedPermanentPasswordSnapshotRequest => true,
         _ => false,
     }
@@ -2463,11 +2478,28 @@ async fn handle(data: Data, stream: &mut Connection, channel: IpcChannel) {
             .await;
         }
         #[cfg(target_os = "macos")]
+        Data::MacosServiceOwnedPasswordRightReadyRequest => {
+            let ready = channel == IpcChannel::Service
+                && macos_service_owned_password_authorization_right_is_ready();
+            if !ready {
+                log::warn!(
+                    "Rejected macOS service-owned password authorization-right readiness request"
+                );
+            }
+            allow_err!(
+                stream
+                    .send(&Data::MacosServiceOwnedPasswordRightReadyResult(ready))
+                    .await
+            );
+        }
+        #[cfg(target_os = "macos")]
         Data::MacosServiceOwnedPermanentPasswordSnapshotRequest => {
             handle_macos_service_owned_permanent_password_snapshot_request(channel, stream).await;
         }
         #[cfg(target_os = "macos")]
         Data::MacosServiceOwnedPermanentPasswordSnapshot { .. } => {}
+        #[cfg(target_os = "macos")]
+        Data::MacosServiceOwnedPasswordRightReadyResult(_) => {}
         #[cfg(target_os = "windows")]
         Data::RequestServiceOwnedUnattendedPasswordChange(_) => {
             allow_err!(
@@ -3251,6 +3283,19 @@ pub fn set_service_owned_unattended_password(v: String) -> ResultType<()> {
     }
 }
 
+#[cfg(target_os = "macos")]
+async fn macos_service_owned_password_authorization_right_ready(
+    c: &mut ConnectionTmpl<ConnClient>,
+    ms_timeout: u64,
+) -> ResultType<bool> {
+    c.send(&Data::MacosServiceOwnedPasswordRightReadyRequest)
+        .await?;
+    match c.next_timeout(ms_timeout).await? {
+        Some(Data::MacosServiceOwnedPasswordRightReadyResult(ready)) => Ok(ready),
+        _ => Ok(false),
+    }
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 #[tokio::main(flavor = "current_thread")]
 async fn set_service_owned_unattended_password_with_ack(v: String) -> ResultType<bool> {
@@ -3263,6 +3308,9 @@ async fn set_service_owned_unattended_password_with_ack(v: String) -> ResultType
     }
     #[cfg(target_os = "macos")]
     {
+        if !macos_service_owned_password_authorization_right_ready(&mut c, ms_timeout).await? {
+            return Ok(false);
+        }
         let authorization = match crate::platform::service_owned_unattended_password_authorization()
         {
             Ok(authorization) => authorization,
@@ -3897,6 +3945,14 @@ mod test {
             );
             assert!(
                 !main_channel_admits_state_mutation(
+                    &Data::MacosServiceOwnedPasswordRightReadyRequest,
+                    service_owned,
+                    root_peer
+                ),
+                "R-S11c-1: macOS service-owned password right readiness goes to _service, not main IPC"
+            );
+            assert!(
+                !main_channel_admits_state_mutation(
                     &Data::CommitServiceOwnedUnattendedPasswordChange("pw".to_owned()),
                     service_owned,
                     root_peer
@@ -4062,6 +4118,11 @@ mod test {
             ),
             "R-S11c-1: macOS _service accepts the typed service-owned password snapshot request in addition to liveness"
         );
+        #[cfg(target_os = "macos")]
+        assert!(
+            service_channel_admits_message(&Data::MacosServiceOwnedPasswordRightReadyRequest),
+            "R-S11c-1: macOS _service accepts the no-secret authorization-right readiness request in addition to liveness"
+        );
         assert!(
             !service_channel_admits_message(&Data::Options(None)),
             "R-S11b-1: _service is not an options/config read channel"
@@ -4077,6 +4138,11 @@ mod test {
         assert!(
             !service_channel_admits_message(&Data::SetUserOwnedPermanentPassword("pw".to_owned())),
             "R-S11b-2: _service does not accept user-owned credential writes"
+        );
+        #[cfg(target_os = "macos")]
+        assert!(
+            !service_channel_admits_message(&Data::MacosServiceOwnedPasswordRightReadyResult(true)),
+            "R-S11c-1: _service clients cannot send readiness result frames"
         );
     }
 

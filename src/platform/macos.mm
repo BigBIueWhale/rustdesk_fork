@@ -106,13 +106,47 @@ static const char *RustDeskSetUnattendedPasswordRight() {
     return "com.carriez.RustDesk.set-unattended-password";
 }
 
-static bool RustDeskSetUnattendedPasswordRightExists() {
+static bool DictionaryStringEquals(CFDictionaryRef dictionary, CFStringRef key, CFStringRef expected) {
+    CFTypeRef value = CFDictionaryGetValue(dictionary, key);
+    return value != NULL &&
+           CFGetTypeID(value) == CFStringGetTypeID() &&
+           CFStringCompare((CFStringRef)value, expected, 0) == kCFCompareEqualTo;
+}
+
+static bool DictionaryBooleanEquals(CFDictionaryRef dictionary, CFStringRef key, Boolean expected) {
+    CFTypeRef value = CFDictionaryGetValue(dictionary, key);
+    return value != NULL &&
+           CFGetTypeID(value) == CFBooleanGetTypeID() &&
+           CFBooleanGetValue((CFBooleanRef)value) == expected;
+}
+
+static bool DictionaryInt32Equals(CFDictionaryRef dictionary, CFStringRef key, int32_t expected) {
+    CFTypeRef value = CFDictionaryGetValue(dictionary, key);
+    if (value == NULL || CFGetTypeID(value) != CFNumberGetTypeID()) {
+        return false;
+    }
+    int32_t observed = 0;
+    return CFNumberGetValue((CFNumberRef)value, kCFNumberSInt32Type, &observed) &&
+           observed == expected;
+}
+
+static bool RustDeskSetUnattendedPasswordRightMatchesExpected() {
     CFDictionaryRef rightDefinition = NULL;
     OSStatus status = AuthorizationRightGet(RustDeskSetUnattendedPasswordRight(), &rightDefinition);
-    if (rightDefinition != NULL) {
-        CFRelease(rightDefinition);
+    if (status != errAuthorizationSuccess || rightDefinition == NULL) {
+        return false;
     }
-    return status == errAuthorizationSuccess;
+    bool matches =
+        DictionaryStringEquals(rightDefinition, CFSTR("class"), CFSTR("user")) &&
+        DictionaryStringEquals(rightDefinition, CFSTR("group"), CFSTR("admin")) &&
+        DictionaryBooleanEquals(rightDefinition, CFSTR("shared"), false) &&
+        DictionaryBooleanEquals(rightDefinition, CFSTR("allow-root"), false) &&
+        DictionaryBooleanEquals(rightDefinition, CFSTR("authenticate-user"), true) &&
+        DictionaryBooleanEquals(rightDefinition, CFSTR("session-owner"), false) &&
+        DictionaryBooleanEquals(rightDefinition, CFSTR("extract-password"), false) &&
+        DictionaryInt32Equals(rightDefinition, CFSTR("timeout"), 0);
+    CFRelease(rightDefinition);
+    return matches;
 }
 
 static bool EnsureRustDeskSetUnattendedPasswordRight() {
@@ -126,15 +160,23 @@ static bool EnsureRustDeskSetUnattendedPasswordRight() {
         CFSTR("class"),
         CFSTR("group"),
         CFSTR("shared"),
+        CFSTR("allow-root"),
+        CFSTR("authenticate-user"),
+        CFSTR("session-owner"),
+        CFSTR("extract-password"),
         CFSTR("timeout"),
     };
     const void *values[] = {
         CFSTR("user"),
         CFSTR("admin"),
         kCFBooleanFalse,
+        kCFBooleanFalse,
+        kCFBooleanTrue,
+        kCFBooleanFalse,
+        kCFBooleanFalse,
         timeoutNumber,
     };
-    CFDictionaryRef rightDefinition = CFDictionaryCreate(NULL, keys, values, 4,
+    CFDictionaryRef rightDefinition = CFDictionaryCreate(NULL, keys, values, 8,
                                                          &kCFCopyStringDictionaryKeyCallBacks,
                                                          &kCFTypeDictionaryValueCallBacks);
     if (rightDefinition == NULL) {
@@ -162,7 +204,7 @@ extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm
     if (buffer == NULL || len != sizeof(AuthorizationExternalForm)) {
         return false;
     }
-    if (!RustDeskSetUnattendedPasswordRightExists()) {
+    if (!RustDeskSetUnattendedPasswordRightMatchesExpected()) {
         return false;
     }
 

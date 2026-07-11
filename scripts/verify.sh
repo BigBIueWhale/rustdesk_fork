@@ -1506,6 +1506,7 @@ grep -q 'Data::Test => true' src/ipc.rs || r_s11b="$r_s11b service-gate-misses-t
 grep -q 'Data::RequestServiceOwnedUnattendedPasswordChange(_) => true' src/ipc.rs || r_s11b="$r_s11b linux-service-password-request-not-typed"
 service_message_gate=$(awk '/pub\(crate\) fn service_channel_admits_message/,/^}/' src/ipc.rs)
 echo "$service_message_gate" | grep -q 'Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. }' || r_s11b="$r_s11b macos-service-password-authorized-request-not-typed"
+echo "$service_message_gate" | grep -q 'Data::MacosServiceOwnedPasswordRightReadyRequest' || r_s11b="$r_s11b macos-service-password-right-readiness-request-not-typed"
 echo "$service_message_gate" | grep -q 'Data::MacosServiceOwnedPermanentPasswordSnapshotRequest' || r_s11b="$r_s11b macos-service-password-runtime-snapshot-not-typed"
 service_dispatch_block=$(awk '/service_channel_admits_message\(&data\)/,/continue;/' src/ipc.rs)
 echo "$service_dispatch_block" | grep -q 'service_channel_admits_message(&data)' || r_s11b="$r_s11b service-loop-not-wired"
@@ -1741,22 +1742,44 @@ src = Path("src/ipc.rs").read_text()
 start = src.index("async fn set_service_owned_unattended_password_with_ack")
 end = src.index("#[cfg(target_os = \"windows\")]", start)
 body = src[start:end]
+ready = body.find("macos_service_owned_password_authorization_right_ready(&mut c, ms_timeout).await?")
 auth = body.find("service_owned_unattended_password_authorization()")
 send = body.find("Data::RequestMacosServiceOwnedUnattendedPasswordChange")
-raise SystemExit(0 if auth != -1 and send != -1 and auth < send else 1)
+raise SystemExit(0 if ready != -1 and auth != -1 and send != -1 and ready < auth < send else 1)
 PY
 then
-  r_s11b2="$r_s11b2 macos-service-password-ui-sends-value-before-authorization"
+  r_s11b2="$r_s11b2 macos-service-password-ui-skips-right-readiness-or-sends-before-authorization"
 fi
 if grep -qE 'macos_service_owned_unattended_password_digest|MACOS_SERVICE_OWNED_PASSWORD_REQUEST_CONTEXT|password_digest' src/ipc.rs; then
   r_s11b2="$r_s11b2 macos-service-password-stale-digest-binding"
 fi
 grep -q 'macos_service_owned_password_authorization_right_is_ready' src/ipc.rs      || r_s11b2="$r_s11b2 macos-service-password-right-readiness-gate-missing"
+grep -q 'MacosServiceOwnedPasswordRightReadyRequest' src/ipc.rs                    || r_s11b2="$r_s11b2 macos-service-password-right-readiness-request-missing"
+grep -q 'MacosServiceOwnedPasswordRightReadyResult(bool)' src/ipc.rs               || r_s11b2="$r_s11b2 macos-service-password-right-readiness-result-missing"
+grep -q 'macos_service_owned_password_authorization_right_ready' src/ipc.rs        || r_s11b2="$r_s11b2 macos-service-password-right-readiness-client-missing"
+grep -q 'MacosServiceOwnedPasswordRightReadyResult(ready)' src/ipc.rs              || r_s11b2="$r_s11b2 macos-service-password-right-readiness-handler-result-missing"
 grep -q 'MacEnsureServiceOwnedUnattendedPasswordAuthorizationRight' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-setup-missing"
 grep -q 'AuthorizationRightSet(NULL' src/platform/macos.mm                         || r_s11b2="$r_s11b2 macos-service-password-right-set-missing"
 grep -q 'AuthorizationRightGet(RustDeskSetUnattendedPasswordRight()' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-existence-check-missing"
+grep -q 'RustDeskSetUnattendedPasswordRightMatchesExpected' src/platform/macos.mm  || r_s11b2="$r_s11b2 macos-service-password-right-exact-definition-check-missing"
+grep -q 'DictionaryStringEquals(rightDefinition, CFSTR("class"), CFSTR("user"))' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-class-not-validated"
+grep -q 'DictionaryStringEquals(rightDefinition, CFSTR("group"), CFSTR("admin"))' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-group-not-validated"
+grep -q 'DictionaryBooleanEquals(rightDefinition, CFSTR("shared"), false)' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-shared-not-validated"
+grep -q 'DictionaryBooleanEquals(rightDefinition, CFSTR("allow-root"), false)' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-allow-root-not-validated"
+grep -q 'DictionaryBooleanEquals(rightDefinition, CFSTR("authenticate-user"), true)' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-authenticate-user-not-validated"
+grep -q 'DictionaryBooleanEquals(rightDefinition, CFSTR("session-owner"), false)' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-session-owner-not-validated"
+grep -q 'DictionaryBooleanEquals(rightDefinition, CFSTR("extract-password"), false)' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-extract-password-not-validated"
+grep -q 'DictionaryInt32Equals(rightDefinition, CFSTR("timeout"), 0)' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-timeout-not-validated"
+grep -q 'CFDictionaryGetValue' src/platform/macos.mm                              || r_s11b2="$r_s11b2 macos-service-password-right-dictionary-read-missing"
+grep -q 'CFStringCompare' src/platform/macos.mm                                   || r_s11b2="$r_s11b2 macos-service-password-right-string-compare-missing"
+grep -q 'CFBooleanGetValue' src/platform/macos.mm                                 || r_s11b2="$r_s11b2 macos-service-password-right-bool-compare-missing"
+grep -q 'CFNumberGetValue' src/platform/macos.mm                                  || r_s11b2="$r_s11b2 macos-service-password-right-number-compare-missing"
 grep -q 'CFSTR("shared")' src/platform/macos.mm                                    || r_s11b2="$r_s11b2 macos-service-password-right-shared-key-missing"
 grep -q 'kCFBooleanFalse' src/platform/macos.mm                                    || r_s11b2="$r_s11b2 macos-service-password-right-not-nonshared"
+grep -q 'CFSTR("allow-root")' src/platform/macos.mm                                || r_s11b2="$r_s11b2 macos-service-password-right-allow-root-key-missing"
+grep -q 'CFSTR("authenticate-user")' src/platform/macos.mm                         || r_s11b2="$r_s11b2 macos-service-password-right-authenticate-user-key-missing"
+grep -q 'CFSTR("session-owner")' src/platform/macos.mm                             || r_s11b2="$r_s11b2 macos-service-password-right-session-owner-key-missing"
+grep -q 'CFSTR("extract-password")' src/platform/macos.mm                          || r_s11b2="$r_s11b2 macos-service-password-right-extract-password-key-missing"
 grep -q 'CFSTR("timeout")' src/platform/macos.mm                                   || r_s11b2="$r_s11b2 macos-service-password-right-timeout-key-missing"
 grep -q 'const int32_t timeout = 0' src/platform/macos.mm                          || r_s11b2="$r_s11b2 macos-service-password-right-timeout-not-zero"
 grep -q 'CFSTR("group")' src/platform/macos.mm                                     || r_s11b2="$r_s11b2 macos-service-password-right-group-key-missing"
@@ -1770,6 +1793,9 @@ grep -q 'RustDeskSetUnattendedPasswordRight' src/platform/macos.mm              
 grep -q 'com.carriez.RustDesk.set-unattended-password' src/platform/macos.mm        || r_s11b2="$r_s11b2 macos-service-password-right-name-missing"
 if grep -qE 'RequestDigestIsValid|kAuthorizationEnvironmentPrompt|MacCreateAdminAuthorizationExternalFormForRequest|MacVerifyAdminAuthorizationExternalFormForRequest' src/platform/macos.mm; then
   r_s11b2="$r_s11b2 macos-service-password-stale-digest-native-auth"
+fi
+if grep -q 'RustDeskSetUnattendedPasswordRightExists' src/platform/macos.mm; then
+  r_s11b2="$r_s11b2 macos-service-password-existence-only-right-check-present"
 fi
 if grep -q 'request_digest' src/platform/macos.rs; then
   r_s11b2="$r_s11b2 macos-service-password-rust-api-still-digest-bound"

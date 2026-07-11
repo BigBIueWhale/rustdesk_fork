@@ -795,7 +795,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   write/delete sharing denial on EXE command staging, fixed Flutter install entry, fixed-root EXE service entry
   points, fatal EXE `sc` errors, MSI private install root, absence of MSI browse/public install-folder routing,
   checked MSI privileged custom-action returns, native service-delete verification, absence of MSI
-  `sc`/`cmd.exe`/`reg` shell fallbacks, and this ledger/requirements disposition.
+  `sc`/`cmd.exe`/`reg` shell fallbacks, post-elevated relaunch executable authority via R-S11d-30, and this
+  ledger/requirements disposition.
 - **R-S11d-1 — Windows Amyuni IDD helper launch provenance — CLOSED 2026-07-10.** Platform:
   Windows MSI deferred custom action and runtime virtual-display helper path. Endpoint/action:
   `deviceinstaller64.exe` under `usbmmidd_v2`, launched to install/remove the Amyuni virtual-display driver.
@@ -1168,6 +1169,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   sources, asserts the `FOLDERID_UserProfiles` and `FOLDERID_Windows` helpers, the username component/control guard,
   the root-recording ProgramData known-folder path, the Windows Temp known-folder fallback, and this
   ledger/requirements disposition.
+- **R-S11d-30 — Windows elevated post-install relaunch executable authority — CLOSED 2026-07-11.** Platform:
+  Windows EXE install, service install, and service uninstall paths. Endpoint/action: post-elevated GUI/tray
+  relaunch after privileged batch completion. Boundary: elevated installer/service-management process ↔ child
+  executable authority. Attack surface closed: the post-elevated relaunch helper no longer chooses its executable
+  by calling `get_install_info()`, whose compatibility behavior prefers legacy uninstall registry keys before
+  the current app key. Normal install passes the fixed Program Files executable already chosen by `install_me`;
+  service install and service uninstall resolve the same `fixed_service_install_dir_and_exe()` executable before
+  running their elevated batches. The helper revalidates that the passed executable exactly matches the fixed
+  Program Files service executable, requires it to exist as a file, and propagates GUI/tray spawn errors instead
+  of hiding them behind `allow_err!`. Legacy uninstall registry metadata may remain compatibility/read-only
+  install state, but it no longer selects any elevated post-install child process. Verification closure:
+  `scripts/verify.sh` asserts the new helper shape, all three fixed-executable call sites, the fixed-root recheck,
+  file-existence check, absence of `get_install_info()` in the helper body, absence of the old
+  `run_after_run_cmds` helper, and this requirements/ledger disposition.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's

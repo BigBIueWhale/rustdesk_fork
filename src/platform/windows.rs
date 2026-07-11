@@ -2490,7 +2490,7 @@ if not exist {quoted_start_menu} exit /b 1
         shortcut_cmds = shortcut_cmds,
     );
     run_cmds(cmds, debug, "install")?;
-    run_after_run_cmds(silent);
+    run_after_elevated_service_cmds(&exe, silent)?;
     Ok(())
 }
 
@@ -3865,6 +3865,13 @@ pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
             return false;
         }
     };
+    let (_, exe) = match fixed_service_install_dir_and_exe() {
+        Ok(info) => info,
+        Err(err) => {
+            log::error!("Failed to resolve fixed Windows service executable: {err}");
+            return false;
+        }
+    };
     let filter = format!(" /FI \"PID ne {}\"", get_current_pid());
     let startup_tray_shortcut =
         match common_startup_tray_shortcut_path().and_then(|path| quoted_batch_path(&path)) {
@@ -3903,7 +3910,10 @@ pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
         log::error!("{err}");
         return false;
     }
-    run_after_run_cmds(!show_new_window);
+    if let Err(err) = run_after_elevated_service_cmds(&exe, !show_new_window) {
+        log::error!("{err}");
+        return false;
+    }
     std::process::exit(0);
 }
 
@@ -3986,7 +3996,10 @@ pub fn install_service() -> bool {
         log::error!("{err}");
         return false;
     }
-    run_after_run_cmds(false);
+    if let Err(err) = run_after_elevated_service_cmds(&exe, false) {
+        log::error!("{err}");
+        return false;
+    }
     std::process::exit(0);
 }
 
@@ -4077,15 +4090,27 @@ fn get_create_service(exe: &str, tools: &WindowsSystemTools) -> String {
     app_name = crate::get_app_name())
 }
 
-fn run_after_run_cmds(silent: bool) {
-    let (_, _, exe) = get_install_info();
+fn run_after_elevated_service_cmds(installed_exe: &str, silent: bool) -> ResultType<()> {
+    let (_, fixed_exe) = fixed_service_install_dir_and_exe()?;
+    if normalized_windows_path_text(Path::new(installed_exe))
+        != normalized_windows_path_text(Path::new(&fixed_exe))
+    {
+        bail!("post-service command executable is not the fixed installed executable");
+    }
+
+    let exe = Path::new(installed_exe);
+    if !exe.is_file() {
+        bail!("fixed installed executable is missing: {installed_exe}");
+    }
+
     if !silent {
         log::debug!("Spawn new window");
-        allow_err!(std::process::Command::new(&exe).spawn());
+        std::process::Command::new(exe).spawn()?;
     }
     // R-X9: the stop-service toggle is excised — the tray (re)spawns with the always-present service.
-    allow_err!(std::process::Command::new(&exe).arg("--tray").spawn());
+    std::process::Command::new(exe).arg("--tray").spawn()?;
     std::thread::sleep(std::time::Duration::from_millis(300));
+    Ok(())
 }
 
 #[inline]

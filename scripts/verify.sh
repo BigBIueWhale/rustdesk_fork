@@ -454,6 +454,20 @@ grep -q 'fn fixed_service_install_path(requested_path: &str) -> ResultType<PathB
 grep -q 'fn fixed_service_install_dir_and_exe() -> ResultType<(String, String)>' src/platform/windows.rs || r_s11d="$r_s11d exe:no-fixed-service-exe-helper"
 grep -q 'let (_, exe) = fixed_service_install_dir_and_exe()?' src/platform/windows.rs || r_s11d="$r_s11d exe:after-install-bypasses-fixed-service-root"
 grep -q 'let (path, exe) = match fixed_service_install_dir_and_exe()' src/platform/windows.rs || r_s11d="$r_s11d exe:install-service-bypasses-fixed-service-root"
+grep -q 'fn run_after_elevated_service_cmds(installed_exe: &str, silent: bool) -> ResultType<()>' src/platform/windows.rs || r_s11d="$r_s11d exe:post-elevated-relaunch-helper-missing"
+grep -q 'run_after_elevated_service_cmds(&exe, silent)?;' src/platform/windows.rs || r_s11d="$r_s11d exe:install-relaunch-not-bound-to-fixed-exe"
+grep -q 'run_after_elevated_service_cmds(&exe, !show_new_window)' src/platform/windows.rs || r_s11d="$r_s11d exe:service-uninstall-relaunch-not-bound-to-fixed-exe"
+grep -q 'run_after_elevated_service_cmds(&exe, false)' src/platform/windows.rs || r_s11d="$r_s11d exe:service-install-relaunch-not-bound-to-fixed-exe"
+post_elevated_relaunch_body=$(awk '/^fn run_after_elevated_service_cmds\(/,/^}/' src/platform/windows.rs)
+echo "$post_elevated_relaunch_body" | grep -q 'fixed_service_install_dir_and_exe()?' || r_s11d="$r_s11d exe:post-elevated-relaunch-does-not-verify-fixed-root"
+echo "$post_elevated_relaunch_body" | grep -q 'normalized_windows_path_text(Path::new(installed_exe))' || r_s11d="$r_s11d exe:post-elevated-relaunch-no-exact-path-check"
+echo "$post_elevated_relaunch_body" | grep -q 'if !exe.is_file()' || r_s11d="$r_s11d exe:post-elevated-relaunch-missing-file-check"
+if echo "$post_elevated_relaunch_body" | grep -q 'get_install_info()'; then
+  r_s11d="$r_s11d exe:post-elevated-relaunch-uses-registry-install-info"
+fi
+if grep -q 'run_after_run_cmds' src/platform/windows.rs || grep -q 'allow_err!(std::process::Command::new(&exe)' src/platform/windows.rs; then
+  r_s11d="$r_s11d exe:post-elevated-relaunch-best-effort-or-registry-helper-leftover"
+fi
 grep -q 'custom Windows install paths are not supported for the installed service' src/platform/windows.rs || r_s11d="$r_s11d exe:custom-path-not-rejected"
 grep -q 'GetSystemDirectoryW(Some(&mut buffer))' src/platform/windows.rs || r_s11d="$r_s11d exe:no-trusted-cmd-path"
 grep -q 'runas::Command::new(cmd)' src/platform/windows.rs || r_s11d="$r_s11d exe:elevated-cmd-not-absolute"
@@ -552,6 +566,8 @@ if grep -qE 'ShellExecuteA|let mut exe_file = INSTALLER_EXE_FILE\.bytes|ShellExe
 fi
 grep -q 'Windows installer service-binary root and elevated script authority' requirements.html || r_s11d="$r_s11d requirements-disposition-missing"
 grep -q 'R-S11d — Windows installer service-root authority' HARDENING_STATUS.md || r_s11d="$r_s11d hardening-ledger-missing"
+grep -q 'Windows elevated post-install relaunch executable authority' requirements.html || r_s11d="$r_s11d post-elevated-relaunch-requirements-disposition-missing"
+grep -q 'R-S11d-30 — Windows elevated post-install relaunch executable authority' HARDENING_STATUS.md || r_s11d="$r_s11d post-elevated-relaunch-hardening-ledger-missing"
 grep -q 'Windows Amyuni IDD helper launch provenance' requirements.html || r_s11d="$r_s11d amyuni-requirements-disposition-missing"
 grep -q 'R-S11d-1 — Windows Amyuni IDD helper launch provenance' HARDENING_STATUS.md || r_s11d="$r_s11d amyuni-hardening-ledger-missing"
 grep -q 'Windows Amyuni IDD cleanup completion authority' requirements.html || r_s11d="$r_s11d amyuni-cleanup-requirements-disposition-missing"
@@ -725,7 +741,7 @@ grep -q 'R-S11d-12 — Windows privacy broker and user shortcut process provenan
 grep -q 'Windows MSI runtime-generated executable cleanup completion authority' requirements.html || r_s11d="$r_s11d runtime-generated-cleanup-requirements-disposition-missing"
 grep -q 'R-S11d-4 — Windows MSI runtime-generated executable cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d runtime-generated-cleanup-hardening-ledger-missing"
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else
-  echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path; MSI cleanup observes Amyuni and runtime-generated executable completion; portable installer source staging is elevated/protected/manifest-cleaned; unsupported 32-bit WMIC process probes are absent"; fi
+  echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; post-elevated relaunch is bound to the fixed installed executable; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path; MSI cleanup observes Amyuni and runtime-generated executable completion; portable installer source staging is elevated/protected/manifest-cleaned; unsupported 32-bit WMIC process probes are absent"; fi
 
 echo "== (3b-iii-a5d2) Windows service/session token launch binds executable identity (R-S11d-13) =="
 r_s11d13=

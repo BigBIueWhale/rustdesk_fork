@@ -421,7 +421,7 @@ pub(crate) fn authenticate_windows_service_owned_main_server(
     stream: &ConnectionTmpl<parity_tokio_ipc::ConnectionClient>,
 ) -> ResultType<()> {
     let server_pid = windows_named_pipe_server_pid(stream.inner.get_ref())?;
-    ensure_peer_executable_matches_current_by_pid(server_pid, "")?;
+    ensure_peer_executable_matches_fixed_windows_service_exe_by_pid(server_pid, "")?;
     let is_system =
         crate::platform::windows::is_process_running_as_system(server_pid).map_err(|err| {
             anyhow::anyhow!(
@@ -432,8 +432,8 @@ pub(crate) fn authenticate_windows_service_owned_main_server(
     if !is_system {
         bail!("Windows service-owned main IPC server is not running as LocalSystem");
     }
-    if !peer_process_is_current_exe_service_owned_server(server_pid) {
-        bail!("Windows service-owned main IPC server is not the current executable's exact --server --service-owned-server process");
+    if !peer_process_has_windows_service_owned_server_args(server_pid) {
+        bail!("Windows service-owned main IPC server is not the exact --server --service-owned-server process");
     }
     Ok(())
 }
@@ -1611,6 +1611,32 @@ pub(crate) fn ensure_peer_executable_matches_current_by_pid_opt(
     ensure_peer_executable_matches_current_by_pid(peer_pid, postfix)
 }
 
+#[cfg(target_os = "windows")]
+fn ensure_peer_executable_matches_fixed_windows_service_exe_by_pid(
+    peer_pid: u32,
+    postfix: &str,
+) -> ResultType<()> {
+    let peer_exe = peer_exe_canonical_path_by_pid(peer_pid)?;
+    let expected_exe = crate::platform::windows::fixed_service_install_exe_path()?;
+    let expected_exe = fs::canonicalize(&expected_exe).map_err(|err| {
+        anyhow::anyhow!(
+            "Failed to canonicalize fixed Windows service executable path '{}': {}",
+            expected_exe.display(),
+            err
+        )
+    })?;
+    if executable_paths_match(&peer_exe, &expected_exe) {
+        return Ok(());
+    }
+    bail!(
+        "Peer executable path mismatch on service-owned ipc channel '{}': peer_pid={}, peer_exe='{}', expected_exe='{}'",
+        postfix,
+        peer_pid,
+        peer_exe.display(),
+        expected_exe.display()
+    );
+}
+
 // R-X13 (§8): ensure_peer_executable_matches_current_by_fd (the FD-based exe-match used ONLY by the
 // uinput peer authorizer) is removed with the uinput module. Linux _service and non-service
 // helper channels still use the _by_pid variant; macOS _service uses the audit-token identity path.
@@ -1889,8 +1915,8 @@ fn peer_process_is_current_exe_server(peer_pid: u32) -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn peer_process_is_current_exe_service_owned_server(peer_pid: u32) -> bool {
-    let Some(exe_name) = std::env::current_exe()
+fn peer_process_has_windows_service_owned_server_args(peer_pid: u32) -> bool {
+    let Some(exe_name) = crate::platform::windows::fixed_service_install_exe_path()
         .ok()
         .and_then(|path| path.file_name().map(|name| name.to_owned()))
     else {

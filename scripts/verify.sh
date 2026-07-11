@@ -920,10 +920,13 @@ if [ -n "$r_s11c20" ]; then echo "  FAIL R-S11c-20 Unix terminal shell command p
 
 echo "== (3b-iii-a5d2) Windows service/session token launch binds executable identity (R-S11d-13) =="
 r_s11d13=
-grep -Fq 'HANDLE LaunchProcessWin(LPCWSTR application, LPCWSTR cmd' src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-signature-not-explicit-application"
+grep -Fq 'HANDLE LaunchProcessWin(LPCWSTR application,' src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-signature-not-explicit-application"
+grep -Fq 'LPCWSTR currentDirectory,' src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-signature-not-explicit-current-directory"
 grep -Fq "application == NULL || application[0] == L'\\0' || cmd == NULL || cmd[0] == L'\\0'" src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-null-empty-guard-missing"
+grep -Fq "currentDirectory == NULL || currentDirectory[0] == L'\\0'" src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-current-directory-null-empty-guard-missing"
 grep -Fq 'std::vector<wchar_t> commandLine(wcslen(cmd) + 1)' src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-dynamic-command-buffer-missing"
 grep -Fq 'CreateProcessAsUserW(hToken, application, commandLine.data()' src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-createprocess-not-bound-to-application"
+grep -Fq 'processEnvironment, currentDirectory, &si, &pi)' src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-createprocess-not-bound-to-current-directory"
 if grep -Fq 'CreateProcessAsUserW(hToken, NULL' src/platform/windows.cc; then
   r_s11d13="$r_s11d13 cpp-null-application-createprocess-leftover"
 fi
@@ -931,7 +934,9 @@ if grep -Fq 'wchar_t buf[MAX_PATH]' src/platform/windows.cc; then
   r_s11d13="$r_s11d13 cpp-fixed-maxpath-command-buffer-leftover"
 fi
 grep -Fq 'application: *const u16,' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-ffi-application-arg-missing"
+grep -Fq 'current_directory: *const u16,' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-ffi-current-directory-arg-missing"
 grep -Fq 'application.as_ptr(),' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-launch-call-not-passing-application"
+grep -Fq 'current_directory.as_ptr(),' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-launch-call-not-passing-current-directory"
 grep -Fq 'fn launch_executable_path(exe: &Path) -> ResultType<&Path>' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-launch-path-validator-missing"
 grep -Fq 'if !exe.is_absolute()' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-absolute-path-requirement-missing"
 grep -Fq 'if !exe.is_file()' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-existing-file-requirement-missing"
@@ -939,8 +944,7 @@ grep -Fq 'fn append_windows_command_arg(command_line: &mut Vec<u16>, arg: &OsStr
 grep -Fq 'backslashes * 2 + 1' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-quote-backslash-before-quote-rule-missing"
 grep -Fq 'backslashes * 2)' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-quote-trailing-backslash-rule-missing"
 grep -Fq 'fn windows_command_line(exe: &Path, arg: &[&str]) -> ResultType<Vec<u16>>' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-command-line-builder-missing"
-grep -Fq 'let exe = std::env::current_exe()?' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-service-current-exe-path-missing"
-launch_server_body=$(awk '/^async fn launch_server\(/,/^fn launch_executable_path/' src/platform/windows.rs)
+launch_server_body=$(awk '/^async fn launch_server\(/,/^}/' src/platform/windows.rs)
 echo "$launch_server_body" | grep -Fq 'launch_process_in_session_with_env(' || r_s11d13="$r_s11d13 rust-launch-server-not-using-bound-helper"
 echo "$launch_server_body" | grep -Fq 'SERVICE_OWNED_SERVER_ARG' || r_s11d13="$r_s11d13 rust-launch-server-arg-missing"
 if echo "$launch_server_body" | grep -Fq 'format!'; then
@@ -955,7 +959,7 @@ fi
 grep -Fq 'Windows service and session-token process launch provenance' requirements.html || r_s11d13="$r_s11d13 requirements-disposition-missing"
 grep -Fq 'R-S11d-13 — Windows service and session-token process launch provenance' HARDENING_STATUS.md || r_s11d13="$r_s11d13 hardening-ledger-missing"
 if [ -n "$r_s11d13" ]; then echo "  FAIL R-S11d-13 Windows service/session token launch provenance:$r_s11d13"; rc=1; else
-  echo "  ok  R-S11d-13 Windows service/session token launches bind lpApplicationName, quote argv separately, and reject ambient executable identity"; fi
+  echo "  ok  R-S11d-13 Windows service/session token launches bind lpApplicationName/current-directory, quote argv separately, and reject ambient executable identity"; fi
 
 echo "== (3b-iii-a5d3) Windows service/session token source is provenance-checked (R-S11d-14) =="
 r_s11d14=
@@ -987,6 +991,48 @@ grep -Fq 'Windows service/session token source provenance' requirements.html || 
 grep -Fq 'R-S11d-14 — Windows service/session token source provenance' HARDENING_STATUS.md || r_s11d14="$r_s11d14 hardening-ledger-missing"
 if [ -n "$r_s11d14" ]; then echo "  FAIL R-S11d-14 Windows service/session token source provenance:$r_s11d14"; rc=1; else
   echo "  ok  R-S11d-14 Windows session launches use WTS user tokens and validated LocalSystem winlogon tokens with minimum rights"; fi
+
+echo "== (3b-iii-a5d3a) Windows service-owned server child executable is fixed-root (R-S11d-37) =="
+r_s11d37=
+grep -Fq 'pub(crate) fn fixed_service_install_exe_path() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d37="$r_s11d37 fixed-exe-path-helper-missing"
+grep -Fq 'pub(crate) fn require_current_exe_is_fixed_service_runtime() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d37="$r_s11d37 helper-missing"
+grep -Fq 'let exe = require_current_exe_is_fixed_service_runtime()?' src/platform/windows.rs || r_s11d37="$r_s11d37 launch-server-not-using-fixed-helper"
+grep -Fq 'let install_dir = fixed_service_install_path("")?' src/platform/windows.rs || r_s11d37="$r_s11d37 helper-not-bound-to-fixed-service-root"
+grep -Fq 'let expected_exe = fixed_service_install_exe_path()?' src/platform/windows.rs || r_s11d37="$r_s11d37 expected-exe-not-derived-from-fixed-root"
+grep -Fq 'let install_dir_identity = require_existing_directory_no_reparse(' src/platform/windows.rs || r_s11d37="$r_s11d37 fixed-root-reparse-check-missing"
+grep -Fq 'require_existing_directory_no_reparse(' src/platform/windows.rs || r_s11d37="$r_s11d37 directory-reparse-helper-missing"
+grep -Fq 'require_existing_file_no_reparse(&expected_exe, "Windows fixed service executable")' src/platform/windows.rs || r_s11d37="$r_s11d37 fixed-exe-reparse-check-missing"
+grep -Fq 'fn windows_path_identity_and_attributes(' src/platform/windows.rs || r_s11d37="$r_s11d37 path-identity-helper-missing"
+grep -Fq 'CreateFileW(' src/platform/windows.rs || r_s11d37="$r_s11d37 identity-open-not-win32"
+grep -Fq 'FILE_READ_ATTRIBUTES' src/platform/windows.rs || r_s11d37="$r_s11d37 identity-open-not-attributes-only"
+grep -Fq 'FILE_FLAG_BACKUP_SEMANTICS' src/platform/windows.rs || r_s11d37="$r_s11d37 identity-open-not-directory-capable"
+grep -Fq 'FILE_FLAG_OPEN_REPARSE_POINT' src/platform/windows.rs || r_s11d37="$r_s11d37 identity-open-not-nofollow"
+grep -Fq 'FILE_ATTRIBUTE_DIRECTORY' src/platform/windows.rs || r_s11d37="$r_s11d37 identity-type-check-missing"
+grep -Fq 'GetFileInformationByHandle(handle, &mut info)' src/platform/windows.rs || r_s11d37="$r_s11d37 identity-not-handle-backed"
+grep -Fq 'windows_path_identity_from_info(&info)' src/platform/windows.rs || r_s11d37="$r_s11d37 identity-not-from-opened-handle-info"
+grep -Fq 'let current_dir_identity = require_existing_directory_no_reparse(' src/platform/windows.rs || r_s11d37="$r_s11d37 current-dir-identity-not-checked"
+grep -Fq 'let install_dir_identity = require_existing_directory_no_reparse(' src/platform/windows.rs || r_s11d37="$r_s11d37 fixed-dir-identity-not-checked"
+grep -Fq 'let current_exe_identity =' src/platform/windows.rs || r_s11d37="$r_s11d37 current-exe-identity-not-checked"
+grep -Fq 'let expected_exe_identity =' src/platform/windows.rs || r_s11d37="$r_s11d37 fixed-exe-identity-not-checked"
+grep -Fq 'if current_dir_identity != install_dir_identity' src/platform/windows.rs || r_s11d37="$r_s11d37 directory-identities-not-compared"
+grep -Fq 'if current_exe_identity != expected_exe_identity' src/platform/windows.rs || r_s11d37="$r_s11d37 executable-identities-not-compared"
+grep -Fq 'crate::common::is_service_owned_server_process()' src/core_main.rs || r_s11d37="$r_s11d37 service-owned-server-entry-guard-missing"
+grep -Fq 'require_current_exe_is_fixed_service_runtime()' src/core_main.rs || r_s11d37="$r_s11d37 service-owned-server-entry-not-fixed-root-gated"
+grep -Fq 'Windows service-owned --server must run as LocalSystem' src/core_main.rs || r_s11d37="$r_s11d37 service-owned-server-localsystem-guard-missing"
+grep -Fq 'ensure_peer_executable_matches_fixed_windows_service_exe_by_pid(server_pid, "")' src/ipc/auth.rs || r_s11d37="$r_s11d37 main-receiver-not-fixed-exe-authenticated"
+grep -Fq 'fn ensure_peer_executable_matches_fixed_windows_service_exe_by_pid(' src/ipc/auth.rs || r_s11d37="$r_s11d37 main-receiver-fixed-exe-helper-missing"
+grep -Fq 'crate::platform::windows::fixed_service_install_exe_path()?' src/ipc/auth.rs || r_s11d37="$r_s11d37 main-receiver-not-bound-to-fixed-exe"
+grep -Fq 'peer_process_has_windows_service_owned_server_args(server_pid)' src/ipc/auth.rs || r_s11d37="$r_s11d37 main-receiver-exact-argv-helper-not-used"
+if echo "$launch_server_body" | grep -Fq 'std::env::current_exe()'; then
+  r_s11d37="$r_s11d37 launch-server-still-selects-current-exe-directly"
+fi
+if grep -Fq 'peer_process_is_current_exe_service_owned_server' src/ipc/auth.rs; then
+  r_s11d37="$r_s11d37 current-exe-service-owned-main-receiver-proof-leftover"
+fi
+grep -Fq 'Windows service-owned server child executable provenance' requirements.html || r_s11d37="$r_s11d37 requirements-disposition-missing"
+grep -Fq 'R-S11d-37 — Windows service-owned server child executable provenance' HARDENING_STATUS.md || r_s11d37="$r_s11d37 hardening-ledger-missing"
+if [ -n "$r_s11d37" ]; then echo "  FAIL R-S11d-37 Windows service-owned server child executable provenance:$r_s11d37"; rc=1; else
+  echo "  ok  R-S11d-37 Windows service-owned server child launches only the fixed Program Files service executable after handle-identity proof"; fi
 
 echo "== (3b-iii-a5d4) Windows EXE elevated batch completion is authoritative (R-S11d-15) =="
 r_s11d15=
@@ -1059,10 +1105,12 @@ if [ -n "$r_s11d18" ]; then echo "  FAIL R-S11d-18 Windows EXE elevated batch cm
 
 echo "== (3b-iii-a5d4b2) Windows EXE elevated command-file reopen is identity-bound (R-S11d-32) =="
 r_s11d32=
-grep -Fq 'fileapi::{GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION}' src/platform/windows.rs || r_s11d32="$r_s11d32 file-identity-api-not-imported"
-grep -Fq 'struct InstallerCommandFileIdentity' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-struct-missing"
-grep -Fq 'fn installer_command_file_identity(file: &fs::File) -> ResultType<InstallerCommandFileIdentity>' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-helper-missing"
-grep -Fq 'GetFileInformationByHandle(file.as_raw_handle() as HANDLE, &mut info)' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-helper-not-handle-based"
+grep -Fq 'GetFileInformationByHandle' src/platform/windows.rs || r_s11d32="$r_s11d32 file-identity-api-not-imported"
+grep -Fq 'struct WindowsPathIdentity' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-struct-missing"
+grep -Fq 'fn path_identity_from_handle(handle: HANDLE, label: &str) -> ResultType<WindowsPathIdentity>' src/platform/windows.rs || r_s11d32="$r_s11d32 handle-identity-helper-missing"
+grep -Fq 'fn installer_command_file_identity(file: &fs::File) -> ResultType<WindowsPathIdentity>' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-helper-missing"
+grep -Fq 'path_identity_from_handle(file.as_raw_handle() as HANDLE, "installer command file")' src/platform/windows.rs || r_s11d32="$r_s11d32 installer-identity-not-handle-based"
+grep -Fq 'GetFileInformationByHandle(handle, &mut info)' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-helper-not-handle-based"
 grep -Fq 'volume_serial_number: info.dwVolumeSerialNumber' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-volume-not-recorded"
 grep -Fq 'file_index_high: info.nFileIndexHigh' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-high-index-not-recorded"
 grep -Fq 'file_index_low: info.nFileIndexLow' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-low-index-not-recorded"
@@ -1757,12 +1805,13 @@ grep -q 'windows_pipe_client_token_is_local_system' src/ipc/auth.rs             
 grep -q 'ImpersonateNamedPipeClient' src/ipc/auth.rs                                || r_s11b2="$r_s11b2 windows-service-password-not-client-token-impersonated"
 grep -q 'RevertToSelf' src/ipc/auth.rs                                               || r_s11b2="$r_s11b2 windows-service-password-impersonation-not-reverted"
 grep -q 'pub(crate) fn get_pids_of_process_with_args' src/platform/mod.rs            || r_s11b2="$r_s11b2 exact-process-args-helper-not-exported"
-grep -q 'fn peer_process_is_current_exe_service_owned_server' src/ipc/auth.rs        || r_s11b2="$r_s11b2 windows-service-main-server-exact-argv-proof-missing"
+grep -q 'fn peer_process_has_windows_service_owned_server_args' src/ipc/auth.rs      || r_s11b2="$r_s11b2 windows-service-main-server-exact-argv-proof-missing"
 grep -q 'fn windows_service_owned_main_server_args' src/ipc/auth.rs                  || r_s11b2="$r_s11b2 windows-service-main-server-expected-args-helper-missing"
 grep -q 'get_pids_of_process_with_args' src/ipc/auth.rs                              || r_s11b2="$r_s11b2 windows-service-main-server-not-using-exact-argv-lookup"
 grep -q 'authenticate_windows_service_owned_main_server' src/ipc/auth.rs              || r_s11b2="$r_s11b2 windows-service-main-server-auth-missing"
+grep -A30 'pub(crate) fn authenticate_windows_service_owned_main_server' src/ipc/auth.rs | grep -q 'ensure_peer_executable_matches_fixed_windows_service_exe_by_pid(server_pid, "")' || r_s11b2="$r_s11b2 windows-service-main-server-not-fixed-exe-proven"
 grep -A30 'pub(crate) fn authenticate_windows_service_owned_main_server' src/ipc/auth.rs | grep -q 'is_process_running_as_system(server_pid)' || r_s11b2="$r_s11b2 windows-service-main-server-not-localsystem-proven"
-grep -A30 'pub(crate) fn authenticate_windows_service_owned_main_server' src/ipc/auth.rs | grep -q 'peer_process_is_current_exe_service_owned_server(server_pid)' || r_s11b2="$r_s11b2 windows-service-main-server-not-service-argv-proven"
+grep -A30 'pub(crate) fn authenticate_windows_service_owned_main_server' src/ipc/auth.rs | grep -q 'peer_process_has_windows_service_owned_server_args(server_pid)' || r_s11b2="$r_s11b2 windows-service-main-server-not-service-argv-proven"
 grep -q 'test_windows_service_owned_server_args_are_exact' src/ipc/auth.rs            || r_s11b2="$r_s11b2 windows-service-main-server-argv-test-missing"
 if ! python3 - <<'PY'
 from pathlib import Path

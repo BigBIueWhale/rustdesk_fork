@@ -317,11 +317,19 @@ extern "C"
         return IsWindows10OrGreater();
     }
 
-    HANDLE LaunchProcessWin(LPCWSTR application, LPCWSTR cmd, DWORD dwSessionId, BOOL as_user, BOOL show, LPCWSTR extraEnvironment, DWORD *pDwTokenPid)
+    HANDLE LaunchProcessWin(LPCWSTR application,
+                            LPCWSTR cmd,
+                            LPCWSTR currentDirectory,
+                            DWORD dwSessionId,
+                            BOOL as_user,
+                            BOOL show,
+                            LPCWSTR extraEnvironment,
+                            DWORD *pDwTokenPid)
     {
         HANDLE hProcess = NULL;
         HANDLE hToken = NULL;
-        if (application == NULL || application[0] == L'\0' || cmd == NULL || cmd[0] == L'\0')
+        if (application == NULL || application[0] == L'\0' || cmd == NULL || cmd[0] == L'\0' ||
+            currentDirectory == NULL || currentDirectory[0] == L'\0')
         {
             SetLastError(ERROR_INVALID_PARAMETER);
             return hProcess;
@@ -365,7 +373,8 @@ extern "C"
             {
                 dwCreationFlags |= CREATE_UNICODE_ENVIRONMENT;
             }
-            if (CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE, dwCreationFlags, processEnvironment, NULL, &si, &pi))
+            if (CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE,
+                                     dwCreationFlags, processEnvironment, currentDirectory, &si, &pi))
             {
                 CloseHandle(pi.hThread);
                 hProcess = pi.hProcess;

@@ -302,6 +302,22 @@ pub fn core_main() -> Option<Vec<String>> {
             return None;
         } else if args[0] == "--server" {
             log::info!("start --server with user {}", crate::username());
+            #[cfg(windows)]
+            if crate::common::is_service_owned_server_process() {
+                if !crate::platform::is_root() {
+                    log::error!("Windows service-owned --server must run as LocalSystem");
+                    std::process::exit(1);
+                }
+                if let Err(err) =
+                    crate::platform::windows::require_current_exe_is_fixed_service_runtime()
+                {
+                    log::error!(
+                        "Rejected Windows service-owned --server outside fixed service root: {}",
+                        err
+                    );
+                    std::process::exit(1);
+                }
+            }
             #[cfg(target_os = "linux")]
             {
                 hbb_common::allow_err!(crate::platform::check_autostart_config());

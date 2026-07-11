@@ -1193,13 +1193,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
   launch plus token-switched `--tray`, connection-manager, whiteboard, and `run_exe_in_session` launches.
   Boundary: LocalSystem/root Windows service or elevated process ↔ target session process creation through
   `CreateProcessAsUserW`. Attack surface closed: the launcher no longer passes only a mutable command-line
-  string while leaving `lpApplicationName` null. The Rust FFI now passes an explicit application path and a
-  separately quoted command line; the C++ side requires both, copies the command line into a dynamically sized
-  mutable buffer, and calls `CreateProcessAsUserW` with the explicit application path. Token-switched Rust
-  launches require an absolute existing executable file, reject NUL-bearing application, argv, and environment
-  data, use Windows command-line quoting for argv, and reuse the same provenance helper for service-owned
-  `--server` and user-session helper launches. The old preformatted command-string wrapper is deleted.
-  Verification closure: `scripts/verify.sh` asserts the explicit application-name FFI shape, absence of
+  string while leaving `lpApplicationName` null. The Rust FFI now passes an explicit application path, a
+  separately quoted command line, and the executable parent as explicit current directory; the C++ side requires
+  all three, copies the command line into a dynamically sized mutable buffer, and calls `CreateProcessAsUserW`
+  with the explicit application path and current directory. Token-switched Rust launches require an absolute
+  existing executable file, reject NUL-bearing application/current-directory/argv/environment data, use Windows
+  command-line quoting for argv, and reuse the same provenance helper for service-owned `--server` and
+  user-session helper launches. The old preformatted command-string wrapper is deleted.
+  Verification closure: `scripts/verify.sh` asserts the explicit application-name/current-directory FFI shape, absence of
   null-application `CreateProcessAsUserW` and fixed `MAX_PATH` command buffers, absolute-file validation,
   quoted argv construction, service-owned `--server` launch through the helper, user-session launch reuse of
   the helper, removal of the obsolete wrapper, and this ledger/requirements disposition.
@@ -1217,6 +1218,25 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `WTSQueryUserToken`, trusted System32 `winlogon.exe` image validation, LocalSystem SID validation,
   token-session validation, minimum handle rights, absence of Explorer/sihost token fallbacks, absence of the
   old all-access token source, and this ledger/requirements disposition.
+- **R-S11d-37 — Windows service-owned server child executable provenance — CLOSED 2026-07-11.**
+  Platform: Windows installed service. Endpoint/action: LocalSystem `--service` spawning the service-owned
+  `--server --service-owned-server` child, the service-owned `--server` entrypoint, and service-owned main-IPC
+  receiver authentication before password-bearing commits. Boundary: fixed Program Files service executable ↔
+  LocalSystem service-owned child/process authority. Attack surface closed: after R-S11d-13 the child launch was
+  already bound to `lpApplicationName`, but that application was still chosen from `std::env::current_exe()`.
+  The service-owned child image is now derived from `fixed_service_install_path("")`; the fixed service directory,
+  running service directory, fixed service executable, and running service executable are opened no-follow and must
+  be non-reparse regular directory/file objects as appropriate; Win32 handle identity must prove running directory
+  == fixed service root and running executable == fixed service executable before the child is launched. The child launch then passes
+  that fixed executable and its parent directory to `CreateProcessAsUserW`. `core_main.rs` refuses a Windows
+  service-owned `--server` marker unless the process is LocalSystem and the same fixed-root proof succeeds. The
+  service-owned main-IPC authenticator now proves the named-pipe server executable against the fixed service
+  executable before the existing LocalSystem and exact `--server --service-owned-server` argv checks, so
+  password-bearing service commits no longer authenticate the receiver against the caller's current executable.
+  Verification closure: `scripts/verify.sh` asserts the fixed service executable helper, no-follow non-reparse
+  directory/file checks, handle-identity comparisons, service-owned launch helper use, explicit child current directory,
+  service-owned entry guard, fixed-exe main receiver proof, exact argv helper, absence of the old current-exe
+  service-owned receiver proof, and this ledger/requirements disposition.
 - **R-S11d-15 — Windows EXE elevated batch completion accounting — CLOSED 2026-07-10.**
   Platform: Windows EXE install/uninstall/service-install elevated command path. Endpoint/action:
   `run_cmds` launching generated `.bat` files through UAC-elevated `System32\cmd.exe`, plus the

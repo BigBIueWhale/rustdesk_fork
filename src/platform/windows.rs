@@ -43,7 +43,9 @@ use winapi::{
     shared::{minwindef::*, ntdef::NULL, windef::*, winerror::*},
     um::{
         errhandlingapi::GetLastError,
-        fileapi::{GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION},
+        fileapi::{
+            CreateFileW, GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, OPEN_EXISTING,
+        },
         handleapi::{CloseHandle, INVALID_HANDLE_VALUE},
         libloaderapi::{GetProcAddress, LOAD_LIBRARY_SEARCH_SYSTEM32},
         minwinbase::STILL_ACTIVE,
@@ -59,8 +61,9 @@ use winapi::{
         winnt::{
             SecurityImpersonation, TokenElevation, TokenImpersonation, TokenType,
             ES_AWAYMODE_REQUIRED, ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED,
-            FILE_ATTRIBUTE_TEMPORARY, FILE_SHARE_READ, HANDLE, PROCESS_QUERY_LIMITED_INFORMATION,
-            TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_TYPE,
+            FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_TEMPORARY, FILE_READ_ATTRIBUTES,
+            FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, HANDLE,
+            PROCESS_QUERY_LIMITED_INFORMATION, TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_TYPE,
         },
         winreg::HKEY_CURRENT_USER,
         winuser::*,
@@ -556,6 +559,7 @@ extern "C" {
     fn LaunchProcessWin(
         application: *const u16,
         cmd: *const u16,
+        current_directory: *const u16,
         session_id: DWORD,
         as_user: BOOL,
         show: BOOL,
@@ -837,7 +841,7 @@ async fn launch_server(session_id: DWORD, close_first: bool) -> ResultType<HANDL
         // in case started some elsewhere
         send_close_async("").await.ok();
     }
-    let exe = std::env::current_exe()?;
+    let exe = require_current_exe_is_fixed_service_runtime()?;
     let (h, token_pid) = launch_process_in_session_with_env(
         &exe,
         &["--server", crate::common::SERVICE_OWNED_SERVER_ARG],
@@ -856,6 +860,133 @@ async fn launch_server(session_id: DWORD, close_first: bool) -> ResultType<HANDL
         }
     }
     Ok(h)
+}
+
+fn windows_path_identity_from_info(info: &BY_HANDLE_FILE_INFORMATION) -> WindowsPathIdentity {
+    WindowsPathIdentity {
+        volume_serial_number: info.dwVolumeSerialNumber,
+        file_index_high: info.nFileIndexHigh,
+        file_index_low: info.nFileIndexLow,
+    }
+}
+
+fn path_identity_from_handle(handle: HANDLE, label: &str) -> ResultType<WindowsPathIdentity> {
+    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { mem::zeroed() };
+    let ok = unsafe { GetFileInformationByHandle(handle, &mut info) };
+    if ok == 0 {
+        bail!(
+            "failed to query Windows path identity for {label}: {}",
+            io::Error::last_os_error()
+        );
+    }
+    Ok(windows_path_identity_from_info(&info))
+}
+
+fn windows_path_identity_and_attributes(
+    path: &Path,
+    label: &str,
+) -> ResultType<(WindowsPathIdentity, DWORD)> {
+    let path_w = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let handle = unsafe {
+        CreateFileW(
+            path_w.as_ptr(),
+            FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            null_mut(),
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+            null_mut(),
+        )
+    };
+    if handle == INVALID_HANDLE_VALUE {
+        bail!(
+            "failed to open {label} for Windows path identity '{}': {}",
+            path.display(),
+            io::Error::last_os_error()
+        );
+    }
+    let _handle = hbb_common::platform::windows::RAIIHandle(handle);
+    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { mem::zeroed() };
+    let ok = unsafe { GetFileInformationByHandle(handle, &mut info) };
+    if ok == 0 {
+        bail!(
+            "failed to query Windows path identity for {label}: {}",
+            io::Error::last_os_error()
+        );
+    }
+    Ok((
+        windows_path_identity_from_info(&info),
+        info.dwFileAttributes,
+    ))
+}
+
+fn require_existing_directory_no_reparse(
+    path: &Path,
+    label: &str,
+) -> ResultType<WindowsPathIdentity> {
+    let (identity, attributes) = windows_path_identity_and_attributes(path, label)?;
+    if attributes & FILE_ATTRIBUTE_DIRECTORY == 0
+        || attributes & FILE_ATTRIBUTE_REPARSE_POINT_FLAG != 0
+    {
+        bail!("{label} is not a trusted directory: {}", path.display());
+    }
+    Ok(identity)
+}
+
+fn require_existing_file_no_reparse(path: &Path, label: &str) -> ResultType<WindowsPathIdentity> {
+    let (identity, attributes) = windows_path_identity_and_attributes(path, label)?;
+    if attributes & FILE_ATTRIBUTE_DIRECTORY != 0
+        || attributes & FILE_ATTRIBUTE_REPARSE_POINT_FLAG != 0
+    {
+        bail!("{label} is not a trusted file: {}", path.display());
+    }
+    Ok(identity)
+}
+
+pub(crate) fn fixed_service_install_exe_path() -> ResultType<PathBuf> {
+    Ok(fixed_service_install_path("")?.join(format!("{}.exe", crate::get_app_name())))
+}
+
+pub(crate) fn require_current_exe_is_fixed_service_runtime() -> ResultType<PathBuf> {
+    let current_exe = std::env::current_exe()
+        .map_err(|err| anyhow!("failed to resolve current Windows service executable: {err}"))?;
+    let current_dir = current_exe
+        .parent()
+        .ok_or_else(|| anyhow!("current Windows service executable has no parent directory"))?;
+    let install_dir = fixed_service_install_path("")?;
+    let expected_exe = fixed_service_install_exe_path()?;
+
+    let install_dir_identity = require_existing_directory_no_reparse(
+        &install_dir,
+        "Windows fixed service install directory",
+    )?;
+    let current_dir_identity = require_existing_directory_no_reparse(
+        current_dir,
+        "Windows running service executable directory",
+    )?;
+    let current_exe_identity =
+        require_existing_file_no_reparse(&current_exe, "Windows running service executable")?;
+    let expected_exe_identity =
+        require_existing_file_no_reparse(&expected_exe, "Windows fixed service executable")?;
+
+    if current_dir_identity != install_dir_identity {
+        bail!(
+            "Windows service-owned server launch requires the fixed service install directory: {}",
+            install_dir.display()
+        );
+    }
+    if current_exe_identity != expected_exe_identity {
+        bail!(
+            "Windows service-owned server launch requires the fixed service executable: {}",
+            expected_exe.display()
+        );
+    }
+
+    Ok(expected_exe)
 }
 
 fn launch_executable_path(exe: &Path) -> ResultType<&Path> {
@@ -995,8 +1126,12 @@ where
     V: AsRef<OsStr>,
 {
     let exe = launch_executable_path(exe)?;
+    let current_dir = exe
+        .parent()
+        .ok_or_else(|| anyhow!("Windows launch executable has no parent: {}", exe.display()))?;
     let application = null_terminated_wide(exe.as_os_str(), "application path")?;
     let command_line = windows_command_line(exe, arg)?;
+    let current_directory = null_terminated_wide(current_dir.as_os_str(), "current directory")?;
     let extra_env_block = windows_env_block(envs)?;
     let extra_env = if extra_env_block.len() > 1 {
         extra_env_block.as_ptr()
@@ -1008,6 +1143,7 @@ where
         LaunchProcessWin(
             application.as_ptr(),
             command_line.as_ptr(),
+            current_directory.as_ptr(),
             session_id,
             as_user,
             show,
@@ -1829,10 +1965,10 @@ fn require_protected_install_source(
 }
 
 fn fixed_service_install_dir_and_exe() -> ResultType<(String, String)> {
-    let path = fixed_service_install_path("")?
-        .to_string_lossy()
-        .into_owned();
-    let exe = format!("{}\\{}.exe", path, crate::get_app_name());
+    let install_dir = fixed_service_install_path("")?;
+    let exe_path = fixed_service_install_exe_path()?;
+    let path = install_dir.to_string_lossy().into_owned();
+    let exe = exe_path.to_string_lossy().into_owned();
     Ok((path, exe))
 }
 
@@ -2783,7 +2919,7 @@ struct InstallerCommandFile {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct InstallerCommandFileIdentity {
+struct WindowsPathIdentity {
     volume_serial_number: u32,
     file_index_high: u32,
     file_index_low: u32,
@@ -2800,20 +2936,8 @@ impl InstallerCommandFile {
     }
 }
 
-fn installer_command_file_identity(file: &fs::File) -> ResultType<InstallerCommandFileIdentity> {
-    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { mem::zeroed() };
-    let ok = unsafe { GetFileInformationByHandle(file.as_raw_handle() as HANDLE, &mut info) };
-    if ok == 0 {
-        bail!(
-            "failed to query installer command file identity: {}",
-            io::Error::last_os_error()
-        );
-    }
-    Ok(InstallerCommandFileIdentity {
-        volume_serial_number: info.dwVolumeSerialNumber,
-        file_index_high: info.nFileIndexHigh,
-        file_index_low: info.nFileIndexLow,
-    })
+fn installer_command_file_identity(file: &fs::File) -> ResultType<WindowsPathIdentity> {
+    path_identity_from_handle(file.as_raw_handle() as HANDLE, "installer command file")
 }
 
 fn installer_command_digest(bytes: &[u8]) -> [u8; 32] {
@@ -2827,7 +2951,7 @@ fn installer_command_digest(bytes: &[u8]) -> [u8; 32] {
 
 fn reopen_verified_installer_command_file(
     path: &Path,
-    expected_identity: InstallerCommandFileIdentity,
+    expected_identity: WindowsPathIdentity,
     expected_digest: [u8; 32],
     expected_len: u64,
 ) -> ResultType<fs::File> {
@@ -4654,7 +4778,7 @@ mod tests {
 
     #[test]
     fn r_s11d32_installer_command_identity_compares_volume_and_index() {
-        let baseline = InstallerCommandFileIdentity {
+        let baseline = WindowsPathIdentity {
             volume_serial_number: 1,
             file_index_high: 2,
             file_index_low: 3,
@@ -4662,21 +4786,21 @@ mod tests {
         assert_eq!(baseline, baseline);
         assert_ne!(
             baseline,
-            InstallerCommandFileIdentity {
+            WindowsPathIdentity {
                 volume_serial_number: 9,
                 ..baseline
             }
         );
         assert_ne!(
             baseline,
-            InstallerCommandFileIdentity {
+            WindowsPathIdentity {
                 file_index_high: 9,
                 ..baseline
             }
         );
         assert_ne!(
             baseline,
-            InstallerCommandFileIdentity {
+            WindowsPathIdentity {
                 file_index_low: 9,
                 ..baseline
             }

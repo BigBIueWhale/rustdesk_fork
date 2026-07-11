@@ -334,7 +334,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
             ),
         ]),
         // R-R2b / R-G1 (§19): no "Hardware Codec" section — hwcodec/vram AND mediacodec (Android's
-        // hardware codec) are compiled out of every build (software vpx/aom only), so the toggle was
+        // hardware codec) are compiled out of every build, and AV1/libaom is runtime-quarantined, so the toggle was
         // a dead/editable-but-inert control (R-G1).
         if (isAndroid)
           SettingsSection(
@@ -538,15 +538,16 @@ class __DisplayPageState extends State<_DisplayPage> {
   Widget build(BuildContext context) {
     // R-R2b / R-G1 (§19): the H264/H265 hardware-decode radios are removed, not hidden. They only
     // rendered when mainSupportedHwdecodings() reported h264/h265 support, but hwcodec/vram/ffmpeg-HW
-    // and Android mediacodec are compiled out of every build (software vpx/aom only), so scrap's
+    // and Android mediacodec are compiled out of every build, and AV1 is source-quarantined by
+    // policy, so scrap's
     // supported_decodings() leaves ability_h264/ability_h265 at 0 and the map was always
     // {"h264":false,"h265":false} — the radios only ever rendered nothing (hidden ≠ removed, the R-G1
-    // trap the desktop Default-Codec card excised symmetrically at 15778fc). Only software codecs remain.
+    // trap the desktop Default-Codec card excised symmetrically at 15778fc). Only the supported
+    // software vpx codecs remain.
     var codecList = [
       _RadioEntry('Auto', 'auto'),
       _RadioEntry('VP8', 'vp8'),
       _RadioEntry('VP9', 'vp9'),
-      _RadioEntry('AV1', 'av1'),
     ];
     RxBool showCustomImageQuality = false.obs;
     return Scaffold(

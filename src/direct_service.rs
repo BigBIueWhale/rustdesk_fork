@@ -297,11 +297,8 @@ fn assert_socket_surface(port: u16) {
 ///     post-listen (R-A4 live surface: exactly 1×TCP v4, 0×UDP);
 ///   - on Linux, the seat0/greeter capture-session discovery R-S14/R-X14 needs.
 ///
-/// `test_av1` is deliberately NOT carried over: it is an `AomEncoder` benchmark (not the
-/// decoder the R-D4 prose states) that the per-session encode path instantiates on
-/// demand anyway, so the headless service entry stands up no codec at startup. The AV1
-/// gate then resolves useable-without-benchmark — acceptable on the §17 desktop (VP9
-/// fallback + PreferCodec remain).
+/// AV1 is source-quarantined by the codec policy, so this service entry stands up no
+/// libaom benchmark, encoder, or decoder at startup; VP9 is the software-video default.
 /// R-T1(a) (§20): self-enforce a per-process file-descriptor ceiling at startup so the flood/leak
 /// blast-radius bound holds under ANY launcher (systemd, a per-user supervisor, a bare container —
 /// R-D8), not only the unit's LimitNOFILE. Legitimate single-user use is a handful of sessions; a

@@ -3056,7 +3056,10 @@ echo "== (3c-ii-a) viewer peer media display/thread + queue bounds (Appendix C #
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::peer_info_does_not_choose_saved_keyboard_mode --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::peer_info_does_not_rewrite_saved_keyboard_mode --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::io_loop::tests --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config client::io_loop::tests::av1_video_frame_is_rejected_before_viewer_state_admission --color never
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config common::codec::tests::encoder_negotiation --color never
+"${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config common::codec::tests::av1_policy_is_not_advertised_or_negotiated --color never
+"${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config common::codec::tests::av1_decoder_is_policy_disabled --color never
 grep -qF 'native_video_format_locally_unsupported(&lc.mark_unsupported, format)' src/client.rs ||
   { echo "  FAIL Appendix C #2b/R-T0: video receive loop must drop locally-unsupported peer codecs before recreating a native decoder worker"; rc=1; }
 grep -qF 'local decoder is marked unsupported' src/client.rs ||
@@ -3067,6 +3070,70 @@ grep -qF 'dropping repeated peer Opus format without recreating controlled audio
   { echo "  FAIL Appendix C #2b/R-T0: controlled side must not recreate audio decoder threads on repeated peer AudioFormat"; rc=1; }
 grep -qF 'audio_decode_failed = true' src/client.rs ||
   { echo "  FAIL Appendix C #2b/R-T0: native Opus decode failure must be sticky for the audio thread"; rc=1; }
+grep -qF 'format == CodecFormat::AV1 || mark_unsupported.contains(&format)' src/client.rs ||
+  { echo "  FAIL Appendix C #2b: hostile peer AV1 frames must be locally unsupported before any native decoder/recorder worker"; rc=1; }
+grep -qF 'fn native_video_frame_runtime_supported(vf: &VideoFrame) -> bool' src/client/io_loop.rs ||
+  { echo "  FAIL Appendix C #2b: viewer io_loop must have an AV1 runtime-support admission gate"; rc=1; }
+grep -qF 'dropping peer AV1 video frame before viewer state admission' src/client/io_loop.rs ||
+  { echo "  FAIL Appendix C #2b: viewer io_loop AV1 admission drop marker missing"; rc=1; }
+io_av1_admission_line=$(grep -nF 'if !native_video_frame_runtime_supported(&vf)' src/client/io_loop.rs | head -n1 | cut -d: -f1 || true)
+io_codec_state_line=$(grep -nF 'self.video_format = CodecFormat::from(&vf)' src/client/io_loop.rs | head -n1 | cut -d: -f1 || true)
+if [ -z "$io_av1_admission_line" ] || [ -z "$io_codec_state_line" ] || [ "$io_av1_admission_line" -ge "$io_codec_state_line" ]; then
+  echo "  FAIL Appendix C #2b: viewer io_loop must drop AV1 before video_format state, display admission, thread creation, or queueing"
+  rc=1
+fi
+grep -qF 'pub fn av1_supported_by_policy() -> bool' libs/scrap/src/common/codec.rs ||
+  { echo "  FAIL Appendix C #2b: AV1/libaom runtime quarantine policy function missing"; rc=1; }
+av1_policy_body=$(awk '/pub fn av1_supported_by_policy\(\) -> bool/,/^}/' libs/scrap/src/common/codec.rs)
+if ! echo "$av1_policy_body" | grep -qE '^[[:space:]]*false[[:space:]]*$'; then
+  echo "  FAIL Appendix C #2b: AV1/libaom runtime policy must fail closed"
+  rc=1
+fi
+av1_dead_paths=$(grep -RInE 'OPTION_AV1_TEST|test_av1|disable_av1' \
+                   libs/scrap/src/common/codec.rs libs/hbb_common/src/config.rs \
+                   src/direct_service.rs libs/scrap/examples 2>/dev/null || true)
+if [ -n "$av1_dead_paths" ]; then
+  echo "  FAIL Appendix C #2b: removed AV1 benchmark/probe/config-token path reappeared:"
+  echo "$av1_dead_paths" | sed 's/^/      /'
+  rc=1
+fi
+if grep -qF 'AomDecoder::new()' libs/scrap/src/common/codec.rs libs/scrap/examples/benchmark.rs 2>/dev/null; then
+  echo "  FAIL Appendix C #2b: AV1/libaom decoder must not be instantiated by runtime codec policy or local benchmark"
+  rc=1
+fi
+if grep -qF 'AomEncoder::new' libs/scrap/examples/benchmark.rs 2>/dev/null; then
+  echo "  FAIL Appendix C #2b: AV1/libaom encoder benchmark must not instantiate libaom"
+  rc=1
+fi
+if grep -qF 'EncoderCfg::AOM(AomEncoderConfig' src/server/video_service.rs libs/scrap/examples/benchmark.rs 2>/dev/null; then
+  echo "  FAIL Appendix C #2b: server/video benchmark must not construct an AV1/libaom encoder config"
+  rc=1
+fi
+codec_pref_body=$(awk '/OPTION_CODEC_PREFERENCE =>/,/^            }/' libs/hbb_common/src/config.rs)
+if echo "$codec_pref_body" | grep -q '"av1"'; then
+  echo "  FAIL Appendix C #2b: codec-preference allowlist must not accept av1"
+  rc=1
+fi
+av1_ui=$(grep -RInE "radio\\('AV1'|_RadioEntry\\('AV1'|label: 'AV1'|codec_format == \"AV1\"|\"av1\"" \
+            flutter/lib/common/widgets/toolbar.dart \
+            flutter/lib/desktop/pages/desktop_setting_page.dart \
+            flutter/lib/mobile/pages/settings_page.dart \
+            src/flutter_ffi.rs src/ui_session_interface.rs 2>/dev/null || true)
+if [ -n "$av1_ui" ]; then
+  echo "  FAIL Appendix C #2b: UI/session codec surfaces must not expose AV1/libaom:"
+  echo "$av1_ui" | sed 's/^/      /'
+  rc=1
+fi
+grep -qF 'AV1/libaom runtime quarantine' requirements.html ||
+  { echo "  FAIL Appendix C #2b: requirements must record the AV1/libaom runtime quarantine"; rc=1; }
+grep -qF 'AV1/libaom runtime quarantine' HARDENING_STATUS.md ||
+  { echo "  FAIL Appendix C #2b: hardening status must record the AV1/libaom runtime quarantine"; rc=1; }
+grep -qF 'AV1/libaom runtime quarantine' docs/NATIVE-CODEC-WATCH.md ||
+  { echo "  FAIL Appendix C #2b: native codec watch must record the AV1/libaom runtime quarantine"; rc=1; }
+if grep -qE 'AV1 DECODER|aomdec|All lie in the \*\*decoder' docs/NATIVE-CODEC-WATCH.md HARDENING_STATUS.md; then
+  echo "  FAIL Appendix C #2b: aom CVE ledger must not retain the old decoder-only classification"
+  rc=1
+fi
 
 # (3c-ii-b) Peer UI text admission (R-T0): a password-correct hostile peer can
 # send chat/messages/notification details repeatedly after keying. Bound text
@@ -5311,7 +5378,7 @@ fi
 # §18 / R-R2b (universal software codec): hwcodec/vram (the GPU/VRAM hardware-codec deps —
 # ffmpeg amf/nvcodec/qsv) AND mediacodec (Android's MediaCodec hardware decode/encode) — each a
 # native attack surface (Appendix C #2b) AND a build-reproducibility hazard — are compiled out of
-# EVERY build path; the fork is CPU-only software vpx/aom. The optional
+# EVERY build path; the fork is CPU-only software vpx with AV1/libaom runtime-quarantined. The optional
 # feature DEFINITIONS in Cargo.toml/scrap are inert (never selected) — what this forbids is
 # any build script / CI job / driver that ENABLES them: a `--features …hwcodec/vram…`, a
 # `--hwcodec`/`--vram` flag, a RUSTDESK_FEATURES/extra_features carrying them, or a

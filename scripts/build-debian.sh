@@ -18,7 +18,7 @@ source "$SCRIPT_DIR/lib.sh"
 load_pins
 
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
-# The §3.2 x64-linux feature set minus hwcodec — CPU-only, software vpx/aom (R-R2b).
+# The §3.2 x64-linux feature set minus hwcodec — CPU-only VP8/VP9, AV1/libaom runtime-quarantined (R-R2b/#87).
 FEATURES="--flutter --unix-file-copy-paste"
 # Determinism (R-B2): SOURCE_DATE_EPOCH is a FIXED pinned epoch (SOURCE_DATE_EPOCH_PIN in pins.env),
 # NOT a commit date — so the .deb depends only on the source tree; gen_version() honours it. (An

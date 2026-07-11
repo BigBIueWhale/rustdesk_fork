@@ -38,8 +38,8 @@ flutter = ["flutter_rust_bridge"]
 # capability has no path (orthogonal to the terminal pin — SwitchPermission does
 # not cover terminal/tunnel).
 default = ["use_dasp"]
-# TODO(one-binary): the fork ships SOFTWARE codec only — CPU-only vpx/aom (spec R-R2b,
-# user directive: fewer C codecs linked, no GPU/VRAM). Never select `hwcodec`/`vram`
+# TODO(one-binary): the fork ships CPU-only software video; VP8/VP9 are supported and
+# AV1/libaom is runtime-quarantined (spec R-R2b / Appendix C #87). Never select `hwcodec`/`vram`
 # (or ffmpeg amf/nvcodec/qsv) in any build path — no `--features hwcodec`/`--vram`.
 # Defs kept only so upstream parity stays auditable.
 hwcodec = ["scrap/hwcodec"]

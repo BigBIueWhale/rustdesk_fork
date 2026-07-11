@@ -650,7 +650,7 @@ pub(crate) fn native_video_format_locally_unsupported(
     mark_unsupported: &[CodecFormat],
     format: CodecFormat,
 ) -> bool {
-    mark_unsupported.contains(&format)
+    format == CodecFormat::AV1 || mark_unsupported.contains(&format)
 }
 
 /// Audio handler for the [`Client`].
@@ -3312,14 +3312,14 @@ mod tests {
 
     #[test]
     fn native_video_unsupported_guard_blocks_marked_format() {
-        let unsupported = vec![CodecFormat::VP8, CodecFormat::AV1];
+        let unsupported = vec![CodecFormat::VP8];
 
         assert!(native_video_format_locally_unsupported(
             &unsupported,
             CodecFormat::VP8
         ));
         assert!(native_video_format_locally_unsupported(
-            &unsupported,
+            &[],
             CodecFormat::AV1
         ));
         assert!(!native_video_format_locally_unsupported(

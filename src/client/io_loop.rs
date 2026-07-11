@@ -65,6 +65,16 @@ const MAX_PEER_DISPLAY_ORIGIN_ABS: i32 = 1_000_000;
 const MAX_PEER_DISPLAY_SCALE: f64 = 16.0;
 const PRIVACY_MODE_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 
+fn native_video_frame_runtime_supported(vf: &VideoFrame) -> bool {
+    let format = CodecFormat::from(vf);
+    if format == CodecFormat::AV1 {
+        log::warn!("dropping peer AV1 video frame before viewer state admission");
+        false
+    } else {
+        true
+    }
+}
+
 pub struct Remote<T: InvokeUiSession> {
     handler: Session<T>,
     audio_sender: MediaSender,
@@ -1667,6 +1677,9 @@ impl<T: InvokeUiSession> Remote<T> {
         {
             match msg_in.union {
                 Some(message::Union::VideoFrame(vf)) => {
+                    if !native_video_frame_runtime_supported(&vf) {
+                        return true;
+                    }
                     if !Self::native_video_frame_within_limit(&vf) {
                         return true;
                     }
@@ -2858,6 +2871,28 @@ mod tests {
         let bounded = bound_peer_info(pi);
         assert_eq!(bounded.displays.len(), MAX_PEER_VIDEO_DISPLAYS);
         assert_eq!(bounded.current_display, 0);
+    }
+
+    fn one_encoded_video_frame() -> EncodedVideoFrames {
+        EncodedVideoFrames {
+            frames: vec![EncodedVideoFrame {
+                data: vec![0; 8].into(),
+                key: true,
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn av1_video_frame_is_rejected_before_viewer_state_admission() {
+        let mut av1 = VideoFrame::new();
+        av1.set_av1s(one_encoded_video_frame());
+        assert!(!native_video_frame_runtime_supported(&av1));
+
+        let mut vp9 = VideoFrame::new();
+        vp9.set_vp9s(one_encoded_video_frame());
+        assert!(native_video_frame_runtime_supported(&vp9));
     }
 
     #[test]

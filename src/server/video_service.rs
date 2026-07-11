@@ -49,7 +49,6 @@ use scrap::vram::{VRamEncoder, VRamEncoderConfig};
 // valid on Windows (the deleted portable_service.rs used `scrap::Capturer` there too).
 use scrap::Capturer;
 use scrap::{
-    aom::AomEncoderConfig,
     codec::{Encoder, EncoderCfg},
     record::{Recorder, RecorderContext},
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
@@ -996,10 +995,11 @@ fn get_encoder_config(
             },
             keyframe_interval,
         }),
-        CodecFormat::AV1 => EncoderCfg::AOM(AomEncoderConfig {
+        CodecFormat::AV1 => EncoderCfg::VPX(VpxEncoderConfig {
             width: c.width as _,
             height: c.height as _,
             quality,
+            codec: VpxVideoCodecId::VP9,
             keyframe_interval,
         }),
         _ => EncoderCfg::VPX(VpxEncoderConfig {

@@ -4,7 +4,6 @@ use hbb_common::{
     log,
 };
 use scrap::{
-    aom::{AomDecoder, AomEncoder, AomEncoderConfig},
     codec::{EncoderApi, EncoderCfg},
     Capturer, Display, TraitCapturer, VpxDecoder, VpxDecoderConfig, VpxEncoder, VpxEncoderConfig,
     VpxVideoCodecId::{self, *},
@@ -73,7 +72,6 @@ fn main() {
             if codec == VP8 { false } else { args.flag_i444 },
         )
     });
-    test_av1(&mut c, width, height, quality, yuv_count, args.flag_i444);
     #[cfg(feature = "hwcodec")]
     {
         hw::test(&mut c, width, height, quality, yuv_count);
@@ -158,70 +156,6 @@ fn test_vpx(
         codec_id,
         start.elapsed() / yuv_count as _
     );
-}
-
-fn test_av1(
-    c: &mut Capturer,
-    width: usize,
-    height: usize,
-    quality: f32,
-    yuv_count: usize,
-    i444: bool,
-) {
-    let config = EncoderCfg::AOM(AomEncoderConfig {
-        width: width as _,
-        height: height as _,
-        quality,
-        keyframe_interval: None,
-    });
-    let mut encoder = AomEncoder::new(config, i444).unwrap();
-    let start = Instant::now();
-    let mut size = 0;
-    let mut av1s: Vec<Vec<u8>> = vec![];
-    let mut yuv = Vec::new();
-    let mut mid_data = Vec::new();
-    let mut counter = 0;
-    let mut time_sum = Duration::ZERO;
-    loop {
-        match c.frame(std::time::Duration::from_millis(30)) {
-            Ok(frame) => {
-                let tmp_timer = Instant::now();
-                let frame = frame.to(encoder.yuvfmt(), &mut yuv, &mut mid_data).unwrap();
-                let yuv = frame.yuv().unwrap();
-                for ref frame in encoder
-                    .encode(start.elapsed().as_millis() as _, &yuv, STRIDE_ALIGN)
-                    .unwrap()
-                {
-                    size += frame.data.len();
-                    av1s.push(frame.data.to_vec());
-                    counter += 1;
-                    print!("\rAV1 {}/{}", counter, yuv_count);
-                    std::io::stdout().flush().ok();
-                }
-                time_sum += tmp_timer.elapsed();
-            }
-            Err(e) => {
-                log::error!("{e:?}");
-            }
-        }
-        if counter >= yuv_count {
-            println!();
-            break;
-        }
-    }
-    assert_eq!(av1s.len(), yuv_count);
-    println!(
-        "AV1 encode: {:?}, {} byte",
-        time_sum / yuv_count as _,
-        size / yuv_count
-    );
-    let mut decoder = AomDecoder::new().unwrap();
-    let start = Instant::now();
-    for av1 in av1s {
-        let _ = decoder.decode(&av1);
-        let _ = decoder.flush();
-    }
-    println!("AV1 decode: {:?}", start.elapsed() / yuv_count as _);
 }
 
 #[cfg(feature = "hwcodec")]

@@ -1,7 +1,7 @@
 # Native Codec Advisory Watch
 
 Native-Codec-Watch-Version: 1
-Requirements hash: e4486d189f6f6ecf7812426600f025e51727aeb527ad515305c3d36ecbe0c32a
+Requirements hash: 5b6ce81203034366acc27e7f15df04ae0ed4d8559e19c200588a3c230dc86548
 
 This ledger covers the native C/C++ codec and media-adjacent libraries pulled by
 `vcpkg.json`. Cargo/RustSec and Dart/OSV gates do not cover these vcpkg C/C++
@@ -34,9 +34,10 @@ VCPKG_BASELINE: 120deac3062162151622ca4860575a33844ba10b
 
 Package: aom
 Status: reviewed — OPEN ADVISORIES (CVE-2026-56208/56209/56210/56211, see below)
-Disposition: source-pinned overlay; monitor upstream aom advisories and treat a
-decoder-memory-safety advisory as release-blocking until patched or isolated by
-the decoder sandbox.
+Disposition: source-pinned overlay; AV1/libaom runtime quarantine in product
+paths; monitor upstream aom advisories while the library remains linked, and
+treat any newly proven runtime-reachable aom memory-safety advisory as
+release-blocking until patched or isolated.
 aom version: 3.12.1
 AOM_COMMIT: 10aece4157eb79315da205f39e19bf6ab3ee30d0
 aom SHA512: 59c3e3f3fbf649857fcba1af63593a06336377fed554f9696c1965580b95778ded76ac409b40589e1f44a94b9fea6df777b7c58760b7c3df6f8274b968b83a05
@@ -49,21 +50,17 @@ and UNFIXED across every Debian release, affecting aom 3.12.1 and later):
   - CVE-2026-56209 : arbitrary address write in libaom
   - CVE-2026-56210 : heap-buffer-overflow read in libaom
   - CVE-2026-56208 : heap buffer overflow in libaom
-These are the live, severe form of the Appendix C #2b native-decode residual IF
-they lie in the AV1 DECODER (aomdec) — the path a hostile peer reaches by sending
-malformed AV1 video (the viewer decode; the controlled side only ENCODES its own
-screen, so any encoder-only CVE among them is N/A, cf. the libvpx CVE-2025-5283
-note). Decoder-vs-encoder localization per CVE is OUTSTANDING (the descriptions
-don't say). Disposition: the spec's #2b explicitly ACCEPTS this ("Pinned codecs
-≠ CVE-free", bounded operationally — connect only to peers you trust) and is a
-SPEC-MUST-met residual, NOT a completion blocker. UNLIKE libvpx, NO fixed aom
-version exists yet, so there is nothing to bump to — the available mitigations
-are exactly the spec's: (a) the operational bound, and (b) the #2b SHOULD-sandbox
-of the decode path (built then reverted this session by maintainer decision per
-the ACCEPT disposition — these open RCE-class advisories are the strongest
-argument to RECONSIDER re-instating a *narrow* decoder sandbox, a maintainer call
-to weigh; do NOT re-add unilaterally). ACTION: localize decoder-vs-encoder per
-CVE; track for an upstream aom fix and bump when one lands.
+Current public descriptions and upstream patches localize these advisories to
+libaom encoder/control surfaces (SVC layer controls and LAP mode), not to a
+proven viewer decoder path. The fork therefore removes AV1/libaom as a runtime
+codec path instead of relying on a CVE classification shortcut. AV1 is not advertised in
+`SupportedEncoding`, not advertised in `SupportedDecoding`, not selected by stored
+`codec-preference`, not offered in the Flutter codec UI, not benchmarked at
+startup, not constructed by the server encoder config, and inbound peer `Av1s`
+frames are locally unsupported before the native decoder/recorder worker. VP9 is
+the software fallback. The aom overlay remains in the native-codec watch until a
+future dependency-removal slice drops the link entirely or a broader media
+sandbox isolates all native decode paths.
 
 Package: libvpx
 Status: reviewed — OPEN ADVISORY (CVE-2026-1861, see below)

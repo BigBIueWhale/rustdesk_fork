@@ -2861,7 +2861,7 @@ impl UserDefaultConfig {
                 self.get_string(key, "balanced", vec!["best", "low", "custom"])
             }
             keys::OPTION_CODEC_PREFERENCE => {
-                self.get_string(key, "auto", vec!["vp8", "vp9", "av1", "h264", "h265"])
+                self.get_string(key, "auto", vec!["vp8", "vp9", "h264", "h265"])
             }
             keys::OPTION_CUSTOM_IMAGE_QUALITY => self.get_num_string(key, 50.0, 10.0, 0xFFF as f64),
             keys::OPTION_CUSTOM_FPS => self.get_num_string(key, 30.0, 5.0, 120.0),
@@ -3404,7 +3404,6 @@ pub mod keys {
     pub const OPTION_ENABLE_DIRECTX_CAPTURE: &str = "enable-directx-capture";
     pub const OPTION_ENABLE_ANDROID_SOFTWARE_ENCODING_HALF_SCALE: &str =
         "enable-android-software-encoding-half-scale";
-    pub const OPTION_AV1_TEST: &str = "av1-test";
     pub const OPTION_TRACKPAD_SPEED: &str = "trackpad-speed";
     pub const OPTION_REGISTER_DEVICE: &str = "register-device";
     pub const OPTION_RELAY_SERVER: &str = "relay-server";

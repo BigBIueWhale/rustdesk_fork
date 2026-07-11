@@ -357,18 +357,16 @@ Future<List<TRadioMenu<String>>> toolbarCodec(
   try {
     final Map codecsJson = jsonDecode(alternativeCodecs);
     final vp8 = codecsJson['vp8'] ?? false;
-    final av1 = codecsJson['av1'] ?? false;
     final h264 = codecsJson['h264'] ?? false;
     final h265 = codecsJson['h265'] ?? false;
     codecs.add(vp8);
-    codecs.add(av1);
     codecs.add(h264);
     codecs.add(h265);
   } catch (e) {
     debugPrint("Show Codec Preference err=$e");
   }
   final visible =
-      codecs.length == 4 && (codecs[0] || codecs[1] || codecs[2] || codecs[3]);
+      codecs.length == 3 && (codecs[0] || codecs[1] || codecs[2]);
   if (!visible) return [];
   onChanged(String? value) async {
     if (value == null) return;
@@ -394,9 +392,8 @@ Future<List<TRadioMenu<String>>> toolbarCodec(
     radio(autoLabel, 'auto', true),
     if (codecs[0]) radio('VP8', 'vp8', codecs[0]),
     radio('VP9', 'vp9', true),
-    if (codecs[1]) radio('AV1', 'av1', codecs[1]),
-    if (codecs[2]) radio('H264', 'h264', codecs[2]),
-    if (codecs[3]) radio('H265', 'h265', codecs[3]),
+    if (codecs[1]) radio('H264', 'h264', codecs[1]),
+    if (codecs[2]) radio('H265', 'h265', codecs[2]),
   ];
 }
 
@@ -642,8 +639,7 @@ Future<List<TToggleMenu>> toolbarDisplayToggle(
 
   // 444
   final codec_format = ffi.qualityMonitorModel.data.codecFormat;
-  if (versionCmp(pi.version, "1.2.4") >= 0 &&
-      (codec_format == "AV1" || codec_format == "VP9")) {
+  if (versionCmp(pi.version, "1.2.4") >= 0 && codec_format == "VP9") {
     final option = 'i444';
     final value =
         bind.sessionGetToggleOptionSync(sessionId: sessionId, arg: option);

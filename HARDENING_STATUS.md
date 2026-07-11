@@ -570,8 +570,22 @@ unreachable and a source/test/AST gate prevents reintroduction.
   failure, or validation failure. `src/ipc.rs` now calls that shared helper for LaunchAgent plist parent/file
   trust instead of carrying a second parser. Verification closure: `scripts/verify.sh` and
   `scripts/apple-conform-check.sh` assert the native ACL API shape, the shared free guard, and absence of
-  `MACOS_LS` / `Command::new(MACOS_LS)` from the Rust runtime trust path. The privileged installer script ACL
-  checks remain part of the separate `install.scpt` shell-based installation surface tracked under R-S11c-5.
+  `MACOS_LS` / `Command::new(MACOS_LS)` from the Rust runtime trust path. The privileged installer shell surface is
+  closed separately by R-S11c-18.
+- **R-S11c-18 — macOS privileged installer ACL enforcement provenance — CLOSED 2026-07-11.**
+  Platform: macOS admin-authorized service install. Surfaces: `src/platform/privileges_scripts/install.scpt`,
+  `scripts/verify.sh`, and `scripts/apple-conform-check.sh`. Boundary: root installer service-helper authority ↔
+  filesystem ACL state. Attack surface closed: the privileged installer no longer proves ACL-free helper state by
+  spawning absolute `/bin/ls -lde` and parsing the formatter output with `awk`. The bundled helper source remains
+  verified as a non-symlink executable signed by the pinned helper requirement; after copying, the deployed
+  `/Library/PrivilegedHelperTools` directory and `com.carriez.rustdesk_service` helper are made ACL-free through
+  checked `/bin/chmod -N` postconditions before the script verifies root:wheel ownership, non-group/world-writable
+  mode, executable state, byte identity with the bundled helper, and the helper code-signing requirement. This is a
+  correctness hardening closure rather than a confirmed command-injection primitive: the old command paths were
+  absolute and dynamic paths were quoted, but authority-bearing ACL state is no longer derived from a
+  human-readable listing format. Verification closure: `scripts/verify.sh` and `scripts/apple-conform-check.sh`
+  require the deployed-helper ACL postcondition, require the requirements/ledger disposition, and reject any
+  reintroduced `/bin/ls -lde` / `NR > 1 {exit 1}` installer ACL parser.
 - **R-S11c-16 — Desktop service lifecycle completion authority — CLOSED 2026-07-10.**
   Platforms: Linux and macOS desktop service wrappers, plus the shared desktop service CLI dispatcher. Surfaces:
   `core_main` `--install-service` / `--uninstall-service`, Linux `systemctl` service lifecycle helpers, macOS

@@ -1102,7 +1102,8 @@ for helper in \
   'fn delete_batch_path_absent_ok(command: String, quoted_path: &str) -> String' \
   'fn delete_reg_key_absent_ok(reg: &str, key: &str) -> String' \
   'fn delete_firewall_rule_absent_ok(netsh: &str, rule_name: &str) -> String' \
-  'fn checked_msi_uninstall_command(command: String) -> String'; do
+  'fn checked_msi_uninstall_command(command: String) -> String' \
+  'fn trusted_prior_msi_uninstall_command('; do
   grep -Fq "$helper" src/platform/windows.rs || r_s11d20="$r_s11d20 helper-missing:$helper"
 done
 grep -Fq 'fn delete_service_absent_ok(' src/platform/windows.rs || r_s11d20="$r_s11d20 service-delete-helper-missing"
@@ -1135,8 +1136,11 @@ grep -Fq 'let remove_install_dir =' src/platform/windows.rs || r_s11d20="$r_s11d
 grep -Fq 'let remove_start_menu = delete_batch_path_absent_ok(' src/platform/windows.rs || r_s11d20="$r_s11d20 start-menu-removal-not-postchecked"
 grep -Fq 'let remove_public_desktop_shortcut = delete_batch_path_absent_ok(' src/platform/windows.rs || r_s11d20="$r_s11d20 desktop-shortcut-removal-not-postchecked"
 grep -Fq 'let remove_startup_tray_shortcut = delete_batch_path_absent_ok(' src/platform/windows.rs || r_s11d20="$r_s11d20 startup-shortcut-removal-not-postchecked"
-grep -Fq 'checked_msi_uninstall_command(command)' src/platform/windows.rs || r_s11d20="$r_s11d20 bound-msi-uninstall-not-exit-checked"
-grep -Fq 'checked_msi_uninstall_command(reg_uninstall_string)' src/platform/windows.rs || r_s11d20="$r_s11d20 fallback-msi-uninstall-not-exit-checked"
+grep -Fq 'checked_msi_uninstall_command(format!(' src/platform/windows.rs || r_s11d20="$r_s11d20 reconstructed-msi-uninstall-not-exit-checked"
+grep -Fq 'trusted_prior_msi_uninstall_command(&reg_uninstall_string, tools)' src/platform/windows.rs || r_s11d20="$r_s11d20 prior-msi-uninstall-not-reconstructed"
+if grep -Fq 'checked_msi_uninstall_command(reg_uninstall_string)' src/platform/windows.rs; then
+  r_s11d20="$r_s11d20 raw-msi-uninstall-fallback-leftover"
+fi
 if grep -Fq '/Y /E /H /C /I /K /R /Z' src/platform/windows.rs; then
   r_s11d20="$r_s11d20 xcopy-continue-on-error-leftover"
 fi
@@ -1367,11 +1371,18 @@ r_s11d5=
 grep -q 'fn trusted_system_tool_path(tool: &str) -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d5="$r_s11d5 system-tool-resolver-missing"
 grep -q 'fn quoted_batch_path(path: &Path) -> ResultType<String>' src/platform/windows.rs || r_s11d5="$r_s11d5 batch-tool-quoting-missing"
 grep -q 'struct WindowsSystemTools' src/platform/windows.rs || r_s11d5="$r_s11d5 system-tool-set-missing"
+grep -qF '"Win32_System_ApplicationInstallationAndServicing"' Cargo.toml || r_s11d5="$r_s11d5 windows-msi-api-feature-missing"
 for tool in chcp.com cscript.exe msiexec.exe netsh.exe reg.exe sc.exe taskkill.exe timeout.exe xcopy.exe; do
   grep -q "trusted_system_tool_path(\"$tool\")" src/platform/windows.rs || r_s11d5="$r_s11d5 missing-$tool"
 done
 grep -q 'let tools = WindowsSystemTools::resolve()?' src/platform/windows.rs || r_s11d5="$r_s11d5 installer-paths-do-not-resolve-tools"
-grep -q 'command_with_system_tool(&reg_uninstall_string, "msiexec.exe", &tools.msiexec)' src/platform/windows.rs || r_s11d5="$r_s11d5 prior-msi-uninstall-not-bound"
+grep -q 'fn prior_msi_uninstall_product_code(' src/platform/windows.rs || r_s11d5="$r_s11d5 prior-msi-product-parser-missing"
+grep -q 'fn normalize_msi_product_code(' src/platform/windows.rs || r_s11d5="$r_s11d5 prior-msi-guid-validator-missing"
+grep -q 'MsiGetProductInfoW(' src/platform/windows.rs || r_s11d5="$r_s11d5 prior-msi-product-name-proof-missing"
+grep -q 'INSTALLPROPERTY_PRODUCTNAME' src/platform/windows.rs || r_s11d5="$r_s11d5 prior-msi-product-name-property-missing"
+grep -q 'product_name != app_name' src/platform/windows.rs || r_s11d5="$r_s11d5 prior-msi-product-name-not-checked"
+grep -q 'trusted_prior_msi_uninstall_command(&reg_uninstall_string, tools)' src/platform/windows.rs || r_s11d5="$r_s11d5 prior-msi-uninstall-not-reconstructed"
+grep -q '{} /X {}' src/platform/windows.rs || r_s11d5="$r_s11d5 prior-msi-msiexec-command-not-rebuilt"
 grep -q 'tools.xcopy' src/platform/windows.rs || r_s11d5="$r_s11d5 xcopy-not-bound"
 grep -q 'tools.cscript' src/platform/windows.rs || r_s11d5="$r_s11d5 cscript-not-bound"
 grep -q '{taskkill} /F /IM' src/platform/windows.rs || r_s11d5="$r_s11d5 taskkill-not-bound"
@@ -1384,8 +1395,16 @@ if grep -nE '^[[:space:]]*(chcp 65001|reg (add|delete)|netsh advfirewall|sc (cre
   r_s11d5="$r_s11d5 bare-external-tool-in-elevated-batch"
 fi
 rm -f /tmp/rd_verify_r_s11d5_bare.$$
+if grep -q 'command_with_system_tool' src/platform/windows.rs; then
+  r_s11d5="$r_s11d5 prefix-only-msiexec-binder-leftover"
+fi
+if grep -q 'checked_msi_uninstall_command(reg_uninstall_string)' src/platform/windows.rs; then
+  r_s11d5="$r_s11d5 raw-prior-msi-uninstall-leftover"
+fi
 grep -q 'Windows EXE elevated batch command provenance' requirements.html || r_s11d5="$r_s11d5 requirements-disposition-missing"
+grep -q 'Windows EXE prior-MSI uninstall command reconstruction' requirements.html || r_s11d5="$r_s11d5 prior-msi-reconstruction-requirements-missing"
 grep -q 'R-S11d-5 — Windows EXE elevated batch command provenance' HARDENING_STATUS.md || r_s11d5="$r_s11d5 hardening-ledger-missing"
+grep -q 'R-S11d-35 — Windows EXE prior-MSI uninstall command reconstruction' HARDENING_STATUS.md || r_s11d5="$r_s11d5 prior-msi-reconstruction-ledger-missing"
 if [ -n "$r_s11d5" ]; then echo "  FAIL R-S11d-5 Windows EXE elevated batch command provenance:$r_s11d5"; rc=1; else
   echo "  ok  R-S11d-5 Windows EXE elevated batch resolves external tools from System32 and rejects bare tool names in the elevated batch surface"; fi
 

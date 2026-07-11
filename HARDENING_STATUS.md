@@ -987,13 +987,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
   name. Before any elevated EXE batch is formatted, `src/platform/windows.rs` resolves `chcp.com`,
   `cscript.exe`, `msiexec.exe`, `netsh.exe`, `reg.exe`, `sc.exe`, `taskkill.exe`, `timeout.exe`, and
   `xcopy.exe` from `GetSystemDirectoryW`, requires each file to exist, quotes the resulting absolute path, and
-  threads that tool set through broker update, install, uninstall, service install/uninstall, previous-MSI
-  uninstall handoff, service creation, shortcut-script execution, registry/firewall/SAS setup, and bulk-copy
-  fragments. Missing or malformed tool paths fail closed before elevation; the existing `.undone` marker still
-  makes batch failure visible to the caller. Verification closure: `scripts/verify.sh` asserts the System32
-  tool resolver, the required tool set, `msiexec.exe` command-prefix binding for prior MSI uninstall strings,
-  and absence of bare `chcp`, `reg`, `netsh`, `sc`, `taskkill`, `cscript`, `XCOPY`, `xcopy`, or `timeout`
-  command lines in the elevated batch surface.
+  threads that tool set through broker update, install, uninstall, service install/uninstall, prior-MSI uninstall
+  handoff, service creation, shortcut-script execution, registry/firewall/SAS setup, and bulk-copy fragments.
+  Missing or malformed tool paths fail closed before elevation; the existing `.undone` marker still makes batch
+  failure visible to the caller. Prior MSI uninstall strings are not replayed as command text: R-S11d-35 parses
+  only the MSI product-code grammar, proves `ProductName` through Windows Installer, and rebuilds the command with
+  the trusted `msiexec.exe`. Verification closure: `scripts/verify.sh` asserts the System32 tool resolver, the
+  required tool set, prior-MSI product-code reconstruction/proof, and absence of bare `chcp`, `reg`, `netsh`, `sc`,
+  `taskkill`, `cscript`, `XCOPY`, `xcopy`, or `timeout` command lines in the elevated batch surface.
 - **R-S11d-6 — Windows EXE shortcut finalization provenance — CLOSED 2026-07-10.** Platform:
   Windows EXE install/service-install elevated shortcut creation. Endpoint/action: Public Desktop shortcut,
   Common Programs Start Menu shortcuts, Common Startup tray shortcut, and Program Files uninstall shortcut.
@@ -1170,14 +1171,15 @@ unreachable and a source/test/AST gate prevents reintroduction.
   checked for command failure, shortcut scripts verify the final `.lnk` exists, and service creation/failure/start
   retains checked `sc` exit handling. Uninstall cleanup now uses absence-driven helpers for service deletion,
   HKCR/HKLM key deletion, firewall rule deletion, install-directory removal, Start Menu removal, Public Desktop
-  shortcut removal, and Common Startup tray-shortcut removal. Prior MSI uninstall delegation now observes
-  `msiexec` exit status, accepting only success, reboot-required `3010`, and product-absent `1605`. R-S11d-21
-  separately closes the MSI `CC_CONNECTION_TYPE` public-property service-mode gate, R-S11d-22 separately closes
-  EXE certificate-cleanup completion, and R-S11d-23 separately closes EXE Amyuni IDD cleanup completion. The MSI
-  Amyuni cleanup authority is R-S11d-2/R-S11d-7. Verification closure: `scripts/verify.sh` asserts the fail-fast
-  and absence-postcondition helpers, checked copy/update/install call sites, removal of `xcopy /C`, install
-  directory and shortcut existence postconditions, service/registry/firewall absence checks, MSI uninstall exit
-  handling, absence of raw install-dir create/service-delete/uninstall-registry-delete leftovers, and this
+  shortcut removal, and Common Startup tray-shortcut removal. Prior MSI uninstall delegation is reconstructed by
+  R-S11d-35 before it enters the batch, then observes `msiexec` exit status, accepting only success,
+  reboot-required `3010`, and product-absent `1605`. R-S11d-21 separately closes the MSI `CC_CONNECTION_TYPE`
+  public-property service-mode gate, R-S11d-22 separately closes EXE certificate-cleanup completion, and R-S11d-23
+  separately closes EXE Amyuni IDD cleanup completion. The MSI Amyuni cleanup authority is R-S11d-2/R-S11d-7.
+  Verification closure: `scripts/verify.sh` asserts the fail-fast and absence-postcondition helpers, checked
+  copy/update/install call sites, removal of `xcopy /C`, install directory and shortcut existence postconditions,
+  service/registry/firewall absence checks, reconstructed MSI uninstall exit handling, absence of the raw
+  uninstall-string fallback and raw install-dir create/service-delete/uninstall-registry-delete leftovers, and this
   ledger/requirements disposition.
 - **R-S11d-21 — Windows MSI service-mode package authority — CLOSED 2026-07-10.**
   Platform: Windows MSI install/repair/upgrade. Endpoint/action: package-time service creation/start, tray launch,
@@ -1374,6 +1376,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   product-executable validator, firewall normalized-path call, service-delete binary proof in WiX, live
   service-config proof, handle-bound trusted delete helper, image-path-bound process cleanup, absence of the old
   raw firewall helper path, absence of name-only service-delete cleanup, and this ledger/requirements disposition.
+- **R-S11d-35 — Windows EXE prior-MSI uninstall command reconstruction — CLOSED 2026-07-11.** Platform:
+  Windows EXE install/upgrade over an existing MSI install. Endpoint/action: `get_uninstall` delegating the prior
+  MSI removal before the elevated EXE install batch writes new Program Files/HKLM/service state. Boundary: HKLM
+  uninstall metadata from the previous install ↔ approved elevated batch command text. Attack surface closed:
+  prior `UninstallString` values containing `msiexec.exe` are no longer spliced into the elevated batch after a
+  prefix bind, and there is no raw fallback when binding fails. `src/platform/windows.rs` now accepts only a
+  `msiexec.exe /X {PRODUCT-CODE}`-class command shape, validates the braced GUID grammar, rejects unsupported
+  arguments and duplicate product codes, proves the product name with `MsiGetProductInfoW(...,
+  INSTALLPROPERTY_PRODUCTNAME, ...)`, requires it to match `crate::get_app_name()`, and reconstructs
+  `"<System32>\\msiexec.exe" /X {PRODUCT-CODE}` from the trusted tool path. The prior registry string contributes
+  only the product code after validation; it contributes no shell metacharacters, extra argv, alternate executable,
+  or command tail. Verification closure: `scripts/verify.sh` gates the Windows Installer API feature, product-code
+  parser, GUID validator, product-name proof, command reconstruction, absence of the prefix-only binder, absence of
+  the raw `checked_msi_uninstall_command(reg_uninstall_string)` fallback, and this requirements/ledger disposition.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's
@@ -2901,7 +2917,7 @@ The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-4e03ebbd946fd1e4e8fa5edf71246f7fdd7fb010bd0cbfce63f3647add2546dc  requirements.html
+1dc8b83021e3d701a4a598d91aba9a626366b0e2620820ad15207fb978bf5ea1  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

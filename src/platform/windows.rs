@@ -67,12 +67,15 @@ use winapi::{
     },
 };
 use windows::{
-    core::{Interface, GUID, PCWSTR},
+    core::{Interface, GUID, PCWSTR, PWSTR},
     Win32::{
         Foundation::{CloseHandle as WinCloseHandle, HANDLE as WinHANDLE, RPC_E_CHANGED_MODE},
         Security::{
             GetTokenInformation as WinGetTokenInformation, IsWellKnownSid, TokenUser,
             WinLocalSystemSid, TOKEN_QUERY as WIN_TOKEN_QUERY, TOKEN_USER,
+        },
+        System::ApplicationInstallationAndServicing::{
+            MsiGetProductInfoW, INSTALLPROPERTY_PRODUCTNAME,
         },
         System::Com::{
             CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, IPersistFile,
@@ -1999,6 +2002,7 @@ struct WindowsSystemTools {
     chcp: String,
     cscript: String,
     msiexec: String,
+    msiexec_path: PathBuf,
     netsh: String,
     reg: String,
     sc: String,
@@ -2009,10 +2013,13 @@ struct WindowsSystemTools {
 
 impl WindowsSystemTools {
     fn resolve() -> ResultType<Self> {
+        let msiexec_path = trusted_system_tool_path("msiexec.exe")?;
+        let msiexec = quoted_batch_path(&msiexec_path)?;
         Ok(Self {
             chcp: quoted_batch_path(&trusted_system_tool_path("chcp.com")?)?,
             cscript: quoted_batch_path(&trusted_system_tool_path("cscript.exe")?)?,
-            msiexec: quoted_batch_path(&trusted_system_tool_path("msiexec.exe")?)?,
+            msiexec,
+            msiexec_path,
             netsh: quoted_batch_path(&trusted_system_tool_path("netsh.exe")?)?,
             reg: quoted_batch_path(&trusted_system_tool_path("reg.exe")?)?,
             sc: quoted_batch_path(&trusted_system_tool_path("sc.exe")?)?,
@@ -2556,41 +2563,164 @@ fn get_before_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> String {
 /// - `kill_self`: The command will kill the process of current app name. If `true`, it will kill
 ///   the current process as well. If `false`, it will exclude the current process from the kill
 ///   command.
-fn command_with_system_tool(
-    command: &str,
-    tool_name: &str,
-    quoted_tool_path: &str,
-) -> Option<String> {
-    let trimmed = command.trim_start();
-    let leading = &command[..command.len() - trimmed.len()];
-    let lower = trimmed.to_ascii_lowercase();
-    let tool = tool_name.to_ascii_lowercase();
-    let quoted_tool = format!("\"{tool}\"");
+fn split_windows_command_tokens(command: &str) -> ResultType<Vec<String>> {
+    let mut tokens = Vec::new();
+    let mut token = String::new();
+    let mut in_quotes = false;
 
-    if lower.starts_with(&quoted_tool) {
-        let rest = &trimmed[quoted_tool.len()..];
-        return Some(format!("{leading}{quoted_tool_path}{rest}"));
-    }
-
-    if lower.starts_with(&tool) {
-        let rest = &trimmed[tool.len()..];
-        if rest.is_empty() || rest.chars().next().is_some_and(|c| c.is_whitespace()) {
-            return Some(format!("{leading}{quoted_tool_path}{rest}"));
+    for ch in command.chars() {
+        match ch {
+            '"' => in_quotes = !in_quotes,
+            '\0' | '\r' | '\n' => bail!("MSI uninstall string contains a control character"),
+            ch if ch.is_whitespace() && !in_quotes => {
+                if !token.is_empty() {
+                    tokens.push(std::mem::take(&mut token));
+                }
+            }
+            ch => token.push(ch),
         }
     }
 
-    None
+    if in_quotes {
+        bail!("MSI uninstall string contains an unterminated quote");
+    }
+    if !token.is_empty() {
+        tokens.push(token);
+    }
+    Ok(tokens)
+}
+
+fn normalize_msi_product_code(value: &str) -> ResultType<String> {
+    let value = value.trim();
+    let bytes = value.as_bytes();
+    if bytes.len() != 38 || bytes.first() != Some(&b'{') || bytes.last() != Some(&b'}') {
+        bail!("MSI product code is not a braced GUID");
+    }
+
+    for (idx, byte) in bytes.iter().enumerate() {
+        let valid = match idx {
+            0 => *byte == b'{',
+            37 => *byte == b'}',
+            9 | 14 | 19 | 24 => *byte == b'-',
+            _ => byte.is_ascii_hexdigit(),
+        };
+        if !valid {
+            bail!("MSI product code is not a braced GUID");
+        }
+    }
+
+    Ok(value.to_ascii_uppercase())
+}
+
+fn is_msiexec_token(token: &str, trusted_msiexec_path: &Path) -> bool {
+    if token.eq_ignore_ascii_case("msiexec.exe") {
+        return true;
+    }
+    let token = token.replace('/', "\\");
+    let trusted = trusted_msiexec_path.to_string_lossy().replace('/', "\\");
+    token.eq_ignore_ascii_case(&trusted)
+}
+
+fn take_prior_msi_product_code(slot: &mut Option<String>, raw: &str) -> ResultType<()> {
+    let product_code = normalize_msi_product_code(raw)?;
+    if slot.replace(product_code).is_some() {
+        bail!("MSI uninstall string contains more than one product code");
+    }
+    Ok(())
+}
+
+fn prior_msi_uninstall_product_code(
+    command: &str,
+    trusted_msiexec_path: &Path,
+) -> ResultType<String> {
+    let tokens = split_windows_command_tokens(command)?;
+    if tokens.is_empty() {
+        bail!("MSI uninstall string is empty");
+    }
+    if !is_msiexec_token(&tokens[0], trusted_msiexec_path) {
+        bail!("MSI uninstall string does not start with trusted msiexec.exe");
+    }
+
+    let mut product_code = None;
+    let mut index = 1usize;
+    while index < tokens.len() {
+        let token = &tokens[index];
+        let lower = token.to_ascii_lowercase();
+        if lower == "/x" || lower == "-x" {
+            index += 1;
+            let Some(raw_product_code) = tokens.get(index) else {
+                bail!("MSI uninstall flag is missing a product code");
+            };
+            take_prior_msi_product_code(&mut product_code, raw_product_code)?;
+        } else if lower.starts_with("/x") || lower.starts_with("-x") {
+            take_prior_msi_product_code(&mut product_code, &token[2..])?;
+        } else if matches!(lower.as_str(), "/qn" | "/quiet" | "/norestart") {
+            // Accepted only as inert legacy MSI UI flags; the command is reconstructed below.
+        } else {
+            bail!("MSI uninstall string contains unsupported arguments");
+        }
+        index += 1;
+    }
+
+    product_code.ok_or_else(|| anyhow!("MSI uninstall string has no product code"))
+}
+
+fn msi_product_name(product_code: &str) -> ResultType<String> {
+    let product_code = null_terminated_wide(OsStr::new(product_code), "MSI product code")?;
+    let mut len = 0u32;
+    let query = unsafe {
+        MsiGetProductInfoW(
+            PCWSTR(product_code.as_ptr()),
+            INSTALLPROPERTY_PRODUCTNAME,
+            None,
+            Some(&mut len),
+        )
+    };
+    if query != ERROR_MORE_DATA && query != ERROR_SUCCESS {
+        bail!("MsiGetProductInfoW(ProductName) failed before sizing: {query}");
+    }
+    let mut buffer = vec![0u16; len as usize + 1];
+    let status = unsafe {
+        MsiGetProductInfoW(
+            PCWSTR(product_code.as_ptr()),
+            INSTALLPROPERTY_PRODUCTNAME,
+            Some(PWSTR(buffer.as_mut_ptr())),
+            Some(&mut len),
+        )
+    };
+    if status != ERROR_SUCCESS {
+        bail!("MsiGetProductInfoW(ProductName) failed: {status}");
+    }
+    if len == 0 {
+        bail!("MSI ProductName is empty");
+    }
+    Ok(OsString::from_wide(&buffer[..len as usize])
+        .to_string_lossy()
+        .into_owned())
+}
+
+fn trusted_prior_msi_uninstall_command(
+    command: &str,
+    tools: &WindowsSystemTools,
+) -> ResultType<String> {
+    let product_code = prior_msi_uninstall_product_code(command, &tools.msiexec_path)?;
+    let product_name = msi_product_name(&product_code)?;
+    let app_name = crate::get_app_name();
+    if product_name != app_name {
+        bail!(
+            "Refusing prior MSI uninstall for product {product_code}: ProductName {product_name:?} does not match {app_name:?}"
+        );
+    }
+    Ok(checked_msi_uninstall_command(format!(
+        "{} /X {}",
+        tools.msiexec, product_code
+    )))
 }
 
 fn get_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> ResultType<String> {
     let reg_uninstall_string = get_reg("UninstallString");
     if reg_uninstall_string.to_lowercase().contains("msiexec.exe") {
-        if let Some(command) =
-            command_with_system_tool(&reg_uninstall_string, "msiexec.exe", &tools.msiexec)
-        {
-            return Ok(checked_msi_uninstall_command(command));
-        }
-        return Ok(checked_msi_uninstall_command(reg_uninstall_string));
+        return trusted_prior_msi_uninstall_command(&reg_uninstall_string, tools);
     }
 
     let exe = std::env::current_exe()

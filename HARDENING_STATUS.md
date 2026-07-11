@@ -1458,10 +1458,11 @@ was caught fail-loud during development, not shipped):
 - **concurrent-commit coherence (`1405369`)** — Windows pins the commit for both double-build passes, and
   build-release.sh rejects the set if HEAD moves mid-build, so the manifest can never mislabel a
   mixed-commit set.
-`verify-release.sh` (8 source gates: compile + PAKE KATs + runtime smoke + flutter analyze + Rust/Dart
-advisories + the R-B2 determinism guards + the build-harness fail-loud suite) is the source-side
-confirmation. The reproducible set folds in the R-S19 structural closure of CWE-863 / CVE-2026-58056
-(every peer-triggerable capability derived from `AuthConnType` by construction).
+`verify-release.sh` (8 source gates: compile/KATs/policy, runtime smoke, Flutter/Dart analyze,
+native-codec watch, Apple source conformance, Rust advisory audit, Dart advisory audit, and the
+build-harness fail-loud suite) is the source-side confirmation. The reproducible set folds in the
+R-S19 structural closure of CWE-863 / CVE-2026-58056 (every peer-triggerable capability derived from
+`AuthConnType` by construction).
 
 Prior re-prove (superseded; its `.msi` `2d8b8aed` was later found NOT cross-day reproducible — fixed
 `c47bca8` above; exe/deb/apk WERE reproducible): **R-B2 at HEAD `5e03011` (2026-07-02)** after the R-V3
@@ -1487,8 +1488,9 @@ c68fb11ea3d25945a014c15ced26f534ba9f8ceb2f871b02a6623ba8d4a46932  rustdesk-setup
 
 Debian = offline `DOUBLE_BUILD` `dist` vs `dist/_rebuild`; Android = two independent offline CLEAN
 builds proven byte-identical (signed apksigner v2, RSA-4096, cert `10:91:32:2B:A0:42:5A:FA:…`);
-Windows = §12.2 KVM golden-VM `DOUBLE_BUILD` A==B (exe + msi). `verify-release.sh` ALL 7 source gates
-GREEN at this HEAD (incl. the port-forward runtime smoke + the R-A9 wire-ciphertext test).
+Windows = §12.2 KVM golden-VM `DOUBLE_BUILD` A==B (exe + msi). `verify-release.sh` ALL 8 source gates
+GREEN at this HEAD (incl. the port-forward runtime smoke, Apple source conformance, and the R-A9
+wire-ciphertext test).
 
 Prior re-prove (superseded): **R-B2 re-proven on all three platforms at HEAD `ede091e` (2026-07-01), after the
 completion-review fix batch (R-G6 additive error copy + R-X7/R-G3/R-S18 letter-of-spec
@@ -2090,12 +2092,14 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   bypass the depth limit; the gate + this note flag it.
 - **Apple artifacts** — macOS/iOS are source-conformed (R-R2 retain-and-check),
   not built; full artifacts need the Apple SDK/toolchain path.
-- **Apple R-R2 gate runs outside `verify.sh`** — `scripts/apple-conform-check.sh`
-  needs the `rd-apple-check` image + cargo cross-checks, so it is **not in the default
-  verify loop**; its `0c54912` #2b leftover (above) therefore went unnoticed through the
-  "complete"/"proven" milestones. GREEN again at HEAD (2026-07-01). **To wire in:** add
-  it to the release-verification path so future Apple-source drift fails fast rather than
-  silently.
+- **Apple R-R2 release gate integration — ✅ CLOSED 2026-07-11.** `scripts/apple-conform-check.sh`
+  still runs outside the default fast `verify.sh` loop because it needs the `rd-apple-check`
+  image plus Apple target cross-checks, but it is now part of the release source-gate bundle:
+  `scripts/verify-release.sh` runs it with `verify.sh`, `smoke-server.sh`, `dart-verify.sh`,
+  `native-codec-watch.sh`, `audit.sh`, `dart-audit.sh`, and `test-build-faillo.sh`. The fast
+  verifier asserts that full bundle, including the Apple gate and the release-gate ledger/requirements
+  wording, so future Apple-source drift fails release verification rather than passing a
+  "complete/proven" milestone silently.
 - **R-R3 dependency-advisory gates** — `scripts/audit.sh` builds a digest-pinned Rust 1.75 audit image,
   installs the pinned `cargo-audit` and `cargo-deny` versions from `scripts/pins.env`, bakes the pinned
   RustSec advisory-db snapshot, derives cargo-audit ignores only from `deny.toml` TOML ignore objects,

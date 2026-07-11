@@ -5087,6 +5087,33 @@ if [ -n "$apple_gate_bad" ]; then
 else
   echo "  ok  R-R2/R-A6 Apple companion gate covers target matrix + real features + plist/pod/PBX allow-lists + non-mutating cargo proof"
 fi
+# R-R2/R-A6 release-gate integration: Apple source conformance is intentionally
+# outside the fast Linux verify loop, but it is not optional release evidence.
+# The slow release orchestrator must run apple-conform-check.sh alongside the
+# other source gates so Apple-only drift cannot pass a "release-ready" milestone.
+release_gate_bad=
+release_gate=scripts/verify-release.sh
+grep -qF 'GATES=(' "$release_gate" || release_gate_bad="$release_gate_bad no-gate-array"
+grep -qF '"verify.sh|compile + KATs + handshake + policy funnel + R-A6 done-set"' "$release_gate" || release_gate_bad="$release_gate_bad missing-verify"
+grep -qF '"smoke-server.sh|runtime: one-TCP/zero-UDP, fail-closed, keying, provisioning, full session"' "$release_gate" || release_gate_bad="$release_gate_bad missing-smoke"
+grep -qF '"dart-verify.sh|flutter analyze lib/ (zero errors)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-dart-verify"
+grep -qF '"native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin"' "$release_gate" || release_gate_bad="$release_gate_bad missing-native-codec-watch"
+grep -qF '"apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks"' "$release_gate" || release_gate_bad="$release_gate_bad missing-apple-conform"
+grep -qF '"audit.sh|cargo-audit + cargo-deny (Rust advisory floor)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-rust-audit"
+grep -qF '"dart-audit.sh|osv-scanner (Dart advisory floor)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-dart-audit"
+grep -qF '"test-build-faillo.sh|build-harness fail-loud guards (every misconfiguration dies loud, §12.3)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-build-faillo"
+grep -qF 'VERIFY-RELEASE: ALL GATES GREEN' "$release_gate" || release_gate_bad="$release_gate_bad no-success-summary"
+grep -qF 'apple-conform-check.sh' requirements.html || release_gate_bad="$release_gate_bad requirements-no-apple-release-gate"
+stale_release_gate_ledger='ALL 7 source ''gates'
+stale_apple_wire='To wire in: add[[:space:]]+it to the release-verification path'
+if grep -qE "$stale_release_gate_ledger|$stale_apple_wire" HARDENING_STATUS.md requirements.html scripts/verify-release.sh scripts/verify.sh; then
+  release_gate_bad="$release_gate_bad stale-apple-release-gate-ledger"
+fi
+if [ -n "$release_gate_bad" ]; then
+  echo "  FAIL R-R2/R-A6 release verification no longer requires the Apple source-conformance gate:$release_gate_bad"; rc=1
+else
+  echo "  ok  R-R2/R-A6 release verification includes Apple source conformance with the full source-gate bundle"
+fi
 # R-SV9 (§18 sovereignty): the front-ends MUST carry no PLAINTEXT-http link (a downgrade/MITM
 # vector), and the sovereign SHOULD removes the live upstream docs/download helper links until an
 # operator-owned docs/privacy target exists. The remaining RustDesk brand strings are app/driver

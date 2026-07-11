@@ -2644,6 +2644,17 @@ struct InstallerCommandFile {
     file: Option<fs::File>,
 }
 
+impl InstallerCommandFile {
+    fn path_str(&self) -> ResultType<&str> {
+        self.path.to_str().ok_or_else(|| {
+            anyhow!(
+                "installer command file path is not valid UTF-8: {:?}",
+                self.path
+            )
+        })
+    }
+}
+
 impl Drop for InstallerCommandFile {
     fn drop(&mut self) {
         self.file.take();

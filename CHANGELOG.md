@@ -21,6 +21,8 @@ release notes.
 - Fixed explicit password changes that match a preset value so they still persist as local durable storage.
 
 ### Verification
+- Kept Windows release packaging compiling under the offline VM harness when staging installer shortcut
+  command files.
 - Added behavior tests for macOS LaunchAgent plist proof, runtime snapshot non-persistence, and the
   preset-match persistence case.
 - Tightened `verify.sh` and `apple-conform-check.sh` to gate the macOS snapshot proof in the specific

@@ -21,7 +21,7 @@ use std::{
 use std::{
     fs,
     os::unix::fs::MetadataExt,
-    path::{Component, Path},
+    path::{Component, Path, PathBuf},
 };
 
 // Windows-specific imports from terminal_helper module

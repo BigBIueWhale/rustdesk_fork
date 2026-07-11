@@ -1458,6 +1458,7 @@ grep -q 'handle_macos_service_owned_permanent_password_snapshot_request' src/ipc
 grep -q 'macos_peer_is_service_owned_server' src/ipc.rs                            || r_s11b2="$r_s11b2 macos-service-password-snapshot-peer-shape-missing"
 grep -q 'macos_launch_agent_owns_service_owned_server_pid' src/ipc.rs              || r_s11b2="$r_s11b2 macos-service-password-snapshot-launchd-pid-proof-missing"
 macos_snapshot_peer_block=$(awk '/async fn macos_peer_is_service_owned_server/,/fn macos_service_owned_server_launch_agent_label/' src/ipc.rs)
+macos_blocking_peer_block=$(awk '/fn macos_peer_is_service_owned_server_blocking/,/fn macos_service_owned_server_launch_agent_label/' src/ipc.rs)
 macos_launch_agent_proof_block=$(awk '/fn macos_launch_agent_owns_service_owned_server_pid/,/async fn handle_macos_service_owned_permanent_password_snapshot_request/' src/ipc.rs)
 macos_plist_parser_block=$(awk '/fn macos_service_owned_server_launch_agent_plist_value_is_expected/,/fn macos_service_owned_server_launch_agent_plist_content_is_expected/' src/ipc.rs)
 macos_plist_content_block=$(awk '/fn macos_service_owned_server_launch_agent_plist_content_is_expected/,/fn macos_launchctl_print_value/' src/ipc.rs)
@@ -1477,8 +1478,14 @@ grep -q 'metadata.permissions().mode() & 0o022 == 0' src/ipc.rs                 
 grep -q 'macos_path_has_no_extended_acl' src/ipc.rs                                || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-acl-missing"
 echo "$macos_snapshot_peer_block" | grep -q 'tokio::task::spawn_blocking'          || r_s11b2="$r_s11b2 macos-service-password-snapshot-proof-not-spawn-blocking"
 echo "$macos_snapshot_peer_block" | grep -q 'macos_peer_is_service_owned_server_blocking(peer_uid, peer_pid)' || r_s11b2="$r_s11b2 macos-service-password-snapshot-proof-blocking-target-missing"
-echo "$macos_snapshot_peer_block" | grep -q 'process.cmd().get(1)'                 || r_s11b2="$r_s11b2 macos-service-password-snapshot-peer-server-argv-missing"
-echo "$macos_snapshot_peer_block" | grep -q 'get(2)'                               || r_s11b2="$r_s11b2 macos-service-password-snapshot-peer-service-owned-argv-missing"
+grep -Fq 'fn macos_service_owned_server_live_argv_is_expected(cmd: &[String]) -> bool' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-live-argv-helper-missing"
+grep -Fq 'cmd.len() == 3' src/ipc.rs                                             || r_s11b2="$r_s11b2 macos-service-password-live-argv-not-exact-length"
+echo "$macos_snapshot_peer_block" | grep -Fq 'macos_service_owned_server_live_argv_is_expected(process.cmd())' || r_s11b2="$r_s11b2 macos-service-password-live-argv-helper-not-wired"
+grep -q 'macos_service_owned_server_live_argv_rejects_extra_arg' src/ipc.rs       || r_s11b2="$r_s11b2 macos-service-password-live-argv-extra-test-missing"
+grep -q 'macos_service_owned_server_live_argv_rejects_wrong_service_arg' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-live-argv-wrong-marker-test-missing"
+if echo "$macos_blocking_peer_block" | grep -qE 'process\.cmd\(\)\.get\([12]\)'; then
+  r_s11b2="$r_s11b2 macos-service-password-live-argv-prefix-proof-present"
+fi
 grep -q 'macos_service_owned_server_launch_agent_executable' src/ipc.rs            || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-exec-proof-missing"
 grep -q 'macos_service_owned_server_launch_agent_plist_content_is_expected' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-content-proof-missing"
 grep -q 'macos_service_owned_server_launch_agent_plist_value_is_expected' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-parser-missing"
@@ -1489,6 +1496,7 @@ echo "$macos_plist_parser_block" | grep -q 'SuccessfulExit'                     
 echo "$macos_plist_parser_block" | grep -q 'AfterInitialDemand'                   || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-keepalive-initial-demand-missing"
 echo "$macos_plist_parser_block" | grep -q 'keep_alive.len() != 2'                || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-keepalive-exact-shape-missing"
 grep -q 'macos_service_owned_launch_agent_plist_validation_rejects_missing_service_arg' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-validation-test-missing"
+grep -q 'macos_service_owned_launch_agent_plist_validation_rejects_extra_arg' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-extra-arg-test-missing"
 grep -q 'macos_service_owned_launch_agent_plist_validation_rejects_run_at_load_false' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-runatload-test-missing"
 grep -q 'macos_service_owned_launch_agent_plist_validation_rejects_missing_keep_alive' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-keepalive-test-missing"
 grep -q 'macos_service_owned_launch_agent_plist_validation_rejects_extra_keep_alive_key' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-keepalive-exact-test-missing"
@@ -1614,7 +1622,7 @@ if echo "$user_scope_fn" | grep -q '"--password"'; then
   r_s11b2="$r_s11b2 password-still-root-routes-to-user-main-ipc"
 fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 service-owned password IPC closure:$r_s11b2"; rc=1; else
-  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux uses polkit/root-service commit with structured policy/package assurance; Windows uses pipe-client token elevation plus LocalSystem service commit; macOS stores the proposed value in a one-shot same-peer request, admits _service only for the installed app executable talking to the trusted PrivilegedHelperTools helper, finishes with authorization only, uses a nonshared timeout-zero custom Authorization Services right, verifies the external form noninteractively, writes the authorized value into the root LaunchDaemon credential store, rejects the old macOS main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after pid/path and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
+  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux uses polkit/root-service commit with structured policy/package assurance; Windows uses pipe-client token elevation plus LocalSystem service commit; macOS stores the proposed value in a one-shot same-peer request, admits _service only for the installed app executable talking to the trusted PrivilegedHelperTools helper, finishes with authorization only, uses a nonshared timeout-zero custom Authorization Services right, verifies the external form noninteractively, writes the authorized value into the root LaunchDaemon credential store, rejects the old macOS main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after exact live argv plus pid/path and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
 
 # R-S11b-4: config/PRS secrecy after IPC closure. The balanced-PAKE PRS is
 # connect-equivalent at rest, so the code-owned boundary is:

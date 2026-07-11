@@ -282,8 +282,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   even when the value equals a preset. The old macOS main-server
   `Data::CommitServiceOwnedUnattendedPasswordChange` path rejects and cannot write. The service-owned
   LaunchAgent receives the root credential only as a runtime snapshot after the LaunchDaemon proves that the
-  `_service` peer is the installed app/trusted-helper pair, is a live `--server --service-owned-server`
-  process, is the pid launchd reports for the expected root-owned
+  `_service` peer is the installed app/trusted-helper pair, has the exact live `--server --service-owned-server`
+  command vector, is the pid launchd reports for the expected root-owned
   `/Library/LaunchAgents/..._server.plist` label in `gui/<uid>/<label>`, and is bound to a parsed plist
   whose parent and file are root:wheel, non-symlink, non-group/world-writable, ACL-free, and whose
   `Label`, `ProgramArguments`, `RunAtLoad`, and `KeepAlive` shape exactly describe the service-owned
@@ -299,8 +299,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   request-digest prompt/verification API, no `kAuthorizationRightExecute` fallback in the service password
   functions, non-interactive `AuthorizationCreateFromExternalForm` verification, signed/root-owned installed-app
   peer identity, trusted PrivilegedHelperTools `_service` current-helper identity, absence of the old same-directory
-  `service` binary exception, root-store write, launchd-owned runtime snapshot with parsed root-owned plist
-  command-shape proof, runtime overlay non-persistence,
+  `service` binary exception, root-store write, launchd-owned runtime snapshot with exact live argv plus parsed
+  root-owned plist command-shape proof, runtime overlay non-persistence,
   installed-daemon exposure gate, and service handler wiring; the Unix source tests cover main-channel commit
   rejection and `_service` request admission.
 - **R-S11b-3a — service-marked server rejects ordinary options IPC — CLOSED 2026-07-08.** Platforms:
@@ -586,6 +586,21 @@ unreachable and a source/test/AST gate prevents reintroduction.
   human-readable listing format. Verification closure: `scripts/verify.sh` and `scripts/apple-conform-check.sh`
   require the deployed-helper ACL postcondition, require the requirements/ledger disposition, and reject any
   reintroduced `/bin/ls -lde` / `NR > 1 {exit 1}` installer ACL parser.
+- **R-S11c-19 — macOS LaunchAgent live argv authority — CLOSED 2026-07-11.**
+  Platform: macOS LaunchDaemon/LaunchAgent installed service. Surfaces: `src/ipc.rs`, `scripts/verify.sh`, and
+  `scripts/apple-conform-check.sh`. Boundary: root LaunchDaemon credential snapshot delivery ↔ service-owned
+  LaunchAgent process identity. Attack surface closed: the live peer-process proof for
+  `Data::MacosServiceOwnedPermanentPasswordSnapshotRequest` no longer accepts a prefix-shaped command vector.
+  The LaunchDaemon still requires the `_service` peer to be the installed app talking to the trusted privileged
+  helper, requires launchd to report the peer pid under the expected `gui/<uid>/<label>` job and root-owned plist,
+  and parses that plist for the exact `ProgramArguments`/`RunAtLoad`/`KeepAlive` shape; this slice makes the live
+  process proof match that exact job shape by rejecting any command vector other than the three-entry
+  `argv[0]`, `--server`, `--service-owned-server` form. This is correctness hardening rather than a confirmed
+  local-to-root path because launchd pid/path and root-owned plist proof were already load-bearing. Verification
+  closure: the Rust tests reject extra live argv, a wrong live service marker, and extra plist
+  `ProgramArguments`; both source gates require the exact live argv helper, its snapshot-peer wiring, the
+  exact-length check, the wrong-marker test, the extra-argument tests, and absence of the old raw indexed proof
+  shape in the blocking peer check.
 - **R-S11c-16 — Desktop service lifecycle completion authority — CLOSED 2026-07-10.**
   Platforms: Linux and macOS desktop service wrappers, plus the shared desktop service CLI dispatcher. Surfaces:
   `core_main` `--install-service` / `--uninstall-service`, Linux `systemctl` service lifecycle helpers, macOS
@@ -1281,8 +1296,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   with authorization only, verifies an explicit non-shared timeout-zero RustDesk Authorization Services right
   noninteractively, writes the authorized value into the root LaunchDaemon credential store, rejects the old
   macOS main-server commit fallback, and serves that root credential to the service-owned LaunchAgent only as a
-  launchd-owned runtime snapshot after pid/path and parsed root-owned plist command-shape proof; the snapshot
-  cannot be persisted into user config.
+  launchd-owned runtime snapshot after exact live argv plus pid/path and parsed root-owned plist command-shape proof;
+  the snapshot cannot be persisted into user config.
 - **R-S11e — Linux polkit policy/package assurance — CLOSED 2026-07-10.**
   Platform: Linux `.deb` installed-service mode. Endpoint/action: the single local admin-authorized
   service-owned unattended-password change. Boundary: user-session process and distro-local polkit policy

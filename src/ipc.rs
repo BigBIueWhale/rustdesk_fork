@@ -1851,6 +1851,13 @@ async fn macos_peer_is_service_owned_server(stream: &Connection) -> bool {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
+fn macos_service_owned_server_live_argv_is_expected(cmd: &[String]) -> bool {
+    cmd.len() == 3
+        && cmd.get(1).map(String::as_str) == Some("--server")
+        && cmd.get(2).map(String::as_str) == Some(crate::common::SERVICE_OWNED_SERVER_ARG)
+}
+
 #[cfg(target_os = "macos")]
 fn macos_peer_is_service_owned_server_blocking(peer_uid: u32, peer_pid: u32) -> bool {
     let app_name = crate::get_app_name();
@@ -1871,12 +1878,7 @@ fn macos_peer_is_service_owned_server_blocking(peer_uid: u32, peer_pid: u32) -> 
         );
         return false;
     }
-    if process.cmd().get(1).map_or(true, |arg| arg != "--server")
-        || process
-            .cmd()
-            .get(2)
-            .map_or(true, |arg| arg != crate::common::SERVICE_OWNED_SERVER_ARG)
-    {
+    if !macos_service_owned_server_live_argv_is_expected(process.cmd()) {
         log::warn!(
             "Rejected macOS service-owned password snapshot request: peer process is not service-owned --server, peer_pid={peer_pid}"
         );
@@ -1953,7 +1955,9 @@ fn macos_service_owned_server_launch_agent_plist_value_is_expected(
     if dict.get("Label").and_then(|value| value.as_string()) != Some(expected_label) {
         return false;
     }
-    let Some(program_arguments) = dict.get("ProgramArguments").and_then(|value| value.as_array())
+    let Some(program_arguments) = dict
+        .get("ProgramArguments")
+        .and_then(|value| value.as_array())
     else {
         return false;
     };
@@ -1975,7 +1979,10 @@ fn macos_service_owned_server_launch_agent_plist_value_is_expected(
     if dict.get("RunAtLoad").and_then(|value| value.as_boolean()) != Some(true) {
         return false;
     }
-    let Some(keep_alive) = dict.get("KeepAlive").and_then(|value| value.as_dictionary()) else {
+    let Some(keep_alive) = dict
+        .get("KeepAlive")
+        .and_then(|value| value.as_dictionary())
+    else {
         return false;
     };
     if keep_alive.len() != 2 {
@@ -2088,19 +2095,18 @@ async fn handle_macos_service_owned_permanent_password_snapshot_request(
     channel: IpcChannel,
     stream: &mut Connection,
 ) {
-    let (storage, salt) = if channel == IpcChannel::Service
-        && macos_peer_is_service_owned_server(stream).await
-    {
-        let (storage, salt) = Config::get_local_permanent_password_storage_and_salt();
-        if storage.is_empty() {
-            (String::new(), String::new())
+    let (storage, salt) =
+        if channel == IpcChannel::Service && macos_peer_is_service_owned_server(stream).await {
+            let (storage, salt) = Config::get_local_permanent_password_storage_and_salt();
+            if storage.is_empty() {
+                (String::new(), String::new())
+            } else {
+                (storage, salt)
+            }
         } else {
-            (storage, salt)
-        }
-    } else {
-        log::warn!("Rejected macOS service-owned password snapshot request");
-        (String::new(), String::new())
-    };
+            log::warn!("Rejected macOS service-owned password snapshot request");
+            (String::new(), String::new())
+        };
     allow_err!(
         stream
             .send(&Data::MacosServiceOwnedPermanentPasswordSnapshot { storage, salt })
@@ -3600,21 +3606,45 @@ mod test {
             ],
         );
 
-        assert!(macos_service_owned_server_launch_agent_plist_value_is_expected(
-            &value, label, executable
-        ));
+        assert!(
+            macos_service_owned_server_launch_agent_plist_value_is_expected(
+                &value, label, executable
+            )
+        );
     }
 
     #[test]
     fn macos_service_owned_launch_agent_plist_validation_rejects_missing_service_arg() {
         let label = "com.carriez.RustDesk_server";
         let executable = "/Applications/RustDesk.app/Contents/MacOS/RustDesk";
-        let value =
-            macos_service_owned_launch_agent_test_plist(label, &[executable, "--server"]);
+        let value = macos_service_owned_launch_agent_test_plist(label, &[executable, "--server"]);
 
-        assert!(!macos_service_owned_server_launch_agent_plist_value_is_expected(
-            &value, label, executable
-        ));
+        assert!(
+            !macos_service_owned_server_launch_agent_plist_value_is_expected(
+                &value, label, executable
+            )
+        );
+    }
+
+    #[test]
+    fn macos_service_owned_launch_agent_plist_validation_rejects_extra_arg() {
+        let label = "com.carriez.RustDesk_server";
+        let executable = "/Applications/RustDesk.app/Contents/MacOS/RustDesk";
+        let value = macos_service_owned_launch_agent_test_plist(
+            label,
+            &[
+                executable,
+                "--server",
+                crate::common::SERVICE_OWNED_SERVER_ARG,
+                "--unexpected",
+            ],
+        );
+
+        assert!(
+            !macos_service_owned_server_launch_agent_plist_value_is_expected(
+                &value, label, executable
+            )
+        );
     }
 
     #[test]
@@ -3630,9 +3660,11 @@ mod test {
             ],
         );
 
-        assert!(!macos_service_owned_server_launch_agent_plist_value_is_expected(
-            &value, label, executable
-        ));
+        assert!(
+            !macos_service_owned_server_launch_agent_plist_value_is_expected(
+                &value, label, executable
+            )
+        );
     }
 
     #[test]
@@ -3648,9 +3680,11 @@ mod test {
             ],
         );
 
-        assert!(!macos_service_owned_server_launch_agent_plist_value_is_expected(
-            &value, label, executable
-        ));
+        assert!(
+            !macos_service_owned_server_launch_agent_plist_value_is_expected(
+                &value, label, executable
+            )
+        );
     }
 
     #[test]
@@ -3670,9 +3704,11 @@ mod test {
             .unwrap()
             .insert("RunAtLoad".to_owned(), plist::Value::Boolean(false));
 
-        assert!(!macos_service_owned_server_launch_agent_plist_value_is_expected(
-            &value, label, executable
-        ));
+        assert!(
+            !macos_service_owned_server_launch_agent_plist_value_is_expected(
+                &value, label, executable
+            )
+        );
     }
 
     #[test]
@@ -3689,9 +3725,11 @@ mod test {
         );
         value.as_dictionary_mut().unwrap().remove("KeepAlive");
 
-        assert!(!macos_service_owned_server_launch_agent_plist_value_is_expected(
-            &value, label, executable
-        ));
+        assert!(
+            !macos_service_owned_server_launch_agent_plist_value_is_expected(
+                &value, label, executable
+            )
+        );
     }
 
     #[test]
@@ -3715,9 +3753,55 @@ mod test {
             .unwrap()
             .insert("OtherCondition".to_owned(), plist::Value::Boolean(true));
 
-        assert!(!macos_service_owned_server_launch_agent_plist_value_is_expected(
-            &value, label, executable
-        ));
+        assert!(
+            !macos_service_owned_server_launch_agent_plist_value_is_expected(
+                &value, label, executable
+            )
+        );
+    }
+
+    #[test]
+    fn macos_service_owned_server_live_argv_accepts_exact_service_owned_server() {
+        let cmd = vec![
+            "/Applications/RustDesk.app/Contents/MacOS/RustDesk".to_owned(),
+            "--server".to_owned(),
+            crate::common::SERVICE_OWNED_SERVER_ARG.to_owned(),
+        ];
+
+        assert!(macos_service_owned_server_live_argv_is_expected(&cmd));
+    }
+
+    #[test]
+    fn macos_service_owned_server_live_argv_rejects_extra_arg() {
+        let cmd = vec![
+            "/Applications/RustDesk.app/Contents/MacOS/RustDesk".to_owned(),
+            "--server".to_owned(),
+            crate::common::SERVICE_OWNED_SERVER_ARG.to_owned(),
+            "--tray".to_owned(),
+        ];
+
+        assert!(!macos_service_owned_server_live_argv_is_expected(&cmd));
+    }
+
+    #[test]
+    fn macos_service_owned_server_live_argv_rejects_missing_service_arg() {
+        let cmd = vec![
+            "/Applications/RustDesk.app/Contents/MacOS/RustDesk".to_owned(),
+            "--server".to_owned(),
+        ];
+
+        assert!(!macos_service_owned_server_live_argv_is_expected(&cmd));
+    }
+
+    #[test]
+    fn macos_service_owned_server_live_argv_rejects_wrong_service_arg() {
+        let cmd = vec![
+            "/Applications/RustDesk.app/Contents/MacOS/RustDesk".to_owned(),
+            "--server".to_owned(),
+            "--tray".to_owned(),
+        ];
+
+        assert!(!macos_service_owned_server_live_argv_is_expected(&cmd));
     }
 
     // R-S11 / Appendix C #15: the MAIN-channel config-write allowlist MUST reject generic

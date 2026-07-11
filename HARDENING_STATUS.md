@@ -2023,6 +2023,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   tree, service unit, polkit policy, and maintainer scripts to be root-owned, non-group/world-writable, type-correct,
   and link-free where authority-bearing. Synthetic negative tests prove the verifier rejects user-owned payloads and
   writable package parents.
+  R-S11c-10u closes the Linux XDO libxdo dynamic-library provenance path in
+  `libs/libxdo-sys-stub/src/lib.rs`: the service-reachable Linux input backend no longer opens bare
+  `libxdo.so.*` names through ambient dynamic-loader search. The wrapper now considers only fixed absolute
+  system-library candidates for versioned `libxdo.so.4` and `libxdo.so.3`, rejects unversioned `libxdo.so`,
+  rejects `/usr/local`, relative, shell-discovered, `ldconfig`, and `pkg-config` discovery paths, and resolves each
+  candidate through a trust predicate before opening it. The candidate directory chain, canonical target directory
+  chain, and canonical target file must be root-owned and not group/world-writable; the target must be a regular
+  file. Protected distro symlinks are accepted only when the canonical target is also protected. The final open uses
+  `Library::open(Some(path.as_path()), RTLD_NOW | RTLD_LOCAL)` on that canonical absolute path, and missing or
+  untrusted `libxdo` leaves XDO disabled rather than falling back to loader search. This was not promoted to a
+  proven default local-user-to-root issue because the shipped systemd unit does not inject attacker-controlled
+  loader state and default system library directories should not be user-writable, but root/headless service-owned
+  native code loading now has the intended source-level provenance boundary. `libs/libxdo-sys-stub` is a workspace
+  member so `scripts/verify.sh` can run the focused root-exercised trust tests.
   Remaining closure:
   no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
   root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
@@ -2036,7 +2050,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   closed by R-S11c-10o; Linux self-relaunch AppImage fallback is closed by R-S11c-10p; Linux clipboard FUSE
   root-process denial is closed by R-S11c-10q; Linux clipboard FUSE fixed-helper fd-passing mount is closed
   by R-S11c-10r; Linux Flutter runner core-library load provenance is closed by R-S11c-10s; Linux Debian package
-  payload ownership authority is closed by R-S11c-10t.
+  payload ownership authority is closed by R-S11c-10t; Linux XDO libxdo dynamic-library provenance is closed by
+  R-S11c-10u.
 - **R-S11b-4 — config secrecy statement after IPC closure — CLOSED 2026-07-09.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary

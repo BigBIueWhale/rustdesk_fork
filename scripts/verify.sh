@@ -3189,6 +3189,36 @@ fi
 if [ -n "$r_s11c10s" ]; then echo "  FAIL R-S11c-10s Linux Flutter runner core-library provenance:$r_s11c10s"; rc=1; else
   echo "  ok  R-S11c-10s Linux Flutter runner loads the bundled Rust core by executable-relative path and fails closed"; fi
 
+echo "== (3b-iii-h9c3e) Linux XDO loads only trusted absolute libxdo paths (R-S11c-10u) =="
+"${RUN[@]}" cargo test -p libxdo-sys --lib --color never
+r_s11c10u=
+grep -qF '"libs/libxdo-sys-stub"' Cargo.toml || r_s11c10u="$r_s11c10u libxdo-stub-not-workspace-tested"
+grep -qF 'const TRUSTED_LIBXDO_PATHS: &[&str]' libs/libxdo-sys-stub/src/lib.rs || r_s11c10u="$r_s11c10u no-fixed-path-list"
+grep -qF 'fn trusted_libxdo_path(candidate: &Path) -> Option<PathBuf>' libs/libxdo-sys-stub/src/lib.rs || r_s11c10u="$r_s11c10u no-trusted-path-resolver"
+grep -qF 'fn trusted_directory_chain(path: &Path) -> bool' libs/libxdo-sys-stub/src/lib.rs || r_s11c10u="$r_s11c10u no-directory-chain-proof"
+grep -qF 'fn root_owned_non_writable(mode: u32, uid: u32) -> bool' libs/libxdo-sys-stub/src/lib.rs || r_s11c10u="$r_s11c10u no-root-owned-non-writable-predicate"
+grep -qF 'Library::open(Some(path.as_path()), RTLD_NOW | RTLD_LOCAL)' libs/libxdo-sys-stub/src/lib.rs || r_s11c10u="$r_s11c10u no-immediate-local-absolute-open"
+grep -qF 'trusted_libxdo_path_accepts_protected_symlink_to_protected_target' libs/libxdo-sys-stub/src/lib.rs || r_s11c10u="$r_s11c10u no-protected-symlink-test"
+grep -qF 'trusted_libxdo_path_rejects_symlink_to_untrusted_target' libs/libxdo-sys-stub/src/lib.rs || r_s11c10u="$r_s11c10u no-untrusted-symlink-target-test"
+grep -qF 'trusted_libxdo_path_rejects_world_writable_parent' libs/libxdo-sys-stub/src/lib.rs || r_s11c10u="$r_s11c10u no-world-writable-parent-test"
+grep -q 'Linux XDO libxdo dynamic-library provenance' requirements.html || r_s11c10u="$r_s11c10u requirements-disposition-missing"
+grep -q 'R-S11c-10u closes the Linux XDO libxdo dynamic-library provenance' HARDENING_STATUS.md || r_s11c10u="$r_s11c10u hardening-ledger-missing"
+libxdo_candidate_block=$(awk '/const TRUSTED_LIBXDO_PATHS/,/];/' libs/libxdo-sys-stub/src/lib.rs)
+if echo "$libxdo_candidate_block" | grep -qF '"libxdo.so"'; then
+  r_s11c10u="$r_s11c10u unversioned-libxdo-candidate"
+fi
+if echo "$libxdo_candidate_block" | grep -qE '"/usr/local/|^[[:space:]]*"libxdo|^[[:space:]]*"\\.'; then
+  r_s11c10u="$r_s11c10u ambient-or-local-libxdo-candidate"
+fi
+if grep -Eq 'Library::new\((name|".*libxdo)|find_map\(\|name\||const LIB_NAMES' libs/libxdo-sys-stub/src/lib.rs; then
+  r_s11c10u="$r_s11c10u bare-libxdo-loader-shape"
+fi
+if grep -Eq 'ldconfig|pkg-config|Command::new|/bin/sh|which|find /usr|LD_LIBRARY_PATH' libs/libxdo-sys-stub/src/lib.rs; then
+  r_s11c10u="$r_s11c10u runtime-discovery-helper"
+fi
+if [ -n "$r_s11c10u" ]; then echo "  FAIL R-S11c-10u Linux XDO libxdo provenance:$r_s11c10u"; rc=1; else
+  echo "  ok  R-S11c-10u Linux XDO opens only fixed, protected absolute libxdo paths and disables XDO otherwise"; fi
+
 echo "== (3b-iii-h9c3w) Windows Flutter runner loads bundled Rust core by executable-relative path (R-S11c-23) =="
 r_s11c23=
 grep -qF 'HINSTANCE LoadRustDeskCoreModule()' flutter/windows/runner/main.cpp || r_s11c23="$r_s11c23 no-core-loader-helper"

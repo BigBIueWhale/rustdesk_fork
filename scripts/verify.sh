@@ -3298,6 +3298,32 @@ fi
 if [ -n "$r_s11c23" ]; then echo "  FAIL R-S11c-23 Windows Flutter runner core-DLL provenance:$r_s11c23"; rc=1; else
   echo "  ok  R-S11c-23 Windows Flutter runner loads the bundled Rust core by executable-relative path and restricted DLL search flags"; fi
 
+echo "== (3b-iii-h9c3x) Desktop Dart FFI opens bundled Rust core by executable-relative path (R-S11c-24) =="
+r_s11c24=
+grep -qF "import 'package:path/path.dart' as path;" flutter/lib/models/native_model.dart || r_s11c24="$r_s11c24 no-path-join-import"
+grep -qF 'static String _desktopExecutableDir()' flutter/lib/models/native_model.dart || r_s11c24="$r_s11c24 no-executable-dir-helper"
+grep -qF 'Platform.resolvedExecutable' flutter/lib/models/native_model.dart || r_s11c24="$r_s11c24 no-resolved-executable"
+grep -qF 'static DynamicLibrary _openBundledRustDeskCore()' flutter/lib/models/native_model.dart || r_s11c24="$r_s11c24 no-bundled-core-helper"
+grep -qF "path.join(_desktopExecutableDir(), 'lib', 'librustdesk.so')" flutter/lib/models/native_model.dart || r_s11c24="$r_s11c24 no-linux-executable-relative-core"
+grep -qF "path.join(_desktopExecutableDir(), 'librustdesk.dll')" flutter/lib/models/native_model.dart || r_s11c24="$r_s11c24 no-windows-executable-relative-core"
+grep -qF "return DynamicLibrary.open('librustdesk.so');" flutter/lib/models/native_model.dart || r_s11c24="$r_s11c24 android-packaged-core-open-missing"
+grep -qF 'return DynamicLibrary.process();' flutter/lib/models/native_model.dart || r_s11c24="$r_s11c24 macos-process-binding-missing"
+grep -qF 'final dylib = _openBundledRustDeskCore();' flutter/lib/models/native_model.dart || r_s11c24="$r_s11c24 init-not-using-helper"
+grep -q 'Desktop Dart FFI Rust core library provenance' requirements.html || r_s11c24="$r_s11c24 requirements-disposition-missing"
+grep -q 'R-S11c-24 — Desktop Dart FFI Rust core library provenance' HARDENING_STATUS.md || r_s11c24="$r_s11c24 hardening-ledger-missing"
+if grep -qF "DynamicLibrary.open('librustdesk.dll')" flutter/lib/models/native_model.dart; then
+  r_s11c24="$r_s11c24 bare-windows-dart-core-open"
+fi
+if grep -nF "DynamicLibrary.open('librustdesk.so')" flutter/lib/models/native_model.dart | grep -vF "return DynamicLibrary.open('librustdesk.so');" >/tmp/rd_verify_r_s11c24.$$; then
+  cat /tmp/rd_verify_r_s11c24.$$
+  rm -f /tmp/rd_verify_r_s11c24.$$
+  r_s11c24="$r_s11c24 bare-linux-dart-core-open"
+else
+  rm -f /tmp/rd_verify_r_s11c24.$$
+fi
+if [ -n "$r_s11c24" ]; then echo "  FAIL R-S11c-24 Desktop Dart FFI core-library provenance:$r_s11c24"; rc=1; else
+  echo "  ok  R-S11c-24 Desktop Dart FFI opens the bundled Rust core by executable-relative path"; fi
+
 echo "== (3b-iii-h9c4) Linux self-relaunch avoids AppImage APPDIR/AppRun fallback (R-S11c-10p) =="
 r_s11c10p=
 grep -qF 'pub fn run_me_with_env<T, I, K, V>' src/common.rs || r_s11c10p="$r_s11c10p no-self-relaunch-helper"

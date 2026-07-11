@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/main.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
 import '../common.dart';
@@ -53,6 +54,29 @@ class PlatformFFI {
   }
 
   static void setByName(String name, [String value = '']) {}
+
+  static String _desktopExecutableDir() {
+    final executable = Platform.resolvedExecutable;
+    if (executable.isEmpty) {
+      throw StateError('resolved executable path is empty');
+    }
+    return path.dirname(executable);
+  }
+
+  static DynamicLibrary _openBundledRustDeskCore() {
+    if (isAndroid) {
+      return DynamicLibrary.open('librustdesk.so');
+    }
+    if (isLinux) {
+      return DynamicLibrary.open(
+          path.join(_desktopExecutableDir(), 'lib', 'librustdesk.so'));
+    }
+    if (isWindows) {
+      return DynamicLibrary.open(
+          path.join(_desktopExecutableDir(), 'librustdesk.dll'));
+    }
+    return DynamicLibrary.process();
+  }
 
   static Future<String> getVersion() async {
     PackageInfo packageInfo = await PackageInfo.fromPlatform();
@@ -117,19 +141,7 @@ class PlatformFFI {
   /// Init the FFI class, loads the native Rust core library.
   Future<void> init(String appType) async {
     _appType = appType;
-    final dylib = isAndroid
-        ? DynamicLibrary.open('librustdesk.so')
-        : isLinux
-            ? DynamicLibrary.open('librustdesk.so')
-            : isWindows
-                ? DynamicLibrary.open('librustdesk.dll')
-                :
-                // Use executable itself as the dynamic library for MacOS.
-                // Multiple dylib instances will cause some global instances to be invalid.
-                // eg. `lazy_static` objects in rust side, will be created more than once, which is not expected.
-                //
-                // isMacOS? DynamicLibrary.open("liblibrustdesk.dylib") :
-                DynamicLibrary.process();
+    final dylib = _openBundledRustDeskCore();
     debugPrint('initializing FFI $_appType');
     try {
       _session_get_rgba = dylib.lookupFunction<F3Dart, F3>("session_get_rgba");

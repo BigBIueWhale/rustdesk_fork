@@ -669,6 +669,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   root-capable runner must bind its core to its own bundle and not to ambient process search state. Verification
   closure: `scripts/verify.sh` gates the executable-relative path, restricted `LoadLibraryExW` flags, absence of
   the bare DLL load, and requirements disposition.
+- **R-S11c-24 — Desktop Dart FFI Rust core library provenance — CLOSED 2026-07-11.**
+  Platform: Linux and Windows Flutter desktop Dart FFI initialization. Surface:
+  `flutter/lib/models/native_model.dart` reopened the Rust core with bare `DynamicLibrary.open("librustdesk.so")`
+  on Linux and bare `DynamicLibrary.open("librustdesk.dll")` on Windows after the native runners had already
+  safely preloaded the bundled core. Boundary: privileged-capable desktop process ↔ platform library search
+  semantics for the second FFI handle. Attack surface closed: the Dart FFI layer now follows the same bundle
+  authority as the native runner. Linux resolves `Platform.resolvedExecutable`, derives its parent, and opens
+  `lib/librustdesk.so`; Windows opens sibling `librustdesk.dll`. Android keeps the packaged `librustdesk.so`
+  loader name, and macOS keeps `DynamicLibrary.process()` to avoid duplicating Rust global state. Verification
+  closure: `scripts/verify.sh` gates the executable-directory helper, resolved-executable use,
+  executable-relative Linux/Windows library paths, Android/macOS exceptions, init helper use, absence of bare
+  desktop `librustdesk` opens, and requirements disposition.
 - **R-S11c-5 — macOS privileged service packaging — CLOSED 2026-07-09; tightened 2026-07-11.** Platform: macOS
   source-conformance and any future macOS artifact. Surfaces: `src/platform/privileges_scripts/daemon.plist`,
   `install.scpt`, deleted `update.scpt`, `uninstall.scpt`, and their `osascript` call sites in

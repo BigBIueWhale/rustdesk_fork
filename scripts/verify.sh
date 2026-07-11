@@ -3431,6 +3431,16 @@ fi
 if [ -n "$r_s11c10j" ]; then echo "  FAIL R-S11c-10j/R-T9 Debian package lifecycle/systemd stop:$r_s11c10j"; rc=1; else
   echo "  ok  R-S11c-10j/R-T9 Debian scripts use checked deb-systemd unit helpers plus fixed system manager reloads with no masked lifecycle failures and purge the stock root RustDesk config tree; build.py stages checked control scripts and root-normalizes package payload ownership; unit has cgroup-scoped SIGTERM/TimeoutStopSec with no pkill ExecStop; Linux supervisor SIGTERMs child servers before forced stop"; fi
 
+echo "== (3b-iii-h10v) obsolete generated Docker build helper is absent (R-S11c-10v) =="
+r_s11c10v=
+if grep -nE 'generate_build_script_for_docker|/tmp/build\.sh|/tmp/flutter_rust_bridge|flutter_linux_3\.0\.5-stable|SoLongAndThanksForAllThePizza/flutter_rust_bridge|git clone https://github\.com/microsoft/vcpkg' build.py; then
+  r_s11c10v="$r_s11c10v obsolete-generated-build-helper-present"
+fi
+grep -qF 'R-S11c-10v — obsolete generated Docker build helper excision' HARDENING_STATUS.md || r_s11c10v="$r_s11c10v hardening-ledger-missing"
+grep -qF 'Obsolete generated Docker build helper' requirements.html || r_s11c10v="$r_s11c10v requirements-disposition-missing"
+if [ -n "$r_s11c10v" ]; then echo "  FAIL R-S11c-10v obsolete generated Docker build helper excision:$r_s11c10v"; rc=1; else
+  echo "  ok  R-S11c-10v build.py has no unreachable generated Docker script or unpinned bootstrap path"; fi
+
 # (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
 # the is_option_can_save-BYPASSING config writes inside handle() are now only typed password
 # operations: user-owned direct commit and Linux/Windows service-owned service commit. set_socks /

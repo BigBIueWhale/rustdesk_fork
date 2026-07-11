@@ -2085,6 +2085,15 @@ unreachable and a source/test/AST gate prevents reintroduction.
   loader state and default system library directories should not be user-writable, but root/headless service-owned
   native code loading now has the intended source-level provenance boundary. `libs/libxdo-sys-stub` is a workspace
   member so `scripts/verify.sh` can run the focused root-exercised trust tests.
+  R-S11c-10v — obsolete generated Docker build helper excision — closes the `build.py`
+  `generate_build_script_for_docker()` path by deleting it. The helper had no parser option, caller, documentation,
+  or supported build workflow, but retained fixed `/tmp/build.sh` write/chmod/execute authority and a fixed
+  `/tmp/flutter_rust_bridge` clone destination. It also downloaded an obsolete Flutter archive and shallow-cloned
+  mutable Flutter Rust Bridge and vcpkg repositories outside the pinned offline build inputs. This was not promoted
+  to a proven shipped-runtime LPE because the function was unreachable and absent from supported build workflows.
+  Retaining and hardening its temporary paths would nevertheless preserve an unowned, non-reproducible bootstrap
+  mode contrary to R-B2. `scripts/verify.sh` gates absence of the helper name, public temporary paths, obsolete
+  Flutter archive, mutable Flutter Rust Bridge clone, mutable vcpkg clone, and this requirements/ledger disposition.
   Remaining closure:
   no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
   root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
@@ -3196,7 +3205,7 @@ The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-7727e48b21025ffacf2f562cdf5bea6cc9557bf94f891975973892f2114c45e1  requirements.html
+eecebfa389d1cde04091b245b7e37f363c409eadc0abbd3bdb67d37f2d1d543b  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

@@ -625,6 +625,12 @@ grep -Fq 'HRESULT ValidateServiceBinaryCommandAndExecutable(' res/msi/CustomActi
 grep -Fq 'HRESULT ValidateInstalledServiceBinaryCommand(SC_HANDLE hService, LPCWSTR serviceName, LPCWSTR expectedCommand)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:installed-service-command-proof-missing"
 grep -Fq 'HRESULT StopDeleteTrustedService(LPCWSTR serviceName, LPCWSTR expectedCommand, BOOL* serviceWasPresent)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:trusted-service-delete-helper-missing"
 grep -Fq 'QueryServiceConfigW(hService, serviceConfig, bytesNeeded, &bytesNeeded)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-config-not-queried"
+grep -Eq '^        WCHAR normalizedInstalledCommand\[1024\] = \{ 0 \};' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:installed-service-command-buffer-not-scoped"
+grep -Eq '^        SERVICE_STATUS_PROCESS svcStatus = \{ 0 \};' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-status-not-scoped"
+grep -Eq '^        SC_HANDLE hVerifyService = OpenServiceW\(hSCManager, serviceName, SERVICE_QUERY_STATUS\);' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-verification-handle-not-scoped"
+if grep -Eq '^    (WCHAR normalizedInstalledCommand\[1024\]|SERVICE_STATUS_PROCESS svcStatus|SC_HANDLE hVerifyService)' res/msi/CustomActions/CustomActions.cpp; then
+  r_s11d="$r_s11d msi:service-delete-c2362-prone-outer-local"
+fi
 grep -Fq 'OpenServiceW(' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-handle-not-opened"
 grep -Fq 'SERVICE_QUERY_CONFIG | SERVICE_QUERY_STATUS | SERVICE_STOP | DELETE' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-handle-rights-incomplete"
 grep -Fq 'hr = E_INVALIDARG;' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:malformed-custom-action-data-not-fatal"

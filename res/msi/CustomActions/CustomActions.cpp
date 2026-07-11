@@ -443,24 +443,26 @@ HRESULT ValidateInstalledServiceBinaryCommand(SC_HANDLE hService, LPCWSTR servic
         goto LExit;
     }
 
-    WCHAR normalizedInstalledCommand[1024] = { 0 };
-    hr = ValidateServiceBinaryCommand(serviceName, serviceConfig->lpBinaryPathName, normalizedInstalledCommand, 1024);
-    if (FAILED(hr))
     {
-        WcaLog(LOGMSG_STANDARD, "Installed service command is not trusted for '%ls'.", serviceName);
-        goto LExit;
-    }
+        WCHAR normalizedInstalledCommand[1024] = { 0 };
+        hr = ValidateServiceBinaryCommand(serviceName, serviceConfig->lpBinaryPathName, normalizedInstalledCommand, 1024);
+        if (FAILED(hr))
+        {
+            WcaLog(LOGMSG_STANDARD, "Installed service command is not trusted for '%ls'.", serviceName);
+            goto LExit;
+        }
 
-    if (!PathsEqualNoCase(normalizedInstalledCommand, expectedCommand))
-    {
-        WcaLog(
-            LOGMSG_STANDARD,
-            "Installed service command for '%ls' does not match package command. Installed='%ls' Package='%ls'.",
-            serviceName,
-            normalizedInstalledCommand,
-            expectedCommand);
-        hr = E_INVALIDARG;
-        goto LExit;
+        if (!PathsEqualNoCase(normalizedInstalledCommand, expectedCommand))
+        {
+            WcaLog(
+                LOGMSG_STANDARD,
+                "Installed service command for '%ls' does not match package command. Installed='%ls' Package='%ls'.",
+                serviceName,
+                normalizedInstalledCommand,
+                expectedCommand);
+            hr = E_INVALIDARG;
+            goto LExit;
+        }
     }
 
 LExit:
@@ -512,101 +514,103 @@ HRESULT StopDeleteTrustedService(LPCWSTR serviceName, LPCWSTR expectedCommand, B
         goto LExit;
     }
 
-    SERVICE_STATUS_PROCESS svcStatus = { 0 };
-    DWORD bytesNeeded = 0;
-    if (!QueryServiceStatusEx(hService, SC_STATUS_PROCESS_INFO, reinterpret_cast<LPBYTE>(&svcStatus), sizeof(svcStatus), &bytesNeeded))
     {
-        DWORD lastError = GetLastError();
-        WcaLog(LOGMSG_STANDARD, "Failed to query service before deletion: \"%ls\", error: 0x%02X.", serviceName, lastError);
-        hr = HRESULT_FROM_WIN32(lastError);
-        goto LExit;
-    }
-
-    if (svcStatus.dwCurrentState == SERVICE_RUNNING)
-    {
-        SERVICE_STATUS serviceStatus = { 0 };
-        if (!ControlService(hService, SERVICE_CONTROL_STOP, &serviceStatus))
+        SERVICE_STATUS_PROCESS svcStatus = { 0 };
+        DWORD bytesNeeded = 0;
+        if (!QueryServiceStatusEx(hService, SC_STATUS_PROCESS_INFO, reinterpret_cast<LPBYTE>(&svcStatus), sizeof(svcStatus), &bytesNeeded))
         {
             DWORD lastError = GetLastError();
-            if (lastError != ERROR_SERVICE_NOT_ACTIVE)
-            {
-                WcaLog(LOGMSG_STANDARD, "Failed to stop service: \"%ls\", error: 0x%02X.", serviceName, lastError);
-                hr = HRESULT_FROM_WIN32(lastError);
-                goto LExit;
-            }
-        }
-
-        for (int i = 0; i < 10; i++)
-        {
-            if (!QueryServiceStatusEx(hService, SC_STATUS_PROCESS_INFO, reinterpret_cast<LPBYTE>(&svcStatus), sizeof(svcStatus), &bytesNeeded))
-            {
-                DWORD lastError = GetLastError();
-                WcaLog(LOGMSG_STANDARD, "Failed to query service while stopping: \"%ls\", error: 0x%02X.", serviceName, lastError);
-                hr = HRESULT_FROM_WIN32(lastError);
-                goto LExit;
-            }
-            if (svcStatus.dwCurrentState != SERVICE_RUNNING)
-            {
-                break;
-            }
-            Sleep(100);
-        }
-    }
-
-    if (svcStatus.dwCurrentState == SERVICE_RUNNING)
-    {
-        WcaLog(LOGMSG_STANDARD, "Service \"%ls\" is not stopped after 1000 ms.", serviceName);
-        hr = E_FAIL;
-        goto LExit;
-    }
-    WcaLog(LOGMSG_STANDARD, "Service \"%ls\" is stopped.", serviceName);
-
-    if (!DeleteService(hService))
-    {
-        DWORD lastError = GetLastError();
-        if (lastError == ERROR_SERVICE_DOES_NOT_EXIST)
-        {
-            WcaLog(LOGMSG_STANDARD, "Service \"%ls\" was already deleted.", serviceName);
+            WcaLog(LOGMSG_STANDARD, "Failed to query service before deletion: \"%ls\", error: 0x%02X.", serviceName, lastError);
+            hr = HRESULT_FROM_WIN32(lastError);
             goto LExit;
         }
-        WcaLog(LOGMSG_STANDARD, "Failed to delete service: \"%ls\", error: 0x%02X.", serviceName, lastError);
-        hr = HRESULT_FROM_WIN32(lastError);
-        goto LExit;
-    }
-    WcaLog(LOGMSG_STANDARD, "Service \"%ls\" deletion is completed without errors.", serviceName);
 
-    CloseServiceHandle(hService);
-    hService = NULL;
-
-    SC_HANDLE hVerifyService = OpenServiceW(hSCManager, serviceName, SERVICE_QUERY_STATUS);
-    if (hVerifyService != NULL)
-    {
-        SERVICE_STATUS_PROCESS currentStatus = { 0 };
-        DWORD verifyBytesNeeded = 0;
-        if (QueryServiceStatusEx(
-                hVerifyService,
-                SC_STATUS_PROCESS_INFO,
-                reinterpret_cast<LPBYTE>(&currentStatus),
-                sizeof(currentStatus),
-                &verifyBytesNeeded))
+        if (svcStatus.dwCurrentState == SERVICE_RUNNING)
         {
-            WcaLog(LOGMSG_STANDARD, "Failed to delete service: \"%ls\", current status: %d.", serviceName, currentStatus.dwCurrentState);
+            SERVICE_STATUS serviceStatus = { 0 };
+            if (!ControlService(hService, SERVICE_CONTROL_STOP, &serviceStatus))
+            {
+                DWORD lastError = GetLastError();
+                if (lastError != ERROR_SERVICE_NOT_ACTIVE)
+                {
+                    WcaLog(LOGMSG_STANDARD, "Failed to stop service: \"%ls\", error: 0x%02X.", serviceName, lastError);
+                    hr = HRESULT_FROM_WIN32(lastError);
+                    goto LExit;
+                }
+            }
+
+            for (int i = 0; i < 10; i++)
+            {
+                if (!QueryServiceStatusEx(hService, SC_STATUS_PROCESS_INFO, reinterpret_cast<LPBYTE>(&svcStatus), sizeof(svcStatus), &bytesNeeded))
+                {
+                    DWORD lastError = GetLastError();
+                    WcaLog(LOGMSG_STANDARD, "Failed to query service while stopping: \"%ls\", error: 0x%02X.", serviceName, lastError);
+                    hr = HRESULT_FROM_WIN32(lastError);
+                    goto LExit;
+                }
+                if (svcStatus.dwCurrentState != SERVICE_RUNNING)
+                {
+                    break;
+                }
+                Sleep(100);
+            }
         }
-        CloseServiceHandle(hVerifyService);
-        hr = E_FAIL;
-        goto LExit;
-    }
 
-    {
-        DWORD lastError = GetLastError();
-        if (lastError == ERROR_SERVICE_DOES_NOT_EXIST)
+        if (svcStatus.dwCurrentState == SERVICE_RUNNING)
         {
-            WcaLog(LOGMSG_STANDARD, "Service \"%ls\" is deleted.", serviceName);
+            WcaLog(LOGMSG_STANDARD, "Service \"%ls\" is not stopped after 1000 ms.", serviceName);
+            hr = E_FAIL;
+            goto LExit;
         }
-        else
+        WcaLog(LOGMSG_STANDARD, "Service \"%ls\" is stopped.", serviceName);
+
+        if (!DeleteService(hService))
         {
-            WcaLog(LOGMSG_STANDARD, "Failed to verify service deletion: \"%ls\", error: 0x%02X.", serviceName, lastError);
+            DWORD lastError = GetLastError();
+            if (lastError == ERROR_SERVICE_DOES_NOT_EXIST)
+            {
+                WcaLog(LOGMSG_STANDARD, "Service \"%ls\" was already deleted.", serviceName);
+                goto LExit;
+            }
+            WcaLog(LOGMSG_STANDARD, "Failed to delete service: \"%ls\", error: 0x%02X.", serviceName, lastError);
             hr = HRESULT_FROM_WIN32(lastError);
+            goto LExit;
+        }
+        WcaLog(LOGMSG_STANDARD, "Service \"%ls\" deletion is completed without errors.", serviceName);
+
+        CloseServiceHandle(hService);
+        hService = NULL;
+
+        SC_HANDLE hVerifyService = OpenServiceW(hSCManager, serviceName, SERVICE_QUERY_STATUS);
+        if (hVerifyService != NULL)
+        {
+            SERVICE_STATUS_PROCESS currentStatus = { 0 };
+            DWORD verifyBytesNeeded = 0;
+            if (QueryServiceStatusEx(
+                    hVerifyService,
+                    SC_STATUS_PROCESS_INFO,
+                    reinterpret_cast<LPBYTE>(&currentStatus),
+                    sizeof(currentStatus),
+                    &verifyBytesNeeded))
+            {
+                WcaLog(LOGMSG_STANDARD, "Failed to delete service: \"%ls\", current status: %d.", serviceName, currentStatus.dwCurrentState);
+            }
+            CloseServiceHandle(hVerifyService);
+            hr = E_FAIL;
+            goto LExit;
+        }
+
+        {
+            DWORD lastError = GetLastError();
+            if (lastError == ERROR_SERVICE_DOES_NOT_EXIST)
+            {
+                WcaLog(LOGMSG_STANDARD, "Service \"%ls\" is deleted.", serviceName);
+            }
+            else
+            {
+                WcaLog(LOGMSG_STANDARD, "Failed to verify service deletion: \"%ls\", error: 0x%02X.", serviceName, lastError);
+                hr = HRESULT_FROM_WIN32(lastError);
+            }
         }
     }
 

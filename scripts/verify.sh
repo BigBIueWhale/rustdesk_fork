@@ -522,13 +522,19 @@ if grep -qE 'Id="(CreateStartService|TryStopDeleteService|AddRegSoftwareSASGener
 fi
 grep -Fq 'HRESULT AddFirewallRule(bool add, LPWSTR exeName, LPWSTR exeFile)' res/msi/CustomActions/Common.h || r_s11d="$r_s11d msi:firewall-helper-not-hresult"
 grep -Fq 'HRESULT AddFirewallRule(bool add, LPWSTR exeName, LPWSTR exeFile)' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-helper-definition-not-hresult"
-grep -Fq 'hr = AddFirewallRule(exeFile[0] == L'\''1'\'', exeNameNoExt, exeFile + 1);' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:firewall-helper-result-not-propagated"
+grep -Fq 'hr = AddFirewallRule(exeFile[0] == L'\''1'\'', exeNameNoExt, normalizedExeFile);' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:firewall-helper-result-not-propagated"
 grep -Fq 'Failed to update firewall rules for:' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:firewall-failure-not-fatal"
 if grep -qE '^[[:space:]]*AddFirewallRule\(exeFile\[0\].*\);' res/msi/CustomActions/CustomActions.cpp; then
   r_s11d="$r_s11d msi:firewall-helper-result-discarded"
 fi
 grep -Fq "if (exeFile[0] != L'0' && exeFile[0] != L'1')" res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:firewall-mode-not-validated"
 grep -Fq "if (exeFile[1] == L'\\0')" res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:firewall-empty-path-not-rejected"
+grep -Fq 'HRESULT ValidateDeferredProductExecutablePath(' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:product-exe-validator-missing"
+grep -Fq 'ValidateDeferredProductExecutablePath(exeFile + 1, exeFile[0] == L'\''1'\'', normalizedExeFile, MAX_PATH, exeNameNoExt, 500)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:firewall-path-not-validated"
+grep -Fq 'RequireExistingMsiFileNoReparse(normalizedExe, L"MSI executable")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:firewall-add-exe-existence-not-checked"
+if grep -Fq 'AddFirewallRule(exeFile[0] == L'\''1'\'', exeNameNoExt, exeFile + 1)' res/msi/CustomActions/CustomActions.cpp; then
+  r_s11d="$r_s11d msi:firewall-uses-raw-custom-action-path"
+fi
 if grep -Fq 'StringCchPrintfW(exeNameNoExt, 500, exeName)' res/msi/CustomActions/CustomActions.cpp; then
   r_s11d="$r_s11d msi:firewall-exe-name-format-string-copy"
 fi
@@ -541,8 +547,9 @@ grep -Fq 'bool absenceProven = false;' res/msi/CustomActions/FirewallRules.cpp |
 grep -Fq 'ERROR_FILE_NOT_FOUND' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-absent-file-not-found-not-noop"
 grep -Fq 'ERROR_NOT_FOUND' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-absent-not-found-not-noop"
 grep -Fq 'ERROR_PATH_NOT_FOUND' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-absent-path-not-found-not-noop"
-grep -q 'Service still exists after deletion' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-not-verified"
-grep -q 'HRESULT_FROM_WIN32(lastErrorCode)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-errors-not-propagated"
+grep -Fq 'SC_HANDLE hVerifyService = OpenServiceW(hSCManager, serviceName, SERVICE_QUERY_STATUS);' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-not-verified"
+grep -Fq 'lastError == ERROR_SERVICE_DOES_NOT_EXIST' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-absence-not-proven"
+grep -q 'HRESULT_FROM_WIN32(lastError)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-errors-not-propagated"
 grep -q 'if (!QueryServiceStatusExW(serviceName, &serviceStatus))' res/msi/CustomActions/ServiceUtils.cpp || r_s11d="$r_s11d msi:service-status-query-not-guarded"
 grep -Fq 'if (!DeleteRuntimeGeneratedFile(normalizedInstallFolder, L"RuntimeBroker_rustdesk.exe"))' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:runtime-broker-cleanup-result-not-checked"
 grep -q 'Failed to remove runtime-generated broker executable' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:runtime-broker-cleanup-not-fatal"
@@ -565,6 +572,12 @@ grep -Fq 'hr = ValidateDeferredInstallFolder(installFolder, normalizedInstallFol
 grep -Fq 'DeleteRuntimeGeneratedFile(normalizedInstallFolder, L"RuntimeBroker_rustdesk.exe")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:runtime-cleanup-not-using-normalized-install-folder"
 grep -Fq 'BOOL MsiIdentifierNameIsValid(LPCWSTR value)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-identifier-validator-missing"
 grep -Fq 'HRESULT ValidateServiceBinaryCommand(LPCWSTR serviceName, LPCWSTR svcBinary, LPWSTR normalizedCommand, size_t normalizedCommandCch)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-command-validator-missing"
+grep -Fq 'HRESULT ValidateServiceBinaryCommandAndExecutable(' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-command-exe-validator-missing"
+grep -Fq 'HRESULT ValidateInstalledServiceBinaryCommand(SC_HANDLE hService, LPCWSTR serviceName, LPCWSTR expectedCommand)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:installed-service-command-proof-missing"
+grep -Fq 'HRESULT StopDeleteTrustedService(LPCWSTR serviceName, LPCWSTR expectedCommand, BOOL* serviceWasPresent)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:trusted-service-delete-helper-missing"
+grep -Fq 'QueryServiceConfigW(hService, serviceConfig, bytesNeeded, &bytesNeeded)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-config-not-queried"
+grep -Fq 'OpenServiceW(' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-handle-not-opened"
+grep -Fq 'SERVICE_QUERY_CONFIG | SERVICE_QUERY_STATUS | SERVICE_STOP | DELETE' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-handle-rights-incomplete"
 grep -Fq 'hr = E_INVALIDARG;' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:malformed-custom-action-data-not-fatal"
 grep -Fq 'ExitOnFailure(hr, "Malformed service CustomActionData")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-custom-action-data-failopen"
 grep -Fq 'if (!MsiIdentifierNameIsValid(svcName))' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-name-not-validated"
@@ -572,6 +585,13 @@ grep -Fq 'ValidateServiceBinaryCommand(svcName, svcBinary, szSvcBinary, cchSvcBi
 grep -Fq 'MyCreateServiceW(svcName, szSvcDisplayName, szSvcBinary)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-create-not-using-normalized-command"
 if grep -Fq 'MyCreateServiceW(svcName, szSvcDisplayName, svcBinary)' res/msi/CustomActions/CustomActions.cpp; then
   r_s11d="$r_s11d msi:service-create-uses-raw-custom-action-data"
+fi
+grep -Fq '<CustomAction Id="TryStopDeleteService.SetParam" Return="check" Property="TryStopDeleteService" Value="$(var.Product);&quot;[App.InstallFolder]$(var.Product).exe&quot; --service" />' res/msi/Package/Components/RustDesk.wxs || r_s11d="$r_s11d msi:service-delete-param-lacks-binary-proof"
+grep -Fq 'ValidateServiceBinaryCommandAndExecutable(svcName, svcBinary, szSvcBinary, cchSvcBinary, szSvcExecutable, MAX_PATH)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-binary-not-normalized"
+grep -Fq 'StopDeleteTrustedService(svcName, szSvcBinary, &serviceWasPresent)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-not-using-trusted-helper"
+grep -Fq 'TerminateProcessesByImagePathW(szSvcExecutable, L"--not-in-use")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-process-cleanup-not-image-bound"
+if grep -Fq 'TerminateProcessesByNameW(szExeFile, L"--not-in-use")' res/msi/CustomActions/CustomActions.cpp; then
+  r_s11d="$r_s11d msi:service-delete-process-cleanup-name-only"
 fi
 grep -q 'CreateProcessW(exePath, commandLine, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, workDir, &startupInfo, &pi)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-not-absolute-createprocess"
 grep -Fq 'StringCchPrintfW(workDir, 1024, L"%ls\\usbmmidd_v2", normalizedInstallFolder)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-workdir-not-under-normalized-install-folder"
@@ -620,6 +640,8 @@ grep -q 'Windows Amyuni IDD cleanup completion authority' requirements.html || r
 grep -q 'R-S11d-2 — Windows Amyuni IDD cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d amyuni-cleanup-hardening-ledger-missing"
 grep -q 'Windows MSI firewall custom-action completion authority' requirements.html || r_s11d="$r_s11d firewall-requirements-disposition-missing"
 grep -q 'R-S11d-7 — Windows MSI firewall custom-action completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d firewall-hardening-ledger-missing"
+grep -q 'Windows MSI deferred firewall/service action target provenance' requirements.html || r_s11d="$r_s11d firewall-service-target-requirements-disposition-missing"
+grep -q 'R-S11d-34 — Windows MSI deferred firewall/service target provenance' HARDENING_STATUS.md || r_s11d="$r_s11d firewall-service-target-hardening-ledger-missing"
 grep -Fq 'pub(crate) fn trusted_system_tool_path(tool: &str) -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d="$r_s11d windows:trusted-system-tool-helper-not-crate-visible"
 grep -Fq 'trusted_system_tool_path("mstsc.exe")' src/port_forward.rs || r_s11d="$r_s11d rdp:mstsc-not-trusted-system-tool"
 grep -Fq '"Win32_Security_Credentials"' Cargo.toml || r_s11d="$r_s11d rdp:windows-credential-feature-missing"

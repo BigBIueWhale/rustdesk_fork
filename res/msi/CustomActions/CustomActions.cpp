@@ -246,7 +246,108 @@ BOOL MsiIdentifierNameIsValid(LPCWSTR value)
     return TRUE;
 }
 
-HRESULT ValidateServiceBinaryCommand(LPCWSTR serviceName, LPCWSTR svcBinary, LPWSTR normalizedCommand, size_t normalizedCommandCch)
+HRESULT ValidateDeferredProductExecutablePath(
+    LPCWSTR exePath,
+    BOOL requireExistingFile,
+    LPWSTR normalizedExe,
+    size_t normalizedExeCch,
+    LPWSTR exeNameNoExt,
+    size_t exeNameNoExtCch)
+{
+    HRESULT hr = NormalizeMsiFilePath(exePath, normalizedExe, normalizedExeCch, L"MSI executable");
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    WCHAR installFolder[MAX_PATH] = { 0 };
+    hr = StringCchCopyW(installFolder, MAX_PATH, normalizedExe);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+    if (!PathRemoveFileSpecW(installFolder))
+    {
+        WcaLog(LOGMSG_STANDARD, "MSI executable has no parent: '%ls'.", normalizedExe);
+        return E_INVALIDARG;
+    }
+
+    WCHAR normalizedInstallFolder[MAX_PATH] = { 0 };
+    hr = ValidateDeferredInstallFolder(installFolder, normalizedInstallFolder, MAX_PATH);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    LPCWSTR exeName = PathFindFileNameW(normalizedExe);
+    if (exeName == NULL || exeName[0] == L'\0')
+    {
+        WcaLog(LOGMSG_STANDARD, "MSI executable has no filename: '%ls'.", normalizedExe);
+        return E_INVALIDARG;
+    }
+
+    hr = StringCchCopyW(exeNameNoExt, exeNameNoExtCch, exeName);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    size_t exeNameLen = 0;
+    hr = StringCchLengthW(exeNameNoExt, exeNameNoExtCch, &exeNameLen);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+    if (exeNameLen <= 4 || CompareStringOrdinal(exeNameNoExt + exeNameLen - 4, -1, L".exe", -1, TRUE) != CSTR_EQUAL)
+    {
+        WcaLog(LOGMSG_STANDARD, "MSI executable does not have a .exe filename: '%ls'.", normalizedExe);
+        return E_INVALIDARG;
+    }
+
+    exeNameNoExt[exeNameLen - 4] = L'\0';
+    if (!MsiIdentifierNameIsValid(exeNameNoExt))
+    {
+        WcaLog(LOGMSG_STANDARD, "MSI executable name is not a valid system identifier: '%ls'.", exeNameNoExt);
+        return E_INVALIDARG;
+    }
+
+    if (requireExistingFile)
+    {
+        hr = RequireExistingMsiFileNoReparse(normalizedExe, L"MSI executable");
+        if (FAILED(hr))
+        {
+            return hr;
+        }
+    }
+
+    return S_OK;
+}
+
+HRESULT ValidateServiceExecutablePath(LPCWSTR serviceName, LPCWSTR exePath, LPWSTR normalizedExe, size_t normalizedExeCch)
+{
+    WCHAR exeNameNoExt[500] = { 0 };
+    HRESULT hr = ValidateDeferredProductExecutablePath(exePath, TRUE, normalizedExe, normalizedExeCch, exeNameNoExt, 500);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    if (!PathsEqualNoCase(exeNameNoExt, serviceName))
+    {
+        WcaLog(LOGMSG_STANDARD, "MSI service executable name '%ls' does not match service '%ls'.", exeNameNoExt, serviceName);
+        return E_INVALIDARG;
+    }
+
+    return S_OK;
+}
+
+HRESULT ValidateServiceBinaryCommandAndExecutable(
+    LPCWSTR serviceName,
+    LPCWSTR svcBinary,
+    LPWSTR normalizedCommand,
+    size_t normalizedCommandCch,
+    LPWSTR normalizedExecutable,
+    size_t normalizedExecutableCch)
 {
     if (svcBinary == NULL || svcBinary[0] == L'\0')
     {
@@ -290,52 +391,232 @@ HRESULT ValidateServiceBinaryCommand(LPCWSTR serviceName, LPCWSTR svcBinary, LPW
         return hr;
     }
 
-    WCHAR normalizedExe[MAX_PATH] = { 0 };
-    hr = NormalizeMsiFilePath(exePath, normalizedExe, MAX_PATH, L"MSI service executable");
+    hr = ValidateServiceExecutablePath(serviceName, exePath, normalizedExecutable, normalizedExecutableCch);
     if (FAILED(hr))
     {
         return hr;
     }
 
-    WCHAR installFolder[MAX_PATH] = { 0 };
-    hr = StringCchCopyW(installFolder, MAX_PATH, normalizedExe);
-    if (FAILED(hr))
+    return StringCchPrintfW(normalizedCommand, normalizedCommandCch, L"\"%ls\" --service", normalizedExecutable);
+}
+
+HRESULT ValidateServiceBinaryCommand(LPCWSTR serviceName, LPCWSTR svcBinary, LPWSTR normalizedCommand, size_t normalizedCommandCch)
+{
+    WCHAR normalizedExecutable[MAX_PATH] = { 0 };
+    return ValidateServiceBinaryCommandAndExecutable(
+        serviceName,
+        svcBinary,
+        normalizedCommand,
+        normalizedCommandCch,
+        normalizedExecutable,
+        MAX_PATH);
+}
+
+HRESULT ValidateInstalledServiceBinaryCommand(SC_HANDLE hService, LPCWSTR serviceName, LPCWSTR expectedCommand)
+{
+    DWORD bytesNeeded = 0;
+    if (QueryServiceConfigW(hService, NULL, 0, &bytesNeeded))
     {
-        return hr;
-    }
-    if (!PathRemoveFileSpecW(installFolder))
-    {
-        WcaLog(LOGMSG_STANDARD, "MSI service executable has no parent: '%ls'.", normalizedExe);
-        return E_INVALIDARG;
+        WcaLog(LOGMSG_STANDARD, "Unexpected empty service config for '%ls'.", serviceName);
+        return E_FAIL;
     }
 
-    WCHAR normalizedInstallFolder[MAX_PATH] = { 0 };
-    hr = ValidateDeferredInstallFolder(installFolder, normalizedInstallFolder, MAX_PATH);
-    if (FAILED(hr))
+    DWORD lastError = GetLastError();
+    if (lastError != ERROR_INSUFFICIENT_BUFFER || bytesNeeded == 0)
     {
-        return hr;
+        WcaLog(LOGMSG_STANDARD, "Failed to size service config for '%ls'. Error: %lu", serviceName, lastError);
+        return HRESULT_FROM_WIN32(lastError);
     }
 
-    WCHAR expectedExeName[MAX_PATH] = { 0 };
-    hr = StringCchPrintfW(expectedExeName, MAX_PATH, L"%ls.exe", serviceName);
-    if (FAILED(hr))
+    LPQUERY_SERVICE_CONFIGW serviceConfig = static_cast<LPQUERY_SERVICE_CONFIGW>(LocalAlloc(LPTR, bytesNeeded));
+    if (serviceConfig == NULL)
     {
-        return hr;
-    }
-    LPCWSTR actualExeName = PathFindFileNameW(normalizedExe);
-    if (!PathsEqualNoCase(actualExeName, expectedExeName))
-    {
-        WcaLog(LOGMSG_STANDARD, "MSI service executable name '%ls' does not match service '%ls'.", actualExeName, serviceName);
-        return E_INVALIDARG;
+        return E_OUTOFMEMORY;
     }
 
-    hr = RequireExistingMsiFileNoReparse(normalizedExe, L"MSI service executable");
-    if (FAILED(hr))
+    HRESULT hr = S_OK;
+    if (!QueryServiceConfigW(hService, serviceConfig, bytesNeeded, &bytesNeeded))
     {
-        return hr;
+        lastError = GetLastError();
+        WcaLog(LOGMSG_STANDARD, "Failed to query service config for '%ls'. Error: %lu", serviceName, lastError);
+        hr = HRESULT_FROM_WIN32(lastError);
+        goto LExit;
     }
 
-    return StringCchPrintfW(normalizedCommand, normalizedCommandCch, L"\"%ls\" --service", normalizedExe);
+    WCHAR normalizedInstalledCommand[1024] = { 0 };
+    hr = ValidateServiceBinaryCommand(serviceName, serviceConfig->lpBinaryPathName, normalizedInstalledCommand, 1024);
+    if (FAILED(hr))
+    {
+        WcaLog(LOGMSG_STANDARD, "Installed service command is not trusted for '%ls'.", serviceName);
+        goto LExit;
+    }
+
+    if (!PathsEqualNoCase(normalizedInstalledCommand, expectedCommand))
+    {
+        WcaLog(
+            LOGMSG_STANDARD,
+            "Installed service command for '%ls' does not match package command. Installed='%ls' Package='%ls'.",
+            serviceName,
+            normalizedInstalledCommand,
+            expectedCommand);
+        hr = E_INVALIDARG;
+        goto LExit;
+    }
+
+LExit:
+    LocalFree(serviceConfig);
+    return hr;
+}
+
+HRESULT StopDeleteTrustedService(LPCWSTR serviceName, LPCWSTR expectedCommand, BOOL* serviceWasPresent)
+{
+    if (serviceWasPresent != NULL)
+    {
+        *serviceWasPresent = FALSE;
+    }
+
+    SC_HANDLE hSCManager = OpenSCManagerW(NULL, NULL, SC_MANAGER_CONNECT);
+    if (hSCManager == NULL)
+    {
+        DWORD lastError = GetLastError();
+        WcaLog(LOGMSG_STANDARD, "Failed to open Service Control Manager. Error: 0x%02X", lastError);
+        return HRESULT_FROM_WIN32(lastError);
+    }
+
+    HRESULT hr = S_OK;
+    SC_HANDLE hService = OpenServiceW(
+        hSCManager,
+        serviceName,
+        SERVICE_QUERY_CONFIG | SERVICE_QUERY_STATUS | SERVICE_STOP | DELETE);
+    if (hService == NULL)
+    {
+        DWORD lastError = GetLastError();
+        if (lastError == ERROR_SERVICE_DOES_NOT_EXIST)
+        {
+            WcaLog(LOGMSG_STANDARD, "Service \"%ls\" does not exist.", serviceName);
+            goto LExit;
+        }
+        WcaLog(LOGMSG_STANDARD, "Failed to open service before deletion: \"%ls\", error: 0x%02X.", serviceName, lastError);
+        hr = HRESULT_FROM_WIN32(lastError);
+        goto LExit;
+    }
+
+    if (serviceWasPresent != NULL)
+    {
+        *serviceWasPresent = TRUE;
+    }
+
+    hr = ValidateInstalledServiceBinaryCommand(hService, serviceName, expectedCommand);
+    if (FAILED(hr))
+    {
+        goto LExit;
+    }
+
+    SERVICE_STATUS_PROCESS svcStatus = { 0 };
+    DWORD bytesNeeded = 0;
+    if (!QueryServiceStatusEx(hService, SC_STATUS_PROCESS_INFO, reinterpret_cast<LPBYTE>(&svcStatus), sizeof(svcStatus), &bytesNeeded))
+    {
+        DWORD lastError = GetLastError();
+        WcaLog(LOGMSG_STANDARD, "Failed to query service before deletion: \"%ls\", error: 0x%02X.", serviceName, lastError);
+        hr = HRESULT_FROM_WIN32(lastError);
+        goto LExit;
+    }
+
+    if (svcStatus.dwCurrentState == SERVICE_RUNNING)
+    {
+        SERVICE_STATUS serviceStatus = { 0 };
+        if (!ControlService(hService, SERVICE_CONTROL_STOP, &serviceStatus))
+        {
+            DWORD lastError = GetLastError();
+            if (lastError != ERROR_SERVICE_NOT_ACTIVE)
+            {
+                WcaLog(LOGMSG_STANDARD, "Failed to stop service: \"%ls\", error: 0x%02X.", serviceName, lastError);
+                hr = HRESULT_FROM_WIN32(lastError);
+                goto LExit;
+            }
+        }
+
+        for (int i = 0; i < 10; i++)
+        {
+            if (!QueryServiceStatusEx(hService, SC_STATUS_PROCESS_INFO, reinterpret_cast<LPBYTE>(&svcStatus), sizeof(svcStatus), &bytesNeeded))
+            {
+                DWORD lastError = GetLastError();
+                WcaLog(LOGMSG_STANDARD, "Failed to query service while stopping: \"%ls\", error: 0x%02X.", serviceName, lastError);
+                hr = HRESULT_FROM_WIN32(lastError);
+                goto LExit;
+            }
+            if (svcStatus.dwCurrentState != SERVICE_RUNNING)
+            {
+                break;
+            }
+            Sleep(100);
+        }
+    }
+
+    if (svcStatus.dwCurrentState == SERVICE_RUNNING)
+    {
+        WcaLog(LOGMSG_STANDARD, "Service \"%ls\" is not stopped after 1000 ms.", serviceName);
+        hr = E_FAIL;
+        goto LExit;
+    }
+    WcaLog(LOGMSG_STANDARD, "Service \"%ls\" is stopped.", serviceName);
+
+    if (!DeleteService(hService))
+    {
+        DWORD lastError = GetLastError();
+        if (lastError == ERROR_SERVICE_DOES_NOT_EXIST)
+        {
+            WcaLog(LOGMSG_STANDARD, "Service \"%ls\" was already deleted.", serviceName);
+            goto LExit;
+        }
+        WcaLog(LOGMSG_STANDARD, "Failed to delete service: \"%ls\", error: 0x%02X.", serviceName, lastError);
+        hr = HRESULT_FROM_WIN32(lastError);
+        goto LExit;
+    }
+    WcaLog(LOGMSG_STANDARD, "Service \"%ls\" deletion is completed without errors.", serviceName);
+
+    CloseServiceHandle(hService);
+    hService = NULL;
+
+    SC_HANDLE hVerifyService = OpenServiceW(hSCManager, serviceName, SERVICE_QUERY_STATUS);
+    if (hVerifyService != NULL)
+    {
+        SERVICE_STATUS_PROCESS currentStatus = { 0 };
+        DWORD verifyBytesNeeded = 0;
+        if (QueryServiceStatusEx(
+                hVerifyService,
+                SC_STATUS_PROCESS_INFO,
+                reinterpret_cast<LPBYTE>(&currentStatus),
+                sizeof(currentStatus),
+                &verifyBytesNeeded))
+        {
+            WcaLog(LOGMSG_STANDARD, "Failed to delete service: \"%ls\", current status: %d.", serviceName, currentStatus.dwCurrentState);
+        }
+        CloseServiceHandle(hVerifyService);
+        hr = E_FAIL;
+        goto LExit;
+    }
+
+    {
+        DWORD lastError = GetLastError();
+        if (lastError == ERROR_SERVICE_DOES_NOT_EXIST)
+        {
+            WcaLog(LOGMSG_STANDARD, "Service \"%ls\" is deleted.", serviceName);
+        }
+        else
+        {
+            WcaLog(LOGMSG_STANDARD, "Failed to verify service deletion: \"%ls\", error: 0x%02X.", serviceName, lastError);
+            hr = HRESULT_FROM_WIN32(lastError);
+        }
+    }
+
+LExit:
+    if (hService != NULL)
+    {
+        CloseServiceHandle(hService);
+    }
+    CloseServiceHandle(hSCManager);
+    return hr;
 }
 
 // Helper function to safely delete a file using handle-based deletion.
@@ -631,10 +912,85 @@ bool TerminateProcessesByNameW(LPCWSTR processName, LPCWSTR excludeParam)
         }
         CloseHandle(snapshot);
     }
+    return processClosed;
+}
+
+bool TerminateProcessesByImagePathW(LPCWSTR expectedImagePath, LPCWSTR excludeParam)
+{
+    WCHAR expectedNormalized[MAX_PATH] = { 0 };
+    HRESULT hr = NormalizeMsiFilePath(expectedImagePath, expectedNormalized, MAX_PATH, L"process cleanup image path");
+    if (FAILED(hr))
+    {
+        return false;
+    }
+
+    LPCWSTR expectedFileName = PathFindFileNameW(expectedNormalized);
+    if (expectedFileName == NULL || expectedFileName[0] == L'\0')
+    {
+        return false;
+    }
+
+    HMODULE hntdll = GetModuleHandleW(L"ntdll.dll");
+    pfnNtQueryInformationProcess NtQueryInformationProcess = NULL;
     if (hntdll != NULL)
     {
-        CloseHandle(hntdll);
+        NtQueryInformationProcess = (pfnNtQueryInformationProcess)GetProcAddress(
+            hntdll, "NtQueryInformationProcess");
     }
+
+    bool processClosed = false;
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE)
+    {
+        return false;
+    }
+
+    PROCESSENTRY32W processEntry;
+    processEntry.dwSize = sizeof(PROCESSENTRY32W);
+    if (Process32FirstW(snapshot, &processEntry))
+    {
+        do
+        {
+            if (!PathsEqualNoCase(expectedFileName, processEntry.szExeFile))
+            {
+                continue;
+            }
+
+            HANDLE process = OpenProcess(
+                PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+                FALSE,
+                processEntry.th32ProcessID);
+            if (process == NULL)
+            {
+                continue;
+            }
+
+            WCHAR imagePath[MAX_PATH] = { 0 };
+            DWORD imagePathCch = MAX_PATH;
+            if (QueryFullProcessImageNameW(process, 0, imagePath, &imagePathCch))
+            {
+                WCHAR normalizedImagePath[MAX_PATH] = { 0 };
+                if (SUCCEEDED(NormalizeMsiFilePath(imagePath, normalizedImagePath, MAX_PATH, L"running process image path")) &&
+                    PathsEqualNoCase(normalizedImagePath, expectedNormalized))
+                {
+                    if (NtQueryInformationProcess == NULL)
+                    {
+                        WcaLog(LOGMSG_STANDARD, "Terminate process by trusted image path : %ls", normalizedImagePath);
+                        TerminateProcess(process, 0);
+                        processClosed = true;
+                    }
+                    else if (TerminateProcessIfNotContainsParam(NtQueryInformationProcess, process, excludeParam))
+                    {
+                        processClosed = true;
+                    }
+                }
+            }
+
+            CloseHandle(process);
+        } while (Process32NextW(snapshot, &processEntry));
+    }
+
+    CloseHandle(snapshot);
     return processClosed;
 }
 
@@ -667,11 +1023,10 @@ UINT __stdcall AddFirewallRules(
     DWORD er = ERROR_SUCCESS;
 
     LPWSTR exeFile = NULL;
-    LPWSTR exeName = NULL;
     WCHAR exeNameNoExt[500] = { 0, };
+    WCHAR normalizedExeFile[MAX_PATH] = { 0 };
     LPWSTR pwz = NULL;
     LPWSTR pwzData = NULL;
-    size_t szNameLen = 0;
 
     hr = WcaInitialize(hInstall, "AddFirewallRules");
     ExitOnFailure(hr, "Failed to initialize");
@@ -695,16 +1050,11 @@ UINT __stdcall AddFirewallRules(
         goto LExit;
     }
 
-    exeName = PathFindFileNameW(exeFile + 1);
-    hr = StringCchCopyW(exeNameNoExt, 500, exeName);
-    ExitOnFailure(hr, "Failed to copy exe name: %ls", exeName);
-    szNameLen = wcslen(exeNameNoExt);
-    if (szNameLen >= 4 && wcscmp(exeNameNoExt + szNameLen - 4, L".exe") == 0) {
-        exeNameNoExt[szNameLen - 4] = L'\0';
-    }
+    hr = ValidateDeferredProductExecutablePath(exeFile + 1, exeFile[0] == L'1', normalizedExeFile, MAX_PATH, exeNameNoExt, 500);
+    ExitOnFailure(hr, "Firewall executable path is not trusted");
 
-    hr = AddFirewallRule(exeFile[0] == L'1', exeNameNoExt, exeFile + 1);
-    ExitOnFailure(hr, "Failed to update firewall rules for: %ls", exeFile + 1);
+    hr = AddFirewallRule(exeFile[0] == L'1', exeNameNoExt, normalizedExeFile);
+    ExitOnFailure(hr, "Failed to update firewall rules for: %ls", normalizedExeFile);
 
 LExit:
     if (pwzData) {
@@ -803,14 +1153,15 @@ UINT __stdcall TryStopDeleteService(__in MSIHANDLE hInstall)
     HRESULT hr = S_OK;
     DWORD er = ERROR_SUCCESS;
 
-    int nResult = 0;
+    BOOL serviceWasPresent = FALSE;
+    LPWSTR svcParams = NULL;
     LPWSTR svcName = NULL;
+    LPWSTR svcBinary = NULL;
     LPWSTR pwz = NULL;
     LPWSTR pwzData = NULL;
-    wchar_t szExeFile[500] = { 0 };
-    DWORD cchExeFile = sizeof(szExeFile) / sizeof(szExeFile[0]);
-    SERVICE_STATUS_PROCESS svcStatus;
-    DWORD lastErrorCode = 0;
+    wchar_t szSvcBinary[1024] = { 0 };
+    wchar_t szSvcExecutable[MAX_PATH] = { 0 };
+    DWORD cchSvcBinary = sizeof(szSvcBinary) / sizeof(szSvcBinary[0]);
 
     hr = WcaInitialize(hInstall, "TryStopDeleteService");
     ExitOnFailure(hr, "Failed to initialize");
@@ -819,84 +1170,39 @@ UINT __stdcall TryStopDeleteService(__in MSIHANDLE hInstall)
     ExitOnFailure(hr, "failed to get CustomActionData");
 
     pwz = pwzData;
-    hr = WcaReadStringFromCaData(&pwz, &svcName);
+    hr = WcaReadStringFromCaData(&pwz, &svcParams);
     ExitOnFailure(hr, "failed to read database key from custom action data: %ls", pwz);
-    WcaLog(LOGMSG_STANDARD, "Try stop and delete service : %ls", svcName);
+    WcaLog(LOGMSG_STANDARD, "Try stop and delete service : %ls", svcParams);
 
-    if (!QueryServiceStatusExW(svcName, &svcStatus)) {
-        lastErrorCode = GetLastError();
-        if (lastErrorCode == ERROR_SERVICE_DOES_NOT_EXIST) {
-            WcaLog(LOGMSG_STANDARD, "Service \"%ls\" does not exist.", svcName);
-            goto LExit;
-        }
-        WcaLog(LOGMSG_STANDARD, "Failed to query service before deletion: \"%ls\", error: 0x%02X.", svcName, lastErrorCode);
-        hr = HRESULT_FROM_WIN32(lastErrorCode);
-        ExitOnFailure(hr, "Failed to query service before deletion");
+    svcName = svcParams;
+    svcBinary = wcschr(svcParams, L';');
+    if (svcBinary == NULL) {
+        WcaLog(LOGMSG_STANDARD, "Failed to find service binary command : %ls", svcParams);
+        hr = E_INVALIDARG;
+        ExitOnFailure(hr, "Malformed service deletion CustomActionData");
     }
-
-    if (svcStatus.dwCurrentState == SERVICE_RUNNING && MyStopServiceW(svcName)) {
-        for (int i = 0; i < 10; i++) {
-            if (IsServiceRunningW(svcName)) {
-                Sleep(100);
-            }
-            else {
-                break;
-            }
-        }
+    svcBinary[0] = L'\0';
+    svcBinary += 1;
+    if (wcschr(svcBinary, L';') != NULL) {
+        WcaLog(LOGMSG_STANDARD, "Service deletion CustomActionData contains an extra delimiter : %ls", svcBinary);
+        hr = E_INVALIDARG;
+        ExitOnFailure(hr, "Malformed service deletion CustomActionData");
     }
-    else if (svcStatus.dwCurrentState == SERVICE_RUNNING) {
-        WcaLog(LOGMSG_STANDARD, "Failed to stop service: \"%ls\", error: 0x%02X.", svcName, GetLastError());
+    if (!MsiIdentifierNameIsValid(svcName)) {
+        WcaLog(LOGMSG_STANDARD, "Service name is not a valid system identifier : %ls", svcName);
+        hr = E_INVALIDARG;
+        ExitOnFailure(hr, "Malformed service name");
     }
 
-    if (IsServiceRunningW(svcName)) {
-        WcaLog(LOGMSG_STANDARD, "Service \"%ls\" is not stopped after 1000 ms.", svcName);
-        hr = E_FAIL;
-        ExitOnFailure(hr, "Service is still running before deletion");
-    }
-    else {
-        WcaLog(LOGMSG_STANDARD, "Service \"%ls\" is stopped.", svcName);
-    }
+    hr = ValidateServiceBinaryCommandAndExecutable(svcName, svcBinary, szSvcBinary, cchSvcBinary, szSvcExecutable, MAX_PATH);
+    ExitOnFailure(hr, "Malformed service deletion binary command");
 
-    if (MyDeleteServiceW(svcName)) {
-        WcaLog(LOGMSG_STANDARD, "Service \"%ls\" deletion is completed without errors.", svcName);
-    }
-    else {
-        lastErrorCode = GetLastError();
-        if (lastErrorCode == ERROR_SERVICE_DOES_NOT_EXIST) {
-            WcaLog(LOGMSG_STANDARD, "Service \"%ls\" was already deleted.", svcName);
-            goto LExit;
-        }
-        WcaLog(LOGMSG_STANDARD, "Failed to delete service: \"%ls\", error: 0x%02X.", svcName, lastErrorCode);
-        hr = HRESULT_FROM_WIN32(lastErrorCode);
-        ExitOnFailure(hr, "Failed to delete service");
-    }
+    hr = StopDeleteTrustedService(svcName, szSvcBinary, &serviceWasPresent);
+    ExitOnFailure(hr, "Failed to stop and delete trusted service");
 
-    if (QueryServiceStatusExW(svcName, &svcStatus)) {
-        WcaLog(LOGMSG_STANDARD, "Failed to delete service: \"%ls\", current status: %d.", svcName, svcStatus.dwCurrentState);
-        hr = E_FAIL;
-        ExitOnFailure(hr, "Service still exists after deletion");
+    if (serviceWasPresent) {
+        TerminateProcessesByImagePathW(szSvcExecutable, L"--not-in-use");
     }
-    else {
-        lastErrorCode = GetLastError();
-        if (lastErrorCode == ERROR_SERVICE_DOES_NOT_EXIST) {
-            WcaLog(LOGMSG_STANDARD, "Service \"%ls\" is deleted.", svcName);
-        }
-        else {
-            WcaLog(LOGMSG_STANDARD, "Failed to query service status: \"%ls\", error: 0x%02X.", svcName, lastErrorCode);
-            hr = HRESULT_FROM_WIN32(lastErrorCode);
-            ExitOnFailure(hr, "Failed to verify service deletion");
-        }
-    }
-
-    // It's really strange that we need sleep here.
-    // But the upgrading may be stuck at "copying new files" because the file is in using.
-    // Steps to reproduce: Install -> stop service in tray --> start service -> upgrade
-    // Sleep(300);
-
-    // Or we can terminate the process
-    hr = StringCchPrintfW(szExeFile, cchExeFile, L"%ls.exe", svcName);
-    ExitOnFailure(hr, "Failed to compose a resource identifier string");
-    TerminateProcessesByNameW(szExeFile, L"--not-in-use");
 
 LExit:
     if (pwzData) {

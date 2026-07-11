@@ -1350,6 +1350,25 @@ unreachable and a source/test/AST gate prevents reintroduction.
   directory-setter UI/actions, native install-root validator, malformed service-data fatal path, service identifier
   and command validators, normalized service creation command, normalized runtime cleanup root, non-reparse Amyuni
   helper proof, and this ledger/requirements disposition.
+- **R-S11d-34 — Windows MSI deferred firewall/service target provenance — CLOSED 2026-07-11.** Platform:
+  Windows MSI deferred no-impersonation custom actions. Endpoint/action: LocalSystem firewall policy updates,
+  service stop/delete, and post-delete process cleanup. Boundary: MSI execution-script `CustomActionData` ↔
+  firewall/service/process-control authority. Attack surface closed: the remaining deferred custom-action targets
+  are no longer accepted as raw path/name authority after R-S11d-33. `AddFirewallRules` and `RemoveFirewallRules`
+  now normalize their executable path, require the path to sit under the trusted Program Files MSI install-folder
+  shape, require a constrained `.exe` rule identity, require the executable to exist for add, and pass the
+  normalized path into the firewall COM helper. `TryStopDeleteService.SetParam` now carries the same quoted
+  `<exe> --service` command shape used by service creation. The native action validates the service identifier,
+  normalizes the package executable under the trusted install folder, opens the service with query/stop/delete
+  rights, proves the installed service `ImagePath` normalizes to the same trusted command before any stop/delete,
+  performs stop/delete through that validated handle, verifies deletion by service absence, and only then runs
+  leftover process cleanup by exact normalized image path instead of executable name alone. This remains
+  privileged-state correctness hardening rather than a newly proven ordinary-user LPE in the current package: the
+  MSI authoring already derives these values from private package state, but the LocalSystem DLL now rejects
+  malformed or target-shifted execution-script data itself. Verification closure: `scripts/verify.sh` gates the
+  product-executable validator, firewall normalized-path call, service-delete binary proof in WiX, live
+  service-config proof, handle-bound trusted delete helper, image-path-bound process cleanup, absence of the old
+  raw firewall helper path, absence of name-only service-delete cleanup, and this ledger/requirements disposition.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's

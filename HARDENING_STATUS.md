@@ -1771,6 +1771,12 @@ was caught fail-loud during development, not shipped):
 - **concurrent-commit coherence (`1405369`)** — Windows pins the commit for both double-build passes, and
   build-release.sh rejects the set if HEAD moves mid-build, so the manifest can never mislabel a
   mixed-commit set.
+- **R-B9/R-B10 legacy root Docker builder retirement (closed/gated 2026-07-11)** — the legacy root
+  `Dockerfile`, its `entrypoint.sh`, and the translated upstream `docs/README-*.md` build instructions are
+  deleted. The only supported Docker builders are the digest-pinned `scripts/Dockerfile.*` images created by
+  `scripts/online-fetch.sh`; the legacy root Docker builder is absent, and `verify.sh` rejects any return of
+  the root Dockerfile/entrypoint, translated upstream README build path, raw Sciter/rustup live-fetch snippets,
+  unchecked CMake download, or `rustdesk-builder` root-Docker command.
 `verify-release.sh` (8 source gates: compile/KATs/policy, runtime smoke, Flutter/Dart analyze,
 native-codec watch, Apple source conformance, Rust advisory audit, Dart advisory audit, and the
 build-harness fail-loud suite) is the source-side confirmation. The reproducible set folds in the
@@ -2215,10 +2221,10 @@ The runtime quarantine is backed by deletion of the native dependency itself:
 and `libs/scrap/src/bindings/aom_ffi.h` are deleted; `libs/scrap/build.rs` no
 longer generates `aom_ffi.rs`; `EncoderCfg` has no AV1/libaom variant; and the
 offline Linux, Android, Windows, Apple source-conformance, dev-check, README,
-Dockerfile, and tracked build-scaffold paths do not install, stub, or reference
-`aom`. `docs/NATIVE-CODEC-WATCH.md` records `aom` as a retired library rather
-than a watched package, and `verify.sh` fails if a future source module, FFI
-binding, bindgen package, overlay path, manifest entry, Dockerfile,
+build-Dockerfile, and tracked build-scaffold paths do not install, stub, or
+reference `aom`. `docs/NATIVE-CODEC-WATCH.md` records `aom` as a retired library
+rather than a watched package, and `verify.sh` fails if a future source module,
+FFI binding, bindgen package, overlay path, manifest entry, build-Dockerfile,
 build-scaffold, or ledger shape reintroduces libaom.
 
 **The remaining native-decode residual is still armed, not latent (recorded 2026-07-05 under the universal-deployment re-rating).**

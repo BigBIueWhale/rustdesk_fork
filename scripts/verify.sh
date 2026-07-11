@@ -6117,6 +6117,24 @@ for f in scripts/build-debian.sh scripts/build-android.sh; do
 done
 grep -qE 'FROM ubuntu:[0-9.]+@' scripts/Dockerfile.deb-builder     || rb_struct="$rb_struct deb-base-not-digest-pinned"
 grep -qE 'FROM ubuntu:[0-9.]+@' scripts/Dockerfile.android-builder || rb_struct="$rb_struct android-base-not-digest-pinned"
+if git ls-files --error-unmatch Dockerfile >/dev/null 2>&1; then
+  rb_struct="$rb_struct legacy-root-Dockerfile-present"
+fi
+if git ls-files --error-unmatch entrypoint.sh >/dev/null 2>&1; then
+  rb_struct="$rb_struct legacy-root-Docker-entrypoint-present"
+fi
+if git ls-files 'docs/README-*.md' | grep -q .; then
+  rb_struct="$rb_struct translated-upstream-readme-build-paths-present"
+fi
+legacy_build_scaffold_hits=$(grep -RInE 'docker build -t "?rustdesk-builder"?|sh[.]rustup[.]rs|raw[.]githubusercontent[.]com/c-smile/sciter-sdk|--no-check-certificate|cmake-3[.]30[.]6[.]tar[.]gz|COPY [.]?/entrypoint[.]sh|cargo build --locked [$]argv' \
+  Dockerfile entrypoint.sh docs/README-*.md 2>/dev/null || true)
+if [ -n "$legacy_build_scaffold_hits" ]; then
+  echo "  FAIL R-B9/R-B10: legacy root Docker/upstream README live-fetch build scaffold reappeared:"
+  echo "$legacy_build_scaffold_hits" | sed 's/^/      /'
+  rc=1
+fi
+grep -qF 'No second build scaffold.' requirements.html || rb_struct="$rb_struct requirements:no-no-second-build-scaffold"
+grep -qF 'legacy root Docker builder is absent' HARDENING_STATUS.md || rb_struct="$rb_struct status:no-root-docker-retirement"
 grep -q 'cargo-vendor' scripts/build-debian.sh                     || rb_struct="$rb_struct debian:no-vendored-cargo"
 grep -qE 'sha256sum|\.sha256' scripts/build-android.sh             || rb_struct="$rb_struct android:no-self-verify"
 grep -rq '0\.0\.0\.0' scripts/build-debian.sh scripts/build-android.sh scripts/build-windows.ps1 scripts/run-build.ps1 2>/dev/null && rb_struct="$rb_struct external-listener-in-build"

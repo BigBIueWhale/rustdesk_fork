@@ -1,7 +1,7 @@
 # Native Codec Advisory Watch
 
 Native-Codec-Watch-Version: 1
-Requirements hash: b6fe2846509d02fbae1f861ed701134032988b0d71fa4a1ff3bcb7bd40064da3
+Requirements hash: 557a89a557b892fd65c5f6ceee301c45d110ab7ed473ae8b932c49f89d986a4b
 
 This ledger covers the native C/C++ codec and media-adjacent libraries pulled by
 `vcpkg.json`. Cargo/RustSec and Dart/OSV gates do not cover these vcpkg C/C++
@@ -38,13 +38,13 @@ AV1/libaom runtime quarantine remains the product behavior, but the library is n
 longer linked or watched as a native package: `vcpkg.json` no longer lists `aom`,
 `res/vcpkg/aom` is deleted, `libs/scrap` has no `aom` module or FFI binding,
 `scrap` bindgen no longer generates `aom_ffi.rs`, and the offline Linux,
-Android, Windows, Apple source-conformance, dev-check, Dockerfile, and tracked
-build scaffolds do not install, stub, or reference `aom`. AV1 remains a
+Android, Windows, Apple source-conformance, dev-check, build-Dockerfile, and
+tracked build scaffolds do not install, stub, or reference `aom`. AV1 remains a
 protocol/wire enum only. It is not advertised, selected, encoded, decoded,
 benchmarked, or exposed in UI; inbound peer `Av1s` frames are locally
 unsupported before any native decoder or recorder worker. `verify.sh` and this
-ledger gate the removal so a future manifest, source, FFI, overlay, Dockerfile,
-or build-scaffold reintroduction fails closed.
+ledger gate the removal so a future manifest, source, FFI, overlay,
+build-Dockerfile, or build-scaffold reintroduction fails closed.
 
 Historical rationale: CVE-2026-56208/56209/56210/56211 were recorded against
 libaom while the fork still carried the dependency. Current public records

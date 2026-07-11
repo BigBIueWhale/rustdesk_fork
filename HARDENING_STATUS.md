@@ -1430,7 +1430,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   are accepted only by user-owned receivers; service-marked receivers reject typed user-owned writes, the
   whole-config IPC variant is absent, and standalone salt read/storage-salt sync are denied by
   R-S11b-2a/R-S11c-1a. User-owned `--server` paths remain
-  user-owned. Linux installed-service provisioning is closed by R-S11b-2c/R-S11c-1d plus R-S11e-6:
+  user-owned; R-S11e-7 binds their password capability query and password-bearing write to an authenticated
+  same-UID current-executable `--server` receiver before any user-owned password value is sent. Linux
+  installed-service provisioning is closed by R-S11b-2c/R-S11c-1d plus R-S11e-6:
   clients authenticate the connected root `--service` receiver before sending the service-owned password
   request, that request is the only enabled service-owned password path, polkit authorizes it, and the final
   commit is accepted only by a service-owned server from a root peer. Windows installed-service provisioning is closed by
@@ -1551,6 +1553,22 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `scripts/verify.sh` gates the Linux `_service` client authenticator, root uid gate, exact service argv helper,
   root-owned executable/parent trust predicates and tests, `connect_with_path` wiring, request-before-send ordering
   through authenticated `connect_service`, and this requirements/ledger disposition.
+- **R-S11e-7 — user-owned permanent-password main IPC receiver authentication — CLOSED 2026-07-11.**
+  Platforms: Linux and macOS desktop user-owned main IPC, with the same password-route ordering applied across
+  Windows/Linux/macOS desktop setters. Endpoint/action: `permanent-password-user-owned-writable` capability query and
+  `Data::SetUserOwnedPermanentPassword(String)` write. Boundary: local GUI/CLI password entry ↔ same-UID main IPC
+  receiver. Attack surface closed: a same-UID fake main IPC listener that wins the per-user socket path while the real
+  user-owned daemon is absent or stale can no longer answer "user-owned password writable" and then receive the
+  proposed plaintext password. The user-owned password connector proves the connected receiver before either the
+  capability query or the password-bearing write: the peer uid must equal the caller's effective uid, the peer pid must
+  resolve to the current executable, and the live argv must be the exact user-owned `argv[1] == "--server"` shape,
+  rejecting service-owned markers and extra mode args. The generic desktop password setter also prefers the
+  service-owned path whenever that path is available, so an installed-service password change does not consult
+  user-owned main IPC to choose where the service-owned credential should go. This is local credential-secrecy and
+  route-correctness hardening, not a root/SYSTEM privilege-escalation bypass. Verification closure: `scripts/verify.sh`
+  gates the receiver authenticator, exact argv helper and test, same-uid/executable/argv checks, authenticated
+  password query/write connector, service-owned-first routing in both capability and setter functions, and this
+  requirements/ledger disposition.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows

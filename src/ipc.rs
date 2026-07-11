@@ -36,6 +36,8 @@ pub(crate) use ipc_auth::authenticate_windows_cm_endpoint;
 use ipc_auth::ensure_macos_service_server_is_trusted;
 #[cfg(windows)]
 pub(crate) use ipc_auth::ensure_peer_executable_matches_current_by_pid_opt;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use ipc_auth::ensure_user_owned_main_server_is_trusted;
 #[cfg(windows)]
 pub(crate) use ipc_auth::log_rejected_windows_ipc_connection;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -3030,6 +3032,27 @@ async fn get_config_async(name: &str, ms_timeout: u64) -> ResultType<Option<Stri
     return Ok(None);
 }
 
+async fn connect_user_owned_password_main(
+    ms_timeout: u64,
+) -> ResultType<ConnectionTmpl<ConnClient>> {
+    let connection = connect(ms_timeout, "").await?;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    ensure_user_owned_main_server_is_trusted(&connection)?;
+    Ok(connection)
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn user_owned_permanent_password_is_writable() -> ResultType<bool> {
+    let ms_timeout = 1_000;
+    let name = "permanent-password-user-owned-writable";
+    let mut c = connect_user_owned_password_main(ms_timeout).await?;
+    c.send(&Data::ConfigRequest(name.to_owned())).await?;
+    if let Some(Data::ConfigValue((name2, value))) = c.next_timeout(ms_timeout).await? {
+        return Ok(name == name2 && value.as_deref().is_some_and(|v| v.trim() == "Y"));
+    }
+    Ok(false)
+}
+
 async fn set_voice_call_input_device_async(value: String) -> ResultType<()> {
     let mut c = connect(1000, "").await?;
     c.send(&Data::SetVoiceCallInput(value)).await?;
@@ -3131,10 +3154,7 @@ pub fn is_permanent_password_preset() -> bool {
 }
 
 pub fn can_set_user_owned_permanent_password() -> bool {
-    matches!(
-        get_config("permanent-password-user-owned-writable"),
-        Ok(Some(v)) if v.trim() == "Y"
-    )
+    matches!(user_owned_permanent_password_is_writable(), Ok(true))
 }
 
 pub fn set_user_owned_permanent_password(v: String) -> ResultType<()> {
@@ -3169,22 +3189,28 @@ pub fn can_request_service_owned_unattended_password_change() -> bool {
 }
 
 pub fn can_set_permanent_password() -> bool {
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    if can_request_service_owned_unattended_password_change() {
+        return true;
+    }
     can_set_user_owned_permanent_password()
-        || can_request_service_owned_unattended_password_change()
 }
 
 pub fn set_permanent_password(v: String) -> ResultType<()> {
     if Config::is_disable_change_permanent_password() {
         bail!("Changing permanent password is disabled");
     }
-    if can_set_user_owned_permanent_password() {
-        return set_user_owned_permanent_password(v);
-    }
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
         if can_request_service_owned_unattended_password_change() {
             return set_service_owned_unattended_password(v);
         }
+    }
+    if can_set_user_owned_permanent_password() {
+        return set_user_owned_permanent_password(v);
+    }
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    {
         bail!("Changing service-owned unattended password requires administrator authorization");
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
@@ -3201,7 +3227,7 @@ pub async fn set_user_owned_permanent_password_with_ack(v: String) -> ResultType
 async fn set_user_owned_permanent_password_with_ack_async(v: String) -> ResultType<bool> {
     // The daemon ACK/NACK is expected quickly since it applies the config in-process.
     let ms_timeout = 1_000;
-    let mut c = connect(ms_timeout, "").await?;
+    let mut c = connect_user_owned_password_main(ms_timeout).await?;
     c.send(&Data::SetUserOwnedPermanentPassword(v)).await?;
     if let Some(Data::SetUserOwnedPermanentPasswordResult(ok)) = c.next_timeout(ms_timeout).await? {
         if ok {

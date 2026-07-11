@@ -244,8 +244,57 @@ echo "$connect_with_path_block" | grep -Fq 'postfix == crate::POSTFIX_SERVICE' |
 echo "$connect_with_path_block" | grep -Fq 'ensure_macos_service_server_is_trusted(&connection)' || r_s11="$r_s11 macos-service-connect-not-client-authenticated"
 grep -Fq 'macOS _service client-side server authentication' requirements.html || r_s11="$r_s11 macos-service-client-auth-requirements-missing"
 grep -Fq 'R-S11e-2 — macOS _service client-side server authentication' HARDENING_STATUS.md || r_s11="$r_s11 macos-service-client-auth-ledger-missing"
+grep -Fq 'pub(crate) fn ensure_user_owned_main_server_is_trusted' src/ipc/auth.rs || r_s11="$r_s11 user-owned-main-server-auth-missing"
+grep -Fq 'fn user_owned_main_server_argv_is_expected(args: &[String]) -> bool' src/ipc/auth.rs || r_s11="$r_s11 user-owned-main-server-argv-helper-missing"
+grep -Fq 'args.len() == 2 && args.get(1).map(String::as_str) == Some("--server")' src/ipc/auth.rs || r_s11="$r_s11 user-owned-main-server-argv-not-exact"
+user_owned_main_server_auth_block=$(awk '/pub\(crate\) fn ensure_user_owned_main_server_is_trusted/,/^}/' src/ipc/auth.rs)
+echo "$user_owned_main_server_auth_block" | grep -Fq 'peer_uid != current_uid' || r_s11="$r_s11 user-owned-main-server-not-same-uid-gated"
+echo "$user_owned_main_server_auth_block" | grep -Fq 'ensure_peer_executable_matches_current_by_pid(peer_pid, "")' || r_s11="$r_s11 user-owned-main-server-exe-proof-missing"
+echo "$user_owned_main_server_auth_block" | grep -Fq 'user_owned_main_server_argv_is_expected(&args)' || r_s11="$r_s11 user-owned-main-server-argv-proof-missing"
+grep -Fq 'async fn connect_user_owned_password_main' src/ipc.rs || r_s11="$r_s11 user-owned-password-main-connector-missing"
+grep -Fq 'ensure_user_owned_main_server_is_trusted(&connection)' src/ipc.rs || r_s11="$r_s11 user-owned-password-main-connector-not-authenticated"
+grep -Fq 'user_owned_permanent_password_is_writable' src/ipc.rs || r_s11="$r_s11 user-owned-password-writable-auth-query-missing"
+grep -Fq 'test_user_owned_main_server_argv_is_exact' src/ipc/auth.rs || r_s11="$r_s11 user-owned-main-server-argv-test-missing"
+grep -Fq 'User-owned permanent-password main IPC receiver authentication' requirements.html || r_s11="$r_s11 user-owned-password-main-auth-requirements-missing"
+grep -Fq 'R-S11e-7 — user-owned permanent-password main IPC receiver authentication' HARDENING_STATUS.md || r_s11="$r_s11 user-owned-password-main-auth-ledger-missing"
+if ! python3 - <<'PY'
+from pathlib import Path
+src = Path("src/ipc.rs").read_text()
+try:
+    query_start = src.index("async fn user_owned_permanent_password_is_writable")
+    query_end = src.index("async fn set_voice_call_input_device_async", query_start)
+    write_start = src.index("async fn set_user_owned_permanent_password_with_ack_async")
+    write_end = src.index("#[cfg(any(target_os = \"linux\", target_os = \"macos\", target_os = \"windows\"))]\npub fn set_service_owned_unattended_password", write_start)
+    can_start = src.index("pub fn can_set_permanent_password() -> bool")
+    set_start = src.index("pub fn set_permanent_password(v: String) -> ResultType<()>")
+    set_end = src.index("#[tokio::main(flavor = \"current_thread\")]\npub async fn set_user_owned_permanent_password_with_ack", set_start)
+except ValueError:
+    raise SystemExit(1)
+query = src[query_start:query_end]
+write = src[write_start:write_end]
+can_body = src[can_start:set_start]
+set_body = src[set_start:set_end]
+query_connect = query.find("connect_user_owned_password_main(ms_timeout).await?")
+query_send = query.find("Data::ConfigRequest(name.to_owned())")
+write_connect = write.find("connect_user_owned_password_main(ms_timeout).await?")
+write_send = write.find("Data::SetUserOwnedPermanentPassword(v)")
+can_service = can_body.find("can_request_service_owned_unattended_password_change()")
+can_user = can_body.find("can_set_user_owned_permanent_password()")
+set_service = set_body.find("can_request_service_owned_unattended_password_change()")
+set_user = set_body.find("can_set_user_owned_permanent_password()")
+ok = (
+    query_connect != -1 and query_send != -1 and query_connect < query_send
+    and write_connect != -1 and write_send != -1 and write_connect < write_send
+    and can_service != -1 and can_user != -1 and can_service < can_user
+    and set_service != -1 and set_user != -1 and set_service < set_user
+)
+raise SystemExit(0 if ok else 1)
+PY
+then
+  r_s11="$r_s11 user-owned-password-sends-before-main-server-proof-or-service-first-routing"
+fi
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel state-mutation allowlist:$r_s11"; rc=1; else
-  echo "  ok  R-S11/R-S11b/R-S11c main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options are user-owned scoped; service-owned close is root/LocalSystem-gated on main IPC and Windows _service; Linux _service clients authenticate the connected root --service receiver before service-owned password traffic; macOS _service clients authenticate the connected privileged helper before service-owned password traffic; the policy table is exhaustive with no wildcard fallback; gate binds Linux/macOS AND the Windows main pipe)"; fi
+  echo "  ok  R-S11/R-S11b/R-S11c main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options are user-owned scoped; user-owned password queries/writes authenticate the same-UID current-exe --server receiver before password traffic; service-owned close is root/LocalSystem-gated on main IPC and Windows _service; Linux _service clients authenticate the connected root --service receiver before service-owned password traffic; macOS _service clients authenticate the connected privileged helper before service-owned password traffic; the policy table is exhaustive with no wildcard fallback; gate binds Linux/macOS AND the Windows main pipe)"; fi
 rm -f /tmp/rd_verify_identity_writers.$$ /tmp/rd_verify_mac_address.$$
 
 echo "== (3b-iii-a1) desktop at-rest wrapper does not mint service identity material (R-S11b-3f) =="

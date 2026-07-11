@@ -897,6 +897,11 @@ fn linux_service_process_argv_is_expected(args: &[String]) -> bool {
     args.len() == 2 && args.get(1).map(String::as_str) == Some("--service")
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn user_owned_main_server_argv_is_expected(args: &[String]) -> bool {
+    args.len() == 2 && args.get(1).map(String::as_str) == Some("--server")
+}
+
 #[cfg(target_os = "linux")]
 fn linux_trusted_service_executable_file_metadata(is_file: bool, uid: u32, mode: u32) -> bool {
     is_file && uid == 0 && mode & 0o022 == 0 && mode & 0o111 != 0
@@ -963,6 +968,62 @@ where
         );
     }
     Ok(identity)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_process_cmdline_args(pid: u32) -> ResultType<Vec<String>> {
+    let mut sys = hbb_common::sysinfo::System::new_all();
+    sys.refresh_processes();
+    sys.processes()
+        .values()
+        .find(|process| process.pid().as_u32() == pid)
+        .map(|process| process.cmd().to_vec())
+        .ok_or_else(|| anyhow::anyhow!("Failed to resolve macOS process argv: pid={pid}"))
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn main_server_cmdline_args(pid: u32) -> ResultType<Vec<String>> {
+    #[cfg(target_os = "linux")]
+    {
+        linux_proc_cmdline_args(pid)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        macos_process_cmdline_args(pid)
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn ensure_user_owned_main_server_is_trusted<T>(
+    stream: &ConnectionTmpl<T>,
+) -> ResultType<()>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
+{
+    let peer_uid = stream
+        .peer_uid()
+        .ok_or_else(|| anyhow::anyhow!("Failed to resolve user-owned main IPC server uid"))?;
+    let current_uid = unsafe { libc::geteuid() as u32 };
+    if peer_uid != current_uid {
+        bail!(
+            "user-owned main IPC server uid mismatch: peer_uid={}, current_uid={}",
+            peer_uid,
+            current_uid
+        );
+    }
+    let peer_pid = stream
+        .peer_pid()
+        .ok_or_else(|| anyhow::anyhow!("Failed to resolve user-owned main IPC server pid"))?;
+    ensure_peer_executable_matches_current_by_pid(peer_pid, "")?;
+    let args = main_server_cmdline_args(peer_pid)?;
+    if !user_owned_main_server_argv_is_expected(&args) {
+        bail!(
+            "user-owned main IPC server argv mismatch: pid={}, args={:?}",
+            peer_pid,
+            args
+        );
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]
@@ -1884,6 +1945,28 @@ mod tests {
             "/usr/bin/rustdesk".to_owned(),
             "--cm".to_owned(),
             crate::common::SERVICE_OWNED_SERVER_ARG.to_owned(),
+        ]));
+    }
+
+    #[test]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn test_user_owned_main_server_argv_is_exact() {
+        assert!(super::user_owned_main_server_argv_is_expected(&[
+            "/usr/bin/rustdesk".to_owned(),
+            "--server".to_owned(),
+        ]));
+        assert!(!super::user_owned_main_server_argv_is_expected(&[
+            "/usr/bin/rustdesk".to_owned(),
+        ]));
+        assert!(!super::user_owned_main_server_argv_is_expected(&[
+            "/usr/bin/rustdesk".to_owned(),
+            "--server".to_owned(),
+            crate::common::SERVICE_OWNED_SERVER_ARG.to_owned(),
+        ]));
+        assert!(!super::user_owned_main_server_argv_is_expected(&[
+            "/usr/bin/rustdesk".to_owned(),
+            "--server".to_owned(),
+            "--tray".to_owned(),
         ]));
     }
 

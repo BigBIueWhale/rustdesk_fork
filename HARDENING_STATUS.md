@@ -795,8 +795,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   write/delete sharing denial on EXE command staging, fixed Flutter install entry, fixed-root EXE service entry
   points, fatal EXE `sc` errors, MSI private install root, absence of MSI browse/public install-folder routing,
   checked MSI privileged custom-action returns, native service-delete verification, absence of MSI
-  `sc`/`cmd.exe`/`reg` shell fallbacks, post-elevated relaunch executable authority via R-S11d-30, and this
-  ledger/requirements disposition.
+  `sc`/`cmd.exe`/`reg` shell fallbacks, post-elevated relaunch executable authority via R-S11d-30,
+  privacy broker served-session authority via R-S11d-31, and this ledger/requirements disposition.
 - **R-S11d-1 — Windows Amyuni IDD helper launch provenance — CLOSED 2026-07-10.** Platform:
   Windows MSI deferred custom action and runtime virtual-display helper path. Endpoint/action:
   `deviceinstaller64.exe` under `usbmmidd_v2`, launched to install/remove the Amyuni virtual-display driver.
@@ -1183,6 +1183,19 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `scripts/verify.sh` asserts the new helper shape, all three fixed-executable call sites, the fixed-root recheck,
   file-existence check, absence of `get_install_info()` in the helper body, absence of the old
   `run_after_run_cmds` helper, and this requirements/ledger disposition.
+- **R-S11d-31 — Windows privacy broker served-session authority — CLOSED 2026-07-11.** Platform:
+  Windows installed service with privacy mode, especially RDP/ICA session-sharing hosts. Endpoint/action:
+  topmost-window privacy broker launch of `RuntimeBroker_rustdesk.exe` and `WindowInjection.dll` injection.
+  Boundary: service-owned `--server` process serving an authenticated Remote session ↔ per-session user-token
+  broker process. Attack surface closed: the broker launch no longer uses `WTSGetActiveConsoleSessionId()`,
+  which selects the physical console session and can differ from the session currently served by the installed
+  service when `share_rdp` allows RDP/ICA sessions. The broker now resolves the current process session id of
+  the service-owned server that is handling the Remote session, rejects unavailable or invalid session ids,
+  obtains the user token for that served session, and launches the checked broker executable there with the
+  existing explicit `lpApplicationName`, null command line, checked current directory, and checked broker/DLL
+  files. Verification closure: `scripts/verify.sh` asserts the served-session helper, current-process-session
+  lookup, launch-site use of that helper, session-specific token error, absence of `WTSGetActiveConsoleSessionId`
+  from the privacy broker source, and this requirements/ledger disposition.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's

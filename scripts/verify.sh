@@ -715,8 +715,18 @@ echo "$privacy_broker_create_one_line" | grep -Eq 'broker_path_utf16\.as_ptr\(\)
 echo "$privacy_broker_create" | grep -q 'current_dir_utf16.as_ptr() as _' || r_s11d="$r_s11d privacy-broker:no-explicit-current-directory"
 grep -q 'if !dll_file.is_file()' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:dll-file-existence-not-checked"
 grep -q 'if !broker_file.is_file()' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:file-existence-not-checked"
+grep -q 'fn privacy_broker_session_id() -> ResultType<u32>' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:served-session-helper-missing"
+grep -q 'get_current_process_session_id()' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:not-bound-to-served-process-session"
+grep -q 'Failed to get current process session id for privacy broker' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:no-served-session-fail-closed-error"
+grep -q 'if session_id == u32::MAX' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:invalid-session-not-rejected"
+grep -q 'let session_id = privacy_broker_session_id()?;' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:launcher-bypasses-served-session-helper"
+grep -q 'let token = get_user_token(session_id, true);' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:token-not-from-served-session"
+grep -q 'Failed to get token of privacy broker session {session_id}' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:token-error-not-session-specific"
 if grep -q 'cmd_utf16' src/privacy_mode/win_topmost_window.rs; then
   r_s11d="$r_s11d privacy-broker:command-line-module-parsing-leftover"
+fi
+if grep -q 'WTSGetActiveConsoleSessionId' src/privacy_mode/win_topmost_window.rs; then
+  r_s11d="$r_s11d privacy-broker:physical-console-session-authority-leftover"
 fi
 grep -q 'let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };' src/platform/windows.rs || r_s11d="$r_s11d user-shortcut:com-init-hresult-not-captured"
 grep -q 'if hr.is_ok()' src/platform/windows.rs || r_s11d="$r_s11d user-shortcut:com-init-hresult-success-not-checked"
@@ -738,6 +748,8 @@ if grep -q 'fn get_shortcut_icon_location' src/platform/windows.rs; then
 fi
 grep -q 'Windows privacy broker and user shortcut process provenance' requirements.html || r_s11d="$r_s11d privacy-shortcut-requirements-disposition-missing"
 grep -q 'R-S11d-12 — Windows privacy broker and user shortcut process provenance' HARDENING_STATUS.md || r_s11d="$r_s11d privacy-shortcut-hardening-ledger-missing"
+grep -q 'Windows privacy broker served-session authority' requirements.html || r_s11d="$r_s11d privacy-broker-session-requirements-disposition-missing"
+grep -q 'R-S11d-31 — Windows privacy broker served-session authority' HARDENING_STATUS.md || r_s11d="$r_s11d privacy-broker-session-hardening-ledger-missing"
 grep -q 'Windows MSI runtime-generated executable cleanup completion authority' requirements.html || r_s11d="$r_s11d runtime-generated-cleanup-requirements-disposition-missing"
 grep -q 'R-S11d-4 — Windows MSI runtime-generated executable cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d runtime-generated-cleanup-hardening-ledger-missing"
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else

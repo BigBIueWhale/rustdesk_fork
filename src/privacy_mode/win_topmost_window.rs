@@ -1,5 +1,8 @@
 use super::{PrivacyMode, INVALID_PRIVACY_MODE_CONN_ID};
-use crate::{platform::windows::get_user_token, privacy_mode::PrivacyModeState};
+use crate::{
+    platform::windows::{get_current_process_session_id, get_user_token},
+    privacy_mode::PrivacyModeState,
+};
 use hbb_common::{allow_err, bail, log, ResultType};
 use std::{
     ffi::CString,
@@ -21,7 +24,7 @@ use winapi::{
             CreateProcessAsUserW, QueueUserAPC, ResumeThread, TerminateProcess,
             PROCESS_INFORMATION, STARTUPINFOW,
         },
-        winbase::{WTSGetActiveConsoleSessionId, CREATE_SUSPENDED, DETACHED_PROCESS},
+        winbase::{CREATE_SUSPENDED, DETACHED_PROCESS},
         winnt::{MEM_COMMIT, PAGE_READWRITE},
         winuser::*,
     },
@@ -260,10 +263,10 @@ impl PrivacyModeImpl {
                 dwThreadId: 0,
             };
 
-            let session_id = WTSGetActiveConsoleSessionId();
+            let session_id = privacy_broker_session_id()?;
             let token = get_user_token(session_id, true);
             if token.is_null() {
-                bail!("Failed to get token of current user");
+                bail!("Failed to get token of privacy broker session {session_id}");
             }
 
             let create_res = CreateProcessAsUserW(
@@ -329,6 +332,16 @@ impl Drop for PrivacyModeImpl {
             allow_err!(self.turn_off_privacy(self.conn_id, None));
         }
     }
+}
+
+fn privacy_broker_session_id() -> ResultType<u32> {
+    let Some(session_id) = get_current_process_session_id() else {
+        bail!("Failed to get current process session id for privacy broker");
+    };
+    if session_id == u32::MAX {
+        bail!("Invalid current process session id for privacy broker");
+    }
+    Ok(session_id)
 }
 
 unsafe fn inject_dll<'a>(hproc: HANDLE, hthread: HANDLE, dll_file: &'a str) -> ResultType<()> {

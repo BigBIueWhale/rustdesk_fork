@@ -1504,8 +1504,12 @@ grep -q 'fn authenticate_linux_service_owned_main_server' src/ipc/auth.rs       
 grep -q 'linux_service_owned_server_argv_is_expected' src/ipc/auth.rs                 || r_s11b2="$r_s11b2 linux-service-main-server-exact-argv-missing"
 grep -q 'SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV' src/ipc/auth.rs                     || r_s11b2="$r_s11b2 linux-service-main-server-launch-parent-env-not-checked"
 grep -q 'linux_process_has_ancestor(identity.pid, expected_parent)' src/ipc/auth.rs   || r_s11b2="$r_s11b2 linux-service-main-server-ancestor-proof-missing"
-grep -q 'authenticate_linux_service_owned_main_server(&c)' src/ipc.rs                 || r_s11b2="$r_s11b2 linux-service-commit-sent-before-server-proof"
 grep -q 'test_linux_service_owned_server_argv_is_exact' src/ipc/auth.rs               || r_s11b2="$r_s11b2 linux-service-main-server-argv-test-missing"
+if ! python3 scripts/verify-linux-service-password-ipc.py --repo . --self-test >/tmp/rd_verify_linux_service_password_ipc.$$ 2>&1; then
+  cat /tmp/rd_verify_linux_service_password_ipc.$$
+  r_s11b2="$r_s11b2 linux-service-password-ipc-structural-gate-failed"
+fi
+rm -f /tmp/rd_verify_linux_service_password_ipc.$$
 linux_service_server_client_auth_block=$(awk '/pub\(crate\) fn ensure_linux_service_server_is_trusted/,/^}/' src/ipc/auth.rs)
 connect_with_path_block=$(awk '/async fn connect_with_path/,/^}/' src/ipc.rs)
 grep -Fq 'pub(crate) fn ensure_linux_service_server_is_trusted' src/ipc/auth.rs       || r_s11b2="$r_s11b2 linux-service-server-client-auth-missing"

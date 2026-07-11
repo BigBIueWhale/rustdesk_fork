@@ -1415,8 +1415,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   current root service process, and requires the live `/proc` parent chain to include that service process.
   Missing, stale, wrong-argv, wrong-parent, or non-descendant receivers fail closed before the password leaves the
   root service. Verification closure: `scripts/verify.sh` gates launch-parent propagation in both Linux
-  service-server launch paths, the receiver authenticator, exact argv helper, live ancestor proof, commit-path
-  ordering, the argv regression test, and this requirements/ledger disposition.
+  service-server launch paths, the receiver authenticator, exact argv helper, live ancestor proof, structural
+  commit-path ordering from scoped connect to receiver proof to password-bearing send, the argv regression test,
+  and this requirements/ledger disposition.
 - **R-S11e-6 — Linux _service client-side server authentication — CLOSED 2026-07-11.**
   Platform: Linux `.deb` installed-service mode. Endpoint/action: GUI/CLI service-owned unattended-password
   requests over the shared `_service` Unix socket. Boundary: user-session password setter ↔ root service credential

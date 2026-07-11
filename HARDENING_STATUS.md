@@ -1294,6 +1294,27 @@ unreachable and a source/test/AST gate prevents reintroduction.
   closure: `scripts/verify.sh` asserts the identity query helper, digest helper, verified reopen helper, write-handle
   identity capture, reopened read-lock wiring, identity/content drift failures, regression tests, and this
   requirements/ledger disposition.
+- **R-S11d-33 — Windows MSI deferred install-root provenance — CLOSED 2026-07-11.** Platform:
+  Windows MSI deferred no-impersonation custom actions. Endpoint/action: LocalSystem service creation,
+  runtime-generated broker cleanup, and Amyuni IDD fallback helper execution. Boundary: MSI execution script
+  `CustomActionData` and directory resolution ↔ LocalSystem service/helper authority. Attack surface closed: the
+  package-level private `App.InstallFolder` proof is no longer the only check before the deferred DLL consumes
+  privileged install-root state. `res/msi/CustomActions/CustomActions.cpp` now normalizes deferred install folders,
+  rejects empty/relative/root/path-too-long values, requires the install directory to be an immediate child of
+  `FOLDERID_ProgramFiles` or `FOLDERID_ProgramFilesX86`, requires the Program Files parent and any existing install
+  directory to be non-reparse directories, and uses the normalized install folder for runtime broker cleanup and
+  Amyuni fallback path construction. The Amyuni fallback now builds `usbmmidd_v2` with an explicit separator and
+  requires both the helper directory and `deviceinstaller64.exe` to exist as non-reparse objects before
+  `CreateProcessW`. `CreateStartService` now fails malformed service `CustomActionData` instead of reporting
+  success, requires a constrained service identifier, parses only the exact quoted executable plus `--service`
+  command shape, validates the executable as the matching service binary under the trusted MSI install folder,
+  requires the service executable to exist and not be a reparse point, and passes a normalized command to
+  `CreateServiceW`. This is privileged-state correctness hardening, not a newly proven low-privilege LPE in the
+  current MSI: the package already keeps `App.InstallFolder` private under `ProgramFiles6432Folder` with no browse
+  surface. Verification closure: `scripts/verify.sh` gates the Program Files directory declaration, absence of
+  directory-setter UI/actions, native install-root validator, malformed service-data fatal path, service identifier
+  and command validators, normalized service creation command, normalized runtime cleanup root, non-reparse Amyuni
+  helper proof, and this ledger/requirements disposition.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's

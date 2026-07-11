@@ -6,10 +6,337 @@
 #include <winternl.h>
 #include <netfw.h>
 #include <shlwapi.h>
+#include <shlobj.h>
 
 #include "./Common.h"
 
 #pragma comment(lib, "Shlwapi.lib")
+#pragma comment(lib, "Shell32.lib")
+
+HRESULT NormalizeMsiPath(LPCWSTR path, LPWSTR normalized, size_t normalizedCch, LPCWSTR label, BOOL trimTrailingSlashes)
+{
+    if (path == NULL || path[0] == L'\0')
+    {
+        WcaLog(LOGMSG_STANDARD, "%ls is empty.", label);
+        return E_INVALIDARG;
+    }
+    if (PathIsRelativeW(path))
+    {
+        WcaLog(LOGMSG_STANDARD, "%ls is relative: '%ls'.", label, path);
+        return E_INVALIDARG;
+    }
+
+    DWORD length = GetFullPathNameW(path, static_cast<DWORD>(normalizedCch), normalized, NULL);
+    if (length == 0)
+    {
+        DWORD lastError = GetLastError();
+        WcaLog(LOGMSG_STANDARD, "Failed to normalize %ls '%ls'. Error: %lu", label, path, lastError);
+        return HRESULT_FROM_WIN32(lastError);
+    }
+    if (length >= normalizedCch)
+    {
+        WcaLog(LOGMSG_STANDARD, "%ls is too long: '%ls'.", label, path);
+        return HRESULT_FROM_WIN32(ERROR_FILENAME_EXCED_RANGE);
+    }
+
+    while (trimTrailingSlashes && !PathIsRootW(normalized))
+    {
+        size_t normalizedLen = 0;
+        HRESULT hr = StringCchLengthW(normalized, normalizedCch, &normalizedLen);
+        if (FAILED(hr) || normalizedLen == 0)
+        {
+            return FAILED(hr) ? hr : E_INVALIDARG;
+        }
+        WCHAR last = normalized[normalizedLen - 1];
+        if (last != L'\\' && last != L'/')
+        {
+            break;
+        }
+        normalized[normalizedLen - 1] = L'\0';
+    }
+
+    return S_OK;
+}
+
+HRESULT NormalizeMsiDirectoryPath(LPCWSTR path, LPWSTR normalized, size_t normalizedCch, LPCWSTR label)
+{
+    return NormalizeMsiPath(path, normalized, normalizedCch, label, TRUE);
+}
+
+HRESULT NormalizeMsiFilePath(LPCWSTR path, LPWSTR normalized, size_t normalizedCch, LPCWSTR label)
+{
+    HRESULT hr = NormalizeMsiPath(path, normalized, normalizedCch, label, FALSE);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+    if (PathIsRootW(normalized))
+    {
+        WcaLog(LOGMSG_STANDARD, "%ls is a filesystem root: '%ls'.", label, normalized);
+        return E_INVALIDARG;
+    }
+    return S_OK;
+}
+
+BOOL PathsEqualNoCase(LPCWSTR a, LPCWSTR b)
+{
+    return CompareStringOrdinal(a, -1, b, -1, TRUE) == CSTR_EQUAL;
+}
+
+BOOL KnownFolderMatchesPath(REFKNOWNFOLDERID folder, LPCWSTR path)
+{
+    PWSTR rawKnownPath = NULL;
+    HRESULT hr = SHGetKnownFolderPath(folder, KF_FLAG_DEFAULT, NULL, &rawKnownPath);
+    if (FAILED(hr))
+    {
+        WcaLog(LOGMSG_STANDARD, "Failed to resolve trusted MSI known folder: 0x%08lx", hr);
+        return FALSE;
+    }
+
+    WCHAR knownPath[MAX_PATH] = { 0 };
+    hr = NormalizeMsiDirectoryPath(rawKnownPath, knownPath, MAX_PATH, L"trusted MSI known folder");
+    CoTaskMemFree(rawKnownPath);
+    if (FAILED(hr))
+    {
+        return FALSE;
+    }
+
+    return PathsEqualNoCase(path, knownPath);
+}
+
+HRESULT RequireExistingMsiDirectoryNoReparse(LPCWSTR path, LPCWSTR label)
+{
+    DWORD attributes = GetFileAttributesW(path);
+    if (attributes == INVALID_FILE_ATTRIBUTES)
+    {
+        DWORD lastError = GetLastError();
+        WcaLog(LOGMSG_STANDARD, "%ls '%ls' is not accessible. Error: %lu", label, path, lastError);
+        return HRESULT_FROM_WIN32(lastError);
+    }
+    if (!(attributes & FILE_ATTRIBUTE_DIRECTORY))
+    {
+        WcaLog(LOGMSG_STANDARD, "%ls '%ls' is not a directory.", label, path);
+        return E_INVALIDARG;
+    }
+    if (attributes & FILE_ATTRIBUTE_REPARSE_POINT)
+    {
+        WcaLog(LOGMSG_STANDARD, "%ls '%ls' is a reparse point.", label, path);
+        return E_INVALIDARG;
+    }
+    return S_OK;
+}
+
+HRESULT RequireExistingMsiFileNoReparse(LPCWSTR path, LPCWSTR label)
+{
+    DWORD attributes = GetFileAttributesW(path);
+    if (attributes == INVALID_FILE_ATTRIBUTES)
+    {
+        DWORD lastError = GetLastError();
+        WcaLog(LOGMSG_STANDARD, "%ls '%ls' is not accessible. Error: %lu", label, path, lastError);
+        return HRESULT_FROM_WIN32(lastError);
+    }
+    if (attributes & FILE_ATTRIBUTE_DIRECTORY)
+    {
+        WcaLog(LOGMSG_STANDARD, "%ls '%ls' is a directory.", label, path);
+        return E_INVALIDARG;
+    }
+    if (attributes & FILE_ATTRIBUTE_REPARSE_POINT)
+    {
+        WcaLog(LOGMSG_STANDARD, "%ls '%ls' is a reparse point.", label, path);
+        return E_INVALIDARG;
+    }
+    return S_OK;
+}
+
+HRESULT ValidateDeferredInstallFolder(LPCWSTR installFolder, LPWSTR normalizedInstallFolder, size_t normalizedCch)
+{
+    HRESULT hr = NormalizeMsiDirectoryPath(installFolder, normalizedInstallFolder, normalizedCch, L"MSI install folder");
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    WCHAR parent[MAX_PATH] = { 0 };
+    hr = StringCchCopyW(parent, MAX_PATH, normalizedInstallFolder);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+    if (!PathRemoveFileSpecW(parent))
+    {
+        WcaLog(LOGMSG_STANDARD, "MSI install folder has no parent: '%ls'.", normalizedInstallFolder);
+        return E_INVALIDARG;
+    }
+    WCHAR normalizedParent[MAX_PATH] = { 0 };
+    hr = NormalizeMsiDirectoryPath(parent, normalizedParent, MAX_PATH, L"MSI install folder parent");
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    if (!KnownFolderMatchesPath(FOLDERID_ProgramFiles, normalizedParent) &&
+        !KnownFolderMatchesPath(FOLDERID_ProgramFilesX86, normalizedParent))
+    {
+        WcaLog(LOGMSG_STANDARD, "MSI install folder is not an immediate Program Files child: '%ls'.", normalizedInstallFolder);
+        return E_INVALIDARG;
+    }
+    hr = RequireExistingMsiDirectoryNoReparse(normalizedParent, L"MSI install folder parent");
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    DWORD attributes = GetFileAttributesW(normalizedInstallFolder);
+    if (attributes == INVALID_FILE_ATTRIBUTES)
+    {
+        DWORD lastError = GetLastError();
+        if (lastError == ERROR_FILE_NOT_FOUND || lastError == ERROR_PATH_NOT_FOUND)
+        {
+            return S_OK;
+        }
+        WcaLog(LOGMSG_STANDARD, "MSI install folder cannot be inspected: '%ls'. Error: %lu", normalizedInstallFolder, lastError);
+        return HRESULT_FROM_WIN32(lastError);
+    }
+    if (!(attributes & FILE_ATTRIBUTE_DIRECTORY))
+    {
+        WcaLog(LOGMSG_STANDARD, "MSI install folder is not a directory: '%ls'.", normalizedInstallFolder);
+        return E_INVALIDARG;
+    }
+    if (attributes & FILE_ATTRIBUTE_REPARSE_POINT)
+    {
+        WcaLog(LOGMSG_STANDARD, "MSI install folder is a reparse point: '%ls'.", normalizedInstallFolder);
+        return E_INVALIDARG;
+    }
+
+    return S_OK;
+}
+
+BOOL MsiIdentifierNameIsValid(LPCWSTR value)
+{
+    if (value == NULL)
+    {
+        return FALSE;
+    }
+
+    size_t len = 0;
+    if (FAILED(StringCchLengthW(value, 65, &len)) || len == 0 || len > 64)
+    {
+        return FALSE;
+    }
+
+    for (size_t i = 0; i < len; i++)
+    {
+        WCHAR ch = value[i];
+        BOOL isAlpha = (ch >= L'A' && ch <= L'Z') || (ch >= L'a' && ch <= L'z');
+        BOOL isDigit = ch >= L'0' && ch <= L'9';
+        if (i == 0 && !isAlpha)
+        {
+            return FALSE;
+        }
+        if (i == len - 1 && !(isAlpha || isDigit))
+        {
+            return FALSE;
+        }
+        if (!(isAlpha || isDigit || ch == L'-'))
+        {
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+HRESULT ValidateServiceBinaryCommand(LPCWSTR serviceName, LPCWSTR svcBinary, LPWSTR normalizedCommand, size_t normalizedCommandCch)
+{
+    if (svcBinary == NULL || svcBinary[0] == L'\0')
+    {
+        WcaLog(LOGMSG_STANDARD, "MSI service binary command is empty.");
+        return E_INVALIDARG;
+    }
+    if (svcBinary[0] != L'"')
+    {
+        WcaLog(LOGMSG_STANDARD, "MSI service binary command is not quoted: '%ls'.", svcBinary);
+        return E_INVALIDARG;
+    }
+
+    LPCWSTR closingQuote = wcschr(svcBinary + 1, L'"');
+    if (closingQuote == NULL)
+    {
+        WcaLog(LOGMSG_STANDARD, "MSI service binary command is missing the closing quote: '%ls'.", svcBinary);
+        return E_INVALIDARG;
+    }
+    if (wcscmp(closingQuote + 1, L" --service") != 0)
+    {
+        WcaLog(LOGMSG_STANDARD, "MSI service binary command has unexpected arguments: '%ls'.", svcBinary);
+        return E_INVALIDARG;
+    }
+    if (wcschr(closingQuote + 1, L';') != NULL)
+    {
+        WcaLog(LOGMSG_STANDARD, "MSI service binary command contains an extra delimiter: '%ls'.", svcBinary);
+        return E_INVALIDARG;
+    }
+
+    size_t exePathLen = closingQuote - (svcBinary + 1);
+    if (exePathLen == 0 || exePathLen >= MAX_PATH)
+    {
+        WcaLog(LOGMSG_STANDARD, "MSI service executable path length is invalid.");
+        return E_INVALIDARG;
+    }
+
+    WCHAR exePath[MAX_PATH] = { 0 };
+    HRESULT hr = StringCchCopyNW(exePath, MAX_PATH, svcBinary + 1, exePathLen);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    WCHAR normalizedExe[MAX_PATH] = { 0 };
+    hr = NormalizeMsiFilePath(exePath, normalizedExe, MAX_PATH, L"MSI service executable");
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    WCHAR installFolder[MAX_PATH] = { 0 };
+    hr = StringCchCopyW(installFolder, MAX_PATH, normalizedExe);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+    if (!PathRemoveFileSpecW(installFolder))
+    {
+        WcaLog(LOGMSG_STANDARD, "MSI service executable has no parent: '%ls'.", normalizedExe);
+        return E_INVALIDARG;
+    }
+
+    WCHAR normalizedInstallFolder[MAX_PATH] = { 0 };
+    hr = ValidateDeferredInstallFolder(installFolder, normalizedInstallFolder, MAX_PATH);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    WCHAR expectedExeName[MAX_PATH] = { 0 };
+    hr = StringCchPrintfW(expectedExeName, MAX_PATH, L"%ls.exe", serviceName);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+    LPCWSTR actualExeName = PathFindFileNameW(normalizedExe);
+    if (!PathsEqualNoCase(actualExeName, expectedExeName))
+    {
+        WcaLog(LOGMSG_STANDARD, "MSI service executable name '%ls' does not match service '%ls'.", actualExeName, serviceName);
+        return E_INVALIDARG;
+    }
+
+    hr = RequireExistingMsiFileNoReparse(normalizedExe, L"MSI service executable");
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    return StringCchPrintfW(normalizedCommand, normalizedCommandCch, L"\"%ls\" --service", normalizedExe);
+}
 
 // Helper function to safely delete a file using handle-based deletion.
 // Directories are refused after opening the handle.
@@ -164,6 +491,7 @@ UINT __stdcall RemoveRuntimeGeneratedFiles(
     LPWSTR installFolder = NULL;
     LPWSTR pwz = NULL;
     LPWSTR pwzData = NULL;
+    WCHAR normalizedInstallFolder[MAX_PATH] = { 0 };
 
     hr = WcaInitialize(hInstall, "RemoveRuntimeGeneratedFiles");
     ExitOnFailure(hr, "Failed to initialize");
@@ -175,20 +503,11 @@ UINT __stdcall RemoveRuntimeGeneratedFiles(
     hr = WcaReadStringFromCaData(&pwz, &installFolder);
     ExitOnFailure(hr, "failed to read install folder from custom action data: %ls", pwz);
 
-    if (installFolder == NULL || installFolder[0] == L'\0') {
-        WcaLog(LOGMSG_STANDARD, "Install folder path is empty; refusing runtime cleanup.");
-        hr = E_FAIL;
-        ExitOnFailure(hr, "Runtime cleanup install folder is empty");
-    }
+    hr = ValidateDeferredInstallFolder(installFolder, normalizedInstallFolder, MAX_PATH);
+    ExitOnFailure(hr, "Runtime cleanup install folder is not trusted");
 
-    if (PathIsRootW(installFolder)) {
-        WcaLog(LOGMSG_STANDARD, "Refusing runtime cleanup in root folder '%ls'.", installFolder);
-        hr = E_FAIL;
-        ExitOnFailure(hr, "Runtime cleanup install folder is a filesystem root");
-    }
-
-    WcaLog(LOGMSG_STANDARD, "Removing runtime-generated files from install folder: %ls", installFolder);
-    if (!DeleteRuntimeGeneratedFile(installFolder, L"RuntimeBroker_rustdesk.exe"))
+    WcaLog(LOGMSG_STANDARD, "Removing runtime-generated files from install folder: %ls", normalizedInstallFolder);
+    if (!DeleteRuntimeGeneratedFile(normalizedInstallFolder, L"RuntimeBroker_rustdesk.exe"))
     {
         hr = E_FAIL;
         ExitOnFailure(hr, "Failed to remove runtime-generated broker executable");
@@ -407,7 +726,9 @@ UINT __stdcall CreateStartService(__in MSIHANDLE hInstall)
     LPWSTR svcName = NULL;
     LPWSTR svcBinary = NULL;
     wchar_t szSvcDisplayName[500] = { 0 };
+    wchar_t szSvcBinary[1024] = { 0 };
     DWORD cchSvcDisplayName = sizeof(szSvcDisplayName) / sizeof(szSvcDisplayName[0]);
+    DWORD cchSvcBinary = sizeof(szSvcBinary) / sizeof(szSvcBinary[0]);
 
     hr = WcaInitialize(hInstall, "CreateStartService");
     ExitOnFailure(hr, "Failed to initialize");
@@ -425,14 +746,27 @@ UINT __stdcall CreateStartService(__in MSIHANDLE hInstall)
     svcBinary = wcschr(svcParams, L';');
     if (svcBinary == NULL) {
         WcaLog(LOGMSG_STANDARD, "Failed to find binary : %ls", svcParams);
-        goto LExit;
+        hr = E_INVALIDARG;
+        ExitOnFailure(hr, "Malformed service CustomActionData");
     }
     svcBinary[0] = L'\0';
     svcBinary += 1;
+    if (wcschr(svcBinary, L';') != NULL) {
+        WcaLog(LOGMSG_STANDARD, "Service CustomActionData contains an extra delimiter : %ls", svcBinary);
+        hr = E_INVALIDARG;
+        ExitOnFailure(hr, "Malformed service CustomActionData");
+    }
+    if (!MsiIdentifierNameIsValid(svcName)) {
+        WcaLog(LOGMSG_STANDARD, "Service name is not a valid system identifier : %ls", svcName);
+        hr = E_INVALIDARG;
+        ExitOnFailure(hr, "Malformed service name");
+    }
+    hr = ValidateServiceBinaryCommand(svcName, svcBinary, szSvcBinary, cchSvcBinary);
+    ExitOnFailure(hr, "Malformed service binary command");
 
     hr = StringCchPrintfW(szSvcDisplayName, cchSvcDisplayName, L"%ls Service", svcName);
     ExitOnFailure(hr, "Failed to compose a resource identifier string");
-    if (!MyCreateServiceW(svcName, szSvcDisplayName, svcBinary)) {
+    if (!MyCreateServiceW(svcName, szSvcDisplayName, szSvcBinary)) {
         WcaLog(LOGMSG_STANDARD, "Failed to create service: \"%ls\"", svcName);
         hr = E_FAIL;
         ExitOnFailure(hr, "Failed to create service");
@@ -583,9 +917,9 @@ UINT __stdcall RemoveAmyuniIdd(
     LPWSTR pwz = NULL;
     LPWSTR pwzData = NULL;
 
+    WCHAR normalizedInstallFolder[MAX_PATH] = L"";
     WCHAR workDir[1024] = L"";
     WCHAR commandLine[2048] = L"";
-    DWORD fileAttributes = 0;
     STARTUPINFOW startupInfo = { 0 };
     PROCESS_INFORMATION pi = { 0 };
     DWORD waitResult = 0;
@@ -629,19 +963,23 @@ UINT __stdcall RemoveAmyuniIdd(
     hr = WcaReadStringFromCaData(&pwz, &installFolder);
     ExitOnFailure(hr, "failed to read database key from custom action data: %ls", pwz);
 
-    hr = StringCchPrintfW(workDir, 1024, L"%lsusbmmidd_v2", installFolder);
+    hr = ValidateDeferredInstallFolder(installFolder, normalizedInstallFolder, MAX_PATH);
+    ExitOnFailure(hr, "Amyuni install folder is not trusted");
+
+    hr = StringCchPrintfW(workDir, 1024, L"%ls\\usbmmidd_v2", normalizedInstallFolder);
     ExitOnFailure(hr, "Failed to compose a resource identifier string");
-    fileAttributes = GetFileAttributesW(workDir);
-    if (fileAttributes == INVALID_FILE_ATTRIBUTES || !(fileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-        WcaLog(LOGMSG_STANDARD, "Amyuni idd dir \"%ls\" is not found, %d", workDir, fileAttributes);
+
+    hr = RequireExistingMsiDirectoryNoReparse(workDir, L"Amyuni IDD directory");
+    if (FAILED(hr)) {
         hr = FAILED(setupApiHr) ? setupApiHr : HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
         goto LExit;
     }
 
     hr = StringCchPrintfW(exePath, 1024, L"%ls\\%ls", workDir, exe);
     ExitOnFailure(hr, "Failed to compose a resource identifier string");
-    fileAttributes = GetFileAttributesW(exePath);
-    if (fileAttributes == INVALID_FILE_ATTRIBUTES || (fileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+
+    hr = RequireExistingMsiFileNoReparse(exePath, L"Amyuni IDD helper");
+    if (FAILED(hr)) {
         hr = FAILED(setupApiHr) ? setupApiHr : HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
         goto LExit;
     }

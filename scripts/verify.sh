@@ -501,6 +501,13 @@ if grep -RInE 'INSTALLFOLDER_INNER|WIXUI_INSTALLDIR|ChangeFolder|BrowseDlg|Insta
   r_s11d="$r_s11d msi:public-install-folder-or-browse-surface"
 fi
 rm -f /tmp/rd_verify_r_s11d_msi.$$
+grep -Fq '<StandardDirectory Id="ProgramFiles6432Folder">' res/msi/Package/Components/Folders.wxs || r_s11d="$r_s11d msi:install-root-not-program-files"
+grep -Fq '<Directory Id="App.InstallFolder" Name="$(var.Product)" />' res/msi/Package/Components/Folders.wxs || r_s11d="$r_s11d msi:install-folder-not-private-product-child"
+if grep -RInE 'Property="App\.InstallFolder"|SetTargetPath|PathEdit|DirectoryCombo|DirectoryList|WixUI_InstallDir' res/msi/Package >/tmp/rd_verify_r_s11d_msi_dirsetter.$$; then
+  cat /tmp/rd_verify_r_s11d_msi_dirsetter.$$
+  r_s11d="$r_s11d msi:install-folder-setter-surface"
+fi
+rm -f /tmp/rd_verify_r_s11d_msi_dirsetter.$$
 if grep -RInE 'TryCreateStartServiceByShell|TryStopDeleteServiceByShell|ShellExecuteW\(NULL, L"open", L"(sc|cmd\.exe|reg)"' res/msi/CustomActions >/tmp/rd_verify_r_s11d_msi_shell.$$; then
   cat /tmp/rd_verify_r_s11d_msi_shell.$$
   r_s11d="$r_s11d msi:service-or-registry-shell-fallback"
@@ -537,7 +544,7 @@ grep -Fq 'ERROR_PATH_NOT_FOUND' res/msi/CustomActions/FirewallRules.cpp || r_s11
 grep -q 'Service still exists after deletion' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-not-verified"
 grep -q 'HRESULT_FROM_WIN32(lastErrorCode)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-errors-not-propagated"
 grep -q 'if (!QueryServiceStatusExW(serviceName, &serviceStatus))' res/msi/CustomActions/ServiceUtils.cpp || r_s11d="$r_s11d msi:service-status-query-not-guarded"
-grep -Fq 'if (!DeleteRuntimeGeneratedFile(installFolder, L"RuntimeBroker_rustdesk.exe"))' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:runtime-broker-cleanup-result-not-checked"
+grep -Fq 'if (!DeleteRuntimeGeneratedFile(normalizedInstallFolder, L"RuntimeBroker_rustdesk.exe"))' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:runtime-broker-cleanup-result-not-checked"
 grep -q 'Failed to remove runtime-generated broker executable' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:runtime-broker-cleanup-not-fatal"
 grep -q 'Id="RemoveRuntimeGeneratedFiles".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:runtime-generated-cleanup-return-not-checked"
 if grep -q 'Id="RemoveRuntimeGeneratedFiles".*Return="ignore"' res/msi/Package/Fragments/CustomActions.wxs; then
@@ -548,7 +555,28 @@ if rg -n 'CustomActionHello|Example CustomAction Hello|TODO: Add your custom act
   r_s11d="$r_s11d msi:sample-custom-action-leftover"
 fi
 rm -f /tmp/rd_verify_r_s11d_msi_noop.$$
+grep -Fq 'HRESULT ValidateDeferredInstallFolder(LPCWSTR installFolder, LPWSTR normalizedInstallFolder, size_t normalizedCch)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:deferred-install-folder-validator-missing"
+grep -Fq 'NormalizeMsiDirectoryPath(installFolder, normalizedInstallFolder, normalizedCch, L"MSI install folder")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:deferred-install-folder-not-normalized"
+grep -Fq 'KnownFolderMatchesPath(FOLDERID_ProgramFiles, normalizedParent)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:deferred-install-folder-not-bound-to-program-files"
+grep -Fq 'KnownFolderMatchesPath(FOLDERID_ProgramFilesX86, normalizedParent)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:deferred-install-folder-not-bound-to-program-files-x86"
+grep -Fq 'RequireExistingMsiDirectoryNoReparse(normalizedParent, L"MSI install folder parent")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:program-files-parent-reparse-not-rejected"
+grep -Fq 'attributes & FILE_ATTRIBUTE_REPARSE_POINT' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:reparse-point-checks-missing"
+grep -Fq 'hr = ValidateDeferredInstallFolder(installFolder, normalizedInstallFolder, MAX_PATH);' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:runtime-cleanup-not-validating-install-folder"
+grep -Fq 'DeleteRuntimeGeneratedFile(normalizedInstallFolder, L"RuntimeBroker_rustdesk.exe")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:runtime-cleanup-not-using-normalized-install-folder"
+grep -Fq 'BOOL MsiIdentifierNameIsValid(LPCWSTR value)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-identifier-validator-missing"
+grep -Fq 'HRESULT ValidateServiceBinaryCommand(LPCWSTR serviceName, LPCWSTR svcBinary, LPWSTR normalizedCommand, size_t normalizedCommandCch)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-command-validator-missing"
+grep -Fq 'hr = E_INVALIDARG;' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:malformed-custom-action-data-not-fatal"
+grep -Fq 'ExitOnFailure(hr, "Malformed service CustomActionData")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-custom-action-data-failopen"
+grep -Fq 'if (!MsiIdentifierNameIsValid(svcName))' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-name-not-validated"
+grep -Fq 'ValidateServiceBinaryCommand(svcName, svcBinary, szSvcBinary, cchSvcBinary)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-binary-not-normalized"
+grep -Fq 'MyCreateServiceW(svcName, szSvcDisplayName, szSvcBinary)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-create-not-using-normalized-command"
+if grep -Fq 'MyCreateServiceW(svcName, szSvcDisplayName, svcBinary)' res/msi/CustomActions/CustomActions.cpp; then
+  r_s11d="$r_s11d msi:service-create-uses-raw-custom-action-data"
+fi
 grep -q 'CreateProcessW(exePath, commandLine, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, workDir, &startupInfo, &pi)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-not-absolute-createprocess"
+grep -Fq 'StringCchPrintfW(workDir, 1024, L"%ls\\usbmmidd_v2", normalizedInstallFolder)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-workdir-not-under-normalized-install-folder"
+grep -Fq 'RequireExistingMsiDirectoryNoReparse(workDir, L"Amyuni IDD directory")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-dir-reparse-not-rejected"
+grep -Fq 'RequireExistingMsiFileNoReparse(exePath, L"Amyuni IDD helper")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-reparse-not-rejected"
 grep -q 'WaitForSingleObject(pi.hProcess, 120000)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-not-waited"
 grep -q 'GetExitCodeProcess(pi.hProcess, &exitCode)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-exit-code-not-checked"
 grep -q 'exitCode == ERROR_SUCCESS_REBOOT_REQUIRED' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-reboot-success-not-accepted"

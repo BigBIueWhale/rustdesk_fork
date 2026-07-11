@@ -651,6 +651,21 @@ unreachable and a source/test/AST gate prevents reintroduction.
   unit test and source-gates the authorized request variant, subscriber lease extraction, live registry
   bit, validation-before-read ordering, bare-request rejection, requirements disposition, and absence of
   `ClipboardNonFile(None)` sends from the Windows clipboard service.
+- **R-S11c-23 — Windows Flutter runner Rust core DLL load provenance — CLOSED 2026-07-11.**
+  Platform: Windows runner before Rust-side service/UI dispatch. Surface: `flutter/windows/runner/main.cpp`
+  previously loaded the Rust core with bare `LoadLibraryA("librustdesk.dll")`. Boundary: root-capable Windows
+  service/runner startup ↔ ambient DLL search order. Attack surface closed: the runner no longer delegates
+  core module selection to the standard DLL search order before Rust-side service, IPC, or policy code runs.
+  It resolves the running executable path with `GetModuleFileNameW(nullptr, ...)`, constructs the sibling
+  absolute `librustdesk.dll` path, and calls `LoadLibraryExW` with
+  `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR`, `LOAD_LIBRARY_SEARCH_APPLICATION_DIR`, and
+  `LOAD_LIBRARY_SEARCH_SYSTEM32`, so dependency resolution is restricted to the bundle/application directory
+  plus System32 rather than current directory or `PATH`. Startup fails closed if the executable directory or
+  bundled core cannot be loaded. This was not promoted to a proven default standard-user-to-SYSTEM issue because
+  the installed service bundle normally has `librustdesk.dll` beside the executable in Program Files, but a
+  root-capable runner must bind its core to its own bundle and not to ambient process search state. Verification
+  closure: `scripts/verify.sh` gates the executable-relative path, restricted `LoadLibraryExW` flags, absence of
+  the bare DLL load, and requirements disposition.
 - **R-S11c-5 — macOS privileged service packaging — CLOSED 2026-07-09; tightened 2026-07-11.** Platform: macOS
   source-conformance and any future macOS artifact. Surfaces: `src/platform/privileges_scripts/daemon.plist`,
   `install.scpt`, deleted `update.scpt`, `uninstall.scpt`, and their `osascript` call sites in
@@ -1896,6 +1911,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   slice above. The Windows root clipboard service no longer treats authenticated `_cm` endpoint proof as
   authority to read the desktop clipboard; it carries a subscribed Remote connection's CM token, and CM
   validates the live Remote-only clipboard capability before `check_clipboard_cm()`.
+- **R-S11c-23 — Windows Flutter runner Rust core DLL load provenance.** Status: closed by the completed
+  R-S11c-23 slice above. The Windows runner resolves the running executable directory and loads the sibling
+  Rust core DLL through `LoadLibraryExW` with restricted search flags instead of a bare DLL-name search.
 - **R-S11c-8 — `_whiteboard` helper ambient same-UID trust.** Status: closed by the completed R-S11c-8
   slice above. Whiteboard helper IPC now uses a launch-scoped endpoint, mutual whiteboard-specific launch
   proof, parent-pid admission, and per-connection event tokens; arbitrary same-UID clients, fixed-path

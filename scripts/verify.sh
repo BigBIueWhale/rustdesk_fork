@@ -3189,6 +3189,26 @@ fi
 if [ -n "$r_s11c10s" ]; then echo "  FAIL R-S11c-10s Linux Flutter runner core-library provenance:$r_s11c10s"; rc=1; else
   echo "  ok  R-S11c-10s Linux Flutter runner loads the bundled Rust core by executable-relative path and fails closed"; fi
 
+echo "== (3b-iii-h9c3w) Windows Flutter runner loads bundled Rust core by executable-relative path (R-S11c-23) =="
+r_s11c23=
+grep -qF 'HINSTANCE LoadRustDeskCoreModule()' flutter/windows/runner/main.cpp || r_s11c23="$r_s11c23 no-core-loader-helper"
+grep -qF 'GetModuleFileNameW(nullptr' flutter/windows/runner/main.cpp || r_s11c23="$r_s11c23 no-module-path-proof"
+grep -qF 'std::wstring dll_path = directory + L"\\librustdesk.dll";' flutter/windows/runner/main.cpp || r_s11c23="$r_s11c23 no-executable-relative-dll-path"
+grep -qF 'LoadLibraryExW(' flutter/windows/runner/main.cpp || r_s11c23="$r_s11c23 no-loadlibraryex"
+grep -qF 'LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_APPLICATION_DIR |' flutter/windows/runner/main.cpp || r_s11c23="$r_s11c23 no-dll-load-dir-application-dir-flags"
+grep -qF 'LOAD_LIBRARY_SEARCH_SYSTEM32' flutter/windows/runner/main.cpp || r_s11c23="$r_s11c23 no-system32-flag"
+grep -qF 'HINSTANCE hInstance = LoadRustDeskCoreModule();' flutter/windows/runner/main.cpp || r_s11c23="$r_s11c23 wwinmain-not-using-helper"
+grep -q 'Windows Flutter runner Rust core DLL load provenance' requirements.html || r_s11c23="$r_s11c23 requirements-disposition-missing"
+grep -q 'Windows Flutter runner Rust core DLL load provenance' HARDENING_STATUS.md || r_s11c23="$r_s11c23 hardening-ledger-missing"
+if grep -Eq 'LoadLibraryA\("librustdesk\.dll"\)|LoadLibraryW\(L"librustdesk\.dll"\)|LoadLibraryExA\("librustdesk\.dll"|LoadLibraryExW\(L"librustdesk\.dll"' flutter/windows/runner/main.cpp; then
+  r_s11c23="$r_s11c23 bare-core-dll-load"
+fi
+if grep -qF 'LOAD_WITH_ALTERED_SEARCH_PATH' flutter/windows/runner/main.cpp; then
+  r_s11c23="$r_s11c23 altered-search-path"
+fi
+if [ -n "$r_s11c23" ]; then echo "  FAIL R-S11c-23 Windows Flutter runner core-DLL provenance:$r_s11c23"; rc=1; else
+  echo "  ok  R-S11c-23 Windows Flutter runner loads the bundled Rust core by executable-relative path and restricted DLL search flags"; fi
+
 echo "== (3b-iii-h9c4) Linux self-relaunch avoids AppImage APPDIR/AppRun fallback (R-S11c-10p) =="
 r_s11c10p=
 grep -qF 'pub fn run_me_with_env<T, I, K, V>' src/common.rs || r_s11c10p="$r_s11c10p no-self-relaunch-helper"

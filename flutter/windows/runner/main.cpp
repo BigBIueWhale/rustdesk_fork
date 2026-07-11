@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <iostream>
+#include <string>
+#include <vector>
 
 #include "win32_desktop.h"
 #include "flutter_window.h"
@@ -19,10 +21,49 @@ const std::vector<std::string> parameters_white_list = {"--install", "--cm"};
 
 const wchar_t* getWindowClassName();
 
+namespace {
+
+std::wstring GetExecutableDirectory() {
+  std::vector<wchar_t> module_path(MAX_PATH);
+  for (;;) {
+    DWORD copied = GetModuleFileNameW(nullptr, module_path.data(),
+                                      static_cast<DWORD>(module_path.size()));
+    if (copied == 0) {
+      return L"";
+    }
+    if (copied < module_path.size()) {
+      std::wstring path(module_path.data(), copied);
+      size_t separator = path.find_last_of(L"\\/");
+      if (separator == std::wstring::npos) {
+        return L"";
+      }
+      return path.substr(0, separator);
+    }
+    if (module_path.size() >= 32768) {
+      return L"";
+    }
+    module_path.resize(std::min<size_t>(module_path.size() * 2, 32768));
+  }
+}
+
+HINSTANCE LoadRustDeskCoreModule() {
+  std::wstring directory = GetExecutableDirectory();
+  if (directory.empty()) {
+    return nullptr;
+  }
+  std::wstring dll_path = directory + L"\\librustdesk.dll";
+  return LoadLibraryExW(
+      dll_path.c_str(), nullptr,
+      LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_APPLICATION_DIR |
+          LOAD_LIBRARY_SEARCH_SYSTEM32);
+}
+
+}
+
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command)
 {
-  HINSTANCE hInstance = LoadLibraryA("librustdesk.dll");
+  HINSTANCE hInstance = LoadRustDeskCoreModule();
   if (!hInstance)
   {
     std::cout << "Failed to load librustdesk.dll." << std::endl;

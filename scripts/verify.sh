@@ -922,6 +922,43 @@ grep -Fq 'R-S11d-18 — Windows EXE elevated batch cmd-state hardening' HARDENIN
 if [ -n "$r_s11d18" ]; then echo "  FAIL R-S11d-18 Windows EXE elevated batch cmd-state hardening:$r_s11d18"; rc=1; else
   echo "  ok  R-S11d-18 Windows elevated EXE batches use cmd /D /V:OFF /S /C and reject expansion-sensitive generated paths"; fi
 
+echo "== (3b-iii-a5d4b2) Windows EXE elevated command-file reopen is identity-bound (R-S11d-32) =="
+r_s11d32=
+grep -Fq 'fileapi::{GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION}' src/platform/windows.rs || r_s11d32="$r_s11d32 file-identity-api-not-imported"
+grep -Fq 'struct InstallerCommandFileIdentity' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-struct-missing"
+grep -Fq 'fn installer_command_file_identity(file: &fs::File) -> ResultType<InstallerCommandFileIdentity>' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-helper-missing"
+grep -Fq 'GetFileInformationByHandle(file.as_raw_handle() as HANDLE, &mut info)' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-helper-not-handle-based"
+grep -Fq 'volume_serial_number: info.dwVolumeSerialNumber' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-volume-not-recorded"
+grep -Fq 'file_index_high: info.nFileIndexHigh' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-high-index-not-recorded"
+grep -Fq 'file_index_low: info.nFileIndexLow' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-low-index-not-recorded"
+grep -Fq 'fn installer_command_digest(bytes: &[u8]) -> [u8; 32]' src/platform/windows.rs || r_s11d32="$r_s11d32 digest-helper-missing"
+grep -Fq 'Sha256::new()' src/platform/windows.rs || r_s11d32="$r_s11d32 digest-not-sha256"
+grep -Fq 'fn reopen_verified_installer_command_file(' src/platform/windows.rs || r_s11d32="$r_s11d32 verified-reopen-helper-missing"
+grep -Fq '.read(true)' src/platform/windows.rs || r_s11d32="$r_s11d32 read-reopen-missing"
+grep -Fq '.share_mode(FILE_SHARE_READ)' src/platform/windows.rs || r_s11d32="$r_s11d32 read-lock-share-mode-missing"
+grep -Fq 'let actual_identity = installer_command_file_identity(&file)?;' src/platform/windows.rs || r_s11d32="$r_s11d32 reopened-identity-not-queried"
+grep -Fq 'if actual_identity != expected_identity' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-drift-not-fatal"
+grep -Fq 'installer command file identity changed before elevation' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-drift-error-missing"
+grep -Fq 'file.read_to_end(&mut bytes)?;' src/platform/windows.rs || r_s11d32="$r_s11d32 reopened-content-not-read"
+grep -Fq 'bytes.len() as u64 != expected_len || installer_command_digest(&bytes) != expected_digest' src/platform/windows.rs || r_s11d32="$r_s11d32 content-drift-not-fatal"
+grep -Fq 'installer command file content changed before elevation' src/platform/windows.rs || r_s11d32="$r_s11d32 content-drift-error-missing"
+echo "$write_cmds_body" | grep -Fq 'let command_bytes = if ext == "vbs" {' || r_s11d32="$r_s11d32 exact-written-bytes-not-owned"
+echo "$write_cmds_body" | grep -Fq 'file.write_all(&command_bytes)?;' || r_s11d32="$r_s11d32 command-bytes-not-written"
+echo "$write_cmds_body" | grep -Fq 'file.sync_all()?;' || r_s11d32="$r_s11d32 command-file-not-synced-before-proof"
+echo "$write_cmds_body" | grep -Fq 'let identity = installer_command_file_identity(file)?;' || r_s11d32="$r_s11d32 write-handle-identity-not-captured"
+echo "$write_cmds_body" | grep -Fq 'let digest = installer_command_digest(&command_bytes);' || r_s11d32="$r_s11d32 write-bytes-digest-not-captured"
+echo "$write_cmds_body" | grep -Fq 'let len = command_bytes.len() as u64;' || r_s11d32="$r_s11d32 write-bytes-length-not-captured"
+echo "$write_cmds_body" | grep -Fq 'reopen_verified_installer_command_file(' || r_s11d32="$r_s11d32 write-path-not-verified-reopened"
+if echo "$write_cmds_body" | grep -Fq '.open(&command_file.path)?'; then
+  r_s11d32="$r_s11d32 naked-path-reopen-left-in-write_cmds"
+fi
+grep -Fq 'fn r_s11d32_installer_command_digest_is_byte_exact()' src/platform/windows.rs || r_s11d32="$r_s11d32 digest-regression-test-missing"
+grep -Fq 'fn r_s11d32_installer_command_identity_compares_volume_and_index()' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-regression-test-missing"
+grep -Fq 'Windows elevated command-file reopen identity' requirements.html || r_s11d32="$r_s11d32 requirements-disposition-missing"
+grep -Fq 'R-S11d-32 — Windows elevated command-file reopen identity' HARDENING_STATUS.md || r_s11d32="$r_s11d32 hardening-ledger-missing"
+if [ -n "$r_s11d32" ]; then echo "  FAIL R-S11d-32 Windows elevated command-file reopen identity:$r_s11d32"; rc=1; else
+  echo "  ok  R-S11d-32 Windows elevated command files prove file identity and bytes across the close/reopen handoff"; fi
+
 echo "== (3b-iii-a5d4c) Windows EXE uninstall cleanup uses known-folder literal paths (R-S11d-19) =="
 r_s11d19=
 grep -Fq 'fn get_install_info() -> (String, String, String)' src/platform/windows.rs || r_s11d19="$r_s11d19 stale-install-info-start-menu-field-left"

@@ -1241,6 +1241,19 @@ unreachable and a source/test/AST gate prevents reintroduction.
   files. Verification closure: `scripts/verify.sh` asserts the served-session helper, current-process-session
   lookup, launch-site use of that helper, session-specific token error, absence of `WTSGetActiveConsoleSessionId`
   from the privacy broker source, and this requirements/ledger disposition.
+- **R-S11d-32 — Windows elevated command-file reopen identity — CLOSED 2026-07-11.** Platform:
+  Windows EXE install, uninstall, service install, and service uninstall elevated command files. Endpoint/action:
+  generated `.bat` and `.vbs` command files handed to elevated `System32\cmd.exe` / `cscript.exe`. Boundary:
+  medium-integrity same-owner command-file directory state ↔ elevated installer command execution. Attack surface
+  closed: the command-file read lock is no longer trusted after a naked pathname reopen. Before the write handle is
+  dropped, `src/platform/windows.rs` now records `GetFileInformationByHandle` volume/file-index identity and a
+  SHA-256 digest of the exact bytes written. The path is then reopened read-only with `FILE_SHARE_READ`, and the
+  reopened handle must match both the original identity and the original byte length/digest before elevation
+  proceeds. Replacement or in-place modification during the close/reopen gap fails closed; after verification, the
+  existing read handle remains live for the command lifetime and continues to deny write/delete sharing. Verification
+  closure: `scripts/verify.sh` asserts the identity query helper, digest helper, verified reopen helper, write-handle
+  identity capture, reopened read-lock wiring, identity/content drift failures, regression tests, and this
+  requirements/ledger disposition.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's
@@ -2591,14 +2604,15 @@ second normative closure in this area: R-S16's read funnel now explicitly includ
 overlaid last. The 2026-07-11 macOS service-owned-password hardening added parsed
 LaunchAgent plist command-shape proof to the R-S11b-2e/R-S11c-1f requirement and R-S11e-2
 client-side `_service` server authentication; the Linux helper-provenance follow-up added R-S11e-3 canonical
-target binding for fixed helper launches. The other
+target binding for fixed helper launches; the Windows elevated command-file follow-up added R-S11d-32 identity and
+content binding across the close/reopen handoff. The other
 requirements.html edits are disclosure/inventory updates, and the
 native-codec-watch ledger is re-confirmed valid against each.
 The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-3162b7bbe68ada369f557d215e0c5315e1025d10f3669cd81110de3f601cbee7  requirements.html
+c0018e3bfc8a7f0e4459284c5638026a93f0d13df65133889e2819e5fd3ab200  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

@@ -11,6 +11,7 @@ use hbb_common::{
     libc::{c_int, wchar_t},
     log,
     message_proto::{DisplayInfo, Resolution, WindowsSession},
+    sha2::{Digest, Sha256},
     sleep, timeout, tokio,
 };
 use std::{
@@ -25,6 +26,7 @@ use std::{
             ffi::OsStrExt,
             ffi::OsStringExt,
             fs::{MetadataExt, OpenOptionsExt},
+            io::AsRawHandle,
             process::CommandExt,
         },
     },
@@ -41,6 +43,7 @@ use winapi::{
     shared::{minwindef::*, ntdef::NULL, windef::*, winerror::*},
     um::{
         errhandlingapi::GetLastError,
+        fileapi::{GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION},
         handleapi::{CloseHandle, INVALID_HANDLE_VALUE},
         libloaderapi::{GetProcAddress, LOAD_LIBRARY_SEARCH_SYSTEM32},
         minwinbase::STILL_ACTIVE,
@@ -2644,6 +2647,13 @@ struct InstallerCommandFile {
     file: Option<fs::File>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct InstallerCommandFileIdentity {
+    volume_serial_number: u32,
+    file_index_high: u32,
+    file_index_low: u32,
+}
+
 impl InstallerCommandFile {
     fn path_str(&self) -> ResultType<&str> {
         self.path.to_str().ok_or_else(|| {
@@ -2653,6 +2663,59 @@ impl InstallerCommandFile {
             )
         })
     }
+}
+
+fn installer_command_file_identity(file: &fs::File) -> ResultType<InstallerCommandFileIdentity> {
+    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { mem::zeroed() };
+    let ok = unsafe { GetFileInformationByHandle(file.as_raw_handle() as HANDLE, &mut info) };
+    if ok == 0 {
+        bail!(
+            "failed to query installer command file identity: {}",
+            io::Error::last_os_error()
+        );
+    }
+    Ok(InstallerCommandFileIdentity {
+        volume_serial_number: info.dwVolumeSerialNumber,
+        file_index_high: info.nFileIndexHigh,
+        file_index_low: info.nFileIndexLow,
+    })
+}
+
+fn installer_command_digest(bytes: &[u8]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let digest = hasher.finalize();
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&digest);
+    out
+}
+
+fn reopen_verified_installer_command_file(
+    path: &Path,
+    expected_identity: InstallerCommandFileIdentity,
+    expected_digest: [u8; 32],
+    expected_len: u64,
+) -> ResultType<fs::File> {
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .open(path)?;
+    let actual_identity = installer_command_file_identity(&file)?;
+    if actual_identity != expected_identity {
+        bail!(
+            "installer command file identity changed before elevation: {:?}",
+            path
+        );
+    }
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
+    if bytes.len() as u64 != expected_len || installer_command_digest(&bytes) != expected_digest {
+        bail!(
+            "installer command file content changed before elevation: {:?}",
+            path
+        );
+    }
+    Ok(file)
 }
 
 impl Drop for InstallerCommandFile {
@@ -2765,33 +2828,29 @@ if exist {path} del /f /q {path}
     // in case cmds mixed with \r\n and \n, make sure all ending with \r\n
     // in some windows, \r\n required for cmd file to run
     cmds = cmds.replace("\r\n", "\n").replace("\n", "\r\n");
-    if ext == "vbs" {
+    let command_bytes = if ext == "vbs" {
         let mut v: Vec<u16> = cmds.encode_utf16().collect();
         // utf8 -> utf16le which vbs support it only
-        command_file
-            .file
-            .as_mut()
-            .ok_or_else(|| anyhow!("installer command file closed before write"))?
-            .write_all(to_le(&mut v))?;
+        to_le(&mut v).to_vec()
     } else {
-        command_file
-            .file
-            .as_mut()
-            .ok_or_else(|| anyhow!("installer command file closed before write"))?
-            .write_all(cmds.as_bytes())?;
-    }
-    command_file
+        cmds.as_bytes().to_vec()
+    };
+    let file = command_file
         .file
         .as_mut()
-        .ok_or_else(|| anyhow!("installer command file closed before sync"))?
-        .sync_all()?;
+        .ok_or_else(|| anyhow!("installer command file closed before write"))?;
+    file.write_all(&command_bytes)?;
+    file.sync_all()?;
+    let identity = installer_command_file_identity(file)?;
+    let digest = installer_command_digest(&command_bytes);
+    let len = command_bytes.len() as u64;
     command_file.file.take();
-    command_file.file = Some(
-        fs::OpenOptions::new()
-            .read(true)
-            .share_mode(FILE_SHARE_READ)
-            .open(&command_file.path)?,
-    );
+    command_file.file = Some(reopen_verified_installer_command_file(
+        &command_file.path,
+        identity,
+        digest,
+        len,
+    )?);
     Ok(command_file)
 }
 
@@ -4448,6 +4507,46 @@ pub fn is_cur_exe_the_installed() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn r_s11d32_installer_command_digest_is_byte_exact() {
+        let first = installer_command_digest(b"echo one\r\n");
+        let same = installer_command_digest(b"echo one\r\n");
+        let second = installer_command_digest(b"echo one\n");
+        assert_eq!(first, same);
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn r_s11d32_installer_command_identity_compares_volume_and_index() {
+        let baseline = InstallerCommandFileIdentity {
+            volume_serial_number: 1,
+            file_index_high: 2,
+            file_index_low: 3,
+        };
+        assert_eq!(baseline, baseline);
+        assert_ne!(
+            baseline,
+            InstallerCommandFileIdentity {
+                volume_serial_number: 9,
+                ..baseline
+            }
+        );
+        assert_ne!(
+            baseline,
+            InstallerCommandFileIdentity {
+                file_index_high: 9,
+                ..baseline
+            }
+        );
+        assert_ne!(
+            baseline,
+            InstallerCommandFileIdentity {
+                file_index_low: 9,
+                ..baseline
+            }
+        );
+    }
 
     #[test]
     fn test_is_process_running_as_system_invalid_pid_errors() {

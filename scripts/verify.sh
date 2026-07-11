@@ -1656,6 +1656,28 @@ grep -q 'windows_pipe_client_token_is_elevated' src/ipc/auth.rs                 
 grep -q 'windows_pipe_client_token_is_local_system' src/ipc/auth.rs                  || r_s11b2="$r_s11b2 windows-service-password-localsystem-token-missing"
 grep -q 'ImpersonateNamedPipeClient' src/ipc/auth.rs                                || r_s11b2="$r_s11b2 windows-service-password-not-client-token-impersonated"
 grep -q 'RevertToSelf' src/ipc/auth.rs                                               || r_s11b2="$r_s11b2 windows-service-password-impersonation-not-reverted"
+grep -q 'pub(crate) fn get_pids_of_process_with_args' src/platform/mod.rs            || r_s11b2="$r_s11b2 exact-process-args-helper-not-exported"
+grep -q 'fn peer_process_is_current_exe_service_owned_server' src/ipc/auth.rs        || r_s11b2="$r_s11b2 windows-service-main-server-exact-argv-proof-missing"
+grep -q 'fn windows_service_owned_main_server_args' src/ipc/auth.rs                  || r_s11b2="$r_s11b2 windows-service-main-server-expected-args-helper-missing"
+grep -q 'get_pids_of_process_with_args' src/ipc/auth.rs                              || r_s11b2="$r_s11b2 windows-service-main-server-not-using-exact-argv-lookup"
+grep -q 'authenticate_windows_service_owned_main_server' src/ipc/auth.rs              || r_s11b2="$r_s11b2 windows-service-main-server-auth-missing"
+grep -A30 'pub(crate) fn authenticate_windows_service_owned_main_server' src/ipc/auth.rs | grep -q 'is_process_running_as_system(server_pid)' || r_s11b2="$r_s11b2 windows-service-main-server-not-localsystem-proven"
+grep -A30 'pub(crate) fn authenticate_windows_service_owned_main_server' src/ipc/auth.rs | grep -q 'peer_process_is_current_exe_service_owned_server(server_pid)' || r_s11b2="$r_s11b2 windows-service-main-server-not-service-argv-proven"
+grep -q 'test_windows_service_owned_server_args_are_exact' src/ipc/auth.rs            || r_s11b2="$r_s11b2 windows-service-main-server-argv-test-missing"
+if ! python3 - <<'PY'
+from pathlib import Path
+src = Path("src/ipc.rs").read_text()
+start = src.index("async fn commit_service_owned_unattended_password_change")
+end = src.index("\n}\n\n#[cfg(target_os = \"macos\")]", start) + 2
+body = src[start:end]
+connect = body.find('connect(ms_timeout, "").await?')
+auth = body.find('authenticate_windows_service_owned_main_server(&c)?')
+send = body.find('Data::CommitServiceOwnedUnattendedPasswordChange(value)')
+raise SystemExit(0 if connect != -1 and auth != -1 and send != -1 and connect < auth < send else 1)
+PY
+then
+  r_s11b2="$r_s11b2 windows-service-password-commit-sends-before-main-receiver-proof"
+fi
 grep -q 'Self::WindowsLocalSystemPeer => true' src/ipc.rs                            || r_s11b2="$r_s11b2 windows-service-password-commit-not-localsystem-gated"
 grep -q 'handle_windows_service_owned_unattended_password_request' src/platform/windows.rs || r_s11b2="$r_s11b2 windows-service-password-service-loop-not-wired"
 grep -q 'RequestServiceOwnedUnattendedPasswordChange(value)' src/platform/windows.rs || r_s11b2="$r_s11b2 windows-service-password-request-not-dispatched"
@@ -1965,12 +1987,14 @@ grep -q 'permanent-password-user-owned-writable' src/flutter_ffi.rs             
 grep -q 'permanent-password-writable' src/flutter_ffi.rs                              || r_s11b2="$r_s11b2 owner-aware-password-writability-ffi-missing"
 grep -q 'canSetPermanentPassword' flutter/lib/desktop/pages/desktop_home_page.dart    || r_s11b2="$r_s11b2 home-owner-aware-password-writability-ui-missing"
 grep -q 'canSetPermanentPassword' flutter/lib/desktop/pages/desktop_setting_page.dart || r_s11b2="$r_s11b2 settings-owner-aware-password-writability-ui-missing"
+grep -Fq 'Windows service-owned password commit receiver proof' requirements.html     || r_s11b2="$r_s11b2 windows-service-main-server-proof-requirements-missing"
+grep -Fq 'R-S11e-11 — Windows service-owned password commit receiver proof' HARDENING_STATUS.md || r_s11b2="$r_s11b2 windows-service-main-server-proof-ledger-missing"
 user_scope_fn=$(awk '/fn is_user_main_ipc_scope_cli_command/,/^}/' src/core_main.rs)
 if echo "$user_scope_fn" | grep -q '"--password"'; then
   r_s11b2="$r_s11b2 password-still-root-routes-to-user-main-ipc"
 fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 service-owned password IPC closure:$r_s11b2"; rc=1; else
-  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux client-authenticates the connected root --service receiver before sending a service-owned password request, then uses polkit/root-service commit with structured policy/package assurance; Windows uses pipe-client token elevation plus LocalSystem service commit; macOS admits _service only for the audit-token trusted installed app talking to the audit-token trusted PrivilegedHelperTools helper, offloads budgeted receiver-side blocking proof from the _service accept loop before the first read, client-authenticates the connected _service server, obtains the custom nonshared timeout-zero Authorization Services right before sending the password, verifies the external form noninteractively in the LaunchDaemon, writes the authorized value directly into the root LaunchDaemon credential store without a pending secret cache, rejects the old macOS main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after audit-token app proof, exact live argv, and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
+  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux client-authenticates the connected root --service receiver before sending a service-owned password request, then uses polkit/root-service commit with structured policy/package assurance; Windows uses pipe-client token elevation plus sender-side LocalSystem/exact-argv main-receiver proof before LocalSystem service commit; macOS admits _service only for the audit-token trusted installed app talking to the audit-token trusted PrivilegedHelperTools helper, offloads budgeted receiver-side blocking proof from the _service accept loop before the first read, client-authenticates the connected _service server, obtains the custom nonshared timeout-zero Authorization Services right before sending the password, verifies the external form noninteractively in the LaunchDaemon, writes the authorized value directly into the root LaunchDaemon credential store without a pending secret cache, rejects the old macOS main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after audit-token app proof, exact live argv, and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
 
 # R-S11b-4: config/PRS secrecy after IPC closure. The balanced-PAKE PRS is
 # connect-equivalent at rest, so the code-owned boundary is:

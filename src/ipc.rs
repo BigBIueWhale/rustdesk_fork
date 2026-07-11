@@ -49,15 +49,15 @@ pub(crate) use ipc_auth::{
     ensure_peer_process_identity_matches, linux_proc_start_time, linux_proc_stat_start_time,
     peer_process_identity, peer_process_identity_is_live, PeerProcessIdentity,
 };
+#[cfg(windows)]
+use ipc_auth::{
+    authenticate_windows_service_owned_main_server, ensure_windows_ipc_server_matches_current,
+    windows_ipc_listener_security_attributes, windows_named_pipe_client_access_mask,
+};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) use ipc_auth::{authorize_cm_ipc_connection, authorize_whiteboard_ipc_connection};
 #[cfg(windows)]
 use ipc_auth::{authorize_windows_main_ipc_connection, authorize_windows_url_ipc_connection};
-#[cfg(windows)]
-use ipc_auth::{
-    ensure_windows_ipc_server_matches_current, windows_ipc_listener_security_attributes,
-    windows_named_pipe_client_access_mask,
-};
 // R-X13 (§8): the ipc_auth re-exports (ensure_peer_executable_matches_current_by_fd /
 // is_allowed_service_peer_uid / log_rejected_uinput_connection / peer_uid_from_fd) were the uinput
 // peer-authorization accessors, removed with the uinput module. The _service-channel authorization
@@ -1773,6 +1773,8 @@ async fn commit_service_owned_unattended_password_change(value: String) -> Resul
     let mut c = connect(ms_timeout, "").await?;
     #[cfg(target_os = "linux")]
     authenticate_linux_service_owned_main_server(&c)?;
+    #[cfg(target_os = "windows")]
+    authenticate_windows_service_owned_main_server(&c)?;
     c.send(&Data::CommitServiceOwnedUnattendedPasswordChange(value))
         .await?;
     if let Some(Data::ServiceOwnedUnattendedPasswordChangeResult(ok)) =

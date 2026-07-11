@@ -416,6 +416,28 @@ pub(crate) fn ensure_windows_ipc_server_matches_current(
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
+pub(crate) fn authenticate_windows_service_owned_main_server(
+    stream: &ConnectionTmpl<parity_tokio_ipc::ConnectionClient>,
+) -> ResultType<()> {
+    let server_pid = windows_named_pipe_server_pid(stream.inner.get_ref())?;
+    ensure_peer_executable_matches_current_by_pid(server_pid, "")?;
+    let is_system =
+        crate::platform::windows::is_process_running_as_system(server_pid).map_err(|err| {
+            anyhow::anyhow!(
+                "Failed to determine Windows service-owned main IPC server identity: {}",
+                err
+            )
+        })?;
+    if !is_system {
+        bail!("Windows service-owned main IPC server is not running as LocalSystem");
+    }
+    if !peer_process_is_current_exe_service_owned_server(server_pid) {
+        bail!("Windows service-owned main IPC server is not the current executable's exact --server --service-owned-server process");
+    }
+    Ok(())
+}
+
 #[cfg(windows)]
 fn windows_named_pipe_server_pid(client: &parity_tokio_ipc::ConnectionClient) -> ResultType<u32> {
     let pipe_handle = client.as_raw_handle();
@@ -1862,6 +1884,28 @@ fn peer_process_is_current_exe_server(peer_pid: u32) -> bool {
     peer_process_is_current_exe_with_first_arg(peer_pid, "--server")
 }
 
+#[cfg(target_os = "windows")]
+fn peer_process_is_current_exe_service_owned_server(peer_pid: u32) -> bool {
+    let Some(exe_name) = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.file_name().map(|name| name.to_owned()))
+    else {
+        return false;
+    };
+    let exe_name = exe_name.to_string_lossy();
+    crate::platform::get_pids_of_process_with_args(
+        exe_name.as_ref(),
+        &windows_service_owned_main_server_args(),
+    )
+    .iter()
+    .any(|pid| pid.as_u32() == peer_pid)
+}
+
+#[cfg(target_os = "windows")]
+fn windows_service_owned_main_server_args() -> [&'static str; 2] {
+    ["--server", crate::common::SERVICE_OWNED_SERVER_ARG]
+}
+
 #[cfg(target_os = "macos")]
 pub(crate) fn authenticate_macos_cm_endpoint<T>(
     stream: &ConnectionTmpl<T>,
@@ -2211,6 +2255,18 @@ mod tests {
             "--cm".to_owned(),
             crate::common::SERVICE_OWNED_SERVER_ARG.to_owned(),
         ]));
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_windows_service_owned_server_args_are_exact() {
+        let args = super::windows_service_owned_main_server_args();
+        assert_eq!(args.len(), 2);
+        assert_eq!(
+            args,
+            ["--server", crate::common::SERVICE_OWNED_SERVER_ARG],
+            "R-S11e-11: the Windows service-owned main-server authenticator must require the exact service-owned server argv shape"
+        );
     }
 
     #[test]

@@ -288,7 +288,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   polkit policy packaging, owner-aware UI/FFI/CLI routing, and the updated two-write handler reachability count;
   `ipc::test::main_channel_rejects_untyped_state_mutations`,
   `ipc::test::service_channel_rejects_config_bus`, and Linux `/proc` parser tests cover the source policy.
-- **R-S11b-2d/R-S11c-1e — Windows service-owned unattended password provisioning — CLOSED 2026-07-09.**
+- **R-S11b-2d/R-S11c-1e — Windows service-owned unattended password provisioning — CLOSED 2026-07-09; tightened 2026-07-11.**
   Platform: Windows installed service. Endpoint/action:
   `Data::RequestServiceOwnedUnattendedPasswordChange(String)` over `_service`, followed by
   `Data::CommitServiceOwnedUnattendedPasswordChange(String)` from the LocalSystem service into the
@@ -297,15 +297,19 @@ unreachable and a source/test/AST gate prevents reintroduction.
   same-session process cannot mint the privileged unattended password through ordinary main IPC or by forging
   the service request. The desktop/CLI service-owned setter is exposed on Windows only when the caller process
   is already elevated; the service receiver still performs the load-bearing check itself by impersonating the
-  connected named-pipe client and requiring an elevated client token before forwarding the commit. The main
-  server accepts the final commit only when the receiver is service-owned and the committing pipe client token
-  is LocalSystem. The service loop handles only `Close`, `Test`, and the typed password request; it does not
+  connected named-pipe client and requiring an elevated client token before forwarding the commit. Before
+  serializing the password-bearing main-IPC commit, the LocalSystem service now authenticates the connected
+  main-pipe receiver as the current executable, running as LocalSystem, with the exact
+  `--server --service-owned-server` argv shape. The main server accepts the final commit only when the receiver
+  is service-owned and the committing pipe client token is LocalSystem. The service loop handles only `Close`,
+  `Test`, and the typed password request; it does not
   forward arbitrary `_service` traffic into the main IPC handler. Main-channel service-owned password requests
   remain denied, ordinary user-owned password writes remain denied for service-owned receivers, and rejection
   ACKs fail closed. Verification closure: `scripts/verify.sh` asserts the Windows typed request dispatch,
-  pipe-client token impersonation, `RevertToSelf`, elevated-token request gate, LocalSystem-token commit gate,
-  already-elevated UI/CLI exposure, and absence of PID-based elevation proof for this operation; the Windows
-  source test `windows_service_owned_password_commit_requires_localsystem_peer` covers the main-channel policy.
+  pipe-client token impersonation, `RevertToSelf`, elevated-token request gate, sender-side service-owned
+  main-receiver proof before the password-bearing send, LocalSystem-token commit gate, already-elevated UI/CLI
+  exposure, and absence of PID-based elevation proof for this operation; the Windows source tests cover the
+  exact service-owned server argv shape and main-channel policy.
 - **R-S11b-2e/R-S11c-1f — macOS service-owned unattended password provisioning — CLOSED 2026-07-09; tightened 2026-07-11.**
   Platform: macOS LaunchDaemon/LaunchAgent installed service. Endpoint/action:
   `Data::RequestMacosServiceOwnedUnattendedPasswordChange { password, authorization }` over `_service`,
@@ -1623,6 +1627,21 @@ unreachable and a source/test/AST gate prevents reintroduction.
   closure: `scripts/verify.sh` and `scripts/apple-conform-check.sh` gate the explicit IOKit link, native
   user-activity helper, remote-user activity type, server wiring, absence of `caffeinate`, absence of the
   `/usr/bin/env` bridge, the environment-key allowlist, and this requirements/ledger disposition.
+- **R-S11e-11 — Windows service-owned password commit receiver proof — CLOSED 2026-07-11.**
+  Platform: Windows installed service. Endpoint/action:
+  `Data::CommitServiceOwnedUnattendedPasswordChange(String)` from LocalSystem `_service` into main IPC.
+  Boundary: authorized elevated local password-change request ↔ the main-pipe receiver that will receive the
+  plaintext service-owned credential. Attack surface closed: the receiver-side main-channel policy already
+  rejected a user-owned server before writing the password, but the LocalSystem sender still connected to the
+  generic main pipe and serialized the password before proving that receiver was the service-owned server. The
+  sender now calls `authenticate_windows_service_owned_main_server` immediately after connecting and before
+  sending the password-bearing frame. That authenticator resolves the named-pipe server pid, requires the exact
+  current executable path, requires the process token to be LocalSystem, and requires the exact
+  `--server --service-owned-server` process shape through the exact-argv process lookup. If any proof is missing,
+  the service fails closed and returns the existing typed rejection ACK. Verification closure: `scripts/verify.sh`
+  gates the authenticator, exact-argv helper, LocalSystem receiver proof, source ordering before
+  `Data::CommitServiceOwnedUnattendedPasswordChange(value)`, the retained receiver-side LocalSystem commit gate,
+  and this requirements/ledger disposition.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows

@@ -635,6 +635,22 @@ unreachable and a source/test/AST gate prevents reintroduction.
   before `add_connection`, desktop `AuthorizedFS` token matching, desktop legacy `Data::FS` rejection,
   and Android pre-`handle_fs` gating; `scripts/apple-conform-check.sh` mirrors the desktop source
   assertion for macOS.
+- **R-S11c-22 — Windows CM non-file clipboard authority — CLOSED 2026-07-11.**
+  Platform: Windows installed/root server mode. Endpoint/action: the root clipboard service's helper
+  request to `_cm` for non-file host clipboard content. Boundary: authenticated helper endpoint proof
+  ↔ active Remote connection clipboard capability. Attack surface closed: the clipboard service no
+  longer sends a bare `Data::ClipboardNonFile(None)` request after proving only the `_cm` endpoint.
+  Each Windows `ConnInner` carries a `CmClipboardAuthority` lease with the connection id, validated
+  CM connection type, and random `cm_auth_token`; the service selects that lease only from current
+  clipboard-service subscribers and sends `Data::AuthorizedClipboardNonFile`. CM validates the tuple
+  through the main server before calling `check_clipboard_cm()`. The server registry records a live
+  `cm_clipboard` bit that is Remote-only, derives from `can_sub_clipboard_service()`, and is refreshed
+  when peer clipboard/keyboard disable options change. FileTransfer, ViewCamera, Terminal, PortForward,
+  no-subscriber, stale-token, wrong-token, wrong-type, disabled, and endpoint-proof-only requests do not
+  read the desktop clipboard. Verification closure: `scripts/verify.sh` runs the Remote-only authority
+  unit test and source-gates the authorized request variant, subscriber lease extraction, live registry
+  bit, validation-before-read ordering, bare-request rejection, requirements disposition, and absence of
+  `ClipboardNonFile(None)` sends from the Windows clipboard service.
 - **R-S11c-5 — macOS privileged service packaging — CLOSED 2026-07-09; tightened 2026-07-11.** Platform: macOS
   source-conformance and any future macOS artifact. Surfaces: `src/platform/privileges_scripts/daemon.plist`,
   `install.scpt`, deleted `update.scpt`, `uninstall.scpt`, and their `osascript` call sites in
@@ -1876,6 +1892,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `cm_auth_token`, file/chat/voice-call state, or future downstream helper leases: macOS requires mutual
   server/endpoint launch-token proof via separate HMAC-SHA256 contexts after process-shape checks, and Linux
   keeps its live process identity checks plus the same mutual pre-disclosure proof.
+- **R-S11c-22 — Windows CM non-file clipboard authority.** Status: closed by the completed R-S11c-22
+  slice above. The Windows root clipboard service no longer treats authenticated `_cm` endpoint proof as
+  authority to read the desktop clipboard; it carries a subscribed Remote connection's CM token, and CM
+  validates the live Remote-only clipboard capability before `check_clipboard_cm()`.
 - **R-S11c-8 — `_whiteboard` helper ambient same-UID trust.** Status: closed by the completed R-S11c-8
   slice above. Whiteboard helper IPC now uses a launch-scoped endpoint, mutual whiteboard-specific launch
   proof, parent-pid admission, and per-connection event tokens; arbitrary same-UID clients, fixed-path
@@ -3084,7 +3104,7 @@ The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-00198a612914d7fcaaf4ca27a783cb75945b0aaf94f76f1a48c258d3e0ba7970  requirements.html
+fee1be48f48ac6403aaaff740f91d85877b3ee85b3d4cf1838aa8f618f848e8c  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

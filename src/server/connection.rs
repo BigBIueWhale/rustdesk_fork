@@ -230,6 +230,8 @@ pub struct ConnInner {
     id: i32,
     tx: Option<Sender>,
     tx_video: Option<Sender>,
+    #[cfg(target_os = "windows")]
+    cm_clipboard_authority: Option<ipc::CmClipboardAuthority>,
 }
 
 struct InputMouse {
@@ -275,6 +277,19 @@ pub enum AuthConnType {
     PortForward,
     ViewCamera,
     Terminal,
+}
+
+#[cfg(target_os = "windows")]
+impl AuthConnType {
+    fn to_cm_auth_conn_type(self) -> ipc::CmAuthConnType {
+        match self {
+            Self::Remote => ipc::CmAuthConnType::Remote,
+            Self::FileTransfer => ipc::CmAuthConnType::FileTransfer,
+            Self::PortForward => ipc::CmAuthConnType::PortForward,
+            Self::ViewCamera => ipc::CmAuthConnType::ViewCamera,
+            Self::Terminal => ipc::CmAuthConnType::Terminal,
+        }
+    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -406,7 +421,31 @@ pub struct Connection {
 
 impl ConnInner {
     pub fn new(id: i32, tx: Option<Sender>, tx_video: Option<Sender>) -> Self {
-        Self { id, tx, tx_video }
+        Self {
+            id,
+            tx,
+            tx_video,
+            #[cfg(target_os = "windows")]
+            cm_clipboard_authority: None,
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    pub(crate) fn cm_clipboard_authority(&self) -> Option<ipc::CmClipboardAuthority> {
+        self.cm_clipboard_authority.clone()
+    }
+
+    #[cfg(target_os = "windows")]
+    fn set_cm_clipboard_authority(
+        &mut self,
+        conn_type: ipc::CmAuthConnType,
+        cm_auth_token: String,
+    ) {
+        self.cm_clipboard_authority = Some(ipc::CmClipboardAuthority {
+            id: self.id,
+            conn_type,
+            cm_auth_token,
+        });
     }
 }
 
@@ -475,11 +514,7 @@ impl Connection {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let tx_cloned = tx.clone();
         let mut conn = Self {
-            inner: ConnInner {
-                id,
-                tx: Some(tx),
-                tx_video: Some(tx_video),
-            },
+            inner: ConnInner::new(id, Some(tx), Some(tx_video)),
             display_idx: *display_service::PRIMARY_DISPLAY_IDX,
             stream,
             server,
@@ -1154,12 +1189,27 @@ impl Connection {
         } else {
             AuthConnType::Remote
         };
+        // R-S19 (CWE-863): confine every peer-triggerable capability to the authorized AuthConnType
+        // NOW — at authorization time, before any peer LoginRequest option is applied
+        // (self.update_options below) — so no login-time option can transiently re-grant a capability
+        // the session type was not authorized for (the ordering window behind CVE-2026-58056). Under
+        // the pinned access-mode=full (R-S16) every capability boolean is seeded true, so this
+        // derivation is the ONLY real session-type confinement.
+        self.confine_capabilities_to_conn_type(auth_conn_type);
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let cm_file = self.file
             && matches!(
                 auth_conn_type,
                 AuthConnType::Remote | AuthConnType::FileTransfer
             );
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        let cm_clipboard =
+            auth_conn_type == AuthConnType::Remote && self.can_sub_clipboard_service();
+        #[cfg(target_os = "windows")]
+        self.inner.set_cm_clipboard_authority(
+            auth_conn_type.to_cm_auth_conn_type(),
+            self.cm_auth_token.clone(),
+        );
         self.authed_conn_id = Some(self::raii::AuthedConnID::new(
             self.inner.id(),
             auth_conn_type,
@@ -1168,14 +1218,9 @@ impl Connection {
             self.cm_auth_token.clone(),
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             cm_file,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            cm_clipboard,
         ));
-        // R-S19 (CWE-863): confine every peer-triggerable capability to the authorized AuthConnType
-        // NOW — at authorization time, before any peer LoginRequest option is applied
-        // (self.update_options below) — so no login-time option can transiently re-grant a capability
-        // the session type was not authorized for (the ordering window behind CVE-2026-58056). Under
-        // the pinned access-mode=full (R-S16) every capability boolean is seeded true, so this
-        // derivation is the ONLY real session-type confinement.
-        self.confine_capabilities_to_conn_type(auth_conn_type);
         #[allow(unused_mut)]
         let mut username = crate::platform::get_active_username();
         // On a headless unix box there is no logind/console session for `get_active_username` to
@@ -1577,6 +1622,14 @@ impl Connection {
         self.clipboard_enabled()
             && self.peer_keyboard_enabled()
             && crate::get_builtin_option(keys::OPTION_ONE_WAY_CLIPBOARD_REDIRECTION) != "Y"
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    fn refresh_cm_clipboard_authority(&self) {
+        set_authed_conn_cm_clipboard_authority(
+            self.inner.id(),
+            self.is_authed_remote_conn() && self.can_sub_clipboard_service(),
+        );
     }
 
     fn audio_enabled(&self) -> bool {
@@ -3830,6 +3883,8 @@ impl Connection {
         if let Ok(q) = o.disable_clipboard.enum_value() {
             if q != BoolOption::NotSet {
                 self.disable_clipboard = q == BoolOption::Yes;
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                self.refresh_cm_clipboard_authority();
                 if let Some(s) = self.server.upgrade() {
                     s.write().unwrap().subscribe(
                         super::clipboard_service::NAME,
@@ -3842,6 +3897,8 @@ impl Connection {
         if let Ok(q) = o.disable_keyboard.enum_value() {
             if q != BoolOption::NotSet {
                 self.disable_keyboard = q == BoolOption::Yes;
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                self.refresh_cm_clipboard_authority();
                 if let Some(s) = self.server.upgrade() {
                     s.write().unwrap().subscribe(
                         super::clipboard_service::NAME,
@@ -5602,6 +5659,20 @@ pub struct AuthedConn {
     pub cm_auth_token: String,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub cm_file: bool,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub cm_clipboard: bool,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn set_authed_conn_cm_clipboard_authority(conn_id: i32, cm_clipboard: bool) {
+    if let Some(conn) = AUTHED_CONNS
+        .lock()
+        .unwrap()
+        .iter_mut()
+        .find(|conn| conn.conn_id == conn_id)
+    {
+        conn.cm_clipboard = cm_clipboard;
+    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -5631,6 +5702,7 @@ pub(crate) fn validate_cm_connection_authority(
     ipc::CmConnectionAuthority {
         valid: true,
         file: conn.cm_file && conn_type.allows_file_authority(),
+        clipboard: conn.cm_clipboard && conn_type.allows_clipboard_authority(),
     }
 }
 
@@ -5667,6 +5739,7 @@ mod raii {
             session_key: SessionKey,
             #[cfg(not(any(target_os = "android", target_os = "ios")))] cm_auth_token: String,
             #[cfg(not(any(target_os = "android", target_os = "ios")))] cm_file: bool,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))] cm_clipboard: bool,
         ) -> Self {
             AUTHED_CONNS.lock().unwrap().push(AuthedConn {
                 conn_id,
@@ -5676,6 +5749,8 @@ mod raii {
                 cm_auth_token,
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 cm_file,
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                cm_clipboard,
             });
             Self::check_wake_lock();
             use std::sync::Once;

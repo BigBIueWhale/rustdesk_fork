@@ -201,6 +201,20 @@ impl<T: Subscriber + From<ConnInner>> ServiceTmpl<T> {
         ids
     }
 
+    #[cfg(target_os = "windows")]
+    pub fn cm_clipboard_authorities(&self) -> Vec<crate::ipc::CmClipboardAuthority> {
+        let lock = self.0.read().unwrap();
+        let mut authorities = lock
+            .subscribes
+            .values()
+            .chain(lock.new_subscribes.values())
+            .filter_map(ConnInner::cm_clipboard_authority)
+            .collect::<Vec<_>>();
+        authorities.sort_by_key(|authority| authority.id);
+        authorities.dedup_by_key(|authority| authority.id);
+        authorities
+    }
+
     pub fn snapshot<F>(&self, callback: F) -> ResultType<()>
     where
         F: FnMut(ServiceSwap<T>) -> ResultType<()>,

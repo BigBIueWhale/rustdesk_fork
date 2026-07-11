@@ -85,7 +85,7 @@ fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
                     handler.check_clipboard_file();
                     continue;
                 }
-                if let Some(msg) = handler.get_clipboard_msg() {
+                if let Some(msg) = handler.get_clipboard_msg(&sp) {
                     sp.send(msg);
                 }
             }
@@ -143,10 +143,17 @@ impl Handler {
         }
     }
 
-    fn get_clipboard_msg(&mut self) -> Option<Message> {
+    fn get_clipboard_msg(&mut self, sp: &GenericService) -> Option<Message> {
+        #[cfg(not(target_os = "windows"))]
+        let _ = sp;
+
         #[cfg(target_os = "windows")]
         if crate::common::is_server() && crate::platform::is_root() {
-            match self.read_clipboard_from_cm_ipc() {
+            let Some(authority) = sp.cm_clipboard_authorities().into_iter().next() else {
+                log::warn!("No subscribed CM clipboard authority available");
+                return None;
+            };
+            match self.read_clipboard_from_cm_ipc(authority) {
                 Err(e) => {
                     log::error!("Failed to read clipboard from cm: {}", e);
                 }
@@ -202,7 +209,10 @@ impl Handler {
     // The next call will create a new runtime, which will cause the previous stream to be unusable.
     // So we need to manage the tokio runtime manually.
     #[cfg(windows)]
-    fn read_clipboard_from_cm_ipc(&mut self) -> ResultType<Vec<ClipboardNonFile>> {
+    fn read_clipboard_from_cm_ipc(
+        &mut self,
+        authority: ipc::CmClipboardAuthority,
+    ) -> ResultType<Vec<ClipboardNonFile>> {
         if self.rt.is_none() {
             self.rt = Some(Runtime::new()?);
         }
@@ -214,7 +224,9 @@ impl Handler {
         if let Some(stream) = &mut self.stream {
             // If previous stream is still alive, reuse it.
             // If the previous stream is dead, `is_sent` will trigger reconnect.
-            is_sent = match rt.block_on(stream.send(&Data::ClipboardNonFile(None))) {
+            is_sent = match rt
+                .block_on(stream.send(&authorized_clipboard_non_file_request(&authority)))
+            {
                 Ok(_) => true,
                 Err(e) => {
                     log::debug!("Failed to send to cm: {}", e);
@@ -228,7 +240,7 @@ impl Handler {
                 "--cm",
                 crate::server::cm_launch_token(),
             ))?;
-            rt.block_on(stream.send(&Data::ClipboardNonFile(None)))?;
+            rt.block_on(stream.send(&authorized_clipboard_non_file_request(&authority)))?;
             self.stream = Some(stream);
         }
 
@@ -282,6 +294,15 @@ impl Handler {
         }
         // unreachable!
         bail!("failed to get clipboard data from cm");
+    }
+}
+
+#[cfg(windows)]
+fn authorized_clipboard_non_file_request(authority: &ipc::CmClipboardAuthority) -> Data {
+    Data::AuthorizedClipboardNonFile {
+        id: authority.id,
+        conn_type: authority.conn_type,
+        cm_auth_token: authority.cm_auth_token.clone(),
     }
 }
 

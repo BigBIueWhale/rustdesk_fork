@@ -379,12 +379,25 @@ impl CmAuthConnType {
     pub(crate) fn allows_file_authority(self) -> bool {
         matches!(self, Self::Remote | Self::FileTransfer)
     }
+
+    pub(crate) fn allows_clipboard_authority(self) -> bool {
+        matches!(self, Self::Remote)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Default)]
 pub struct CmConnectionAuthority {
     pub valid: bool,
     pub file: bool,
+    pub clipboard: bool,
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub struct CmClipboardAuthority {
+    pub id: i32,
+    pub conn_type: CmAuthConnType,
+    pub cm_auth_token: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -514,6 +527,12 @@ pub enum Data {
     #[cfg(target_os = "windows")]
     ClipboardFile(ClipboardFile),
     ClipboardFileEnabled(bool),
+    #[cfg(target_os = "windows")]
+    AuthorizedClipboardNonFile {
+        id: i32,
+        conn_type: CmAuthConnType,
+        cm_auth_token: String,
+    },
     #[cfg(target_os = "windows")]
     ClipboardNonFile(Option<(String, Vec<ClipboardNonFile>)>),
     PrivacyModeState((i32, PrivacyModeState, String)),
@@ -3588,6 +3607,15 @@ mod test {
     fn verify_ffi_enum_data_size() {
         println!("{}", std::mem::size_of::<Data>());
         assert!(std::mem::size_of::<Data>() <= 120);
+    }
+
+    #[test]
+    fn cm_clipboard_authority_is_remote_only() {
+        assert!(CmAuthConnType::Remote.allows_clipboard_authority());
+        assert!(!CmAuthConnType::FileTransfer.allows_clipboard_authority());
+        assert!(!CmAuthConnType::ViewCamera.allows_clipboard_authority());
+        assert!(!CmAuthConnType::Terminal.allows_clipboard_authority());
+        assert!(!CmAuthConnType::PortForward.allows_clipboard_authority());
     }
 
     fn macos_service_owned_launch_agent_test_plist(label: &str, args: &[&str]) -> plist::Value {

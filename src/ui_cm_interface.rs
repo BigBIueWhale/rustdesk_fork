@@ -673,7 +673,38 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                     self.cm.voice_call_closed(self.conn_id, reason.as_str());
                                 }
                                 #[cfg(target_os = "windows")]
-                                Data::ClipboardNonFile(_) => {
+                                Data::AuthorizedClipboardNonFile { id, conn_type, cm_auth_token } => {
+                                    let connection_authority = match ipc::validate_cm_connection_authority(
+                                        id,
+                                        conn_type,
+                                        &cm_auth_token,
+                                    )
+                                    .await
+                                    {
+                                        Ok(authority) => authority,
+                                        Err(err) => {
+                                            log::warn!(
+                                                "Rejected CM non-file clipboard read without server-validated authority: conn_id={}, err={}",
+                                                id,
+                                                err
+                                            );
+                                            ipc::CmConnectionAuthority::default()
+                                        }
+                                    };
+                                    if !connection_authority.valid
+                                        || !connection_authority.clipboard
+                                        || !conn_type.allows_clipboard_authority()
+                                    {
+                                        log::warn!(
+                                            "Rejected CM non-file clipboard read without matching clipboard-capable Remote authority: conn_id={}",
+                                            id
+                                        );
+                                        allow_err!(self.stream.send(&Data::ClipboardNonFile(Some((
+                                            "clipboard authority denied".to_owned(),
+                                            vec![]
+                                        )))).await);
+                                        continue;
+                                    }
                                     match crate::clipboard::check_clipboard_cm() {
                                         Ok(multi_clipoards) => {
                                             let mut raw_contents = bytes::BytesMut::new();
@@ -711,6 +742,16 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                         }
                                     }
                                 }
+                                #[cfg(target_os = "windows")]
+                                Data::ClipboardNonFile(None) => {
+                                    log::warn!("Rejected unauthenticated CM non-file clipboard request");
+                                    allow_err!(self.stream.send(&Data::ClipboardNonFile(Some((
+                                        "clipboard authority denied".to_owned(),
+                                        vec![]
+                                    )))).await);
+                                }
+                                #[cfg(target_os = "windows")]
+                                Data::ClipboardNonFile(Some(_)) => {}
                                 _ => {
 
                                 }
@@ -917,6 +958,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                 let connection_authority = ipc::CmConnectionAuthority {
                     valid: !cm_auth_token.is_empty(),
                     file,
+                    clipboard: clipboard && conn_type.allows_clipboard_authority(),
                 };
                 file_authority = CmFileAuthority::from_login(
                     id,
@@ -1877,7 +1919,11 @@ mod tests {
 
     #[cfg(not(any(target_os = "ios")))]
     fn cm_authority(valid: bool, file: bool) -> ipc::CmConnectionAuthority {
-        ipc::CmConnectionAuthority { valid, file }
+        ipc::CmConnectionAuthority {
+            valid,
+            file,
+            clipboard: false,
+        }
     }
 
     #[test]

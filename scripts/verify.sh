@@ -2269,6 +2269,49 @@ fi
 if [ -n "$r_s11c4" ]; then echo "  FAIL R-S11c-4 CM file IPC authority closure:$r_s11c4"; rc=1; else
   echo "  ok  R-S11c-4 CM rejects forged desktop login/FS unless the main server validates the active connection id/type/token; Android in-process FS remains login-gated"; fi
 
+echo "== (3b-iii-f1) Windows CM non-file clipboard requires connection-bound authority (R-S11c-22) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config cm_clipboard_authority --color never
+r_s11c22=
+grep -Fq 'pub struct CmClipboardAuthority' src/ipc.rs || r_s11c22="$r_s11c22 clipboard-authority-type-missing"
+grep -Fq 'AuthorizedClipboardNonFile {' src/ipc.rs || r_s11c22="$r_s11c22 authorized-clipboard-request-variant-missing"
+grep -Fq 'pub clipboard: bool' src/ipc.rs || r_s11c22="$r_s11c22 cm-authority-clipboard-bit-missing"
+grep -Fq 'fn allows_clipboard_authority' src/ipc.rs || r_s11c22="$r_s11c22 clipboard-conn-type-helper-missing"
+grep -Fq 'matches!(self, Self::Remote)' src/ipc.rs || r_s11c22="$r_s11c22 clipboard-authority-not-remote-only"
+grep -Fq 'cm_clipboard_authority: Option<ipc::CmClipboardAuthority>' src/server/connection.rs || r_s11c22="$r_s11c22 conninner-clipboard-lease-missing"
+grep -Fq 'fn set_cm_clipboard_authority' src/server/connection.rs || r_s11c22="$r_s11c22 conninner-clipboard-lease-setter-missing"
+grep -Fq 'cm_clipboard: bool' src/server/connection.rs || r_s11c22="$r_s11c22 server-registry-clipboard-bit-missing"
+grep -Fq 'let cm_clipboard =' src/server/connection.rs || r_s11c22="$r_s11c22 server-registry-clipboard-derivation-missing"
+grep -Fq 'auth_conn_type == AuthConnType::Remote' src/server/connection.rs || r_s11c22="$r_s11c22 server-registry-clipboard-not-remote-bound"
+grep -Fq 'self.can_sub_clipboard_service()' src/server/connection.rs || r_s11c22="$r_s11c22 server-registry-clipboard-not-subscription-bound"
+grep -Fq 'set_authed_conn_cm_clipboard_authority' src/server/connection.rs || r_s11c22="$r_s11c22 live-clipboard-authority-refresh-missing"
+grep -Fq 'refresh_cm_clipboard_authority' src/server/connection.rs || r_s11c22="$r_s11c22 option-refresh-clipboard-authority-missing"
+grep -Fq 'clipboard: conn.cm_clipboard && conn_type.allows_clipboard_authority()' src/server/connection.rs || r_s11c22="$r_s11c22 validation-not-bound-to-live-clipboard-bit"
+grep -Fq 'pub fn cm_clipboard_authorities' src/server/service.rs || r_s11c22="$r_s11c22 subscriber-clipboard-lease-accessor-missing"
+grep -Fq '.filter_map(ConnInner::cm_clipboard_authority)' src/server/service.rs || r_s11c22="$r_s11c22 clipboard-lease-not-derived-from-subscribers"
+grep -Fq 'sp.cm_clipboard_authorities().into_iter().next()' src/server/clipboard_service.rs || r_s11c22="$r_s11c22 clipboard-service-not-using-subscriber-lease"
+grep -Fq 'authorized_clipboard_non_file_request' src/server/clipboard_service.rs || r_s11c22="$r_s11c22 clipboard-service-authorized-request-helper-missing"
+grep -Fq 'Data::AuthorizedClipboardNonFile {' src/server/clipboard_service.rs || r_s11c22="$r_s11c22 clipboard-service-not-sending-authorized-request"
+if grep -Fq 'ClipboardNonFile(None)' src/server/clipboard_service.rs; then
+  r_s11c22="$r_s11c22 clipboard-service-bare-nonfile-request-present"
+fi
+grep -Fq 'Data::AuthorizedClipboardNonFile { id, conn_type, cm_auth_token }' src/ui_cm_interface.rs || r_s11c22="$r_s11c22 cm-authorized-clipboard-arm-missing"
+grep -Fq 'Rejected unauthenticated CM non-file clipboard request' src/ui_cm_interface.rs || r_s11c22="$r_s11c22 cm-bare-clipboard-reject-log-missing"
+grep -Fq 'Rejected CM non-file clipboard read without matching clipboard-capable Remote authority' src/ui_cm_interface.rs || r_s11c22="$r_s11c22 cm-clipboard-authority-reject-log-missing"
+clipboard_nonfile_block=$(awk '/Data::AuthorizedClipboardNonFile/,/Data::ClipboardNonFile\(None\)/' src/ui_cm_interface.rs)
+clipboard_validate_line=$(echo "$clipboard_nonfile_block" | grep -n 'validate_cm_connection_authority' | head -1 | cut -d: -f1)
+clipboard_gate_line=$(echo "$clipboard_nonfile_block" | grep -n 'connection_authority.clipboard' | head -1 | cut -d: -f1)
+clipboard_read_line=$(echo "$clipboard_nonfile_block" | grep -n 'check_clipboard_cm' | head -1 | cut -d: -f1)
+if [ -z "$clipboard_validate_line" ] || [ -z "$clipboard_read_line" ] || [ "$clipboard_validate_line" -ge "$clipboard_read_line" ]; then
+  r_s11c22="$r_s11c22 cm-clipboard-validation-not-before-read"
+fi
+if [ -z "$clipboard_gate_line" ] || [ -z "$clipboard_read_line" ] || [ "$clipboard_gate_line" -ge "$clipboard_read_line" ]; then
+  r_s11c22="$r_s11c22 cm-clipboard-capability-gate-not-before-read"
+fi
+grep -Fq 'R-S11c-22 — Windows CM non-file clipboard authority' HARDENING_STATUS.md || r_s11c22="$r_s11c22 hardening-ledger-missing"
+grep -Fq 'R-S11c-22 makes non-file clipboard reads a typed connection-bound CM capability' requirements.html || r_s11c22="$r_s11c22 requirements-disposition-missing"
+if [ -n "$r_s11c22" ]; then echo "  FAIL R-S11c-22 Windows CM non-file clipboard authority:$r_s11c22"; rc=1; else
+  echo "  ok  R-S11c-22 Windows CM non-file clipboard reads require a subscribed Remote connection token and live server-validated clipboard authority"; fi
+
 # (3b-iii-f2) R-S11c-11: fixed-path desktop _cm selection must prove the endpoint before
 # Data::Login/cm_auth_token/file/chat/voice authority is disclosed.
 echo "== (3b-iii-f2) Desktop CM endpoint selection requires launch-bound proof (R-S11c-11) =="

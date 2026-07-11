@@ -40,6 +40,39 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+
+VERIFY_TMP=$(umask 077 && mktemp -d /tmp/rustdesk-verify.XXXXXXXXXX)
+readonly VERIFY_TMP
+cleanup_verify_tmp() {
+  local status=$?
+  trap - EXIT HUP INT TERM
+  if ! rm -rf -- "$VERIFY_TMP"; then
+    echo "verify: failed to remove private workspace: $VERIFY_TMP" >&2
+    status=1
+  fi
+  exit "$status"
+}
+trap cleanup_verify_tmp EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+if ! python3 - "$VERIFY_TMP" <<'PY'
+import os
+import stat
+import sys
+
+metadata = os.lstat(sys.argv[1])
+if (
+    not stat.S_ISDIR(metadata.st_mode)
+    or metadata.st_uid != os.geteuid()
+    or stat.S_IMODE(metadata.st_mode) != 0o700
+):
+    raise SystemExit("verify: private workspace is not a current-UID mode-0700 directory")
+PY
+then
+  exit 1
+fi
+
 # The fork-version reader/validator (defines fork_version; see docs/VERSIONING.md).
 # shellcheck source=scripts/fork-version.sh
 source scripts/fork-version.sh
@@ -53,6 +86,31 @@ RUN=(docker run --rm
   -e RUSTUP_TOOLCHAIN=1.75.0
   -w /work "$IMG")
 rc=0
+
+echo "== (0) verifier scratch files use one private workspace (R-S11c-10w) =="
+r_s11c10w=
+grep -qF 'VERIFY_TMP=$(umask 077 && mktemp -d /tmp/rustdesk-verify.XXXXXXXXXX)' scripts/verify.sh || r_s11c10w="$r_s11c10w no-private-workspace-create"
+grep -qF 'readonly VERIFY_TMP' scripts/verify.sh || r_s11c10w="$r_s11c10w workspace-not-readonly"
+grep -qF "trap cleanup_verify_tmp EXIT" scripts/verify.sh || r_s11c10w="$r_s11c10w no-exit-cleanup"
+grep -qF "trap 'exit 129' HUP" scripts/verify.sh || r_s11c10w="$r_s11c10w no-hup-failure"
+grep -qF "trap 'exit 130' INT" scripts/verify.sh || r_s11c10w="$r_s11c10w no-int-failure"
+grep -qF "trap 'exit 143' TERM" scripts/verify.sh || r_s11c10w="$r_s11c10w no-term-failure"
+grep -qF 'trap - EXIT HUP INT TERM' scripts/verify.sh || r_s11c10w="$r_s11c10w cleanup-traps-not-disarmed"
+grep -qF 'if ! rm -rf -- "$VERIFY_TMP"; then' scripts/verify.sh || r_s11c10w="$r_s11c10w cleanup-not-fail-closed"
+grep -qF 'metadata = os.lstat(sys.argv[1])' scripts/verify.sh || r_s11c10w="$r_s11c10w nofollow-metadata-proof-missing"
+grep -qF 'not stat.S_ISDIR(metadata.st_mode)' scripts/verify.sh || r_s11c10w="$r_s11c10w directory-type-not-enforced"
+grep -qF 'metadata.st_uid != os.geteuid()' scripts/verify.sh || r_s11c10w="$r_s11c10w owner-not-enforced"
+grep -qF 'stat.S_IMODE(metadata.st_mode) != 0o700' scripts/verify.sh || r_s11c10w="$r_s11c10w mode-not-enforced"
+if grep -nE '/tmp/(r[d]_verify|r_s11b3|r_s11c23)' scripts/verify.sh; then
+  r_s11c10w="$r_s11c10w predictable-scratch-name-present"
+fi
+if grep -nE '[0-9]*(>>?|<<?)[[:space:]]*"?/t[m]p/' scripts/verify.sh; then
+  r_s11c10w="$r_s11c10w direct-public-temp-redirection-present"
+fi
+grep -qF 'R-S11c-10w — verifier private scratch workspace authority' HARDENING_STATUS.md || r_s11c10w="$r_s11c10w hardening-ledger-missing"
+grep -qF 'Verifier private scratch workspace authority' requirements.html || r_s11c10w="$r_s11c10w requirements-disposition-missing"
+if [ -n "$r_s11c10w" ]; then echo "  FAIL R-S11c-10w verifier private scratch workspace authority:$r_s11c10w"; rc=1; else
+  echo "  ok  R-S11c-10w verifier scratch output is confined to one current-UID mode-0700 workspace with fail-closed cleanup"; fi
 
 echo "== building the compile-check image =="
 docker volume create rd-cargo-cache  >/dev/null
@@ -161,10 +219,9 @@ grep -q 'Data::Socks' src/ipc.rs && r_s11="$r_s11 socks-ipc-reference-present"
 main_policy_body=$(sed -n '/pub(crate) fn main_channel_admits_state_mutation/,/^async fn send_main_channel_mutation_rejection_ack/p' src/ipc.rs)
 echo "$main_policy_body" | grep -q 'Data::Login { .. }' || r_s11="$r_s11 main-policy-explicit-nonmutating-classification-missing"
 if rg -n 'CheckHwcodec|HwCodecConfig|notify_server_to_check_hwcodec|get_hwcodec_config_from_server|client_get_hwcodec_config_thread|hwcodec_process|--check-hwcodec-config|start_check_process\(|check_available_hwcodec\(|HwCodecConfig::' \
-  src >/tmp/rd_verify_hwcodec_ipc.$$; then
-  r_s11="$r_s11 hwcodec-ipc-probe-surface-present:$(tr '\n' ';' </tmp/rd_verify_hwcodec_ipc.$$)"
+  src >"$VERIFY_TMP/rd_verify_hwcodec_ipc"; then
+  r_s11="$r_s11 hwcodec-ipc-probe-surface-present:$(tr '\n' ';' <"$VERIFY_TMP/rd_verify_hwcodec_ipc")"
 fi
-rm -f /tmp/rd_verify_hwcodec_ipc.$$
 if echo "$main_policy_body" | grep -qE '^[[:space:]]*\| Data::Close([[:space:]]|$)'; then
   r_s11="$r_s11 close-in-unconditional-main-policy-bucket"
 fi
@@ -192,7 +249,7 @@ config_set_body=$(awk '/pub fn set\(mut cfg: Config\) -> bool \{/{flag=1} flag{p
 echo "$config_set_body" | grep -q 'cfg.id = lock.id.clone();' || r_s11="$r_s11 config-set-imports-id"
 echo "$config_set_body" | grep -q 'cfg.enc_id = lock.enc_id.clone();' || r_s11="$r_s11 config-set-imports-enc-id"
 if grep -RInE 'set_id\(|fn gen_id\(|fn get_auto_id\(|update_id\(|is_disable_change_id|OPTION_ALLOW_HOSTNAME_AS_ID|OPTION_DISABLE_CHANGE_ID' src libs --include='*.rs' 2>/dev/null \
-  | grep -v '//' >/tmp/rd_verify_identity_writers.$$; then
+  | grep -v '//' >"$VERIFY_TMP/rd_verify_identity_writers"; then
   r_s11="$r_s11 numeric-id-writer-or-generator-present"
 fi
 mac_address_hits=$({
@@ -200,7 +257,7 @@ mac_address_hits=$({
   grep -RInE 'mac_address' libs/hbb_common/src src --include='*.rs' 2>/dev/null || true
 })
 if [ -n "$mac_address_hits" ]; then
-  printf '%s\n' "$mac_address_hits" >/tmp/rd_verify_mac_address.$$
+  printf '%s\n' "$mac_address_hits" >"$VERIFY_TMP/rd_verify_mac_address"
   r_s11="$r_s11 mac-address-id-dependency-present"
 fi
 ipc_get_id_body=$(awk '/^pub fn get_id\(\) -> String \{/{flag=1} flag{print} flag && /^\}/{exit}' src/ipc.rs)
@@ -295,7 +352,6 @@ then
 fi
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel state-mutation allowlist:$r_s11"; rc=1; else
   echo "  ok  R-S11/R-S11b/R-S11c main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options are user-owned scoped; user-owned password queries/writes authenticate the same-UID current-exe --server receiver before password traffic; service-owned close is root/LocalSystem-gated on main IPC and Windows _service; Linux _service clients authenticate the connected root --service receiver before service-owned password traffic; macOS _service clients authenticate the connected privileged helper before service-owned password traffic; the policy table is exhaustive with no wildcard fallback; gate binds Linux/macOS AND the Windows main pipe)"; fi
-rm -f /tmp/rd_verify_identity_writers.$$ /tmp/rd_verify_mac_address.$$
 
 echo "== (3b-iii-a1) desktop at-rest wrapper does not mint service identity material (R-S11b-3f) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config pk_fallback --color never
@@ -555,23 +611,20 @@ grep -q "bind.installInstallMe(options: args, path: '')" flutter/lib/desktop/pag
 if grep -qE 'std::env::var\("ProgramFiles"\)|runas::Command::new\("cmd\.exe"\)|Change Path|selectInstallPath|file_picker|package:path/path' src/platform/windows.rs flutter/lib/desktop/pages/install_page.dart; then
   r_s11d="$r_s11d exe-or-flutter:custom-path-or-path-selected-cmd"
 fi
-if grep -RInE 'INSTALLFOLDER_INNER|WIXUI_INSTALLDIR|ChangeFolder|BrowseDlg|InstallFolderSearch|SavedInstallFolder|RestoreSavedInstallFolder|SetInstallFolder' res/msi >/tmp/rd_verify_r_s11d_msi.$$; then
-  cat /tmp/rd_verify_r_s11d_msi.$$
+if grep -RInE 'INSTALLFOLDER_INNER|WIXUI_INSTALLDIR|ChangeFolder|BrowseDlg|InstallFolderSearch|SavedInstallFolder|RestoreSavedInstallFolder|SetInstallFolder' res/msi >"$VERIFY_TMP/rd_verify_r_s11d_msi"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11d_msi"
   r_s11d="$r_s11d msi:public-install-folder-or-browse-surface"
 fi
-rm -f /tmp/rd_verify_r_s11d_msi.$$
 grep -Fq '<StandardDirectory Id="ProgramFiles6432Folder">' res/msi/Package/Components/Folders.wxs || r_s11d="$r_s11d msi:install-root-not-program-files"
 grep -Fq '<Directory Id="App.InstallFolder" Name="$(var.Product)" />' res/msi/Package/Components/Folders.wxs || r_s11d="$r_s11d msi:install-folder-not-private-product-child"
-if grep -RInE 'Property="App\.InstallFolder"|SetTargetPath|PathEdit|DirectoryCombo|DirectoryList|WixUI_InstallDir' res/msi/Package >/tmp/rd_verify_r_s11d_msi_dirsetter.$$; then
-  cat /tmp/rd_verify_r_s11d_msi_dirsetter.$$
+if grep -RInE 'Property="App\.InstallFolder"|SetTargetPath|PathEdit|DirectoryCombo|DirectoryList|WixUI_InstallDir' res/msi/Package >"$VERIFY_TMP/rd_verify_r_s11d_msi_dirsetter"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11d_msi_dirsetter"
   r_s11d="$r_s11d msi:install-folder-setter-surface"
 fi
-rm -f /tmp/rd_verify_r_s11d_msi_dirsetter.$$
-if grep -RInE 'TryCreateStartServiceByShell|TryStopDeleteServiceByShell|ShellExecuteW\(NULL, L"open", L"(sc|cmd\.exe|reg)"' res/msi/CustomActions >/tmp/rd_verify_r_s11d_msi_shell.$$; then
-  cat /tmp/rd_verify_r_s11d_msi_shell.$$
+if grep -RInE 'TryCreateStartServiceByShell|TryStopDeleteServiceByShell|ShellExecuteW\(NULL, L"open", L"(sc|cmd\.exe|reg)"' res/msi/CustomActions >"$VERIFY_TMP/rd_verify_r_s11d_msi_shell"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11d_msi_shell"
   r_s11d="$r_s11d msi:service-or-registry-shell-fallback"
 fi
-rm -f /tmp/rd_verify_r_s11d_msi_shell.$$
 grep -q 'Id="CreateStartService".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:create-service-return-not-checked"
 grep -q 'Id="TryStopDeleteService".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:delete-service-return-not-checked"
 grep -q 'Id="AddFirewallRules".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:add-firewall-return-not-checked"
@@ -616,11 +669,10 @@ grep -q 'Id="RemoveRuntimeGeneratedFiles".*Return="check"' res/msi/Package/Fragm
 if grep -q 'Id="RemoveRuntimeGeneratedFiles".*Return="ignore"' res/msi/Package/Fragments/CustomActions.wxs; then
   r_s11d="$r_s11d msi:runtime-generated-cleanup-return-ignored"
 fi
-if rg -n 'CustomActionHello|Example CustomAction Hello|TODO: Add your custom action code here' res/msi >/tmp/rd_verify_r_s11d_msi_noop.$$; then
-  cat /tmp/rd_verify_r_s11d_msi_noop.$$
+if rg -n 'CustomActionHello|Example CustomAction Hello|TODO: Add your custom action code here' res/msi >"$VERIFY_TMP/rd_verify_r_s11d_msi_noop"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11d_msi_noop"
   r_s11d="$r_s11d msi:sample-custom-action-leftover"
 fi
-rm -f /tmp/rd_verify_r_s11d_msi_noop.$$
 grep -Fq 'HRESULT ValidateDeferredInstallFolder(LPCWSTR installFolder, LPWSTR normalizedInstallFolder, size_t normalizedCch)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:deferred-install-folder-validator-missing"
 grep -Fq 'NormalizeMsiDirectoryPath(installFolder, normalizedInstallFolder, normalizedCch, L"MSI install folder")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:deferred-install-folder-not-normalized"
 grep -Fq 'KnownFolderMatchesPath(FOLDERID_ProgramFiles, normalizedParent)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:deferred-install-folder-not-bound-to-program-files"
@@ -840,17 +892,15 @@ silent_install_block=$(awk '/args\[0\] == "--silent-install"/,/args\[0\] == "--u
 if ! printf '%s\n' "$silent_install_block" | grep -Fq 'std::process::exit(1);'; then
   r_s11d="$r_s11d portable-staging:silent-child-install-failure-exits-success"
 fi
-if ! rg -U 'pub fn install_me\(_options: String, _path: String, _silent: bool, _debug: bool\) \{\s*#\[cfg\(windows\)\]\s*std::thread::spawn\(move \|\| \{\s*if let Err\(err\) = crate::platform::windows::install_me\(&_options, _path, _silent, _debug\) \{\s*log::error!\("Failed to install: \{err\}"\);\s*std::process::exit\(1\);' src/ui_interface.rs >/tmp/rd_verify_r_s11d_install_ui.$$; then
+if ! rg -U 'pub fn install_me\(_options: String, _path: String, _silent: bool, _debug: bool\) \{\s*#\[cfg\(windows\)\]\s*std::thread::spawn\(move \|\| \{\s*if let Err\(err\) = crate::platform::windows::install_me\(&_options, _path, _silent, _debug\) \{\s*log::error!\("Failed to install: \{err\}"\);\s*std::process::exit\(1\);' src/ui_interface.rs >"$VERIFY_TMP/rd_verify_r_s11d_install_ui"; then
   r_s11d="$r_s11d portable-staging:interactive-child-install-failure-exits-success"
 fi
-rm -f /tmp/rd_verify_r_s11d_install_ui.$$
 grep -q 'Windows portable installer source-staging authority' requirements.html || r_s11d="$r_s11d portable-staging-requirements-disposition-missing"
 grep -q 'R-S11d-17 — Windows portable installer source-staging authority' HARDENING_STATUS.md || r_s11d="$r_s11d portable-staging-hardening-ledger-missing"
-if rg -n 'wmic|by_wmic|get_pids_with_args_by_wmic|get_pids_with_first_arg_by_wmic|get_pids_with_first_arg_check_session|not\(target_pointer_width = "64"\)|all\(target_os = "windows", not\(target_pointer_width = "64"\)\)' src/common.rs src/platform -g '*.rs' >/tmp/rd_verify_r_s11d_wmic.$$; then
-  cat /tmp/rd_verify_r_s11d_wmic.$$
+if rg -n 'wmic|by_wmic|get_pids_with_args_by_wmic|get_pids_with_first_arg_by_wmic|get_pids_with_first_arg_check_session|not\(target_pointer_width = "64"\)|all\(target_os = "windows", not\(target_pointer_width = "64"\)\)' src/common.rs src/platform -g '*.rs' >"$VERIFY_TMP/rd_verify_r_s11d_wmic"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11d_wmic"
   r_s11d="$r_s11d windows:unsupported-32bit-wmic-process-probe-leftover"
 fi
-rm -f /tmp/rd_verify_r_s11d_wmic.$$
 grep -q 'Windows unsupported 32-bit WMIC process-probe deletion' requirements.html || r_s11d="$r_s11d wmic-process-probe-requirements-disposition-missing"
 grep -q 'R-S11d-11 — Windows unsupported 32-bit WMIC process-probe deletion' HARDENING_STATUS.md || r_s11d="$r_s11d wmic-process-probe-hardening-ledger-missing"
 privacy_broker_create=$(awk '/let create_res = CreateProcessAsUserW\(/,/^[[:space:]]*\);/' src/privacy_mode/win_topmost_window.rs)
@@ -1155,11 +1205,10 @@ grep -Fq 'match common_startup_tray_shortcut_path().and_then(|path| quoted_batch
 grep -Fq '.and_then(|path| quoted_batch_path(&path))' src/platform/windows.rs || r_s11d19="$r_s11d19 service-uninstall-startup-cleanup-not-quoted"
 grep -Fq 'if exist {public_desktop_shortcut} del /f /q {public_desktop_shortcut}' src/platform/windows.rs || r_s11d19="$r_s11d19 public-desktop-cleanup-command-not-literal"
 grep -Fq 'if exist {startup_tray_shortcut} del /f /q {startup_tray_shortcut}' src/platform/windows.rs || r_s11d19="$r_s11d19 startup-cleanup-command-not-literal"
-if grep -nE '%(ProgramData|PROGRAMDATA|PUBLIC)%' src/platform/windows.rs >/tmp/rd_verify_r_s11d19_envroots.$$; then
-  cat /tmp/rd_verify_r_s11d19_envroots.$$
+if grep -nE '%(ProgramData|PROGRAMDATA|PUBLIC)%' src/platform/windows.rs >"$VERIFY_TMP/rd_verify_r_s11d19_envroots"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11d19_envroots"
   r_s11d19="$r_s11d19 env-expanded-cleanup-root-leftover"
 fi
-rm -f /tmp/rd_verify_r_s11d19_envroots.$$
 grep -Fq 'Windows EXE uninstall cleanup known-folder authority' requirements.html || r_s11d19="$r_s11d19 requirements-disposition-missing"
 grep -Fq 'R-S11d-19 — Windows EXE uninstall cleanup known-folder authority' HARDENING_STATUS.md || r_s11d19="$r_s11d19 hardening-ledger-missing"
 if [ -n "$r_s11d19" ]; then echo "  FAIL R-S11d-19 Windows EXE uninstall cleanup known-folder authority:$r_s11d19"; rc=1; else
@@ -1285,14 +1334,12 @@ if [ -n "$r_s11d26" ]; then echo "  FAIL R-S11d-26 Windows app-name identity con
 
 echo "== (3b-iii-a5d4f) Windows custom-client public staging path is absent (R-S11d-27) =="
 r_s11d27=
-if grep -nE 'prepare_custom_client_update|get_custom_client_staging_dir|remove_custom_client_staging_dir|get_public_base_dir|RustDeskCustomClientStaging' src/platform/windows.rs >/tmp/rd_verify_r_s11d27_staging.$$; then
-  r_s11d27="$r_s11d27 windows-public-custom-client-staging-leftover:$(cat /tmp/rd_verify_r_s11d27_staging.$$)"
+if grep -nE 'prepare_custom_client_update|get_custom_client_staging_dir|remove_custom_client_staging_dir|get_public_base_dir|RustDeskCustomClientStaging' src/platform/windows.rs >"$VERIFY_TMP/rd_verify_r_s11d27_staging"; then
+  r_s11d27="$r_s11d27 windows-public-custom-client-staging-leftover:$(cat "$VERIFY_TMP/rd_verify_r_s11d27_staging")"
 fi
-rm -f /tmp/rd_verify_r_s11d27_staging.$$
-if grep -nF 'current_exe_dir.join("custom.txt")' src/platform/windows.rs >/tmp/rd_verify_r_s11d27_copy.$$; then
-  r_s11d27="$r_s11d27 executable-dir-custom-txt-copy-leftover:$(cat /tmp/rd_verify_r_s11d27_copy.$$)"
+if grep -nF 'current_exe_dir.join("custom.txt")' src/platform/windows.rs >"$VERIFY_TMP/rd_verify_r_s11d27_copy"; then
+  r_s11d27="$r_s11d27 executable-dir-custom-txt-copy-leftover:$(cat "$VERIFY_TMP/rd_verify_r_s11d27_copy")"
 fi
-rm -f /tmp/rd_verify_r_s11d27_copy.$$
 grep -Fq 'Windows custom-client public staging deletion' requirements.html || r_s11d27="$r_s11d27 requirements-disposition-missing"
 grep -Fq 'R-S11d-27 — Windows custom-client public staging deletion' HARDENING_STATUS.md || r_s11d27="$r_s11d27 hardening-ledger-missing"
 if [ -n "$r_s11d27" ]; then echo "  FAIL R-S11d-27 Windows custom-client public staging deletion:$r_s11d27"; rc=1; else
@@ -1300,11 +1347,10 @@ if [ -n "$r_s11d27" ]; then echo "  FAIL R-S11d-27 Windows custom-client public 
 
 echo "== (3b-iii-a5d4a) Windows MSI service mode is package authority, not caller connection type (R-S11d-21) =="
 r_s11d21=
-if grep -RInE 'CC_CONNECTION_TYPE|--conn-type|conn_type|gen_conn_type' res/msi >/tmp/rd_verify_r_s11d21_msi.$$; then
-  cat /tmp/rd_verify_r_s11d21_msi.$$
+if grep -RInE 'CC_CONNECTION_TYPE|--conn-type|conn_type|gen_conn_type' res/msi >"$VERIFY_TMP/rd_verify_r_s11d21_msi"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11d21_msi"
   r_s11d21="$r_s11d21 msi:connection-type-service-gate-leftover"
 fi
-rm -f /tmp/rd_verify_r_s11d21_msi.$$
 grep -Fq '<Custom Action="CreateStartService" Before="InstallFinalize" Condition="NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d21="$r_s11d21 msi:create-service-not-package-policy"
 grep -Fq '<Custom Action="CreateStartService.SetParam" Before="CreateStartService" Condition="NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d21="$r_s11d21 msi:create-service-setparam-not-package-policy"
 grep -Fq '<Custom Action="LaunchAppTray" After="InstallFinalize" Condition="(LAUNCH_TRAY_APP=&quot;Y&quot; OR LAUNCH_TRAY_APP=&quot;1&quot;) AND (NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE))"/>' res/msi/Package/Components/RustDesk.wxs || r_s11d21="$r_s11d21 msi:launch-tray-still-connection-type-gated"
@@ -1352,10 +1398,9 @@ grep -Fq 'log::error!("Failed to uninstall Amyuni IDD: {err}");' src/core_main.r
 grep -Fq 'std::process::exit(1);' src/core_main.rs || r_s11d23="$r_s11d23 amyuni-cli-not-nonzero-on-failure"
 grep -Fq 'if let Err(err) = platform::uninstall_me(true) {' src/core_main.rs || r_s11d23="$r_s11d23 top-level-uninstall-not-error-checked"
 grep -Fq 'log::error!("Failed to uninstall: {}", err);' src/core_main.rs || r_s11d23="$r_s11d23 top-level-uninstall-error-not-logged"
-if ! rg -U 'if let Err\(err\) = platform::uninstall_me\(true\) \{\s*log::error!\("Failed to uninstall: \{\}", err\);\s*std::process::exit\(1\);' src/core_main.rs >/tmp/rd_verify_r_s11d23_top_uninstall.$$; then
+if ! rg -U 'if let Err\(err\) = platform::uninstall_me\(true\) \{\s*log::error!\("Failed to uninstall: \{\}", err\);\s*std::process::exit\(1\);' src/core_main.rs >"$VERIFY_TMP/rd_verify_r_s11d23_top_uninstall"; then
   r_s11d23="$r_s11d23 top-level-uninstall-not-nonzero-on-failure"
 fi
-rm -f /tmp/rd_verify_r_s11d23_top_uninstall.$$
 grep -Fq 'Failed to resolve current exe for EXE uninstall helpers' src/platform/windows.rs || r_s11d23="$r_s11d23 amyuni-current-exe-failure-not-fatal"
 grep -Fq 'let uninstall_amyuni_idd = checked_batch_cmd(format!(' src/platform/windows.rs || r_s11d23="$r_s11d23 amyuni-batch-command-not-checked"
 grep -Fq '"{} --uninstall-amyuni-idd"' src/platform/windows.rs || r_s11d23="$r_s11d23 amyuni-batch-helper-command-missing"
@@ -1385,29 +1430,25 @@ grep -Fq 'GetExitCodeProcess(process.0, &mut exit_code)' src/virtual_display_man
 grep -Fq 'exit_code == ERROR_SUCCESS_REBOOT_REQUIRED' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-reboot-required-not-accepted"
 grep -Fq 'else if exit_code != 0' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-nonzero-not-fatal"
 grep -Fq 'bail!("deviceinstaller64.exe requires reboot before the driver can be used");' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-install-reboot-required-not-fatal"
-if ! rg -U '"remove usbmmidd",\s*DeviceInstaller64RebootPolicy::Accept' src/virtual_display_manager.rs >/tmp/rd_verify_r_s11d23_remove_policy.$$; then
+if ! rg -U '"remove usbmmidd",\s*DeviceInstaller64RebootPolicy::Accept' src/virtual_display_manager.rs >"$VERIFY_TMP/rd_verify_r_s11d23_remove_policy"; then
   r_s11d23="$r_s11d23 amyuni-helper-remove-reboot-policy-not-accept"
 fi
-rm -f /tmp/rd_verify_r_s11d23_remove_policy.$$
-if ! rg -U '"install usbmmidd.inf usbmmidd",\s*DeviceInstaller64RebootPolicy::Reject' src/virtual_display_manager.rs >/tmp/rd_verify_r_s11d23_install_policy.$$; then
+if ! rg -U '"install usbmmidd.inf usbmmidd",\s*DeviceInstaller64RebootPolicy::Reject' src/virtual_display_manager.rs >"$VERIFY_TMP/rd_verify_r_s11d23_install_policy"; then
   r_s11d23="$r_s11d23 amyuni-helper-install-reboot-policy-not-reject"
 fi
-rm -f /tmp/rd_verify_r_s11d23_install_policy.$$
 if grep -Fq 'fn get_uninstall_amyuni_idd()' src/platform/windows.rs; then
   r_s11d23="$r_s11d23 amyuni-skip-on-current-exe-failure-leftover"
 fi
 if grep -Fq 'if let Ok(Some(paths)) = get_deviceinstaller64_paths()' src/virtual_display_manager.rs; then
   r_s11d23="$r_s11d23 amyuni-helper-trust-failure-swallowed"
 fi
-if rg -n 'fn path_text|to_string_lossy\(\)|fs::canonicalize' src/virtual_display_manager.rs >/tmp/rd_verify_r_s11d23_lossy_path.$$; then
+if rg -n 'fn path_text|to_string_lossy\(\)|fs::canonicalize' src/virtual_display_manager.rs >"$VERIFY_TMP/rd_verify_r_s11d23_lossy_path"; then
   r_s11d23="$r_s11d23 amyuni-helper-lossy-path-proof"
 fi
-rm -f /tmp/rd_verify_r_s11d23_lossy_path.$$
-if rg -U 'allow_err!\(\s*crate::virtual_display_manager::amyuni_idd::uninstall_driver\(\)\s*\)' src/core_main.rs >/tmp/rd_verify_r_s11d23_allow_err.$$; then
-  cat /tmp/rd_verify_r_s11d23_allow_err.$$
+if rg -U 'allow_err!\(\s*crate::virtual_display_manager::amyuni_idd::uninstall_driver\(\)\s*\)' src/core_main.rs >"$VERIFY_TMP/rd_verify_r_s11d23_allow_err"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11d23_allow_err"
   r_s11d23="$r_s11d23 amyuni-cli-ignored-error-leftover"
 fi
-rm -f /tmp/rd_verify_r_s11d23_allow_err.$$
 if grep -Fq 'ShellExecuteW(' src/virtual_display_manager.rs; then
   r_s11d23="$r_s11d23 amyuni-runtime-shellexecute-leftover"
 fi
@@ -1444,10 +1485,9 @@ if [ -d libs/virtual_display ]; then
   r_s11d38="$r_s11d38 deleted-virtual-display-crate-directory-present"
 fi
 if rg -n 'rustdesk_idd|rustdesk_virtual_displays|dylib_virtual_display|libs/virtual_display|(^|[^[:alnum:]_])virtual_display::|virtual_display =|kPlatformAdditionsRustDeskVirtualDisplays|isRustDeskIdd|RustDeskVirtualDisplays' \
-  Cargo.toml Cargo.lock build.py src flutter/lib scripts/build-windows.ps1 scripts/canonicalize-pe.py >/tmp/rd_verify_r_s11d38_leftovers.$$; then
+  Cargo.toml Cargo.lock build.py src flutter/lib scripts/build-windows.ps1 scripts/canonicalize-pe.py >"$VERIFY_TMP/rd_verify_r_s11d38_leftovers"; then
   r_s11d38="$r_s11d38 rustdesk-idd-loader-or-ui-leftover"
 fi
-rm -f /tmp/rd_verify_r_s11d38_leftovers.$$
 grep -Fq 'Windows inactive RustDesk IDD loader excision' requirements.html || r_s11d38="$r_s11d38 requirements-disposition-missing"
 grep -Fq 'R-S11d-38 — Windows inactive RustDesk IDD loader excision' HARDENING_STATUS.md || r_s11d38="$r_s11d38 hardening-ledger-missing"
 if [ -n "$r_s11d38" ]; then echo "  FAIL R-S11d-38 Windows inactive RustDesk IDD loader excision:$r_s11d38"; rc=1; else
@@ -1456,10 +1496,9 @@ if [ -n "$r_s11d38" ]; then echo "  FAIL R-S11d-38 Windows inactive RustDesk IDD
 echo "== (3b-iii-a5d4f) Windows Amyuni SetupAPI install rejects reboot-required completion (R-S11d-25) =="
 r_s11d25=
 grep -Fq 'bail!("SetupAPI driver install requires reboot before the driver can be used");' src/virtual_display_manager.rs || r_s11d25="$r_s11d25 setupapi-install-reboot-required-not-fatal"
-if rg -U 'let _ =\s*unsafe \{ win_device::install_driver\(&inf_path, HARDWARE_ID, &mut reboot_required\)\? \};' src/virtual_display_manager.rs >/tmp/rd_verify_r_s11d25_setupapi_install.$$; then
+if rg -U 'let _ =\s*unsafe \{ win_device::install_driver\(&inf_path, HARDWARE_ID, &mut reboot_required\)\? \};' src/virtual_display_manager.rs >"$VERIFY_TMP/rd_verify_r_s11d25_setupapi_install"; then
   r_s11d25="$r_s11d25 setupapi-install-result-discard-leftover"
 fi
-rm -f /tmp/rd_verify_r_s11d25_setupapi_install.$$
 setupapi_install_block=$(awk '/Installing driver by SetupAPI/,/\*is_async = false;/' src/virtual_display_manager.rs)
 grep -Fq 'let inf_path = get_amyuni_inf_path()?' src/virtual_display_manager.rs || r_s11d25="$r_s11d25 setupapi-inf-not-trusted"
 printf '%s\n' "$setupapi_install_block" | grep -Fq 'unsafe { win_device::install_driver(inf_path, HARDWARE_ID, &mut reboot_required)? };' || r_s11d25="$r_s11d25 setupapi-install-call-missing"
@@ -1477,11 +1516,10 @@ grep -Fq '<Custom Action="CreateStartService.SetParam" Before="CreateStartServic
 grep -Fq '<Custom Action="LaunchAppTray" After="InstallFinalize" Condition="(LAUNCH_TRAY_APP=&quot;Y&quot; OR LAUNCH_TRAY_APP=&quot;1&quot;) AND (NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE))"/>' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:launch-tray-still-service-stop-gated"
 grep -Fq '<Custom Action="TryStopDeleteService" Before="RemoveRuntimeGeneratedFiles.SetParam" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:stop-delete-service-not-remove-upgrade-scoped"
 grep -Fq '<Custom Action="TryStopDeleteService.SetParam" Before="TryStopDeleteService" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:stop-delete-service-setparam-not-remove-upgrade-scoped"
-if grep -RInE 'STOP_SERVICE|SetPropertyServiceStop|SetPropertyFromConfig|SetPropertyIsServiceRunning|TryDeleteStartupShortcut|ReadConfig|AddRegSoftwareSASGeneration|SoftwareSASGeneration' res/msi >/tmp/rd_verify_r_s11d16_msi.$$; then
-  cat /tmp/rd_verify_r_s11d16_msi.$$
+if grep -RInE 'STOP_SERVICE|SetPropertyServiceStop|SetPropertyFromConfig|SetPropertyIsServiceRunning|TryDeleteStartupShortcut|ReadConfig|AddRegSoftwareSASGeneration|SoftwareSASGeneration' res/msi >"$VERIFY_TMP/rd_verify_r_s11d16_msi"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11d16_msi"
   r_s11d16="$r_s11d16 msi:persistent-service-or-sas-switch-leftover"
 fi
-rm -f /tmp/rd_verify_r_s11d16_msi.$$
 if grep -Eq 'reg[}"]?[[:space:]]+add[^\n]*SoftwareSASGeneration|AddRegSoftwareSASGeneration|RegSetValueExW\(.*SoftwareSASGeneration' src/platform/windows.rs res/msi/CustomActions/CustomActions.cpp; then
   r_s11d16="$r_s11d16 persistent-sas-installer-write-leftover"
 fi
@@ -1532,11 +1570,10 @@ grep -q '{netsh} advfirewall' src/platform/windows.rs || r_s11d5="$r_s11d5 netsh
 grep -q '{sc} create' src/platform/windows.rs || r_s11d5="$r_s11d5 sc-create-not-bound"
 grep -q '{reg} add' src/platform/windows.rs || r_s11d5="$r_s11d5 reg-add-not-bound"
 grep -q '{chcp} 65001' src/platform/windows.rs || r_s11d5="$r_s11d5 chcp-not-bound"
-if grep -nE '^[[:space:]]*(chcp 65001|reg (add|delete)|netsh advfirewall|sc (create|stop|delete|failure|start)|taskkill /F /IM|cscript "|XCOPY |xcopy |timeout 300)' src/platform/windows.rs >/tmp/rd_verify_r_s11d5_bare.$$; then
-  cat /tmp/rd_verify_r_s11d5_bare.$$
+if grep -nE '^[[:space:]]*(chcp 65001|reg (add|delete)|netsh advfirewall|sc (create|stop|delete|failure|start)|taskkill /F /IM|cscript "|XCOPY |xcopy |timeout 300)' src/platform/windows.rs >"$VERIFY_TMP/rd_verify_r_s11d5_bare"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11d5_bare"
   r_s11d5="$r_s11d5 bare-external-tool-in-elevated-batch"
 fi
-rm -f /tmp/rd_verify_r_s11d5_bare.$$
 if grep -q 'command_with_system_tool' src/platform/windows.rs; then
   r_s11d5="$r_s11d5 prefix-only-msiexec-binder-leftover"
 fi
@@ -1571,11 +1608,10 @@ grep -Fq 'let start_menu = common_programs_app_dir()?;' src/platform/windows.rs 
 grep -Fq 'let tray_shortcut_path = common_startup_tray_shortcut_path()?;' src/platform/windows.rs || r_s11d6="$r_s11d6 tray-shortcut-callsite-not-helper"
 grep -Fq 'Path::new(&path).join(format!("Uninstall {app_name}.lnk"))' src/platform/windows.rs || r_s11d6="$r_s11d6 install-dir-uninstall-shortcut-not-final"
 grep -Fq 'if errorlevel 1 exit /b 1' src/platform/windows.rs || r_s11d6="$r_s11d6 shortcut-cscript-not-fail-closed"
-if grep -nE 'sLinkFile = "\{tmp_path\}|copy /Y .*\.lnk|tmp_path.*\.lnk|fn get_tray_shortcut' src/platform/windows.rs >/tmp/rd_verify_r_s11d6_staging.$$; then
-  cat /tmp/rd_verify_r_s11d6_staging.$$
+if grep -nE 'sLinkFile = "\{tmp_path\}|copy /Y .*\.lnk|tmp_path.*\.lnk|fn get_tray_shortcut' src/platform/windows.rs >"$VERIFY_TMP/rd_verify_r_s11d6_staging"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11d6_staging"
   r_s11d6="$r_s11d6 temp-shortcut-staging-leftover"
 fi
-rm -f /tmp/rd_verify_r_s11d6_staging.$$
 grep -q 'Windows EXE shortcut finalization provenance' requirements.html || r_s11d6="$r_s11d6 requirements-disposition-missing"
 grep -q 'R-S11d-6 — Windows EXE shortcut finalization provenance' HARDENING_STATUS.md || r_s11d6="$r_s11d6 hardening-ledger-missing"
 if [ -n "$r_s11d6" ]; then echo "  FAIL R-S11d-6 Windows EXE shortcut finalization provenance:$r_s11d6"; rc=1; else
@@ -1604,30 +1640,24 @@ windows_runtime_process_blocks=$(
 if echo "$windows_runtime_process_blocks" | grep -Eq 'Command::new\("cmd"\)|tasklist|findstr|taskkill /F /IM|/c"\)|/C"'; then
   r_s11d3="$r_s11d3 runtime-process-shell-regressed"
 fi
-if grep -RInE 'stop_main_window_process|try_kill_rustdesk_main_window_process|NtTerminateProcess|PROCESS_ALL_ACCESS|ipc is occupied by another process, try kill it' src/server.rs src/platform/windows.rs >/tmp/rd_verify_r_s11d3_process_kill.$$; then
-  r_s11d3="$r_s11d3 main-window-process-kill-fallback-leftover:$(cat /tmp/rd_verify_r_s11d3_process_kill.$$)"
+if grep -RInE 'stop_main_window_process|try_kill_rustdesk_main_window_process|NtTerminateProcess|PROCESS_ALL_ACCESS|ipc is occupied by another process, try kill it' src/server.rs src/platform/windows.rs >"$VERIFY_TMP/rd_verify_r_s11d3_process_kill"; then
+  r_s11d3="$r_s11d3 main-window-process-kill-fallback-leftover:$(cat "$VERIFY_TMP/rd_verify_r_s11d3_process_kill")"
 fi
-rm -f /tmp/rd_verify_r_s11d3_process_kill.$$
-if grep -RInE 'Command::new\("cmd"\)|tasklist \| findstr consent\.exe' src/platform/windows.rs >/tmp/rd_verify_r_s11d3.$$; then
-  cat /tmp/rd_verify_r_s11d3.$$
-  rm -f /tmp/rd_verify_r_s11d3.$$
+if grep -RInE 'Command::new\("cmd"\)|tasklist \| findstr consent\.exe' src/platform/windows.rs >"$VERIFY_TMP/rd_verify_r_s11d3"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11d3"
   r_s11d3="$r_s11d3 stale-service-adjacent-cmd"
-else
-  rm -f /tmp/rd_verify_r_s11d3.$$
 fi
 if [ -n "$r_s11d3" ]; then echo "  FAIL R-S11d-3 Windows runtime process command provenance:$r_s11d3"; rc=1; else
   echo "  ok  R-S11d-3 Windows service-adjacent process probes use ToolHelp/OpenProcess/TerminateProcess, not cmd tasklist/taskkill; IPC bind failure has no process-kill fallback"; fi
 
 echo "== (3b-iii-a6b) Windows dormant diagnostic message-box side effects are absent (R-S11d-28) =="
 r_s11d28=
-if grep -RInE 'macro_rules![[:space:]]*my_println|my_println!' src >/tmp/rd_verify_r_s11d28_macro.$$; then
-  r_s11d28="$r_s11d28 diagnostic-macro-leftover:$(cat /tmp/rd_verify_r_s11d28_macro.$$)"
+if grep -RInE 'macro_rules![[:space:]]*my_println|my_println!' src >"$VERIFY_TMP/rd_verify_r_s11d28_macro"; then
+  r_s11d28="$r_s11d28 diagnostic-macro-leftover:$(cat "$VERIFY_TMP/rd_verify_r_s11d28_macro")"
 fi
-rm -f /tmp/rd_verify_r_s11d28_macro.$$
-if grep -nE 'pub fn message_box|NO_DIALOG|PRINT_OUT|WRITE_TO_FILE|RustDesk Output|Above text has been copied to clipboard' src/platform/windows.rs >/tmp/rd_verify_r_s11d28_msgbox.$$; then
-  r_s11d28="$r_s11d28 windows-message-box-diagnostic-leftover:$(cat /tmp/rd_verify_r_s11d28_msgbox.$$)"
+if grep -nE 'pub fn message_box|NO_DIALOG|PRINT_OUT|WRITE_TO_FILE|RustDesk Output|Above text has been copied to clipboard' src/platform/windows.rs >"$VERIFY_TMP/rd_verify_r_s11d28_msgbox"; then
+  r_s11d28="$r_s11d28 windows-message-box-diagnostic-leftover:$(cat "$VERIFY_TMP/rd_verify_r_s11d28_msgbox")"
 fi
-rm -f /tmp/rd_verify_r_s11d28_msgbox.$$
 grep -Fq 'Windows dormant diagnostic message-box deletion' requirements.html || r_s11d28="$r_s11d28 requirements-disposition-missing"
 grep -Fq 'R-S11d-28 — Windows dormant diagnostic message-box deletion' HARDENING_STATUS.md || r_s11d28="$r_s11d28 hardening-ledger-missing"
 if [ -n "$r_s11d28" ]; then echo "  FAIL R-S11d-28 Windows dormant diagnostic message-box deletion:$r_s11d28"; rc=1; else
@@ -1635,10 +1665,9 @@ if [ -n "$r_s11d28" ]; then echo "  FAIL R-S11d-28 Windows dormant diagnostic me
 
 echo "== (3b-iii-a6c) Windows service-adjacent profile and recording paths use known folders (R-S11d-29) =="
 r_s11d29=
-if grep -RInF 'SystemDrive' src/platform/windows.rs src/ui_interface.rs >/tmp/rd_verify_r_s11d29_systemdrive.$$; then
-  r_s11d29="$r_s11d29 systemdrive-path-authority-leftover:$(cat /tmp/rd_verify_r_s11d29_systemdrive.$$)"
+if grep -RInF 'SystemDrive' src/platform/windows.rs src/ui_interface.rs >"$VERIFY_TMP/rd_verify_r_s11d29_systemdrive"; then
+  r_s11d29="$r_s11d29 systemdrive-path-authority-leftover:$(cat "$VERIFY_TMP/rd_verify_r_s11d29_systemdrive")"
 fi
-rm -f /tmp/rd_verify_r_s11d29_systemdrive.$$
 grep -Fq 'FOLDERID_UserProfiles' src/platform/windows.rs || r_s11d29="$r_s11d29 userprofiles-known-folder-missing"
 grep -Fq 'FOLDERID_Windows' src/platform/windows.rs || r_s11d29="$r_s11d29 windows-known-folder-missing"
 grep -Fq 'fn user_profiles_dir() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d29="$r_s11d29 userprofiles-helper-missing"
@@ -1772,11 +1801,10 @@ grep -q 'linux_service_owned_server_argv_is_expected' src/ipc/auth.rs           
 grep -q 'SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV' src/ipc/auth.rs                     || r_s11b2="$r_s11b2 linux-service-main-server-launch-parent-env-not-checked"
 grep -q 'linux_process_has_ancestor(identity.pid, expected_parent)' src/ipc/auth.rs   || r_s11b2="$r_s11b2 linux-service-main-server-ancestor-proof-missing"
 grep -q 'test_linux_service_owned_server_argv_is_exact' src/ipc/auth.rs               || r_s11b2="$r_s11b2 linux-service-main-server-argv-test-missing"
-if ! python3 scripts/verify-linux-service-password-ipc.py --repo . --self-test >/tmp/rd_verify_linux_service_password_ipc.$$ 2>&1; then
-  cat /tmp/rd_verify_linux_service_password_ipc.$$
+if ! python3 scripts/verify-linux-service-password-ipc.py --repo . --self-test >"$VERIFY_TMP/rd_verify_linux_service_password_ipc" 2>&1; then
+  cat "$VERIFY_TMP/rd_verify_linux_service_password_ipc"
   r_s11b2="$r_s11b2 linux-service-password-ipc-structural-gate-failed"
 fi
-rm -f /tmp/rd_verify_linux_service_password_ipc.$$
 linux_service_server_client_auth_block=$(awk '/pub\(crate\) fn ensure_linux_service_server_is_trusted/,/^}/' src/ipc/auth.rs)
 connect_with_path_block=$(awk '/async fn connect_with_path/,/^}/' src/ipc.rs)
 grep -Fq 'pub(crate) fn ensure_linux_service_server_is_trusted' src/ipc/auth.rs       || r_s11b2="$r_s11b2 linux-service-server-client-auth-missing"
@@ -1805,11 +1833,10 @@ PY
 then
   r_s11b2="$r_s11b2 linux-service-password-request-sends-before-service-proof"
 fi
-if ! python3 scripts/verify-polkit-policy.py --repo . >/tmp/rd_verify_polkit_policy.$$ 2>&1; then
-  cat /tmp/rd_verify_polkit_policy.$$
+if ! python3 scripts/verify-polkit-policy.py --repo . >"$VERIFY_TMP/rd_verify_polkit_policy" 2>&1; then
+  cat "$VERIFY_TMP/rd_verify_polkit_policy"
   r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"
 fi
-rm -f /tmp/rd_verify_polkit_policy.$$
 grep -Fq 'R-S11e — Linux polkit policy/package assurance' HARDENING_STATUS.md        || r_s11b2="$r_s11b2 linux-polkit-assurance-ledger-missing"
 grep -Fq 'R-S11e-1 — Linux pkcheck executable provenance' HARDENING_STATUS.md        || r_s11b2="$r_s11b2 linux-pkcheck-provenance-ledger-missing"
 grep -Fq 'R-S11e-5 — Linux service-owned main-server commit receiver proof' HARDENING_STATUS.md || r_s11b2="$r_s11b2 linux-service-main-server-proof-ledger-missing"
@@ -2191,10 +2218,9 @@ grep -q 'macos_launch_agent_owns_service_owned_server_pid' src/ipc.rs || r_s11b4
 grep -q 'RUNTIME_PERMANENT_PASSWORD_PRS' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 runtime-prs-overlay-missing"
 grep -q 'runtime_password_snapshot_does_not_persist' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 runtime-snapshot-nonpersist-test-missing"
 grep -q 'test_set_permanent_password_persists_when_value_matches_preset' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 explicit-password-set-preset-noop-test-missing"
-if grep -InE 'password_prs|get_permanent_password_prs|get_existing_key_pair|get_key_pair|key_pair' src/ipc.rs >/tmp/rd_verify_r_s11b4.$$; then
+if grep -InE 'password_prs|get_permanent_password_prs|get_existing_key_pair|get_key_pair|key_pair' src/ipc.rs >"$VERIFY_TMP/rd_verify_r_s11b4"; then
   r_s11b4="$r_s11b4 ipc-exports-prs-or-key-material"
 fi
-rm -f /tmp/rd_verify_r_s11b4.$$
 grep -q 'confy::store_path_perms' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 unix-store-path-perms-wrapper-missing"
 grep -q 'fs::Permissions::from_mode(0o600)' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 unix-store-mode-0600-missing"
 grep -q 'store_path_writes_owner_only_permissions' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 unix-store-mode-test-missing"
@@ -2211,10 +2237,9 @@ grep -q 'windows_config_acl_sddl_is_protected_owner_system_only' libs/hbb_common
 for feature in aclapi accctrl errhandlingapi sddl; do
   grep -q "\"$feature\"" libs/hbb_common/Cargo.toml || r_s11b4="$r_s11b4 windows-winapi-feature-$feature-missing"
 done
-if grep -InE ';;;(BA|BU|AU|WD|CO)' libs/hbb_common/src/config.rs >/tmp/rd_verify_r_s11b4_acl.$$; then
+if grep -InE ';;;(BA|BU|AU|WD|CO)' libs/hbb_common/src/config.rs >"$VERIFY_TMP/rd_verify_r_s11b4_acl"; then
   r_s11b4="$r_s11b4 windows-config-acl-grants-broad-or-inherited-principal"
 fi
-rm -f /tmp/rd_verify_r_s11b4_acl.$$
 if [ -n "$r_s11b4" ]; then echo "  FAIL R-S11b-4 config/PRS secrecy boundary:$r_s11b4"; rc=1; else
   echo "  ok  R-S11b-4 main IPC exports no PRS/key material, generic service-owned storage/salt sync is denied, macOS root credential snapshots are launchd-bound runtime overlays, Unix config writes are behavior-tested owner-only, and Windows config paths use an explicit protected current-user/SYSTEM DACL"; fi
 
@@ -2233,8 +2258,8 @@ grep -qF '(OPTION_PROXY_USERNAME, "")' libs/hbb_common/src/config.rs            
 grep -qF '(OPTION_PROXY_PASSWORD, "")' libs/hbb_common/src/config.rs                  || r_s11b3="$r_s11b3 proxy-password-not-pinned-empty"
 grep -qF 'overlay_pinned_settings(&mut res);' libs/hbb_common/src/config.rs           || r_s11b3="$r_s11b3 effective-options-read-not-pinned"
 grep -qF 'fn overlay_pinned_settings(options: &mut HashMap<String, String>)' libs/hbb_common/src/config.rs || r_s11b3="$r_s11b3 effective-options-overlay-helper-missing"
-if rg -n 'RemoveTrustedDevices|ClearTrustedDevices|main(Get|Remove|Clear)TrustedDevices|add_trusted_device|set_key_confirmed\(' src libs --glob '*.rs' >/tmp/r_s11b3_trust_writers.$$; then
-  r_s11b3="$r_s11b3 trusted-device-or-key-confirmation-writer-present:$(tr '\n' ';' </tmp/r_s11b3_trust_writers.$$)"
+if rg -n 'RemoveTrustedDevices|ClearTrustedDevices|main(Get|Remove|Clear)TrustedDevices|add_trusted_device|set_key_confirmed\(' src libs --glob '*.rs' >"$VERIFY_TMP/r_s11b3_trust_writers"; then
+  r_s11b3="$r_s11b3 trusted-device-or-key-confirmation-writer-present:$(tr '\n' ';' <"$VERIFY_TMP/r_s11b3_trust_writers")"
 fi
 grep -q 'OptionsSetResult(bool)' src/ipc.rs                                           || r_s11b3="$r_s11b3 options-typed-result-missing"
 grep -q 'Data::OptionsSetResult(false)' src/ipc.rs                                    || r_s11b3="$r_s11b3 options-reject-nack-missing"
@@ -2264,7 +2289,6 @@ if [ "$(echo "$set_options_fn" | grep -c 'Config::set_options(value)')" -ne 1 ];
 fi
 grep -q 'Ok(()) => \*OPTIONS.lock().unwrap() = m' src/ui_interface.rs                 || r_s11b3="$r_s11b3 ui-cache-accepted-branch-missing"
 grep -q 'Ok(()) => {' src/ui_interface.rs                                             || r_s11b3="$r_s11b3 ui-set-option-ack-branch-missing"
-rm -f /tmp/r_s11b3_trust_writers.$$
 if [ -n "$r_s11b3" ]; then echo "  FAIL R-S11b-3 service-owned policy IPC closure:$r_s11b3"; rc=1; else
   echo "  ok  R-S11b-3 service-owned --server rejects Data::Options(Some) before privacy/config side effects; IPC options writes require typed ACK before caller persistence; trust-anchor/proxy credential option keys are pinned empty; trusted-device/key-confirmation writers are absent; Windows share_rdp is a typed elevated _service action with no UI-side shell writer"; fi
 
@@ -2273,8 +2297,8 @@ if [ -n "$r_s11b3" ]; then echo "  FAIL R-S11b-3 service-owned policy IPC closur
 # exists, the raw local service messages are absent and the caller-side request paths fail closed.
 echo "== (3b-iii-e) Windows _service raw privileged commands absent (R-S11c-2/R-S11c-3) =="
 r_s11c23=
-if rg -n 'Data::SAS|Data::UserSid|connect_to_user_session|UserSid\(Option' src/ipc.rs src/platform/windows.rs src/server >/tmp/r_s11c23_hits.txt; then
-  r_s11c23="$r_s11c23 raw-service-message-symbol-present:$(tr '\n' ';' </tmp/r_s11c23_hits.txt)"
+if rg -n 'Data::SAS|Data::UserSid|connect_to_user_session|UserSid\(Option' src/ipc.rs src/platform/windows.rs src/server >"$VERIFY_TMP/r_s11c23_hits.txt"; then
+  r_s11c23="$r_s11c23 raw-service-message-symbol-present:$(tr '\n' ';' <"$VERIFY_TMP/r_s11c23_hits.txt")"
 fi
 ipc_data_enum=$(awk '/pub enum Data {/,/^}/' src/ipc.rs)
 if echo "$ipc_data_enum" | grep -Eq '^[[:space:]]*(SAS|UserSid)[[:space:]]*(,|\(|\{)'; then
@@ -2528,10 +2552,10 @@ grep -q 'R-S11c-15 — Windows helper launch environment authority' HARDENING_ST
 if awk '/^extern "C"[[:space:]]*$/,/end of extern "C"/' src/platform/windows.cc | grep -q 'std::vector<wchar_t> merge_environment_blocks'; then
   r_s11c8="$r_s11c8 windows-env-helper-has-c-linkage"
 fi
-if grep -RIn 'Whiteboard((String' src/ipc.rs src/whiteboard 2>/dev/null | grep -v 'grep' >/tmp/rd_verify_whiteboard_tuple.$$; then
+if grep -RIn 'Whiteboard((String' src/ipc.rs src/whiteboard 2>/dev/null | grep -v 'grep' >"$VERIFY_TMP/rd_verify_whiteboard_tuple"; then
   r_s11c8="$r_s11c8 legacy-whiteboard-tuple-message-present"
 fi
-if grep -RIn 'Data::Whiteboard((' src/whiteboard src/server 2>/dev/null >/tmp/rd_verify_whiteboard_tuple_send.$$; then
+if grep -RIn 'Data::Whiteboard((' src/whiteboard src/server 2>/dev/null >"$VERIFY_TMP/rd_verify_whiteboard_tuple_send"; then
   r_s11c8="$r_s11c8 legacy-whiteboard-tuple-send-present"
 fi
 if grep -q 'ipc::connect(1000, "_whiteboard")' src/whiteboard/client.rs; then
@@ -2543,14 +2567,13 @@ fi
 if grep -q 'send_event(("".to_string(), CustomEvent::Exit))' src/whiteboard/server.rs; then
   r_s11c8="$r_s11c8 unconditional-whiteboard-global-exit-present"
 fi
-if grep -RIn 'get_key_cursor(conn)' src/server src/whiteboard/client.rs 2>/dev/null >/tmp/rd_verify_whiteboard_keys.$$; then
+if grep -RIn 'get_key_cursor(conn)' src/server src/whiteboard/client.rs 2>/dev/null >"$VERIFY_TMP/rd_verify_whiteboard_keys"; then
   r_s11c8="$r_s11c8 caller-derived-whiteboard-key-present"
 fi
 whiteboard_register_context=$(grep -B4 -A2 'register_whiteboard(self.inner.id)' src/server/connection.rs || true)
 echo "$whiteboard_register_context" | grep -q 'if self.is_authed_remote_conn()' || r_s11c8="$r_s11c8 register-not-remote-auth-type-gated"
 if [ -n "$r_s11c8" ]; then echo "  FAIL R-S11c-8 whiteboard helper authority:$r_s11c8"; rc=1; else
   echo "  ok  R-S11c-8 whiteboard helper uses launch-scoped endpoint proof plus parent-pid admission and per-connection event tokens; fixed-path tuple events and arbitrary Exit are absent"; fi
-rm -f /tmp/rd_verify_whiteboard_tuple.$$ /tmp/rd_verify_whiteboard_tuple_send.$$ /tmp/rd_verify_whiteboard_keys.$$
 
 # (3b-iii-g) R-S11c-5: macOS source-conformance for the privileged LaunchDaemon packaging.
 # The daemon may not shell-launch root code, write logs through /tmp, execute from an app bundle,
@@ -2574,10 +2597,9 @@ grep -q '<string>/Library/Logs/RustDesk/rustdesk_service.err</string>' "$daemon_
 grep -q '<string>/Library/Logs/RustDesk/rustdesk_service.out</string>' "$daemon_plist" || r_s11c5="$r_s11c5 daemon-stdout-not-library-log"
 [ ! -e "$update_scpt" ] || r_s11c5="$r_s11c5 update-scpt-present"
 if grep -RInE 'update_daemon_agent|update_source_dir|\.rustdeskupdate|get_update_temp_dir|try_remove_temp_update_dir|update\.scpt' \
-  src/platform/macos.rs src/core_main.rs src/flutter_ffi.rs src/ui_interface.rs src/platform/privileges_scripts 2>/dev/null >/tmp/rd_verify_macos_update.$$; then
+  src/platform/macos.rs src/core_main.rs src/flutter_ffi.rs src/ui_interface.rs src/platform/privileges_scripts 2>/dev/null >"$VERIFY_TMP/rd_verify_macos_update"; then
   r_s11c5="$r_s11c5 macos-privileged-update-surface-present"
 fi
-rm -f /tmp/rd_verify_macos_update.$$
 for command in osascript launchctl open ls ioreg codesign; do
   if grep -F "Command::new(\"$command\")" "${macos_helper_command_sources[@]}" >/dev/null; then
     r_s11c5="$r_s11c5 macos-path-selected-$command"
@@ -2881,12 +2903,9 @@ linux_process_cleanup_blocks=$(
 if echo "$linux_process_cleanup_blocks" | grep -Eq 'run_cmds|ps -[ef]|grep |awk |sed |xargs|kill -9|CMD_SH'; then
   r_s11c10b="$r_s11c10b shell-shaped-process-cleanup-regressed"
 fi
-if grep -RInE 'Command::new\("pkill"\)|pkill -f' src/core_main.rs src/platform/linux.rs >/tmp/rd_verify_r_s11c10b_tray.$$; then
-  cat /tmp/rd_verify_r_s11c10b_tray.$$
-  rm -f /tmp/rd_verify_r_s11c10b_tray.$$
+if grep -RInE 'Command::new\("pkill"\)|pkill -f' src/core_main.rs src/platform/linux.rs >"$VERIFY_TMP/rd_verify_r_s11c10b_tray"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c10b_tray"
   r_s11c10b="$r_s11c10b pkill-tray-cleanup-regressed"
-else
-  rm -f /tmp/rd_verify_r_s11c10b_tray.$$
 fi
 if [ -n "$r_s11c10b" ]; then echo "  FAIL R-S11c-10b Linux service lifecycle process cleanup:$r_s11c10b"; rc=1; else
   echo "  ok  R-S11c-10b Linux service/tray cleanup verifies /proc exe identity, uses exact argv matches plus kill(2), and avoids ps/grep/awk/xargs/pkill shell pipelines"; fi
@@ -2931,12 +2950,9 @@ process_discovery_blocks=$(
 if echo "$process_discovery_blocks" | grep -Eq 'run_cmds|CMD_SH|sh -c|pgrep|grep '; then
   r_s11c10d="$r_s11c10d shell-shaped-process-discovery-regressed"
 fi
-if grep -RInE 'pgrep[[:space:]-].*(Xwayland|kded)|run_cmds\("pgrep' src/platform/linux.rs src/whiteboard/linux.rs libs/hbb_common/src/platform/linux.rs >/tmp/rd_verify_r_s11c10d.$$; then
-  cat /tmp/rd_verify_r_s11c10d.$$
-  rm -f /tmp/rd_verify_r_s11c10d.$$
+if grep -RInE 'pgrep[[:space:]-].*(Xwayland|kded)|run_cmds\("pgrep' src/platform/linux.rs src/whiteboard/linux.rs libs/hbb_common/src/platform/linux.rs >"$VERIFY_TMP/rd_verify_r_s11c10d"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c10d"
   r_s11c10d="$r_s11c10d pgrep-shell-probe-present"
-else
-  rm -f /tmp/rd_verify_r_s11c10d.$$
 fi
 if [ -n "$r_s11c10d" ]; then echo "  FAIL R-S11c-10d Linux process discovery:$r_s11c10d"; rc=1; else
   echo "  ok  R-S11c-10d Linux Xwayland/whiteboard/KDE process discovery reads /proc argv and avoids pgrep/sh -c"; fi
@@ -2953,12 +2969,9 @@ os_release_blocks=$(
 if echo "$os_release_blocks" | grep -Eq 'run_cmds|run_cmds_trim_newline|CMD_SH|sh -c|awk|grep |cat /etc/os-release'; then
   r_s11c10e="$r_s11c10e shell-shaped-os-release-parser-regressed"
 fi
-if grep -RInE 'cat /etc/os-release|awk .* /etc/os-release|run_cmds\(".*os-release|is_opensuse|fn elevate|fn exec_privileged' src/platform/linux.rs libs/hbb_common/src/platform/linux.rs >/tmp/rd_verify_r_s11c10e.$$; then
-  cat /tmp/rd_verify_r_s11c10e.$$
-  rm -f /tmp/rd_verify_r_s11c10e.$$
+if grep -RInE 'cat /etc/os-release|awk .* /etc/os-release|run_cmds\(".*os-release|is_opensuse|fn elevate|fn exec_privileged' src/platform/linux.rs libs/hbb_common/src/platform/linux.rs >"$VERIFY_TMP/rd_verify_r_s11c10e"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c10e"
   r_s11c10e="$r_s11c10e stale-os-release-shell-or-elevation-residue"
-else
-  rm -f /tmp/rd_verify_r_s11c10e.$$
 fi
 if [ -n "$r_s11c10e" ]; then echo "  FAIL R-S11c-10e Linux os-release parsing:$r_s11c10e"; rc=1; else
   echo "  ok  R-S11c-10e Linux distro metadata is parsed from os-release files as data, with no awk/cat/grep shell path"; fi
@@ -2977,12 +2990,9 @@ desktop_manager_blocks=$(
 if echo "$desktop_manager_blocks" | grep -Eq 'run_cmds|run_cmds_trim_newline|CMD_SH|sh -c|ls /usr/share/xsessions|Command::new\("(which|ls|grep|awk|sed|xargs)"'; then
   r_s11c10f="$r_s11c10f shell-shaped-desktop-manager-probe-regressed"
 fi
-if grep -RInE 'run_cmds\([^)]*(which|/usr/share/xsessions)|which[[:space:]]+Xorg|ls[[:space:]]+/usr/share/xsessions|DesktopManager::get_xorg|fn get_xorg\(' src/platform/linux_desktop_manager.rs >/tmp/rd_verify_r_s11c10f.$$; then
-  cat /tmp/rd_verify_r_s11c10f.$$
-  rm -f /tmp/rd_verify_r_s11c10f.$$
+if grep -RInE 'run_cmds\([^)]*(which|/usr/share/xsessions)|which[[:space:]]+Xorg|ls[[:space:]]+/usr/share/xsessions|DesktopManager::get_xorg|fn get_xorg\(' src/platform/linux_desktop_manager.rs >"$VERIFY_TMP/rd_verify_r_s11c10f"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c10f"
   r_s11c10f="$r_s11c10f stale-shell-desktop-manager-probe"
-else
-  rm -f /tmp/rd_verify_r_s11c10f.$$
 fi
 if [ -n "$r_s11c10f" ]; then echo "  FAIL R-S11c-10f Linux desktop-manager headless detection:$r_s11c10f"; rc=1; else
   echo "  ok  R-S11c-10f Linux desktop-manager headless detection uses fixed Xorg paths and direct xsession directory reads, with no shell command probe"; fi
@@ -3005,12 +3015,9 @@ selinux_status_blocks=$(
 if echo "$selinux_status_blocks" | grep -Eq 'run_cmds|run_cmds_trim_newline|CMD_SH|sh -c|Command::new\("(getenforce|sestatus)"'; then
   r_s11c10g="$r_s11c10g shell-shaped-selinux-status-regressed"
 fi
-if grep -RInE 'getenforce|sestatus|run_cmds\("getenforce"|run_cmds\("sestatus"' src/platform/linux.rs >/tmp/rd_verify_r_s11c10g.$$; then
-  cat /tmp/rd_verify_r_s11c10g.$$
-  rm -f /tmp/rd_verify_r_s11c10g.$$
+if grep -RInE 'getenforce|sestatus|run_cmds\("getenforce"|run_cmds\("sestatus"' src/platform/linux.rs >"$VERIFY_TMP/rd_verify_r_s11c10g"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c10g"
   r_s11c10g="$r_s11c10g stale-selinux-shell-probe"
-else
-  rm -f /tmp/rd_verify_r_s11c10g.$$
 fi
 if [ -n "$r_s11c10g" ]; then echo "  FAIL R-S11c-10g Linux SELinux status probing:$r_s11c10g"; rc=1; else
   echo "  ok  R-S11c-10g Linux SELinux status reads selinuxfs enforce files as data, with no getenforce/sestatus shell probe"; fi
@@ -3023,12 +3030,9 @@ config_patch_block=$(awk '/^fn patch\(/,/^}/' libs/hbb_common/src/config.rs)
 if echo "$config_patch_block" | grep -Eq 'run_cmds|run_cmds_trim_newline|whoami|getent passwd|awk |grep |sed |xargs|CMD_SH'; then
   r_s11c10h="$r_s11c10h shell-shaped-config-home-correction-regressed"
 fi
-if grep -RInE 'run_cmds_trim_newline\("whoami"\)|getent passwd.*awk|run_cmds_trim_newline\(&cmd\)' libs/hbb_common/src/config.rs >/tmp/rd_verify_r_s11c10h.$$; then
-  cat /tmp/rd_verify_r_s11c10h.$$
-  rm -f /tmp/rd_verify_r_s11c10h.$$
+if grep -RInE 'run_cmds_trim_newline\("whoami"\)|getent passwd.*awk|run_cmds_trim_newline\(&cmd\)' libs/hbb_common/src/config.rs >"$VERIFY_TMP/rd_verify_r_s11c10h"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c10h"
   r_s11c10h="$r_s11c10h stale-config-home-shell-probe"
-else
-  rm -f /tmp/rd_verify_r_s11c10h.$$
 fi
 if [ -n "$r_s11c10h" ]; then echo "  FAIL R-S11c-10h Linux config home correction:$r_s11c10h"; rc=1; else
   echo "  ok  R-S11c-10h Linux config home correction uses getpwuid-backed home lookup and avoids whoami/getent/awk shell probes"; fi
@@ -3078,12 +3082,9 @@ grep -q 'display_from_x11_socket_dir_for_user(user, Path::new("/tmp/.X11-unix"))
 grep -q 'current_exe_process_cmdlines()' src/platform/linux.rs || r_s11c10k="$r_s11c10k cm-detection-not-proc-backed"
 grep -Fq 'Linux helper canonical target provenance' requirements.html || r_s11c10k="$r_s11c10k canonical-helper-requirements-missing"
 grep -Fq 'R-S11e-3 — Linux helper canonical target provenance' HARDENING_STATUS.md || r_s11c10k="$r_s11c10k canonical-helper-ledger-missing"
-if grep -RInE 'Command::new\("(sudo|ps|w|ls|xrandr|xdg-screensaver)"\)|Command::new\(CMD_(PS|SH)\.as_str\(\)\)|Command::new\("which"\)' src/platform/linux.rs >/tmp/rd_verify_r_s11c10k.$$; then
-  cat /tmp/rd_verify_r_s11c10k.$$
-  rm -f /tmp/rd_verify_r_s11c10k.$$
+if grep -RInE 'Command::new\("(sudo|ps|w|ls|xrandr|xdg-screensaver)"\)|Command::new\(CMD_(PS|SH)\.as_str\(\)\)|Command::new\("which"\)' src/platform/linux.rs >"$VERIFY_TMP/rd_verify_r_s11c10k"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c10k"
   r_s11c10k="$r_s11c10k path-selected-linux-helper-command"
-else
-  rm -f /tmp/rd_verify_r_s11c10k.$$
 fi
 if [ -n "$r_s11c10k" ]; then echo "  FAIL R-S11c-10k Linux privileged helper command provenance:$r_s11c10k"; rc=1; else
   echo "  ok  R-S11c-10k Linux root/service helper commands use trusted fixed paths or native /proc/filesystem reads"; fi
@@ -3118,12 +3119,9 @@ shared_linux_helper_blocks=$(
 if echo "$shared_linux_helper_blocks" | grep -Eq 'find_cmd_path|CMD_PS|CMD_SH|Command::new\("which"\)|flatpak-spawn|pub fn run_cmds|pub fn run_cmds_trim_newline|fn shell_quote|pub fn shell_quote|sh -c|sleep \{secs\}|exec \{exe'; then
   r_s11c10m="$r_s11c10m shared-helper-shell-or-path-fallback-regressed"
 fi
-if grep -RInE 'find_cmd_path|CMD_PS|CMD_SH|Command::new\("which"\)|flatpak-spawn|pub fn run_cmds|pub fn run_cmds_trim_newline|fn shell_quote|pub fn shell_quote|sleep \{secs\}; exec' libs/hbb_common/src/platform/linux.rs src/platform/linux.rs >/tmp/rd_verify_r_s11c10m.$$; then
-  cat /tmp/rd_verify_r_s11c10m.$$
-  rm -f /tmp/rd_verify_r_s11c10m.$$
+if grep -RInE 'find_cmd_path|CMD_PS|CMD_SH|Command::new\("which"\)|flatpak-spawn|pub fn run_cmds|pub fn run_cmds_trim_newline|fn shell_quote|pub fn shell_quote|sleep \{secs\}; exec' libs/hbb_common/src/platform/linux.rs src/platform/linux.rs >"$VERIFY_TMP/rd_verify_r_s11c10m"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c10m"
   r_s11c10m="$r_s11c10m stale-shared-helper-shell-api"
-else
-  rm -f /tmp/rd_verify_r_s11c10m.$$
 fi
 if [ -n "$r_s11c10m" ]; then echo "  FAIL R-S11c-10m Linux shared helper command provenance:$r_s11c10m"; rc=1; else
   echo "  ok  R-S11c-10m Linux shared helpers use trusted fixed command paths and delayed reopen is argv-only"; fi
@@ -3144,12 +3142,9 @@ headless_cm_uid_blocks=$(
 if echo "$headless_cm_uid_blocks" | grep -Eq 'Command::new\("id"\)|id -u|uid_cmd|timeout\(10_000, uid_cmd\.output'; then
   r_s11c10n="$r_s11c10n headless-cm-id-command-regressed"
 fi
-if grep -RInE 'Command::new\("id"\)|id -u|uid_cmd' src/server/connection.rs >/tmp/rd_verify_r_s11c10n.$$; then
-  cat /tmp/rd_verify_r_s11c10n.$$
-  rm -f /tmp/rd_verify_r_s11c10n.$$
+if grep -RInE 'Command::new\("id"\)|id -u|uid_cmd' src/server/connection.rs >"$VERIFY_TMP/rd_verify_r_s11c10n"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c10n"
   r_s11c10n="$r_s11c10n stale-headless-cm-id-command"
-else
-  rm -f /tmp/rd_verify_r_s11c10n.$$
 fi
 if [ -n "$r_s11c10n" ]; then echo "  FAIL R-S11c-10n Linux headless CM uid lookup:$r_s11c10n"; rc=1; else
   echo "  ok  R-S11c-10n Linux headless CM uid lookup uses structured account data, not PATH-selected id"; fi
@@ -3172,12 +3167,9 @@ grep -q 'R-S11c-10o closes the Linux clipboard FUSE stale-unmount provenance pat
 grep -qF 'direct no-follow' libs/clipboard/README.md || r_s11c10o="$r_s11c10o clipboard-readme-not-updated"
 grep -qF 'umount2()' libs/clipboard/README.md || r_s11c10o="$r_s11c10o clipboard-readme-not-updated"
 grep -qF 'fixed-path `fusermount -u -q -z --` helper fallback' libs/clipboard/README.md || r_s11c10o="$r_s11c10o clipboard-readme-no-fixed-fallback"
-if grep -RInE 'Command::new\("umount"\)|std::process::Command::new\("umount"\)|process::Command::new\("umount"\)' libs/clipboard/src/platform/unix/fuse/mod.rs >/tmp/rd_verify_r_s11c10o.$$; then
-  cat /tmp/rd_verify_r_s11c10o.$$
-  rm -f /tmp/rd_verify_r_s11c10o.$$
+if grep -RInE 'Command::new\("umount"\)|std::process::Command::new\("umount"\)|process::Command::new\("umount"\)' libs/clipboard/src/platform/unix/fuse/mod.rs >"$VERIFY_TMP/rd_verify_r_s11c10o"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c10o"
   r_s11c10o="$r_s11c10o stale-path-selected-umount-command"
-else
-  rm -f /tmp/rd_verify_r_s11c10o.$$
 fi
 if [ -n "$r_s11c10o" ]; then echo "  FAIL R-S11c-10o Linux clipboard FUSE stale unmount provenance:$r_s11c10o"; rc=1; else
   echo "  ok  R-S11c-10o Linux clipboard FUSE stale unmount uses direct umount2(UMOUNT_NOFOLLOW), not PATH-selected umount"; fi
@@ -3228,12 +3220,9 @@ grep -q 'fixed-path fusermount fd-passing path' deny.toml || r_s11c10r="$r_s11c1
 if grep -qF 'fuser::spawn_mount2' libs/clipboard/src/platform/unix/fuse/mod.rs; then
   r_s11c10r="$r_s11c10r spawn-mount2-still-used"
 fi
-if grep -RInE 'Command::new\("fusermount3?"\)|std::process::Command::new\("fusermount3?"\)|process::Command::new\("fusermount3?"\)' libs/clipboard/src/platform/unix/fuse/mod.rs >/tmp/rd_verify_r_s11c10r.$$; then
-  cat /tmp/rd_verify_r_s11c10r.$$
-  rm -f /tmp/rd_verify_r_s11c10r.$$
+if grep -RInE 'Command::new\("fusermount3?"\)|std::process::Command::new\("fusermount3?"\)|process::Command::new\("fusermount3?"\)' libs/clipboard/src/platform/unix/fuse/mod.rs >"$VERIFY_TMP/rd_verify_r_s11c10r"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c10r"
   r_s11c10r="$r_s11c10r path-selected-fusermount-helper"
-else
-  rm -f /tmp/rd_verify_r_s11c10r.$$
 fi
 if grep -qF '.join().unwrap' libs/clipboard/src/platform/unix/fuse/mod.rs; then
   r_s11c10r="$r_s11c10r panic-join-path"
@@ -3333,12 +3322,9 @@ grep -q 'R-S11c-24 — Desktop Dart FFI Rust core library provenance' HARDENING_
 if grep -qF "DynamicLibrary.open('librustdesk.dll')" flutter/lib/models/native_model.dart; then
   r_s11c24="$r_s11c24 bare-windows-dart-core-open"
 fi
-if grep -nF "DynamicLibrary.open('librustdesk.so')" flutter/lib/models/native_model.dart | grep -vF "return DynamicLibrary.open('librustdesk.so');" >/tmp/rd_verify_r_s11c24.$$; then
-  cat /tmp/rd_verify_r_s11c24.$$
-  rm -f /tmp/rd_verify_r_s11c24.$$
+if grep -nF "DynamicLibrary.open('librustdesk.so')" flutter/lib/models/native_model.dart | grep -vF "return DynamicLibrary.open('librustdesk.so');" >"$VERIFY_TMP/rd_verify_r_s11c24"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c24"
   r_s11c24="$r_s11c24 bare-linux-dart-core-open"
-else
-  rm -f /tmp/rd_verify_r_s11c24.$$
 fi
 if [ -n "$r_s11c24" ]; then echo "  FAIL R-S11c-24 Desktop Dart FFI core-library provenance:$r_s11c24"; rc=1; else
   echo "  ok  R-S11c-24 Desktop Dart FFI opens the bundled Rust core by executable-relative path"; fi
@@ -3355,12 +3341,9 @@ self_relaunch_block=$(awk '/pub fn run_me_with_env/,/let result = cmd.args/' src
 if echo "$self_relaunch_block" | grep -Eq 'APPDIR|AppRun|AppImage|appimage_cmd|std::env::var\("APPDIR"\)'; then
   r_s11c10p="$r_s11c10p stale-appimage-relaunch-branch"
 fi
-if grep -RInE 'APPDIR|AppRun|appimage_cmd|std::env::var\("APPDIR"\)' src/common.rs >/tmp/rd_verify_r_s11c10p.$$; then
-  cat /tmp/rd_verify_r_s11c10p.$$
-  rm -f /tmp/rd_verify_r_s11c10p.$$
+if grep -RInE 'APPDIR|AppRun|appimage_cmd|std::env::var\("APPDIR"\)' src/common.rs >"$VERIFY_TMP/rd_verify_r_s11c10p"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c10p"
   r_s11c10p="$r_s11c10p stale-appimage-runtime-relaunch"
-else
-  rm -f /tmp/rd_verify_r_s11c10p.$$
 fi
 if [ -n "$r_s11c10p" ]; then echo "  FAIL R-S11c-10p Linux self-relaunch AppImage fallback:$r_s11c10p"; rc=1; else
   echo "  ok  R-S11c-10p Linux self-relaunch uses current_exe only, with no APPDIR/AppRun fallback"; fi
@@ -3391,31 +3374,27 @@ grep -qE '^KillMode=control-group$' res/rustdesk.service       || r_s11c10j="$r_
 if grep -qE '^ExecStop=|pkill|KillMode=mixed' res/rustdesk.service; then
   r_s11c10j="$r_s11c10j unit:legacy-execstop-or-mixed-killmode"
 fi
-if grep -RInE 'INITSYS|/proc/1/exe|ps -ef|grep -E|awk|sed -i|service rustdesk|systemctl|--machine=' res/DEBIAN | grep -vF '/bin/systemctl --system daemon-reload >/dev/null' >/tmp/rd_verify_r_s11c10j_pkg.$$; then
-  cat /tmp/rd_verify_r_s11c10j_pkg.$$
+if grep -RInE 'INITSYS|/proc/1/exe|ps -ef|grep -E|awk|sed -i|service rustdesk|systemctl|--machine=' res/DEBIAN | grep -vF '/bin/systemctl --system daemon-reload >/dev/null' >"$VERIFY_TMP/rd_verify_r_s11c10j_pkg"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c10j_pkg"
   r_s11c10j="$r_s11c10j maintscript:raw-service-discovery-or-systemctl"
 fi
-rm -f /tmp/rd_verify_r_s11c10j_pkg.$$
 python3 scripts/verify-debian-maintainer-scripts.py --scripts-dir res/DEBIAN || r_s11c10j="$r_s11c10j maintscript:lifecycle-semantics"
-if grep -RInE '\|\|[[:space:]]*true|deb-systemd-(invoke|helper).*\|\|' res/DEBIAN >/tmp/rd_verify_r_s11c10j_mask.$$; then
-  cat /tmp/rd_verify_r_s11c10j_mask.$$
+if grep -RInE '\|\|[[:space:]]*true|deb-systemd-(invoke|helper).*\|\|' res/DEBIAN >"$VERIFY_TMP/rd_verify_r_s11c10j_mask"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c10j_mask"
   r_s11c10j="$r_s11c10j maintscript:masked-lifecycle-failure"
 fi
-rm -f /tmp/rd_verify_r_s11c10j_mask.$$
 python3 scripts/verify-debian-package-authority.py --repo . --self-test || r_s11c10j="$r_s11c10j package:payload-authority"
 grep -qF 'R-S11c-10t closes the Linux Debian package payload ownership authority' HARDENING_STATUS.md || r_s11c10j="$r_s11c10j package:ledger-missing"
 grep -qF 'Linux Debian package payload ownership authority' requirements.html || r_s11c10j="$r_s11c10j package:requirements-missing"
-if grep -n 'os.system(' build.py | grep -v 'exit_code = os.system(cmd)' >/tmp/rd_verify_r_s11c10j_build_os_system.$$; then
-  cat /tmp/rd_verify_r_s11c10j_build_os_system.$$
+if grep -n 'os.system(' build.py | grep -v 'exit_code = os.system(cmd)' >"$VERIFY_TMP/rd_verify_r_s11c10j_build_os_system"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c10j_build_os_system"
   r_s11c10j="$r_s11c10j build.py:unchecked-os-system"
 fi
-rm -f /tmp/rd_verify_r_s11c10j_build_os_system.$$
 grep -q "system2('/bin/rm -rf tmpdeb')" build.py || r_s11c10j="$r_s11c10j build.py:no-clean-staging-root"
-if grep -nE 'tmpdeb/usr/bin/rustdesk[^\n]*\|\|[[:space:]]*true|dpkg-deb[^\n]*-b tmpdeb rustdesk\.deb;[[:space:]]*/bin/rm -rf tmpdeb' build.py >/tmp/rd_verify_r_s11c10j_build_mask.$$; then
-  cat /tmp/rd_verify_r_s11c10j_build_mask.$$
+if grep -nE 'tmpdeb/usr/bin/rustdesk[^\n]*\|\|[[:space:]]*true|dpkg-deb[^\n]*-b tmpdeb rustdesk\.deb;[[:space:]]*/bin/rm -rf tmpdeb' build.py >"$VERIFY_TMP/rd_verify_r_s11c10j_build_mask"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c10j_build_mask"
   r_s11c10j="$r_s11c10j build.py:masked-debian-build-failure"
 fi
-rm -f /tmp/rd_verify_r_s11c10j_build_mask.$$
 grep -q 'const SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(8)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-drain-timeout"
 grep -q 'fn terminate_child(mut child: Child, label: &str)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-terminate-helper"
 grep -q 'hbb_common::libc::SIGTERM' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-sigterm"
@@ -3721,11 +3700,10 @@ grep -qF 'download_file_relative_path: Option<PathBuf>' "$paste_task_rs" || r_s1
 grep -qF 'task_handle.update_next(0)?;' "$paste_task_rs" || r_s11e12="$r_s11e12 initial-filesystem-errors-masked"
 grep -qF 'macOS clipboard-file paste no-follow finalize' requirements.html || r_s11e12="$r_s11e12 requirements-disposition-missing"
 grep -qF 'R-S11e-12 — macOS clipboard-file paste no-follow finalize' HARDENING_STATUS.md || r_s11e12="$r_s11e12 hardening-ledger-missing"
-if grep -nE 'std::fs::File::create|std::fs::create_dir_all|std::fs::rename|std::fs::remove_file|File::options\(\)|xattr::(set|remove)|update_next\(0\)\.ok' "$paste_task_rs" >/tmp/rd_verify_r_s11e12.$$; then
-  cat /tmp/rd_verify_r_s11e12.$$
+if grep -nE 'std::fs::File::create|std::fs::create_dir_all|std::fs::rename|std::fs::remove_file|File::options\(\)|xattr::(set|remove)|update_next\(0\)\.ok' "$paste_task_rs" >"$VERIFY_TMP/rd_verify_r_s11e12"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11e12"
   r_s11e12="$r_s11e12 path-based-paste-filesystem-op"
 fi
-rm -f /tmp/rd_verify_r_s11e12.$$
 if [ -n "$r_s11e12" ]; then
   echo "  FAIL R-S11e-12 macOS clipboard-file paste no-follow finalize:$r_s11e12"
   rc=1
@@ -3763,15 +3741,14 @@ grep -qF 'type PasteCallback = Box<dyn Fn(&PasteObserverInfo) + Send + '\''stati
 grep -qF 'private per-context temporary directory' "$pasteboard_readme" || r_s11e13="$r_s11e13 readme-not-updated"
 grep -qF 'macOS clipboard-file paste placeholder temp authority' requirements.html || r_s11e13="$r_s11e13 requirements-disposition-missing"
 grep -qF 'R-S11e-13 — macOS clipboard-file paste placeholder temp authority' HARDENING_STATUS.md || r_s11e13="$r_s11e13 hardening-ledger-missing"
-if grep -nE 'format!\("/tmp/|read_dir\("/tmp"\)|std::fs::File::create\(&path\)|std::fs::remove_file\(path\)' "$pasteboard_context_rs" "$item_data_provider_rs" >/tmp/rd_verify_r_s11e13.$$; then
-  cat /tmp/rd_verify_r_s11e13.$$
+if grep -nE 'format!\("/tmp/|read_dir\("/tmp"\)|std::fs::File::create\(&path\)|std::fs::remove_file\(path\)' "$pasteboard_context_rs" "$item_data_provider_rs" >"$VERIFY_TMP/rd_verify_r_s11e13"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11e13"
   r_s11e13="$r_s11e13 global-or-path-placeholder-op"
 fi
-if grep -nF 'std::fs::remove_file(&task_info.source_path)' "$pasteboard_context_rs" >/tmp/rd_verify_r_s11e13_source.$$; then
-  cat /tmp/rd_verify_r_s11e13_source.$$
+if grep -nF 'std::fs::remove_file(&task_info.source_path)' "$pasteboard_context_rs" >"$VERIFY_TMP/rd_verify_r_s11e13_source"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11e13_source"
   r_s11e13="$r_s11e13 source-placeholder-path-cleanup"
 fi
-rm -f /tmp/rd_verify_r_s11e13.$$ /tmp/rd_verify_r_s11e13_source.$$
 if [ -n "$r_s11e13" ]; then
   echo "  FAIL R-S11e-13 macOS clipboard-file paste placeholder temp authority:$r_s11e13"
   rc=1
@@ -4969,9 +4946,8 @@ printf '%s\n' "$r_s15_peer_info_body" | grep -qE 'keyboard_mode|get_supported_ke
   r_s15_missing="$r_s15_missing peer-info-keyboard-mode-persistence"
 grep -q 'peer_info_does_not_choose_saved_keyboard_mode' src/client.rs || r_s15_missing="$r_s15_missing keyboard-mode-empty-regression-test"
 grep -q 'peer_info_does_not_rewrite_saved_keyboard_mode' src/client.rs || r_s15_missing="$r_s15_missing keyboard-mode-existing-regression-test"
-grep -RIn 'checkDesktopKeyboardMode' flutter/lib >/tmp/rd_verify_r_s15_keyboard_mode.$$ &&
+grep -RIn 'checkDesktopKeyboardMode' flutter/lib >"$VERIFY_TMP/rd_verify_r_s15_keyboard_mode" &&
   r_s15_missing="$r_s15_missing flutter-auto-keyboard-mode-persist-helper"
-rm -f /tmp/rd_verify_r_s15_keyboard_mode.$$
 r_s15_flutter_peer_info="$(sed -n '/handlePeerInfo(Map<String, dynamic> evt/,/notifyListeners()/p' flutter/lib/models/model.dart)"
 printf '%s\n' "$r_s15_flutter_peer_info" | grep -qE 'sessionSetKeyboardMode|checkDesktopKeyboardMode' &&
   r_s15_missing="$r_s15_missing flutter-peer-info-keyboard-mode-persistence"
@@ -5195,9 +5171,8 @@ grep -qF 'not clipboard FUSE' requirements.html || r_d3a_missing="$r_d3a_missing
 grep -qF 'Linux CLIPRDR/FUSE mounts through fixed absolute' requirements.html || r_d3a_missing="$r_d3a_missing requirements-fixed-fuse-helper-scope"
 grep -qF 'Dropping <code>CAP_SYS_ADMIN</code> or mount syscalls from the long-lived service is a separate terminal-model split' requirements.html || r_d3a_missing="$r_d3a_missing requirements-terminal-cap-split"
 grep -qF 'direct native <code>mount</code>/<code>umount</code>/<code>umount2</code> syscalls' requirements.html && r_d3a_missing="$r_d3a_missing stale-requirements-fuse-direct-syscalls"
-grep -RInE 'legacy FUSE mount (path|calls|syscalls)' res/rustdesk.service scripts/verify.sh requirements.html >/tmp/rd_verify_r_d3a_fuse_legacy.$$ &&
+grep -RInE 'legacy FUSE mount (path|calls|syscalls)' res/rustdesk.service scripts/verify.sh requirements.html >"$VERIFY_TMP/rd_verify_r_d3a_fuse_legacy" &&
   r_d3a_missing="$r_d3a_missing stale-legacy-fuse-mount-wording"
-rm -f /tmp/rd_verify_r_d3a_fuse_legacy.$$
 grep -qE '^SystemCallErrorNumber=' res/rustdesk.service && r_d3a_missing="$r_d3a_missing SystemCallErrorNumber-fallback"
 grep -qE '^SystemCallFilter=.*@mount' res/rustdesk.service && r_d3a_missing="$r_d3a_missing broad-mount-group"
 grep -qE '^SystemCallFilter=.*\b(chroot|pivot_root|open_tree|move_mount|fsconfig|fsopen|fsmount|fspick|mount_setattr)\b' res/rustdesk.service && r_d3a_missing="$r_d3a_missing broad-mount-syscall"
@@ -5875,13 +5850,11 @@ ra6_clean 'fn is_disable_ab|fn is_disable_account|fn is_disable_group_panel' 'R-
 # R-G4 / §8: insecure-TLS fallback is excised structurally, not just config-pinned. The old
 # call-site parameter names may remain for compatibility, but no connector/verifier may disable
 # certificate verification or install an assertion-only verifier.
-if grep -RInE 'danger_accept_invalid_certs[[:space:]]*\([[:space:]]*true[[:space:]]*\)|NoVerifier|client_config_danger|ServerCertVerified::assertion|HandshakeSignatureValid::assertion' src libs/hbb_common --include='*.rs' 2>/dev/null >/tmp/rd_verify_tls_danger.$$; then
+if grep -RInE 'danger_accept_invalid_certs[[:space:]]*\([[:space:]]*true[[:space:]]*\)|NoVerifier|client_config_danger|ServerCertVerified::assertion|HandshakeSignatureValid::assertion' src libs/hbb_common --include='*.rs' 2>/dev/null >"$VERIFY_TMP/rd_verify_tls_danger"; then
   echo "  FAIL R-G4/§8: invalid-certificate TLS acceptance path still present:"
-  cat /tmp/rd_verify_tls_danger.$$
-  rm -f /tmp/rd_verify_tls_danger.$$
+  cat "$VERIFY_TMP/rd_verify_tls_danger"
   rc=1
 else
-  rm -f /tmp/rd_verify_tls_danger.$$
   echo "  ok  R-G4/§8 insecure-TLS fallback structurally absent (no invalid-cert connector/verifier path)"
 fi
 # R-SV4(b) / R-D5 / §18: the common.rs NAT-type/IPv6 STUN probes are removed — test_nat_ipv4 /
@@ -5906,18 +5879,17 @@ r_udp_helpers=
 [ -f libs/hbb_common/src/udp.rs ] && r_udp_helpers="$r_udp_helpers udp.rs-present"
 grep -qE '^[[:space:]]*(pub[[:space:]]+)?mod[[:space:]]+udp[[:space:]]*;' libs/hbb_common/src/lib.rs && r_udp_helpers="$r_udp_helpers mod-udp-in-lib"
 if grep -RInE 'new_direct_udp_for|new_udp_for|rebind_udp_for|FramedSocket|Socks5UdpFramed|UdpFramed|UdpSocket::bind|into_udp_socket' src libs --include='*.rs' 2>/dev/null \
-  | grep -v '//' | grep -v 'libs/pake' | grep -v 'libs/cpace_it' | grep -v 'bridge_generated' >/tmp/rd_verify_udp_helpers.$$; then
+  | grep -v '//' | grep -v 'libs/pake' | grep -v 'libs/cpace_it' | grep -v 'bridge_generated' >"$VERIFY_TMP/rd_verify_udp_helpers"; then
   r_udp_helpers="$r_udp_helpers helper-symbols"
 fi
 if [ -n "$r_udp_helpers" ]; then
   echo "  FAIL R-SV4/R-D5/R-SV10: inert hbb_common UDP helper surface must be physically absent:$r_udp_helpers"; rc=1
-  if [ -s /tmp/rd_verify_udp_helpers.$$ ]; then
-    sed 's/^/      /' /tmp/rd_verify_udp_helpers.$$
+  if [ -s "$VERIFY_TMP/rd_verify_udp_helpers" ]; then
+    sed 's/^/      /' "$VERIFY_TMP/rd_verify_udp_helpers"
   fi
 else
   echo "  ok  R-SV4/R-D5/R-SV10 inert hbb_common UDP helper module/constructors absent"
 fi
-rm -f /tmp/rd_verify_udp_helpers.$$
 # R-SV4: the WebRTC transport (a second STUN/ICE source — DEFAULT_ICE_SERVERS) is fully EXCISED, not
 # merely compiled-out. "removed not disabled" (§8): the `mod webrtc` module file is deleted, the
 # optional `webrtc` dependency + the `webrtc` cargo feature are gone, no `mod webrtc` survives in
@@ -6267,12 +6239,9 @@ rr2a_bad=
 [ -e flatpak ]  && rr2a_bad="$rr2a_bad flatpak-dir"
 [ -e res/PKGBUILD ] && rr2a_bad="$rr2a_bad PKGBUILD"
 ls res/rpm*.spec >/dev/null 2>&1 && rr2a_bad="$rr2a_bad rpm-spec"
-if grep -RInE 'APPDIR|AppRun|appimage_cmd|std::env::var\("APPDIR"\)' src/common.rs >/tmp/rd_verify_rr2a_runtime.$$; then
-  cat /tmp/rd_verify_rr2a_runtime.$$
-  rm -f /tmp/rd_verify_rr2a_runtime.$$
+if grep -RInE 'APPDIR|AppRun|appimage_cmd|std::env::var\("APPDIR"\)' src/common.rs >"$VERIFY_TMP/rd_verify_rr2a_runtime"; then
+  cat "$VERIFY_TMP/rd_verify_rr2a_runtime"
   rr2a_bad="$rr2a_bad runtime-AppImage-relaunch"
-else
-  rm -f /tmp/rd_verify_rr2a_runtime.$$
 fi
 if grep -rqIE 'build-appimage:|build-flatpak:|appimage-builder|flatpak-builder|rpmbuild|makepkg|arch-makepkg|"appimage/\*\*"|"flatpak/\*\*"' .github/workflows/ 2>/dev/null; then
   rr2a_bad="$rr2a_bad CI-ref"
@@ -6846,10 +6815,9 @@ grep -q 'pubspec.lock changed during offline pub resolution' scripts/build-debia
 grep -q 'pubspec.lock changed during offline pub resolution' scripts/android-apk-build.sh || dart_lock_bad="$dart_lock_bad android:no-pub-lock-drift-assert"
 grep -q 'pubspec.lock changed during offline pub resolution' scripts/build-windows.ps1    || dart_lock_bad="$dart_lock_bad windows:no-pub-lock-drift-assert"
 grep -q 'pubspec.lock drifted during pub cache staging' scripts/online-fetch.sh           || dart_lock_bad="$dart_lock_bad online-fetch:no-pub-lock-drift-assert"
-if grep -RInE 'ref:[[:space:]]*HEAD' flutter/pubspec.yaml flutter/pubspec.lock >/tmp/rd_verify_pub_head.$$; then
+if grep -RInE 'ref:[[:space:]]*HEAD' flutter/pubspec.yaml flutter/pubspec.lock >"$VERIFY_TMP/rd_verify_pub_head"; then
   dart_lock_bad="$dart_lock_bad flutter-git-ref-head"
 fi
-rm -f /tmp/rd_verify_pub_head.$$
 grep -qF 'ref: bd6b5b41254e57c5bcece202ebfb234de63e6487' flutter/pubspec.yaml ||
   dart_lock_bad="$dart_lock_bad dash-chat-ref-not-commit"
 grep -qF 'ref: 85789bfe6e4cfaf4ecc00c52857467fdb7f26879' flutter/pubspec.yaml ||
@@ -6890,10 +6858,9 @@ if ! awk '
     check_pkg()
     exit bad
   }
-' flutter/pubspec.lock >/tmp/rd_verify_pub_git_refs.$$; then
-  dart_lock_bad="$dart_lock_bad flutter-git-ref-not-resolved-commit:$(tr '\n' ',' </tmp/rd_verify_pub_git_refs.$$)"
+' flutter/pubspec.lock >"$VERIFY_TMP/rd_verify_pub_git_refs"; then
+  dart_lock_bad="$dart_lock_bad flutter-git-ref-not-resolved-commit:$(tr '\n' ',' <"$VERIFY_TMP/rd_verify_pub_git_refs")"
 fi
-rm -f /tmp/rd_verify_pub_git_refs.$$
 if [ -n "$dart_lock_bad" ]; then echo "  FAIL R-R1/R-B12 Dart lockfile authority regressed:$dart_lock_bad"; rc=1; else
   echo "  ok  R-R1/R-B12 Dart lockfile authority: pub cache staging, verifier, and all offline build paths fail if pubspec.lock drifts; Flutter git deps use commit refs, not HEAD, and lockfile refs match resolved refs"; fi
 

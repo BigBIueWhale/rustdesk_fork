@@ -2094,6 +2094,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Retaining and hardening its temporary paths would nevertheless preserve an unowned, non-reproducible bootstrap
   mode contrary to R-B2. `scripts/verify.sh` gates absence of the helper name, public temporary paths, obsolete
   Flutter archive, mutable Flutter Rust Bridge clone, mutable vcpkg clone, and this requirements/ledger disposition.
+  R-S11c-10w — verifier private scratch workspace authority — closes the host-side `scripts/verify.sh` public-temp
+  redirection class. The supported day-to-day verifier, also invoked as the first `scripts/verify-release.sh` gate,
+  wrote grep/test output through 65 fixed `/tmp/rd_verify_*.$$`, `/tmp/r_s11b3_*.$$`, and
+  `/tmp/r_s11c23_hits.txt` names. The repository does not invoke either verifier through `sudo`, so this was not
+  promoted to a default build-host or shipped-runtime LPE; an operator running the verifier elevated on a shared host
+  would nevertheless let the shell follow attacker-created public-temp symlinks before the checked command ran.
+  `scripts/verify.sh` now creates one `/tmp/rustdesk-verify.XXXXXXXXXX` directory through checked `mktemp -d` under
+  a controlled `077` umask, makes the path readonly in the shell, verifies current-UID ownership and mode `0700`,
+  and places every generated checker output beneath it. One EXIT cleanup preserves the verifier's status, signal
+  traps exit with the conventional nonzero signal statuses, cleanup disarms all traps before checked recursive
+  removal, and cleanup failure changes the result to failure. The old PID-suffixed/fixed names and scattered
+  per-file cleanup branches are absent. The R-S11c-10w gate asserts the workspace, owner/mode check, signal/exit
+  cleanup, requirements/ledger disposition, absence of the old prefixes, and absence of direct public-`/tmp`
+  redirection. `scripts/apple-conform-check.sh` remains a separate open build-host scratch-authority slice.
   Remaining closure:
   no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
   root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
@@ -3205,7 +3219,7 @@ The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-eecebfa389d1cde04091b245b7e37f363c409eadc0abbd3bdb67d37f2d1d543b  requirements.html
+2f3de8f3cfb216b0bf8f54a71de59216166214c05d4ca5cb007f06e12cd32b9d  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

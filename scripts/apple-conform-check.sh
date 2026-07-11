@@ -22,6 +22,38 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO="$PWD"
 
+APPLE_CHECK_TMP=$(umask 077 && mktemp -d /tmp/rustdesk-apple-check.XXXXXXXXXX)
+readonly APPLE_CHECK_TMP
+cleanup_apple_check_tmp() {
+  local status=$?
+  trap - EXIT HUP INT TERM
+  if ! rm -rf -- "$APPLE_CHECK_TMP"; then
+    echo "apple-conform-check: failed to remove private workspace: $APPLE_CHECK_TMP" >&2
+    status=1
+  fi
+  exit "$status"
+}
+trap cleanup_apple_check_tmp EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+if ! python3 - "$APPLE_CHECK_TMP" <<'PY'
+import os
+import stat
+import sys
+
+metadata = os.lstat(sys.argv[1])
+if (
+    not stat.S_ISDIR(metadata.st_mode)
+    or metadata.st_uid != os.geteuid()
+    or stat.S_IMODE(metadata.st_mode) != 0o700
+):
+    raise SystemExit("apple-conform-check: private workspace is not a current-UID mode-0700 directory")
+PY
+then
+  exit 1
+fi
+
 BASE_IMG=rd-devcheck
 IMG=rd-apple-check
 SDK_DIR="${MACOS_SDK_DIR:-$REPO/online/macos-sdk}"
@@ -30,6 +62,38 @@ DEFAULT_APPLE_TARGETS=(aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-io
 die(){ echo "FATAL: $*" >&2; exit 1; }
 note(){ echo "  $*"; }
 rc=0
+
+echo "== (0) Apple checker host scratch uses one private workspace (R-S11c-10x) =="
+r_s11c10x=
+grep -qE '^APPLE_CHECK_TMP=\$\(umask 077 && mktemp -d /tmp/rustdesk-apple-check\.XXXXXXXXXX\)$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x no-private-workspace-create"
+grep -qE '^readonly APPLE_CHECK_TMP$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x workspace-not-readonly"
+grep -qE '^trap cleanup_apple_check_tmp EXIT$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x no-exit-cleanup"
+grep -qE "^trap 'exit 129' HUP$" "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x no-hup-failure"
+grep -qE "^trap 'exit 130' INT$" "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x no-int-failure"
+grep -qE "^trap 'exit 143' TERM$" "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x no-term-failure"
+grep -qE '^[[:space:]]+trap - EXIT HUP INT TERM$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x cleanup-traps-not-disarmed"
+grep -qE '^[[:space:]]+if ! rm -rf -- "\$APPLE_CHECK_TMP"; then$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x cleanup-not-fail-closed"
+grep -qE '^metadata = os\.lstat\(sys\.argv\[1\]\)$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x nofollow-metadata-proof-missing"
+grep -qE '^[[:space:]]+not stat\.S_ISDIR\(metadata\.st_mode\)$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x directory-type-not-enforced"
+grep -qE '^[[:space:]]+or metadata\.st_uid != os\.geteuid\(\)$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x owner-not-enforced"
+grep -qE '^[[:space:]]+or stat\.S_IMODE\(metadata\.st_mode\) != 0o700$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x mode-not-enforced"
+grep -qE '^[[:space:]]+log="\$APPLE_CHECK_TMP/apple-xcheck-\$target\.log"$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x target-log-not-private"
+if grep -nE '/tmp/(r_s11b3_apple|r[d]_apple|apple-xcheck-)' "$REPO/scripts/apple-conform-check.sh"; then
+  r_s11c10x="$r_s11c10x predictable-host-scratch-name-present"
+fi
+public_tmp_redirections=$(grep -nE "[0-9]*(>>?|<<?)[[:space:]]*['\"]?/t[m]p/" "$REPO/scripts/apple-conform-check.sh" || true)
+if [ -n "$public_tmp_redirections" ]; then
+  printf '%s\n' "$public_tmp_redirections"
+  r_s11c10x="$r_s11c10x host-public-temp-redirection-present"
+fi
+grep -qF 'R-S11c-10x — Apple checker private host scratch authority' "$REPO/HARDENING_STATUS.md" || r_s11c10x="$r_s11c10x hardening-ledger-missing"
+grep -qF 'Apple checker private host scratch authority' "$REPO/requirements.html" || r_s11c10x="$r_s11c10x requirements-disposition-missing"
+if [ -n "$r_s11c10x" ]; then
+  echo "  FAIL R-S11c-10x Apple checker private host scratch authority:$r_s11c10x"
+  rc=1
+else
+  note "ok  R-S11c-10x Apple checker host output is confined to one current-UID mode-0700 workspace"
+fi
 
 if [ -n "${APPLE_TARGETS:-}" ]; then
   targets_raw="${APPLE_TARGETS//,/ }"
@@ -517,8 +581,8 @@ grep -q 'Rejected options write over ordinary IPC for service-owned server' "$RE
 grep -qF '(OPTION_KEY, "")' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 trust-anchor-option-not-pinned-empty"
 grep -qF '(OPTION_PROXY_USERNAME, "")' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 proxy-username-not-pinned-empty"
 grep -qF '(OPTION_PROXY_PASSWORD, "")' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 proxy-password-not-pinned-empty"
-if rg -n 'RemoveTrustedDevices|ClearTrustedDevices|main(Get|Remove|Clear)TrustedDevices|add_trusted_device|set_key_confirmed\(' "$REPO/src" "$REPO/libs" --glob '*.rs' >/tmp/r_s11b3_apple_trust_writers.$$; then
-  r_s11b2="$r_s11b2 trusted-device-or-key-confirmation-writer-present:$(tr '\n' ';' </tmp/r_s11b3_apple_trust_writers.$$)"
+if rg -n 'RemoveTrustedDevices|ClearTrustedDevices|main(Get|Remove|Clear)TrustedDevices|add_trusted_device|set_key_confirmed\(' "$REPO/src" "$REPO/libs" --glob '*.rs' >"$APPLE_CHECK_TMP/r_s11b3_apple_trust_writers"; then
+  r_s11b2="$r_s11b2 trusted-device-or-key-confirmation-writer-present:$(tr '\n' ';' <"$APPLE_CHECK_TMP/r_s11b3_apple_trust_writers")"
 fi
 grep -q 'OptionsSetResult(bool)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-typed-result-missing"
 grep -q 'Data::OptionsSetResult(false)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-reject-nack-missing"
@@ -534,7 +598,6 @@ grep -q 'SyncConfig' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 whole-config-ipc-va
 grep -q 'SyncConfig' "$REPO/src/server.rs" && r_s11b2="$r_s11b2 server-whole-config-import-present"
 grep -q 'Rejected permanent password storage sync from service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 storage-sync-not-denied"
 grep -q 'Rejected permanent password salt sync from service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 standalone-salt-sync-not-denied"
-rm -f /tmp/r_s11b3_apple_trust_writers.$$
 if [ -n "$r_s11b2" ]; then
   echo "  FAIL R-S11b-2a/R-S11b-3a macOS service-owned IPC closure:$r_s11b2"
   rc=1
@@ -658,10 +721,10 @@ whiteboard_register_context=$(grep -B4 -A2 'register_whiteboard(self.inner.id)' 
 echo "$whiteboard_register_context" | grep -q 'if self.is_authed_remote_conn()' || r_s11c8="$r_s11c8 register-not-remote-auth-type-gated"
 grep -q 'run_as_user_with_env(' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 macos-whiteboard-launch-env-not-wired"
 grep -q 'pub fn run_as_user_with_env' "$REPO/src/platform/macos.rs" || r_s11c8="$r_s11c8 macos-env-launcher-missing"
-if grep -RIn 'Whiteboard((String' "$REPO/src/ipc.rs" "$REPO/src/whiteboard" 2>/dev/null >/tmp/rd_apple_whiteboard_tuple.$$; then
+if grep -RIn 'Whiteboard((String' "$REPO/src/ipc.rs" "$REPO/src/whiteboard" 2>/dev/null >"$APPLE_CHECK_TMP/rd_apple_whiteboard_tuple"; then
   r_s11c8="$r_s11c8 legacy-whiteboard-tuple-message-present"
 fi
-if grep -RIn 'Data::Whiteboard((' "$REPO/src/whiteboard" "$REPO/src/server" 2>/dev/null >/tmp/rd_apple_whiteboard_tuple_send.$$; then
+if grep -RIn 'Data::Whiteboard((' "$REPO/src/whiteboard" "$REPO/src/server" 2>/dev/null >"$APPLE_CHECK_TMP/rd_apple_whiteboard_tuple_send"; then
   r_s11c8="$r_s11c8 legacy-whiteboard-tuple-send-present"
 fi
 if grep -q 'ipc::connect(1000, "_whiteboard")' "$REPO/src/whiteboard/client.rs"; then
@@ -679,7 +742,6 @@ if [ -n "$r_s11c8" ]; then
 else
   note "ok  R-S11c-8 macOS whiteboard helper uses launch-scoped endpoint proof, parent-pid admission, and per-connection event tokens"
 fi
-rm -f /tmp/rd_apple_whiteboard_tuple.$$ /tmp/rd_apple_whiteboard_tuple_send.$$
 
 echo "== (2b-iv) R-S11c-5 macOS privileged-service packaging =="
 r_s11c5=
@@ -699,10 +761,9 @@ grep -q '<string>/Library/Logs/RustDesk/rustdesk_service.err</string>' "$daemon_
 grep -q '<string>/Library/Logs/RustDesk/rustdesk_service.out</string>' "$daemon_plist" || r_s11c5="$r_s11c5 daemon-stdout-not-library-log"
 [ ! -e "$update_scpt" ] || r_s11c5="$r_s11c5 update-scpt-present"
 if grep -RInE 'update_daemon_agent|update_source_dir|\.rustdeskupdate|get_update_temp_dir|try_remove_temp_update_dir|update\.scpt' \
-  "$REPO/src/platform/macos.rs" "$REPO/src/core_main.rs" "$REPO/src/flutter_ffi.rs" "$REPO/src/ui_interface.rs" "$REPO/src/platform/privileges_scripts" 2>/dev/null >/tmp/rd_apple_macos_update.$$; then
+  "$REPO/src/platform/macos.rs" "$REPO/src/core_main.rs" "$REPO/src/flutter_ffi.rs" "$REPO/src/ui_interface.rs" "$REPO/src/platform/privileges_scripts" 2>/dev/null >"$APPLE_CHECK_TMP/rd_apple_macos_update"; then
   r_s11c5="$r_s11c5 macos-privileged-update-surface-present"
 fi
-rm -f /tmp/rd_apple_macos_update.$$
 for command in osascript launchctl open ls ioreg codesign; do
   if grep -F "Command::new(\"$command\")" "${macos_helper_command_sources[@]}" >/dev/null; then
     r_s11c5="$r_s11c5 macos-path-selected-$command"
@@ -968,11 +1029,10 @@ grep -qF 'libc::fremovexattr' "$paste_task_rs" || r_s11e12="$r_s11e12 progress-x
 grep -qF 'task_handle.update_next(0)?;' "$paste_task_rs" || r_s11e12="$r_s11e12 initial-filesystem-errors-masked"
 grep -qF 'macOS clipboard-file paste no-follow finalize' "$REPO/requirements.html" || r_s11e12="$r_s11e12 requirements-disposition-missing"
 grep -qF 'R-S11e-12 — macOS clipboard-file paste no-follow finalize' "$REPO/HARDENING_STATUS.md" || r_s11e12="$r_s11e12 hardening-ledger-missing"
-if grep -nE 'std::fs::File::create|std::fs::create_dir_all|std::fs::rename|std::fs::remove_file|File::options\(\)|xattr::(set|remove)|update_next\(0\)\.ok' "$paste_task_rs" >/tmp/rd_apple_r_s11e12.$$; then
-  cat /tmp/rd_apple_r_s11e12.$$
+if grep -nE 'std::fs::File::create|std::fs::create_dir_all|std::fs::rename|std::fs::remove_file|File::options\(\)|xattr::(set|remove)|update_next\(0\)\.ok' "$paste_task_rs" >"$APPLE_CHECK_TMP/rd_apple_r_s11e12"; then
+  cat "$APPLE_CHECK_TMP/rd_apple_r_s11e12"
   r_s11e12="$r_s11e12 path-based-paste-filesystem-op"
 fi
-rm -f /tmp/rd_apple_r_s11e12.$$
 if [ -n "$r_s11e12" ]; then
   echo "  FAIL R-S11e-12 macOS clipboard-file paste no-follow finalize:$r_s11e12"
   rc=1
@@ -1010,15 +1070,14 @@ grep -qF 'type PasteCallback = Box<dyn Fn(&PasteObserverInfo) + Send + '\''stati
 grep -qF 'private per-context temporary directory' "$pasteboard_readme" || r_s11e13="$r_s11e13 readme-not-updated"
 grep -qF 'macOS clipboard-file paste placeholder temp authority' "$REPO/requirements.html" || r_s11e13="$r_s11e13 requirements-disposition-missing"
 grep -qF 'R-S11e-13 — macOS clipboard-file paste placeholder temp authority' "$REPO/HARDENING_STATUS.md" || r_s11e13="$r_s11e13 hardening-ledger-missing"
-if grep -nE 'format!\("/tmp/|read_dir\("/tmp"\)|std::fs::File::create\(&path\)|std::fs::remove_file\(path\)' "$pasteboard_context_rs" "$item_data_provider_rs" >/tmp/rd_apple_r_s11e13.$$; then
-  cat /tmp/rd_apple_r_s11e13.$$
+if grep -nE 'format!\("/tmp/|read_dir\("/tmp"\)|std::fs::File::create\(&path\)|std::fs::remove_file\(path\)' "$pasteboard_context_rs" "$item_data_provider_rs" >"$APPLE_CHECK_TMP/rd_apple_r_s11e13"; then
+  cat "$APPLE_CHECK_TMP/rd_apple_r_s11e13"
   r_s11e13="$r_s11e13 global-or-path-placeholder-op"
 fi
-if grep -nF 'std::fs::remove_file(&task_info.source_path)' "$pasteboard_context_rs" >/tmp/rd_apple_r_s11e13_source.$$; then
-  cat /tmp/rd_apple_r_s11e13_source.$$
+if grep -nF 'std::fs::remove_file(&task_info.source_path)' "$pasteboard_context_rs" >"$APPLE_CHECK_TMP/rd_apple_r_s11e13_source"; then
+  cat "$APPLE_CHECK_TMP/rd_apple_r_s11e13_source"
   r_s11e13="$r_s11e13 source-placeholder-path-cleanup"
 fi
-rm -f /tmp/rd_apple_r_s11e13.$$ /tmp/rd_apple_r_s11e13_source.$$
 if [ -n "$r_s11e13" ]; then
   echo "  FAIL R-S11e-13 macOS clipboard-file paste placeholder temp authority:$r_s11e13"
   rc=1
@@ -1382,9 +1441,9 @@ docker run --rm -i -v "$REPO:/work:ro" -w /work "$IMG" bash -s -- "${APPLE_RS[@]
 set -euo pipefail
 rc=0
 for f in "$@"; do
-  if ! rustfmt --emit stdout --edition 2021 "$f" >/dev/null 2>/tmp/rfe; then
+  if ! rfe=$(rustfmt --emit stdout --edition 2021 "$f" 2>&1 >/dev/null); then
     echo "  PARSE-FAIL $f"
-    sed 's/^/      /' /tmp/rfe
+    printf '%s\n' "$rfe" | sed 's/^/      /'
     rc=1
   fi
 done
@@ -1411,7 +1470,7 @@ for target in "${SELECTED_APPLE_TARGETS[@]}"; do
   triplet=$(target_triplet "$target")
   lower_env=$(target_env_lower "$target")
   upper_env=$(target_env_upper "$target")
-  log="/tmp/apple-xcheck-$target.log"
+  log="$APPLE_CHECK_TMP/apple-xcheck-$target.log"
   echo "  -- $target features=$features"
 
   if [ -d "$SDK_DIR" ]; then

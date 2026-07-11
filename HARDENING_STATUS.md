@@ -2107,7 +2107,22 @@ unreachable and a source/test/AST gate prevents reintroduction.
   removal, and cleanup failure changes the result to failure. The old PID-suffixed/fixed names and scattered
   per-file cleanup branches are absent. The R-S11c-10w gate asserts the workspace, owner/mode check, signal/exit
   cleanup, requirements/ledger disposition, absence of the old prefixes, and absence of direct public-`/tmp`
-  redirection. `scripts/apple-conform-check.sh` remains a separate open build-host scratch-authority slice.
+  redirection.
+  R-S11c-10x — Apple checker private host scratch authority — closes the host-side
+  `scripts/apple-conform-check.sh` public-temp class. The supported Apple source-conformance checker, also invoked by
+  `scripts/verify-release.sh`, redirected seven fixed/PID-suffixed diagnostic basenames and the per-target
+  `apple-xcheck` log through public `/tmp`. No tracked caller elevates the checker or release verifier, so this was
+  not promoted to a default build-host or shipped-runtime LPE; an elevated shared-host invocation would nevertheless
+  follow attacker-created symlinks before the checked command ran. The checker now creates one
+  `/tmp/rustdesk-apple-check.XXXXXXXXXX` directory with checked `mktemp -d` under umask `077`, makes the path variable
+  readonly, proves with `lstat` that it is a current-UID mode-`0700` directory, and places every host-created
+  diagnostic and target log beneath it. One EXIT cleanup preserves status, cleanup failure is failure, and HUP/INT/
+  TERM retain nonzero signal statuses. The old host paths and scattered cleanup branches are absent. Fixed
+  `/tmp/apple-vcpkg` and SDK-root `/tmp` values remain only inside fresh trusted-image `docker run --rm` containers
+  and are not host filesystem authority; the unnecessary container-local `/tmp/rfe` diagnostic is replaced by
+  in-memory stderr capture. The R-S11c-10x gate uses anchored source-shape
+  assertions that cannot satisfy themselves, rejects old host prefixes and every direct public-temp redirection,
+  and requires this requirements/ledger disposition.
   Remaining closure:
   no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
   root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
@@ -3219,7 +3234,7 @@ The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-2f3de8f3cfb216b0bf8f54a71de59216166214c05d4ca5cb007f06e12cd32b9d  requirements.html
+c925672a3497cc4c6455572ac8b6021b658a9fb3c22b2dcdc4c29fac351f9f0d  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

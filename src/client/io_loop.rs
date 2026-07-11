@@ -211,9 +211,7 @@ struct ParsedPeerInfo {
 
 impl ParsedPeerInfo {
     fn is_support_virtual_display(&self) -> bool {
-        self.is_installed
-            && self.platform == "Windows"
-            && (self.idd_impl == "rustdesk_idd" || self.idd_impl == "amyuni_idd")
+        self.is_installed && self.platform == "Windows" && self.idd_impl == "amyuni_idd"
     }
 
     fn allowed_video_displays(&self) -> usize {
@@ -378,23 +376,6 @@ fn sanitize_peer_platform_additions(raw: &str) -> String {
             "amyuni_virtual_displays".to_owned(),
             serde_json::json!(value),
         );
-    }
-    if let Some(values) = input
-        .get("rustdesk_virtual_displays")
-        .and_then(|v| v.as_array())
-    {
-        let values: Vec<u64> = values
-            .iter()
-            .filter_map(|v| v.as_u64())
-            .filter(|value| *value < MAX_PEER_PLATFORM_ADDITION_LIST_ITEMS as u64)
-            .take(MAX_PEER_PLATFORM_ADDITION_LIST_ITEMS)
-            .collect();
-        if !values.is_empty() {
-            output.insert(
-                "rustdesk_virtual_displays".to_owned(),
-                serde_json::json!(values),
-            );
-        }
     }
     if let Some(values) = input
         .get("supported_privacy_mode_impl")
@@ -2951,7 +2932,6 @@ mod tests {
             "unknown": "drop",
             "idd_impl": format!("idd\u{0000}{}", "x".repeat(270)),
             "amyuni_virtual_displays": 9_999,
-            "rustdesk_virtual_displays": (0..(MAX_PEER_PLATFORM_ADDITION_LIST_ITEMS + 4)).collect::<Vec<_>>(),
             "supported_privacy_mode_impl": (0..(MAX_PEER_PRIVACY_MODE_IMPLS + 4))
                 .map(|_| vec![format!("impl\u{0000}{}", "x".repeat(270)), "tip".repeat(90)])
                 .collect::<Vec<_>>(),
@@ -2995,13 +2975,6 @@ mod tests {
         assert_eq!(
             additions["amyuni_virtual_displays"],
             serde_json::json!(MAX_PEER_PLATFORM_ADDITION_LIST_ITEMS as u64)
-        );
-        assert_eq!(
-            additions["rustdesk_virtual_displays"]
-                .as_array()
-                .unwrap()
-                .len(),
-            MAX_PEER_PLATFORM_ADDITION_LIST_ITEMS
         );
         let privacy_impls = additions["supported_privacy_mode_impl"].as_array().unwrap();
         assert_eq!(privacy_impls.len(), MAX_PEER_PRIVACY_MODE_IMPLS);

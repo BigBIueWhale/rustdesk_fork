@@ -196,7 +196,7 @@ if grep -RInE 'set_id\(|fn gen_id\(|fn get_auto_id\(|update_id\(|is_disable_chan
   r_s11="$r_s11 numeric-id-writer-or-generator-present"
 fi
 mac_address_hits=$({
-  grep -InE 'mac_address' Cargo.toml Cargo.lock libs/hbb_common/Cargo.toml libs/virtual_display/Cargo.lock 2>/dev/null || true
+  grep -InE 'mac_address' Cargo.toml Cargo.lock libs/hbb_common/Cargo.toml 2>/dev/null || true
   grep -RInE 'mac_address' libs/hbb_common/src src --include='*.rs' 2>/dev/null || true
 })
 if [ -n "$mac_address_hits" ]; then
@@ -1428,11 +1428,30 @@ if printf '%s\n' "$install_idd_block" | grep -Fq 'rustdesk_idd::install_update_d
   || printf '%s\n' "$install_idd_block" | grep -Fq 'allow_err!'; then
   r_s11d24="$r_s11d24 install-idd-still-runs-or-masks-driver-install"
 fi
-grep -Fq 'const IDD_IMPL: &str = IDD_IMPL_AMYUNI;' src/virtual_display_manager.rs || r_s11d24="$r_s11d24 active-idd-impl-not-amyuni"
+grep -Fq 'const IDD_IMPL_AMYUNI: &str = "amyuni_idd";' src/virtual_display_manager.rs || r_s11d24="$r_s11d24 amyuni-idd-impl-not-pinned"
 grep -Fq 'Windows stale RustDesk IDD install helper completion' requirements.html || r_s11d24="$r_s11d24 requirements-disposition-missing"
 grep -Fq 'R-S11d-24 — Windows stale RustDesk IDD install helper completion' HARDENING_STATUS.md || r_s11d24="$r_s11d24 hardening-ledger-missing"
 if [ -n "$r_s11d24" ]; then echo "  FAIL R-S11d-24 Windows stale RustDesk IDD install helper completion:$r_s11d24"; rc=1; else
   echo "  ok  R-S11d-24 stale --install-idd rejects instead of invoking the inactive RustDesk IDD installer"; fi
+
+echo "== (3b-iii-a5d4e2) Windows inactive RustDesk IDD loader is excised (R-S11d-38) =="
+r_s11d38=
+grep -Fq 'pub struct MonitorMode' src/virtual_display_manager.rs || r_s11d38="$r_s11d38 monitor-mode-not-owned-by-manager"
+grep -Fq 'use crate::virtual_display_manager::MonitorMode;' src/privacy_mode/win_virtual_display.rs || r_s11d38="$r_s11d38 privacy-mode-still-imports-deleted-crate"
+grep -Fq 'map.insert("idd_impl".into(), serde_json::json!(IDD_IMPL_AMYUNI));' src/virtual_display_manager.rs || r_s11d38="$r_s11d38 platform-addition-not-amyuni-only"
+grep -Fq 'self.idd_impl == "amyuni_idd"' src/client/io_loop.rs || r_s11d38="$r_s11d38 client-virtual-display-not-amyuni-only"
+if [ -d libs/virtual_display ]; then
+  r_s11d38="$r_s11d38 deleted-virtual-display-crate-directory-present"
+fi
+if rg -n 'rustdesk_idd|rustdesk_virtual_displays|dylib_virtual_display|libs/virtual_display|(^|[^[:alnum:]_])virtual_display::|virtual_display =|kPlatformAdditionsRustDeskVirtualDisplays|isRustDeskIdd|RustDeskVirtualDisplays' \
+  Cargo.toml Cargo.lock build.py src flutter/lib scripts/build-windows.ps1 scripts/canonicalize-pe.py >/tmp/rd_verify_r_s11d38_leftovers.$$; then
+  r_s11d38="$r_s11d38 rustdesk-idd-loader-or-ui-leftover"
+fi
+rm -f /tmp/rd_verify_r_s11d38_leftovers.$$
+grep -Fq 'Windows inactive RustDesk IDD loader excision' requirements.html || r_s11d38="$r_s11d38 requirements-disposition-missing"
+grep -Fq 'R-S11d-38 — Windows inactive RustDesk IDD loader excision' HARDENING_STATUS.md || r_s11d38="$r_s11d38 hardening-ledger-missing"
+if [ -n "$r_s11d38" ]; then echo "  FAIL R-S11d-38 Windows inactive RustDesk IDD loader excision:$r_s11d38"; rc=1; else
+  echo "  ok  R-S11d-38 inactive RustDesk IDD crates, loader, build artifact, and UI support are absent"; fi
 
 echo "== (3b-iii-a5d4f) Windows Amyuni SetupAPI install rejects reboot-required completion (R-S11d-25) =="
 r_s11d25=

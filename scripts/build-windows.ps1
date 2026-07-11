@@ -75,10 +75,9 @@ function Build {
     # (build A enumerated it as E:, build B as F: -- Windows orders the attached SCSI/SATA media in a
     # varying sequence). cargo bakes the vendored-crate SOURCE PATHS into the PEs it compiles (panic
     # strings, #[track_caller] locations, debug info) -- and the .cargo/config.toml rustflags note above
-    # confirms librustdesk.dll + dylib_virtual_display.dll are exactly those cargo PEs. So a drive-letter
-    # shift changes ~968 path bytes in those two DLLs, which the portable packer brotli-amplifies to ~96%
-    # of rustdesk-setup.exe AND WiX CAB-packs into the .msi -> both differ build-to-build (PROVEN by
-    # databin_diff: only those two DLLs differed, every delta being "E:\cargo-vendor" vs "F:\cargo-vendor").
+    # confirms librustdesk.dll is exactly that cargo PE. So a drive-letter shift changes path bytes in
+    # that DLL, which the portable packer brotli-amplifies into rustdesk-setup.exe AND WiX CAB-packs
+    # into the .msi -> both differ build-to-build.
     # Copy the vendor to a FIXED path on C: (always the system drive) and point cargo there, so the
     # embedded source paths are byte-identical every build regardless of the CD's drive letter.
     $vendorDir = 'C:/cargo-vendor'

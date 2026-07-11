@@ -1,31 +1,28 @@
-use hbb_common::{bail, platform::windows::is_windows_version_or_greater, ResultType};
+use hbb_common::{platform::windows, ResultType};
 
-// This string is defined here.
-//  https://github.com/rustdesk-org/RustDeskIddDriver/blob/b370aad3f50028b039aad211df60c8051c4a64d6/RustDeskIddDriver/RustDeskIddDriver.inf#LL73C1-L73C40
-pub const RUSTDESK_IDD_DEVICE_STRING: &'static str = "RustDeskIddDriver Device\0";
 pub const AMYUNI_IDD_DEVICE_STRING: &'static str = "USB Mobile Monitor Virtual Display\0";
 
-const IDD_IMPL: &str = IDD_IMPL_AMYUNI;
-const IDD_IMPL_RUSTDESK: &str = "rustdesk_idd";
 const IDD_IMPL_AMYUNI: &str = "amyuni_idd";
-const IDD_PLUG_OUT_ALL_INDEX: i32 = -1;
+
+#[derive(Debug, Copy, Clone)]
+pub struct MonitorMode {
+    pub width: u32,
+    pub height: u32,
+    pub sync: u32,
+}
 
 pub fn is_amyuni_idd() -> bool {
-    IDD_IMPL == IDD_IMPL_AMYUNI
+    true
 }
 
 pub fn get_cur_device_string() -> &'static str {
-    match IDD_IMPL {
-        IDD_IMPL_RUSTDESK => RUSTDESK_IDD_DEVICE_STRING,
-        IDD_IMPL_AMYUNI => AMYUNI_IDD_DEVICE_STRING,
-        _ => "",
-    }
+    AMYUNI_IDD_DEVICE_STRING
 }
 
 pub fn is_virtual_display_supported() -> bool {
     #[cfg(target_os = "windows")]
     {
-        is_windows_version_or_greater(10, 0, 19041, 0, 0)
+        windows::is_windows_version_or_greater(10, 0, 19041, 0, 0)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -34,11 +31,7 @@ pub fn is_virtual_display_supported() -> bool {
 }
 
 pub fn plug_in_headless() -> ResultType<()> {
-    match IDD_IMPL {
-        IDD_IMPL_RUSTDESK => rustdesk_idd::plug_in_headless(),
-        IDD_IMPL_AMYUNI => amyuni_idd::plug_in_headless(),
-        _ => bail!("Unsupported virtual display implementation."),
-    }
+    amyuni_idd::plug_in_headless()
 }
 
 pub fn get_platform_additions() -> serde_json::Map<String, serde_json::Value> {
@@ -46,61 +39,26 @@ pub fn get_platform_additions() -> serde_json::Map<String, serde_json::Value> {
     if !crate::platform::windows::is_self_service_running() {
         return map;
     }
-    map.insert("idd_impl".into(), serde_json::json!(IDD_IMPL));
-    match IDD_IMPL {
-        IDD_IMPL_RUSTDESK => {
-            let virtual_displays = rustdesk_idd::get_virtual_displays();
-            if !virtual_displays.is_empty() {
-                map.insert(
-                    "rustdesk_virtual_displays".into(),
-                    serde_json::json!(virtual_displays),
-                );
-            }
-        }
-        IDD_IMPL_AMYUNI => {
-            let c = amyuni_idd::get_monitor_count();
-            if c > 0 {
-                map.insert("amyuni_virtual_displays".into(), serde_json::json!(c));
-            }
-        }
-        _ => {}
+    map.insert("idd_impl".into(), serde_json::json!(IDD_IMPL_AMYUNI));
+    let c = amyuni_idd::get_monitor_count();
+    if c > 0 {
+        map.insert("amyuni_virtual_displays".into(), serde_json::json!(c));
     }
     map
 }
 
 #[inline]
-pub fn plug_in_monitor(idx: u32, modes: Vec<virtual_display::MonitorMode>) -> ResultType<()> {
-    match IDD_IMPL {
-        IDD_IMPL_RUSTDESK => rustdesk_idd::plug_in_index_modes(idx, modes),
-        IDD_IMPL_AMYUNI => amyuni_idd::plug_in_monitor(),
-        _ => bail!("Unsupported virtual display implementation."),
-    }
+pub fn plug_in_monitor(_idx: u32, _modes: Vec<MonitorMode>) -> ResultType<()> {
+    amyuni_idd::plug_in_monitor()
 }
 
 pub fn plug_out_monitor(index: i32, force_all: bool, force_one: bool) -> ResultType<()> {
-    match IDD_IMPL {
-        IDD_IMPL_RUSTDESK => {
-            let indices = if index == IDD_PLUG_OUT_ALL_INDEX {
-                rustdesk_idd::get_virtual_displays()
-            } else {
-                vec![index as _]
-            };
-            rustdesk_idd::plug_out_peer_request(&indices)
-        }
-        IDD_IMPL_AMYUNI => amyuni_idd::plug_out_monitor(index, force_all, force_one),
-        _ => bail!("Unsupported virtual display implementation."),
-    }
+    amyuni_idd::plug_out_monitor(index, force_all, force_one)
 }
 
-pub fn plug_in_peer_request(modes: Vec<Vec<virtual_display::MonitorMode>>) -> ResultType<Vec<u32>> {
-    match IDD_IMPL {
-        IDD_IMPL_RUSTDESK => rustdesk_idd::plug_in_peer_request(modes),
-        IDD_IMPL_AMYUNI => {
-            amyuni_idd::plug_in_monitor()?;
-            Ok(vec![0])
-        }
-        _ => bail!("Unsupported virtual display implementation."),
-    }
+pub fn plug_in_peer_request(_modes: Vec<Vec<MonitorMode>>) -> ResultType<Vec<u32>> {
+    amyuni_idd::plug_in_monitor()?;
+    Ok(vec![0])
 }
 
 pub fn plug_out_monitor_indices(
@@ -108,277 +66,14 @@ pub fn plug_out_monitor_indices(
     force_all: bool,
     force_one: bool,
 ) -> ResultType<()> {
-    match IDD_IMPL {
-        IDD_IMPL_RUSTDESK => rustdesk_idd::plug_out_peer_request(indices),
-        IDD_IMPL_AMYUNI => {
-            for _idx in indices.iter() {
-                amyuni_idd::plug_out_monitor(0, force_all, force_one)?;
-            }
-            Ok(())
-        }
-        _ => bail!("Unsupported virtual display implementation."),
+    for _idx in indices.iter() {
+        amyuni_idd::plug_out_monitor(0, force_all, force_one)?;
     }
+    Ok(())
 }
 
 pub fn reset_all() -> ResultType<()> {
-    match IDD_IMPL {
-        IDD_IMPL_RUSTDESK => rustdesk_idd::reset_all(),
-        IDD_IMPL_AMYUNI => amyuni_idd::reset_all(),
-        _ => bail!("Unsupported virtual display implementation."),
-    }
-}
-
-pub mod rustdesk_idd {
-    use super::windows;
-    use hbb_common::{allow_err, bail, lazy_static, log, ResultType};
-    use std::{
-        collections::{HashMap, HashSet},
-        sync::{Arc, Mutex},
-    };
-
-    // virtual display index range: 0 - 2 are reserved for headless and other special uses.
-    const VIRTUAL_DISPLAY_INDEX_FOR_HEADLESS: u32 = 0;
-    const VIRTUAL_DISPLAY_START_FOR_PEER: u32 = 1;
-    const VIRTUAL_DISPLAY_MAX_COUNT: u32 = 5;
-
-    lazy_static::lazy_static! {
-        static ref VIRTUAL_DISPLAY_MANAGER: Arc<Mutex<VirtualDisplayManager>> =
-            Arc::new(Mutex::new(VirtualDisplayManager::default()));
-    }
-
-    #[derive(Default)]
-    struct VirtualDisplayManager {
-        headless_index_name: Option<(u32, String)>,
-        peer_index_name: HashMap<u32, String>,
-        is_driver_installed: bool,
-    }
-
-    impl VirtualDisplayManager {
-        fn prepare_driver(&mut self) -> ResultType<()> {
-            if !self.is_driver_installed {
-                self.install_update_driver()?;
-            }
-            Ok(())
-        }
-
-        fn install_update_driver(&mut self) -> ResultType<()> {
-            if let Err(e) = virtual_display::create_device() {
-                if !e.to_string().contains("Device is already created") {
-                    bail!("Create device failed {}", e);
-                }
-            }
-            // Reboot is not required for this case.
-            let mut _reboot_required = false;
-            virtual_display::install_update_driver(&mut _reboot_required)?;
-            self.is_driver_installed = true;
-            Ok(())
-        }
-
-        fn plug_in_monitor(index: u32, modes: &[virtual_display::MonitorMode]) -> ResultType<()> {
-            if let Err(e) = virtual_display::plug_in_monitor(index) {
-                bail!("Plug in monitor failed {}", e);
-            }
-            if let Err(e) = virtual_display::update_monitor_modes(index, &modes) {
-                log::error!("Update monitor modes failed {}", e);
-            }
-            Ok(())
-        }
-    }
-
-    pub fn install_update_driver() -> ResultType<()> {
-        VIRTUAL_DISPLAY_MANAGER
-            .lock()
-            .unwrap()
-            .install_update_driver()
-    }
-
-    #[inline]
-    fn get_device_names() -> Vec<String> {
-        windows::get_device_names(Some(super::RUSTDESK_IDD_DEVICE_STRING))
-    }
-
-    pub fn plug_in_headless() -> ResultType<()> {
-        let mut manager = VIRTUAL_DISPLAY_MANAGER.lock().unwrap();
-        manager.prepare_driver()?;
-        let modes = [virtual_display::MonitorMode {
-            width: 1920,
-            height: 1080,
-            sync: 60,
-        }];
-        let device_names = get_device_names().into_iter().collect();
-        VirtualDisplayManager::plug_in_monitor(VIRTUAL_DISPLAY_INDEX_FOR_HEADLESS, &modes)?;
-        let device_name = get_new_device_name(&device_names);
-        manager.headless_index_name = Some((VIRTUAL_DISPLAY_INDEX_FOR_HEADLESS, device_name));
-        Ok(())
-    }
-
-    pub fn plug_out_headless() -> bool {
-        let mut manager = VIRTUAL_DISPLAY_MANAGER.lock().unwrap();
-        if let Some((index, _)) = manager.headless_index_name.take() {
-            if let Err(e) = virtual_display::plug_out_monitor(index) {
-                log::error!("Plug out monitor failed {}", e);
-            }
-            true
-        } else {
-            false
-        }
-    }
-
-    fn get_new_device_name(device_names: &HashSet<String>) -> String {
-        for _ in 0..3 {
-            let device_names_af: HashSet<String> = get_device_names().into_iter().collect();
-            let diff_names: Vec<_> = device_names_af.difference(&device_names).collect();
-            if diff_names.len() == 1 {
-                return diff_names[0].clone();
-            } else if diff_names.len() > 1 {
-                log::error!(
-                    "Failed to get diff device names after plugin virtual display, more than one diff names: {:?}",
-                    &diff_names
-                );
-                return "".to_string();
-            }
-            // Sleep is needed here to wait for the virtual display to be ready.
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-        log::error!("Failed to get diff device names after plugin virtual display",);
-        "".to_string()
-    }
-
-    pub fn get_virtual_displays() -> Vec<u32> {
-        VIRTUAL_DISPLAY_MANAGER
-            .lock()
-            .unwrap()
-            .peer_index_name
-            .keys()
-            .cloned()
-            .collect()
-    }
-
-    pub fn plug_in_index_modes(
-        idx: u32,
-        mut modes: Vec<virtual_display::MonitorMode>,
-    ) -> ResultType<()> {
-        let mut manager = VIRTUAL_DISPLAY_MANAGER.lock().unwrap();
-        manager.prepare_driver()?;
-        if !manager.peer_index_name.contains_key(&idx) {
-            let device_names = get_device_names().into_iter().collect();
-            if modes.is_empty() {
-                modes.push(virtual_display::MonitorMode {
-                    width: 1920,
-                    height: 1080,
-                    sync: 60,
-                });
-            }
-            match VirtualDisplayManager::plug_in_monitor(idx, modes.as_slice()) {
-                Ok(_) => {
-                    let device_name = get_new_device_name(&device_names);
-                    manager.peer_index_name.insert(idx, device_name);
-                }
-                Err(e) => {
-                    log::error!("Plug in monitor failed {}", e);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub fn reset_all() -> ResultType<()> {
-        if super::is_virtual_display_supported() {
-            return Ok(());
-        }
-
-        if let Err(e) = plug_out_peer_request(&get_virtual_displays()) {
-            log::error!("Failed to plug out virtual displays: {}", e);
-        }
-        let _ = plug_out_headless();
-        Ok(())
-    }
-
-    pub fn plug_in_peer_request(
-        modes: Vec<Vec<virtual_display::MonitorMode>>,
-    ) -> ResultType<Vec<u32>> {
-        let mut manager = VIRTUAL_DISPLAY_MANAGER.lock().unwrap();
-        manager.prepare_driver()?;
-
-        let mut indices: Vec<u32> = Vec::new();
-        for m in modes.iter() {
-            for idx in VIRTUAL_DISPLAY_START_FOR_PEER..VIRTUAL_DISPLAY_MAX_COUNT {
-                if !manager.peer_index_name.contains_key(&idx) {
-                    let device_names = get_device_names().into_iter().collect();
-                    match VirtualDisplayManager::plug_in_monitor(idx, m) {
-                        Ok(_) => {
-                            let device_name = get_new_device_name(&device_names);
-                            manager.peer_index_name.insert(idx, device_name);
-                            indices.push(idx);
-                        }
-                        Err(e) => {
-                            log::error!("Plug in monitor failed {}", e);
-                        }
-                    }
-                    break;
-                }
-            }
-        }
-
-        Ok(indices)
-    }
-
-    pub fn plug_out_peer_request(indices: &[u32]) -> ResultType<()> {
-        let mut manager = VIRTUAL_DISPLAY_MANAGER.lock().unwrap();
-        for idx in indices.iter() {
-            if manager.peer_index_name.contains_key(idx) {
-                allow_err!(virtual_display::plug_out_monitor(*idx));
-                manager.peer_index_name.remove(idx);
-            }
-        }
-        Ok(())
-    }
-
-    pub fn is_virtual_display(name: &str) -> bool {
-        let lock = VIRTUAL_DISPLAY_MANAGER.lock().unwrap();
-        if let Some((_, device_name)) = &lock.headless_index_name {
-            if windows::is_device_name(device_name, name) {
-                return true;
-            }
-        }
-        for (_, v) in lock.peer_index_name.iter() {
-            if windows::is_device_name(v, name) {
-                return true;
-            }
-        }
-        false
-    }
-
-    fn change_resolution(index: u32, w: u32, h: u32) -> bool {
-        let modes = [virtual_display::MonitorMode {
-            width: w,
-            height: h,
-            sync: 60,
-        }];
-        match virtual_display::update_monitor_modes(index, &modes) {
-            Ok(_) => true,
-            Err(e) => {
-                log::error!("Update monitor {} modes {:?} failed: {}", index, &modes, e);
-                false
-            }
-        }
-    }
-
-    pub fn change_resolution_if_is_virtual_display(name: &str, w: u32, h: u32) -> Option<bool> {
-        let lock = VIRTUAL_DISPLAY_MANAGER.lock().unwrap();
-        if let Some((index, device_name)) = &lock.headless_index_name {
-            if windows::is_device_name(device_name, name) {
-                return Some(change_resolution(*index, w, h));
-            }
-        }
-
-        for (k, v) in lock.peer_index_name.iter() {
-            if windows::is_device_name(v, name) {
-                return Some(change_resolution(*k, w, h));
-            }
-        }
-        None
-    }
+    amyuni_idd::reset_all()
 }
 
 pub mod amyuni_idd {

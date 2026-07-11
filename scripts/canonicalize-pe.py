@@ -9,7 +9,7 @@
 # debug-directory IMAGE_DEBUG_TYPE_REPRO "repro hash" that differs build-to-build even though the PE content is
 # byte-identical (an MSVC /Brepro quirk that picks up a non-content input -- the CRT-startup object metadata).
 # This afflicts EVERY /Brepro-linked PE: the portable-packer/rustc .exe canonicalized here host-side (on the
-# final installer), AND the embedded flutter-dist PEs (librustdesk.dll + dylib_virtual_display.dll + the runner
+# final installer), AND the embedded flutter-dist PEs (librustdesk.dll + the runner
 # rustdesk.exe + the plugin DLLs), which build.py::build_flutter_windows canonicalizes IN-VM before the
 # packagers embed them (this host-side pass can't reach them once they are brotli/CAB-packed). cmp localized the
 # packer-.exe delta to ~200 bytes: the COFF TimeDateStamp (e_lfanew+8) + the debug entries' TimeDateStamps + raw

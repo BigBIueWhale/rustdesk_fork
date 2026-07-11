@@ -3659,16 +3659,6 @@ impl Connection {
                     ));
                     return;
                 }
-                #[cfg(windows)]
-                if let Some(_ok) =
-                    virtual_display_manager::rustdesk_idd::change_resolution_if_is_virtual_display(
-                        &name,
-                        r.width as _,
-                        r.height as _,
-                    )
-                {
-                    return;
-                }
                 #[allow(unused_mut)]
                 let mut record_changed = true;
                 #[cfg(windows)]

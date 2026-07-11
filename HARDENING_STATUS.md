@@ -1371,17 +1371,30 @@ unreachable and a source/test/AST gate prevents reintroduction.
   of the old skipped-command helper, absence of `ShellExecuteW` in the runtime helper, and this ledger/requirements
   disposition.
 - **R-S11d-24 — Windows stale RustDesk IDD install helper completion — CLOSED 2026-07-10.**
-  Platform: Windows raw CLI. Endpoint/action: `--install-idd`, the RustDesk IDD
-  `rustdesk_idd::install_update_driver()` helper, and the active virtual-display implementation selector. Boundary:
-  local CLI exit status ↔ persistent display-driver install/update state. Attack surface closed: a stale public CLI
-  can no longer invoke the inactive RustDesk IDD installer, mask install/update failure with `allow_err!`, and report
-  success in a build whose active virtual-display implementation is Amyuni. The fork's supported virtual-display
-  driver install/update path remains the Amyuni runtime path, which is checked by R-S11d-23: helper launch is bound to
-  the checked executable path, waited, exit-code checked, and rejects reboot-required install before the driver is
-  used. The raw `--install-idd` arm is now reject-only: it logs that the command is unsupported in this build and
-  exits nonzero without touching driver state. Verification closure: `scripts/verify.sh` asserts the reject-only
-  `--install-idd` arm, nonzero exit, absence of `allow_err!` and `rustdesk_idd::install_update_driver()` from that
-  arm, the active `IDD_IMPL_AMYUNI` selector, and this ledger/requirements disposition.
+  Platform: Windows raw CLI. Endpoint/action: `--install-idd`, the old RustDesk IDD install/update helper, and the
+  Amyuni-only virtual-display implementation marker. Boundary: local CLI exit status ↔ persistent display-driver
+  install/update state. Attack surface closed: a stale public CLI can no longer invoke the inactive RustDesk IDD
+  installer, mask install/update failure with `allow_err!`, and report success in a build whose supported
+  virtual-display implementation is Amyuni. The fork's supported virtual-display driver install/update path remains
+  the Amyuni runtime path, which is checked by R-S11d-23: helper launch is bound to the checked executable path,
+  waited, exit-code checked, and rejects reboot-required install before the driver is used. The raw `--install-idd`
+  arm is reject-only: it logs that the command is unsupported in this build and exits nonzero without touching driver
+  state. Verification closure: `scripts/verify.sh` asserts the reject-only `--install-idd` arm, nonzero exit, absence
+  of the old RustDesk IDD helper call and `allow_err!` from that arm, the Amyuni implementation marker, and this
+  ledger/requirements disposition.
+- **R-S11d-38 — Windows inactive RustDesk IDD loader excision — CLOSED 2026-07-12.**
+  Platform: Windows virtual-display runtime, build/package graph, and Flutter client/UI compatibility surface.
+  Endpoint/action: the inactive RustDesk IDD implementation, its `libs/virtual_display` wrapper and
+  `dylib_virtual_display` plugin, Windows package staging, peer platform additions, and virtual-display toolbar
+  controls. Boundary: privileged installed desktop/service package ↔ native plugin loading and driver-control
+  implementation authority. Attack surface closed: the fork no longer builds, packages, loads, advertises, or drives
+  the unsupported RustDesk IDD implementation. The only supported Windows virtual-display implementation is Amyuni:
+  `virtual_display_manager` owns the small `MonitorMode` shape and dispatches to `amyuni_idd`, the Windows build no
+  longer compiles or copies the dynamic plugin DLL, Cargo no longer includes the deleted crates, and client/UI
+  support accepts only `amyuni_idd` for virtual-display controls. Verification closure: `scripts/verify.sh` asserts
+  the deleted crate directory is absent, the workspace/dependency/lockfile/build-copy artifacts are absent, legacy
+  RustDesk IDD platform-addition/UI names are absent from source/build metadata, `MonitorMode` is owned by
+  `virtual_display_manager`, and this ledger/requirements disposition.
 - **R-S11d-25 — Windows Amyuni SetupAPI install reboot-required completion — CLOSED 2026-07-10.**
   Platform: Windows runtime Amyuni virtual-display driver install fallback. Endpoint/action: direct SetupAPI
   `win_device::install_driver()` path used when the AMD64 `deviceinstaller64.exe` helper is unavailable. Boundary:
@@ -3183,7 +3196,7 @@ The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-fee1be48f48ac6403aaaff740f91d85877b3ee85b3d4cf1838aa8f618f848e8c  requirements.html
+7727e48b21025ffacf2f562cdf5bea6cc9557bf94f891975973892f2114c45e1  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

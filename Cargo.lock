@@ -2130,18 +2130,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
-name = "dylib_virtual_display"
-version = "0.1.0"
-dependencies = [
- "cc",
- "hbb_common",
- "lazy_static",
- "serde 1.0.228",
- "serde_derive",
- "thiserror 1.0.61",
-]
-
-[[package]]
 name = "ed25519"
 version = "1.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6327,7 +6315,6 @@ dependencies = [
  "ttf-parser",
  "url",
  "uuid",
- "virtual_display",
  "wallpaper",
  "winapi 0.3.9",
  "windows 0.61.1",
@@ -8027,14 +8014,6 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
-
-[[package]]
-name = "virtual_display"
-version = "0.1.0"
-dependencies = [
- "hbb_common",
- "lazy_static",
-]
 
 [[package]]
 name = "waker-fn"

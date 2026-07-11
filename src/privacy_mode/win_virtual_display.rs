@@ -1,4 +1,5 @@
 use super::{PrivacyMode, PrivacyModeState, INVALID_PRIVACY_MODE_CONN_ID, NO_PHYSICAL_DISPLAYS};
+use crate::virtual_display_manager::MonitorMode;
 use crate::{platform::windows::reg_display_settings, virtual_display_manager};
 use hbb_common::{allow_err, bail, config::Config, log, ResultType};
 use std::{
@@ -7,7 +8,6 @@ use std::{
     thread,
     time::Duration,
 };
-use virtual_display::MonitorMode;
 use winapi::{
     shared::{
         minwindef::{DWORD, FALSE},

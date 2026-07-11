@@ -468,7 +468,6 @@ pub fn has_active_clients() -> bool {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl<T: InvokeUiCM> IpcTaskRunner<T> {
     async fn run(&mut self) {
-        use hbb_common::config::LocalConfig;
         use hbb_common::tokio::time::{self, Duration, Instant};
 
         const MILLI5: Duration = Duration::from_millis(5);
@@ -664,13 +663,6 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                         self.file_transfer_enabled_peer = _enabled;
                                     }
                                 }
-                                Data::Theme(dark) => {
-                                    self.cm.change_theme(dark);
-                                }
-                                Data::Language(lang) => {
-                                    LocalConfig::set_option("lang".to_owned(), lang);
-                                    self.cm.change_language();
-                                }
                                 Data::StartVoiceCall => {
                                     self.cm.voice_call_started(self.conn_id);
                                 }
@@ -860,7 +852,11 @@ pub async fn start_ipc<T: InvokeUiCM>(cm: ConnectionManager<T>) {
                             log::warn!("Rejected unauthorized _cm IPC peer");
                             continue;
                         }
-                        #[cfg(any(target_os = "linux", target_os = "macos"))]
+                        #[cfg(any(
+                            target_os = "linux",
+                            target_os = "macos",
+                            target_os = "windows"
+                        ))]
                         if let Err(err) = ipc::answer_cm_endpoint_challenge(&mut stream).await {
                             log::warn!(
                                 "Rejected _cm IPC peer without launch-bound endpoint proof: {}",

@@ -765,16 +765,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   CM launch-token and launch-parent ancestry checks, stale `_cm`/`_pa` socket probe checks, old message absence, and the service-layer
   subscriber-id snapshot. The fixed-path CM endpoint-selection class is closed separately below for macOS and
   non-audio helper consumers.
-- **R-S11c-11 — Unix `_cm` endpoint-selection identity — CLOSED 2026-07-09.** Platforms: macOS desktop
-  CM paths and Linux desktop CM paths before any non-audio helper authority is disclosed. Endpoint/action:
+- **R-S11c-11 — Desktop `_cm` endpoint-selection identity — CLOSED 2026-07-09; Windows extended 2026-07-11.** Platforms: Linux,
+  macOS, and Windows desktop CM paths before any non-audio helper authority is disclosed. Endpoint/action:
   server-side selection of the fixed `_cm` listener that receives `Data::Login`, `cm_auth_token`,
   file-authority messages, chat, voice-call state, and future downstream helper leases. Boundary: same-UID
-  local process ↔ connection-manager endpoint. Attack surface closed: macOS no longer accepts a raw
+  local process ↔ connection-manager endpoint. Attack surface closed: macOS and Windows no longer accept a raw
   fixed-path `_cm` connect as endpoint identity. The server authenticates the selected CM process shape
-  (`--cm`, current executable), proves the server launch token to the CM over a server-proof HMAC context,
-  and then sends a fresh endpoint challenge; the CM listener only answers after accepting a
-  current-executable `--server` peer and verifying that peer's launch-token proof, and answers with an
-  endpoint-proof HMAC keyed by the server-minted launch token inherited through the CM launch environment.
+  (`--cm`, current executable; on Windows through the named-pipe server PID), proves the server launch token
+  to the CM over a server-proof HMAC context, and then sends a fresh endpoint challenge; the CM listener only
+  answers after accepting a current-executable `--server` peer and verifying that peer's launch-token proof,
+  and answers with an endpoint-proof HMAC keyed by the server-minted launch token inherited through the CM
+  launch environment. Windows CM launch paths now pass that token environment through both the active-session
+  launcher and same-user launcher, and the Windows server-side secondary `_cm` clients for clipboard-file sync
+  and privacy-mode state perform the same authenticated connect before sending data. The old Flutter
+  theme/language notification side-channel is no longer a `_cm` IPC client.
   Linux keeps its stronger live process identity check (UID, current executable, expected CM mode, proc
   start time, launch token, launch parent ancestry) and now also performs the same mutual pre-disclosure
   proof. Stale, preexisting, launch-tokenless, wrong-mode, wrong-token, fixed-path squatting listeners, and
@@ -782,8 +786,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   sent. Verification closure: `scripts/verify.sh` runs the `cm_endpoint_proof_*` unit test and asserts the
   server/endpoint challenge/proof variants, directional HMAC proof/verify helpers, server-side proof before
   CM stream use, CM listener server-proof verification before endpoint proof and before spawning the normal
-  IPC loop, macOS process-shape check, macOS launch-token environment propagation, and absence of raw Unix
-  `_cm` connects; `scripts/apple-conform-check.sh` mirrors the macOS source assertions.
+  IPC loop, macOS and Windows process-shape checks, macOS and Windows launch-token environment propagation,
+  authenticated Windows clipboard/privacy `_cm` clients, absence of the old generic theme/language `_cm`
+  notification channel, and absence of raw Linux/macOS/Windows `_cm` connects;
+  `scripts/apple-conform-check.sh` mirrors the macOS source assertions.
 - **R-S11c-8 — `_whiteboard` helper ambient same-UID trust — CLOSED 2026-07-09.** Platforms: Windows,
   Linux, and macOS desktop whiteboard helper paths. Endpoint/action: `_whiteboard` overlay helper IPC formerly
   accepted `Data::Whiteboard((String, CustomEvent))` drawing events and `Exit` on a fixed endpoint.

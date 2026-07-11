@@ -372,18 +372,7 @@ pub(crate) fn ensure_windows_ipc_server_matches_current(
     client: &parity_tokio_ipc::ConnectionClient,
     postfix: &str,
 ) -> ResultType<()> {
-    let pipe_handle = client.as_raw_handle();
-    if pipe_handle.is_null() {
-        bail!("Windows IPC client handle is null");
-    }
-    let mut server_pid = 0u32;
-    unsafe {
-        GetNamedPipeServerProcessId(HANDLE(pipe_handle), &mut server_pid)
-            .map_err(|err| anyhow::anyhow!("GetNamedPipeServerProcessId failed: {}", err))?;
-    }
-    if server_pid == 0 {
-        bail!("GetNamedPipeServerProcessId returned pid 0");
-    }
+    let server_pid = windows_named_pipe_server_pid(client)?;
     ensure_peer_executable_matches_current_by_pid_opt(Some(server_pid), postfix)?;
     if postfix.is_empty() && !peer_process_is_current_exe_server(server_pid) {
         bail!("Windows main IPC server is not the current executable's --server process");
@@ -398,6 +387,23 @@ pub(crate) fn ensure_windows_ipc_server_matches_current(
         }
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn windows_named_pipe_server_pid(client: &parity_tokio_ipc::ConnectionClient) -> ResultType<u32> {
+    let pipe_handle = client.as_raw_handle();
+    if pipe_handle.is_null() {
+        bail!("Windows IPC client handle is null");
+    }
+    let mut server_pid = 0u32;
+    unsafe {
+        GetNamedPipeServerProcessId(HANDLE(pipe_handle), &mut server_pid)
+            .map_err(|err| anyhow::anyhow!("GetNamedPipeServerProcessId failed: {}", err))?;
+    }
+    if server_pid == 0 {
+        bail!("GetNamedPipeServerProcessId returned pid 0");
+    }
+    Ok(server_pid)
 }
 
 #[cfg(target_os = "macos")]
@@ -1562,6 +1568,19 @@ where
     let peer_pid = stream
         .peer_pid()
         .ok_or_else(|| anyhow::anyhow!("Failed to resolve peer pid on ipc channel '_cm'"))?;
+    ensure_peer_executable_matches_current_by_pid(peer_pid, "_cm")?;
+    if !peer_process_is_current_exe_with_first_arg(peer_pid, expected_arg) {
+        bail!("_cm endpoint mode mismatch: expected {}", expected_arg);
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn authenticate_windows_cm_endpoint(
+    stream: &ConnectionTmpl<parity_tokio_ipc::ConnectionClient>,
+    expected_arg: &str,
+) -> ResultType<()> {
+    let peer_pid = windows_named_pipe_server_pid(stream.inner.get_ref())?;
     ensure_peer_executable_matches_current_by_pid(peer_pid, "_cm")?;
     if !peer_process_is_current_exe_with_first_arg(peer_pid, expected_arg) {
         bail!("_cm endpoint mode mismatch: expected {}", expected_arg);

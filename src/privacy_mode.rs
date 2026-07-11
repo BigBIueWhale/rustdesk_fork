@@ -1,10 +1,6 @@
 use crate::ui_interface::get_option;
 #[cfg(windows)]
-use crate::{
-    display_service,
-    ipc::{connect, Data},
-    platform::is_installed,
-};
+use crate::{display_service, ipc::Data, platform::is_installed};
 #[cfg(windows)]
 use hbb_common::tokio;
 use hbb_common::{anyhow::anyhow, bail, lazy_static, tokio::sync::oneshot, ResultType};
@@ -319,7 +315,12 @@ async fn set_privacy_mode_state(
     impl_key: String,
     ms_timeout: u64,
 ) -> ResultType<()> {
-    let mut c = connect(ms_timeout, "_cm").await?;
+    let mut c = crate::ipc::connect_authenticated_windows_cm(
+        ms_timeout,
+        "--cm",
+        crate::server::cm_launch_token(),
+    )
+    .await?;
     c.send(&Data::PrivacyModeState((conn_id, state, impl_key)))
         .await
 }

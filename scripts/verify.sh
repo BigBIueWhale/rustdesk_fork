@@ -376,7 +376,7 @@ if echo "$common_conn_lazy_static" | grep -Eq 'CM_PEER_IDENTITIES|CM_LAUNCH_TOKE
   r_s11c7="$r_s11c7 platform-cm-state-inside-shared-lazy-static"
 fi
 grep -B2 'static ref CM_PEER_IDENTITIES' src/server/connection.rs | grep -Fq '#[cfg(target_os = "linux")]' || r_s11c7="$r_s11c7 cm-peer-identities-not-linux-outer-cfg"
-grep -B2 'static ref CM_LAUNCH_TOKEN' src/server/connection.rs | grep -Fq '#[cfg(any(target_os = "linux", target_os = "macos"))]' || r_s11c7="$r_s11c7 cm-launch-token-not-unix-outer-cfg"
+grep -B2 'static ref CM_LAUNCH_TOKEN' src/server/connection.rs | grep -Fq '#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]' || r_s11c7="$r_s11c7 cm-launch-token-not-desktop-outer-cfg"
 grep -q 'fn cm_launch_env()' src/server/connection.rs || r_s11c7="$r_s11c7 cm-launch-env-helper-missing"
 grep -q 'run_me_with_env(args, cm_launch_env())' src/server/connection.rs || r_s11c7="$r_s11c7 same-user-cm-launch-not-tokenized"
 grep -q 'cm_launch_env()' src/server/connection.rs || r_s11c7="$r_s11c7 cm-launch-env-not-used"
@@ -2005,9 +2005,9 @@ fi
 if [ -n "$r_s11c4" ]; then echo "  FAIL R-S11c-4 CM file IPC authority closure:$r_s11c4"; rc=1; else
   echo "  ok  R-S11c-4 CM rejects forged desktop login/FS unless the main server validates the active connection id/type/token; Android in-process FS remains login-gated"; fi
 
-# (3b-iii-f2) R-S11c-11: fixed-path Unix _cm selection must prove the endpoint before
+# (3b-iii-f2) R-S11c-11: fixed-path desktop _cm selection must prove the endpoint before
 # Data::Login/cm_auth_token/file/chat/voice authority is disclosed.
-echo "== (3b-iii-f2) Unix CM endpoint selection requires launch-bound proof (R-S11c-11) =="
+echo "== (3b-iii-f2) Desktop CM endpoint selection requires launch-bound proof (R-S11c-11) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config cm_endpoint_proof --color never
 r_s11c11=
 grep -q 'CmEndpointChallenge {' src/ipc.rs || r_s11c11="$r_s11c11 no-cm-endpoint-challenge"
@@ -2022,9 +2022,25 @@ grep -q 'authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token()).a
 grep -q 'answer_cm_endpoint_challenge(&mut stream).await' src/ui_cm_interface.rs || r_s11c11="$r_s11c11 cm-listener-does-not-answer-launch-proof"
 grep -q 'authenticate_macos_cm_endpoint(&stream, expected_arg)' src/server/connection.rs || r_s11c11="$r_s11c11 macos-cm-process-shape-not-checked"
 grep -q 'pub(crate) fn authenticate_macos_cm_endpoint' src/ipc/auth.rs || r_s11c11="$r_s11c11 macos-cm-auth-helper-missing"
+grep -q 'pub(crate) fn authenticate_windows_cm_endpoint' src/ipc/auth.rs || r_s11c11="$r_s11c11 windows-cm-auth-helper-missing"
+grep -q 'windows_named_pipe_server_pid(stream.inner.get_ref())' src/ipc/auth.rs || r_s11c11="$r_s11c11 windows-cm-pipe-server-pid-not-checked"
+grep -q 'peer_process_is_current_exe_with_first_arg(peer_pid, expected_arg)' src/ipc/auth.rs || r_s11c11="$r_s11c11 windows-cm-process-shape-not-checked"
+grep -q 'connect_authenticated_windows_cm(ms_timeout, expected_arg, cm_launch_token()).await' src/server/connection.rs || r_s11c11="$r_s11c11 windows-server-cm-connect-not-authenticated"
+grep -q 'connect_authenticated_windows_cm(' src/server/clipboard_service.rs || r_s11c11="$r_s11c11 windows-clipboard-cm-connect-not-authenticated"
+grep -q 'connect_authenticated_windows_cm(' src/privacy_mode.rs || r_s11c11="$r_s11c11 windows-privacy-cm-connect-not-authenticated"
+if grep -q 'pub(crate) async fn send_to_cm' src/ui_interface.rs || grep -q 'ipc::connect(1000, "_cm")' src/ui_interface.rs; then
+  r_s11c11="$r_s11c11 raw-cm-ui-notification-helper-present"
+fi
+if grep -R -n -E 'Data::Theme|Data::Language|Theme\(String\)|Language\(String\)' src >/dev/null; then
+  r_s11c11="$r_s11c11 cm-theme-language-ipc-side-channel-present"
+fi
 grep -q 'peer_process_is_current_exe_with_first_arg(peer_pid, "--server")' src/ipc/auth.rs || r_s11c11="$r_s11c11 cm-listener-peer-not-server-arg-bound"
 grep -q 'run_as_user_with_env(args.clone(), cm_launch_env())' src/server/connection.rs || r_s11c11="$r_s11c11 macos-run-as-user-token-env-not-wired"
+if grep -q 'crate::platform::run_as_user(args.clone())' src/server/connection.rs; then
+  r_s11c11="$r_s11c11 windows-cm-launch-without-token-env"
+fi
 grep -q 'pub fn run_as_user_with_env' src/platform/macos.rs || r_s11c11="$r_s11c11 macos-token-env-launcher-missing"
+grep -q 'pub fn run_as_user_with_env' src/platform/windows.rs || r_s11c11="$r_s11c11 windows-token-env-launcher-missing"
 grep -q 'CM_LAUNCH_TOKEN_ENV' src/common.rs || r_s11c11="$r_s11c11 cm-launch-token-env-constant-missing"
 cm_listener_auth_block=$(awk '/authorize_cm_ipc_connection\(&stream\)/,/tokio::spawn/' src/ui_cm_interface.rs)
 cm_listener_proof_line=$(echo "$cm_listener_auth_block" | grep -n 'answer_cm_endpoint_challenge(&mut stream).await' | head -1 | cut -d: -f1)
@@ -2050,14 +2066,20 @@ macos_proof_line=$(awk -v start="$macos_process_line" 'NR > start && /authentica
 if [ -z "$macos_process_line" ] || [ -z "$macos_proof_line" ] || [ "$macos_process_line" -ge "$macos_proof_line" ]; then
   r_s11c11="$r_s11c11 macos-cm-proof-not-after-process-shape-check"
 fi
+windows_auth_fn_line=$(grep -n 'pub(crate) async fn connect_authenticated_windows_cm' src/ipc.rs | head -1 | cut -d: -f1)
+windows_process_line=$(awk -v start="$windows_auth_fn_line" 'NR > start && /authenticate_windows_cm_endpoint\(&stream, expected_arg\)/ { print NR; exit }' src/ipc.rs)
+windows_proof_line=$(awk -v start="$windows_auth_fn_line" 'NR > start && /authenticate_cm_endpoint_launch_proof\(&mut stream, launch_token\)\.await/ { print NR; exit }' src/ipc.rs)
+if [ -z "$windows_auth_fn_line" ] || [ -z "$windows_process_line" ] || [ -z "$windows_proof_line" ] || [ "$windows_process_line" -ge "$windows_proof_line" ]; then
+  r_s11c11="$r_s11c11 windows-cm-proof-not-after-process-shape-check"
+fi
 for line in $(grep -n 'crate::ipc::connect(1000, "_cm")' src/server/connection.rs | cut -d: -f1); do
-  if ! sed -n "$((line-3)),$((line-1))p" src/server/connection.rs | grep -q '#\[cfg(not(any(target_os = "linux", target_os = "macos")))\]'; then
-    r_s11c11="$r_s11c11 raw-unix-cm-connect-reintroduced"
+  if ! sed -n "$((line-3)),$((line-1))p" src/server/connection.rs | grep -q '#\[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))\]'; then
+    r_s11c11="$r_s11c11 raw-desktop-cm-connect-reintroduced"
     break
   fi
 done
-if [ -n "$r_s11c11" ]; then echo "  FAIL R-S11c-11 Unix CM endpoint-selection authority:$r_s11c11"; rc=1; else
-  echo "  ok  R-S11c-11 Unix CM selection proves launch-bound endpoint authority before disclosing CM connection tokens; raw fixed-path _cm connects remain Windows-only"; fi
+if [ -n "$r_s11c11" ]; then echo "  FAIL R-S11c-11 desktop CM endpoint-selection authority:$r_s11c11"; rc=1; else
+  echo "  ok  R-S11c-11 Linux/macOS/Windows CM selection proves launch-bound endpoint authority before disclosing CM connection tokens; raw fixed-path _cm connects are not used on the primary desktop platforms"; fi
 
 echo "== R-S11b/R-S11c ledger consistency =="
 r_s11_docs=

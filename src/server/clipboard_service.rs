@@ -223,7 +223,11 @@ impl Handler {
             };
         }
         if !is_sent {
-            let mut stream = rt.block_on(crate::ipc::connect(100, "_cm"))?;
+            let mut stream = rt.block_on(crate::ipc::connect_authenticated_windows_cm(
+                100,
+                "--cm",
+                crate::server::cm_launch_token(),
+            ))?;
             rt.block_on(stream.send(&Data::ClipboardNonFile(None)))?;
             self.stream = Some(stream);
         }

@@ -1368,7 +1368,7 @@ pub fn main_load_fav_peers() {
 fn main_broadcast_message(data: &HashMap<&str, &str>) {
     let event = serde_json::ser::to_string(&data).unwrap_or("".to_owned());
     for app in flutter::get_global_event_channels() {
-        if app == flutter::APP_TYPE_MAIN || app == flutter::APP_TYPE_CM {
+        if app == flutter::APP_TYPE_MAIN {
             continue;
         }
         let _res = flutter::push_global_event(&app, event.clone());
@@ -1377,14 +1377,10 @@ fn main_broadcast_message(data: &HashMap<&str, &str>) {
 
 pub fn main_change_theme(dark: String) {
     main_broadcast_message(&HashMap::from([("name", "theme"), ("dark", &dark)]));
-    #[cfg(not(any(target_os = "ios")))]
-    send_to_cm(&crate::ipc::Data::Theme(dark));
 }
 
 pub fn main_change_language(lang: String) {
     main_broadcast_message(&HashMap::from([("name", "language"), ("lang", &lang)]));
-    #[cfg(not(any(target_os = "ios")))]
-    send_to_cm(&crate::ipc::Data::Language(lang));
 }
 
 pub fn main_video_save_directory(root: bool) -> SyncReturn<String> {

@@ -533,6 +533,12 @@ grep -q 'authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token()).a
 grep -q 'answer_cm_endpoint_challenge(&mut stream).await' "$REPO/src/ui_cm_interface.rs" || r_s11c11="$r_s11c11 cm-listener-does-not-answer-launch-proof"
 grep -q 'authenticate_macos_cm_endpoint(&stream, expected_arg)' "$REPO/src/server/connection.rs" || r_s11c11="$r_s11c11 macos-cm-process-shape-not-checked"
 grep -q 'pub(crate) fn authenticate_macos_cm_endpoint' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 macos-cm-auth-helper-missing"
+if grep -q 'pub(crate) async fn send_to_cm' "$REPO/src/ui_interface.rs" || grep -q 'ipc::connect(1000, "_cm")' "$REPO/src/ui_interface.rs"; then
+  r_s11c11="$r_s11c11 raw-cm-ui-notification-helper-present"
+fi
+if grep -R -n -E 'Data::Theme|Data::Language|Theme\(String\)|Language\(String\)' "$REPO/src" >/dev/null; then
+  r_s11c11="$r_s11c11 cm-theme-language-ipc-side-channel-present"
+fi
 grep -q 'peer_process_is_current_exe_with_first_arg(peer_pid, "--server")' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 cm-listener-peer-not-server-arg-bound"
 grep -q 'run_as_user_with_env(args.clone(), cm_launch_env())' "$REPO/src/server/connection.rs" || r_s11c11="$r_s11c11 macos-run-as-user-token-env-not-wired"
 grep -q 'pub fn run_as_user_with_env' "$REPO/src/platform/macos.rs" || r_s11c11="$r_s11c11 macos-token-env-launcher-missing"
@@ -561,7 +567,7 @@ if [ -z "$macos_process_line" ] || [ -z "$macos_proof_line" ] || [ "$macos_proce
   r_s11c11="$r_s11c11 macos-cm-proof-not-after-process-shape-check"
 fi
 for line in $(grep -n 'crate::ipc::connect(1000, "_cm")' "$REPO/src/server/connection.rs" | cut -d: -f1); do
-  if ! sed -n "$((line-3)),$((line-1))p" "$REPO/src/server/connection.rs" | grep -q '#\[cfg(not(any(target_os = "linux", target_os = "macos")))\]'; then
+  if ! sed -n "$((line-3)),$((line-1))p" "$REPO/src/server/connection.rs" | grep -q '#\[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))\]'; then
     r_s11c11="$r_s11c11 raw-macos-cm-connect-reintroduced"
     break
   fi

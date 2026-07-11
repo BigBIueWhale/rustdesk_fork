@@ -30,6 +30,8 @@ use hbb_common::{
 };
 #[cfg(target_os = "macos")]
 pub(crate) use ipc_auth::authenticate_macos_cm_endpoint;
+#[cfg(target_os = "windows")]
+pub(crate) use ipc_auth::authenticate_windows_cm_endpoint;
 #[cfg(target_os = "macos")]
 use ipc_auth::ensure_macos_service_server_is_trusted;
 #[cfg(windows)]
@@ -409,19 +411,19 @@ pub enum Data {
         from_switch: bool,
         cm_auth_token: String,
     },
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     CmEndpointChallenge {
         challenge: String,
     },
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     CmEndpointProof {
         proof: String,
     },
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     CmServerChallenge {
         challenge: String,
     },
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     CmServerProof {
         proof: String,
     },
@@ -516,8 +518,6 @@ pub enum Data {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Mouse(DataMouse),
     Control(DataControl),
-    Theme(String),
-    Language(String),
     Empty,
     Disconnected,
     UrlLink(String),
@@ -1109,8 +1109,6 @@ pub(crate) fn main_channel_admits_state_mutation(
         | Data::ClipboardFileEnabled(_)
         | Data::PrivacyModeState(_)
         | Data::Control(_)
-        | Data::Theme(_)
-        | Data::Language(_)
         | Data::Empty
         | Data::Disconnected
         | Data::UrlLink(_)
@@ -1127,7 +1125,7 @@ pub(crate) fn main_channel_admits_state_mutation(
         | Data::FileDigestFromCM { .. }
         | Data::AllFilesResult { .. }
         | Data::WriteJobRejected { .. } => true,
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         Data::CmEndpointChallenge { .. }
         | Data::CmEndpointProof { .. }
         | Data::CmServerChallenge { .. }
@@ -1227,13 +1225,13 @@ pub(crate) fn service_channel_admits_message(data: &Data) -> bool {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 const CM_ENDPOINT_PROOF_CONTEXT: &[u8] = b"rustdesk.cm.endpoint-proof.v1";
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 const CM_SERVER_PROOF_CONTEXT: &[u8] = b"rustdesk.cm.server-proof.v1";
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 const CM_ENDPOINT_AUTH_TIMEOUT_MS: u64 = 1_000;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1321,7 +1319,7 @@ fn verify_helper_launch_proof(
     Ok(())
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn cm_launch_proof_for_challenge(
     context: &[u8],
     challenge: &str,
@@ -1330,7 +1328,7 @@ fn cm_launch_proof_for_challenge(
     helper_launch_proof_for_challenge("connection-manager", context, challenge, launch_token)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn verify_cm_launch_proof(
     context: &[u8],
     challenge: &str,
@@ -1346,7 +1344,7 @@ fn verify_cm_launch_proof(
     )
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) fn cm_endpoint_proof_for_challenge(
     challenge: &str,
     launch_token: &str,
@@ -1354,7 +1352,7 @@ pub(crate) fn cm_endpoint_proof_for_challenge(
     cm_launch_proof_for_challenge(CM_ENDPOINT_PROOF_CONTEXT, challenge, launch_token)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) fn verify_cm_endpoint_proof(
     challenge: &str,
     proof: &str,
@@ -1363,12 +1361,12 @@ pub(crate) fn verify_cm_endpoint_proof(
     verify_cm_launch_proof(CM_ENDPOINT_PROOF_CONTEXT, challenge, proof, launch_token)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn cm_server_proof_for_challenge(challenge: &str, launch_token: &str) -> ResultType<String> {
     cm_launch_proof_for_challenge(CM_SERVER_PROOF_CONTEXT, challenge, launch_token)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn verify_cm_server_proof(challenge: &str, proof: &str, launch_token: &str) -> ResultType<()> {
     verify_cm_launch_proof(CM_SERVER_PROOF_CONTEXT, challenge, proof, launch_token)
 }
@@ -1460,7 +1458,7 @@ fn verify_whiteboard_server_proof(
     )
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) async fn authenticate_cm_endpoint_launch_proof<T>(
     stream: &mut ConnectionTmpl<T>,
     launch_token: &str,
@@ -1490,7 +1488,19 @@ where
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(target_os = "windows")]
+pub(crate) async fn connect_authenticated_windows_cm(
+    ms_timeout: u64,
+    expected_arg: &str,
+    launch_token: &str,
+) -> ResultType<ConnectionTmpl<ConnClient>> {
+    let mut stream = connect(ms_timeout, "_cm").await?;
+    authenticate_windows_cm_endpoint(&stream, expected_arg)?;
+    authenticate_cm_endpoint_launch_proof(&mut stream, launch_token).await?;
+    Ok(stream)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) async fn answer_cm_endpoint_challenge<T>(
     stream: &mut ConnectionTmpl<T>,
 ) -> ResultType<()>
@@ -4044,7 +4054,7 @@ mod test {
         );
     }
 
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     #[test]
     fn cm_endpoint_proof_is_launch_token_bound() {
         let challenge = crate::encode64([7u8; 32]);

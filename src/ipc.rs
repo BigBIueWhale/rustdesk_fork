@@ -40,9 +40,10 @@ pub(crate) use ipc_auth::log_rejected_windows_ipc_connection;
 use ipc_auth::{active_uid, authorize_service_scoped_ipc_connection};
 #[cfg(target_os = "linux")]
 pub(crate) use ipc_auth::{
-    authenticate_cm_endpoint, current_process_identity, ensure_peer_process_identity_matches,
-    linux_proc_start_time, linux_proc_stat_start_time, peer_process_identity,
-    peer_process_identity_is_live, PeerProcessIdentity,
+    authenticate_cm_endpoint, authenticate_linux_service_owned_main_server,
+    current_process_identity, ensure_peer_process_identity_matches, linux_proc_start_time,
+    linux_proc_stat_start_time, peer_process_identity, peer_process_identity_is_live,
+    PeerProcessIdentity,
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) use ipc_auth::{authorize_cm_ipc_connection, authorize_whiteboard_ipc_connection};
@@ -1743,6 +1744,8 @@ async fn commit_service_owned_unattended_password_change(value: String) -> Resul
     let _scope = UserMainIpcScope::new();
     let ms_timeout = 1_000;
     let mut c = connect(ms_timeout, "").await?;
+    #[cfg(target_os = "linux")]
+    authenticate_linux_service_owned_main_server(&c)?;
     c.send(&Data::CommitServiceOwnedUnattendedPasswordChange(value))
         .await?;
     if let Some(Data::ServiceOwnedUnattendedPasswordChangeResult(ok)) =

@@ -629,6 +629,13 @@ fn get_all_term_values(uid: &str) -> Vec<String> {
 }
 
 #[inline]
+fn service_owned_server_launch_env() -> (&'static str, String) {
+    (
+        crate::common::SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV,
+        std::process::id().to_string(),
+    )
+}
+
 fn try_start_server_(desktop: Option<&Desktop>) -> ResultType<Option<Child>> {
     match desktop {
         Some(desktop) => {
@@ -652,16 +659,17 @@ fn try_start_server_(desktop: Option<&Desktop>) -> ResultType<Option<Child>> {
                 "TERM",
                 get_cur_term(&desktop.uid).unwrap_or_else(|| suggest_best_term()),
             ));
+            envs.push(service_owned_server_launch_env());
             run_as_user(
                 vec!["--server", crate::common::SERVICE_OWNED_SERVER_ARG],
                 Some((desktop.uid.clone(), desktop.username.clone())),
                 envs,
             )
         }
-        None => Ok(Some(crate::run_me(vec![
-            "--server",
-            crate::common::SERVICE_OWNED_SERVER_ARG,
-        ])?)),
+        None => Ok(Some(crate::run_me_with_env(
+            vec!["--server", crate::common::SERVICE_OWNED_SERVER_ARG],
+            [service_owned_server_launch_env()],
+        )?)),
     }
 }
 

@@ -1013,6 +1013,47 @@ where
 }
 
 #[cfg(target_os = "linux")]
+fn linux_service_owned_server_argv_is_expected(args: &[String]) -> bool {
+    args.len() == 3
+        && args.get(1).map(String::as_str) == Some("--server")
+        && args.get(2).map(String::as_str) == Some(crate::common::SERVICE_OWNED_SERVER_ARG)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn authenticate_linux_service_owned_main_server<T>(
+    stream: &ConnectionTmpl<T>,
+) -> ResultType<PeerProcessIdentity>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
+{
+    let identity = peer_process_identity(stream, "")?;
+    let args = linux_proc_cmdline_args(identity.pid)?;
+    if !linux_service_owned_server_argv_is_expected(&args) {
+        bail!(
+            "service-owned main server argv mismatch: pid={}, args={:?}",
+            identity.pid,
+            args
+        );
+    }
+    let expected_parent = std::process::id();
+    let launch_parent = linux_proc_u32_env(
+        identity.pid,
+        crate::common::SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV,
+    )?;
+    if launch_parent != expected_parent
+        || !linux_process_has_ancestor(identity.pid, expected_parent)
+    {
+        bail!(
+            "service-owned main server launch parent mismatch: pid={}, expected_parent={}, launch_parent={}",
+            identity.pid,
+            expected_parent,
+            launch_parent
+        );
+    }
+    Ok(identity)
+}
+
+#[cfg(target_os = "linux")]
 pub(crate) fn peer_process_identity_is_live(identity: &PeerProcessIdentity, postfix: &str) -> bool {
     linux_process_identity_by_pid(identity.pid, postfix)
         .map(|live| {
@@ -1727,6 +1768,31 @@ mod tests {
         if parent > 1 {
             assert!(super::linux_process_has_ancestor(pid, parent));
         }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_linux_service_owned_server_argv_is_exact() {
+        assert!(super::linux_service_owned_server_argv_is_expected(&[
+            "/usr/bin/rustdesk".to_owned(),
+            "--server".to_owned(),
+            crate::common::SERVICE_OWNED_SERVER_ARG.to_owned(),
+        ]));
+        assert!(!super::linux_service_owned_server_argv_is_expected(&[
+            "/usr/bin/rustdesk".to_owned(),
+            "--server".to_owned(),
+        ]));
+        assert!(!super::linux_service_owned_server_argv_is_expected(&[
+            "/usr/bin/rustdesk".to_owned(),
+            "--server".to_owned(),
+            crate::common::SERVICE_OWNED_SERVER_ARG.to_owned(),
+            "--extra".to_owned(),
+        ]));
+        assert!(!super::linux_service_owned_server_argv_is_expected(&[
+            "/usr/bin/rustdesk".to_owned(),
+            "--cm".to_owned(),
+            crate::common::SERVICE_OWNED_SERVER_ARG.to_owned(),
+        ]));
     }
 
     #[test]

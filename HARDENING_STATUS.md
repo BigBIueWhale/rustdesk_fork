@@ -1398,6 +1398,22 @@ unreachable and a source/test/AST gate prevents reintroduction.
   snapshot verifier, macOS authorization-slot budget, `spawn_blocking` task authorizer, start-loop ordering
   (nonblocking slot before `tokio::spawn`, blocking proof inside the task, and authorization before first read), absence of the old combined
   Linux/macOS pre-spawn service gate, and requirements/ledger disposition.
+- **R-S11e-5 — Linux service-owned main-server commit receiver proof — CLOSED 2026-07-11.**
+  Platform: Linux `.deb` installed-service mode. Endpoint/action: the root service's final
+  `Data::CommitServiceOwnedUnattendedPasswordChange` send into the uid-scoped main IPC server after polkit
+  authorizes a local service-owned unattended-password request. Boundary: root `_service` credential authority ↔
+  service-owned `--server` receiver identity. Attack surface closed: requester authorization and receiver
+  authentication are now separate proofs. The root service launches both active-user and headless/root
+  service-owned servers with a service-parent environment claim, and
+  `commit_service_owned_unattended_password_change` calls
+  `authenticate_linux_service_owned_main_server` before sending the password. That receiver proof derives pid/uid
+  from SO_PEERCRED, rechecks the peer as the current executable, requires the exact three-entry
+  `--server --service-owned-server` argv shape, requires the service-parent environment value to name the
+  current root service process, and requires the live `/proc` parent chain to include that service process.
+  Missing, stale, wrong-argv, wrong-parent, or non-descendant receivers fail closed before the password leaves the
+  root service. Verification closure: `scripts/verify.sh` gates launch-parent propagation in both Linux
+  service-server launch paths, the receiver authenticator, exact argv helper, live ancestor proof, commit-path
+  ordering, the argv regression test, and this requirements/ledger disposition.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows

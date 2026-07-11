@@ -1446,7 +1446,7 @@ r_s11b2=
 grep -q 'SERVICE_OWNED_SERVER_ARG' src/common.rs                                      || r_s11b2="$r_s11b2 no-service-owned-arg"
 linux_service_start=$(awk '/fn try_start_server_/,/^}/' src/platform/linux.rs)
 echo "$linux_service_start" | grep -Fq 'vec!["--server", crate::common::SERVICE_OWNED_SERVER_ARG]' || r_s11b2="$r_s11b2 linux-active-user-service-server-not-marked"
-echo "$linux_service_start" | grep -A4 'crate::run_me(vec!\[' | grep -q 'SERVICE_OWNED_SERVER_ARG' || r_s11b2="$r_s11b2 linux-root-service-server-not-marked"
+echo "$linux_service_start" | grep -A4 'crate::run_me_with_env' | grep -q 'SERVICE_OWNED_SERVER_ARG' || r_s11b2="$r_s11b2 linux-root-service-server-not-marked"
 windows_launch_server=$(awk '/async fn launch_server/,/^}/' src/platform/windows.rs)
 echo "$windows_launch_server" | grep -q 'SERVICE_OWNED_SERVER_ARG'                    || r_s11b2="$r_s11b2 windows-service-server-not-marked"
 grep -q -- '<string>--service-owned-server</string>' src/platform/privileges_scripts/agent.plist || r_s11b2="$r_s11b2 macos-agent-server-not-marked"
@@ -1488,6 +1488,16 @@ grep -q 'rsplit_once(") ")' src/ipc/auth.rs                                     
 grep -q 'peer_pid()' src/ipc.rs                                                      || r_s11b2="$r_s11b2 linux-peer-pid-missing"
 grep -q 'peer_uid()' src/ipc.rs                                                      || r_s11b2="$r_s11b2 linux-peer-uid-missing"
 grep -q 'UserMainIpcScope::new()' src/ipc.rs                                         || r_s11b2="$r_s11b2 linux-service-commit-not-main-server-scoped"
+grep -q 'SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV' src/common.rs                       || r_s11b2="$r_s11b2 linux-service-server-launch-parent-env-missing"
+grep -q 'fn service_owned_server_launch_env()' src/platform/linux.rs                  || r_s11b2="$r_s11b2 linux-service-server-launch-env-helper-missing"
+grep -q 'envs.push(service_owned_server_launch_env())' src/platform/linux.rs          || r_s11b2="$r_s11b2 linux-active-user-service-server-launch-parent-not-passed"
+grep -A5 'crate::run_me_with_env' <<<"$linux_service_start" | grep -q 'service_owned_server_launch_env()' || r_s11b2="$r_s11b2 linux-root-service-server-launch-parent-not-passed"
+grep -q 'fn authenticate_linux_service_owned_main_server' src/ipc/auth.rs             || r_s11b2="$r_s11b2 linux-service-main-server-auth-missing"
+grep -q 'linux_service_owned_server_argv_is_expected' src/ipc/auth.rs                 || r_s11b2="$r_s11b2 linux-service-main-server-exact-argv-missing"
+grep -q 'SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV' src/ipc/auth.rs                     || r_s11b2="$r_s11b2 linux-service-main-server-launch-parent-env-not-checked"
+grep -q 'linux_process_has_ancestor(identity.pid, expected_parent)' src/ipc/auth.rs   || r_s11b2="$r_s11b2 linux-service-main-server-ancestor-proof-missing"
+grep -q 'authenticate_linux_service_owned_main_server(&c)' src/ipc.rs                 || r_s11b2="$r_s11b2 linux-service-commit-sent-before-server-proof"
+grep -q 'test_linux_service_owned_server_argv_is_exact' src/ipc/auth.rs               || r_s11b2="$r_s11b2 linux-service-main-server-argv-test-missing"
 if ! python3 scripts/verify-polkit-policy.py --repo . >/tmp/rd_verify_polkit_policy.$$ 2>&1; then
   cat /tmp/rd_verify_polkit_policy.$$
   r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"
@@ -1495,8 +1505,10 @@ fi
 rm -f /tmp/rd_verify_polkit_policy.$$
 grep -Fq 'R-S11e — Linux polkit policy/package assurance' HARDENING_STATUS.md        || r_s11b2="$r_s11b2 linux-polkit-assurance-ledger-missing"
 grep -Fq 'R-S11e-1 — Linux pkcheck executable provenance' HARDENING_STATUS.md        || r_s11b2="$r_s11b2 linux-pkcheck-provenance-ledger-missing"
+grep -Fq 'R-S11e-5 — Linux service-owned main-server commit receiver proof' HARDENING_STATUS.md || r_s11b2="$r_s11b2 linux-service-main-server-proof-ledger-missing"
 grep -Fq 'Linux polkit policy/package assurance' requirements.html                   || r_s11b2="$r_s11b2 linux-polkit-assurance-requirements-missing"
 grep -Fq 'Linux pkcheck executable provenance' requirements.html                     || r_s11b2="$r_s11b2 linux-pkcheck-provenance-requirements-missing"
+grep -Fq 'Linux service-owned main-server commit receiver proof' requirements.html   || r_s11b2="$r_s11b2 linux-service-main-server-proof-requirements-missing"
 grep -q 'windows_peer_is_authorized_for_service_owned_password_change' src/ipc.rs    || r_s11b2="$r_s11b2 windows-service-password-authorizer-missing"
 grep -q 'windows_pipe_client_token_is_elevated' src/ipc/auth.rs                     || r_s11b2="$r_s11b2 windows-service-password-token-elevation-missing"
 grep -q 'windows_pipe_client_token_is_local_system' src/ipc/auth.rs                  || r_s11b2="$r_s11b2 windows-service-password-localsystem-token-missing"

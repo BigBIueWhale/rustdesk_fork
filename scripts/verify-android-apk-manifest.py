@@ -9,6 +9,8 @@ import sys
 
 PACKAGE = "com.carriez.flutter_hbb"
 MAIN_ACTIVITY = f"{PACKAGE}.MainActivity"
+MIN_SDK_VERSION = 24
+TARGET_SDK_VERSION = 33
 
 EXPECTED_COMPONENTS = {
     (f"{PACKAGE}.BootReceiver", "receiver"): False,
@@ -294,10 +296,10 @@ def validate_manifest(tree):
     if uses_sdk is None:
         errors.append("manifest missing uses-sdk")
     else:
-        if uses_sdk.attrs.get("minSdkVersion") != 22:
-            errors.append("uses-sdk: minSdkVersion must be 22")
-        if uses_sdk.attrs.get("targetSdkVersion") != 33:
-            errors.append("uses-sdk: targetSdkVersion must be 33")
+        if uses_sdk.attrs.get("minSdkVersion") != MIN_SDK_VERSION:
+            errors.append(f"uses-sdk: minSdkVersion must be {MIN_SDK_VERSION}")
+        if uses_sdk.attrs.get("targetSdkVersion") != TARGET_SDK_VERSION:
+            errors.append(f"uses-sdk: targetSdkVersion must be {TARGET_SDK_VERSION}")
 
     validate_permissions(errors, manifest)
 

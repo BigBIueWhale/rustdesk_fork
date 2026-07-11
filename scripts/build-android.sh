@@ -99,8 +99,8 @@ build_apk() {
 }
 
 sign_apk() {
-    # apksigner v2 (mandatory since Android 11). Password from the mounted file,
-    # never on argv: apksigner reads it via the file: provider.
+    # Android 7+ only: v2/v3 protect the whole APK, including runtime META-INF resources.
+    # Password from the mounted file, never on argv: apksigner reads it via the file: provider.
     log "signing the APK with the stable local key (alias $KEY_ALIAS, R-B2)"
     docker run --rm \
         --network=none \
@@ -109,13 +109,23 @@ sign_apk() {
         -v "$KEYSTORE:/ks/keystore.jks:ro" \
         -v "$KEYSTORE_PASS_FILE:/ks/pass:ro" \
         -v "$ONLINE_DIR:/online:ro" \
+        -e ANDROID_MIN_SDK="$ANDROID_MIN_SDK" \
         "$IMAGE" \
         bash -euo pipefail -c '
             export PATH="/online/android-sdk/build-tools/'"${ANDROID_BUILD_TOOLS}"'/:$PATH"
             apksigner sign --ks /ks/keystore.jks --ks-key-alias '"$KEY_ALIAS"' \
-                --ks-pass file:/ks/pass --v2-signing-enabled true \
+                --ks-pass file:/ks/pass \
+                --min-sdk-version "$ANDROID_MIN_SDK" \
+                --v1-signing-enabled false \
+                --v2-signing-enabled true \
+                --v3-signing-enabled true \
                 --out /out/rustdesk-arm64.apk /out/rustdesk-arm64-unsigned.apk
-            apksigner verify --verbose /out/rustdesk-arm64.apk
+            verify_output="$(apksigner verify -Werr --min-sdk-version "$ANDROID_MIN_SDK" --verbose /out/rustdesk-arm64.apk)"
+            printf "%s\n" "$verify_output"
+            printf "%s\n" "$verify_output" | grep -qF "Verified using v1 scheme (JAR signing): false"
+            printf "%s\n" "$verify_output" | grep -qF "Verified using v2 scheme (APK Signature Scheme v2): true"
+            printf "%s\n" "$verify_output" | grep -qF "Verified using v3 scheme (APK Signature Scheme v3): true"
+            ! printf "%s\n" "$verify_output" | grep -qF "not protected by signature"
             python3 /src/scripts/verify-android-apk-manifest.py \
                 --apk /out/rustdesk-arm64.apk \
                 --aapt2 /online/android-sdk/build-tools/'"${ANDROID_BUILD_TOOLS}"'/aapt2

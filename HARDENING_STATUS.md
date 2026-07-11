@@ -224,6 +224,24 @@ exported receiver, exported provider, or additional exported activity fails the 
 not a root/LPE path; it makes the package authority claim true for the release artifact rather than only
 for the source manifest.
 
+**R-X6/R-S14 Android legacy JAR-signature META-INF authority — CLOSED / GATED (2026-07-11).**
+Platform: Android release APK. Endpoint/action: package-manager signature verification for the shipped APK.
+Boundary: Android 5.x/6.x v1/JAR signing compatibility ↔ runtime Java resources packaged under `META-INF/`.
+Attack surface closed: the fork no longer ships an APK whose supported platform set includes API 22/23, where
+v2/v3 APK signatures are ignored and arbitrary runtime `META-INF/` entries can remain outside the JAR-signature
+integrity model. The current artifact demonstrated the issue with `apksigner verify --verbose` warnings for
+AndroidX/kotlinx metadata plus R8-shrunk `kotlinx.coroutines` service-loader resources; mutating
+`META-INF/services/p5.v` still verified for an API 22/23 range, while API 24+ rejected the modified APK through
+v2/v3 whole-APK verification. Those coroutine service resources are runtime library behavior, not removable
+packaging junk, so the authority model changes at the support floor: `ANDROID_MIN_SDK`, Gradle
+`minSdkVersion`, and the final APK manifest verifier now require API 24. `scripts/build-android.sh` signs with
+`--min-sdk-version "$ANDROID_MIN_SDK"`, explicitly disables v1 signing, explicitly enables v2/v3 signing, and
+runs `apksigner verify -Werr --min-sdk-version "$ANDROID_MIN_SDK" --verbose` before the final manifest verifier,
+hashing, and double-build comparison. The build asserts v1 false, v2/v3 true, and no `not protected by signature`
+warning. `scripts/verify.sh` gates the pin, Gradle value, manifest-verifier value, container signing pin,
+v1/v2/v3 signing flags, warning-as-error verification, and this requirements/ledger disposition. Cost:
+Android 5.x/6.x compatibility is intentionally removed.
+
 **R-S15 — viewer PeerConfig write authority — status: CLOSED / GATED (2026-07-10).**
 Platforms: all viewer-capable targets. Endpoint/action: post-PAKE peer messages that reach the viewer's
 per-peer config store. Boundary: password-correct but hostile peer ↔ operator-owned persisted viewer

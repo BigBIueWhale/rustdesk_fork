@@ -4062,12 +4062,23 @@ grep -qF 'cleartextTrafficPermitted="false"' flutter/android/app/src/main/res/xm
 python3 -c 'import ast, pathlib; ast.parse(pathlib.Path("scripts/verify-android-apk-manifest.py").read_text(encoding="utf-8"))' || android_manifest_hardening="$android_manifest_hardening apk-manifest-helper-syntax"
 grep -qF 'verify-android-apk-manifest.py' scripts/build-android.sh || android_manifest_hardening="$android_manifest_hardening build-android-helper-call"
 grep -qF -- '--aapt2 /online/android-sdk/build-tools/' scripts/build-android.sh || android_manifest_hardening="$android_manifest_hardening build-android-aapt2"
+grep -qF 'ANDROID_MIN_SDK="24"' scripts/pins.env || android_manifest_hardening="$android_manifest_hardening min-sdk-pin"
+grep -qE 'minSdkVersion[[:space:]]+24\b' flutter/android/app/build.gradle || android_manifest_hardening="$android_manifest_hardening min-sdk-gradle"
+grep -qF 'MIN_SDK_VERSION = 24' scripts/verify-android-apk-manifest.py || android_manifest_hardening="$android_manifest_hardening min-sdk-helper"
+grep -qF -- '-e ANDROID_MIN_SDK="$ANDROID_MIN_SDK"' scripts/build-android.sh || android_manifest_hardening="$android_manifest_hardening min-sdk-container-env"
+grep -qF -- '--min-sdk-version "$ANDROID_MIN_SDK"' scripts/build-android.sh || android_manifest_hardening="$android_manifest_hardening min-sdk-sign"
+grep -qF -- '--v1-signing-enabled false' scripts/build-android.sh || android_manifest_hardening="$android_manifest_hardening v1-disabled"
+grep -qF -- '--v2-signing-enabled true' scripts/build-android.sh || android_manifest_hardening="$android_manifest_hardening v2-enabled"
+grep -qF -- '--v3-signing-enabled true' scripts/build-android.sh || android_manifest_hardening="$android_manifest_hardening v3-enabled"
+grep -qF 'apksigner verify -Werr --min-sdk-version' scripts/build-android.sh || android_manifest_hardening="$android_manifest_hardening apksigner-werr"
+grep -qF 'Verified using v1 scheme (JAR signing): false' scripts/build-android.sh || android_manifest_hardening="$android_manifest_hardening v1-output-gate"
+grep -qF 'not protected by signature' scripts/build-android.sh || android_manifest_hardening="$android_manifest_hardening unsigned-metainf-warning-gate"
 grep -qF 'FORBIDDEN_COMPONENTS = {' scripts/verify-android-apk-manifest.py || android_manifest_hardening="$android_manifest_hardening forbidden-component-policy"
 grep -qF 'androidx.profileinstaller.ProfileInstallReceiver' scripts/verify-android-apk-manifest.py || android_manifest_hardening="$android_manifest_hardening profileinstall-policy"
 grep -qF 'FORBIDDEN_USES_PERMISSIONS = {' scripts/verify-android-apk-manifest.py || android_manifest_hardening="$android_manifest_hardening forbidden-permission-policy"
 grep -qF 'ALLOWED_COMPONENTS =' scripts/verify-android-apk-manifest.py || android_manifest_hardening="$android_manifest_hardening component-inventory-policy"
 if [ -z "$android_manifest_hardening" ]; then
-  echo "  ok  R-X6/R-S14 Android manifest hardened (source removes forbidden merges; internal components explicit; signed APK verifier wired)"
+  echo "  ok  R-X6/R-S14 Android manifest/signature authority hardened (source removes forbidden merges; internal components explicit; signed APK verifier wired; v1/JAR signing retired)"
 else
   echo "  FAIL R-X6/R-S14: Android manifest hardening regressed:$android_manifest_hardening"; rc=1
 fi

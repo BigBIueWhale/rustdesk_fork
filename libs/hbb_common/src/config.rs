@@ -415,6 +415,26 @@ pub struct PeerConfig {
     pub transfer: TransferSerde,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PermanentPasswordPrsRead {
+    Available(String),
+    Empty,
+    UndecryptableStorage,
+}
+
+impl PermanentPasswordPrsRead {
+    pub fn into_prs(self) -> String {
+        match self {
+            Self::Available(prs) => prs,
+            Self::Empty | Self::UndecryptableStorage => String::new(),
+        }
+    }
+
+    pub fn is_available(&self) -> bool {
+        matches!(self, Self::Available(_))
+    }
+}
+
 impl Default for PeerConfig {
     fn default() -> Self {
         Self {
@@ -1818,12 +1838,27 @@ impl Config {
     /// caching), so a `--password` change (R-D2) takes effect on the next handshake.
     /// The CPace layer applies NFC and the non-empty check (R-P1/R-S9); on this ASCII
     /// base64 string the NFC pass is a harmless no-op.
-    pub fn get_permanent_password_prs() -> String {
+    pub fn read_permanent_password_prs() -> PermanentPasswordPrsRead {
         if let Some(prs) = RUNTIME_PERMANENT_PASSWORD_PRS.read().unwrap().as_ref() {
-            return prs.clone();
+            return if prs.is_empty() {
+                PermanentPasswordPrsRead::Empty
+            } else {
+                PermanentPasswordPrsRead::Available(prs.clone())
+            };
         }
-        decrypt_permanent_password_prs_storage(&CONFIG.read().unwrap().password_prs)
-            .unwrap_or_default()
+        let storage = CONFIG.read().unwrap().password_prs.clone();
+        if storage.is_empty() {
+            return PermanentPasswordPrsRead::Empty;
+        }
+        match decrypt_permanent_password_prs_storage(&storage) {
+            Some(prs) if !prs.is_empty() => PermanentPasswordPrsRead::Available(prs),
+            Some(_) => PermanentPasswordPrsRead::Empty,
+            None => PermanentPasswordPrsRead::UndecryptableStorage,
+        }
+    }
+
+    pub fn get_permanent_password_prs() -> String {
+        Self::read_permanent_password_prs().into_prs()
     }
 
     /// Returns the locally persisted permanent password storage and salt (NOT the hard/preset one).
@@ -1943,7 +1978,7 @@ impl Config {
             // so an undecryptable `01…` blob (e.g. a transient machine-UUID read failure) or a
             // password-set/prs-empty half-state — both of which refuse EVERY connection — do
             // NOT read as set. (Heal the SIGNAL, not the store: config.password is untouched.)
-            return !Self::get_permanent_password_prs().is_empty();
+            return Self::read_permanent_password_prs().is_available();
         }
         Self::has_usable_preset_password()
     }
@@ -4137,6 +4172,10 @@ mod tests {
         provisioned.password_prs = prs_storage;
         provisioned.salt = "salt123".to_owned();
         with_config_and_hard_settings(provisioned, HashMap::new(), || {
+            assert!(matches!(
+                Config::read_permanent_password_prs(),
+                PermanentPasswordPrsRead::Available(_)
+            ));
             assert!(!Config::get_permanent_password_prs().is_empty());
             assert!(Config::has_permanent_password());
         });
@@ -4158,6 +4197,10 @@ mod tests {
         opaque.password_prs = "01AAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned();
         opaque.salt = "salt123".to_owned();
         with_config_and_hard_settings(opaque, HashMap::new(), || {
+            assert_eq!(
+                Config::read_permanent_password_prs(),
+                PermanentPasswordPrsRead::UndecryptableStorage
+            );
             assert!(Config::get_permanent_password_prs().is_empty());
             assert!(!Config::has_permanent_password());
         });

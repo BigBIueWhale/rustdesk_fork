@@ -12,7 +12,7 @@ use hbb_common::{
     allow_err,
     anyhow::Context,
     bail,
-    config::Config,
+    config::{Config, PermanentPasswordPrsRead},
     log,
     message_proto::*,
     protobuf::{Enum, Message as _},
@@ -69,12 +69,12 @@ mod service;
 mod video_qos;
 pub mod video_service;
 
-pub async fn effective_permanent_password_prs() -> String {
+pub async fn effective_permanent_password_prs_status() -> PermanentPasswordPrsRead {
     #[cfg(target_os = "macos")]
     if crate::common::is_service_owned_server_process() {
         match crate::ipc::refresh_macos_service_owned_permanent_password_snapshot(1_000).await {
-            Ok(true) => return Config::get_permanent_password_prs(),
-            Ok(false) => return String::new(),
+            Ok(true) => return Config::read_permanent_password_prs(),
+            Ok(false) => return PermanentPasswordPrsRead::Empty,
             Err(err) => {
                 log::debug!("Failed to refresh macOS service-owned password snapshot: {err}");
                 if let Err(clear_err) = Config::set_permanent_password_storage_for_runtime("", "") {
@@ -82,11 +82,15 @@ pub async fn effective_permanent_password_prs() -> String {
                         "Failed to clear stale macOS service-owned password snapshot: {clear_err}"
                     );
                 }
-                return String::new();
+                return PermanentPasswordPrsRead::Empty;
             }
         }
     }
-    Config::get_permanent_password_prs()
+    Config::read_permanent_password_prs()
+}
+
+pub async fn effective_permanent_password_prs() -> String {
+    effective_permanent_password_prs_status().await.into_prs()
 }
 
 pub type Childs = Arc<Mutex<Vec<std::process::Child>>>;

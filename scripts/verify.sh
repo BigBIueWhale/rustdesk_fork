@@ -3028,6 +3028,23 @@ else
   echo "$atrest_out" | tail -20
   exit 1
 fi
+grep -Fq 'pub enum PermanentPasswordPrsRead' libs/hbb_common/src/config.rs ||
+  { echo "  FAIL R-S9: permanent-password PRS read status must be typed, not collapsed to a bare string"; exit 1; }
+grep -Fq 'PermanentPasswordPrsRead::UndecryptableStorage' libs/hbb_common/src/config.rs ||
+  { echo "  FAIL R-S9: undecryptable permanent-password PRS storage must remain distinguishable from an empty credential"; exit 1; }
+prs_reader_body=$(awk '/pub fn get_permanent_password_prs\(\)/,/^    }/' libs/hbb_common/src/config.rs)
+if echo "$prs_reader_body" | grep -q 'unwrap_or_default'; then
+  echo "  FAIL R-S9: get_permanent_password_prs must not silently collapse decrypt failure with unwrap_or_default"
+  exit 1
+fi
+grep -Fq 'effective_permanent_password_prs_status' src/server.rs ||
+  { echo "  FAIL R-S9: server auth helper must preserve permanent-password PRS read status"; exit 1; }
+grep -Fq 'stored permanent password PRS cannot be decrypted' src/direct_service.rs ||
+  { echo "  FAIL R-S9: direct listener must log undecryptable stored PRS distinctly from a missing password"; exit 1; }
+grep -Fq 'Permanent-password PRS read-state authority' requirements.html ||
+  { echo "  FAIL R-S9: requirements Appendix C must disposition permanent-password PRS read-state authority"; exit 1; }
+grep -Fq 'R-S9 permanent-password PRS read-state authority' HARDENING_STATUS.md ||
+  { echo "  FAIL R-S9: hardening status must record the PRS read-state closure"; exit 1; }
 
 # (3c-ii-a) Viewer peer media admission bounds (Appendix C #2b/R-T0): a
 # hostile peer controls VideoFrame.display and keyframe/audio cadence, so the
@@ -3157,14 +3174,21 @@ la_gate=
 # constant means it always rebinds the same v4 address after a transient failure.
 grep -qF 'bind_err_streak' src/direct_service.rs || la_gate="$la_gate no-bind-retry-counter"
 grep -qF 'retrying in' src/direct_service.rs      || la_gate="$la_gate no-bounded-bind-retry"
-# The accept loop re-checks the permanent password at RUNTIME and drops the listener if it
-# was cleared — so "listen on 0.0.0.0 iff a password is set" holds at runtime, not only at startup.
-grep -qF 'permanent password cleared at runtime — dropping the direct listener' src/direct_service.rs \
-  || la_gate="$la_gate no-runtime-password-recheck"
+# The accept loop re-checks the permanent-password PRS at RUNTIME and drops the
+# listener if it is empty or undecryptable, so "listen on 0.0.0.0 iff a usable
+# PRS is available" holds at runtime, not only at startup.
+grep -qF 'effective_permanent_password_prs_status' src/direct_service.rs \
+  || la_gate="$la_gate no-runtime-prs-status-check"
+grep -qF 'if !prs_status.is_available()' src/direct_service.rs \
+  || la_gate="$la_gate no-runtime-prs-availability-check"
+grep -qF 'permanent password cleared at runtime - dropping the direct listener' src/direct_service.rs \
+  || la_gate="$la_gate no-runtime-password-clear-drop"
+grep -qF 'stored permanent password PRS cannot be decrypted - dropping the direct listener' src/direct_service.rs \
+  || la_gate="$la_gate no-runtime-undecryptable-prs-drop"
 if [ -n "$la_gate" ]; then
   echo "  FAIL listener-audit regression:$la_gate"; rc=1
 else
-  echo "  ok  direct-listener invariant gates present (bounded bind-retry + runtime password re-check)"
+  echo "  ok  direct-listener invariant gates present (bounded bind-retry + runtime PRS availability re-check)"
 fi
 
 # Completed excisions — these MUST stay at zero (hard gate).

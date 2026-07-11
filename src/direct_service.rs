@@ -1,6 +1,6 @@
 use hbb_common::{
     allow_err,
-    config::{self, Config},
+    config::{self, Config, PermanentPasswordPrsRead},
     log, sleep, tokio,
 };
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -575,22 +575,32 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
         // re-binds and re-runs assert_socket_surface. The per-connection gate (server.rs,
         // R-S9) already refuses every connection in this window, so no listener is ever an
         // access path without a password — the socket simply tracks the credential.
-        if crate::server::effective_permanent_password_prs()
-            .await
-            .is_empty()
-        {
+        let prs_status = crate::server::effective_permanent_password_prs_status().await;
+        if !prs_status.is_available() {
             if listener.is_some() {
-                log::warn!(
-                    "R-S9: permanent password cleared at runtime — dropping the direct listener until one is set again"
-                );
+                match prs_status {
+                    PermanentPasswordPrsRead::UndecryptableStorage => log::error!(
+                        "R-S9: stored permanent password PRS cannot be decrypted - dropping the direct listener until the password is provisioned again"
+                    ),
+                    PermanentPasswordPrsRead::Empty => log::warn!(
+                        "R-S9: permanent password cleared at runtime - dropping the direct listener until one is set again"
+                    ),
+                    PermanentPasswordPrsRead::Available(_) => {}
+                }
                 // R-G1: dropping the listener tuple runs its ListenerBoundGuard Drop -> false.
                 listener = None;
             } else if !parked_no_password {
                 // Log ONCE per entry so a --service / Android app started before password
                 // provisioning is diagnosable rather than silently non-listening.
-                log::warn!(
-                    "R-S9: no permanent password set — the direct listener is PARKED (nothing bound, all connections refused) until one is provisioned"
-                );
+                match prs_status {
+                    PermanentPasswordPrsRead::UndecryptableStorage => log::error!(
+                        "R-S9: stored permanent password PRS cannot be decrypted - the direct listener is PARKED (nothing bound, all connections refused) until the password is provisioned again"
+                    ),
+                    PermanentPasswordPrsRead::Empty => log::warn!(
+                        "R-S9: no permanent password set - the direct listener is PARKED (nothing bound, all connections refused) until one is provisioned"
+                    ),
+                    PermanentPasswordPrsRead::Available(_) => {}
+                }
             }
             parked_no_password = true;
             sleep(1.).await;

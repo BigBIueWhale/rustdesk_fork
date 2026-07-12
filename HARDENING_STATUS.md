@@ -2071,6 +2071,21 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `cm_file_response_authority_*`, `cm_file_authority_*`, typed directory/block tests, `scripts/verify.sh`, and
   `scripts/apple-conform-check.sh` gate the complete session/generation/phase/size model and absence of every raw or
   legacy response surface; Appendix C #122 records CWE-441/CWE-863 and the all-platform impact.
+- **R-S11e-18 — Windows named-pipe impersonation restoration — CLOSED 2026-07-12.** Platform: Windows
+  installed-service and service-owned main IPC. Endpoint/action: connected-client token impersonation for
+  elevated `_service` password/RDP requests and LocalSystem service-owned credential commits. Boundary:
+  client-token authorization proof ↔ reuse of the privileged IPC runtime thread. Attack surface closed: the
+  former `Drop`-only guard logged `RevertToSelf` failure and returned, although Windows leaves the thread in the
+  client context after that failure. The IPC listener runs a current-thread Tokio runtime, so subsequent service
+  tasks could execute under the stale client token. `windows_pipe_client_token_satisfies` accepts only the closed
+  `Elevated`/`LocalSystem` requirement enum, captures its complete result, explicitly restores impersonation, and
+  returns only after successful restoration. No generic callback can add work inside the impersonation window.
+  Token-open errors and
+  unwinds retain an active guard that invokes the same restoration primitive. A failed `RevertToSelf` immediately
+  aborts the process; no error return, logging fallback, or reusable impersonated thread remains. Verification
+  closure: `scripts/verify.sh` parses the guard and wrapper to require the shared process-fatal primitive,
+  explicit-before-return ordering, active unwind fallback, and absence of the old log-and-continue path;
+  Appendix C #123 records the Windows-only impact; the repository Windows build gate compiles the target API shape.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -3426,7 +3441,7 @@ The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-8848e1a65c84906e892f08e4d44ece13d84582a795bf700bbd894a17da838248  requirements.html
+defb467f61db2528b686af1bfc53e02759f952e514f0330289938d85fb49095c  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

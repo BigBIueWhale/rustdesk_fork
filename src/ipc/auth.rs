@@ -180,15 +180,60 @@ impl Drop for LocalString {
 }
 
 #[cfg(windows)]
-struct ThreadImpersonationGuard;
+struct ThreadImpersonationGuard {
+    active: bool,
+}
+
+#[cfg(windows)]
+#[derive(Clone, Copy)]
+enum WindowsPipeClientTokenRequirement {
+    Elevated,
+    LocalSystem,
+}
+
+#[cfg(windows)]
+impl WindowsPipeClientTokenRequirement {
+    fn context(self) -> &'static str {
+        match self {
+            Self::Elevated => "Windows service-owned request caller",
+            Self::LocalSystem => "Windows service-owned main IPC peer",
+        }
+    }
+
+    fn is_satisfied(self, token: HANDLE) -> ResultType<bool> {
+        match self {
+            Self::Elevated => token_is_elevated(token),
+            Self::LocalSystem => Ok(token_user_sid_string(token)? == LOCAL_SYSTEM_SID),
+        }
+    }
+}
+
+#[cfg(windows)]
+impl ThreadImpersonationGuard {
+    fn new() -> Self {
+        Self { active: true }
+    }
+
+    fn restore(mut self) {
+        revert_thread_impersonation_or_abort();
+        self.active = false;
+    }
+}
+
+#[cfg(windows)]
+fn revert_thread_impersonation_or_abort() {
+    unsafe {
+        if RevertToSelf().is_err() {
+            std::process::abort();
+        }
+    }
+}
 
 #[cfg(windows)]
 impl Drop for ThreadImpersonationGuard {
     fn drop(&mut self) {
-        unsafe {
-            if let Err(err) = RevertToSelf() {
-                log::error!("Failed to revert named-pipe client impersonation: {}", err);
-            }
+        if self.active {
+            revert_thread_impersonation_or_abort();
         }
     }
 }
@@ -2095,11 +2140,11 @@ impl ConnectionTmpl<parity_tokio_ipc::Connection> {
         }
     }
 
-    fn with_impersonated_client_token<T>(
+    fn windows_pipe_client_token_satisfies(
         &self,
-        context: &str,
-        f: impl FnOnce(HANDLE) -> ResultType<T>,
-    ) -> ResultType<T> {
+        requirement: WindowsPipeClientTokenRequirement,
+    ) -> ResultType<bool> {
+        let context = requirement.context();
         let pipe_handle = self.inner.get_ref().as_raw_handle();
         if pipe_handle.is_null() {
             bail!(
@@ -2111,28 +2156,29 @@ impl ConnectionTmpl<parity_tokio_ipc::Connection> {
             ImpersonateNamedPipeClient(HANDLE(pipe_handle))
                 .map_err(|err| anyhow::anyhow!("Failed to impersonate {}: {}", context, err))?;
         }
-        let _revert = ThreadImpersonationGuard;
-
-        let mut token = HANDLE::default();
-        unsafe {
-            OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, true, &mut token).map_err(|err| {
-                anyhow::anyhow!("Failed to open {} impersonation token: {}", context, err)
-            })?;
-        }
-        let _token_guard = WindowsHandle(token);
-        f(token)
+        let revert = ThreadImpersonationGuard::new();
+        let result = (|| -> ResultType<bool> {
+            let mut token = HANDLE::default();
+            unsafe {
+                OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, true, &mut token).map_err(
+                    |err| {
+                        anyhow::anyhow!("Failed to open {} impersonation token: {}", context, err)
+                    },
+                )?;
+            }
+            let _token_guard = WindowsHandle(token);
+            requirement.is_satisfied(token)
+        })();
+        revert.restore();
+        result
     }
 
     pub(crate) fn windows_pipe_client_token_is_elevated(&self) -> ResultType<bool> {
-        self.with_impersonated_client_token("Windows service-owned password caller", |token| {
-            token_is_elevated(token)
-        })
+        self.windows_pipe_client_token_satisfies(WindowsPipeClientTokenRequirement::Elevated)
     }
 
     pub(crate) fn windows_pipe_client_token_is_local_system(&self) -> ResultType<bool> {
-        self.with_impersonated_client_token("Windows service-owned password commit peer", |token| {
-            Ok(token_user_sid_string(token)? == LOCAL_SYSTEM_SID)
-        })
+        self.windows_pipe_client_token_satisfies(WindowsPipeClientTokenRequirement::LocalSystem)
     }
 
     fn server_authorization_status(

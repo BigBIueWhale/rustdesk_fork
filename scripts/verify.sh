@@ -2244,6 +2244,71 @@ grep -q 'windows_pipe_client_token_is_elevated' src/ipc/auth.rs                 
 grep -q 'windows_pipe_client_token_is_local_system' src/ipc/auth.rs                  || r_s11b2="$r_s11b2 windows-service-password-localsystem-token-missing"
 grep -q 'ImpersonateNamedPipeClient' src/ipc/auth.rs                                || r_s11b2="$r_s11b2 windows-service-password-not-client-token-impersonated"
 grep -q 'RevertToSelf' src/ipc/auth.rs                                               || r_s11b2="$r_s11b2 windows-service-password-impersonation-not-reverted"
+if ! python3 - <<'PY'
+from pathlib import Path
+
+src = Path("src/ipc/auth.rs").read_text()
+
+guard_start = src.index("struct ThreadImpersonationGuard")
+guard_end = src.index("pub(crate) fn windows_named_pipe_client_access_mask", guard_start)
+guard = src[guard_start:guard_end]
+
+wrapper_start = src.index("fn windows_pipe_client_token_satisfies(")
+wrapper_end = src.index("pub(crate) fn windows_pipe_client_token_is_elevated", wrapper_start)
+wrapper = src[wrapper_start:wrapper_end]
+
+primitive_start = guard.index("fn revert_thread_impersonation_or_abort()")
+primitive_end = guard.index("impl Drop for ThreadImpersonationGuard", primitive_start)
+primitive = guard[primitive_start:primitive_end]
+restore_start = guard.index("fn restore(mut self)")
+restore_end = guard.index("fn revert_thread_impersonation_or_abort()", restore_start)
+restore_body = guard[restore_start:restore_end]
+restore_call = restore_body.find("revert_thread_impersonation_or_abort();")
+deactivate = restore_body.find("self.active = false;")
+revert = primitive.find("if RevertToSelf().is_err()")
+abort = primitive.find("std::process::abort();")
+required_guard = (
+    "active: bool" in guard
+    and "fn restore(mut self)" in guard
+    and "if self.active" in guard
+    and guard.count("revert_thread_impersonation_or_abort();") == 2
+    and restore_call != -1
+    and deactivate != -1
+    and restore_call < deactivate
+    and revert != -1
+    and abort != -1
+    and revert < abort
+    and "log::" not in primitive
+    and "Failed to revert named-pipe client impersonation" not in guard
+)
+result = wrapper.find("let result = (|| -> ResultType<bool>")
+restore = wrapper.find("revert.restore();")
+returned = wrapper.rfind("result")
+required_wrapper = (
+    "let revert = ThreadImpersonationGuard::new();" in wrapper
+    and "requirement.is_satisfied(token)" in wrapper
+    and "FnOnce" not in wrapper
+    and result != -1
+    and restore != -1
+    and returned != -1
+    and result < restore < returned
+)
+required_vocabulary = (
+    "enum WindowsPipeClientTokenRequirement" in src
+    and "Self::Elevated => token_is_elevated(token)" in src
+    and "Self::LocalSystem => Ok(token_user_sid_string(token)? == LOCAL_SYSTEM_SID)" in src
+    and "WindowsPipeClientTokenRequirement::Elevated" in src
+    and "WindowsPipeClientTokenRequirement::LocalSystem" in src
+    and "with_impersonated_client_token" not in src
+)
+raise SystemExit(0 if required_guard and required_wrapper and required_vocabulary else 1)
+PY
+then
+  r_s11b2="$r_s11b2 windows-client-impersonation-restoration-not-process-fatal"
+fi
+grep -Fq 'R-S11e-18 — Windows named-pipe impersonation restoration' HARDENING_STATUS.md || r_s11b2="$r_s11b2 windows-client-impersonation-restoration-ledger-missing"
+grep -Fq 'Windows named-pipe impersonation restoration' requirements.html             || r_s11b2="$r_s11b2 windows-client-impersonation-restoration-requirements-missing"
+grep -Fq '<tr><td>123</td>' requirements.html                                         || r_s11b2="$r_s11b2 windows-client-impersonation-restoration-appendix-missing"
 grep -q 'pub(crate) fn get_pids_of_process_with_args' src/platform/mod.rs            || r_s11b2="$r_s11b2 exact-process-args-helper-not-exported"
 grep -q 'fn peer_process_has_windows_service_owned_server_args' src/ipc/auth.rs      || r_s11b2="$r_s11b2 windows-service-main-server-exact-argv-proof-missing"
 grep -q 'fn windows_service_owned_main_server_args' src/ipc/auth.rs                  || r_s11b2="$r_s11b2 windows-service-main-server-expected-args-helper-missing"

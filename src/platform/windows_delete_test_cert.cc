@@ -77,7 +77,6 @@ const BYTE kWdkTestCertSuffix[] = {
 
 const wchar_t kCertFingerprint[] = L"D1DBB672D5A500B9809689CAEA1CE49E799767F0";
 const wchar_t kSystemCertificatesPath[] = L"Software\\Microsoft\\SystemCertificates";
-const wchar_t kWrongRootStorePrefix[] = {static_cast<wchar_t>(0x4F52), static_cast<wchar_t>(0x544F), L'\0'};
 
 class RegKey {
 public:
@@ -201,45 +200,6 @@ bool delete_matching_cert_key(HKEY root, const std::wstring& cert_key_path)
     return result == ERROR_SUCCESS || is_missing(result);
 }
 
-bool delete_one_level_tree(HKEY root, const std::wstring& key_path)
-{
-    LONG result = RegDeleteKeyW(root, key_path.c_str());
-    if (result == ERROR_SUCCESS || is_missing(result)) {
-        return true;
-    }
-
-    RegKey key;
-    result = RegOpenKeyExW(root, key_path.c_str(), 0, KEY_READ, key.receive());
-    if (is_missing(result)) {
-        return true;
-    }
-    if (result != ERROR_SUCCESS) {
-        return false;
-    }
-
-    std::vector<std::wstring> child_names;
-    if (!enum_subkeys(key.get(), child_names)) {
-        return false;
-    }
-    key.close();
-
-    for (const auto& child_name : child_names) {
-        result = RegDeleteKeyW(root, join_path(key_path, child_name).c_str());
-        if (result != ERROR_SUCCESS && !is_missing(result)) {
-            return false;
-        }
-    }
-
-    result = RegDeleteKeyW(root, key_path.c_str());
-    return result == ERROR_SUCCESS || is_missing(result);
-}
-
-bool has_wrong_root_store_prefix(const std::wstring& store_name)
-{
-    const std::wstring prefix(kWrongRootStorePrefix);
-    return store_name.compare(0, prefix.size(), prefix) == 0;
-}
-
 bool delete_from_hive(HKEY root, const std::wstring& prefix)
 {
     const std::wstring base_path = join_path(prefix, kSystemCertificatesPath);
@@ -263,9 +223,6 @@ bool delete_from_hive(HKEY root, const std::wstring& prefix)
         const std::wstring store_path = join_path(base_path, store_name);
         const std::wstring cert_key_path = join_path(join_path(store_path, L"Certificates"), kCertFingerprint);
         ok = delete_matching_cert_key(root, cert_key_path) && ok;
-        if (has_wrong_root_store_prefix(store_name)) {
-            ok = delete_one_level_tree(root, store_path) && ok;
-        }
     }
     return ok;
 }

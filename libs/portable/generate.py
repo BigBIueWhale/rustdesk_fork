@@ -2,6 +2,7 @@
 
 import os
 import optparse
+import subprocess
 from hashlib import md5
 import brotli
 import datetime
@@ -72,10 +73,10 @@ def write_app_metadata(output_folder: str):
 
 def build_portable(output_folder: str, target: str):
     os.chdir(output_folder)
+    command = ["cargo", "build", "--offline", "--locked", "--release"]
     if target:
-        os.system("cargo build --locked --release --target " + target)
-    else:
-        os.system("cargo build --locked --release")
+        command.extend(["--target", target])
+    subprocess.run(command, check=True)
 
 # Linux: python3 generate.py -f ../rustdesk-portable-packer/test -o . -e ./test/main.py
 # Windows: python3 .\generate.py -f ..\rustdesk\flutter\build\windows\runner\Debug\ -o . -e ..\rustdesk\flutter\build\windows\runner\Debug\rustdesk.exe

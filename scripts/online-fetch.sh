@@ -107,6 +107,8 @@ fetch_windows_toolchains() {
     # (imports brotli) packs the portable installer. The golden installs it + `pip install brotli` networked.
     fetch_verify "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-amd64.exe" \
         "python-windows-${PYTHON_VERSION}.exe" "${SHA256_PYTHON_WIN_3_11_9}"
+    fetch_verify "https://files.pythonhosted.org/packages/17/d3/b64c356a907242d719fc668b71befd73324e47ab46c8ebbbede252c154b2/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" \
+        "olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" "${SHA256_OLEFILE_0_47}"
     # The golden's Rust compiler MSI + Git installer — publicly re-fetchable and DUAL-SOURCE-pinned
     # (pins.env), so fetch + verify them here like the other windows toolchains instead of relying on
     # an operator hand-stage. rustup-init has NO stable versioned URL (its 'latest' drifts), so it

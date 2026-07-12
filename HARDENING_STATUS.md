@@ -1136,61 +1136,36 @@ unreachable and a source/test/AST gate prevents reintroduction.
   the client-PID query/gate, expected helper PID parameter, both service-side pipe waits passing the launched
   helper PID, first-instance and remote-client rejection flags, absence of the old pipe-name logging strings,
   and this ledger/requirements disposition.
-- **R-S11d — Windows installer service-root authority — CLOSED 2026-07-09.** Platform: Windows EXE and MSI
-  install/update service creation paths. Endpoint/action: choosing or carrying the installed service binary
-  directory, staging elevated EXE command files, and MSI service/registry privileged custom actions. Boundary:
-  local unelevated install UI/CLI/MSI properties and caller-writable staging ↔ elevated installer/LocalSystem
-  service binary authority. Attack surface closed: a caller-selected or registry-restored install folder no
-  longer becomes the LocalSystem service root. The EXE installer resolves Program Files with
-  `SHGetKnownFolderPath`, rejects non-default paths, removes Flutter path selection, resolves elevated `cmd.exe`
-  with `GetSystemDirectoryW`, keeps generated command files open read-only with `FILE_SHARE_READ` only while the
-  elevated child consumes them, uses the same fixed-root helper from `install_me`, `install_service`, and
-  `run_after_install`, and makes `sc` service-creation failures leave the elevated command marker intact so the
-  caller sees failure. MSI uses private `App.InstallFolder` under `ProgramFiles6432Folder`, has no public
-  `INSTALLFOLDER`/`INSTALLFOLDER_INNER`/`WIXUI_INSTALLDIR`/browse surface, and has no service shell
-  fallback; service creation/start/stop/delete use checked native APIs and fail closed on native API failure or
-  stale service deletion. Verification closure: `scripts/verify.sh`
-  asserts known-folder Program Files resolution, custom-path rejection, trusted system `cmd.exe` resolution,
-  write/delete sharing denial on EXE command staging, fixed Flutter install entry, fixed-root EXE service entry
-  points, fatal EXE `sc` errors, MSI private install root, absence of MSI browse/public install-folder routing,
-  checked MSI privileged custom-action returns, native service-delete verification, absence of MSI
-  `sc`/`cmd.exe`/`reg` shell fallbacks, post-elevated relaunch executable authority via R-S11d-30,
-  privacy broker served-session authority via R-S11d-31, and this ledger/requirements disposition.
-- **R-S11d-1 — Windows Amyuni IDD helper launch provenance — CLOSED 2026-07-10; tightened 2026-07-11.** Platform:
-  Windows MSI deferred custom action and runtime virtual-display helper path. Endpoint/action:
-  `deviceinstaller64.exe` under `usbmmidd_v2`, launched to install/remove the Amyuni virtual-display driver.
-  Boundary: installed Program Files helper payload ↔ privileged MSI/custom-action or service/runtime helper
-  execution. Attack surface closed: both launch paths now execute the checked absolute helper executable path.
-  The MSI action checks that `usbmmidd_v2` is a directory, checks that the helper path is a
-  file, and passes `exePath` as the `CreateProcessW` application path rather than the bare helper name. The
-  runtime helper now derives `usbmmidd_v2`, `deviceinstaller64.exe`, and `usbmmIdd.inf` only from the fixed
+- **R-S11d-1 — Windows Amyuni IDD helper launch provenance — CLOSED 2026-07-10; tightened 2026-07-12.** Platform:
+  Windows runtime virtual-display helper path. Endpoint/action: `deviceinstaller64.exe` under `usbmmidd_v2`,
+  launched to install/remove the Amyuni virtual-display driver. Boundary: installed Program Files helper payload ↔
+  service/runtime helper execution. Attack surface closed: the runtime helper derives `usbmmidd_v2`,
+  `deviceinstaller64.exe`, and `usbmmIdd.inf` only from the fixed
   Program Files service root returned by `fixed_service_install_path("")`, requires handle-level identity between
   the running executable directory and that fixed service root plus identity between the running executable and the
   fixed installed service executable, rejects reparse/symlink-backed helper directories, helper files, and INF
   files, propagates helper-path trust failures instead of falling through to SetupAPI, and executes
-  `paths.exe_path` as the `CreateProcessW` application path. Verification closure: `scripts/verify.sh` asserts
-  the MSI `exePath` CreateProcess call, rejects the old bare-name call, asserts the runtime fixed-root file-identity
-  proof, non-reparse helper/INF checks, absolute-path helper launch, and `paths.exe_path` launch, rejects swallowed
+  `paths.exe_path` as the `CreateProcessW` application path. MSI explicit-uninstall cleanup is self-contained
+  SetupAPI code and launches no installed helper. Verification closure: `scripts/verify.sh` asserts the runtime
+  fixed-root file-identity proof, non-reparse helper/INF checks, absolute-path helper launch, and `paths.exe_path`
+  launch, rejects swallowed
   helper trust failures, lossy path/INF fallback, `ShellExecuteA`, and bare `INSTALLER_EXE_FILE` launch, and checks
   this ledger/requirements disposition.
 - **R-S11d-2 — Windows Amyuni IDD cleanup completion authority — CLOSED 2026-07-10.** Platform:
-  Windows MSI deferred non-impersonated uninstall/update custom action. Endpoint/action:
-  `RemoveAmyuniIdd` removing the `usbmmidd` Amyuni virtual-display device through SetupAPI and, on AMD64, the
-  installed `usbmmidd_v2\deviceinstaller64.exe remove usbmmidd` fallback. Boundary: installed privileged driver
-  state/helper payload ↔ privileged MSI cleanup state. Attack surface closed: cleanup no longer hides native
-  SetupAPI failure or helper failure from MSI. The native path returns a `DriverUninstallStatus` plus `HRESULT`:
+  Windows MSI commit-phase explicit-uninstall custom action. Endpoint/action:
+  `RemoveAmyuniIdd` removing the `usbmmidd` Amyuni virtual-display device through SetupAPI. Boundary: installed
+  privileged driver state ↔ privileged MSI cleanup state. Attack surface closed: cleanup no longer hides native
+  SetupAPI failure from MSI. The native path returns a `DriverUninstallStatus` plus `HRESULT`:
   complete enumeration proving no present matching hardware ID is a successful no-op, successful removal of all
-  matching present devices is success, and enumeration/property/class-installer/remove failures are fatal unless
-  the AMD64 helper fallback succeeds. The helper fallback is attempted only after native failure; if native
-  removal failed, a missing helper directory or helper executable is fatal rather than a silent skip. The action
-  launches the already checked absolute helper with `CreateProcessW`, waits with a bounded timeout, reads the
-  exit code, accepts `ERROR_SUCCESS_REBOOT_REQUIRED` as success-with-reboot, treats other nonzero exits as
-  failure, signals reboot-required state through WiX, and the WiX action is `Return="check"`. The action is
-  scheduled only for uninstall/upgrade. Stale bare-`netsh` `ShellExecuteW` firewall helper examples and their
+  matching present devices is success, and enumeration/property/class-installer/remove failures are fatal. The
+  commit action has no `CustomActionData`, install-root, installed-helper, or process-launch dependency. It signals
+  SetupAPI reboot-required state through WiX, and the WiX action is `Return="check"`. The action is
+  scheduled only after a successful explicit uninstall transaction; upgrade preserves the installed driver. Stale
+  bare-`netsh` `ShellExecuteW` firewall helper examples and their
   commented reactivation path are deleted. Verification closure: `scripts/verify.sh` asserts the native status
-  contract, HRESULT propagation, complete-enumeration/not-present branch, MultiSZ hardware-ID scan, checked
-  helper fallback, reboot signaling, uninstall/upgrade scheduling, `RemoveAmyuniIdd` `Return="check"`, absence
-  of the old ignored-return/native-result-discard shapes, and this ledger/requirements disposition.
+  contract, HRESULT propagation, complete-enumeration/not-present branch, MultiSZ hardware-ID scan, reboot
+  signaling, explicit-uninstall commit scheduling, absence of installed-helper/caller-data dependencies,
+  `RemoveAmyuniIdd` `Return="check"`, and this ledger/requirements disposition.
 - **R-S11d-3 — Windows runtime process command provenance — CLOSED 2026-07-10.** Platform:
   Windows runtime service-adjacent process probes in `src/platform/windows.rs`. Endpoint/action:
   non-installed UAC `consent.exe` detection used by capture/privacy-mode decisions, and startup cleanup for the
@@ -1218,49 +1193,6 @@ unreachable and a source/test/AST gate prevents reintroduction.
   execute sequence. Verification closure: `scripts/verify.sh` asserts the checked broker-delete branch, fatal
   cleanup message, checked WiX return, absence of the old ignored return, absence of the sample custom action,
   and this ledger/requirements disposition.
-- **R-S11d-5 — Windows EXE elevated batch command provenance — CLOSED 2026-07-10.** Platform:
-  Windows EXE install/uninstall/service-install elevated command path. Endpoint/action: generated `.bat`
-  files launched through UAC-elevated `System32\cmd.exe` by `run_cmds`. Boundary: unelevated installer process
-  and its current directory/environment ↔ elevated registry, firewall, service, process-termination, shortcut,
-  and file-copy actions. Attack surface closed: the batch body no longer resolves external tools by bare command
-  name. Before any elevated EXE batch is formatted, `src/platform/windows.rs` resolves `chcp.com`,
-  `cscript.exe`, `msiexec.exe`, `netsh.exe`, `reg.exe`, `sc.exe`, `taskkill.exe`, `timeout.exe`, and
-  `xcopy.exe` from `GetSystemDirectoryW`, requires each file to exist, quotes the resulting absolute path, and
-  threads that tool set through broker update, install, uninstall, service install/uninstall, prior-MSI uninstall
-  handoff, service creation, shortcut-script execution, registry/firewall/SAS setup, and bulk-copy fragments.
-  Missing or malformed tool paths fail closed before elevation; the existing `.undone` marker still makes batch
-  failure visible to the caller. Prior MSI uninstall strings are not replayed as command text: R-S11d-35 parses
-  only the MSI product-code grammar, proves `ProductName` through Windows Installer, and rebuilds the command with
-  the trusted `msiexec.exe`. Verification closure: `scripts/verify.sh` asserts the System32 tool resolver, the
-  required tool set, prior-MSI product-code reconstruction/proof, and absence of bare `chcp`, `reg`, `netsh`, `sc`,
-  `taskkill`, `cscript`, `XCOPY`, `xcopy`, or `timeout` command lines in the elevated batch surface.
-- **R-S11d-6 — Windows EXE shortcut finalization provenance — CLOSED 2026-07-10.** Platform:
-  Windows EXE install/service-install elevated shortcut creation. Endpoint/action: Public Desktop shortcut,
-  Common Programs Start Menu shortcuts, Common Startup tray shortcut, and Program Files uninstall shortcut.
-  Boundary: unelevated caller-owned temporary staging ↔ all-users/protected shortcut destinations. Attack
-  surface closed: the installer no longer creates predictable `.lnk` files under the user temp directory and
-  then elevated-copies them into public/ProgramData/Program Files locations. `src/platform/windows.rs` resolves
-  final shortcut roots with `SHGetKnownFolderPath` (`FOLDERID_PublicDesktop`, `FOLDERID_CommonPrograms`,
-  `FOLDERID_CommonStartup`), creates VBS command files that call `WScript.Shell.CreateShortcut` on the final
-  protected shortcut path directly under the elevated batch, rejects quote/CR/LF in installer script literals,
-  fails the batch immediately on `cscript.exe` error, and deletes the old temp-output tray shortcut helper.
-  Verification closure: `scripts/verify.sh` asserts the known-folder roots, final-destination shortcut command
-  helper, checked `cscript.exe` runner, final path call sites, absence of temp `.lnk` staging/copy patterns, and
-  this ledger/requirements disposition.
-- **R-S11d-7 — Windows MSI firewall custom-action completion authority — CLOSED 2026-07-10.** Platform:
-  Windows MSI deferred non-impersonated install/uninstall custom actions. Endpoint/action:
-  `AddFirewallRules` and `RemoveFirewallRules` modifying Windows Firewall policy for the installed RustDesk
-  executable. Boundary: privileged firewall policy ↔ MSI install/uninstall completion state. Attack surface
-  closed: the actions no longer continue after firewall COM/policy/add/remove failure and no longer discard
-  helper results. WiX declares both actions `Return="check"`; the custom-action entry validates the mode byte and
-  non-empty executable path, derives the rule name with string-copy rather than format-string copy, propagates
-  the helper `HRESULT`, and fails MSI on helper failure. The helper returns `HRESULT`, removes existing same-name
-  rules before add, requires both inbound and outbound rule creation to succeed, best-effort removes partial state
-  before returning an add failure, and removes rules by bounded `Item`/`Remove` loops until absence is proven.
-  Already-absent rules are successful no-ops; COM/policy/query/remove failures are fatal. Verification closure:
-  `scripts/verify.sh` asserts checked WiX returns, HRESULT helper signatures and propagation, invalid
-  CustomActionData rejection, absence of format-string copies and discarded helper results, bounded
-  remove-until-absent semantics, absent-rule no-op HRESULTs, and this ledger/requirements disposition.
 - **R-S11d-8 — Windows RDP viewer credential command provenance — CLOSED 2026-07-10.** Platform: Windows
   viewer-side RDP tunnel convenience. Endpoint/action: launching `mstsc.exe` to connect to the loopback tunnel
   and temporarily seeding the current user's Windows Credential Manager entry for `TERMSRV/localhost`. Boundary:
@@ -1368,139 +1300,6 @@ unreachable and a source/test/AST gate prevents reintroduction.
   directory/file checks, handle-identity comparisons, service-owned launch helper use, explicit child current directory,
   service-owned entry guard, fixed-exe main receiver proof, exact argv helper, absence of the old current-exe
   service-owned receiver proof, and this ledger/requirements disposition.
-- **R-S11d-15 — Windows EXE elevated batch completion accounting — CLOSED 2026-07-10.**
-  Platform: Windows EXE install/uninstall/service-install elevated command path. Endpoint/action:
-  `run_cmds` launching generated `.bat` files through UAC-elevated `System32\cmd.exe`, plus the
-  `install_service` / `uninstall_service` wrappers that report service-lifecycle result status. Boundary:
-  unelevated caller ↔ elevated installer command completion. Attack surface closed: the elevated wrapper no
-  longer treats a successfully spawned `cmd.exe` as proof of successful privileged state change. The `.undone`
-  completion marker is now created as a mandatory precondition; after the elevated command exits, `run_cmds`
-  requires both `ExitStatus::success()` and removal of the completion marker. A leftover marker is deleted
-  before returning failure. `install_service` and `uninstall_service` now return `false` when the elevated
-  command fails instead of logging the error and reporting success. Verification closure: `scripts/verify.sh`
-  asserts mandatory marker creation, elevated exit-status success checking, marker-state checking, absence of
-  the old ignored-status shape, service install/uninstall failure reporting, and this ledger/requirements
-  disposition.
-- **R-S11d-18 — Windows EXE elevated batch cmd-state hardening — CLOSED 2026-07-10.**
-  Platform: Windows EXE install/uninstall/service-install/service-uninstall elevated command runner.
-  Endpoint/action: `run_cmds` writing generated `.bat` and completion-marker files, then executing the batch
-  through elevated `System32\cmd.exe`. Boundary: medium-integrity caller environment, temp path, and HKCU
-  Command Processor state ↔ elevated installer command execution. Attack surface closed: the runner no longer
-  lets HKCU Command Processor `AutoRun` participate in elevated command startup, and generated batch/marker
-  path text no longer enters `cmd.exe` with expansion-sensitive characters. `run_cmds` invokes trusted
-  `cmd.exe` with `/D /V:OFF /S /C`; generated batch and marker paths are accepted only after rejecting quotes,
-  `%`, `!`, shell metacharacters, CR/LF, and control characters; command-file creation tries only validated
-  candidate directories, in order: caller temp, the ProgramData known folder, and the existing user-accessible
-  folder, continuing to the next safe candidate when creation fails. Completion-marker deletion is quoted
-  through the same safe path guard.
-  Verification closure: `scripts/verify.sh` asserts the ProgramData fallback, fallible installer command
-  directory candidate list, literal/path guards, rejected expansion/metacharacter set, safe temp/ProgramData/
-  user-accessible checks, create-error tracking, marker quoting, `/D /V:OFF /S /C` command invocation on both
-  already-elevated and UAC `runas` paths, absence of the old bare `/C` invocation shape, and this
-  ledger/requirements disposition. Separate Windows findings not closed by this item were tracked separately:
-  R-S11d-19 closes env-expanded uninstall cleanup roots, R-S11d-20 closes elevated batch command
-  postconditions, and R-S11d-21 closes the MSI `CC_CONNECTION_TYPE` public-property service-mode gate.
-- **R-S11d-19 — Windows EXE uninstall cleanup known-folder authority — CLOSED 2026-07-10.**
-  Platform: Windows EXE uninstall and service-uninstall elevated command paths. Endpoint/action: cleanup of
-  all-users Start Menu, Public Desktop, and Common Startup shortcuts/directories after uninstall or service
-  removal. Boundary: caller/elevated process environment ↔ protected all-users shell folders. Attack surface
-  closed: elevated cleanup no longer expands `%ProgramData%`, `%PROGRAMDATA%`, or `%PUBLIC%` inside the batch
-  body to decide which protected shell-folder paths to delete. The stale start-menu field was removed from
-  `get_install_info`; install, uninstall, service install, and service uninstall now share fallible
-  `SHGetKnownFolderPath` helpers for Public Desktop, Common Programs, and Common Startup. `get_uninstall` is
-  fallible, quotes known-folder cleanup targets through the elevated batch path guard, and propagates
-  known-folder/quoting failures to callers. `uninstall_service` resolves and quotes the Common Startup tray
-  shortcut before composing the elevated command and returns `false` on failure. Verification closure:
-  `scripts/verify.sh` asserts the narrowed `get_install_info` tuple, fallible uninstall builder/callers,
-  known-folder quoted cleanup paths, service uninstall known-folder cleanup, absence of `%ProgramData%` /
-  `%PROGRAMDATA%` / `%PUBLIC%` roots in `src/platform/windows.rs`, and this ledger/requirements disposition.
-  Separate Windows findings not closed by this item are tracked separately: R-S11d-20 closes elevated batch
-  command postconditions, R-S11d-21 closes the MSI `CC_CONNECTION_TYPE` public-property service-mode gate, and
-  R-S11d-36 closes non-MSI install-directory cleanup authority.
-- **R-S11d-20 — Windows EXE elevated batch command postconditions — CLOSED 2026-07-10.**
-  Platform: Windows EXE install, update-broker, uninstall, service-install, and service-uninstall elevated
-  batch bodies. Endpoint/action: generated `.bat` fragments that copy binaries, create install directories,
-  write HKLM/HKCR registry state, add/remove firewall rules, create/delete the service, create/delete all-users
-  shortcuts, and delegate to a prior MSI uninstall. Boundary: approved elevated installer command stream ↔
-  privileged persistent Windows state. Attack surface closed: required elevated operations no longer fall
-  through to marker deletion after an ignored command failure, and cleanup operations that are allowed to be
-  absent now verify the target is absent before reporting success. Required install/update operations are routed
-  through fail-fast helpers: broker and install payload copies verify their destination files, `xcopy` no longer
-  carries `/C`, install-directory creation verifies the directory exists, registry and firewall additions are
-  checked for command failure, shortcut scripts verify the final `.lnk` exists, and service creation/failure/start
-  retains checked `sc` exit handling. Uninstall cleanup now uses absence-driven helpers for service deletion,
-  HKCR/HKLM key deletion, firewall rule deletion, install-directory removal, Start Menu removal, Public Desktop
-  shortcut removal, and Common Startup tray-shortcut removal. Prior MSI uninstall delegation is reconstructed by
-  R-S11d-35 before it enters the batch, then observes `msiexec` exit status, accepting only success,
-  reboot-required `3010`, and product-absent `1605`. R-S11d-21 separately closes the MSI `CC_CONNECTION_TYPE`
-  public-property service-mode gate, R-S11d-22 separately closes EXE certificate-cleanup completion, and R-S11d-23
-  separately closes EXE Amyuni IDD cleanup completion. The MSI Amyuni cleanup authority is R-S11d-2/R-S11d-7.
-  Verification closure: `scripts/verify.sh` asserts the fail-fast and absence-postcondition helpers, checked
-  copy/update/install call sites, removal of `xcopy /C`, install directory and shortcut existence postconditions,
-  service/registry/firewall absence checks, reconstructed MSI uninstall exit handling, absence of the raw
-  uninstall-string fallback and raw install-dir create/service-delete/uninstall-registry-delete leftovers, and this
-  ledger/requirements disposition.
-- **R-S11d-21 — Windows MSI service-mode package authority — CLOSED 2026-07-10.**
-  Platform: Windows MSI install/repair/upgrade. Endpoint/action: package-time service creation/start, tray launch,
-  and startup tray shortcut installation. Boundary: MSI public properties and transforms ↔ per-machine LocalSystem
-  service presence. Attack surface closed: `CC_CONNECTION_TYPE` can no longer be generated by the custom-client
-  preprocessor and can no longer suppress service/tray installation state. The MSI no longer has a public
-  connection-type service-mode switch: the `--conn-type` preprocessor argument and `gen_conn_type` property writer
-  are deleted, all `CC_CONNECTION_TYPE` package conditions are deleted, and the service/tray conditions now follow
-  the package's pinned service policy. Verification closure: `scripts/verify.sh` rejects `CC_CONNECTION_TYPE`,
-  `--conn-type`, `conn_type`, and `gen_conn_type` under `res/msi`, asserts the service/tray/startup shortcut
-  conditions without a connection-type branch, and pins this ledger/requirements disposition.
-- **R-S11d-22 — Windows EXE certificate cleanup completion authority — CLOSED 2026-07-10.**
-  Platform: Windows EXE uninstall. Endpoint/action: elevated uninstall batch invoking `--uninstall-cert`, the
-  Rust `uninstall_cert()` FFI wrapper, and `windows_delete_test_cert.cc` deleting the fixed WDK test-certificate
-  thumbprint plus the historical malformed ROOT store. Boundary: elevated uninstall completion ↔ persistent
-  Windows certificate trust state. Attack surface closed: certificate cleanup can no longer fail or be skipped
-  while EXE uninstall reports success. `get_uninstall` now fails if the current executable cannot be resolved and
-  wraps `--uninstall-cert` with the fail-fast batch helper; the CLI arm logs cleanup errors and exits nonzero; the
-  Rust FFI wrapper treats a false native result as an error; and the native helper returns `BOOL` after checking
-  every registry operation it owns. The native helper also removes the stale `readResult` branch that prevented the
-  certificate Blob read from authorizing deletion, deletes only the fixed thumbprint after a bounded WDK-test-cert
-  suffix match, preserves malformed-ROOT-store cleanup through an explicit wide prefix, and opens store keys with
-  read-scoped access rather than `KEY_ALL_ACCESS`. Verification closure: `scripts/verify.sh` asserts the native
-  `BOOL` contract, Rust status propagation, nonzero CLI exit on failure, checked uninstall batch command, fatal
-  current-exe resolution, checked Blob read, bounded Blob match, explicit malformed-store prefix, absence of the
-  old void-return/read-result/ignored-error/all-access shapes, and this ledger/requirements disposition.
-- **R-S11d-23 — Windows EXE Amyuni IDD cleanup completion authority — CLOSED 2026-07-10; tightened 2026-07-11.**
-  Platform: Windows EXE uninstall and runtime AMD64 Amyuni helper launch. Endpoint/action: elevated uninstall batch
-  invoking `--uninstall-amyuni-idd`, the top-level `--uninstall` dispatcher, the Rust
-  `amyuni_idd::uninstall_driver()` CLI arm, and runtime `deviceinstaller64.exe` install/remove fallback. Boundary:
-  elevated uninstall/install completion ↔ persistent Amyuni virtual-display driver state and helper execution.
-  Attack surface closed: EXE uninstall can no longer skip or hide Amyuni cleanup failure while reporting success.
-  `get_uninstall` resolves the current executable once for EXE uninstall helpers, treats that failure as fatal, quotes
-  the helper command through the elevated-batch path guard, and wraps `--uninstall-amyuni-idd` in the fail-fast
-  command helper. The top-level `--uninstall` dispatcher exits nonzero when `uninstall_me()` fails, and the
-  `--uninstall-amyuni-idd` CLI arm logs cleanup errors and exits nonzero. The AMD64 runtime helper no longer uses
-  `ShellExecuteW` fire-and-forget; it builds a quoted mutable command line, starts the checked absolute
-  `deviceinstaller64.exe` path with `CreateProcessW`, waits with the same two-minute bound used by MSI, reads the
-  child exit code, accepts `ERROR_SUCCESS_REBOOT_REQUIRED` only for remove/cleanup, rejects reboot-required on
-  install/update before trying to use the driver, and propagates launch/wait/exit-code failures. Helper payload
-  absence before selecting the helper remains a no-op only after handle identity proves the running executable
-  directory is the fixed service root and the running executable is the fixed installed service executable;
-  malformed, reparse-backed, inaccessible, or wrong-root helper/INF state fails closed rather than silently falling
-  through to another driver-install authority. Verification closure: `scripts/verify.sh` asserts checked elevated-batch
-  command construction, fatal shared
-  `current_exe` resolution, top-level and helper CLI nonzero exits, explicit helper command-line ownership,
-  fixed-root runtime helper file-identity proof, trusted INF lookup, `CreateProcessW` application-path binding,
-  bounded wait, exit-code read, remove-vs-install reboot policy, absence of swallowed helper trust failures, absence
-  of the old skipped-command helper, absence of `ShellExecuteW` in the runtime helper, and this ledger/requirements
-  disposition.
-- **R-S11d-24 — Windows stale RustDesk IDD install helper completion — CLOSED 2026-07-10.**
-  Platform: Windows raw CLI. Endpoint/action: `--install-idd`, the old RustDesk IDD install/update helper, and the
-  Amyuni-only virtual-display implementation marker. Boundary: local CLI exit status ↔ persistent display-driver
-  install/update state. Attack surface closed: a stale public CLI can no longer invoke the inactive RustDesk IDD
-  installer, mask install/update failure with `allow_err!`, and report success in a build whose supported
-  virtual-display implementation is Amyuni. The fork's supported virtual-display driver install/update path remains
-  the Amyuni runtime path, which is checked by R-S11d-23: helper launch is bound to the checked executable path,
-  waited, exit-code checked, and rejects reboot-required install before the driver is used. The raw `--install-idd`
-  arm is reject-only: it logs that the command is unsupported in this build and exits nonzero without touching driver
-  state. Verification closure: `scripts/verify.sh` asserts the reject-only `--install-idd` arm, nonzero exit, absence
-  of the old RustDesk IDD helper call and `allow_err!` from that arm, the Amyuni implementation marker, and this
-  ledger/requirements disposition.
 - **R-S11d-38 — Windows inactive RustDesk IDD loader excision — CLOSED 2026-07-12.**
   Platform: Windows virtual-display runtime, build/package graph, and Flutter client/UI compatibility surface.
   Endpoint/action: the inactive RustDesk IDD implementation, its `libs/virtual_display` wrapper and
@@ -1535,15 +1334,15 @@ unreachable and a source/test/AST gate prevents reintroduction.
   driver install/update completion ↔ immediate virtual-display use. Attack surface closed: direct SetupAPI install
   can no longer report success when `UpdateDriverForPlugAndPlayDevicesW` sets `reboot_required`, because that state
   means the driver cannot be treated as immediately usable. The fallback now follows the same install/update policy
-  as the checked helper path from R-S11d-23: reboot-required install fails closed before `check_install_driver()`
+  as the checked helper path: reboot-required install fails closed before `check_install_driver()`
   returns and before monitor plug-in proceeds. Remove/cleanup reboot-required remains accepted under the cleanup
   policy; this entry is only the install/update fallback. Verification closure: `scripts/verify.sh` asserts the
   direct SetupAPI install call, the `reboot_required` branch, fatal install reboot-required error, absence of the old
   discarded install result shape, and this ledger/requirements disposition.
 - **R-S11d-26 — Windows app-name identity contract — CLOSED 2026-07-11.** Platform: Windows
   signed custom-client runtime config and MSI packaging. Endpoint/action: custom `app-name` reaching executable
-  names, install paths, URI scheme, service name, HKCR/HKLM registry keys, firewall rule labels, shortcuts, and
-  elevated EXE batch text. Boundary: signed/build-time branding input ↔ privileged Windows system identifiers.
+  names, install paths, URI scheme, service name, HKCR/HKLM registry keys, firewall rule labels, and shortcuts.
+  Boundary: signed/build-time branding input ↔ privileged Windows system identifiers.
   Attack surface closed: `app-name` is no longer accepted as arbitrary display text. Signed custom-client parsing
   now rejects non-string or invalid `app-name` before applying any payload settings, and MSI preprocessing rejects
   invalid `--app-name` before generating package resources. The contract is a 1-64 byte ASCII identifier: first
@@ -1574,33 +1373,13 @@ unreachable and a source/test/AST gate prevents reintroduction.
   the Windows `message_box` helper, the diagnostic environment knobs, and the old diagnostic strings, and requires
   this ledger/requirements disposition.
 - **R-S11d-29 — Windows service-adjacent path known-folder authority — CLOSED 2026-07-11.** Platform:
-  Windows runtime/service-adjacent path selection. Endpoint/action: active-user home fallback, root recording
-  directory selection, and installer command-file user-accessible fallback directory. Boundary: Windows system/profile
-  root authority ↔ process environment text. Attack surface closed: profile, ProgramData, and Windows Temp roots no
-  longer derive from `SystemDrive`. This was not a proven current unprivileged-to-SYSTEM primitive: recording is local
-  session-recording state, active-user home is a UI fallback, and installer command files were already literal-guarded
-  before creation. The corrected authority model is still stricter: privileged-capable code resolves these roots
-  through `SHGetKnownFolderPath`. Active-user home now uses `FOLDERID_UserProfiles` plus a single-component username
-  guard before joining; root recording uses the shared `FOLDERID_ProgramData` helper and fails closed with a logged
-  error if resolution fails; installer command fallback uses `FOLDERID_ProgramData` and `FOLDERID_Windows\\Temp`,
-  not `SystemDrive` strings. Verification closure: `scripts/verify.sh` rejects `SystemDrive` in the affected Windows
-  sources, asserts the `FOLDERID_UserProfiles` and `FOLDERID_Windows` helpers, the username component/control guard,
-  the root-recording ProgramData known-folder path, the Windows Temp known-folder fallback, and this
-  ledger/requirements disposition.
-- **R-S11d-30 — Windows elevated post-install relaunch executable authority — CLOSED 2026-07-11.** Platform:
-  Windows EXE install, service install, and service uninstall paths. Endpoint/action: post-elevated GUI/tray
-  relaunch after privileged batch completion. Boundary: elevated installer/service-management process ↔ child
-  executable authority. Attack surface closed: the post-elevated relaunch helper no longer chooses its executable
-  by calling `get_install_info()`, whose compatibility behavior prefers legacy uninstall registry keys before
-  the current app key. Normal install passes the fixed Program Files executable already chosen by `install_me`;
-  service install and service uninstall resolve the same `fixed_service_install_dir_and_exe()` executable before
-  running their elevated batches. The helper revalidates that the passed executable exactly matches the fixed
-  Program Files service executable, requires it to exist as a file, and propagates GUI/tray spawn errors instead
-  of hiding them behind `allow_err!`. Legacy uninstall registry metadata may remain compatibility/read-only
-  install state, but it no longer selects any elevated post-install child process. Verification closure:
-  `scripts/verify.sh` asserts the new helper shape, all three fixed-executable call sites, the fixed-root recheck,
-  file-existence check, absence of `get_install_info()` in the helper body, absence of the old
-  `run_after_run_cmds` helper, and this requirements/ledger disposition.
+  Windows runtime/service-adjacent path selection. Endpoint/action: active-user home fallback and root recording
+  directory selection. Boundary: Windows system/profile root authority ↔ process environment text. Attack surface
+  closed: profile and ProgramData roots no longer derive from `SystemDrive`. Active-user home uses
+  `FOLDERID_UserProfiles` plus a single-component username guard before joining; root recording uses the shared
+  `FOLDERID_ProgramData` helper and fails closed if resolution fails. Verification closure: `scripts/verify.sh`
+  rejects `SystemDrive` in the affected Windows sources and asserts the known-folder, username-component, and
+  root-recording invariants.
 - **R-S11d-31 — Windows privacy broker served-session authority — CLOSED 2026-07-11.** Platform:
   Windows installed service with privacy mode, especially RDP/ICA session-sharing hosts. Endpoint/action:
   topmost-window privacy broker launch of `RuntimeBroker_rustdesk.exe` and `WindowInjection.dll` injection.
@@ -1614,138 +1393,41 @@ unreachable and a source/test/AST gate prevents reintroduction.
   files. Verification closure: `scripts/verify.sh` asserts the served-session helper, current-process-session
   lookup, launch-site use of that helper, session-specific token error, absence of `WTSGetActiveConsoleSessionId`
   from the privacy broker source, and this requirements/ledger disposition.
-- **R-S11d-32 — Windows elevated command-file reopen identity — CLOSED 2026-07-11.** Platform:
-  Windows EXE install, uninstall, service install, and service uninstall elevated command files. Endpoint/action:
-  generated `.bat` and `.vbs` command files handed to elevated `System32\cmd.exe` / `cscript.exe`. Boundary:
-  medium-integrity same-owner command-file directory state ↔ elevated installer command execution. Attack surface
-  closed: the command-file read lock is no longer trusted after a naked pathname reopen. Before the write handle is
-  dropped, `src/platform/windows.rs` now records `GetFileInformationByHandle` volume/file-index identity and a
-  SHA-256 digest of the exact bytes written. The path is then reopened read-only with `FILE_SHARE_READ`, and the
-  reopened handle must match both the original identity and the original byte length/digest before elevation
-  proceeds. Replacement or in-place modification during the close/reopen gap fails closed; after verification, the
-  existing read handle remains live for the command lifetime and continues to deny write/delete sharing. Verification
-  closure: `scripts/verify.sh` asserts the identity query helper, digest helper, verified reopen helper, write-handle
-  identity capture, reopened read-lock wiring, identity/content drift failures, regression tests, and this
-  requirements/ledger disposition.
-- **R-S11d-33 — Windows MSI deferred install-root provenance — CLOSED 2026-07-11.** Platform:
-  Windows MSI deferred no-impersonation custom actions. Endpoint/action: LocalSystem service creation,
-  runtime-generated broker cleanup, and Amyuni IDD fallback helper execution. Boundary: MSI execution script
-  `CustomActionData` and directory resolution ↔ LocalSystem service/helper authority. Attack surface closed: the
+- **R-S11d-33 — Windows MSI deferred install-root provenance — CLOSED 2026-07-11; narrowed 2026-07-12.** Platform:
+  Windows MSI deferred no-impersonation runtime-generated broker cleanup. Boundary: MSI execution-script
+  `CustomActionData` and directory resolution ↔ LocalSystem file authority. Attack surface closed: the
   package-level private `App.InstallFolder` proof is no longer the only check before the deferred DLL consumes
   privileged install-root state. `res/msi/CustomActions/CustomActions.cpp` now normalizes deferred install folders,
   rejects empty/relative/root/path-too-long values, requires the install directory to be an immediate child of
   `FOLDERID_ProgramFiles` or `FOLDERID_ProgramFilesX86`, requires the Program Files parent and any existing install
-  directory to be non-reparse directories, and uses the normalized install folder for runtime broker cleanup and
-  Amyuni fallback path construction. The Amyuni fallback now builds `usbmmidd_v2` with an explicit separator and
-  requires both the helper directory and `deviceinstaller64.exe` to exist as non-reparse objects before
-  `CreateProcessW`. `CreateStartService` now fails malformed service `CustomActionData` instead of reporting
-  success, requires a constrained service identifier, parses only the exact quoted executable plus `--service`
-  command shape, validates the executable as the matching service binary under the trusted MSI install folder,
-  requires the service executable to exist and not be a reparse point, and passes a normalized command to
-  `CreateServiceW`. This is privileged-state correctness hardening, not a newly proven low-privilege LPE in the
+  directory to be non-reparse directories, and uses the normalized install folder only for exact runtime broker
+  cleanup. Service state is declarative and Amyuni cleanup is a self-contained SetupAPI commit action after
+  R-S11e-20; neither consumes install-root custom action data. This is
+  privileged-state correctness hardening, not a newly proven low-privilege LPE in the
   current MSI: the package already keeps `App.InstallFolder` private under `ProgramFiles6432Folder` with no browse
   surface. Verification closure: `scripts/verify.sh` gates the Program Files directory declaration, absence of
-  directory-setter UI/actions, native install-root validator, malformed service-data fatal path, service identifier
-  and command validators, normalized service creation command, normalized runtime cleanup root, non-reparse Amyuni
-  helper proof, and this ledger/requirements disposition.
-- **R-S11d-34 — Windows MSI deferred firewall/service target provenance — CLOSED 2026-07-11.** Platform:
-  Windows MSI deferred no-impersonation custom actions. Endpoint/action: LocalSystem firewall policy updates,
-  service stop/delete, and post-delete process cleanup. Boundary: MSI execution-script `CustomActionData` ↔
-  firewall/service/process-control authority. Attack surface closed: the remaining deferred custom-action targets
-  are no longer accepted as raw path/name authority after R-S11d-33. `AddFirewallRules` and `RemoveFirewallRules`
-  now normalize their executable path, require the path to sit under the trusted Program Files MSI install-folder
-  shape, require a constrained `.exe` rule identity, require the executable to exist for add, and pass the
-  normalized path into the firewall COM helper. `TryStopDeleteService.SetParam` now carries the same quoted
-  `<exe> --service` command shape used by service creation. The native action validates the service identifier,
-  normalizes the package executable under the trusted install folder, opens the service with query/stop/delete
-  rights, proves the installed service `ImagePath` normalizes to the same trusted command before any stop/delete,
-  performs stop/delete through that validated handle, verifies deletion by service absence, and only then runs
-  leftover process cleanup by exact normalized image path instead of executable name alone. This remains
-  privileged-state correctness hardening rather than a newly proven ordinary-user LPE in the current package: the
-  MSI authoring already derives these values from private package state, but the LocalSystem DLL now rejects
-  malformed or target-shifted execution-script data itself. Verification closure: `scripts/verify.sh` gates the
-  product-executable validator, firewall normalized-path call, service-delete binary proof in WiX, live
-  service-config proof, handle-bound trusted delete helper, image-path-bound process cleanup, absence of the old
-  raw firewall helper path, absence of name-only service-delete cleanup, and this ledger/requirements disposition.
-- **R-S11d-35 — Windows EXE prior-MSI uninstall command reconstruction — CLOSED 2026-07-11.** Platform:
-  Windows EXE install/upgrade over an existing MSI install. Endpoint/action: `get_uninstall` delegating the prior
-  MSI removal before the elevated EXE install batch writes new Program Files/HKLM/service state. Boundary: HKLM
-  uninstall metadata from the previous install ↔ approved elevated batch command text. Attack surface closed:
-  prior `UninstallString` values containing `msiexec.exe` are no longer spliced into the elevated batch after a
-  prefix bind, and there is no raw fallback when binding fails. `src/platform/windows.rs` now accepts only a
-  `msiexec.exe /X {PRODUCT-CODE}`-class command shape, validates the braced GUID grammar, rejects unsupported
-  arguments and duplicate product codes, proves the product name with `MsiGetProductInfoW(...,
-  INSTALLPROPERTY_PRODUCTNAME, ...)`, requires it to match `crate::get_app_name()`, and reconstructs
-  `"<System32>\\msiexec.exe" /X {PRODUCT-CODE}` from the trusted tool path. The prior registry string contributes
-  only the product code after validation; it contributes no shell metacharacters, extra argv, alternate executable,
-  or command tail. Verification closure: `scripts/verify.sh` gates the Windows Installer API feature, product-code
-  parser, GUID validator, product-name proof, command reconstruction, absence of the prefix-only binder, absence of
-  the raw `checked_msi_uninstall_command(reg_uninstall_string)` fallback, and this requirements/ledger disposition.
-- **R-S11d-36 — Windows EXE non-MSI uninstall install-root cleanup authority — CLOSED 2026-07-11.** Platform:
-  Windows EXE install/reinstall pre-cleanup and `--uninstall` non-MSI cleanup. Endpoint/action: elevated
-  `get_uninstall` batch removal of the installed directory with `rd /s /q`. Boundary: HKLM uninstall registry
-  metadata from a prior non-MSI install ↔ destructive elevated filesystem cleanup. Attack surface closed:
-  `InstallLocation` is no longer filesystem deletion authority. The uninstall registry subkey may still be selected
-  for compatibility registry reads, prior MSI detection, `share_rdp`, and removal of the uninstall registry key, but
-  the non-MSI install-directory cleanup path now resolves only the fixed Program Files service root through
-  `fixed_service_install_path("")`, quotes it through the elevated batch path guard, and uses that quoted fixed root
-  as the absence-checked `rd /s /q` target. `get_uninstall` does not call `get_install_info()`, does not mention
-  `InstallLocation`, and has no fallback that validates or accepts a registry-selected cleanup directory. This is a
-  privileged-state correctness closure rather than a newly proven default-ACL standard-user-to-SYSTEM primitive:
-  HKLM uninstall metadata is normally administrator-owned, but legacy metadata is not allowed to choose a destructive
-  elevated filesystem root. Verification closure: `scripts/verify.sh` asserts the explicit uninstall-registry helper,
-  the fixed install-directory batch helper, the `get_uninstall` fixed-root removal command, registry-key cleanup via
-  the registry helper, absence of `get_install_info()` / `InstallLocation` / the old registry-path literal guard in
-  `get_uninstall`, and this requirements/ledger disposition.
+  directory-setter UI/actions, the native install-root validator, normalized runtime cleanup root, absence of
+  unrelated consumers, and this ledger/requirements disposition.
 - **R-S11d-16 — Windows MSI service-state and SAS policy persistence — CLOSED 2026-07-10.**
   Platform: Windows MSI install/upgrade/uninstall and runtime Ctrl+Alt+Del. Endpoint/action: per-machine
   LocalSystem service creation/start and HKLM `SoftwareSASGeneration` handling. Boundary: installing user's
   profile/config and installer UI properties ↔ per-machine service presence and machine policy. Attack surface
   closed: MSI no longer reads `[AppDataFolder]...\config\...\toml` or any `stop-service` property to decide
   whether to create/start the service. The MSI service path now follows the fork's pinned runtime policy:
-  create/start the per-machine service on install/repair/upgrade, and scope stop/delete to uninstall or upgrade
-  cleanup. The obsolete `STOP_SERVICE`, `SetPropertyServiceStop`,
+  declaratively create/start the per-machine service on install/repair/upgrade and stop/remove it on uninstall or
+  upgrade. The obsolete `STOP_SERVICE`, `SetPropertyServiceStop`,
   `SetPropertyFromConfig`, `SetPropertyIsServiceRunning`, `TryDeleteStartupShortcut`, and `ReadConfig` custom
   action surfaces are deleted. Persistent installer writes to `SoftwareSASGeneration` are deleted from both MSI
-  and EXE installer paths; no uninstall-time blind delete is added because prior installers did not record
+  installer paths; no uninstall-time blind delete is added because prior installers did not record
   ownership or the original machine-policy value. Runtime SAS is the sole remaining `SoftwareSASGeneration`
   mutation path: it serializes local policy mutation, accepts only the documented policy values, distinguishes
   absent from present values, fails before `SendSAS` on open/read/set failure, preserves administrator value
   `0` as `0`, preserves the Ease of Access allowance by temporarily changing value `2` to `3`, restores or
   deletes after `SendSAS`, and returns an error if restoration fails. Verification closure:
-  `scripts/verify.sh` asserts the MSI service conditions, scoped service stop/delete, absence of the deleted
-  MSI service/SAS custom actions and config reader, absence of persistent installer SAS writes, the runtime
+  `scripts/verify.sh` asserts declarative MSI service ownership, absence of the deleted service/config/SAS custom
+  actions and persistent installer SAS writes, the runtime
   original-policy state machine, serialized known-value-only temporary policy mutation, fail-closed
   read/set/restore handling, caller error propagation, and this ledger/requirements disposition.
-- **R-S11d-17 — Windows portable installer source-staging authority — CLOSED 2026-07-10.**
-  Platform: Windows self-extracting EXE installer. Endpoint/action: double-click `rustdesk-*install.exe`
-  extraction and handoff into the installed-service EXE installer. Boundary: medium-integrity caller-writable
-  portable staging vs elevated Program Files install source. Attack surface closed: the double-click and silent
-  installer entry points no longer extract to `%LOCALAPPDATA%\rustdesk` and then let an elevated install copy
-  that mutable same-user tree into Program Files. The packer relaunches itself with `ShellExecuteExW`/`runas`,
-  waits for and checks the elevated child exit code, requires the internal install leg to be elevated, creates a
-  private per-run staging directory under the width-correct Program Files root,
-  rejects staging paths equal to or below the final install root, rejects reparse-point staging roots, validates
-  embedded payload paths as relative Windows-safe components, treats decompression/create/write/sync failures as
-  fatal, treats generated RuntimeBroker copy failure as fatal, and launches interactive and silent install
-  operations only from the protected staging tree. The protected install UI is marked with
-  `RUSTDESK_PROTECTED_INSTALL`, which hides and blocks the run-without-install escape; the app-side `install_me`
-  sink requires that exact marker, an already elevated child process, a regular current executable, and a regular
-  non-reparse `Program Files\RustDesk-staging-*` source directory whose parent is the width-correct Program Files
-  root and whose path is outside the final install root before composing the privileged copy command. The copy
-  command receives that verified source directory directly rather than deriving authority from an arbitrary
-  `current_exe().parent()`, and interactive/silent child install failures exit nonzero for the waiting protected
-  packer. `run_cmds` executes through trusted `cmd.exe` directly when the process is already elevated instead of
-  prompting for a second elevation. Cleanup removes only manifest-known payload files plus the generated broker
-  copy after verifying parent directories and targets are not reparse points, then removes empty payload directories
-  and the staging root; post-extraction failures still attempt that manifest cleanup before returning.
-  Verification closure: `scripts/verify.sh` asserts the protected relaunch, elevated child exit-code check,
-  Program Files staging root, final-root overlap rejection, payload path validation, create-new/synced payload
-  writes, protected install marker, app-side exact marker/elevation/source-directory proof at `install_me`,
-  verified-source-directory copy construction, interactive and silent install routing, child install nonzero failure
-  exits, run-without-install block, already-elevated command execution path, fatal RuntimeBroker source copy,
-  manifest cleanup on success and failure paths, and this ledger/requirements disposition.
-
 **Release-blocking items — closed:**
 - **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,
   Linux installed service, macOS LaunchDaemon/source path. Android is app-UID/service-owned rather than
@@ -2111,6 +1793,42 @@ unreachable and a source/test/AST gate prevents reintroduction.
   build runs that suite natively before artifacts; `scripts/verify.sh` gates creation-time job assignment, exact-child
   IPC, job accounting/termination, SCM status ordering, transaction drain, deleted paths, requirements, ledger, and
   Appendix C #124.
+- **R-S11e-20 — Windows Installer sole machine-state authority — IMPLEMENTED 2026-07-12; WINDOWS VM VALIDATION PENDING.** Platform: Windows
+  setup, install, repair, upgrade, and uninstall. Endpoint/action: UAC-approved setup bootstrap, Program Files
+  payload deployment, LocalSystem service ownership, firewall authorization, machine registry/shortcuts, fixed
+  certificate/driver/runtime-file cleanup, and runtime broker refresh. Boundary: caller-controlled application image
+  and generated command program ↔ administrator-approved machine-state mutation and future LocalSystem execution.
+  Attack surface closed: the application no longer implements EXE install/uninstall, generated batch/VBS execution,
+  prior-uninstall-string replay, caller-`current_exe` helper execution, public install/helper verbs, direct Windows
+  service installation, or an in-app Flutter installation route. The old flow elevated System32 `cmd.exe` but then
+  let the generated command program execute a caller-context Flutter runner which loaded adjacent
+  `librustdesk.dll`; after UAC approval, a prepared application directory could therefore execute elevated and create
+  the LocalSystem service. The setup executable is now an MSI-only bootstrapper recognized solely by exact
+  `rustdesk-setup.exe` basename derived from the running executable rather than command-line `argv[0]`. Its embedded
+  command grammar is closed to no arguments, the exact silent option, or an elevation-only internal marker; running
+  executable resolution failure and every other argument shape are fatal. Its embedded
+  manifest must contain exactly one root
+  `rustdesk-installer.msi`; the elevated leg stages only that file under a protected no-reparse Program Files
+  directory, resolves `msiexec.exe` through `GetSystemDirectoryW`, passes explicit arguments without a shell, waits,
+  always suppresses restart initiation, and accepts only 0 or 3010. It never loads or executes packaged application
+  code. The Windows build compiles only the Flutter distribution, builds, canonicalizes, and validates the MSI first,
+  creates a dedicated one-file setup payload from those final MSI bytes, hash-checks it, packs it offline/locked,
+  removes staging in `finally`, and emits only exact output paths.
+  WiX `ServiceInstall` with the documented null-StartName LocalSystem default, `ServiceControl`, nested
+  `ServiceConfigFailureActions` preserving 5/10/30-second restart backoff, and a file-bound inbound TCP/21118
+  `fire:FirewallException` transactionally own service and firewall state. The basename process killer and custom
+  service/firewall source, exports, and schedules are deleted. Exact test-certificate and fixed-root Amyuni cleanup run
+  only in the commit phase of explicit uninstall; upgrade preserves them and a later package failure cannot roll back
+  files/service/firewall around irreversible cleanup. Certificate cleanup deletes only the fixed fingerprint after
+  blob validation. Exact runtime-generated broker cleanup remains a checked deferred action before package file
+  removal. Runtime broker refresh now requires
+  the fixed service image, a non-reparse System32 source, the fixed Program Files destination, and byte equality;
+  replacement is atomic when a prior broker exists, and the launch path propagates verification failure. It uses no
+  shell, UAC, or basename kill. Verification closure:
+  portable pure tests cover exact setup-name and 0/3010 status policy; a Windows-target isolated portable compile
+  passed; `scripts/verify.sh` gates the sole-authority topology, deleted paths, declarative MSI resources, exact
+  one-file build payload, broker provenance, R-S11f, this ledger entry, and Appendix C #125. The full Windows VM
+  artifact build remains the repository's authoritative native packaging test and was not run in this slice.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -2682,7 +2400,7 @@ Shared un-cfg'd reap loop (`connection.rs`) + writer task (`tcp.rs`) → the ≤
 
 **The exact break — full chain (cfg-gated source).** `desktop_setting_page.dart:749-752` `locked=mainIsInstalled()`; `:766-778` `preventMouseKeyBuilder = ExcludeFocus+AbsorbPointer(absorbing:locked)`; `:1979-2020` `_lock.onPressed`: `unlockPin` empty → `callMainCheckSuperUserPermission()` **false** → `if(checked) onUnlock()` never runs, **no else** → silent no-op. → `flutter_ffi.rs:1918` → `ui_interface.rs:917` → `platform::check_super_user_permission()`: **Windows** `is_elevated(None)` (passive `TokenElevation`, `windows.rs:2335-2370`; `run_uac`/`elevate` excised) → false; **Linux** `Ok(is_root())`=`username()=="root"` (`linux.rs:1400,1052`) → false; **macOS** `MacCheckAdminAuthorization()` (`macos.mm:84`) → true; **Android/iOS** returns true but mobile UI has **no `_lock` at all**.
 
-**GUI PROVEN never-elevated on Win/Linux.** Windows exe manifest is **asInvoker** — `res/manifest.xml` (via `build.rs:35`) + `runner.exe.manifest` have **no `<requestedExecutionLevel>`** → medium-integrity, no auto-UAC; install elevates only the *batch* (`runas`, `windows.rs:1853`), post-install GUI spawns with the caller's medium token (`windows.rs:2974-2980`); the service is a separate LocalSystem process. Linux GUI runs as the desktop user; root is the separate systemd `--service`. → `is_elevated`/`is_root`=false every ordinary launch → permanent silent no-op (matches BR-7).
+**GUI PROVEN never-elevated on Win/Linux.** Windows exe manifest is **asInvoker** — `res/manifest.xml` (via `build.rs:35`) + `runner.exe.manifest` have **no `<requestedExecutionLevel>`** → medium-integrity, no auto-UAC; installation is a separate Windows Installer transaction and the service is a separate LocalSystem process. Linux GUI runs as the desktop user; root is the separate systemd `--service`. → `is_elevated`/`is_root`=false every ordinary launch → permanent silent no-op (matches BR-7).
 
 **macOS unlock PROVEN WORKS from the framework contract (NOT NEEDS-RUNTIME).** `macos.mm:84-101`: fresh `AuthorizationCreate`+`AuthorizationCopyRights(kAuthorizationRightExecute, flags=InteractionAllowed|PreAuthorize|ExtendRights)`, returns `status==errAuthorizationSuccess`. Apple's Authorization Services contract: InteractionAllowed → the Security Server presents the admin dialog; the `kAuthorizationRightExecute` rule requires admin auth; returns success **only when the user authenticates as admin** (else Denied/Canceled). Fresh authRef per call → dialog every click. → macOS unlock **WORKS**; inert only on cancel/non-admin.
 
@@ -3455,7 +3173,6 @@ overlaid last. The 2026-07-11 macOS service-owned-password hardening added parse
 LaunchAgent plist command-shape proof, R-S11e-2 client-side `_service` server authentication, and direct
   authorization-before-password service requests with no pending plaintext cache; the Linux helper-provenance
   follow-up added R-S11e-3 canonical target binding for fixed helper launches; the Windows elevated command-file
-  follow-up added R-S11d-32 identity and content binding across the close/reopen handoff; the 2026-07-12
   service-resource follow-up added R-S11c-26's bounded one-request protected service IPC envelope; the password-input
   follow-up added R-S11e-16's no-argv hidden-terminal/bounded-stdin provisioning contract; the CM-response
   authority follow-up added R-S11e/R-S11e-17's typed session/generation/operation-bound result contract and
@@ -3466,7 +3183,7 @@ The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-6d31515fa0825dffd113607fe60484294d28207bdef9d423e2b355b64e3eaa51  requirements.html
+367cd517960457be0df6ac9b303670c1f6bf7520b702adcb9289baf7589cdb95  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

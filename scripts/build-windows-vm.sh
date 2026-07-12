@@ -43,6 +43,7 @@ preflight() {
     [ -f "$ONLINE_DIR/cargo-vendor-config.toml" ] || die "online/cargo-vendor-config.toml missing — run scripts/online-fetch.sh"
     [ -d "$ONLINE_DIR/pub-cache" ]                || die "online/pub-cache missing — run scripts/online-fetch.sh (stage_pub_cache)"
     [ -f "$ONLINE_DIR/wix-nuget.tar.gz" ]         || die "online/wix-nuget.tar.gz missing — run scripts/online-fetch.sh (stage_windows_wix_nuget); the .msi WiX NuGet set"
+    verify_sha256 "$ONLINE_DIR/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" "${SHA256_OLEFILE_0_47}"
     log "preflight OK — per-build over $GOLDEN, offline, SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
 }
 
@@ -107,6 +108,7 @@ build_media() {
             /cargo-vendor=/online/cargo-vendor \
             /cargo-vendor-config.toml=/online/cargo-vendor-config.toml \
             /pub-cache=/online/pub-cache \
+            /python-wheels/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl=/online/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl \
             /wix-nuget=/tmp/wix-nuget
     ' || die "OFFLINE UDF media build (genisoimage in docker) failed"
     [ -f "$OFFLINE_ISO" ] || die "OFFLINE UDF media not produced"

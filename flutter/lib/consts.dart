@@ -35,7 +35,7 @@ const String kPeerPlatformWebDesktop = "WebDesktop";
 
 const double kScrollbarThickness = 12.0;
 
-/// [kAppTypeMain] used by 'Desktop Main Page' , 'Mobile (Client and Server)', "Install Page"
+/// [kAppTypeMain] used by 'Desktop Main Page' and 'Mobile (Client and Server)'
 const String kAppTypeMain = "main";
 
 /// [kAppTypeConnectionManager] only for 'Desktop CM Page'

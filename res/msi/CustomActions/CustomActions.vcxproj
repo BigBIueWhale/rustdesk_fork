@@ -62,11 +62,12 @@
     <ClCompile Include="CustomActions.cpp" />
     <ClCompile Include="DeviceUtils.cpp" />
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="FirewallRules.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="ServiceUtils.cpp" />
+    <ClCompile Include="..\..\..\src\platform\windows_delete_test_cert.cc">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="CustomActions.def" />

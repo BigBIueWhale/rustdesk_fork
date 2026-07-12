@@ -1,5 +1,5 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-	xmlns:fire="http://wixtoolset.org/schemas/v4/wxs/firewall">
+		xmlns:fire="http://wixtoolset.org/schemas/v4/wxs/firewall">
 	<Fragment>
 
 		<?include ../Includes.wxi?>
@@ -7,55 +7,46 @@
 		<DirectoryRef Id="App.InstallFolder" FileSource="$(var.BuildDir)">
 			<Component Id="App.exe" Guid="620F0F69-4C17-4320-A619-495E329712A4">
 				<File Id="App.exe" Name="$(var.Product).exe" KeyPath="yes" Checksum="yes">
-					<!--<fire:FirewallException Id="AppEx" Name="$(var.Product) Service" Scope="any" IgnoreFailure="yes" />-->
+					<fire:FirewallException Id="App.Firewall" Name="$(var.Product) Service" Port="21118" Protocol="tcp" Scope="any" IgnoreFailure="no" />
 				</File>
+				<ServiceInstall Id="App.Service.Install"
+					Name="$(var.Product)"
+					DisplayName="$(var.Product) Service"
+					Description="$(var.Product) Service"
+					Type="ownProcess"
+					Start="auto"
+					ErrorControl="normal"
+					Arguments="--service"
+					Vital="yes">
+					<ServiceConfigFailureActions OnInstall="yes" OnReinstall="yes" ResetPeriod="86400">
+						<Failure Action="restartService" Delay="5000" />
+						<Failure Action="restartService" Delay="10000" />
+						<Failure Action="restartService" Delay="30000" />
+					</ServiceConfigFailureActions>
+				</ServiceInstall>
+				<ServiceControl Id="App.Service.Control"
+					Name="$(var.Product)"
+					Start="install"
+					Stop="both"
+					Remove="uninstall"
+					Wait="yes" />
 			</Component>
 		</DirectoryRef>
 
 		<CustomAction Id="RemoveRuntimeGeneratedFiles.SetParam" Return="check" Property="RemoveRuntimeGeneratedFiles" Value="[App.InstallFolder]" />
-		<CustomAction Id="AddFirewallRules.SetParam" Return="check" Property="AddFirewallRules" Value="1[App.InstallFolder]$(var.Product).exe" />
-		<CustomAction Id="RemoveFirewallRules.SetParam" Return="check" Property="RemoveFirewallRules" Value="0[App.InstallFolder]$(var.Product).exe" />
-		<CustomAction Id="CreateStartService.SetParam" Return="check" Property="CreateStartService" Value="$(var.Product);&quot;[App.InstallFolder]$(var.Product).exe&quot; --service" />
-		<CustomAction Id="TryStopDeleteService.SetParam" Return="check" Property="TryStopDeleteService" Value="$(var.Product);&quot;[App.InstallFolder]$(var.Product).exe&quot; --service" />
 
 		<CustomAction Id="LaunchApp" ExeCommand="" Return="asyncNoWait" FileRef="App.exe" />
 		<CustomAction Id="LaunchAppTray" ExeCommand=" --tray" Return="asyncNoWait" FileRef="App.exe" />
-		<Property Id="TerminateProcesses" Value="AppTest.exe" />
-		<CustomAction Id="TerminateProcesses.SetParam" Return="check" Property="TerminateProcesses" Value="$(var.Product).exe" />
-		<CustomAction Id="TerminateBrokers.SetParam" Return="check" Property="TerminateProcesses" Value="RuntimeBroker_rustdesk.exe" />
-		<CustomAction Id="RemoveAmyuniIdd.SetParam" Return="check" Property="RemoveAmyuniIdd" Value="[App.InstallFolder]" />
 		<InstallExecuteSequence>
-
-			<!-- Do not call CreateStartService if is uninstalling. -->
-			<!-- (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE) means uninstalling. -->
-			<Custom Action="CreateStartService" Before="InstallFinalize" Condition="NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)" />
-			<Custom Action="CreateStartService.SetParam" Before="CreateStartService" Condition="NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)" />
-
 			<!-- Launch ClientLauncher if installing or already installed and not uninstalling -->
 			<!-- https://learn.microsoft.com/en-us/windows/win32/msi/uilevel -->
 			<Custom Action="LaunchApp" After="InstallFinalize" Condition="(NOT UILevel=2) AND (NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)) "/>
 			<Custom Action="LaunchAppTray" After="InstallFinalize" Condition="(LAUNCH_TRAY_APP=&quot;Y&quot; OR LAUNCH_TRAY_APP=&quot;1&quot;) AND (NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE))"/>
 
-			<!--Workaround of "fire:FirewallException". If Outbound="Yes" or Outbound="true", the following error occurs.-->
-			<!--ExecFirewallExceptions: Error 0x80070057: failed to add app to the authorized apps list-->
-			<Custom Action="AddFirewallRules" Before="InstallFinalize" Condition="NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)"/>
-			<Custom Action="AddFirewallRules.SetParam" Before="AddFirewallRules" Condition="NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)"/>
-
 			<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>
 			<Custom Action="RemoveRuntimeGeneratedFiles.SetParam" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>
-			<Custom Action="TryStopDeleteService" Before="RemoveRuntimeGeneratedFiles.SetParam" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)" />
-			<Custom Action="TryStopDeleteService.SetParam" Before="TryStopDeleteService" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)" />
-
-			<Custom Action="RemoveFirewallRules" Before="RemoveFiles"/>
-			<Custom Action="RemoveFirewallRules.SetParam" Before="RemoveFirewallRules"/>
-
-
-			<Custom Action="TerminateProcesses" Before="RemoveRuntimeGeneratedFiles"/>
-			<Custom Action="TerminateProcesses.SetParam" Before="TerminateProcesses"/>
-			<Custom Action="TerminateBrokers" Before="RemoveRuntimeGeneratedFiles"/>
-			<Custom Action="TerminateBrokers.SetParam" Before="TerminateBrokers"/>
-			<Custom Action="RemoveAmyuniIdd" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>
-			<Custom Action="RemoveAmyuniIdd.SetParam" Before="RemoveAmyuniIdd" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>
+			<Custom Action="RemoveTestCertificates" Before="RemoveRuntimeGeneratedFiles.SetParam" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>
+			<Custom Action="RemoveAmyuniIdd" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>
 		</InstallExecuteSequence>
 
 		<!-- Shortcuts -->
@@ -87,27 +78,11 @@
 				<RegistryValue Root="HKCU" Key="Software\$(var.Product)" Name="App.Desktop.Shortcut" Type="string" Value="1" KeyPath="yes" />
 			</Component>
 		</StandardDirectory>
-		<StandardDirectory Id="StartupFolder">
-			<Component Id="App.StartupFolder.ShortcutTray" Guid="B1D1E2BB-E53E-E159-DB7C-744D5C726A8C" Condition="STARTUPSHORTCUTS = 1">
-				<Shortcut Id="App.StartupFolder.ShortcutTray" Name="!(loc.SC_Client_Tray)" Description="!(loc.SC_Client_Tray_Desc)" Target="[!App.exe]" Arguments="--tray" Icon="AppIcon" WorkingDirectory="App.InstallFolder" />
-				<RegistryValue Root="HKCU" Key="Software\$(var.Product)" Name="App.StartupFolder.ShortcutTray" Type="string" Value="1" KeyPath="yes" />
-			</Component>
-		</StandardDirectory>
-
-		<!--<DirectoryRef Id="App.InstallFolder">
-			<Component Id="App.UninstallShortcut" Guid="FB0F2AC7-2AE5-4C54-B860-5E472620B6B1">
-				<Shortcut Id="App.UninstallShortcut" Name="!(loc.SC_Uninstall)" Description="!(loc.SC_Uninstall_Desc)" Target="[System6432Folder]msiexec.exe" Arguments="/x [ProductCode]" Icon="AppIcon" />
-			</Component>
-		</DirectoryRef>-->
-
 		<ComponentGroup Id="Components" Directory="App.InstallFolder">
 			<ComponentRef Id="App.exe" />
 			<ComponentRef Id="App.Desktop.Shortcut" />
-			<!--<ComponentRef Id="App.UninstallShortcut" />-->
 			<ComponentRef Id="App.StartMenu.Shortcut" />
 			<ComponentRef Id="App.StartMenu.ShortcutUninstall" />
-			<ComponentRef Id="App.StartupFolder.ShortcutTray" />
-
 			<!--$AutoComonentStart$-->
 			<!--$AutoComponentEnd$-->
 

@@ -111,11 +111,6 @@ def make_parser():
     parser.add_argument('--flutter', action='store_true',
                         help='Build flutter package', default=False)
     parser.add_argument(
-        '--portable',
-        action='store_true',
-        help='Build windows portable'
-    )
-    parser.add_argument(
         '--unix-file-copy-paste',
         action='store_true',
         help='Build with unix file copy paste feature'
@@ -125,12 +120,6 @@ def make_parser():
         action='store_true',
         help='Skip cargo build process, only flutter version + Linux supported currently'
     )
-    if windows:
-        parser.add_argument(
-            '--skip-portable-pack',
-            action='store_true',
-            help='Skip packing, only flutter version + Windows supported'
-        )
     parser.add_argument(
         "--package",
         type=str
@@ -368,7 +357,7 @@ def build_flutter_dmg(version, features):
     os.chdir("..")
 
 
-def build_flutter_windows(version, features, skip_portable_pack):
+def build_flutter_windows(features):
     if not skip_cargo:
         system2(f'cargo build --locked --features {features} --lib --release')
         if not os.path.exists("target/release/librustdesk.dll"):
@@ -378,11 +367,10 @@ def build_flutter_windows(version, features, skip_portable_pack):
     system2('flutter build windows --release')
     os.chdir('..')
     # R-B2 (Windows byte-reproducibility): canonicalize EVERY embedded PE in the flutter dist Release dir
-    # NOW -- after `flutter build windows --release` finalizes it and BEFORE either packager reads it.
-    # TWO packagers consume this SAME dir: the portable packer (generate.py, below) brotli-packs it
-    # into rustdesk-*install.exe, and the WiX .msi step (scripts/build-windows.ps1, which runs AFTER
-    # build.py returns) CAB-packs it into rustdesk.msi. cwd is the repo root here, so these in-place
-    # edits persist for that later .msi step too.
+    # NOW -- after `flutter build windows --release` finalizes it and BEFORE the WiX .msi step in
+    # scripts/build-windows.ps1 reads it. The setup bootstrapper later embeds that MSI from a dedicated
+    # one-file payload directory; it never embeds this Flutter dist directly. cwd is the repo root here,
+    # so these in-place edits persist for the later MSI packaging step.
     #
     # The MSVC-linked PEs here -- the cargo cdylib librustdesk.dll, the flutter
     # runner rustdesk.exe, and the flutter plugin DLLs -- are all linked with LINK=/Brepro (set by
@@ -394,7 +382,7 @@ def build_flutter_windows(version, features, skip_portable_pack):
     # inside the installers by then -- so left un-normalized their drift tips BOTH installers' SHA-256 across
     # a double build (R-B2 A!=B). Normalize each embedded PE with the SAME script/flags as that packer-.exe
     # invocation (zero the COFF/debug TimeDateStamps + checksum, sort the winres version-info strings -- all
-    # load-irrelevant, idempotent metadata), so the dir the two packagers read is byte-deterministic.
+    # load-irrelevant, idempotent metadata), so the dir WiX reads is byte-deterministic.
     # Windows-only path: build_flutter_deb / the Android build never reach here (they run with
     # platform!=Windows), so the .deb/.apk stay byte-identical.
     release_pes = sorted(
@@ -405,24 +393,6 @@ def build_flutter_windows(version, features, skip_portable_pack):
         exit(-1)
     for pe in release_pes:
         system2(f'python3 scripts/canonicalize-pe.py "{pe.as_posix()}"')
-    if skip_portable_pack:
-        return
-    os.chdir('libs/portable')
-    system2('pip3 install -r requirements.txt')
-    system2(
-        f'python3 ./generate.py -f ../../{flutter_build_dir_2} -o . -e ../../{flutter_build_dir_2}/rustdesk.exe')
-    os.chdir('../..')
-    if os.path.exists('./rustdesk_portable.exe'):
-        os.replace('./target/release/rustdesk-portable-packer.exe',
-                   './rustdesk_portable.exe')
-    else:
-        os.rename('./target/release/rustdesk-portable-packer.exe',
-                  './rustdesk_portable.exe')
-    print(
-        f'output location: {os.path.abspath(os.curdir)}/rustdesk_portable.exe')
-    os.rename('./rustdesk_portable.exe', f'./rustdesk-{version}-install.exe')
-    print(
-        f'output location: {os.path.abspath(os.curdir)}/rustdesk-{version}-install.exe')
 
 
 def main():
@@ -441,7 +411,6 @@ def main():
     print(args.skip_cargo)
     if args.skip_cargo:
         skip_cargo = True
-    portable = args.portable
     package = args.package
     if package:
         build_deb_from_folder(version, package)
@@ -450,26 +419,9 @@ def main():
     external_resources(flutter, args, res_dir)
     if windows:
         if flutter:
-            build_flutter_windows(version, features, args.skip_portable_pack)
+            build_flutter_windows(features)
             return
-        system2('cargo build --locked --release --features ' + features)
-        # system2('upx.exe target/release/rustdesk.exe')
-        system2('mv target/release/rustdesk.exe target/release/RustDesk.exe')
-        pa = os.environ.get('P')
-        if pa:
-            # https://certera.com/kb/tutorial-guide-for-safenet-authentication-client-for-code-signing/
-            system2(
-                f'signtool sign /a /v /p {pa} /debug /f .\\cert.pfx /t http://timestamp.digicert.com  '
-                'target\\release\\rustdesk.exe')
-        else:
-            print('Not signed')
-        system2(
-            f'cp -rf target/release/RustDesk.exe {res_dir}')
-        os.chdir('libs/portable')
-        system2('pip3 install -r requirements.txt')
-        system2(
-            f'python3 ./generate.py -f ../../{res_dir} -o . -e ../../{res_dir}/rustdesk-{version}-win7-install.exe')
-        system2(f'mv ../../{res_dir}/rustdesk-{version}-win7-install.exe ../..')
+        raise SystemExit('Windows builds require --flutter')
     else:
         if flutter:
             if osx:

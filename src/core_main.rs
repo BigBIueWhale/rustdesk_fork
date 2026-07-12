@@ -1,5 +1,3 @@
-#[cfg(any(target_os = "windows", target_os = "macos"))]
-use crate::client::translate;
 #[cfg(not(debug_assertions))]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::platform::breakdown_callback;
@@ -9,8 +7,6 @@ use hbb_common::platform::register_breakdown_handler;
 use hbb_common::{config, log};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use std::io::{BufRead, IsTerminal, Read as _};
-#[cfg(windows)]
-use tauri_winrt_notification::{Duration, Sound, Toast};
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 const PASSWORD_CLI_USAGE: &str = "usage: rustdesk --password | rustdesk --password-stdin";
@@ -107,17 +103,14 @@ pub fn core_main() -> Option<Vec<String>> {
         return None;
     }
     let mut args = Vec::new();
-    let mut flutter_args = Vec::new();
+    let flutter_args = Vec::new();
     let mut i = 0;
     // R-X9 (slices 2-4): the --elevate / --run-as-system / --quick_support flags are
     // excised — the portable run-mode and interactive/token-theft elevation they drove
     // are gone; the installed LocalSystem service is the sole controlled entry.
     let mut _is_flutter_invoke_new_connection = false;
-    let mut arg_exe = Default::default();
     for arg in std::env::args() {
-        if i == 0 {
-            arg_exe = arg;
-        } else if i > 0 {
+        if i > 0 {
             #[cfg(feature = "flutter")]
             if [
                 "--connect",
@@ -179,14 +172,6 @@ pub fn core_main() -> Option<Vec<String>> {
     #[cfg(feature = "flutter")]
     if _is_flutter_invoke_new_connection {
         return core_main_invoke_new_connection(std::env::args());
-    }
-    let click_setup = cfg!(windows) && args.is_empty() && crate::common::is_setup(&arg_exe);
-    if click_setup && !config::is_disable_installation() {
-        args.push("--install".to_owned());
-        flutter_args.push("--install".to_string());
-    }
-    if args.contains(&"--noinstall".to_string()) {
-        args.clear();
     }
     if args.len() > 0 {
         if args[0] == "--version" {
@@ -276,80 +261,6 @@ pub fn core_main() -> Option<Vec<String>> {
             None
         };
 
-        #[cfg(windows)]
-        {
-            use crate::platform;
-            if args[0] == "--uninstall" {
-                if let Err(err) = platform::uninstall_me(true) {
-                    log::error!("Failed to uninstall: {}", err);
-                    std::process::exit(1);
-                }
-                return None;
-            // R-X1: the `--update` apply-handler is excised with the fetch-and-run
-            // updater — the fork ships its own releases (§12), verified by pinned
-            // SHA-256 (R-B2), never fetched-and-run.
-            } else if args[0] == "--after-install" {
-                if let Err(err) = platform::run_after_install() {
-                    log::error!("Failed to after-install: {}", err);
-                }
-                return None;
-            } else if args[0] == "--before-uninstall" {
-                if let Err(err) = platform::run_before_uninstall() {
-                    log::error!("Failed to before-uninstall: {}", err);
-                }
-                return None;
-            } else if args[0] == "--silent-install" {
-                if config::is_disable_installation() {
-                    return None;
-                }
-                let options = "desktopicon startmenu";
-                let res = platform::install_me(options, "".to_owned(), true, args.len() > 1);
-                let mut failed = false;
-                let text = match res {
-                    Ok(_) => translate("Installation Successful!".to_string()),
-                    Err(err) => {
-                        println!("Failed with error: {err}");
-                        failed = true;
-                        translate("Installation failed!".to_string())
-                    }
-                };
-                Toast::new(Toast::POWERSHELL_APP_ID)
-                    .title(&config::APP_NAME.read().unwrap())
-                    .text1(&text)
-                    .sound(Some(Sound::Default))
-                    .duration(Duration::Short)
-                    .show()
-                    .ok();
-                if failed {
-                    std::process::exit(1);
-                }
-                return None;
-            } else if args[0] == "--uninstall-cert" {
-                #[cfg(windows)]
-                if let Err(err) = crate::platform::windows::uninstall_cert() {
-                    log::error!("Failed to uninstall test certificates: {}", err);
-                    std::process::exit(1);
-                }
-                return None;
-            } else if args[0] == "--install-idd" {
-                #[cfg(windows)]
-                {
-                    log::error!("--install-idd is not supported in this build");
-                    std::process::exit(1);
-                }
-                return None;
-            // R-X9 (slices 2-4): the `--portable-service` arg handler is excised — it
-            // dispatched into elevate_or_run_as_system to stand up the portable SYSTEM
-            // helper, which is gone.
-            } else if args[0] == "--uninstall-amyuni-idd" {
-                #[cfg(windows)]
-                if let Err(err) = crate::virtual_display_manager::amyuni_idd::uninstall_driver() {
-                    log::error!("Failed to uninstall Amyuni IDD: {err}");
-                    std::process::exit(1);
-                }
-                return None;
-            }
-        }
         // R-X1: the macOS DMG `--update` apply-handler is excised — it ran the
         // osascript-admin root DMG install (update_from_dmg / update_me); the fork
         // ships its own releases (§12). Its macos.rs source twin is also excised
@@ -362,17 +273,33 @@ pub fn core_main() -> Option<Vec<String>> {
             }
             return None;
         } else if args[0] == "--install-service" {
-            log::info!("start --install-service");
-            if !crate::platform::install_service() {
-                log::error!("--install-service failed");
+            #[cfg(windows)]
+            {
+                log::error!("Windows service installation is owned by Windows Installer");
                 std::process::exit(1);
+            }
+            #[cfg(not(windows))]
+            {
+                log::info!("start --install-service");
+                if !crate::platform::install_service() {
+                    log::error!("--install-service failed");
+                    std::process::exit(1);
+                }
             }
             return None;
         } else if args[0] == "--uninstall-service" {
-            log::info!("start --uninstall-service");
-            if !crate::platform::uninstall_service(false, true) {
-                log::error!("--uninstall-service failed");
+            #[cfg(windows)]
+            {
+                log::error!("Windows service removal is owned by Windows Installer");
                 std::process::exit(1);
+            }
+            #[cfg(not(windows))]
+            {
+                log::info!("start --uninstall-service");
+                if !crate::platform::uninstall_service(false, true) {
+                    log::error!("--uninstall-service failed");
+                    std::process::exit(1);
+                }
             }
             return None;
         } else if args[0] == "--service" {

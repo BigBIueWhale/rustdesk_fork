@@ -3352,10 +3352,6 @@ pub fn is_disable_settings() -> bool {
 // address-book / group front-end (their only callers were the deleted flutter FFI resolvers).
 
 #[inline]
-pub fn is_disable_installation() -> bool {
-    is_some_hard_opton("disable-installation")
-}
-
 // This function must be kept the same as the one in flutter and sciter code.
 // flutter: flutter/lib/common.dart -> option2bool()
 // sciter: Does not have the function, but it should be kept the same.

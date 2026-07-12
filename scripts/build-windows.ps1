@@ -3,7 +3,8 @@
 # Runs INSIDE the ephemeral KVM Windows 11 guest (provisioned by
 # provision-windows-vm.sh) -- Windows cannot be cross-built from Linux (MSVC + WiX
 # are Windows-only). Reproduces upstream 1.4.7's official Windows build (R-B7:
-# python build.py --flutter; hwcodec/vram dropped -- CPU-only software codec, R-R2b) with these deltas:
+# python build.py --flutter; hwcodec/vram dropped -- CPU-only software codec,
+# R-R2b) with these deltas:
 # the artifacts ship UNSIGNED (the pinned SHA-256 is the integrity anchor, R-B2),
 # and the build runs off GitHub-hosted runners. The guest has no network during the
 # build; all inputs were staged offline by provision-windows-vm.sh.
@@ -38,12 +39,43 @@ function Preflight {
     Assert-Version $RUST_VERSION    (cargo --version)              'cargo'
     Assert-Version $FLUTTER_VERSION (flutter --version)            'flutter'
     Assert-Version $LLVM_VERSION    (clang --version)              'clang/LLVM'
+    python -c "import brotli"
+    if ($LASTEXITCODE -ne 0) { Die "Python brotli module unavailable ($LASTEXITCODE) -- provision it in the offline build image" }
     # WiX, MSVC and vcpkg are provisioned by provision-windows-vm.sh to the pins.
     Write-Host "[harness] preflight OK -- Windows x64, offline, features flutter -- software codec (sec3.2)"
 }
 
 function Build {
     Set-Location $SRC
+    $msiDist = Join-Path $SRC 'flutter\build\windows\x64\runner\Release'
+    $msiOut = Join-Path $SRC 'res\msi\Package\bin\x64\Release\en-us\Package.msi'
+    $setupOut = Join-Path $SRC 'target\release\rustdesk-portable-packer.exe'
+    $setupPayloadDir = Join-Path $SRC 'target\rustdesk-setup-payload'
+    $setupPayloadMsi = Join-Path $setupPayloadDir 'rustdesk-installer.msi'
+    $legacyStagedMsi = Join-Path $msiDist 'rustdesk-installer.msi'
+    $artifactDir = Join-Path $SRC 'dist'
+    $staleFiles = @(
+        $msiOut,
+        $setupOut,
+        $legacyStagedMsi,
+        (Join-Path $artifactDir 'rustdesk-setup.exe'),
+        (Join-Path $artifactDir 'rustdesk-setup.exe.sha256'),
+        (Join-Path $artifactDir 'rustdesk.msi'),
+        (Join-Path $artifactDir 'rustdesk.msi.sha256')
+    )
+    foreach ($path in $staleFiles) {
+        if (Test-Path -LiteralPath $path) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { Die "stale artifact path is not a file: $path" }
+            Remove-Item -LiteralPath $path -Force
+        }
+    }
+    if (Test-Path -LiteralPath $setupPayloadDir) {
+        $payloadItem = Get-Item -LiteralPath $setupPayloadDir -Force
+        if (-not $payloadItem.PSIsContainer -or ($payloadItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            Die "refusing to clean non-directory or reparse setup payload path: $setupPayloadDir"
+        }
+        Remove-Item -LiteralPath $setupPayloadDir -Recurse -Force
+    }
     # Determinism (R-B2): the same SOURCE_DATE_EPOCH the Linux builds pin, so
     # gen_version bakes a reproducible BUILD_DATE (the patch honors it on Windows
     # too). Passed in by provision-windows-vm.sh / the invoker.
@@ -65,6 +97,12 @@ function Build {
                 Select-Object -First 1).Root
     if (-not $offline) { Die 'OFFLINE media not attached (no drive has cargo-vendor-config.toml)' }
     Write-Host "[harness] offline caches on $offline (cargo-vendor + pub-cache)"
+    $olefileWheel = Join-Path $offline 'python-wheels\olefile-0.47-py2.py3-none-any.whl'
+    if (-not (Test-Path -LiteralPath $olefileWheel -PathType Leaf)) { Die "offline olefile wheel missing: $olefileWheel" }
+    python -m pip install --disable-pip-version-check --no-index --no-deps $olefileWheel
+    if ($LASTEXITCODE -ne 0) { Die "offline olefile install failed ($LASTEXITCODE)" }
+    python -c "import olefile"
+    if ($LASTEXITCODE -ne 0) { Die "Python olefile module unavailable after offline install ($LASTEXITCODE)" }
 
     # --- cargo: a build-time CARGO_HOME wired to the vendored crate set (R-B10). DON'T touch the
     # repo's TRACKED .cargo/config.toml (it carries the windows rustflags); cargo MERGES this over it.
@@ -154,9 +192,10 @@ if /I "%~1"=="build" (
     python build.py --flutter
     if ($LASTEXITCODE -ne 0) { Die "build.py --flutter failed (exit $LASTEXITCODE) -- Python missing/not on PATH, or the cargo/flutter build errored (see above)" }
 
-    # --- the WiX v4 .msi (R-B7/B9) -- a SEPARATE step: build.py only runs the portable packer (the .exe),
-    # so this mirrors upstream's flutter-build.yml "Build msi" (preprocess.py --arp -d <dist>; restore;
-    # msbuild msi.sln). NO .NET SDK needed -- VS msbuild + .NET Framework (golden) + the WiX NuGet build it.
+    # --- the WiX v4 .msi (R-B7/B9) -- build it before the portable packer so the exact Package.msi
+    # can be embedded in rustdesk-setup.exe. This mirrors upstream's flutter-build.yml "Build msi"
+    # (preprocess.py --arp -d <dist>; restore; msbuild msi.sln). NO .NET SDK needed -- VS msbuild +
+    # .NET Framework (golden) + the WiX NuGet build it.
     # OFFLINE: the WiX NuGet set (WixToolset.Sdk + the 5 .wixext + DUtil/WcaUtil) is staged on the OFFLINE
     # UDF CD at $offline\wix-nuget; copy it to a WRITABLE global-packages dir (UDF is read-only; NuGet writes
     # there) and force an offline restore via a <clear/>-sources NuGet.config + NUGET_PACKAGES, so msbuild
@@ -190,8 +229,7 @@ if /I "%~1"=="build" (
   <packageSources><clear /></packageSources>
 </configuration>
 "@ | Set-Content -Encoding UTF8 $nugetCfg
-    $msiDist = Join-Path $SRC 'flutter\build\windows\x64\runner\Release'
-    if (-not (Test-Path (Join-Path $msiDist 'rustdesk.exe'))) { Die ".msi: flutter dist (rustdesk.exe) not at $msiDist -- build.py --flutter should produce it" }
+    if (-not (Test-Path (Join-Path $msiDist 'rustdesk.exe') -PathType Leaf)) { Die ".msi: flutter dist (rustdesk.exe) not at $msiDist -- build.py --flutter should produce it" }
     # msbuild lives in the VS install dir, NOT on PATH by default (the golden has no CI "Add MSBuild to
     # PATH" step). Locate it via vswhere (-products * so it finds BuildTools, not just full VS) + prepend.
     $vsw = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
@@ -208,26 +246,83 @@ if /I "%~1"=="build" (
     msbuild msi.sln -p:RestoreConfigFile=$nugetCfg -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10
     if ($LASTEXITCODE -ne 0) { Pop-Location; Die "msbuild msi.sln (WiX .msi build) failed ($LASTEXITCODE)" }
     Pop-Location
-    $msiOut = Join-Path $SRC 'res\msi\Package\bin\x64\Release\en-us\Package.msi'
-    if (-not (Test-Path $msiOut)) { Die ".msi: expected output not produced at $msiOut" }
+    if (-not (Test-Path -LiteralPath $msiOut -PathType Leaf)) { Die ".msi: expected output not produced at $msiOut" }
+    if ((Get-Item -LiteralPath $msiOut).Length -le 0) { Die ".msi: output is empty at $msiOut" }
+    $versionMatch = Select-String -Path (Join-Path $SRC 'Cargo.toml') -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1
+    if ($null -eq $versionMatch -or $versionMatch.Matches.Count -ne 1) { Die '.msi: Cargo.toml package version is missing or malformed' }
+    $productVersion = $versionMatch.Matches[0].Groups[1].Value
+    python scripts\canonicalize-msi.py $msiOut $productVersion
+    if ($LASTEXITCODE -ne 0) { Die ".msi: pre-embed canonicalization failed ($LASTEXITCODE)" }
+    $installer = $null
+    $database = $null
+    try {
+        $installer = New-Object -ComObject WindowsInstaller.Installer
+        $database = $installer.GetType().InvokeMember(
+            'OpenDatabase',
+            [System.Reflection.BindingFlags]::InvokeMethod,
+            $null,
+            $installer,
+            @($msiOut, 0)
+        )
+        if ($null -eq $database) { Die ".msi: Windows Installer could not open $msiOut as an MSI database" }
+    } catch {
+        Die ".msi: Windows Installer validation failed for ${msiOut}: $($_.Exception.Message)"
+    } finally {
+        if ($null -ne $database) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($database) }
+        if ($null -ne $installer) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($installer) }
+    }
     Write-Host "[harness] .msi built (R-B7): $msiOut"
+
+    # Generate from a dedicated one-file payload directory. The packer output is deleted before
+    # invocation, so a failed cargo build cannot be mistaken for this build's setup.exe.
+    $packExit = $null
+    try {
+        if (Test-Path -LiteralPath $setupPayloadDir) { Die ".msi: unexpected payload directory already exists at $setupPayloadDir" }
+        New-Item -ItemType Directory -Path $setupPayloadDir | Out-Null
+        Copy-Item -LiteralPath $msiOut -Destination $setupPayloadMsi
+        $sourceMsiHash = (Get-FileHash -LiteralPath $msiOut -Algorithm SHA256).Hash
+        $payloadMsiHash = (Get-FileHash -LiteralPath $setupPayloadMsi -Algorithm SHA256).Hash
+        if ($sourceMsiHash -ne $payloadMsiHash) { Die ".msi: setup payload copy hash mismatch at $setupPayloadMsi" }
+        $env:CARGO_NET_OFFLINE = 'true'
+        Push-Location (Join-Path $SRC 'libs\portable')
+        try {
+            python .\generate.py -f $setupPayloadDir -o . -e $setupPayloadMsi
+            $packExit = $LASTEXITCODE
+        } finally {
+            Pop-Location
+        }
+    } finally {
+        if (Test-Path -LiteralPath $setupPayloadDir) {
+            $payloadItem = Get-Item -LiteralPath $setupPayloadDir -Force
+            if (-not $payloadItem.PSIsContainer -or ($payloadItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                Die "refusing to remove non-directory or reparse setup payload path: $setupPayloadDir"
+            }
+            Remove-Item -LiteralPath $setupPayloadDir -Recurse -Force
+        }
+    }
+    if ($packExit -ne 0) { Die "libs/portable/generate.py failed (exit $packExit)" }
+    if (-not (Test-Path -LiteralPath $setupOut -PathType Leaf)) { Die "portable packer did not produce $setupOut" }
+    if ((Get-Item -LiteralPath $setupOut).Length -le 0) { Die "portable packer produced an empty file at $setupOut" }
+    Write-Host "[harness] setup bootstrapper built with embedded MSI: $setupOut"
 }
 
 function Emit-Artifacts {
     $out = Join-Path $SRC 'dist'
     New-Item -ItemType Directory -Force -Path $out | Out-Null
-    # The portable installer .exe (libs/portable) and the WiX v4 .msi. build.py's
-    # build_flutter_windows renames the portable packer to rustdesk-<version>-install.exe (NOT a
-    # "win7" variant), so the filter must be rustdesk-*install.exe or Emit-Artifacts finds nothing.
-    Get-ChildItem -Path $SRC -Filter 'rustdesk-*install.exe' -Recurse | Select-Object -First 1 |
-        ForEach-Object { Copy-Item $_.FullName (Join-Path $out 'rustdesk-setup.exe') }
-    Get-ChildItem -Path $SRC -Filter '*.msi' -Recurse | Select-Object -First 1 |
-        ForEach-Object { Copy-Item $_.FullName (Join-Path $out 'rustdesk.msi') }
+    $setup = Join-Path $SRC 'target\release\rustdesk-portable-packer.exe'
+    $msi = Join-Path $SRC 'res\msi\Package\bin\x64\Release\en-us\Package.msi'
+    $setupPayloadDir = Join-Path $SRC 'target\rustdesk-setup-payload'
+    if (Test-Path -LiteralPath $setupPayloadDir) { Die "temporary setup payload was not removed: $setupPayloadDir" }
+    if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) { Die "setup bootstrapper missing at exact output path $setup" }
+    if (-not (Test-Path -LiteralPath $msi -PathType Leaf)) { Die "MSI missing at exact output path $msi" }
+    Copy-Item -LiteralPath $setup -Destination (Join-Path $out 'rustdesk-setup.exe')
+    Copy-Item -LiteralPath $msi -Destination (Join-Path $out 'rustdesk.msi')
     # Record the pinned SHA-256 (R-B2): the tamper-evidence anchor in place of a
     # code signature, verified on the target over the operator's trusted channel.
-    Get-ChildItem $out\rustdesk-setup.exe, $out\rustdesk.msi -ErrorAction SilentlyContinue | ForEach-Object {
-        $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
-        "$h  $($_.Name)" | Tee-Object -FilePath "$($_.FullName).sha256"
+    foreach ($artifact in @((Join-Path $out 'rustdesk-setup.exe'), (Join-Path $out 'rustdesk.msi'))) {
+        $item = Get-Item -LiteralPath $artifact
+        $h = (Get-FileHash -LiteralPath $artifact -Algorithm SHA256).Hash.ToLower()
+        "$h  $($item.Name)" | Tee-Object -FilePath "$artifact.sha256"
     }
     Write-Host "[harness] build-windows.ps1 complete: $out"
 }

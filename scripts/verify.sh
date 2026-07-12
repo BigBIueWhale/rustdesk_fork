@@ -947,323 +947,8 @@ grep -Fq 'Windows terminal service principal authority' requirements.html || r_s
 if [ -n "$r_s11c25" ]; then echo "  FAIL R-S11c-25 Windows terminal service principal authority:$r_s11c25"; rc=1; else
   echo "  ok  R-S11c-25 Windows service terminals use a served-session token, transactional epoch lease, detached logoff revocation, logon-scoped synchronous pipes, isolated user environment, and kill-on-close helper job; LocalSystem direct PTY is denied"; fi
 
-echo "== (3b-iii-a5) Windows installer service root is fixed and shell fallbacks are absent (R-S11d) =="
+echo "== (3b-iii-a5) Windows privacy-broker, shortcut, and process provenance (R-S11d) =="
 r_s11d=
-grep -q 'SHGetKnownFolderPath(folder, KF_FLAG_DEFAULT, None)' src/platform/windows.rs || r_s11d="$r_s11d exe:no-known-folder-program-files"
-grep -q 'fn fixed_service_install_path(requested_path: &str) -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d="$r_s11d exe:no-fixed-install-path-gate"
-grep -q 'fn fixed_service_install_dir_and_exe() -> ResultType<(String, String)>' src/platform/windows.rs || r_s11d="$r_s11d exe:no-fixed-service-exe-helper"
-grep -q 'let (_, exe) = fixed_service_install_dir_and_exe()?' src/platform/windows.rs || r_s11d="$r_s11d exe:after-install-bypasses-fixed-service-root"
-grep -q 'let (path, exe) = match fixed_service_install_dir_and_exe()' src/platform/windows.rs || r_s11d="$r_s11d exe:install-service-bypasses-fixed-service-root"
-grep -q 'fn run_after_elevated_service_cmds(installed_exe: &str, silent: bool) -> ResultType<()>' src/platform/windows.rs || r_s11d="$r_s11d exe:post-elevated-relaunch-helper-missing"
-grep -q 'run_after_elevated_service_cmds(&exe, silent)?;' src/platform/windows.rs || r_s11d="$r_s11d exe:install-relaunch-not-bound-to-fixed-exe"
-grep -q 'run_after_elevated_service_cmds(&exe, !show_new_window)' src/platform/windows.rs || r_s11d="$r_s11d exe:service-uninstall-relaunch-not-bound-to-fixed-exe"
-grep -q 'run_after_elevated_service_cmds(&exe, false)' src/platform/windows.rs || r_s11d="$r_s11d exe:service-install-relaunch-not-bound-to-fixed-exe"
-post_elevated_relaunch_body=$(awk '/^fn run_after_elevated_service_cmds\(/,/^}/' src/platform/windows.rs)
-echo "$post_elevated_relaunch_body" | grep -q 'fixed_service_install_dir_and_exe()?' || r_s11d="$r_s11d exe:post-elevated-relaunch-does-not-verify-fixed-root"
-echo "$post_elevated_relaunch_body" | grep -q 'normalized_windows_path_text(Path::new(installed_exe))' || r_s11d="$r_s11d exe:post-elevated-relaunch-no-exact-path-check"
-echo "$post_elevated_relaunch_body" | grep -q 'if !exe.is_file()' || r_s11d="$r_s11d exe:post-elevated-relaunch-missing-file-check"
-if echo "$post_elevated_relaunch_body" | grep -q 'get_install_info()'; then
-  r_s11d="$r_s11d exe:post-elevated-relaunch-uses-registry-install-info"
-fi
-if grep -q 'run_after_run_cmds' src/platform/windows.rs || grep -q 'allow_err!(std::process::Command::new(&exe)' src/platform/windows.rs; then
-  r_s11d="$r_s11d exe:post-elevated-relaunch-best-effort-or-registry-helper-leftover"
-fi
-grep -q 'custom Windows install paths are not supported for the installed service' src/platform/windows.rs || r_s11d="$r_s11d exe:custom-path-not-rejected"
-grep -q 'GetSystemDirectoryW(Some(&mut buffer))' src/platform/windows.rs || r_s11d="$r_s11d exe:no-trusted-cmd-path"
-grep -q 'runas::Command::new(cmd)' src/platform/windows.rs || r_s11d="$r_s11d exe:elevated-cmd-not-absolute"
-grep -q 'share_mode(FILE_SHARE_READ)' src/platform/windows.rs || r_s11d="$r_s11d exe:command-file-write-sharing-not-denied"
-grep -Fq 'if not exist \"{exe}\" exit /b 1' src/platform/windows.rs || r_s11d="$r_s11d exe:service-binary-existence-not-checked"
-grep -q 'if errorlevel 1 exit /b 1' src/platform/windows.rs || r_s11d="$r_s11d exe:sc-errors-not-fatal"
-grep -q "bind.installInstallMe(options: args, path: '')" flutter/lib/desktop/pages/install_page.dart || r_s11d="$r_s11d flutter:fixed-install-entry-not-used"
-if grep -qE 'std::env::var\("ProgramFiles"\)|runas::Command::new\("cmd\.exe"\)|Change Path|selectInstallPath|file_picker|package:path/path' src/platform/windows.rs flutter/lib/desktop/pages/install_page.dart; then
-  r_s11d="$r_s11d exe-or-flutter:custom-path-or-path-selected-cmd"
-fi
-if grep -RInE 'INSTALLFOLDER_INNER|WIXUI_INSTALLDIR|ChangeFolder|BrowseDlg|InstallFolderSearch|SavedInstallFolder|RestoreSavedInstallFolder|SetInstallFolder' res/msi >"$VERIFY_TMP/rd_verify_r_s11d_msi"; then
-  cat "$VERIFY_TMP/rd_verify_r_s11d_msi"
-  r_s11d="$r_s11d msi:public-install-folder-or-browse-surface"
-fi
-grep -Fq '<StandardDirectory Id="ProgramFiles6432Folder">' res/msi/Package/Components/Folders.wxs || r_s11d="$r_s11d msi:install-root-not-program-files"
-grep -Fq '<Directory Id="App.InstallFolder" Name="$(var.Product)" />' res/msi/Package/Components/Folders.wxs || r_s11d="$r_s11d msi:install-folder-not-private-product-child"
-if grep -RInE 'Property="App\.InstallFolder"|SetTargetPath|PathEdit|DirectoryCombo|DirectoryList|WixUI_InstallDir' res/msi/Package >"$VERIFY_TMP/rd_verify_r_s11d_msi_dirsetter"; then
-  cat "$VERIFY_TMP/rd_verify_r_s11d_msi_dirsetter"
-  r_s11d="$r_s11d msi:install-folder-setter-surface"
-fi
-if grep -RInE 'TryCreateStartServiceByShell|TryStopDeleteServiceByShell|ShellExecuteW\(NULL, L"open", L"(sc|cmd\.exe|reg)"' res/msi/CustomActions >"$VERIFY_TMP/rd_verify_r_s11d_msi_shell"; then
-  cat "$VERIFY_TMP/rd_verify_r_s11d_msi_shell"
-  r_s11d="$r_s11d msi:service-or-registry-shell-fallback"
-fi
-grep -q 'Id="CreateStartService".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:create-service-return-not-checked"
-grep -q 'Id="TryStopDeleteService".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:delete-service-return-not-checked"
-grep -q 'Id="AddFirewallRules".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:add-firewall-return-not-checked"
-grep -q 'Id="RemoveFirewallRules".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:remove-firewall-return-not-checked"
-if grep -qE 'Id="(CreateStartService|TryStopDeleteService|AddRegSoftwareSASGeneration|AddFirewallRules|RemoveFirewallRules)".*Return="ignore"' res/msi/Package/Fragments/CustomActions.wxs; then
-  r_s11d="$r_s11d msi:privileged-custom-action-return-ignored"
-fi
-grep -Fq 'HRESULT AddFirewallRule(bool add, LPWSTR exeName, LPWSTR exeFile)' res/msi/CustomActions/Common.h || r_s11d="$r_s11d msi:firewall-helper-not-hresult"
-grep -Fq 'HRESULT AddFirewallRule(bool add, LPWSTR exeName, LPWSTR exeFile)' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-helper-definition-not-hresult"
-grep -Fq 'hr = AddFirewallRule(exeFile[0] == L'\''1'\'', exeNameNoExt, normalizedExeFile);' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:firewall-helper-result-not-propagated"
-grep -Fq 'Failed to update firewall rules for:' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:firewall-failure-not-fatal"
-if grep -qE '^[[:space:]]*AddFirewallRule\(exeFile\[0\].*\);' res/msi/CustomActions/CustomActions.cpp; then
-  r_s11d="$r_s11d msi:firewall-helper-result-discarded"
-fi
-grep -Fq "if (exeFile[0] != L'0' && exeFile[0] != L'1')" res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:firewall-mode-not-validated"
-grep -Fq "if (exeFile[1] == L'\\0')" res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:firewall-empty-path-not-rejected"
-grep -Fq 'HRESULT ValidateDeferredProductExecutablePath(' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:product-exe-validator-missing"
-grep -Fq 'ValidateDeferredProductExecutablePath(exeFile + 1, exeFile[0] == L'\''1'\'', normalizedExeFile, MAX_PATH, exeNameNoExt, 500)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:firewall-path-not-validated"
-grep -Fq 'RequireExistingMsiFileNoReparse(normalizedExe, L"MSI executable")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:firewall-add-exe-existence-not-checked"
-if grep -Fq 'AddFirewallRule(exeFile[0] == L'\''1'\'', exeNameNoExt, exeFile + 1)' res/msi/CustomActions/CustomActions.cpp; then
-  r_s11d="$r_s11d msi:firewall-uses-raw-custom-action-path"
-fi
-if grep -Fq 'StringCchPrintfW(exeNameNoExt, 500, exeName)' res/msi/CustomActions/CustomActions.cpp; then
-  r_s11d="$r_s11d msi:firewall-exe-name-format-string-copy"
-fi
-if grep -Fq 'StringCchPrintfW(pwszTemp, STRING_BUFFER_SIZE, exeName)' res/msi/CustomActions/FirewallRules.cpp; then
-  r_s11d="$r_s11d msi:firewall-group-format-string-copy"
-fi
-grep -Fq 'MAX_FIREWALL_RULE_REMOVALS' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-remove-not-bounded"
-grep -Fq 'pNetFwRules->Item(RuleName, &pNetFwRule)' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-remove-does-not-prove-absence"
-grep -Fq 'bool absenceProven = false;' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-remove-absence-proof-missing"
-grep -Fq 'ERROR_FILE_NOT_FOUND' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-absent-file-not-found-not-noop"
-grep -Fq 'ERROR_NOT_FOUND' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-absent-not-found-not-noop"
-grep -Fq 'ERROR_PATH_NOT_FOUND' res/msi/CustomActions/FirewallRules.cpp || r_s11d="$r_s11d msi:firewall-absent-path-not-found-not-noop"
-grep -Fq 'SC_HANDLE hVerifyService = OpenServiceW(hSCManager, serviceName, SERVICE_QUERY_STATUS);' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-not-verified"
-grep -Fq 'lastError == ERROR_SERVICE_DOES_NOT_EXIST' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-absence-not-proven"
-grep -q 'HRESULT_FROM_WIN32(lastError)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-errors-not-propagated"
-grep -q 'if (!QueryServiceStatusExW(serviceName, &serviceStatus))' res/msi/CustomActions/ServiceUtils.cpp || r_s11d="$r_s11d msi:service-status-query-not-guarded"
-grep -Fq 'if (!DeleteRuntimeGeneratedFile(normalizedInstallFolder, L"RuntimeBroker_rustdesk.exe"))' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:runtime-broker-cleanup-result-not-checked"
-grep -q 'Failed to remove runtime-generated broker executable' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:runtime-broker-cleanup-not-fatal"
-grep -q 'Id="RemoveRuntimeGeneratedFiles".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:runtime-generated-cleanup-return-not-checked"
-if grep -q 'Id="RemoveRuntimeGeneratedFiles".*Return="ignore"' res/msi/Package/Fragments/CustomActions.wxs; then
-  r_s11d="$r_s11d msi:runtime-generated-cleanup-return-ignored"
-fi
-if rg -n 'CustomActionHello|Example CustomAction Hello|TODO: Add your custom action code here' res/msi >"$VERIFY_TMP/rd_verify_r_s11d_msi_noop"; then
-  cat "$VERIFY_TMP/rd_verify_r_s11d_msi_noop"
-  r_s11d="$r_s11d msi:sample-custom-action-leftover"
-fi
-grep -Fq 'HRESULT ValidateDeferredInstallFolder(LPCWSTR installFolder, LPWSTR normalizedInstallFolder, size_t normalizedCch)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:deferred-install-folder-validator-missing"
-grep -Fq 'NormalizeMsiDirectoryPath(installFolder, normalizedInstallFolder, normalizedCch, L"MSI install folder")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:deferred-install-folder-not-normalized"
-grep -Fq 'KnownFolderMatchesPath(FOLDERID_ProgramFiles, normalizedParent)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:deferred-install-folder-not-bound-to-program-files"
-grep -Fq 'KnownFolderMatchesPath(FOLDERID_ProgramFilesX86, normalizedParent)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:deferred-install-folder-not-bound-to-program-files-x86"
-grep -Fq 'RequireExistingMsiDirectoryNoReparse(normalizedParent, L"MSI install folder parent")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:program-files-parent-reparse-not-rejected"
-grep -Fq 'attributes & FILE_ATTRIBUTE_REPARSE_POINT' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:reparse-point-checks-missing"
-grep -Fq 'hr = ValidateDeferredInstallFolder(installFolder, normalizedInstallFolder, MAX_PATH);' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:runtime-cleanup-not-validating-install-folder"
-grep -Fq 'DeleteRuntimeGeneratedFile(normalizedInstallFolder, L"RuntimeBroker_rustdesk.exe")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:runtime-cleanup-not-using-normalized-install-folder"
-grep -Fq 'BOOL MsiIdentifierNameIsValid(LPCWSTR value)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-identifier-validator-missing"
-grep -Fq 'HRESULT ValidateServiceBinaryCommand(LPCWSTR serviceName, LPCWSTR svcBinary, LPWSTR normalizedCommand, size_t normalizedCommandCch)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-command-validator-missing"
-grep -Fq 'HRESULT ValidateServiceBinaryCommandAndExecutable(' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-command-exe-validator-missing"
-grep -Fq 'HRESULT ValidateInstalledServiceBinaryCommand(SC_HANDLE hService, LPCWSTR serviceName, LPCWSTR expectedCommand)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:installed-service-command-proof-missing"
-grep -Fq 'HRESULT StopDeleteTrustedService(LPCWSTR serviceName, LPCWSTR expectedCommand, BOOL* serviceWasPresent)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:trusted-service-delete-helper-missing"
-grep -Fq 'QueryServiceConfigW(hService, serviceConfig, bytesNeeded, &bytesNeeded)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-config-not-queried"
-grep -Eq '^        WCHAR normalizedInstalledCommand\[1024\] = \{ 0 \};' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:installed-service-command-buffer-not-scoped"
-grep -Eq '^        SERVICE_STATUS_PROCESS svcStatus = \{ 0 \};' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-status-not-scoped"
-grep -Eq '^        SC_HANDLE hVerifyService = OpenServiceW\(hSCManager, serviceName, SERVICE_QUERY_STATUS\);' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-verification-handle-not-scoped"
-if grep -Eq '^    (WCHAR normalizedInstalledCommand\[1024\]|SERVICE_STATUS_PROCESS svcStatus|SC_HANDLE hVerifyService)' res/msi/CustomActions/CustomActions.cpp; then
-  r_s11d="$r_s11d msi:service-delete-c2362-prone-outer-local"
-fi
-grep -Fq 'OpenServiceW(' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-handle-not-opened"
-grep -Fq 'SERVICE_QUERY_CONFIG | SERVICE_QUERY_STATUS | SERVICE_STOP | DELETE' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-handle-rights-incomplete"
-grep -Fq 'hr = E_INVALIDARG;' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:malformed-custom-action-data-not-fatal"
-grep -Fq 'ExitOnFailure(hr, "Malformed service CustomActionData")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-custom-action-data-failopen"
-grep -Fq 'if (!MsiIdentifierNameIsValid(svcName))' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-name-not-validated"
-grep -Fq 'ValidateServiceBinaryCommand(svcName, svcBinary, szSvcBinary, cchSvcBinary)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-binary-not-normalized"
-grep -Fq 'MyCreateServiceW(svcName, szSvcDisplayName, szSvcBinary)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-create-not-using-normalized-command"
-if grep -Fq 'MyCreateServiceW(svcName, szSvcDisplayName, svcBinary)' res/msi/CustomActions/CustomActions.cpp; then
-  r_s11d="$r_s11d msi:service-create-uses-raw-custom-action-data"
-fi
-grep -Fq '<CustomAction Id="TryStopDeleteService.SetParam" Return="check" Property="TryStopDeleteService" Value="$(var.Product);&quot;[App.InstallFolder]$(var.Product).exe&quot; --service" />' res/msi/Package/Components/RustDesk.wxs || r_s11d="$r_s11d msi:service-delete-param-lacks-binary-proof"
-grep -Fq 'ValidateServiceBinaryCommandAndExecutable(svcName, svcBinary, szSvcBinary, cchSvcBinary, szSvcExecutable, MAX_PATH)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-binary-not-normalized"
-grep -Fq 'StopDeleteTrustedService(svcName, szSvcBinary, &serviceWasPresent)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-not-using-trusted-helper"
-grep -Fq 'TerminateProcessesByImagePathW(szSvcExecutable, L"--not-in-use")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:service-delete-process-cleanup-not-image-bound"
-if grep -Fq 'TerminateProcessesByNameW(szExeFile, L"--not-in-use")' res/msi/CustomActions/CustomActions.cpp; then
-  r_s11d="$r_s11d msi:service-delete-process-cleanup-name-only"
-fi
-grep -q 'CreateProcessW(exePath, commandLine, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, workDir, &startupInfo, &pi)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-not-absolute-createprocess"
-grep -Fq 'StringCchPrintfW(workDir, 1024, L"%ls\\usbmmidd_v2", normalizedInstallFolder)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-workdir-not-under-normalized-install-folder"
-grep -Fq 'RequireExistingMsiDirectoryNoReparse(workDir, L"Amyuni IDD directory")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-dir-reparse-not-rejected"
-grep -Fq 'RequireExistingMsiFileNoReparse(exePath, L"Amyuni IDD helper")' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-reparse-not-rejected"
-grep -q 'WaitForSingleObject(pi.hProcess, 120000)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-not-waited"
-grep -q 'GetExitCodeProcess(pi.hProcess, &exitCode)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-exit-code-not-checked"
-grep -q 'exitCode == ERROR_SUCCESS_REBOOT_REQUIRED' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-reboot-success-not-accepted"
-grep -q 'else if (exitCode != 0)' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-helper-nonzero-not-fatal"
-grep -q 'WcaDeferredActionRequiresReboot();' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-reboot-not-signaled"
-grep -q 'Id="RemoveAmyuniIdd".*Return="check"' res/msi/Package/Fragments/CustomActions.wxs || r_s11d="$r_s11d msi:amyuni-return-not-checked"
-if grep -q 'Id="RemoveAmyuniIdd".*Return="ignore"' res/msi/Package/Fragments/CustomActions.wxs; then
-  r_s11d="$r_s11d msi:amyuni-return-ignored"
-fi
-grep -Fq 'enum DriverUninstallStatus' res/msi/CustomActions/Common.h || r_s11d="$r_s11d msi:amyuni-native-status-enum-missing"
-grep -Fq 'HRESULT UninstallDriver(LPCWSTR hardwareId, DriverUninstallStatus& status, BOOL &rebootRequired)' res/msi/CustomActions/Common.h || r_s11d="$r_s11d msi:amyuni-native-helper-not-hresult"
-grep -Fq 'HRESULT UninstallDriver(LPCWSTR hardwareId, DriverUninstallStatus& status, BOOL &rebootRequired)' res/msi/CustomActions/DeviceUtils.cpp || r_s11d="$r_s11d msi:amyuni-native-helper-definition-not-hresult"
-grep -Fq 'setupApiHr = UninstallDriver(L"usbmmidd", uninstallStatus, rebootRequired);' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-native-result-not-captured"
-if grep -Fq 'UninstallDriver(L"usbmmidd", rebootRequired);' res/msi/CustomActions/CustomActions.cpp; then
-  r_s11d="$r_s11d msi:amyuni-native-result-discarded"
-fi
-grep -Fq 'DriverUninstallNotPresent' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-not-present-branch-missing"
-grep -Fq 'DriverUninstallRemoved' res/msi/CustomActions/DeviceUtils.cpp || r_s11d="$r_s11d msi:amyuni-removed-status-missing"
-grep -Fq 'ERROR_NO_MORE_ITEMS' res/msi/CustomActions/DeviceUtils.cpp || r_s11d="$r_s11d msi:amyuni-enum-completion-not-checked"
-grep -Fq 'MultiSzContains(deviceId, hardwareId)' res/msi/CustomActions/DeviceUtils.cpp || r_s11d="$r_s11d msi:amyuni-hardware-id-not-multisz"
-grep -Fq 'ZeroMemory(deviceId, sizeof(deviceId));' res/msi/CustomActions/DeviceUtils.cpp || r_s11d="$r_s11d msi:amyuni-hardware-id-buffer-not-cleared"
-grep -Fq 'HRESULT_FROM_WIN32(lastError)' res/msi/CustomActions/DeviceUtils.cpp || r_s11d="$r_s11d msi:amyuni-native-errors-not-propagated"
-grep -Fq 'hr = FAILED(setupApiHr) ? setupApiHr : HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);' res/msi/CustomActions/CustomActions.cpp || r_s11d="$r_s11d msi:amyuni-missing-helper-after-native-failure-not-fatal"
-grep -q 'RemoveAmyuniIdd".*Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"' res/msi/Package/Components/RustDesk.wxs || r_s11d="$r_s11d msi:amyuni-removal-not-uninstall-upgrade-only"
-if grep -qE 'ShellExecuteW\(NULL, L"open", (exe|exePath|L"netsh")' res/msi/CustomActions/CustomActions.cpp; then
-  r_s11d="$r_s11d msi:amyuni-or-netsh-shellexecute-leftover"
-fi
-grep -q 'struct DeviceInstaller64Paths' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-path-struct-missing"
-grep -q 'fn get_deviceinstaller64_paths' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-absolute-path-helper-missing"
-grep -Fq 'fn trusted_install_dir() -> ResultType<PathBuf>' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-fixed-install-root-proof-missing"
-grep -Fq 'let install_dir = crate::platform::windows::fixed_service_install_path("")?' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-helper-not-bound-to-fixed-service-root"
-grep -Fq 'require_existing_directory_no_reparse(&install_dir, "Windows service install directory")' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-service-root-reparse-not-rejected"
-grep -Fq 'optional_existing_directory_no_reparse(&work_dir, "Amyuni IDD directory")?' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-helper-dir-reparse-not-rejected"
-grep -Fq 'optional_existing_file_no_reparse(&exe_path, "Amyuni IDD helper")?' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-helper-reparse-not-rejected"
-grep -Fq 'require_existing_file_no_reparse(&inf_path, "Amyuni IDD INF")?' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-inf-reparse-not-rejected"
-grep -q 'paths.exe_path.as_ptr()' src/virtual_display_manager.rs || r_s11d="$r_s11d runtime:amyuni-helper-not-absolute"
-if grep -Fq 'if let Ok(Some(paths)) = get_deviceinstaller64_paths()' src/virtual_display_manager.rs; then
-  r_s11d="$r_s11d runtime:amyuni-helper-trust-failure-swallowed"
-fi
-if grep -Fq 'let inf_path = inf_path.to_string_lossy().to_string();' src/virtual_display_manager.rs; then
-  r_s11d="$r_s11d runtime:amyuni-inf-path-lossy-fallback"
-fi
-if grep -qE 'ShellExecuteA|let mut exe_file = INSTALLER_EXE_FILE\.bytes|ShellExecuteW\([^;]*INSTALLER_EXE_FILE' src/virtual_display_manager.rs; then
-  r_s11d="$r_s11d runtime:amyuni-helper-bare-name-launch"
-fi
-grep -q 'Windows installer service-binary root and elevated script authority' requirements.html || r_s11d="$r_s11d requirements-disposition-missing"
-grep -q 'R-S11d — Windows installer service-root authority' HARDENING_STATUS.md || r_s11d="$r_s11d hardening-ledger-missing"
-grep -q 'Windows elevated post-install relaunch executable authority' requirements.html || r_s11d="$r_s11d post-elevated-relaunch-requirements-disposition-missing"
-grep -q 'R-S11d-30 — Windows elevated post-install relaunch executable authority' HARDENING_STATUS.md || r_s11d="$r_s11d post-elevated-relaunch-hardening-ledger-missing"
-grep -q 'Windows Amyuni IDD helper launch provenance' requirements.html || r_s11d="$r_s11d amyuni-requirements-disposition-missing"
-grep -q 'R-S11d-1 — Windows Amyuni IDD helper launch provenance' HARDENING_STATUS.md || r_s11d="$r_s11d amyuni-hardening-ledger-missing"
-grep -q 'Windows Amyuni IDD cleanup completion authority' requirements.html || r_s11d="$r_s11d amyuni-cleanup-requirements-disposition-missing"
-grep -q 'R-S11d-2 — Windows Amyuni IDD cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d amyuni-cleanup-hardening-ledger-missing"
-grep -q 'Windows MSI firewall custom-action completion authority' requirements.html || r_s11d="$r_s11d firewall-requirements-disposition-missing"
-grep -q 'R-S11d-7 — Windows MSI firewall custom-action completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d firewall-hardening-ledger-missing"
-grep -q 'Windows MSI deferred firewall/service action target provenance' requirements.html || r_s11d="$r_s11d firewall-service-target-requirements-disposition-missing"
-grep -q 'R-S11d-34 — Windows MSI deferred firewall/service target provenance' HARDENING_STATUS.md || r_s11d="$r_s11d firewall-service-target-hardening-ledger-missing"
-grep -Fq 'pub(crate) fn trusted_system_tool_path(tool: &str) -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d="$r_s11d windows:trusted-system-tool-helper-not-crate-visible"
-grep -Fq 'trusted_system_tool_path("mstsc.exe")' src/port_forward.rs || r_s11d="$r_s11d rdp:mstsc-not-trusted-system-tool"
-grep -Fq '"Win32_Security_Credentials"' Cargo.toml || r_s11d="$r_s11d rdp:windows-credential-feature-missing"
-if grep -Fq 'Command::new("cmdkey")' src/port_forward.rs || grep -Fq 'Command::new("mstsc")' src/port_forward.rs || grep -Fq 'trusted_system_tool_path("cmdkey.exe")' src/port_forward.rs; then
-  r_s11d="$r_s11d rdp:cmdkey-or-bare-mstsc-launch"
-fi
-grep -Fq 'const RDP_CREDENTIAL_TARGET: &str = "TERMSRV/localhost";' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-target-not-pinned"
-grep -Fq 'let has_complete_credentials = !username.is_empty() && !password.is_empty();' src/port_forward.rs || r_s11d="$r_s11d rdp:partial-credentials-not-rejected"
-grep -Fq 'Ignoring incomplete RDP credential; username and password are both required' src/port_forward.rs || r_s11d="$r_s11d rdp:partial-credential-warning-missing"
-grep -Fq 'args.push("/prompt".to_owned());' src/port_forward.rs || r_s11d="$r_s11d rdp:unseeded-mstsc-not-prompted"
-grep -Fq 'CredReadW(' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-state-not-snapshotted"
-grep -Fq 'CredWriteW(&raw, 0)' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-not-native-write"
-grep -Fq 'CredDeleteW(' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-not-native-delete"
-grep -Fq 'CRED_TYPE_GENERIC' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-type-not-generic"
-grep -Fq 'CRED_PERSIST_SESSION' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-not-session-scoped"
-grep -Fq 'RDP_CREDENTIAL_ACTIVE' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-concurrency-guard-missing"
-grep -Fq 'struct RdpCredentialLease' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-lease-missing"
-grep -Fq 'impl Drop for RdpCredentialLease' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-lease-drop-missing"
-grep -Fq 'cleanup_rdp_credentials_when_mstsc_exits(lease, child);' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-not-restored-after-mstsc"
-grep -Fq 'lease.restore()?' src/port_forward.rs || r_s11d="$r_s11d rdp:credential-not-restored-after-spawn-failure"
-if grep -Fq '/pass:' src/port_forward.rs || grep -qE 'std::env::(set_var|var)\("rdp_(username|password)"' src/port_forward.rs src/ui_session_interface.rs; then
-  r_s11d="$r_s11d rdp:credential-password-argv-or-env"
-fi
-grep -q 'Windows RDP viewer credential command provenance' requirements.html || r_s11d="$r_s11d rdp-requirements-disposition-missing"
-grep -q 'R-S11d-8 — Windows RDP viewer credential command provenance' HARDENING_STATUS.md || r_s11d="$r_s11d rdp-hardening-ledger-missing"
-grep -Fq 'pub fn get_default_shell() -> Result<String>' src/server/terminal_helper.rs || r_s11d="$r_s11d terminal-shell:helper-not-fallible"
-grep -Fq 'fn get_default_shell() -> Result<String>' src/server/terminal_service.rs || r_s11d="$r_s11d terminal-shell:service-not-fallible"
-grep -Fq 'GetSystemDirectoryW(Some(&mut buffer))' src/server/terminal_helper.rs || r_s11d="$r_s11d terminal-shell:no-systemdir-resolution"
-grep -Fq 'PathBuf::from(r"C:\Program Files\PowerShell\7\pwsh.exe")' src/server/terminal_helper.rs || r_s11d="$r_s11d terminal-shell:pwsh7-absolute-candidate-missing"
-grep -Fq 'PathBuf::from(r"C:\Program Files\PowerShell\6\pwsh.exe")' src/server/terminal_helper.rs || r_s11d="$r_s11d terminal-shell:pwsh6-absolute-candidate-missing"
-grep -Fq '.join("WindowsPowerShell")' src/server/terminal_helper.rs || r_s11d="$r_s11d terminal-shell:system32-powershell-candidate-missing"
-grep -Fq 'system_dir.join("cmd.exe")' src/server/terminal_helper.rs || r_s11d="$r_s11d terminal-shell:system32-cmd-candidate-missing"
-grep -Fq 'Err(anyhow!("no trusted Windows terminal shell found"))' src/server/terminal_helper.rs || r_s11d="$r_s11d terminal-shell:no-fail-closed-error"
-grep -Fq 'let shell = get_default_shell()?;' src/server/terminal_helper.rs || r_s11d="$r_s11d terminal-shell:helper-open-not-fail-closed"
-grep -Fq 'let shell = get_default_shell()?;' src/server/terminal_service.rs || r_s11d="$r_s11d terminal-shell:direct-open-not-fail-closed"
-if grep -Fq 'COMSPEC' src/server/terminal_helper.rs src/server/terminal_service.rs \
-  || grep -qE '^[[:space:]]*"pwsh\.exe",[[:space:]]*$' src/server/terminal_helper.rs \
-  || grep -Fq 'unwrap_or_else(|_| "cmd.exe".to_string())' src/server/terminal_helper.rs src/server/terminal_service.rs; then
-  r_s11d="$r_s11d terminal-shell:ambient-or-bare-shell-fallback"
-fi
-grep -q 'Windows terminal default-shell command provenance' requirements.html || r_s11d="$r_s11d terminal-shell-requirements-disposition-missing"
-grep -q 'R-S11d-9 — Windows terminal default-shell command provenance' HARDENING_STATUS.md || r_s11d="$r_s11d terminal-shell-hardening-ledger-missing"
-grep -Fq 'trusted_system_tool_path("taskkill.exe")' libs/portable/src/main.rs || r_s11d="$r_s11d portable-taskkill:not-trusted-system-tool"
-grep -Fq 'GetSystemDirectoryW(Some(&mut buffer))' libs/portable/src/main.rs || r_s11d="$r_s11d portable-taskkill:no-systemdir-resolution"
-grep -Fq 'RuntimeBroker cleanup failed' libs/portable/src/main.rs || r_s11d="$r_s11d portable-taskkill:spawn-error-not-reported"
-if grep -Fq 'Command::new("taskkill")' libs/portable/src/main.rs || grep -Fq 'Command::new("taskkill.exe")' libs/portable/src/main.rs; then
-  r_s11d="$r_s11d portable-taskkill:bare-launch"
-fi
-grep -q 'Windows portable RuntimeBroker cleanup command provenance' requirements.html || r_s11d="$r_s11d portable-taskkill-requirements-disposition-missing"
-grep -q 'R-S11d-10 — Windows portable RuntimeBroker cleanup command provenance' HARDENING_STATUS.md || r_s11d="$r_s11d portable-taskkill-hardening-ledger-missing"
-grep -Fq 'const ELEVATED_INSTALL_ARG: &str = "--rustdesk-protected-install";' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:internal-install-arg-missing"
-grep -Fq 'const ELEVATED_SILENT_INSTALL_ARG: &str = "--rustdesk-protected-silent-install";' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:internal-silent-install-arg-missing"
-grep -Fq 'const PROTECTED_INSTALL_ENV_KEY: &str = "RUSTDESK_PROTECTED_INSTALL";' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:protected-env-missing"
-grep -Fq 'let silent_install = args.iter().any(|arg| arg == "--silent-install");' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:silent-install-not-detected"
-grep -Fq 'if click_setup || silent_install || protected_install {' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:silent-install-not-protected"
-grep -Fq 'win::run_protected_installer(reader, silent)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:silent-mode-not-bound-to-protected-runner"
-grep -Fq 'std::process::exit(1);' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:protected-main-error-exits-success"
-grep -Fq 'ShellExecuteExW(&mut info)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:not-shell-execute-ex"
-grep -Fq 'SEE_MASK_NOCLOSEPROCESS' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:no-elevated-process-handle"
-grep -Fq 'WaitForSingleObject(process.0, INFINITE)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:no-parent-wait"
-grep -Fq 'GetExitCodeProcess(process.0, &mut exit_code)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:relaunch-exit-code-not-checked"
-grep -Fq 'if exit_code != 0 {' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:relaunch-nonzero-not-fatal"
-grep -Fq 'relaunch_self_for_protected_install(silent)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:silent-mode-not-preserved-through-uac"
-grep -Fq 'current_process_is_elevated()?' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:elevation-check-not-required"
-grep -Fq 'FOLDERID_ProgramFilesX86' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:program-files-root-not-width-aware"
-grep -Fq 'staging_is_outside_final_install_dir(&path)?' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:no-final-root-overlap-check"
-grep -Fq 'fs::create_dir(&path)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:not-private-create-dir"
-grep -Fq 'metadata.file_type().is_symlink() || crate::has_reparse_point(&metadata)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:no-reparse-root-reject"
-grep -Fq '.env(PROTECTED_INSTALL_ENV_KEY, "1")' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:child-not-marked-protected"
-grep -Fq 'let install_arg = if silent {' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:protected-runner-not-mode-aware"
-grep -Fq '"--silent-install"' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:silent-child-install-arg-missing"
-grep -Fq 'finish_with_payload_cleanup(&staging, &payload, result)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:no-error-path-manifest-cleanup"
-grep -Fq 'cleanup_extracted_payload(&staging.path, &payload.files)' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:no-manifest-cleanup"
-grep -Fq 'remove_payload_file(root, file)?' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:manifest-file-removal-missing"
-grep -Fq 'ensure_clean_parent_chain(root, file)?' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:no-parent-reparse-check"
-grep -Fq 'copy_runtime_broker(dir: &Path) -> Result<(), String>' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:runtime-broker-copy-not-fallible"
-grep -Fq 'fs::copy(src, &target_file).map_err' libs/portable/src/main.rs || r_s11d="$r_s11d portable-staging:runtime-broker-copy-error-ignored"
-grep -Fq 'relative_payload_path(&self.path)?' libs/portable/src/bin_reader.rs || r_s11d="$r_s11d portable-staging:payload-path-not-validated"
-grep -Fq 'absolute embedded payload path is not allowed' libs/portable/src/bin_reader.rs || r_s11d="$r_s11d portable-staging:absolute-path-not-rejected"
-grep -Fq 'is_windows_safe_component(component)' libs/portable/src/bin_reader.rs || r_s11d="$r_s11d portable-staging:windows-component-validator-missing"
-grep -Fq '.create_new(true)' libs/portable/src/bin_reader.rs || r_s11d="$r_s11d portable-staging:payload-temp-not-create-new"
-grep -Fq 'file.sync_all()' libs/portable/src/bin_reader.rs || r_s11d="$r_s11d portable-staging:payload-write-not-synced"
-grep -Fq 'std::env::var_os("RUSTDESK_PROTECTED_INSTALL").is_some()' src/ui_interface.rs || r_s11d="$r_s11d portable-staging:run-without-install-not-blocked"
-grep -Fq 'const PROTECTED_INSTALL_ENV_KEY: &str = "RUSTDESK_PROTECTED_INSTALL";' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-protected-env-missing"
-grep -Fq 'const PROTECTED_INSTALL_STAGING_PREFIX: &str = "RustDesk-staging-";' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-staging-prefix-missing"
-grep -Fq 'fn require_protected_install_source(' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-proof-helper-missing"
-grep -Fq 'std::env::var_os(PROTECTED_INSTALL_ENV_KEY).as_deref() != Some(OsStr::new("1"))' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-protected-env-not-exact"
-grep -Fq 'if !is_elevated(None)? {' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-does-not-require-elevated-child"
-grep -Fq 'fs::symlink_metadata(&current_exe)?' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-source-exe-not-inspected"
-grep -Fq 'has_reparse_point(&exe_metadata)' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-source-exe-reparse-not-rejected"
-grep -Fq 'fs::symlink_metadata(&source_dir)?' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-source-dir-not-inspected"
-grep -Fq 'has_reparse_point(&source_metadata)' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-source-dir-reparse-not-rejected"
-grep -Fq 'source_name.starts_with(PROTECTED_INSTALL_STAGING_PREFIX)' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-staging-prefix-not-required"
-grep -Fq 'normalized_windows_path_text(source_parent) != normalized_windows_path_text(&program_files)' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-program-files-parent-not-required"
-grep -Fq 'source == final_install || source.starts_with(&(final_install + "\\"))' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-final-root-overlap-not-rejected"
-grep -Fq 'let (current_exe, source_dir) = require_protected_install_source(current_exe, &install_dir)?;' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-proof-not-consumed-by-install"
-grep -Fq 'fn copy_source_dir_cmd(' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-source-dir-copy-helper-missing"
-grep -Fq 'let src_parent = quoted_batch_path(source_dir)?;' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-copy-source-dir-not-quoted"
-grep -Fq 'let copy_exe = copy_exe_cmd(&source_dir, &exe, &path, &tools)?;' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:sink-copy-not-bound-to-proven-source-dir"
-grep -Fq 'log::error!("Failed to install: {err}");' src/ui_interface.rs || r_s11d="$r_s11d portable-staging:interactive-install-failure-not-logged"
-grep -Fq 'let already_elevated = match is_elevated(None)' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:run-cmds-no-already-elevated-fast-path"
-grep -Fq 'std::process::Command::new(&cmd)' src/platform/windows.rs || r_s11d="$r_s11d portable-staging:run-cmds-elevated-direct-cmd-missing"
-if grep -Fq 'std::fs::remove_dir_all(&dir).ok()' libs/portable/src/main.rs; then
-  r_s11d="$r_s11d portable-staging:old-silent-remove-dir-all"
-fi
-if grep -Fq 'file.write_to_file(&dir);' libs/portable/src/main.rs; then
-  r_s11d="$r_s11d portable-staging:old-infallible-write-shape"
-fi
-if grep -Fq 'cmd.arg("--install")' libs/portable/src/main.rs && ! grep -Fq '.env(PROTECTED_INSTALL_ENV_KEY, "1")' libs/portable/src/main.rs; then
-  r_s11d="$r_s11d portable-staging:unmarked-install-ui-child"
-fi
-if grep -Fq 'let src_exe = cur_exe.to_owned();' src/platform/windows.rs \
-  || grep -Fq 'fn copy_raw_cmd(' src/platform/windows.rs \
-  || grep -Fq 'PathBuf::from(src_raw)' src/platform/windows.rs \
-  || grep -Fq 'copy_exe_cmd(&src_exe, &exe, &path, &tools)?' src/platform/windows.rs; then
-  r_s11d="$r_s11d portable-staging:raw-current-exe-parent-copy-leftover"
-fi
-silent_install_block=$(awk '/args\[0\] == "--silent-install"/,/args\[0\] == "--uninstall-cert"/' src/core_main.rs)
-if ! printf '%s\n' "$silent_install_block" | grep -Fq 'std::process::exit(1);'; then
-  r_s11d="$r_s11d portable-staging:silent-child-install-failure-exits-success"
-fi
-if ! rg -U 'pub fn install_me\(_options: String, _path: String, _silent: bool, _debug: bool\) \{\s*#\[cfg\(windows\)\]\s*std::thread::spawn\(move \|\| \{\s*if let Err\(err\) = crate::platform::windows::install_me\(&_options, _path, _silent, _debug\) \{\s*log::error!\("Failed to install: \{err\}"\);\s*std::process::exit\(1\);' src/ui_interface.rs >"$VERIFY_TMP/rd_verify_r_s11d_install_ui"; then
-  r_s11d="$r_s11d portable-staging:interactive-child-install-failure-exits-success"
-fi
-grep -q 'Windows portable installer source-staging authority' requirements.html || r_s11d="$r_s11d portable-staging-requirements-disposition-missing"
-grep -q 'R-S11d-17 — Windows portable installer source-staging authority' HARDENING_STATUS.md || r_s11d="$r_s11d portable-staging-hardening-ledger-missing"
 if rg -n 'wmic|by_wmic|get_pids_with_args_by_wmic|get_pids_with_first_arg_by_wmic|get_pids_with_first_arg_check_session|not\(target_pointer_width = "64"\)|all\(target_os = "windows", not\(target_pointer_width = "64"\)\)' src/common.rs src/platform -g '*.rs' >"$VERIFY_TMP/rd_verify_r_s11d_wmic"; then
   cat "$VERIFY_TMP/rd_verify_r_s11d_wmic"
   r_s11d="$r_s11d windows:unsupported-32bit-wmic-process-probe-leftover"
@@ -1275,8 +960,9 @@ privacy_broker_create_one_line=$(printf '%s\n' "$privacy_broker_create" | tr '\n
 echo "$privacy_broker_create" | grep -q 'broker_path_utf16.as_ptr() as _' || r_s11d="$r_s11d privacy-broker:not-explicit-application-name"
 echo "$privacy_broker_create_one_line" | grep -Eq 'broker_path_utf16\.as_ptr\(\) as _[[:space:]]*,[[:space:]]*NULL as _[[:space:]]*,' || r_s11d="$r_s11d privacy-broker:command-line-not-null"
 echo "$privacy_broker_create" | grep -q 'current_dir_utf16.as_ptr() as _' || r_s11d="$r_s11d privacy-broker:no-explicit-current-directory"
-grep -q 'if !dll_file.is_file()' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:dll-file-existence-not-checked"
-grep -q 'if !broker_file.is_file()' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:file-existence-not-checked"
+grep -Fq 'let broker_file = crate::platform::windows::check_update_broker_process()?;' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:verified-broker-result-not-propagated"
+grep -Fq 'require_existing_file_no_reparse(' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:dll-reparse-check-missing"
+grep -Fq '"privacy injection DLL"' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:dll-provenance-label-missing"
 grep -q 'fn privacy_broker_session_id() -> ResultType<u32>' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:served-session-helper-missing"
 grep -q 'get_current_process_session_id()' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:not-bound-to-served-process-session"
 grep -q 'Failed to get current process session id for privacy broker' src/privacy_mode/win_topmost_window.rs || r_s11d="$r_s11d privacy-broker:no-served-session-fail-closed-error"
@@ -1314,8 +1000,8 @@ grep -q 'Windows privacy broker served-session authority' requirements.html || r
 grep -q 'R-S11d-31 — Windows privacy broker served-session authority' HARDENING_STATUS.md || r_s11d="$r_s11d privacy-broker-session-hardening-ledger-missing"
 grep -q 'Windows MSI runtime-generated executable cleanup completion authority' requirements.html || r_s11d="$r_s11d runtime-generated-cleanup-requirements-disposition-missing"
 grep -q 'R-S11d-4 — Windows MSI runtime-generated executable cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d runtime-generated-cleanup-hardening-ledger-missing"
-if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows installer service-root authority:$r_s11d"; rc=1; else
-  echo "  ok  R-S11d Windows installer service root is fixed to Program Files across EXE service paths; post-elevated relaunch is bound to the fixed installed executable; EXE custom path and ProgramFiles-env routing are rejected; elevated command files deny write/delete sharing; MSI public install-folder routing is absent; MSI service custom actions are native, checked, and fail closed; Amyuni helper launch uses the checked absolute helper path from the fixed service root and rejects reparse-backed helper/INF objects; MSI cleanup observes Amyuni and runtime-generated executable completion; portable installer source staging is elevated/protected/manifest-cleaned; unsupported 32-bit WMIC process probes are absent"; fi
+if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows privacy-broker/shortcut/process provenance:$r_s11d"; rc=1; else
+  echo "  ok  R-S11d unsupported 32-bit WMIC probes are absent; privacy broker launch is explicit and served-session-bound; user shortcuts use native ShellLink with validated inputs; runtime-generated broker cleanup remains package-authoritative"; fi
 
 echo "== (3b-iii-a5a1) Unix terminal default shell uses trusted absolute executable paths (R-S11c-20) =="
 r_s11c20=
@@ -1452,232 +1138,6 @@ grep -Fq 'R-S11d-37 — Windows service-owned server child executable provenance
 if [ -n "$r_s11d37" ]; then echo "  FAIL R-S11d-37 Windows service-owned server child executable provenance:$r_s11d37"; rc=1; else
   echo "  ok  R-S11d-37 Windows service-owned server child launches only the fixed Program Files service executable after handle-identity proof"; fi
 
-echo "== (3b-iii-a5d4) Windows EXE elevated batch completion is authoritative (R-S11d-15) =="
-r_s11d15=
-run_cmds_body=$(awk '/fn run_cmds\(/,/^}/' src/platform/windows.rs)
-write_cmds_body=$(awk '/fn write_cmds\(/,/^}/' src/platform/windows.rs)
-uninstall_service_body=$(awk '/pub fn uninstall_service\(/,/^}/' src/platform/windows.rs)
-install_service_body=$(awk '/pub fn install_service\(/,/^}/' src/platform/windows.rs)
-echo "$write_cmds_body" | grep -Fq 'open(&tmp2)?;' || r_s11d15="$r_s11d15 marker-create-not-mandatory"
-if echo "$write_cmds_body" | grep -A8 -F 'let tmp2 = get_undone_file(&command_file.path)?;' | grep -Fq '.ok()'; then
-  r_s11d15="$r_s11d15 marker-create-error-ignored"
-fi
-if ! echo "$run_cmds_body" | grep -Fq 'let status = res?;' \
-  && ! echo "$run_cmds_body" | grep -Fq 'let status = if already_elevated {'; then
-  r_s11d15="$r_s11d15 elevated-status-not-captured"
-fi
-if echo "$run_cmds_body" | grep -Fq 'let status = if already_elevated {'; then
-  echo "$run_cmds_body" | grep -Fq 'command.status()?' || r_s11d15="$r_s11d15 elevated-direct-status-not-captured"
-  echo "$run_cmds_body" | grep -Fq 'runas::Command::new(cmd)' || r_s11d15="$r_s11d15 unelevated-runas-branch-missing"
-fi
-echo "$run_cmds_body" | grep -Fq 'let marker_left = tmp2.exists();' || r_s11d15="$r_s11d15 marker-state-not-captured"
-echo "$run_cmds_body" | grep -Fq 'if !status.success() || marker_left {' || r_s11d15="$r_s11d15 status-or-marker-not-required"
-echo "$run_cmds_body" | grep -Fq 'completion marker {}' || r_s11d15="$r_s11d15 failure-message-does-not-report-marker-state"
-if echo "$run_cmds_body" | grep -Fq 'let _ = res?;'; then
-  r_s11d15="$r_s11d15 elevated-status-still-ignored"
-fi
-echo "$uninstall_service_body" | grep -Fq 'log::error!("{err}");' || r_s11d15="$r_s11d15 uninstall-failure-not-error-logged"
-echo "$uninstall_service_body" | grep -Fq 'return false;' || r_s11d15="$r_s11d15 uninstall-failure-not-false"
-if echo "$uninstall_service_body" | grep -Fq 'return true;'; then
-  r_s11d15="$r_s11d15 uninstall-failure-still-success"
-fi
-echo "$install_service_body" | grep -Fq 'crate::ipc::EXIT_RECV_CLOSE.store(true, Ordering::Relaxed);' || r_s11d15="$r_s11d15 install-failure-exit-close-not-restored"
-echo "$install_service_body" | grep -Fq 'log::error!("{err}");' || r_s11d15="$r_s11d15 install-failure-not-error-logged"
-echo "$install_service_body" | grep -Fq 'return false;' || r_s11d15="$r_s11d15 install-failure-not-false"
-if echo "$install_service_body" | grep -Fq 'return true;'; then
-  r_s11d15="$r_s11d15 install-failure-still-success"
-fi
-grep -Fq 'Windows EXE elevated batch completion accounting' requirements.html || r_s11d15="$r_s11d15 requirements-disposition-missing"
-grep -Fq 'R-S11d-15 — Windows EXE elevated batch completion accounting' HARDENING_STATUS.md || r_s11d15="$r_s11d15 hardening-ledger-missing"
-if [ -n "$r_s11d15" ]; then echo "  FAIL R-S11d-15 Windows EXE elevated batch completion accounting:$r_s11d15"; rc=1; else
-  echo "  ok  R-S11d-15 Windows elevated EXE batches require marker creation, successful exit status, marker removal, and false-on-failure service wrappers"; fi
-
-echo "== (3b-iii-a5d4b) Windows EXE elevated batch rejects ambient cmd state (R-S11d-18) =="
-r_s11d18=
-grep -Fq 'FOLDERID_ProgramData' src/platform/windows.rs || r_s11d18="$r_s11d18 programdata-known-folder-missing"
-grep -Fq 'pub(crate) fn program_data_dir() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d18="$r_s11d18 programdata-helper-missing"
-grep -Fq 'fn batch_literal_text<' src/platform/windows.rs || r_s11d18="$r_s11d18 batch-literal-guard-missing"
-grep -Fq 'fn batch_path_text(path: &Path, label: &str) -> ResultType<String>' src/platform/windows.rs || r_s11d18="$r_s11d18 batch-path-guard-missing"
-grep -Fq "'\"' | '%'" src/platform/windows.rs || r_s11d18="$r_s11d18 cmd-expansion-metachar-quote-not-rejected"
-for ch in '%' '!' '&' '|' '<' '>' '^' '@' '\r' '\n'; do
-  grep -Fq "'$ch'" src/platform/windows.rs || r_s11d18="$r_s11d18 cmd-expansion-metachar-$ch-not-rejected"
-done
-grep -Fq 'fn push_installer_command_dir(' src/platform/windows.rs || r_s11d18="$r_s11d18 installer-command-dir-candidate-helper-missing"
-grep -Fq 'fn installer_command_dirs() -> ResultType<Vec<PathBuf>>' src/platform/windows.rs || r_s11d18="$r_s11d18 installer-command-dirs-not-fallible-list"
-grep -Fq 'for dir in installer_command_dirs()?' src/platform/windows.rs || r_s11d18="$r_s11d18 command-file-creation-does-not-try-safe-candidates"
-grep -Fq '"installer command temp directory"' src/platform/windows.rs || r_s11d18="$r_s11d18 temp-dir-not-safety-checked"
-grep -Fq '"installer command ProgramData directory"' src/platform/windows.rs || r_s11d18="$r_s11d18 programdata-dir-not-safety-checked"
-grep -Fq '"installer command user-accessible directory"' src/platform/windows.rs || r_s11d18="$r_s11d18 user-accessible-dir-not-safety-checked"
-grep -Fq 'create_errors.push(format!("{}: {err}", dir.display()));' src/platform/windows.rs || r_s11d18="$r_s11d18 command-file-create-errors-not-tracked"
-grep -Fq 'batch_path_text(&path, "installer command file path")?' src/platform/windows.rs || r_s11d18="$r_s11d18 command-file-path-not-safety-checked"
-grep -Fq 'let tmp2_quoted = quoted_batch_path(&tmp2)?;' src/platform/windows.rs || r_s11d18="$r_s11d18 marker-path-not-quoted-through-safe-guard"
-echo "$run_cmds_body" | grep -Fq 'command.args(["/D", "/V:OFF", "/S", "/C", tmp_fn.as_str()]);' || r_s11d18="$r_s11d18 elevated-cmd-args-not-autorun-delayed-expansion-safe"
-echo "$run_cmds_body" | grep -Fq '.args(&["/D", "/V:OFF", "/S", "/C", tmp_fn.as_str()])' || r_s11d18="$r_s11d18 runas-cmd-args-not-autorun-delayed-expansion-safe"
-if echo "$run_cmds_body" | grep -Eq 'args\(\["/C"|args\(&\["/C"|/C", tmp_fn\]'; then
-  r_s11d18="$r_s11d18 bare-cmd-slash-c-leftover"
-fi
-grep -Fq 'Windows EXE elevated batch cmd-state hardening' requirements.html || r_s11d18="$r_s11d18 requirements-disposition-missing"
-grep -Fq 'R-S11d-18 — Windows EXE elevated batch cmd-state hardening' HARDENING_STATUS.md || r_s11d18="$r_s11d18 hardening-ledger-missing"
-if [ -n "$r_s11d18" ]; then echo "  FAIL R-S11d-18 Windows EXE elevated batch cmd-state hardening:$r_s11d18"; rc=1; else
-  echo "  ok  R-S11d-18 Windows elevated EXE batches use cmd /D /V:OFF /S /C and reject expansion-sensitive generated paths"; fi
-
-echo "== (3b-iii-a5d4b2) Windows EXE elevated command-file reopen is identity-bound (R-S11d-32) =="
-r_s11d32=
-grep -Fq 'GetFileInformationByHandle' src/platform/windows.rs || r_s11d32="$r_s11d32 file-identity-api-not-imported"
-grep -Fq 'struct WindowsPathIdentity' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-struct-missing"
-grep -Fq 'fn path_identity_from_handle(handle: HANDLE, label: &str) -> ResultType<WindowsPathIdentity>' src/platform/windows.rs || r_s11d32="$r_s11d32 handle-identity-helper-missing"
-grep -Fq 'fn installer_command_file_identity(file: &fs::File) -> ResultType<WindowsPathIdentity>' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-helper-missing"
-grep -Fq 'path_identity_from_handle(file.as_raw_handle() as HANDLE, "installer command file")' src/platform/windows.rs || r_s11d32="$r_s11d32 installer-identity-not-handle-based"
-grep -Fq 'GetFileInformationByHandle(handle, &mut info)' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-helper-not-handle-based"
-grep -Fq 'volume_serial_number: info.dwVolumeSerialNumber' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-volume-not-recorded"
-grep -Fq 'file_index_high: info.nFileIndexHigh' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-high-index-not-recorded"
-grep -Fq 'file_index_low: info.nFileIndexLow' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-low-index-not-recorded"
-grep -Fq 'fn installer_command_digest(bytes: &[u8]) -> [u8; 32]' src/platform/windows.rs || r_s11d32="$r_s11d32 digest-helper-missing"
-grep -Fq 'Sha256::new()' src/platform/windows.rs || r_s11d32="$r_s11d32 digest-not-sha256"
-grep -Fq 'fn reopen_verified_installer_command_file(' src/platform/windows.rs || r_s11d32="$r_s11d32 verified-reopen-helper-missing"
-grep -Fq '.read(true)' src/platform/windows.rs || r_s11d32="$r_s11d32 read-reopen-missing"
-grep -Fq '.share_mode(FILE_SHARE_READ)' src/platform/windows.rs || r_s11d32="$r_s11d32 read-lock-share-mode-missing"
-grep -Fq 'let actual_identity = installer_command_file_identity(&file)?;' src/platform/windows.rs || r_s11d32="$r_s11d32 reopened-identity-not-queried"
-grep -Fq 'if actual_identity != expected_identity' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-drift-not-fatal"
-grep -Fq 'installer command file identity changed before elevation' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-drift-error-missing"
-grep -Fq 'file.read_to_end(&mut bytes)?;' src/platform/windows.rs || r_s11d32="$r_s11d32 reopened-content-not-read"
-grep -Fq 'bytes.len() as u64 != expected_len || installer_command_digest(&bytes) != expected_digest' src/platform/windows.rs || r_s11d32="$r_s11d32 content-drift-not-fatal"
-grep -Fq 'installer command file content changed before elevation' src/platform/windows.rs || r_s11d32="$r_s11d32 content-drift-error-missing"
-echo "$write_cmds_body" | grep -Fq 'let command_bytes = if ext == "vbs" {' || r_s11d32="$r_s11d32 exact-written-bytes-not-owned"
-echo "$write_cmds_body" | grep -Fq 'file.write_all(&command_bytes)?;' || r_s11d32="$r_s11d32 command-bytes-not-written"
-echo "$write_cmds_body" | grep -Fq 'file.sync_all()?;' || r_s11d32="$r_s11d32 command-file-not-synced-before-proof"
-echo "$write_cmds_body" | grep -Fq 'let identity = installer_command_file_identity(file)?;' || r_s11d32="$r_s11d32 write-handle-identity-not-captured"
-echo "$write_cmds_body" | grep -Fq 'let digest = installer_command_digest(&command_bytes);' || r_s11d32="$r_s11d32 write-bytes-digest-not-captured"
-echo "$write_cmds_body" | grep -Fq 'let len = command_bytes.len() as u64;' || r_s11d32="$r_s11d32 write-bytes-length-not-captured"
-echo "$write_cmds_body" | grep -Fq 'reopen_verified_installer_command_file(' || r_s11d32="$r_s11d32 write-path-not-verified-reopened"
-if echo "$write_cmds_body" | grep -Fq '.open(&command_file.path)?'; then
-  r_s11d32="$r_s11d32 naked-path-reopen-left-in-write_cmds"
-fi
-grep -Fq 'fn r_s11d32_installer_command_digest_is_byte_exact()' src/platform/windows.rs || r_s11d32="$r_s11d32 digest-regression-test-missing"
-grep -Fq 'fn r_s11d32_installer_command_identity_compares_volume_and_index()' src/platform/windows.rs || r_s11d32="$r_s11d32 identity-regression-test-missing"
-grep -Fq 'Windows elevated command-file reopen identity' requirements.html || r_s11d32="$r_s11d32 requirements-disposition-missing"
-grep -Fq 'R-S11d-32 — Windows elevated command-file reopen identity' HARDENING_STATUS.md || r_s11d32="$r_s11d32 hardening-ledger-missing"
-if [ -n "$r_s11d32" ]; then echo "  FAIL R-S11d-32 Windows elevated command-file reopen identity:$r_s11d32"; rc=1; else
-  echo "  ok  R-S11d-32 Windows elevated command files prove file identity and bytes across the close/reopen handoff"; fi
-
-echo "== (3b-iii-a5d4c) Windows EXE uninstall cleanup uses known-folder literal paths (R-S11d-19) =="
-r_s11d19=
-grep -Fq 'fn get_install_info() -> (String, String, String)' src/platform/windows.rs || r_s11d19="$r_s11d19 stale-install-info-start-menu-field-left"
-grep -Fq 'fn get_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> ResultType<String>' src/platform/windows.rs || r_s11d19="$r_s11d19 uninstall-builder-not-fallible"
-grep -Fq 'let uninstall_str = get_uninstall(false, &tools)?;' src/platform/windows.rs || r_s11d19="$r_s11d19 install-path-does-not-propagate-uninstall-build-failure"
-grep -Fq 'run_cmds(get_uninstall(kill_self, &tools)?, true, "uninstall")' src/platform/windows.rs || r_s11d19="$r_s11d19 uninstall-path-does-not-propagate-uninstall-build-failure"
-grep -Fq 'let start_menu = quoted_batch_path(&common_programs_app_dir()?)?;' src/platform/windows.rs || r_s11d19="$r_s11d19 start-menu-cleanup-not-known-folder-quoted"
-grep -Fq 'let public_desktop_shortcut = quoted_batch_path(&public_desktop_app_shortcut_path()?)?;' src/platform/windows.rs || r_s11d19="$r_s11d19 public-desktop-cleanup-not-known-folder-quoted"
-grep -Fq 'let startup_tray_shortcut = quoted_batch_path(&common_startup_tray_shortcut_path()?)?;' src/platform/windows.rs || r_s11d19="$r_s11d19 startup-cleanup-not-known-folder-quoted"
-grep -Fq 'match common_startup_tray_shortcut_path().and_then(|path| quoted_batch_path(&path))' src/platform/windows.rs || r_s11d19="$r_s11d19 service-uninstall-startup-cleanup-not-known-folder"
-grep -Fq '.and_then(|path| quoted_batch_path(&path))' src/platform/windows.rs || r_s11d19="$r_s11d19 service-uninstall-startup-cleanup-not-quoted"
-grep -Fq 'if exist {public_desktop_shortcut} del /f /q {public_desktop_shortcut}' src/platform/windows.rs || r_s11d19="$r_s11d19 public-desktop-cleanup-command-not-literal"
-grep -Fq 'if exist {startup_tray_shortcut} del /f /q {startup_tray_shortcut}' src/platform/windows.rs || r_s11d19="$r_s11d19 startup-cleanup-command-not-literal"
-if grep -nE '%(ProgramData|PROGRAMDATA|PUBLIC)%' src/platform/windows.rs >"$VERIFY_TMP/rd_verify_r_s11d19_envroots"; then
-  cat "$VERIFY_TMP/rd_verify_r_s11d19_envroots"
-  r_s11d19="$r_s11d19 env-expanded-cleanup-root-leftover"
-fi
-grep -Fq 'Windows EXE uninstall cleanup known-folder authority' requirements.html || r_s11d19="$r_s11d19 requirements-disposition-missing"
-grep -Fq 'R-S11d-19 — Windows EXE uninstall cleanup known-folder authority' HARDENING_STATUS.md || r_s11d19="$r_s11d19 hardening-ledger-missing"
-if [ -n "$r_s11d19" ]; then echo "  FAIL R-S11d-19 Windows EXE uninstall cleanup known-folder authority:$r_s11d19"; rc=1; else
-  echo "  ok  R-S11d-19 Windows EXE uninstall cleanup uses known-folder literal paths and no env-expanded ProgramData/Public roots"; fi
-
-echo "== (3b-iii-a5d4c2) Windows EXE non-MSI uninstall install-root authority (R-S11d-36) =="
-r_s11d36=
-get_uninstall_body=$(awk '/fn get_uninstall\(kill_self: bool, tools: &WindowsSystemTools\) -> ResultType<String> \{/{flag=1} flag{print} flag && /^}/{exit}' src/platform/windows.rs)
-grep -Fq 'fn get_uninstall_registry_subkey() -> String' src/platform/windows.rs || r_s11d36="$r_s11d36 uninstall-registry-subkey-helper-missing"
-grep -Fq 'get_install_info_with_subkey(get_uninstall_registry_subkey())' src/platform/windows.rs || r_s11d36="$r_s11d36 install-info-no-longer-uses-registry-helper"
-grep -Fq 'fn fixed_service_install_dir_batch_path() -> ResultType<String>' src/platform/windows.rs || r_s11d36="$r_s11d36 fixed-install-dir-batch-helper-missing"
-grep -Fq 'quoted_batch_path(&fixed_service_install_path("")?)' src/platform/windows.rs || r_s11d36="$r_s11d36 fixed-install-dir-not-quoted-from-fixed-root"
-echo "$get_uninstall_body" | grep -Fq 'let subkey = get_uninstall_registry_subkey();' || r_s11d36="$r_s11d36 uninstall-registry-cleanup-not-using-registry-helper"
-echo "$get_uninstall_body" | grep -Fq 'let install_dir = fixed_service_install_dir_batch_path()?;' || r_s11d36="$r_s11d36 uninstall-install-dir-not-fixed-root"
-echo "$get_uninstall_body" | grep -Fq 'format!("if exist {install_dir} rd /s /q {install_dir}")' || r_s11d36="$r_s11d36 uninstall-install-dir-delete-not-fixed-dir"
-echo "$get_uninstall_body" | grep -Fq '&install_dir' || r_s11d36="$r_s11d36 uninstall-install-dir-delete-not-postchecked-against-fixed-dir"
-if echo "$get_uninstall_body" | grep -Fq 'get_install_info()'; then
-  r_s11d36="$r_s11d36 uninstall-still-derives-filesystem-target-from-install-info"
-fi
-if echo "$get_uninstall_body" | grep -Fq 'InstallLocation'; then
-  r_s11d36="$r_s11d36 uninstall-still-mentions-installlocation"
-fi
-if echo "$get_uninstall_body" | grep -Fq 'batch_literal_text(&path, "installed path")'; then
-  r_s11d36="$r_s11d36 registry-path-literal-guard-leftover"
-fi
-if echo "$get_uninstall_body" | grep -Fq 'let (subkey, path, _) = get_install_info();'; then
-  r_s11d36="$r_s11d36 old-registry-path-tuple-leftover"
-fi
-grep -Fq 'Windows EXE non-MSI uninstall install-root cleanup authority' requirements.html || r_s11d36="$r_s11d36 requirements-disposition-missing"
-grep -Fq 'R-S11d-36 — Windows EXE non-MSI uninstall install-root cleanup authority' HARDENING_STATUS.md || r_s11d36="$r_s11d36 hardening-ledger-missing"
-if [ -n "$r_s11d36" ]; then echo "  FAIL R-S11d-36 Windows EXE non-MSI uninstall install-root authority:$r_s11d36"; rc=1; else
-  echo "  ok  R-S11d-36 Windows EXE non-MSI uninstall removes only the fixed Program Files service root"; fi
-
-echo "== (3b-iii-a5d4d) Windows EXE elevated batch command bodies fail closed (R-S11d-20) =="
-r_s11d20=
-for helper in \
-  'fn checked_batch_cmd(command: impl AsRef<str>) -> String' \
-  'fn checked_reg_add(command: String) -> String' \
-  'fn require_batch_path_exists(quoted_path: &str) -> String' \
-  'fn require_batch_path_absent(quoted_path: &str) -> String' \
-  'fn checked_copy_to_path(command: String, quoted_target: &str) -> String' \
-  'fn ensure_batch_dir_exists(path: &Path) -> ResultType<String>' \
-  'fn delete_batch_path_absent_ok(command: String, quoted_path: &str) -> String' \
-  'fn delete_reg_key_absent_ok(reg: &str, key: &str) -> String' \
-  'fn delete_firewall_rule_absent_ok(netsh: &str, rule_name: &str) -> String' \
-  'fn checked_msi_uninstall_command(command: String) -> String' \
-  'fn trusted_prior_msi_uninstall_command('; do
-  grep -Fq "$helper" src/platform/windows.rs || r_s11d20="$r_s11d20 helper-missing:$helper"
-done
-grep -Fq 'fn delete_service_absent_ok(' src/platform/windows.rs || r_s11d20="$r_s11d20 service-delete-helper-missing"
-grep -Fq 'if errorlevel 1 exit /b 1' src/platform/windows.rs || r_s11d20="$r_s11d20 fail-fast-command-check-missing"
-grep -Fq 'if not exist {quoted_path} exit /b 1' src/platform/windows.rs || r_s11d20="$r_s11d20 path-exists-postcondition-missing"
-grep -Fq 'if exist {quoted_path} exit /b 1' src/platform/windows.rs || r_s11d20="$r_s11d20 path-absent-postcondition-missing"
-grep -Fq '{reg} query {key} >nul 2>nul && exit /b 1' src/platform/windows.rs || r_s11d20="$r_s11d20 registry-delete-absence-check-missing"
-grep -Fq '{netsh} advfirewall firewall show rule name=\"{rule_name}\" >nul 2>nul && exit /b 1' src/platform/windows.rs || r_s11d20="$r_s11d20 firewall-delete-absence-check-missing"
-grep -Fq 'for /L %%i in (1,1,20) do (' src/platform/windows.rs || r_s11d20="$r_s11d20 service-delete-wait-postcondition-missing"
-grep -Fq '{sc} delete \"{service_name}\" >nul 2>nul' src/platform/windows.rs || r_s11d20="$r_s11d20 service-delete-not-absence-driven"
-grep -Fq 'if %ERRORLEVEL% EQU 3010 goto rustdesk_msi_uninstall_ok' src/platform/windows.rs || r_s11d20="$r_s11d20 msi-reboot-success-code-not-accepted"
-grep -Fq 'if %ERRORLEVEL% EQU 1605 goto rustdesk_msi_uninstall_ok' src/platform/windows.rs || r_s11d20="$r_s11d20 msi-absent-product-code-not-accepted"
-grep -Fq 'let cur_exe = batch_path_text(&current_exe, "current exe")?;' src/platform/windows.rs || r_s11d20="$r_s11d20 current-exe-not-batch-literal-guarded"
-grep -Fq 'let copy_broker = checked_copy_to_path(' src/platform/windows.rs || r_s11d20="$r_s11d20 broker-copy-not-checked"
-[ "$(grep -Fc 'let copy_broker = checked_copy_to_path(' src/platform/windows.rs)" -ge 2 ] || r_s11d20="$r_s11d20 all-broker-copy-sites-not-checked"
-grep -Fq 'format!("copy /Y \"{origin_process_exe}\" {cur_exe_quoted}")' src/platform/windows.rs || r_s11d20="$r_s11d20 broker-update-copy-target-not-quoted-checked"
-grep -Fq '{} {src_parent} {install_dir} /Y /E /H /I /K /R /Z' src/platform/windows.rs || r_s11d20="$r_s11d20 xcopy-not-fail-fast-without-c"
-grep -Fq 'let install_dir_cmd = ensure_batch_dir_exists(Path::new(&path))?;' src/platform/windows.rs || r_s11d20="$r_s11d20 install-dir-not-existence-checked"
-grep -Fq 'let install_reg_cmds = [' src/platform/windows.rs || r_s11d20="$r_s11d20 install-registry-not-grouped-checked"
-grep -Fq 'commands.push(checked_reg_add(format!(' src/platform/windows.rs || r_s11d20="$r_s11d20 hkcr-registry-not-checked"
-grep -Fq 'checked_batch_cmd(format!(' src/platform/windows.rs || r_s11d20="$r_s11d20 required-command-wrapper-not-used"
-grep -Fq 'run_shortcut_script_cmd(' src/platform/windows.rs || r_s11d20="$r_s11d20 shortcut-runner-missing"
-grep -Fq 'require_batch_path_exists(&shortcut_path)' src/platform/windows.rs || r_s11d20="$r_s11d20 shortcut-target-postcondition-missing"
-grep -Fq 'delete_reg_key_absent_ok(&tools.reg, &subkey)' src/platform/windows.rs || r_s11d20="$r_s11d20 uninstall-registry-delete-not-absence-checked"
-grep -Fq 'delete_firewall_rule_absent_ok(&tools.netsh, &format!("{app_name} Service"))' src/platform/windows.rs || r_s11d20="$r_s11d20 firewall-cleanup-not-absence-checked"
-grep -Fq 'delete_service_absent_ok(' src/platform/windows.rs || r_s11d20="$r_s11d20 service-cleanup-not-absence-checked"
-grep -Fq '"rustdesk_service_deleted_before_uninstall"' src/platform/windows.rs || r_s11d20="$r_s11d20 full-uninstall-service-delete-label-missing"
-grep -Fq '"rustdesk_service_deleted_service_uninstall"' src/platform/windows.rs || r_s11d20="$r_s11d20 service-uninstall-service-delete-label-missing"
-grep -Fq 'let remove_install_dir =' src/platform/windows.rs || r_s11d20="$r_s11d20 install-dir-removal-not-postchecked"
-grep -Fq 'let remove_start_menu = delete_batch_path_absent_ok(' src/platform/windows.rs || r_s11d20="$r_s11d20 start-menu-removal-not-postchecked"
-grep -Fq 'let remove_public_desktop_shortcut = delete_batch_path_absent_ok(' src/platform/windows.rs || r_s11d20="$r_s11d20 desktop-shortcut-removal-not-postchecked"
-grep -Fq 'let remove_startup_tray_shortcut = delete_batch_path_absent_ok(' src/platform/windows.rs || r_s11d20="$r_s11d20 startup-shortcut-removal-not-postchecked"
-grep -Fq 'checked_msi_uninstall_command(format!(' src/platform/windows.rs || r_s11d20="$r_s11d20 reconstructed-msi-uninstall-not-exit-checked"
-grep -Fq 'trusted_prior_msi_uninstall_command(&reg_uninstall_string, tools)' src/platform/windows.rs || r_s11d20="$r_s11d20 prior-msi-uninstall-not-reconstructed"
-if grep -Fq 'checked_msi_uninstall_command(reg_uninstall_string)' src/platform/windows.rs; then
-  r_s11d20="$r_s11d20 raw-msi-uninstall-fallback-leftover"
-fi
-if grep -Fq '/Y /E /H /C /I /K /R /Z' src/platform/windows.rs; then
-  r_s11d20="$r_s11d20 xcopy-continue-on-error-leftover"
-fi
-if grep -Fq 'md \"{path}\"' src/platform/windows.rs; then
-  r_s11d20="$r_s11d20 raw-install-dir-create-leftover"
-fi
-if grep -Fq '{sc} delete {app_name}' src/platform/windows.rs; then
-  r_s11d20="$r_s11d20 raw-service-delete-leftover"
-fi
-if grep -Fq '{reg} delete {subkey} /f' src/platform/windows.rs; then
-  r_s11d20="$r_s11d20 raw-uninstall-registry-delete-leftover"
-fi
-grep -Fq 'Windows EXE elevated batch command postconditions' requirements.html || r_s11d20="$r_s11d20 requirements-disposition-missing"
-grep -Fq 'R-S11d-20 — Windows EXE elevated batch command postconditions' HARDENING_STATUS.md || r_s11d20="$r_s11d20 hardening-ledger-missing"
-if [ -n "$r_s11d20" ]; then echo "  FAIL R-S11d-20 Windows EXE elevated batch command postconditions:$r_s11d20"; rc=1; else
-  echo "  ok  R-S11d-20 Windows elevated EXE batch bodies fail fast for required operations and verify persistent file/service/registry/firewall cleanup state"; fi
-
 echo "== (3b-iii-a5d4e) Windows app-name is a constrained system identifier (R-S11d-26) =="
 r_s11d26=
 grep -Fq 'const MAX_CUSTOM_CLIENT_APP_NAME_LEN: usize = 64;' src/common.rs || r_s11d26="$r_s11d26 rust:max-len-missing"
@@ -1698,7 +1158,7 @@ grep -Fq '"invalid --app-name: expected 1-64 ASCII letters, digits, or hyphens; 
 grep -Fq 'Windows app-name identity contract' requirements.html || r_s11d26="$r_s11d26 requirements-disposition-missing"
 grep -Fq 'R-S11d-26 — Windows app-name identity contract' HARDENING_STATUS.md || r_s11d26="$r_s11d26 hardening-ledger-missing"
 if [ -n "$r_s11d26" ]; then echo "  FAIL R-S11d-26 Windows app-name identity contract:$r_s11d26"; rc=1; else
-  echo "  ok  R-S11d-26 signed custom-client and MSI app names are constrained ASCII system identifiers before reaching service/protocol/path/batch sinks"; fi
+  echo "  ok  R-S11d-26 signed custom-client and MSI app names are constrained ASCII system identifiers before reaching service/protocol/path sinks"; fi
 
 echo "== (3b-iii-a5d4f) Windows custom-client public staging path is absent (R-S11d-27) =="
 r_s11d27=
@@ -1713,283 +1173,251 @@ grep -Fq 'R-S11d-27 — Windows custom-client public staging deletion' HARDENING
 if [ -n "$r_s11d27" ]; then echo "  FAIL R-S11d-27 Windows custom-client public staging deletion:$r_s11d27"; rc=1; else
   echo "  ok  R-S11d-27 Windows custom-client updates have no public staging directory or executable-dir custom.txt copy loader"; fi
 
-echo "== (3b-iii-a5d4a) Windows MSI service mode is package authority, not caller connection type (R-S11d-21) =="
-r_s11d21=
-if grep -RInE 'CC_CONNECTION_TYPE|--conn-type|conn_type|gen_conn_type' res/msi >"$VERIFY_TMP/rd_verify_r_s11d21_msi"; then
-  cat "$VERIFY_TMP/rd_verify_r_s11d21_msi"
-  r_s11d21="$r_s11d21 msi:connection-type-service-gate-leftover"
+echo "== (3b-iii-a5d4g) Retained Windows process/helper provenance invariants (R-S11d-1/8/9/10/25/38) =="
+r_s11d_retained=
+grep -Fq 'trusted_system_tool_path("mstsc.exe")' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:mstsc-not-system32-bound"
+grep -Fq 'const RDP_CREDENTIAL_TARGET: &str = "TERMSRV/localhost";' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:target-not-pinned"
+grep -Fq 'let has_complete_credentials = !username.is_empty() && !password.is_empty();' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:partial-credentials-not-rejected"
+grep -Fq 'args.push("/prompt".to_owned());' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:unseeded-launch-not-prompted"
+grep -Fq 'CredReadW(' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:prior-credential-not-read"
+grep -Fq 'CredWriteW(&raw, 0)' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:credential-not-native-write"
+grep -Fq 'CredDeleteW(' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:credential-not-native-delete"
+grep -Fq 'CRED_PERSIST_SESSION' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:credential-not-session-scoped"
+grep -Fq 'struct RdpCredentialLease' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:lease-missing"
+grep -Fq 'impl Drop for RdpCredentialLease' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:lease-drop-missing"
+grep -Fq 'cleanup_rdp_credentials_when_mstsc_exits(lease, child);' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:credential-not-restored-after-child"
+grep -Fq 'lease.restore()?' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:credential-not-restored-after-spawn-failure"
+if grep -Fq 'Command::new("mstsc")' src/port_forward.rs || grep -Fq 'Command::new("cmdkey")' src/port_forward.rs || grep -Fq '/pass:' src/port_forward.rs; then
+  r_s11d_retained="$r_s11d_retained rdp:ambient-tool-or-password-argv-leftover"
 fi
-grep -Fq '<Custom Action="CreateStartService" Before="InstallFinalize" Condition="NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d21="$r_s11d21 msi:create-service-not-package-policy"
-grep -Fq '<Custom Action="CreateStartService.SetParam" Before="CreateStartService" Condition="NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d21="$r_s11d21 msi:create-service-setparam-not-package-policy"
-grep -Fq '<Custom Action="LaunchAppTray" After="InstallFinalize" Condition="(LAUNCH_TRAY_APP=&quot;Y&quot; OR LAUNCH_TRAY_APP=&quot;1&quot;) AND (NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE))"/>' res/msi/Package/Components/RustDesk.wxs || r_s11d21="$r_s11d21 msi:launch-tray-still-connection-type-gated"
-grep -Fq '<Component Id="App.StartupFolder.ShortcutTray" Guid="B1D1E2BB-E53E-E159-DB7C-744D5C726A8C" Condition="STARTUPSHORTCUTS = 1">' res/msi/Package/Components/RustDesk.wxs || r_s11d21="$r_s11d21 msi:startup-tray-still-connection-type-gated"
-grep -Fq 'Windows MSI service-mode package authority' requirements.html || r_s11d21="$r_s11d21 requirements-disposition-missing"
-grep -Fq 'R-S11d-21 — Windows MSI service-mode package authority' HARDENING_STATUS.md || r_s11d21="$r_s11d21 hardening-ledger-missing"
-if [ -n "$r_s11d21" ]; then echo "  FAIL R-S11d-21 Windows MSI service-mode package authority:$r_s11d21"; rc=1; else
-  echo "  ok  R-S11d-21 MSI service/tray install state is no longer controlled by connection-type public properties"; fi
 
-echo "== (3b-iii-a5d4b) Windows EXE certificate cleanup reports and enforces completion (R-S11d-22) =="
-r_s11d22=
-grep -Fq 'extern "C" BOOL DeleteRustDeskTestCertsW()' src/platform/windows_delete_test_cert.cc || r_s11d22="$r_s11d22 cert-helper-not-status-returning"
-grep -Fq 'fn DeleteRustDeskTestCertsW() -> BOOL;' src/platform/windows.rs || r_s11d22="$r_s11d22 rust-ffi-not-status-returning"
-grep -Fq 'if unsafe { DeleteRustDeskTestCertsW() } == 0 {' src/platform/windows.rs || r_s11d22="$r_s11d22 rust-ffi-status-not-checked"
-grep -Fq 'return Err(anyhow!("Failed to delete RustDesk test certificates"));' src/platform/windows.rs || r_s11d22="$r_s11d22 cert-cleanup-error-not-propagated"
-grep -Fq 'if let Err(err) = crate::platform::windows::uninstall_cert() {' src/core_main.rs || r_s11d22="$r_s11d22 uninstall-cert-cli-not-error-checked"
-grep -Fq 'std::process::exit(1);' src/core_main.rs || r_s11d22="$r_s11d22 uninstall-cert-cli-not-nonzero-on-failure"
-grep -Fq 'checked_batch_cmd(format!("{} --uninstall-cert", quoted_batch_path(&exe)?))' src/platform/windows.rs || r_s11d22="$r_s11d22 uninstall-cert-batch-command-not-checked"
-grep -Fq 'map_err(|err| anyhow!("Failed to resolve current exe for EXE uninstall helpers: {err}"))?' src/platform/windows.rs || r_s11d22="$r_s11d22 uninstall-cert-current-exe-failure-not-fatal"
-grep -Fq 'result = RegQueryValueExW(cert_key.get(), L"Blob", NULL, &value_type, blob.data(), &blob_size);' src/platform/windows_delete_test_cert.cc || r_s11d22="$r_s11d22 cert-blob-read-not-status-checked"
-grep -Fq 'return std::memcmp(blob.data() + blob.size() - suffix_size, kWdkTestCertSuffix, suffix_size) == 0;' src/platform/windows_delete_test_cert.cc || r_s11d22="$r_s11d22 cert-blob-match-not-bounded"
-grep -Fq 'RegOpenKeyExW(root, base_path.c_str(), 0, KEY_READ, system_certificates.receive())' src/platform/windows_delete_test_cert.cc || r_s11d22="$r_s11d22 cert-store-open-not-read-scoped"
-grep -Fq 'const wchar_t kWrongRootStorePrefix[] = {static_cast<wchar_t>(0x4F52), static_cast<wchar_t>(0x544F), L' src/platform/windows_delete_test_cert.cc || r_s11d22="$r_s11d22 wrong-root-prefix-not-wide-explicit"
-if grep -Fq 'extern "C" void DeleteRustDeskTestCertsW' src/platform/windows_delete_test_cert.cc src/platform/windows.rs; then
-  r_s11d22="$r_s11d22 cert-helper-void-return-leftover"
+grep -Fq 'pub fn get_default_shell() -> Result<String>' src/server/terminal_helper.rs || r_s11d_retained="$r_s11d_retained terminal-shell:helper-not-fallible"
+grep -Fq 'fn get_default_shell() -> Result<String>' src/server/terminal_service.rs || r_s11d_retained="$r_s11d_retained terminal-shell:service-not-fallible"
+grep -Fq 'GetSystemDirectoryW(Some(&mut buffer))' src/server/terminal_helper.rs || r_s11d_retained="$r_s11d_retained terminal-shell:no-system-directory"
+grep -Fq 'PathBuf::from(r"C:\Program Files\PowerShell\7\pwsh.exe")' src/server/terminal_helper.rs || r_s11d_retained="$r_s11d_retained terminal-shell:pwsh7-candidate-missing"
+grep -Fq 'PathBuf::from(r"C:\Program Files\PowerShell\6\pwsh.exe")' src/server/terminal_helper.rs || r_s11d_retained="$r_s11d_retained terminal-shell:pwsh6-candidate-missing"
+grep -Fq '.join("WindowsPowerShell")' src/server/terminal_helper.rs || r_s11d_retained="$r_s11d_retained terminal-shell:system-powershell-missing"
+grep -Fq 'system_dir.join("cmd.exe")' src/server/terminal_helper.rs || r_s11d_retained="$r_s11d_retained terminal-shell:system-cmd-missing"
+grep -Fq 'Err(anyhow!("no trusted Windows terminal shell found"))' src/server/terminal_helper.rs || r_s11d_retained="$r_s11d_retained terminal-shell:not-fail-closed"
+if grep -Fq 'COMSPEC' src/server/terminal_helper.rs src/server/terminal_service.rs || grep -Fq 'unwrap_or_else(|_| "cmd.exe".to_string())' src/server/terminal_helper.rs src/server/terminal_service.rs; then
+  r_s11d_retained="$r_s11d_retained terminal-shell:ambient-fallback-leftover"
 fi
-if grep -Fq 'readResult' src/platform/windows_delete_test_cert.cc; then
-  r_s11d22="$r_s11d22 stale-cert-read-result-leftover"
-fi
-if grep -Fq 'KEY_ALL_ACCESS' src/platform/windows_delete_test_cert.cc; then
-  r_s11d22="$r_s11d22 certificate-cleanup-all-access-leftover"
-fi
-if grep -Fq 'allow_err!(crate::platform::windows::uninstall_cert())' src/core_main.rs; then
-  r_s11d22="$r_s11d22 uninstall-cert-cli-ignored-error-leftover"
-fi
-grep -Fq 'Windows EXE certificate cleanup completion authority' requirements.html || r_s11d22="$r_s11d22 requirements-disposition-missing"
-grep -Fq 'R-S11d-22 — Windows EXE certificate cleanup completion authority' HARDENING_STATUS.md || r_s11d22="$r_s11d22 hardening-ledger-missing"
-if [ -n "$r_s11d22" ]; then echo "  FAIL R-S11d-22 Windows EXE certificate cleanup completion authority:$r_s11d22"; rc=1; else
-  echo "  ok  R-S11d-22 EXE uninstall certificate cleanup returns status, propagates errors, and is fail-fast in the elevated batch"; fi
 
-echo "== (3b-iii-a5d4c) Windows EXE Amyuni cleanup reports and enforces completion (R-S11d-23) =="
-r_s11d23=
-grep -Fq 'if let Err(err) = crate::virtual_display_manager::amyuni_idd::uninstall_driver() {' src/core_main.rs || r_s11d23="$r_s11d23 amyuni-cli-not-error-checked"
-grep -Fq 'log::error!("Failed to uninstall Amyuni IDD: {err}");' src/core_main.rs || r_s11d23="$r_s11d23 amyuni-cli-error-not-logged"
-grep -Fq 'std::process::exit(1);' src/core_main.rs || r_s11d23="$r_s11d23 amyuni-cli-not-nonzero-on-failure"
-grep -Fq 'if let Err(err) = platform::uninstall_me(true) {' src/core_main.rs || r_s11d23="$r_s11d23 top-level-uninstall-not-error-checked"
-grep -Fq 'log::error!("Failed to uninstall: {}", err);' src/core_main.rs || r_s11d23="$r_s11d23 top-level-uninstall-error-not-logged"
-if ! rg -U 'if let Err\(err\) = platform::uninstall_me\(true\) \{\s*log::error!\("Failed to uninstall: \{\}", err\);\s*std::process::exit\(1\);' src/core_main.rs >"$VERIFY_TMP/rd_verify_r_s11d23_top_uninstall"; then
-  r_s11d23="$r_s11d23 top-level-uninstall-not-nonzero-on-failure"
+grep -Fq 'trusted_system_tool_path("taskkill.exe")' libs/portable/src/main.rs || r_s11d_retained="$r_s11d_retained portable:taskkill-not-system32-bound"
+grep -Fq 'RuntimeBroker cleanup failed' libs/portable/src/main.rs || r_s11d_retained="$r_s11d_retained portable:cleanup-error-not-reported"
+if grep -Fq 'Command::new("taskkill")' libs/portable/src/main.rs || grep -Fq 'Command::new("taskkill.exe")' libs/portable/src/main.rs; then
+  r_s11d_retained="$r_s11d_retained portable:bare-taskkill-leftover"
 fi
-grep -Fq 'Failed to resolve current exe for EXE uninstall helpers' src/platform/windows.rs || r_s11d23="$r_s11d23 amyuni-current-exe-failure-not-fatal"
-grep -Fq 'let uninstall_amyuni_idd = checked_batch_cmd(format!(' src/platform/windows.rs || r_s11d23="$r_s11d23 amyuni-batch-command-not-checked"
-grep -Fq '"{} --uninstall-amyuni-idd"' src/platform/windows.rs || r_s11d23="$r_s11d23 amyuni-batch-helper-command-missing"
-grep -Fq 'quoted_batch_path(&exe)?' src/platform/windows.rs || r_s11d23="$r_s11d23 amyuni-batch-helper-not-quoted"
-grep -Fq 'enum DeviceInstaller64RebootPolicy' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-reboot-policy-missing"
-grep -Fq 'DeviceInstaller64RebootPolicy::Accept' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-remove-reboot-policy-missing"
-grep -Fq 'DeviceInstaller64RebootPolicy::Reject' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-install-reboot-policy-missing"
-grep -Fq 'const DEVICEINSTALLER64_TIMEOUT_MS: u32 = 120_000;' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-timeout-not-pinned"
-grep -Fq 'fn deviceinstaller64_command_line(paths: &DeviceInstaller64Paths, args: &str) -> Vec<u16>' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-command-line-not-owned"
-grep -Fq 'fn trusted_install_dir() -> ResultType<PathBuf>' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-fixed-root-proof-missing"
-grep -Fq 'let install_dir = crate::platform::windows::fixed_service_install_path("")?' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-not-bound-to-fixed-service-root"
-grep -Fq 'struct WindowsPathIdentity' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-identity-proof-missing"
-grep -Fq 'CreateFileW(' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-identity-open-not-handle-based"
-grep -Fq 'GetFileInformationByHandle(handle, &mut info)' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-identity-query-not-handle-based"
-grep -Fq 'path_identity(current_dir, "Windows current executable directory")?' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-current-dir-identity-not-checked"
-grep -Fq 'path_identity(&install_dir, "Windows service install directory")?' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-install-dir-identity-not-checked"
-grep -Fq 'path_identity(&current_exe, "Windows current executable")?' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-current-exe-identity-not-checked"
-grep -Fq 'path_identity(&expected_exe, "Windows fixed service executable")?' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-expected-exe-identity-not-checked"
-grep -Fq 'if let Some(paths) = get_deviceinstaller64_paths()?' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-trust-result-not-propagated"
-grep -Fq 'let inf_path = get_amyuni_inf_path()?' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-setupapi-inf-not-trusted"
-grep -Fq 'require_existing_file_no_reparse(&inf_path, "Amyuni IDD INF")?' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-setupapi-inf-reparse-not-rejected"
-grep -Fq 'CreateProcessW(' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-not-createprocess"
-grep -Fq 'paths.exe_path.as_ptr(),' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-application-path-not-bound"
-grep -Fq 'command_line.as_mut_ptr(),' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-command-line-not-mutable"
-grep -Fq 'WaitForSingleObject(process.0, DEVICEINSTALLER64_TIMEOUT_MS)' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-not-waited"
-grep -Fq 'GetExitCodeProcess(process.0, &mut exit_code)' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-exit-code-not-read"
-grep -Fq 'exit_code == ERROR_SUCCESS_REBOOT_REQUIRED' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-reboot-required-not-accepted"
-grep -Fq 'else if exit_code != 0' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-nonzero-not-fatal"
-grep -Fq 'bail!("deviceinstaller64.exe requires reboot before the driver can be used");' src/virtual_display_manager.rs || r_s11d23="$r_s11d23 amyuni-helper-install-reboot-required-not-fatal"
-if ! rg -U '"remove usbmmidd",\s*DeviceInstaller64RebootPolicy::Accept' src/virtual_display_manager.rs >"$VERIFY_TMP/rd_verify_r_s11d23_remove_policy"; then
-  r_s11d23="$r_s11d23 amyuni-helper-remove-reboot-policy-not-accept"
-fi
-if ! rg -U '"install usbmmidd.inf usbmmidd",\s*DeviceInstaller64RebootPolicy::Reject' src/virtual_display_manager.rs >"$VERIFY_TMP/rd_verify_r_s11d23_install_policy"; then
-  r_s11d23="$r_s11d23 amyuni-helper-install-reboot-policy-not-reject"
-fi
-if grep -Fq 'fn get_uninstall_amyuni_idd()' src/platform/windows.rs; then
-  r_s11d23="$r_s11d23 amyuni-skip-on-current-exe-failure-leftover"
-fi
-if grep -Fq 'if let Ok(Some(paths)) = get_deviceinstaller64_paths()' src/virtual_display_manager.rs; then
-  r_s11d23="$r_s11d23 amyuni-helper-trust-failure-swallowed"
-fi
-if rg -n 'fn path_text|to_string_lossy\(\)|fs::canonicalize' src/virtual_display_manager.rs >"$VERIFY_TMP/rd_verify_r_s11d23_lossy_path"; then
-  r_s11d23="$r_s11d23 amyuni-helper-lossy-path-proof"
-fi
-if rg -U 'allow_err!\(\s*crate::virtual_display_manager::amyuni_idd::uninstall_driver\(\)\s*\)' src/core_main.rs >"$VERIFY_TMP/rd_verify_r_s11d23_allow_err"; then
-  cat "$VERIFY_TMP/rd_verify_r_s11d23_allow_err"
-  r_s11d23="$r_s11d23 amyuni-cli-ignored-error-leftover"
-fi
-if grep -Fq 'ShellExecuteW(' src/virtual_display_manager.rs; then
-  r_s11d23="$r_s11d23 amyuni-runtime-shellexecute-leftover"
-fi
-if grep -Fq 'fn str_wide_null' src/virtual_display_manager.rs; then
-  r_s11d23="$r_s11d23 amyuni-runtime-open-verb-helper-leftover"
-fi
-grep -Fq 'Windows EXE Amyuni IDD cleanup completion authority' requirements.html || r_s11d23="$r_s11d23 requirements-disposition-missing"
-grep -Fq 'R-S11d-23 — Windows EXE Amyuni IDD cleanup completion authority' HARDENING_STATUS.md || r_s11d23="$r_s11d23 hardening-ledger-missing"
-if [ -n "$r_s11d23" ]; then echo "  FAIL R-S11d-23 Windows EXE Amyuni IDD cleanup completion authority:$r_s11d23"; rc=1; else
-  echo "  ok  R-S11d-23 EXE uninstall Amyuni cleanup waits for helper completion, propagates errors, and binds runtime helper authority to fixed-root file identities"; fi
 
-echo "== (3b-iii-a5d4e) Windows stale RustDesk IDD install helper is reject-only (R-S11d-24) =="
-r_s11d24=
-install_idd_block=$(awk '/args\[0\] == "--install-idd"/,/args\[0\] == "--uninstall-amyuni-idd"/' src/core_main.rs)
-printf '%s\n' "$install_idd_block" | grep -Fq 'log::error!("--install-idd is not supported in this build");' || r_s11d24="$r_s11d24 install-idd-rejection-not-logged"
-printf '%s\n' "$install_idd_block" | grep -Fq 'std::process::exit(1);' || r_s11d24="$r_s11d24 install-idd-not-nonzero"
-if printf '%s\n' "$install_idd_block" | grep -Fq 'rustdesk_idd::install_update_driver()' \
-  || printf '%s\n' "$install_idd_block" | grep -Fq 'allow_err!'; then
-  r_s11d24="$r_s11d24 install-idd-still-runs-or-masks-driver-install"
+grep -Fq 'fn trusted_install_dir() -> ResultType<PathBuf>' src/virtual_display_manager.rs || r_s11d_retained="$r_s11d_retained amyuni:fixed-root-proof-missing"
+grep -Fq 'let install_dir = crate::platform::windows::fixed_service_install_path("")?' src/virtual_display_manager.rs || r_s11d_retained="$r_s11d_retained amyuni:not-fixed-service-root"
+grep -Fq 'require_existing_directory_no_reparse(&install_dir, "Windows service install directory")' src/virtual_display_manager.rs || r_s11d_retained="$r_s11d_retained amyuni:service-root-reparse-not-rejected"
+grep -Fq 'optional_existing_file_no_reparse(&exe_path, "Amyuni IDD helper")?' src/virtual_display_manager.rs || r_s11d_retained="$r_s11d_retained amyuni:helper-reparse-not-rejected"
+grep -Fq 'require_existing_file_no_reparse(&inf_path, "Amyuni IDD INF")?' src/virtual_display_manager.rs || r_s11d_retained="$r_s11d_retained amyuni:inf-reparse-not-rejected"
+grep -Fq 'paths.exe_path.as_ptr()' src/virtual_display_manager.rs || r_s11d_retained="$r_s11d_retained amyuni:helper-not-absolute-image"
+if grep -Fq 'if let Ok(Some(paths)) = get_deviceinstaller64_paths()' src/virtual_display_manager.rs || grep -qE 'ShellExecuteA|ShellExecuteW\([^;]*INSTALLER_EXE_FILE' src/virtual_display_manager.rs; then
+  r_s11d_retained="$r_s11d_retained amyuni:trust-failure-or-bare-launch-leftover"
 fi
-grep -Fq 'const IDD_IMPL_AMYUNI: &str = "amyuni_idd";' src/virtual_display_manager.rs || r_s11d24="$r_s11d24 amyuni-idd-impl-not-pinned"
-grep -Fq 'Windows stale RustDesk IDD install helper completion' requirements.html || r_s11d24="$r_s11d24 requirements-disposition-missing"
-grep -Fq 'R-S11d-24 — Windows stale RustDesk IDD install helper completion' HARDENING_STATUS.md || r_s11d24="$r_s11d24 hardening-ledger-missing"
-if [ -n "$r_s11d24" ]; then echo "  FAIL R-S11d-24 Windows stale RustDesk IDD install helper completion:$r_s11d24"; rc=1; else
-  echo "  ok  R-S11d-24 stale --install-idd rejects instead of invoking the inactive RustDesk IDD installer"; fi
+grep -Fq 'bail!("SetupAPI driver install requires reboot before the driver can be used");' src/virtual_display_manager.rs || r_s11d_retained="$r_s11d_retained amyuni:reboot-required-install-not-fatal"
 
-echo "== (3b-iii-a5d4e2) Windows inactive RustDesk IDD loader is excised (R-S11d-38) =="
-r_s11d38=
-grep -Fq 'pub struct MonitorMode' src/virtual_display_manager.rs || r_s11d38="$r_s11d38 monitor-mode-not-owned-by-manager"
-grep -Fq 'use hbb_common::{platform::windows::is_windows_version_or_greater, ResultType};' src/virtual_display_manager.rs || r_s11d38="$r_s11d38 windows-version-predicate-import-not-exact"
-grep -Fq 'const IDD_PLUG_OUT_ALL_INDEX: i32 = -1;' src/virtual_display_manager.rs || r_s11d38="$r_s11d38 amyuni-plug-out-all-sentinel-missing"
-grep -Fq 'is_windows_version_or_greater(10, 0, 19041, 0, 0)' src/virtual_display_manager.rs || r_s11d38="$r_s11d38 windows-version-predicate-call-missing"
-if grep -Fq 'use hbb_common::{platform::windows, ResultType};' src/virtual_display_manager.rs; then
-  r_s11d38="$r_s11d38 hbb-windows-import-collides-with-private-module"
+grep -Fq 'pub struct MonitorMode' src/virtual_display_manager.rs || r_s11d_retained="$r_s11d_retained idd:monitor-mode-not-local"
+grep -Fq 'map.insert("idd_impl".into(), serde_json::json!(IDD_IMPL_AMYUNI));' src/virtual_display_manager.rs || r_s11d_retained="$r_s11d_retained idd:not-amyuni-only"
+[ ! -d libs/virtual_display ] || r_s11d_retained="$r_s11d_retained idd:deleted-crate-present"
+if rg -n 'rustdesk_idd|rustdesk_virtual_displays|dylib_virtual_display|libs/virtual_display|virtual_display =|kPlatformAdditionsRustDeskVirtualDisplays|isRustDeskIdd|RustDeskVirtualDisplays' Cargo.toml Cargo.lock build.py src flutter/lib scripts/build-windows.ps1 scripts/canonicalize-pe.py >"$VERIFY_TMP/rd_verify_r_s11d_retained_idd"; then
+  r_s11d_retained="$r_s11d_retained idd:loader-build-or-ui-leftover"
 fi
-grep -Fq 'use crate::virtual_display_manager::MonitorMode;' src/privacy_mode/win_virtual_display.rs || r_s11d38="$r_s11d38 privacy-mode-still-imports-deleted-crate"
-grep -Fq 'map.insert("idd_impl".into(), serde_json::json!(IDD_IMPL_AMYUNI));' src/virtual_display_manager.rs || r_s11d38="$r_s11d38 platform-addition-not-amyuni-only"
-grep -Fq 'self.idd_impl == "amyuni_idd"' src/client/io_loop.rs || r_s11d38="$r_s11d38 client-virtual-display-not-amyuni-only"
-if [ -d libs/virtual_display ]; then
-  r_s11d38="$r_s11d38 deleted-virtual-display-crate-directory-present"
-fi
-if rg -n 'rustdesk_idd|rustdesk_virtual_displays|dylib_virtual_display|libs/virtual_display|(^|[^[:alnum:]_])virtual_display::|virtual_display =|kPlatformAdditionsRustDeskVirtualDisplays|isRustDeskIdd|RustDeskVirtualDisplays' \
-  Cargo.toml Cargo.lock build.py src flutter/lib scripts/build-windows.ps1 scripts/canonicalize-pe.py >"$VERIFY_TMP/rd_verify_r_s11d38_leftovers"; then
-  r_s11d38="$r_s11d38 rustdesk-idd-loader-or-ui-leftover"
-fi
-grep -Fq 'Windows inactive RustDesk IDD loader excision' requirements.html || r_s11d38="$r_s11d38 requirements-disposition-missing"
-grep -Fq 'R-S11d-38 — Windows inactive RustDesk IDD loader excision' HARDENING_STATUS.md || r_s11d38="$r_s11d38 hardening-ledger-missing"
-if [ -n "$r_s11d38" ]; then echo "  FAIL R-S11d-38 Windows inactive RustDesk IDD loader excision:$r_s11d38"; rc=1; else
-  echo "  ok  R-S11d-38 inactive RustDesk IDD crates, loader, build artifact, and UI support are absent"; fi
 
-echo "== (3b-iii-a5d4f) Windows Amyuni SetupAPI install rejects reboot-required completion (R-S11d-25) =="
-r_s11d25=
-grep -Fq 'bail!("SetupAPI driver install requires reboot before the driver can be used");' src/virtual_display_manager.rs || r_s11d25="$r_s11d25 setupapi-install-reboot-required-not-fatal"
-if rg -U 'let _ =\s*unsafe \{ win_device::install_driver\(&inf_path, HARDWARE_ID, &mut reboot_required\)\? \};' src/virtual_display_manager.rs >"$VERIFY_TMP/rd_verify_r_s11d25_setupapi_install"; then
-  r_s11d25="$r_s11d25 setupapi-install-result-discard-leftover"
-fi
-setupapi_install_block=$(awk '/Installing driver by SetupAPI/,/\*is_async = false;/' src/virtual_display_manager.rs)
-grep -Fq 'let inf_path = get_amyuni_inf_path()?' src/virtual_display_manager.rs || r_s11d25="$r_s11d25 setupapi-inf-not-trusted"
-printf '%s\n' "$setupapi_install_block" | grep -Fq 'unsafe { win_device::install_driver(inf_path, HARDWARE_ID, &mut reboot_required)? };' || r_s11d25="$r_s11d25 setupapi-install-call-missing"
-printf '%s\n' "$setupapi_install_block" | grep -Fq 'if reboot_required {' || r_s11d25="$r_s11d25 setupapi-install-reboot-branch-missing"
-printf '%s\n' "$setupapi_install_block" | grep -Fq 'bail!("SetupAPI driver install requires reboot before the driver can be used");' || r_s11d25="$r_s11d25 setupapi-install-reboot-bail-outside-block"
-grep -Fq 'Windows Amyuni SetupAPI install reboot-required completion' requirements.html || r_s11d25="$r_s11d25 requirements-disposition-missing"
-grep -Fq 'R-S11d-25 — Windows Amyuni SetupAPI install reboot-required completion' HARDENING_STATUS.md || r_s11d25="$r_s11d25 hardening-ledger-missing"
-if [ -n "$r_s11d25" ]; then echo "  FAIL R-S11d-25 Windows Amyuni SetupAPI install reboot-required completion:$r_s11d25"; rc=1; else
-  echo "  ok  R-S11d-25 Amyuni direct SetupAPI install rejects reboot-required before using the driver"; fi
-
-echo "== (3b-iii-a5d5) Windows MSI service state and SAS policy are not persistent user-config side effects (R-S11d-16) =="
-r_s11d16=
-grep -Fq '<Custom Action="CreateStartService" Before="InstallFinalize" Condition="NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:create-service-condition-not-always-service"
-grep -Fq '<Custom Action="CreateStartService.SetParam" Before="CreateStartService" Condition="NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:create-service-setparam-condition-not-always-service"
-grep -Fq '<Custom Action="LaunchAppTray" After="InstallFinalize" Condition="(LAUNCH_TRAY_APP=&quot;Y&quot; OR LAUNCH_TRAY_APP=&quot;1&quot;) AND (NOT (Installed AND REMOVE AND NOT UPGRADINGPRODUCTCODE))"/>' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:launch-tray-still-service-stop-gated"
-grep -Fq '<Custom Action="TryStopDeleteService" Before="RemoveRuntimeGeneratedFiles.SetParam" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:stop-delete-service-not-remove-upgrade-scoped"
-grep -Fq '<Custom Action="TryStopDeleteService.SetParam" Before="TryStopDeleteService" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)" />' res/msi/Package/Components/RustDesk.wxs || r_s11d16="$r_s11d16 msi:stop-delete-service-setparam-not-remove-upgrade-scoped"
-if grep -RInE 'STOP_SERVICE|SetPropertyServiceStop|SetPropertyFromConfig|SetPropertyIsServiceRunning|TryDeleteStartupShortcut|ReadConfig|AddRegSoftwareSASGeneration|SoftwareSASGeneration' res/msi >"$VERIFY_TMP/rd_verify_r_s11d16_msi"; then
-  cat "$VERIFY_TMP/rd_verify_r_s11d16_msi"
-  r_s11d16="$r_s11d16 msi:persistent-service-or-sas-switch-leftover"
-fi
-if grep -Eq 'reg[}"]?[[:space:]]+add[^\n]*SoftwareSASGeneration|AddRegSoftwareSASGeneration|RegSetValueExW\(.*SoftwareSASGeneration' src/platform/windows.rs res/msi/CustomActions/CustomActions.cpp; then
-  r_s11d16="$r_s11d16 persistent-sas-installer-write-leftover"
-fi
-grep -Fq 'enum OriginalSasPolicy' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-original-policy-enum-missing"
-grep -Fq 'OriginalSasPolicy::Absent' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-absent-state-missing"
-grep -Fq 'Present(u32),' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-present-state-missing"
-grep -Fq 'static ref SEND_SAS_POLICY_MUTEX: Mutex<()> = Mutex::new(());' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-policy-mutex-missing"
-grep -Fq 'let _sas_policy_guard = SEND_SAS_POLICY_MUTEX.lock().unwrap();' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-policy-mutation-not-serialized"
-grep -Fq 'SOFTWARE_SAS_GENERATION_SERVICES_AND_EASE_OF_ACCESS' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-known-policy-values-missing"
-grep -Fq 'let temporary_value = value | SOFTWARE_SAS_GENERATION_SERVICES;' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-ease-of-access-policy-not-preserved"
-grep -Fq 'Ok(value) => bail!("Unsupported SoftwareSASGeneration value: {value}")' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-unknown-policy-not-rejected"
-grep -Fq 'pub fn send_sas() -> ResultType<()> {' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-platform-result-missing"
-grep -Fq 'Err(err) if err.kind() == io::ErrorKind::NotFound' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-missing-value-not-separated-from-read-error"
-grep -Fq 'Err(err) => bail!("Failed to read SoftwareSASGeneration: {err}")' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-read-error-not-fail-closed"
-grep -Fq '.map_err(|err| anyhow!("Failed to set SoftwareSASGeneration: {err}"))?' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-set-failure-not-fatal"
-grep -Fq '.delete_value("SoftwareSASGeneration")' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-absent-restore-delete-missing"
-grep -Fq '.set_value("SoftwareSASGeneration", &original)' src/platform/windows.rs || r_s11d16="$r_s11d16 sas-present-restore-missing"
-grep -Fq 'crate::platform::send_sas()?;' src/server/input_service.rs || r_s11d16="$r_s11d16 input-service-sas-error-not-propagated"
-if grep -Eq 'pub fn send_sas\(\) \{|original_value: Option<u32>|original == 0|log::error!\("Failed to (set|open|restore|delete) SoftwareSASGeneration' src/platform/windows.rs; then
-  r_s11d16="$r_s11d16 sas-hidden-fallback-or-zero-as-absent-leftover"
-fi
-grep -Fq 'Windows MSI service-state and SAS policy persistence' requirements.html || r_s11d16="$r_s11d16 requirements-disposition-missing"
-grep -Fq 'R-S11d-16 — Windows MSI service-state and SAS policy persistence' HARDENING_STATUS.md || r_s11d16="$r_s11d16 hardening-ledger-missing"
-if [ -n "$r_s11d16" ]; then echo "  FAIL R-S11d-16 Windows MSI service-state and SAS policy persistence:$r_s11d16"; rc=1; else
-  echo "  ok  R-S11d-16 MSI has no per-user stop-service switch or persistent SAS policy writer; runtime SAS uses serialized fail-closed temporary set/restore"; fi
-
-echo "== (3b-iii-a5e) Windows EXE elevated batch binds external tools to System32 (R-S11d-5) =="
-r_s11d5=
-grep -q 'fn trusted_system_tool_path(tool: &str) -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d5="$r_s11d5 system-tool-resolver-missing"
-grep -q 'fn quoted_batch_path(path: &Path) -> ResultType<String>' src/platform/windows.rs || r_s11d5="$r_s11d5 batch-tool-quoting-missing"
-grep -q 'struct WindowsSystemTools' src/platform/windows.rs || r_s11d5="$r_s11d5 system-tool-set-missing"
-grep -qF '"Win32_System_ApplicationInstallationAndServicing"' Cargo.toml || r_s11d5="$r_s11d5 windows-msi-api-feature-missing"
-for tool in chcp.com cscript.exe msiexec.exe netsh.exe reg.exe sc.exe taskkill.exe timeout.exe xcopy.exe; do
-  grep -q "trusted_system_tool_path(\"$tool\")" src/platform/windows.rs || r_s11d5="$r_s11d5 missing-$tool"
+for disposition in \
+  'Windows RDP viewer credential command provenance' \
+  'Windows terminal default-shell command provenance' \
+  'Windows portable RuntimeBroker cleanup command provenance' \
+  'Windows Amyuni IDD helper launch provenance' \
+  'Windows Amyuni SetupAPI install reboot-required completion' \
+  'Windows inactive RustDesk IDD loader excision'; do
+  grep -Fq "$disposition" requirements.html || r_s11d_retained="$r_s11d_retained requirements-missing:$disposition"
 done
-grep -q 'let tools = WindowsSystemTools::resolve()?' src/platform/windows.rs || r_s11d5="$r_s11d5 installer-paths-do-not-resolve-tools"
-grep -q 'fn prior_msi_uninstall_product_code(' src/platform/windows.rs || r_s11d5="$r_s11d5 prior-msi-product-parser-missing"
-grep -q 'fn normalize_msi_product_code(' src/platform/windows.rs || r_s11d5="$r_s11d5 prior-msi-guid-validator-missing"
-grep -q 'MsiGetProductInfoW(' src/platform/windows.rs || r_s11d5="$r_s11d5 prior-msi-product-name-proof-missing"
-grep -q 'INSTALLPROPERTY_PRODUCTNAME' src/platform/windows.rs || r_s11d5="$r_s11d5 prior-msi-product-name-property-missing"
-grep -q 'product_name != app_name' src/platform/windows.rs || r_s11d5="$r_s11d5 prior-msi-product-name-not-checked"
-grep -q 'trusted_prior_msi_uninstall_command(&reg_uninstall_string, tools)' src/platform/windows.rs || r_s11d5="$r_s11d5 prior-msi-uninstall-not-reconstructed"
-grep -q '{} /X {}' src/platform/windows.rs || r_s11d5="$r_s11d5 prior-msi-msiexec-command-not-rebuilt"
-grep -q 'tools.xcopy' src/platform/windows.rs || r_s11d5="$r_s11d5 xcopy-not-bound"
-grep -q 'tools.cscript' src/platform/windows.rs || r_s11d5="$r_s11d5 cscript-not-bound"
-grep -q '{taskkill} /F /IM' src/platform/windows.rs || r_s11d5="$r_s11d5 taskkill-not-bound"
-grep -q '{netsh} advfirewall' src/platform/windows.rs || r_s11d5="$r_s11d5 netsh-not-bound"
-grep -q '{sc} create' src/platform/windows.rs || r_s11d5="$r_s11d5 sc-create-not-bound"
-grep -q '{reg} add' src/platform/windows.rs || r_s11d5="$r_s11d5 reg-add-not-bound"
-grep -q '{chcp} 65001' src/platform/windows.rs || r_s11d5="$r_s11d5 chcp-not-bound"
-if grep -nE '^[[:space:]]*(chcp 65001|reg (add|delete)|netsh advfirewall|sc (create|stop|delete|failure|start)|taskkill /F /IM|cscript "|XCOPY |xcopy |timeout 300)' src/platform/windows.rs >"$VERIFY_TMP/rd_verify_r_s11d5_bare"; then
-  cat "$VERIFY_TMP/rd_verify_r_s11d5_bare"
-  r_s11d5="$r_s11d5 bare-external-tool-in-elevated-batch"
-fi
-if grep -q 'command_with_system_tool' src/platform/windows.rs; then
-  r_s11d5="$r_s11d5 prefix-only-msiexec-binder-leftover"
-fi
-if grep -q 'checked_msi_uninstall_command(reg_uninstall_string)' src/platform/windows.rs; then
-  r_s11d5="$r_s11d5 raw-prior-msi-uninstall-leftover"
-fi
-grep -q 'Windows EXE elevated batch command provenance' requirements.html || r_s11d5="$r_s11d5 requirements-disposition-missing"
-grep -q 'Windows EXE prior-MSI uninstall command reconstruction' requirements.html || r_s11d5="$r_s11d5 prior-msi-reconstruction-requirements-missing"
-grep -q 'R-S11d-5 — Windows EXE elevated batch command provenance' HARDENING_STATUS.md || r_s11d5="$r_s11d5 hardening-ledger-missing"
-grep -q 'R-S11d-35 — Windows EXE prior-MSI uninstall command reconstruction' HARDENING_STATUS.md || r_s11d5="$r_s11d5 prior-msi-reconstruction-ledger-missing"
-if [ -n "$r_s11d5" ]; then echo "  FAIL R-S11d-5 Windows EXE elevated batch command provenance:$r_s11d5"; rc=1; else
-  echo "  ok  R-S11d-5 Windows EXE elevated batch resolves external tools from System32 and rejects bare tool names in the elevated batch surface"; fi
+for ledger in R-S11d-1 R-S11d-8 R-S11d-9 R-S11d-10 R-S11d-25 R-S11d-38; do
+  grep -Fq "$ledger —" HARDENING_STATUS.md || r_s11d_retained="$r_s11d_retained ledger-missing:$ledger"
+done
+if [ -n "$r_s11d_retained" ]; then echo "  FAIL retained Windows provenance invariants:$r_s11d_retained"; rc=1; else
+  echo "  ok  retained Windows RDP, terminal shell, portable broker, Amyuni runtime, and IDD-excision invariants are source-gated"; fi
 
-echo "== (3b-iii-a5f) Windows EXE shortcut finalization avoids temp .lnk staging (R-S11d-6) =="
-r_s11d6=
-grep -Fq 'FOLDERID_PublicDesktop' src/platform/windows.rs || r_s11d6="$r_s11d6 public-desktop-known-folder-missing"
-grep -Fq 'FOLDERID_CommonPrograms' src/platform/windows.rs || r_s11d6="$r_s11d6 common-programs-known-folder-missing"
-grep -Fq 'FOLDERID_CommonStartup' src/platform/windows.rs || r_s11d6="$r_s11d6 common-startup-known-folder-missing"
-grep -Fq 'fn create_shortcut_command_file(' src/platform/windows.rs || r_s11d6="$r_s11d6 shortcut-command-helper-missing"
-grep -Fq 'fn installer_script_literal(value: &str, label: &str) -> ResultType<String>' src/platform/windows.rs || r_s11d6="$r_s11d6 shortcut-script-literal-guard-missing"
-grep -Fq 'fn run_shortcut_script_cmd(' src/platform/windows.rs || r_s11d6="$r_s11d6 checked-shortcut-runner-missing"
-grep -Fq 'shortcut_path: &Path,' src/platform/windows.rs || r_s11d6="$r_s11d6 shortcut-runner-target-postcondition-missing"
-grep -Fq ') -> ResultType<String> {' src/platform/windows.rs || r_s11d6="$r_s11d6 shortcut-runner-not-fallible"
-grep -Fq 'fn public_desktop_app_shortcut_path() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d6="$r_s11d6 desktop-shortcut-helper-missing"
-grep -Fq 'Ok(public_desktop_dir()?.join(format!("{}.lnk", crate::get_app_name())))' src/platform/windows.rs || r_s11d6="$r_s11d6 desktop-shortcut-not-final-known-folder"
-grep -Fq 'fn common_programs_app_dir() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d6="$r_s11d6 start-menu-helper-missing"
-grep -Fq 'Ok(common_programs_dir()?.join(crate::get_app_name()))' src/platform/windows.rs || r_s11d6="$r_s11d6 start-menu-shortcut-not-final-known-folder"
-grep -Fq 'fn common_startup_tray_shortcut_path() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d6="$r_s11d6 tray-shortcut-helper-missing"
-grep -Fq 'Ok(common_startup_dir()?.join(format!("{} Tray.lnk", crate::get_app_name())))' src/platform/windows.rs || r_s11d6="$r_s11d6 tray-shortcut-not-final-known-folder"
-grep -Fq 'let desktop_shortcut_path = public_desktop_app_shortcut_path()?;' src/platform/windows.rs || r_s11d6="$r_s11d6 desktop-shortcut-callsite-not-helper"
-grep -Fq 'let start_menu = common_programs_app_dir()?;' src/platform/windows.rs || r_s11d6="$r_s11d6 start-menu-shortcut-callsite-not-helper"
-grep -Fq 'let tray_shortcut_path = common_startup_tray_shortcut_path()?;' src/platform/windows.rs || r_s11d6="$r_s11d6 tray-shortcut-callsite-not-helper"
-grep -Fq 'Path::new(&path).join(format!("Uninstall {app_name}.lnk"))' src/platform/windows.rs || r_s11d6="$r_s11d6 install-dir-uninstall-shortcut-not-final"
-grep -Fq 'if errorlevel 1 exit /b 1' src/platform/windows.rs || r_s11d6="$r_s11d6 shortcut-cscript-not-fail-closed"
-if grep -nE 'sLinkFile = "\{tmp_path\}|copy /Y .*\.lnk|tmp_path.*\.lnk|fn get_tray_shortcut' src/platform/windows.rs >"$VERIFY_TMP/rd_verify_r_s11d6_staging"; then
-  cat "$VERIFY_TMP/rd_verify_r_s11d6_staging"
-  r_s11d6="$r_s11d6 temp-shortcut-staging-leftover"
+
+echo "== (3b-iii-a5e) Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20) =="
+r_s11e20=
+windows_msi=res/msi/Package/Components/RustDesk.wxs
+windows_ca=res/msi/Package/Fragments/CustomActions.wxs
+portable=libs/portable/src/main.rs
+windows_build=scripts/build-windows.ps1
+service_component=$(awk '/<Component Id="App.exe"/,/<\/Component>/' "$windows_msi")
+service_install=$(printf '%s\n' "$service_component" | awk '/<ServiceInstall Id="App.Service.Install"/,/<\/ServiceInstall>/')
+for required in \
+  '<ServiceInstall Id="App.Service.Install"' \
+  'Name="$(var.Product)"' \
+  'Type="ownProcess"' \
+  'Start="auto"' \
+  'Arguments="--service"' \
+  'Vital="yes">' \
+  '<ServiceConfigFailureActions OnInstall="yes" OnReinstall="yes" ResetPeriod="86400">' \
+  '<Failure Action="restartService" Delay="5000" />' \
+  '<Failure Action="restartService" Delay="10000" />' \
+  '<Failure Action="restartService" Delay="30000" />' \
+  '<ServiceControl Id="App.Service.Control"' \
+  'Start="install"' \
+  'Stop="both"' \
+  'Remove="uninstall"'; do
+  printf '%s\n' "$service_component" | grep -Fq "$required" || r_s11e20="$r_s11e20 service-declaration-missing:$required"
+done
+if printf '%s\n' "$service_install" | grep -Eq 'Account=|Password='; then
+  r_s11e20="$r_s11e20 service-start-name-not-null-localsystem"
 fi
-grep -q 'Windows EXE shortcut finalization provenance' requirements.html || r_s11d6="$r_s11d6 requirements-disposition-missing"
-grep -q 'R-S11d-6 — Windows EXE shortcut finalization provenance' HARDENING_STATUS.md || r_s11d6="$r_s11d6 hardening-ledger-missing"
-if [ -n "$r_s11d6" ]; then echo "  FAIL R-S11d-6 Windows EXE shortcut finalization provenance:$r_s11d6"; rc=1; else
-  echo "  ok  R-S11d-6 Windows EXE shortcut finalization writes final protected shortcut paths directly and rejects temp .lnk staging"; fi
+grep -Fq '<fire:FirewallException Id="App.Firewall" Name="$(var.Product) Service" Port="21118" Protocol="tcp" Scope="any" IgnoreFailure="no" />' "$windows_msi" || r_s11e20="$r_s11e20 exact-firewall-declaration-missing"
+if grep -Eq 'StartupFolder|STARTUPSHORTCUTS|ShortcutTray' "$windows_msi"; then r_s11e20="$r_s11e20 independent-startup-persistence-leftover"; fi
+grep -Fq '<CustomAction Id="RemoveTestCertificates" DllEntry="RemoveTestCertificates" Impersonate="no" Execute="commit" Return="check"' "$windows_ca" || r_s11e20="$r_s11e20 fixed-certificate-commit-action-missing"
+grep -Fq '<Custom Action="RemoveTestCertificates" Before="RemoveRuntimeGeneratedFiles.SetParam" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>' "$windows_msi" || r_s11e20="$r_s11e20 certificate-action-not-explicit-uninstall-commit-scheduled"
+grep -Fq 'if (SUCCEEDED(hr) && !DeleteRustDeskTestCertsW())' res/msi/CustomActions/CustomActions.cpp || r_s11e20="$r_s11e20 certificate-action-not-fail-closed"
+grep -Fq '..\..\..\src\platform\windows_delete_test_cert.cc' res/msi/CustomActions/CustomActions.vcxproj || r_s11e20="$r_s11e20 certificate-source-not-linked-into-msi"
+if rg -n 'kWrongRootStorePrefix|has_wrong_root_store_prefix|delete_one_level_tree' src/platform/windows_delete_test_cert.cc >"$VERIFY_TMP/rd_verify_r_s11e20_cert_broad"; then
+  r_s11e20="$r_s11e20 broad-certificate-store-cleanup-leftover"
+fi
+
+grep -Fq 'if (!DeleteRuntimeGeneratedFile(normalizedInstallFolder, L"RuntimeBroker_rustdesk.exe"))' res/msi/CustomActions/CustomActions.cpp || r_s11e20="$r_s11e20 runtime-broker-cleanup-result-not-checked"
+grep -Fq 'Failed to remove runtime-generated broker executable' res/msi/CustomActions/CustomActions.cpp || r_s11e20="$r_s11e20 runtime-broker-cleanup-not-fatal"
+grep -Fq 'Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles" Impersonate="no" Execute="deferred" Return="check"' "$windows_ca" || r_s11e20="$r_s11e20 runtime-broker-cleanup-action-not-checked"
+grep -Fq '<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>' "$windows_msi" || r_s11e20="$r_s11e20 runtime-broker-cleanup-not-deferred-before-remove-files"
+
+amyuni_cleanup=$(awk '/UINT __stdcall RemoveAmyuniIdd/,/^}/' res/msi/CustomActions/CustomActions.cpp)
+grep -Fq 'WcaDeferredActionRequiresReboot();' res/msi/CustomActions/CustomActions.cpp || r_s11e20="$r_s11e20 amyuni-reboot-not-reported"
+grep -Fq 'enum DriverUninstallStatus' res/msi/CustomActions/Common.h || r_s11e20="$r_s11e20 amyuni-native-status-contract-missing"
+printf '%s\n' "$amyuni_cleanup" | grep -Fq 'hr = UninstallDriver(L"usbmmidd", uninstallStatus, rebootRequired);' || r_s11e20="$r_s11e20 amyuni-native-result-not-observed"
+printf '%s\n' "$amyuni_cleanup" | grep -Fq 'ExitOnFailure(hr, "SetupAPI Amyuni IDD removal failed");' || r_s11e20="$r_s11e20 amyuni-native-failure-not-fatal"
+if printf '%s\n' "$amyuni_cleanup" | grep -Eq 'CreateProcess|ShellExecute|CustomActionData|WcaGetProperty|deviceinstaller64'; then
+  r_s11e20="$r_s11e20 amyuni-commit-action-has-installed-helper-or-caller-data-dependency"
+fi
+grep -Fq 'ERROR_NO_MORE_ITEMS' res/msi/CustomActions/DeviceUtils.cpp || r_s11e20="$r_s11e20 amyuni-enumeration-completion-not-proven"
+grep -Fq 'MultiSzContains(deviceId, hardwareId)' res/msi/CustomActions/DeviceUtils.cpp || r_s11e20="$r_s11e20 amyuni-hardware-id-not-multisz"
+grep -Fq 'HRESULT_FROM_WIN32(lastError)' res/msi/CustomActions/DeviceUtils.cpp || r_s11e20="$r_s11e20 amyuni-native-errors-not-propagated"
+grep -Fq 'Id="RemoveAmyuniIdd" DllEntry="RemoveAmyuniIdd" Impersonate="no" Execute="commit" Return="check"' "$windows_ca" || r_s11e20="$r_s11e20 amyuni-commit-action-not-checked"
+grep -Fq '<Custom Action="RemoveAmyuniIdd" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>' "$windows_msi" || r_s11e20="$r_s11e20 amyuni-action-not-explicit-uninstall-commit-scheduled"
+if grep -Fq 'RemoveAmyuniIdd.SetParam' "$windows_msi"; then r_s11e20="$r_s11e20 amyuni-obsolete-install-root-data-leftover"; fi
+
+if grep -Eq 'reg[}"]?[[:space:]]+add[^\n]*SoftwareSASGeneration|AddRegSoftwareSASGeneration|RegSetValueExW\(.*SoftwareSASGeneration' src/platform/windows.rs res/msi/CustomActions/CustomActions.cpp; then
+  r_s11e20="$r_s11e20 persistent-sas-installer-write-leftover"
+fi
+grep -Fq 'enum OriginalSasPolicy' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-original-policy-state-missing"
+grep -Fq 'OriginalSasPolicy::Absent' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-absent-state-missing"
+grep -Fq 'Present(u32),' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-present-state-missing"
+grep -Fq 'static ref SEND_SAS_POLICY_MUTEX: Mutex<()> = Mutex::new(());' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-policy-mutex-missing"
+grep -Fq 'let _sas_policy_guard = SEND_SAS_POLICY_MUTEX.lock().unwrap();' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-policy-mutation-not-serialized"
+grep -Fq 'let temporary_value = value | SOFTWARE_SAS_GENERATION_SERVICES;' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-existing-policy-not-preserved"
+grep -Fq 'Ok(value) => bail!("Unsupported SoftwareSASGeneration value: {value}")' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-unknown-policy-not-rejected"
+grep -Fq 'Err(err) => bail!("Failed to read SoftwareSASGeneration: {err}")' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-read-error-not-fatal"
+grep -Fq '.map_err(|err| anyhow!("Failed to set SoftwareSASGeneration: {err}"))?' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-set-error-not-fatal"
+grep -Fq '.delete_value("SoftwareSASGeneration")' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-absent-restore-missing"
+grep -Fq '.set_value("SoftwareSASGeneration", &original)' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-present-restore-missing"
+grep -Fq 'crate::platform::send_sas()?;' src/server/input_service.rs || r_s11e20="$r_s11e20 sas-error-not-propagated"
+if grep -Eq 'original_value: Option<u32>|original == 0|log::error!\("Failed to (set|open|restore|delete) SoftwareSASGeneration' src/platform/windows.rs; then
+  r_s11e20="$r_s11e20 sas-hidden-fallback-or-zero-conflation-leftover"
+fi
+
+if rg -n 'AddFirewallRules|RemoveFirewallRules|CreateStartService|TryStopDeleteService|TerminateProcesses|TerminateBrokers|MyCreateServiceW|AddFirewallRule|CC_CONNECTION_TYPE|--conn-type|STOP_SERVICE|SetPropertyServiceStop|SetPropertyFromConfig|SetPropertyIsServiceRunning|TryDeleteStartupShortcut|ReadConfig|AddRegSoftwareSASGeneration|SoftwareSASGeneration' res/msi >"$VERIFY_TMP/rd_verify_r_s11e20_custom_actions"; then
+  r_s11e20="$r_s11e20 custom-service-firewall-or-basename-kill-leftover:$(tr '\n' ' ' < "$VERIFY_TMP/rd_verify_r_s11e20_custom_actions")"
+fi
+for deleted in res/msi/CustomActions/FirewallRules.cpp res/msi/CustomActions/ServiceUtils.cpp flutter/lib/desktop/pages/install_page.dart; do
+  [ ! -e "$deleted" ] || r_s11e20="$r_s11e20 deleted-surface-present:$deleted"
+done
+
+for removed in run_cmds InstallerCommandFile WindowsSystemTools create_shortcut_command_file trusted_prior_msi_uninstall_command 'pub fn install_me(' 'pub fn uninstall_me(' 'pub fn install_service(' 'pub fn uninstall_service('; do
+  if grep -Fq "$removed" src/platform/windows.rs; then r_s11e20="$r_s11e20 application-install-authority-leftover:$removed"; fi
+done
+for removed_flag in '"--install"' '"--noinstall"' '"--uninstall"' '"--after-install"' '"--before-uninstall"' '"--silent-install"' '"--uninstall-cert"' '"--install-idd"' '"--uninstall-amyuni-idd"'; do
+  if grep -Fq -- "$removed_flag" src/core_main.rs; then r_s11e20="$r_s11e20 public-application-helper-flag-leftover:$removed_flag"; fi
+done
+if rg -n 'goto_install|install_me\(|run_without_install|show_run_without_install|install_install_me|main_goto_install|mainGotoInstall|installInstallMe|runInstallPage|is_disable_installation|isDisableInstallation|ends_with\("install\.exe"\)|"--install"|"--noinstall"|is_install_page|Install Page' \
+  src/common.rs src/ui_interface.rs src/flutter_ffi.rs libs/hbb_common/src/config.rs flutter/lib flutter/windows/runner/main.cpp >"$VERIFY_TMP/rd_verify_r_s11e20_ui"; then
+  r_s11e20="$r_s11e20 in-app-installer-leftover:$(tr '\n' ' ' < "$VERIFY_TMP/rd_verify_r_s11e20_ui")"
+fi
+
+grep -Fq 'const SETUP_EXE_NAME: &str = "rustdesk-setup.exe";' "$portable" || r_s11e20="$r_s11e20 exact-setup-name-missing"
+grep -Fq 'filename.eq_ignore_ascii_case(SETUP_EXE_NAME)' "$portable" || r_s11e20="$r_s11e20 setup-name-not-exact-case-insensitive"
+grep -Fq 'fn current_exe_is_installer() -> Result<bool, String>' "$portable" || r_s11e20="$r_s11e20 setup-mode-not-fallible-current-image-derived"
+grep -Fq 'let installer_mode = match current_exe_is_installer() {' "$portable" || r_s11e20="$r_s11e20 setup-dispatch-not-current-image-bound"
+grep -Fq 'fn parse_installer_invocation(args: &[String]) -> Result<(bool, bool), String>' "$portable" || r_s11e20="$r_s11e20 setup-command-line-parser-missing"
+grep -Fq '_ => Err("invalid setup command line".to_owned()),' "$portable" || r_s11e20="$r_s11e20 setup-command-line-not-closed"
+grep -Fq '"--silent-install" | ELEVATED_INSTALL_ARG | ELEVATED_SILENT_INSTALL_ARG' "$portable" || r_s11e20="$r_s11e20 installer-only-args-not-rejected-on-other-images"
+grep -Fq 'if protected {' "$portable" || r_s11e20="$r_s11e20 protected-marker-not-distinguished"
+grep -Fq 'protected installer invocation requires an elevated process' "$portable" || r_s11e20="$r_s11e20 protected-marker-not-elevation-gated"
+grep -Fq 'const INSTALLER_MSI_NAME: &str = "rustdesk-installer.msi";' "$portable" || r_s11e20="$r_s11e20 fixed-msi-name-missing"
+grep -Fq 'if files.len() != 1 || files.first() != Some(&msi)' "$portable" || r_s11e20="$r_s11e20 setup-manifest-not-exactly-one-msi"
+grep -Fq 'let msiexec = trusted_system_tool_path("msiexec.exe")?;' "$portable" || r_s11e20="$r_s11e20 msiexec-not-system32-derived"
+grep -Fq 'cmd.arg("/i").arg(msi).arg("/norestart");' "$portable" || r_s11e20="$r_s11e20 msi-not-explicit-norestart-argv"
+grep -Fq 'crate::has_reparse_point(&metadata)' "$portable" || r_s11e20="$r_s11e20 setup-path-reparse-rejection-missing"
+grep -Fq 'ensure_non_reparse_dir(&root)?;' "$portable" || r_s11e20="$r_s11e20 program-files-root-not-proven"
+grep -Fq 'matches!(code, 0 | 3010)' "$portable" || r_s11e20="$r_s11e20 msi-status-policy-not-exact"
+grep -Fq 'for code in [-1, 1, 1603, 1641, 3011]' "$portable" || r_s11e20="$r_s11e20 reboot-initiated-rejection-test-missing"
+protected_installer=$(awk '/pub\(super\) fn run_protected_installer/,/^    }/' "$portable")
+printf '%s\n' "$protected_installer" | grep -Fq 'installer_msi_from_manifest' || r_s11e20="$r_s11e20 protected-leg-not-manifest-bound"
+printf '%s\n' "$protected_installer" | grep -Fq 'run_staged_msi' || r_s11e20="$r_s11e20 protected-leg-not-msi-only"
+grep -Fq 'file.write_to_new_file(staging)?;' "$portable" || r_s11e20="$r_s11e20 setup-extraction-uses-replacement-temporary-file"
+if printf '%s\n' "$protected_installer" | grep -Eq 'payload\.exe|librustdesk|--install"|Command::new\(&payload'; then
+  r_s11e20="$r_s11e20 protected-leg-executes-application-payload"
+fi
+if grep -Fq 'ends_with("install.exe")' "$portable"; then r_s11e20="$r_s11e20 legacy-installer-name-fallback"; fi
+
+grep -Fq 'python build.py --flutter' "$windows_build" || r_s11e20="$r_s11e20 canonical-flutter-build-command-missing"
+if rg -n 'skip-portable-pack|skip_portable_pack|rustdesk_portable|rustdesk-\{version\}-install\.exe|rustdesk-\{version\}-win7-install\.exe|generate\.py' build.py >"$VERIFY_TMP/rd_verify_r_s11e20_legacy_build"; then
+  r_s11e20="$r_s11e20 legacy-windows-installer-builder-leftover:$(tr '\n' ' ' < "$VERIFY_TMP/rd_verify_r_s11e20_legacy_build")"
+fi
+grep -Fq "\$setupPayloadDir = Join-Path \$SRC 'target\rustdesk-setup-payload'" "$windows_build" || r_s11e20="$r_s11e20 dedicated-one-file-payload-dir-missing"
+grep -Fq 'python scripts\canonicalize-msi.py $msiOut $productVersion' "$windows_build" || r_s11e20="$r_s11e20 msi-not-canonicalized-before-embed"
+canonicalize_line=$(grep -nF 'python scripts\canonicalize-msi.py $msiOut $productVersion' "$windows_build" | cut -d: -f1)
+validation_line=$(grep -nF '$installer = New-Object -ComObject WindowsInstaller.Installer' "$windows_build" | cut -d: -f1)
+payload_copy_line=$(grep -nF 'Copy-Item -LiteralPath $msiOut -Destination $setupPayloadMsi' "$windows_build" | cut -d: -f1)
+if [ -z "$canonicalize_line" ] || [ -z "$validation_line" ] || [ -z "$payload_copy_line" ] || \
+   [ "$canonicalize_line" -ge "$validation_line" ] || [ "$validation_line" -ge "$payload_copy_line" ]; then
+  r_s11e20="$r_s11e20 msi-canonicalization-and-validation-do-not-precede-payload-copy"
+fi
+grep -Fq 'OLEFILE_VERSION="0.47"' scripts/pins.env || r_s11e20="$r_s11e20 olefile-version-pin-missing"
+grep -Fq 'SHA256_OLEFILE_0_47="543c7da2a7adadf21214938bb79c83ea12b473a4b6ee4ad4bf854e7715e13d1f"' scripts/pins.env || r_s11e20="$r_s11e20 olefile-digest-pin-missing"
+grep -Fq 'olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" \' scripts/online-fetch.sh || r_s11e20="$r_s11e20 olefile-fetch-missing"
+grep -Fq '"${SHA256_OLEFILE_0_47}"' scripts/online-fetch.sh || r_s11e20="$r_s11e20 olefile-fetch-not-digest-checked"
+grep -Fq 'verify_sha256 "$ONLINE_DIR/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" "${SHA256_OLEFILE_0_47}"' scripts/build-windows-vm.sh || r_s11e20="$r_s11e20 olefile-vm-preflight-missing"
+grep -Fq '/python-wheels/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl=/online/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl' scripts/build-windows-vm.sh || r_s11e20="$r_s11e20 olefile-offline-media-graft-missing"
+grep -Fq "\$olefileWheel = Join-Path \$offline 'python-wheels\olefile-0.47-py2.py3-none-any.whl'" "$windows_build" || r_s11e20="$r_s11e20 olefile-offline-wheel-not-selected"
+grep -Fq 'python -m pip install --disable-pip-version-check --no-index --no-deps $olefileWheel' "$windows_build" || r_s11e20="$r_s11e20 olefile-install-not-offline-exact-wheel"
+grep -Fq 'Copy-Item -LiteralPath $msiOut -Destination $setupPayloadMsi' "$windows_build" || r_s11e20="$r_s11e20 exact-msi-payload-copy-missing"
+grep -Fq 'python .\generate.py -f $setupPayloadDir -o . -e $setupPayloadMsi' "$windows_build" || r_s11e20="$r_s11e20 packer-not-fed-one-file-payload"
+grep -Fq 'command = ["cargo", "build", "--offline", "--locked", "--release"]' libs/portable/generate.py || r_s11e20="$r_s11e20 packer-cargo-build-not-offline-locked"
+grep -Fq 'subprocess.run(command, check=True)' libs/portable/generate.py || r_s11e20="$r_s11e20 packer-cargo-failure-not-propagated"
+grep -Fq 'Remove-Item -LiteralPath $setupPayloadDir -Recurse -Force' "$windows_build" || r_s11e20="$r_s11e20 payload-finally-cleanup-missing"
+grep -Fq "\$setup = Join-Path \$SRC 'target\release\rustdesk-portable-packer.exe'" "$windows_build" || r_s11e20="$r_s11e20 exact-setup-output-missing"
+grep -Fq "\$msi = Join-Path \$SRC 'res\msi\Package\bin\x64\Release\en-us\Package.msi'" "$windows_build" || r_s11e20="$r_s11e20 exact-msi-output-missing"
+if rg -n "Get-ChildItem -Path \\$SRC -Filter 'rustdesk-\*install.exe'|Get-ChildItem -Path \\$SRC -Filter '\*\.msi'" "$windows_build" >"$VERIFY_TMP/rd_verify_r_s11e20_discovery"; then
+  r_s11e20="$r_s11e20 recursive-artifact-discovery-leftover"
+fi
+
+broker_refresh=$(awk '/pub fn check_update_broker_process/,/^}/' src/platform/windows.rs)
+grep -Fq 'static BROKER_UPDATE_MUTEX: Mutex<()> = Mutex::new(());' src/platform/windows.rs || r_s11e20="$r_s11e20 broker-refresh-mutex-missing"
+printf '%s\n' "$broker_refresh" | grep -Fq 'let _update_guard = BROKER_UPDATE_MUTEX.lock().unwrap();' || r_s11e20="$r_s11e20 broker-refresh-not-serialized"
+printf '%s\n' "$broker_refresh" | grep -Fq 'require_current_exe_is_fixed_service_runtime()?' || r_s11e20="$r_s11e20 broker-refresh-not-fixed-service-image-bound"
+printf '%s\n' "$broker_refresh" | grep -Fq 'trusted_system_tool_path("RuntimeBroker.exe")?' || r_s11e20="$r_s11e20 broker-refresh-source-not-system32-bound"
+printf '%s\n' "$broker_refresh" | grep -Fq 'require_existing_file_no_reparse(&destination, "installed privacy broker")?' || r_s11e20="$r_s11e20 broker-refresh-destination-not-reparse-checked"
+printf '%s\n' "$broker_refresh" | grep -Fq 'sha256_file(&source)? == sha256_file(&destination)?' || r_s11e20="$r_s11e20 broker-refresh-byte-proof-missing"
+printf '%s\n' "$broker_refresh" | grep -Fq 'sha256_file(&source)? != sha256_file(&pending)?' || r_s11e20="$r_s11e20 broker-pending-bytes-not-proven-before-commit"
+printf '%s\n' "$broker_refresh" | grep -Fq 'ReplaceFileW(' || r_s11e20="$r_s11e20 broker-existing-image-not-atomically-replaced"
+printf '%s\n' "$broker_refresh" | grep -Fq 'return Err(err.into());' || r_s11e20="$r_s11e20 broker-commit-failure-not-propagated"
+if printf '%s\n' "$broker_refresh" | grep -Fq 'fs::remove_file(&destination)'; then r_s11e20="$r_s11e20 broker-last-known-good-destroyed-before-replace"; fi
+if printf '%s\n' "$broker_refresh" | grep -Eq 'run_cmds|taskkill|ShellExecute|Command::new'; then r_s11e20="$r_s11e20 broker-refresh-shell-or-elevation-leftover"; fi
+grep -Fq 'let broker_file = crate::platform::windows::check_update_broker_process()?;' src/privacy_mode/win_topmost_window.rs || r_s11e20="$r_s11e20 broker-launch-does-not-propagate-integrity-result"
+if grep -Fq 'if let Err(e) = crate::platform::windows::check_update_broker_process()' src/privacy_mode/win_topmost_window.rs; then r_s11e20="$r_s11e20 broker-integrity-failure-swallowed"; fi
+grep -Fq 'require_existing_file_no_reparse(' src/privacy_mode/win_topmost_window.rs || r_s11e20="$r_s11e20 privacy-injection-dll-not-reparse-checked"
+
+grep -Fq 'R-S11f' requirements.html || r_s11e20="$r_s11e20 normative-requirement-missing"
+grep -Fq 'R-S11e-20 — Windows Installer sole machine-state authority' HARDENING_STATUS.md || r_s11e20="$r_s11e20 hardening-ledger-missing"
+grep -Fq '<tr><td>125</td>' requirements.html || r_s11e20="$r_s11e20 appendix-disposition-missing"
+if [ -n "$r_s11e20" ]; then echo "  FAIL R-S11e-20 Windows Installer sole machine-state authority:$r_s11e20"; rc=1; else
+  echo "  ok  R-S11e-20 setup elevates only an exact one-file MSI transaction; MSI owns service/firewall/machine state; application install verbs, shell programs, caller-image helpers, in-app install, custom SCM/firewall actions, basename MSI kills, and recursive artifact discovery are absent"
+fi
 
 echo "== (3b-iii-a6) Windows runtime process probes avoid shell tasklist/taskkill (R-S11d-3) =="
 r_s11d3=
@@ -2043,19 +1471,16 @@ if grep -RInF 'SystemDrive' src/platform/windows.rs src/ui_interface.rs >"$VERIF
   r_s11d29="$r_s11d29 systemdrive-path-authority-leftover:$(cat "$VERIFY_TMP/rd_verify_r_s11d29_systemdrive")"
 fi
 grep -Fq 'FOLDERID_UserProfiles' src/platform/windows.rs || r_s11d29="$r_s11d29 userprofiles-known-folder-missing"
-grep -Fq 'FOLDERID_Windows' src/platform/windows.rs || r_s11d29="$r_s11d29 windows-known-folder-missing"
 grep -Fq 'fn user_profiles_dir() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d29="$r_s11d29 userprofiles-helper-missing"
-grep -Fq 'fn windows_dir() -> ResultType<PathBuf>' src/platform/windows.rs || r_s11d29="$r_s11d29 windows-dir-helper-missing"
 grep -Fq "username.contains(['\\\\', '/', ':'])" src/platform/windows.rs || r_s11d29="$r_s11d29 username-component-guard-missing"
 grep -Fq 'username.bytes().any(|byte| byte < 0x20)' src/platform/windows.rs || r_s11d29="$r_s11d29 username-control-guard-missing"
 grep -Fq 'let home = user_profiles_dir().ok()?.join(username);' src/platform/windows.rs || r_s11d29="$r_s11d29 active-user-home-not-userprofiles-backed"
-grep -Fq 'let windows_temp = windows_dir()?.join("Temp");' src/platform/windows.rs || r_s11d29="$r_s11d29 user-accessible-windows-temp-not-known-folder-backed"
 grep -Fq 'return match crate::platform::windows::program_data_dir()' src/ui_interface.rs || r_s11d29="$r_s11d29 root-recording-not-programdata-known-folder-backed"
 grep -Fq 'Failed to resolve ProgramData recording directory' src/ui_interface.rs || r_s11d29="$r_s11d29 root-recording-failure-not-logged"
 grep -Fq 'Windows service-adjacent path known-folder authority' requirements.html || r_s11d29="$r_s11d29 requirements-disposition-missing"
 grep -Fq 'R-S11d-29 — Windows service-adjacent path known-folder authority' HARDENING_STATUS.md || r_s11d29="$r_s11d29 hardening-ledger-missing"
 if [ -n "$r_s11d29" ]; then echo "  FAIL R-S11d-29 Windows service-adjacent path known-folder authority:$r_s11d29"; rc=1; else
-  echo "  ok  R-S11d-29 Windows service-adjacent profile/recording/installer fallback paths use known folders, not SystemDrive"; fi
+  echo "  ok  R-S11d-29 Windows service-adjacent profile and recording paths use known folders, not SystemDrive"; fi
 
 # (3b-iii-b) R-S11b-1/R-S11b-2c/R-S11c-1f: Linux/macOS `_service` is a privileged service-control channel,
 # not a root<->user Config/Config2 bus. The world-connectable service socket may keep only narrow,
@@ -5167,7 +4592,7 @@ fi
 # dead key are rejected too; the explicit uninstall path must uninstall, not persist a runtime service switch.
 # The old service-kill shape bypassed the R-S11
 # config-write reject (it called uninstall_service DIRECTLY, before any Config write). The installed desktop
-# service is un-killable at runtime; the SOLE sanctioned uninstall is the `--uninstall` CLI (core_main). The
+# service is not mutable through runtime options; removal is owned by the MSI uninstall transaction. The
 # sciter UI controls (#stop-service menu + #start-service link + their handlers + the hide_stop_service
 # builtin) are removed too — bringing the legacy sciter front-end + the shared set_option to flutter parity
 # (flutter excised its stop-service button earlier). (Android has no stop-service config toggle: the
@@ -5180,7 +4605,7 @@ grep -qE '(ipc::set_option|Config::set_option)\("stop-service"' src/platform/*.r
 if [ -n "$r_x9_killsvc" ]; then
   echo "  FAIL R-X9/R-X10: runtime service-kill path still present:$r_x9_killsvc"; rc=1
 else
-  echo "  ok  R-X9/R-X10 runtime service-kill path excised (ui_interface set_option stop-service special-case + sciter Enable/Start-service controls; service un-killable except --uninstall CLI)"
+  echo "  ok  R-X9/R-X10 runtime service-kill path excised (ui_interface set_option stop-service special-case + sciter Enable/Start-service controls; service removal is MSI-owned)"
 fi
 # R-D7a (SHOULD): the Android keep-screen-on local-option is hard-pinned to "during controlled" — the
 # never / service-on modes + the settings radio + the KeepScreenOn enum/mappers are excised, so the

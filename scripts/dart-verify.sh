@@ -46,15 +46,7 @@ echo "== flutter pub get + full FRB codegen + flutter analyze lib/ (zero-errors 
     exit 1
   fi
   cd /work
-  # R-B12 (root cause CORRECTED): the build_runner call inside FRB codegen fails on a COLD
-  # asset-graph cache — it dies in ~62ms before building — NOT, as previously assumed, the
-  # pinned-flutter / committed-pubspec.lock mismatch. `flutter pub run build_runner build` itself
-  # runs fine and PRIMES the cache, after which FRB succeeds; the pubspec.lock hash gate above
-  # covers the R-R1 dependency-pin invariant. A blind hard-exit here under `set -e` meant a
-  # cold-cache run (e.g. a fresh checkout, where generated_bridge.dart does not yet exist) aborted
-  # the whole gate BEFORE `flutter analyze`, so a real source error slipped past entirely (the
-  # peer_card build-breaker). So: try codegen; on failure PRIME build_runner + RETRY (recovers a
-  # FRESH bridge); only if it still fails, warn and analyze against the existing bridge.
+  # Prime build_runner once if a cold asset graph prevents FRB code generation.
   if ! flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
         --dart-output ./flutter/lib/generated_bridge.dart >/dev/null 2>&1; then
     echo "  WARN: FRB codegen failed once (cold build_runner asset-cache) — priming + retrying"
@@ -62,7 +54,7 @@ echo "== flutter pub get + full FRB codegen + flutter analyze lib/ (zero-errors 
         --enable-experiment=class-modifiers ) >/dev/null 2>&1 || true
     flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
         --dart-output ./flutter/lib/generated_bridge.dart >/dev/null 2>&1 \
-      || echo "  WARN: FRB codegen still failing after prime+retry — analyzing against the existing bridge"
+      || { echo "DART-VERIFY: FAILED — FRB codegen failed after prime+retry"; exit 1; }
   fi
   cd /work/flutter
   out="$(flutter analyze lib/ 2>&1 || true)"

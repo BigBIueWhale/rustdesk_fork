@@ -2,8 +2,5 @@ LIBRARY "CustomActions"
 
 EXPORTS
     RemoveRuntimeGeneratedFiles
-    TerminateProcesses
-    AddFirewallRules
-    TryStopDeleteService
-    CreateStartService
+    RemoveTestCertificates
     RemoveAmyuniIdd

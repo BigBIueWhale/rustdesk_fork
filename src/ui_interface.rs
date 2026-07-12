@@ -71,51 +71,8 @@ pub fn get_id() -> String {
     return ipc::get_id();
 }
 
-#[inline]
-pub fn goto_install() {
-    allow_err!(crate::run_me(vec!["--install"]));
-    std::process::exit(0);
-}
-
-#[inline]
-pub fn install_me(_options: String, _path: String, _silent: bool, _debug: bool) {
-    #[cfg(windows)]
-    std::thread::spawn(move || {
-        if let Err(err) = crate::platform::windows::install_me(&_options, _path, _silent, _debug) {
-            log::error!("Failed to install: {err}");
-            std::process::exit(1);
-        }
-        std::process::exit(0);
-    });
-}
-
 // R-X1 / R-SV2 (§18): ui_interface::update_me (the cross-platform self-updater dispatch) is excised —
 // there is no self-update path; the fork ships SHA-pinned releases (R-B2), never fetch-and-run.
-
-#[inline]
-pub fn run_without_install() {
-    #[cfg(windows)]
-    if std::env::var_os("RUSTDESK_PROTECTED_INSTALL").is_some() {
-        return;
-    }
-    crate::run_me(vec!["--noinstall"]).ok();
-    std::process::exit(0);
-}
-
-#[inline]
-pub fn show_run_without_install() -> bool {
-    #[cfg(windows)]
-    if std::env::var_os("RUSTDESK_PROTECTED_INSTALL").is_some() {
-        return true;
-    }
-    let mut it = std::env::args();
-    if let Some(tmp) = it.next() {
-        if crate::is_setup(&tmp) {
-            return it.next() == None;
-        }
-    }
-    false
-}
 
 #[inline]
 pub fn get_license() -> String {
@@ -411,8 +368,7 @@ pub fn set_option(key: String, value: String) {
     // install_service) is REMOVED so NO local UI/FFI/IPC option-write can disable the headless host's
     // service — it was the live service-kill path (the sciter "Enable service"/"Start service" toggle,
     // macos.rs, any ipc::set_option). The key stays pinned "N" + in the is_option_can_save reject set
-    // (R-S16/R-S11), so a write now falls through inert. The sole sanctioned uninstall is the explicit
-    // `--uninstall` CLI (core_main). On Android there is no stop-service config toggle at all: the
+    // (R-S16/R-S11), so a write now falls through inert. On Android there is no stop-service config toggle at all: the
     // controlled-side stop is the OS foreground-service lifecycle (MainService.onDestroy -> the JNI
     // stopServer, which drives the direct listener's service-owned-generation teardown, R-D7a), not
     // a Config write — so no option-write path reaches the Android listener either.
@@ -442,22 +398,6 @@ pub fn set_option(key: String, value: String) {
         }
         Config::set_option(key, value);
     }
-}
-
-#[inline]
-pub fn install_path() -> String {
-    #[cfg(windows)]
-    return crate::platform::windows::get_install_info().1;
-    #[cfg(not(windows))]
-    return "".to_owned();
-}
-
-#[inline]
-pub fn install_options() -> String {
-    #[cfg(windows)]
-    return crate::platform::windows::get_install_options();
-    #[cfg(not(windows))]
-    return "{}".to_owned();
 }
 
 // R-D6 (Tier-4): the app-layer socks/proxy get/set wrappers (+ their `ipc::*socks*` query shims and

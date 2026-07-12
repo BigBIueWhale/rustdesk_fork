@@ -619,28 +619,9 @@ where
     let cmd = std::env::current_exe()?;
     let mut cmd = std::process::Command::new(cmd);
     cmd.envs(envs.iter().map(|(k, v)| (k, v)));
-    #[cfg(windows)]
-    let mut force_foreground = false;
-    #[cfg(windows)]
-    {
-        let arg_strs = args
-            .iter()
-            .map(|x| x.as_ref().to_string_lossy())
-            .collect::<Vec<_>>();
-        if arg_strs == vec!["--install"] || arg_strs == &["--noinstall"] {
-            cmd.env(crate::platform::SET_FOREGROUND_WINDOW, "1");
-            force_foreground = true;
-        }
-    }
     let result = cmd.args(&args).spawn();
     match result.as_ref() {
-        Ok(_child) =>
-        {
-            #[cfg(windows)]
-            if force_foreground {
-                unsafe { winapi::um::winuser::AllowSetForegroundWindow(_child.id() as u32) };
-            }
-        }
+        Ok(_) => {}
         Err(err) => log::error!("run_me: {err:?}"),
     }
     result
@@ -789,10 +770,6 @@ pub fn get_full_name() -> String {
         hbb_common::config::ORG.read().unwrap(),
         hbb_common::config::APP_NAME.read().unwrap(),
     )
-}
-
-pub fn is_setup(name: &str) -> bool {
-    name.to_lowercase().ends_with("install.exe")
 }
 
 pub fn get_custom_rendezvous_server(custom: String) -> String {

@@ -30,14 +30,13 @@ use std::{
             ffi::OsStrExt,
             ffi::OsStringExt,
             fs::{MetadataExt, OpenOptionsExt},
-            io::AsRawHandle,
             process::CommandExt,
         },
     },
     path::*,
     ptr::null_mut,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex, OnceLock,
     },
     time::{Duration, Instant},
@@ -90,9 +89,6 @@ use windows::{
             GetTokenInformation as WinGetTokenInformation, IsWellKnownSid, TokenUser,
             WinLocalSystemSid, TOKEN_QUERY as WIN_TOKEN_QUERY, TOKEN_USER,
         },
-        System::ApplicationInstallationAndServicing::{
-            MsiGetProductInfoW, INSTALLPROPERTY_PRODUCTNAME,
-        },
         System::Com::{
             CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, IPersistFile,
             CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
@@ -110,9 +106,8 @@ use windows::{
             PROCESS_TERMINATE as WIN_PROCESS_TERMINATE,
         },
         UI::Shell::{
-            FOLDERID_CommonPrograms, FOLDERID_CommonStartup, FOLDERID_Desktop,
-            FOLDERID_ProgramData, FOLDERID_ProgramFiles, FOLDERID_ProgramFilesX86,
-            FOLDERID_PublicDesktop, FOLDERID_UserProfiles, FOLDERID_Windows, IShellLinkW,
+            FOLDERID_Desktop, FOLDERID_ProgramData, FOLDERID_ProgramFiles,
+            FOLDERID_ProgramFilesX86, FOLDERID_UserProfiles, FOLDERID_Windows, IShellLinkW,
             SHGetKnownFolderPath, ShellLink, KF_FLAG_DEFAULT,
         },
     },
@@ -130,14 +125,12 @@ use winreg::{enums::*, RegKey};
 mod acl;
 pub use acl::set_path_permission;
 
-pub const FLUTTER_RUNNER_WIN32_WINDOW_CLASS: &'static str = "FLUTTER_RUNNER_WIN32_WINDOW"; // main window, install window
+pub const FLUTTER_RUNNER_WIN32_WINDOW_CLASS: &'static str = "FLUTTER_RUNNER_WIN32_WINDOW";
 pub const SET_FOREGROUND_WINDOW: &'static str = "SET_FOREGROUND_WINDOW";
 
-const REG_NAME_INSTALL_DESKTOPSHORTCUTS: &str = "DESKTOPSHORTCUTS";
-const REG_NAME_INSTALL_STARTMENUSHORTCUTS: &str = "STARTMENUSHORTCUTS";
-const PROTECTED_INSTALL_ENV_KEY: &str = "RUSTDESK_PROTECTED_INSTALL";
-const PROTECTED_INSTALL_STAGING_PREFIX: &str = "RustDesk-staging-";
 const FILE_ATTRIBUTE_REPARSE_POINT_FLAG: u32 = 0x400;
+static BROKER_UPDATE_NONCE: AtomicU64 = AtomicU64::new(0);
+static BROKER_UPDATE_MUTEX: Mutex<()> = Mutex::new(());
 
 pub fn get_focused_display(displays: Vec<DisplayInfo>) -> Option<usize> {
     unsafe {
@@ -1367,6 +1360,13 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct WindowsPathIdentity {
+    volume_serial_number: u32,
+    file_index_high: u32,
+    file_index_low: u32,
+}
+
 fn windows_path_identity_from_info(info: &BY_HANDLE_FILE_INFORMATION) -> WindowsPathIdentity {
     WindowsPathIdentity {
         volume_serial_number: info.dwVolumeSerialNumber,
@@ -1442,7 +1442,10 @@ fn require_existing_directory_no_reparse(
     Ok(identity)
 }
 
-fn require_existing_file_no_reparse(path: &Path, label: &str) -> ResultType<WindowsPathIdentity> {
+pub(crate) fn require_existing_file_no_reparse(
+    path: &Path,
+    label: &str,
+) -> ResultType<WindowsPathIdentity> {
     let (identity, attributes) = windows_path_identity_and_attributes(path, label)?;
     if attributes & FILE_ATTRIBUTE_DIRECTORY != 0
         || attributes & FILE_ATTRIBUTE_REPARSE_POINT_FLAG != 0
@@ -2256,32 +2259,6 @@ fn get_uninstall_registry_subkey() -> String {
     return get_subkey(&app_name, false);
 }
 
-// Return install options other than InstallLocation.
-pub fn get_install_options() -> String {
-    let app_name = crate::get_app_name();
-    let subkey = format!(".{}", app_name.to_lowercase());
-    let mut opts = HashMap::new();
-
-    let desktop_shortcuts = get_reg_of_hkcr(&subkey, REG_NAME_INSTALL_DESKTOPSHORTCUTS);
-    if let Some(desktop_shortcuts) = desktop_shortcuts {
-        opts.insert(REG_NAME_INSTALL_DESKTOPSHORTCUTS, desktop_shortcuts);
-    }
-    let start_menu_shortcuts = get_reg_of_hkcr(&subkey, REG_NAME_INSTALL_STARTMENUSHORTCUTS);
-    if let Some(start_menu_shortcuts) = start_menu_shortcuts {
-        opts.insert(REG_NAME_INSTALL_STARTMENUSHORTCUTS, start_menu_shortcuts);
-    }
-    serde_json::to_string(&opts).unwrap_or("{}".to_owned())
-}
-
-// This function return Option<String>, because some registry value may be empty.
-fn get_reg_of_hkcr(subkey: &str, name: &str) -> Option<String> {
-    let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
-    if let Ok(tmp) = hkcr.open_subkey(subkey.replace("HKEY_CLASSES_ROOT\\", "")) {
-        return tmp.get_value(name).ok();
-    }
-    None
-}
-
 pub fn get_install_info() -> (String, String, String) {
     get_install_info_with_subkey(get_uninstall_registry_subkey())
 }
@@ -2323,28 +2300,6 @@ fn program_files_dir() -> ResultType<PathBuf> {
     path_from_cotaskmem_pwstr(path, "SHGetKnownFolderPath(Program Files)")
 }
 
-fn common_programs_dir() -> ResultType<PathBuf> {
-    known_folder_path(
-        &FOLDERID_CommonPrograms,
-        "SHGetKnownFolderPath(Common Programs)",
-    )
-}
-
-fn common_startup_dir() -> ResultType<PathBuf> {
-    known_folder_path(
-        &FOLDERID_CommonStartup,
-        "SHGetKnownFolderPath(Common Startup)",
-    )
-}
-
-fn common_programs_app_dir() -> ResultType<PathBuf> {
-    Ok(common_programs_dir()?.join(crate::get_app_name()))
-}
-
-fn common_startup_tray_shortcut_path() -> ResultType<PathBuf> {
-    Ok(common_startup_dir()?.join(format!("{} Tray.lnk", crate::get_app_name())))
-}
-
 pub(crate) fn program_data_dir() -> ResultType<PathBuf> {
     known_folder_path(&FOLDERID_ProgramData, "SHGetKnownFolderPath(ProgramData)")
 }
@@ -2355,17 +2310,6 @@ fn user_profiles_dir() -> ResultType<PathBuf> {
 
 fn windows_dir() -> ResultType<PathBuf> {
     known_folder_path(&FOLDERID_Windows, "SHGetKnownFolderPath(Windows)")
-}
-
-fn public_desktop_dir() -> ResultType<PathBuf> {
-    known_folder_path(
-        &FOLDERID_PublicDesktop,
-        "SHGetKnownFolderPath(Public Desktop)",
-    )
-}
-
-fn public_desktop_app_shortcut_path() -> ResultType<PathBuf> {
-    Ok(public_desktop_dir()?.join(format!("{}.lnk", crate::get_app_name())))
 }
 
 fn default_install_path_buf() -> ResultType<PathBuf> {
@@ -2400,89 +2344,6 @@ pub(crate) fn fixed_service_install_path(requested_path: &str) -> ResultType<Pat
     bail!("custom Windows install paths are not supported for the installed service")
 }
 
-fn has_reparse_point(metadata: &fs::Metadata) -> bool {
-    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT_FLAG != 0
-}
-
-fn require_protected_install_source(
-    current_exe: PathBuf,
-    install_dir: &Path,
-) -> ResultType<(PathBuf, PathBuf)> {
-    if std::env::var_os(PROTECTED_INSTALL_ENV_KEY).as_deref() != Some(OsStr::new("1")) {
-        bail!("Windows EXE install requires protected installer staging");
-    }
-    if !is_elevated(None)? {
-        bail!("Windows EXE install requires an elevated protected installer process");
-    }
-
-    let exe_metadata = fs::symlink_metadata(&current_exe)?;
-    if !exe_metadata.is_file()
-        || exe_metadata.file_type().is_symlink()
-        || has_reparse_point(&exe_metadata)
-    {
-        bail!(
-            "Windows EXE install source is not a regular protected file: {:?}",
-            current_exe
-        );
-    }
-
-    let source_dir = current_exe
-        .parent()
-        .ok_or_else(|| anyhow!("Windows EXE install source has no parent directory"))?
-        .to_path_buf();
-    let source_metadata = fs::symlink_metadata(&source_dir)?;
-    if !source_metadata.is_dir()
-        || source_metadata.file_type().is_symlink()
-        || has_reparse_point(&source_metadata)
-    {
-        bail!(
-            "Windows EXE install source directory is not a regular protected directory: {:?}",
-            source_dir
-        );
-    }
-
-    let source_name = source_dir
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| anyhow!("Windows EXE install source directory has no valid name"))?;
-    if !source_name.starts_with(PROTECTED_INSTALL_STAGING_PREFIX) {
-        bail!(
-            "Windows EXE install source is not protected installer staging: {:?}",
-            source_dir
-        );
-    }
-
-    let program_files = program_files_dir()?;
-    let source_parent = source_dir
-        .parent()
-        .ok_or_else(|| anyhow!("Windows EXE install source directory has no parent"))?;
-    if normalized_windows_path_text(source_parent) != normalized_windows_path_text(&program_files) {
-        bail!(
-            "Windows EXE install source is outside protected Program Files staging: {:?}",
-            source_dir
-        );
-    }
-
-    let source = normalized_windows_path_text(&source_dir);
-    let final_install = normalized_windows_path_text(install_dir);
-    if source == final_install || source.starts_with(&(final_install + "\\")) {
-        bail!(
-            "Windows EXE install source overlaps the final install directory: {:?}",
-            source_dir
-        );
-    }
-
-    Ok((current_exe, source_dir))
-}
-
-fn fixed_service_install_dir_and_exe() -> ResultType<(String, String)> {
-    let install_dir = fixed_service_install_path("")?;
-    let exe_path = fixed_service_install_exe_path()?;
-    let path = install_dir.to_string_lossy().into_owned();
-    let exe = exe_path.to_string_lossy().into_owned();
-    Ok((path, exe))
-}
-
 fn trusted_system_dir() -> ResultType<PathBuf> {
     let mut buffer = vec![0u16; 32768];
     let len = unsafe { GetSystemDirectoryW(Some(&mut buffer)) } as usize;
@@ -2500,237 +2361,90 @@ pub(crate) fn trusted_system_tool_path(tool: &str) -> ResultType<PathBuf> {
         bail!("invalid trusted system tool name: {tool}");
     }
     let path = trusted_system_dir()?.join(tool);
-    if !path.is_file() {
-        bail!("trusted system tool is missing: {:?}", path);
-    }
+    require_existing_file_no_reparse(&path, "trusted Windows system tool")?;
     Ok(path)
 }
 
-fn quoted_batch_path(path: &Path) -> ResultType<String> {
-    let text = batch_path_text(path, "batch path")?;
-    Ok(format!("\"{text}\""))
-}
+pub fn check_update_broker_process() -> ResultType<PathBuf> {
+    let _update_guard = BROKER_UPDATE_MUTEX.lock().unwrap();
+    let installed_exe = require_current_exe_is_fixed_service_runtime()?;
+    let install_dir = installed_exe
+        .parent()
+        .ok_or_else(|| anyhow!("fixed Windows service executable has no parent directory"))?;
+    let source = trusted_system_tool_path("RuntimeBroker.exe")?;
+    let destination = install_dir.join(win_topmost_window::INJECTED_PROCESS_EXE);
 
-fn fixed_service_install_dir_batch_path() -> ResultType<String> {
-    quoted_batch_path(&fixed_service_install_path("")?)
-}
-
-fn batch_path_text(path: &Path, label: &str) -> ResultType<String> {
-    let text = path
-        .to_str()
-        .ok_or_else(|| anyhow!("{label} is not valid UTF-8: {:?}", path))?;
-    batch_literal_text(text, label)?;
-    Ok(text.to_owned())
-}
-
-fn batch_literal_text<'a>(text: &'a str, label: &str) -> ResultType<&'a str> {
-    if text.is_empty() {
-        bail!("{label} is empty");
-    }
-    if text.chars().any(|c| {
-        matches!(
-            c,
-            '"' | '%' | '!' | '&' | '|' | '<' | '>' | '^' | '@' | '\r' | '\n'
-        ) || c.is_control()
-    }) {
-        bail!("{label} contains characters unsafe for elevated cmd.exe execution: {text}");
-    }
-    Ok(text)
-}
-
-fn checked_batch_cmd(command: impl AsRef<str>) -> String {
-    format!(
-        "
-{}
-if errorlevel 1 exit /b 1
-",
-        command.as_ref()
-    )
-}
-
-fn checked_reg_add(command: String) -> String {
-    checked_batch_cmd(command)
-}
-
-fn require_batch_path_exists(quoted_path: &str) -> String {
-    format!("if not exist {quoted_path} exit /b 1")
-}
-
-fn require_batch_path_absent(quoted_path: &str) -> String {
-    format!("if exist {quoted_path} exit /b 1")
-}
-
-fn checked_copy_to_path(command: String, quoted_target: &str) -> String {
-    format!(
-        "
-{}
-{}
-",
-        checked_batch_cmd(command),
-        require_batch_path_exists(quoted_target)
-    )
-}
-
-fn ensure_batch_dir_exists(path: &Path) -> ResultType<String> {
-    let quoted_path = quoted_batch_path(path)?;
-    Ok(format!(
-        "
-if not exist {quoted_path} md {quoted_path}
-{}
-",
-        require_batch_path_exists(&quoted_path)
-    ))
-}
-
-fn delete_batch_path_absent_ok(command: String, quoted_path: &str) -> String {
-    format!(
-        "
-{command}
-{}
-",
-        require_batch_path_absent(quoted_path)
-    )
-}
-
-fn delete_reg_key_absent_ok(reg: &str, key: &str) -> String {
-    format!(
-        "
-{reg} delete {key} /f >nul 2>nul
-{reg} query {key} >nul 2>nul && exit /b 1
-"
-    )
-}
-
-fn delete_firewall_rule_absent_ok(netsh: &str, rule_name: &str) -> String {
-    format!(
-        "
-{netsh} advfirewall firewall delete rule name=\"{rule_name}\" >nul 2>nul
-{netsh} advfirewall firewall show rule name=\"{rule_name}\" >nul 2>nul && exit /b 1
-"
-    )
-}
-
-fn delete_service_absent_ok(
-    sc: &str,
-    timeout: &str,
-    service_name: &str,
-    absent_label: &str,
-) -> String {
-    format!(
-        "
-{sc} query \"{service_name}\" >nul 2>nul
-if not errorlevel 1 (
-  {sc} delete \"{service_name}\" >nul 2>nul
-)
-for /L %%i in (1,1,20) do (
-  {sc} query \"{service_name}\" >nul 2>nul
-  if errorlevel 1 goto {absent_label}
-  {timeout} /T 1 /NOBREAK >nul 2>nul
-)
-exit /b 1
-:{absent_label}
-"
-    )
-}
-
-fn checked_msi_uninstall_command(command: String) -> String {
-    format!(
-        "
-{command}
-if %ERRORLEVEL% EQU 3010 goto rustdesk_msi_uninstall_ok
-if %ERRORLEVEL% EQU 1605 goto rustdesk_msi_uninstall_ok
-if errorlevel 1 exit /b 1
-:rustdesk_msi_uninstall_ok
-"
-    )
-}
-
-fn trusted_system_cmd_path() -> ResultType<PathBuf> {
-    trusted_system_tool_path("cmd.exe")
-}
-
-struct WindowsSystemTools {
-    chcp: String,
-    cscript: String,
-    msiexec: String,
-    msiexec_path: PathBuf,
-    netsh: String,
-    reg: String,
-    sc: String,
-    taskkill: String,
-    timeout: String,
-    xcopy: String,
-}
-
-impl WindowsSystemTools {
-    fn resolve() -> ResultType<Self> {
-        let msiexec_path = trusted_system_tool_path("msiexec.exe")?;
-        let msiexec = quoted_batch_path(&msiexec_path)?;
-        Ok(Self {
-            chcp: quoted_batch_path(&trusted_system_tool_path("chcp.com")?)?,
-            cscript: quoted_batch_path(&trusted_system_tool_path("cscript.exe")?)?,
-            msiexec,
-            msiexec_path,
-            netsh: quoted_batch_path(&trusted_system_tool_path("netsh.exe")?)?,
-            reg: quoted_batch_path(&trusted_system_tool_path("reg.exe")?)?,
-            sc: quoted_batch_path(&trusted_system_tool_path("sc.exe")?)?,
-            taskkill: quoted_batch_path(&trusted_system_tool_path("taskkill.exe")?)?,
-            timeout: quoted_batch_path(&trusted_system_tool_path("timeout.exe")?)?,
-            xcopy: quoted_batch_path(&trusted_system_tool_path("xcopy.exe")?)?,
-        })
-    }
-}
-
-pub fn check_update_broker_process() -> ResultType<()> {
-    let tools = WindowsSystemTools::resolve()?;
-    let process_exe = win_topmost_window::INJECTED_PROCESS_EXE;
-    let origin_process_exe = win_topmost_window::ORIGIN_PROCESS_EXE;
-
-    let exe_file = std::env::current_exe()?;
-    let Some(cur_dir) = exe_file.parent() else {
-        bail!("Cannot get parent of current exe file");
-    };
-    let cur_exe = cur_dir.join(process_exe);
-    let cur_exe_quoted = quoted_batch_path(&cur_exe)?;
-    let copy_broker = checked_copy_to_path(
-        format!("copy /Y \"{origin_process_exe}\" {cur_exe_quoted}"),
-        &cur_exe_quoted,
-    );
-
-    // Force update broker exe if failed to check modified time.
-    let cmds = format!(
-        "
-        {chcp} 65001
-        {taskkill} /F /IM {process_exe}
-        {copy_broker}
-    ",
-        chcp = tools.chcp,
-        taskkill = tools.taskkill,
-    );
-
-    if !std::path::Path::new(&cur_exe).exists() {
-        run_cmds(cmds, false, "update_broker")?;
-        return Ok(());
-    }
-
-    let ori_modified = fs::metadata(origin_process_exe)?.modified()?;
-    if let Ok(metadata) = fs::metadata(&cur_exe) {
-        if let Ok(cur_modified) = metadata.modified() {
-            if cur_modified == ori_modified {
-                return Ok(());
-            } else {
-                log::info!(
-                    "broker process updated, modify time from {:?} to {:?}",
-                    cur_modified,
-                    ori_modified
-                );
-            }
+    if destination.exists() {
+        require_existing_file_no_reparse(&destination, "installed privacy broker")?;
+        if sha256_file(&source)? == sha256_file(&destination)? {
+            return Ok(destination);
         }
     }
 
-    run_cmds(cmds, false, "update_broker")?;
+    let pending = install_dir.join(format!(
+        ".{}.{}.pending",
+        win_topmost_window::INJECTED_PROCESS_EXE,
+        BROKER_UPDATE_NONCE.fetch_add(1, Ordering::Relaxed)
+    ));
+    let mut input = fs::File::open(&source)?;
+    let mut output = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .attributes(FILE_ATTRIBUTE_TEMPORARY)
+        .open(&pending)?;
+    let copy_result = io::copy(&mut input, &mut output).and_then(|_| output.sync_all());
+    drop(output);
+    if let Err(err) = copy_result {
+        let _ = fs::remove_file(&pending);
+        return Err(err.into());
+    }
+    if sha256_file(&source)? != sha256_file(&pending)? {
+        let _ = fs::remove_file(&pending);
+        bail!("pending privacy broker does not match the trusted Windows image");
+    }
 
-    Ok(())
+    if destination.exists() {
+        require_existing_file_no_reparse(&destination, "installed privacy broker")?;
+        let destination_wide = null_terminated_wide(destination.as_os_str(), "broker destination")?;
+        let pending_wide = null_terminated_wide(pending.as_os_str(), "pending broker")?;
+        let replaced = unsafe {
+            ReplaceFileW(
+                destination_wide.as_ptr(),
+                pending_wide.as_ptr(),
+                std::ptr::null(),
+                REPLACEFILE_WRITE_THROUGH,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        if replaced == 0 {
+            let err = io::Error::last_os_error();
+            let _ = fs::remove_file(&pending);
+            return Err(err.into());
+        }
+    } else if let Err(err) = fs::rename(&pending, &destination) {
+        let _ = fs::remove_file(&pending);
+        return Err(err.into());
+    }
+    require_existing_file_no_reparse(&destination, "installed privacy broker")?;
+    if sha256_file(&source)? != sha256_file(&destination)? {
+        bail!("installed privacy broker does not match the trusted Windows image");
+    }
+    Ok(destination)
+}
+
+fn sha256_file(path: &Path) -> ResultType<[u8; 32]> {
+    let mut file = fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(hasher.finalize().into())
 }
 
 fn get_install_info_with_subkey(subkey: String) -> (String, String, String) {
@@ -2741,1031 +2455,6 @@ fn get_install_info_with_subkey(subkey: String) -> (String, String, String) {
     path = path.trim_end_matches('\\').to_owned();
     let exe = format!("{}\\{}.exe", path, crate::get_app_name());
     (subkey, path, exe)
-}
-
-fn copy_source_dir_cmd(
-    source_dir: &Path,
-    expected_exe: &str,
-    install_dir: &str,
-    tools: &WindowsSystemTools,
-) -> ResultType<String> {
-    let src_parent = quoted_batch_path(source_dir)?;
-    let install_dir = quoted_batch_path(Path::new(install_dir))?;
-    let expected_exe = quoted_batch_path(Path::new(expected_exe))?;
-    let main_copy = checked_copy_to_path(
-        format!(
-            "{} {src_parent} {install_dir} /Y /E /H /I /K /R /Z",
-            tools.xcopy,
-        ),
-        &expected_exe,
-    );
-    Ok(main_copy)
-}
-
-fn copy_exe_cmd(
-    source_dir: &Path,
-    exe: &str,
-    path: &str,
-    tools: &WindowsSystemTools,
-) -> ResultType<String> {
-    let main_exe = copy_source_dir_cmd(source_dir, exe, path, tools)?;
-    let broker_exe = win_topmost_window::INJECTED_PROCESS_EXE;
-    let broker_dst = Path::new(path).join(broker_exe);
-    let broker_dst = quoted_batch_path(&broker_dst)?;
-    let copy_broker = checked_copy_to_path(
-        format!(
-            "copy /Y \"{}\" {broker_dst}",
-            win_topmost_window::ORIGIN_PROCESS_EXE,
-        ),
-        &broker_dst,
-    );
-    Ok(format!(
-        "
-        {main_exe}
-        {copy_broker}
-        ",
-    ))
-}
-
-#[inline]
-pub fn rename_exe_cmd(src_exe: &str, path: &str) -> ResultType<String> {
-    let src_exe_filename = PathBuf::from(src_exe)
-        .file_name()
-        .ok_or(anyhow!("Can't get file name of {src_exe}"))?
-        .to_string_lossy()
-        .to_string();
-    let app_name = crate::get_app_name().to_lowercase();
-    if src_exe_filename.to_lowercase() == format!("{app_name}.exe") {
-        Ok("".to_owned())
-    } else {
-        Ok(format!(
-            "
-        move /Y \"{path}\\{src_exe_filename}\" \"{path}\\{app_name}.exe\"
-        ",
-        ))
-    }
-}
-
-#[inline]
-pub fn remove_meta_toml_cmd(is_msi: bool, path: &str) -> String {
-    if is_msi && crate::is_custom_client() {
-        format!(
-            "
-        del /F /Q \"{path}\\meta.toml\"
-        ",
-        )
-    } else {
-        "".to_owned()
-    }
-}
-
-fn get_after_install(
-    exe: &str,
-    reg_value_start_menu_shortcuts: Option<String>,
-    reg_value_desktop_shortcuts: Option<String>,
-    tools: &WindowsSystemTools,
-) -> String {
-    let app_name = crate::get_app_name();
-    let ext = app_name.to_lowercase();
-
-    // reg delete HKEY_CURRENT_USER\Software\Classes for
-    // https://github.com/rustdesk/rustdesk/commit/f4bdfb6936ae4804fc8ab1cf560db192622ad01a
-    // and https://github.com/leanflutter/uni_links_desktop/blob/1b72b0226cec9943ca8a84e244c149773f384e46/lib/src/protocol_registrar_impl_windows.dart#L30
-    let hcu = RegKey::predef(HKEY_CURRENT_USER);
-    hcu.delete_subkey_all(format!("Software\\Classes\\{}", exe))
-        .ok();
-
-    let mut commands = Vec::new();
-    commands.push(checked_reg_add(format!(
-        "{reg} add HKEY_CLASSES_ROOT\\.{ext} /f",
-        reg = tools.reg
-    )));
-    if let Some(v) = reg_value_desktop_shortcuts {
-        commands.push(checked_reg_add(format!("{reg} add HKEY_CLASSES_ROOT\\.{ext} /f /v {REG_NAME_INSTALL_DESKTOPSHORTCUTS} /t REG_SZ /d \"{v}\"", reg = tools.reg)));
-    }
-    if let Some(v) = reg_value_start_menu_shortcuts {
-        commands.push(checked_reg_add(format!("{reg} add HKEY_CLASSES_ROOT\\.{ext} /f /v {REG_NAME_INSTALL_STARTMENUSHORTCUTS} /t REG_SZ /d \"{v}\"", reg = tools.reg)));
-    }
-    commands.extend([
-        checked_reg_add(format!(
-            "{reg} add HKEY_CLASSES_ROOT\\.{ext}\\DefaultIcon /f",
-            reg = tools.reg
-        )),
-        checked_reg_add(format!(
-            "{reg} add HKEY_CLASSES_ROOT\\.{ext}\\DefaultIcon /f /ve /t REG_SZ  /d \"\\\"{exe}\\\",0\"",
-            reg = tools.reg
-        )),
-        checked_reg_add(format!(
-            "{reg} add HKEY_CLASSES_ROOT\\.{ext}\\shell /f",
-            reg = tools.reg
-        )),
-        checked_reg_add(format!(
-            "{reg} add HKEY_CLASSES_ROOT\\.{ext}\\shell\\open /f",
-            reg = tools.reg
-        )),
-        checked_reg_add(format!(
-            "{reg} add HKEY_CLASSES_ROOT\\.{ext}\\shell\\open\\command /f",
-            reg = tools.reg
-        )),
-        checked_reg_add(format!(
-            "{reg} add HKEY_CLASSES_ROOT\\.{ext}\\shell\\open\\command /f /ve /t REG_SZ /d \"\\\"{exe}\\\" --play \\\"%%1\\\"\"",
-            reg = tools.reg
-        )),
-        checked_reg_add(format!(
-            "{reg} add HKEY_CLASSES_ROOT\\{ext} /f",
-            reg = tools.reg
-        )),
-        checked_reg_add(format!(
-            "{reg} add HKEY_CLASSES_ROOT\\{ext} /f /v \"URL Protocol\" /t REG_SZ /d \"\"",
-            reg = tools.reg
-        )),
-        checked_reg_add(format!(
-            "{reg} add HKEY_CLASSES_ROOT\\{ext}\\shell /f",
-            reg = tools.reg
-        )),
-        checked_reg_add(format!(
-            "{reg} add HKEY_CLASSES_ROOT\\{ext}\\shell\\open /f",
-            reg = tools.reg
-        )),
-        checked_reg_add(format!(
-            "{reg} add HKEY_CLASSES_ROOT\\{ext}\\shell\\open\\command /f",
-            reg = tools.reg
-        )),
-        checked_reg_add(format!(
-            "{reg} add HKEY_CLASSES_ROOT\\{ext}\\shell\\open\\command /f /ve /t REG_SZ /d \"\\\"{exe}\\\" \\\"%%1\\\"\"",
-            reg = tools.reg
-        )),
-        checked_batch_cmd(format!(
-            "{netsh} advfirewall firewall add rule name=\"{app_name} Service\" dir=out action=allow program=\"{exe}\" enable=yes",
-            netsh = tools.netsh
-        )),
-        checked_batch_cmd(format!(
-            "{netsh} advfirewall firewall add rule name=\"{app_name} Service\" dir=in action=allow program=\"{exe}\" enable=yes",
-            netsh = tools.netsh
-        )),
-    ]);
-    let create_service = get_create_service(exe, tools);
-    if !create_service.trim().is_empty() {
-        commands.push(create_service);
-    }
-
-    format!(
-        "
-    {chcp} 65001
-    {commands}
-    ",
-        chcp = tools.chcp,
-        commands = commands.join("\n"),
-    )
-}
-
-pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> ResultType<()> {
-    let tools = WindowsSystemTools::resolve()?;
-    let uninstall_str = get_uninstall(false, &tools)?;
-    let install_dir = fixed_service_install_path(&path)?;
-    let path = install_dir.to_string_lossy().into_owned();
-    let (subkey, _path, exe) = get_default_install_info();
-    let mut exe = exe;
-    exe = exe.replace(&_path, &path);
-    let mut version_major = "0";
-    let mut version_minor = "0";
-    let mut version_build = "0";
-    let versions: Vec<&str> = crate::VERSION.split(".").collect();
-    if versions.len() > 0 {
-        version_major = versions[0];
-    }
-    if versions.len() > 1 {
-        version_minor = versions[1];
-    }
-    if versions.len() > 2 {
-        version_build = versions[2];
-    }
-    let app_name = crate::get_app_name();
-
-    let current_exe = std::env::current_exe()?;
-    let (current_exe, source_dir) = require_protected_install_source(current_exe, &install_dir)?;
-    let cur_exe = batch_path_text(&current_exe, "current exe")?;
-    let mut reg_value_desktop_shortcuts = "0".to_owned();
-    let mut reg_value_start_menu_shortcuts = "0".to_owned();
-    let mut shortcut_scripts = Vec::new();
-    let mut shortcut_cmds = String::new();
-    if options.contains("desktopicon") {
-        let desktop_shortcut_path = public_desktop_app_shortcut_path()?;
-        let desktop_shortcut = create_shortcut_command_file(
-            &desktop_shortcut_path,
-            &exe,
-            None,
-            None,
-            &path,
-            &cur_exe,
-            "desktop_shortcut",
-        );
-        let desktop_shortcut = desktop_shortcut?;
-        shortcut_cmds.push_str(&run_shortcut_script_cmd(
-            desktop_shortcut.path_str()?,
-            &desktop_shortcut_path,
-            &tools,
-        )?);
-        shortcut_scripts.push(desktop_shortcut);
-        reg_value_desktop_shortcuts = "1".to_owned();
-    }
-    if options.contains("startmenu") {
-        let start_menu = common_programs_app_dir()?;
-        let quoted_start_menu = quoted_batch_path(&start_menu)?;
-        shortcut_cmds.push_str(&format!(
-            "
-if not exist {quoted_start_menu} md {quoted_start_menu}
-if not exist {quoted_start_menu} exit /b 1
-"
-        ));
-        let start_menu_shortcut_path = start_menu.join(format!("{app_name}.lnk"));
-        let start_menu_shortcut = create_shortcut_command_file(
-            &start_menu_shortcut_path,
-            &exe,
-            None,
-            None,
-            &path,
-            &cur_exe,
-            "start_menu_shortcut",
-        )?;
-        shortcut_cmds.push_str(&run_shortcut_script_cmd(
-            start_menu_shortcut.path_str()?,
-            &start_menu_shortcut_path,
-            &tools,
-        )?);
-        shortcut_scripts.push(start_menu_shortcut);
-        let start_menu_uninstall_shortcut_path =
-            start_menu.join(format!("Uninstall {app_name}.lnk"));
-        let start_menu_uninstall_shortcut = create_shortcut_command_file(
-            &start_menu_uninstall_shortcut_path,
-            &exe,
-            Some("--uninstall"),
-            Some("msiexec.exe"),
-            "",
-            "",
-            "start_menu_uninstall_shortcut",
-        )?;
-        shortcut_cmds.push_str(&run_shortcut_script_cmd(
-            start_menu_uninstall_shortcut.path_str()?,
-            &start_menu_uninstall_shortcut_path,
-            &tools,
-        )?);
-        shortcut_scripts.push(start_menu_uninstall_shortcut);
-        reg_value_start_menu_shortcuts = "1".to_owned();
-    }
-    if !config::is_outgoing_only() {
-        let tray_shortcut_path = common_startup_tray_shortcut_path()?;
-        let tray_shortcut = create_shortcut_command_file(
-            &tray_shortcut_path,
-            &exe,
-            Some("--tray"),
-            None,
-            &path,
-            &cur_exe,
-            "tray_shortcut",
-        )?;
-        shortcut_cmds.push_str(&run_shortcut_script_cmd(
-            tray_shortcut.path_str()?,
-            &tray_shortcut_path,
-            &tools,
-        )?);
-        shortcut_scripts.push(tray_shortcut);
-    }
-    let install_uninstall_shortcut_path =
-        Path::new(&path).join(format!("Uninstall {app_name}.lnk"));
-    let install_uninstall_shortcut = create_shortcut_command_file(
-        &install_uninstall_shortcut_path,
-        &exe,
-        Some("--uninstall"),
-        Some("msiexec.exe"),
-        "",
-        "",
-        "install_uninstall_shortcut",
-    )?;
-    shortcut_cmds.push_str(&run_shortcut_script_cmd(
-        install_uninstall_shortcut.path_str()?,
-        &install_uninstall_shortcut_path,
-        &tools,
-    )?);
-    shortcut_scripts.push(install_uninstall_shortcut);
-
-    let meta = std::fs::symlink_metadata(&current_exe)?;
-    let mut size = meta.len() / 1024;
-    if let Some(d) = source_dir.to_str() {
-        size = get_directory_size_kb(d);
-    }
-    // https://docs.microsoft.com/zh-cn/windows/win32/msi/uninstall-registry-key?redirectedfrom=MSDNa
-    // https://www.windowscentral.com/how-edit-registry-using-command-prompt-windows-10
-    // https://www.tenforums.com/tutorials/70903-add-remove-allowed-apps-through-windows-firewall-windows-10-a.html
-    // R-X4: the install-time license injection (custom_server-from-exe-name -> key /
-    // custom-rendezvous-server / api-server) is excised; the fork is direct-IP only.
-
-    let display_icon = get_custom_icon(&path, &cur_exe).unwrap_or(exe.to_string());
-    let install_dir_cmd = ensure_batch_dir_exists(Path::new(&path))?;
-    let copy_exe = copy_exe_cmd(&source_dir, &exe, &path, &tools)?;
-    let install_reg_cmds = [
-        checked_reg_add(format!("{reg} add {subkey} /f", reg = tools.reg)),
-        checked_reg_add(format!(
-            "{reg} add {subkey} /f /v DisplayIcon /t REG_SZ /d \"{display_icon}\"",
-            reg = tools.reg
-        )),
-        checked_reg_add(format!(
-            "{reg} add {subkey} /f /v DisplayName /t REG_SZ /d \"{app_name}\"",
-            reg = tools.reg
-        )),
-        checked_reg_add(format!(
-            "{reg} add {subkey} /f /v DisplayVersion /t REG_SZ /d \"{version}\"",
-            reg = tools.reg,
-            version = crate::VERSION.replace("-", "."),
-        )),
-        checked_reg_add(format!(
-            "{reg} add {subkey} /f /v Version /t REG_SZ /d \"{version}\"",
-            reg = tools.reg,
-            version = crate::VERSION.replace("-", "."),
-        )),
-        checked_reg_add(format!(
-            "{reg} add {subkey} /f /v BuildDate /t REG_SZ /d \"{build_date}\"",
-            reg = tools.reg,
-            build_date = crate::BUILD_DATE,
-        )),
-        checked_reg_add(format!(
-            "{reg} add {subkey} /f /v InstallLocation /t REG_SZ /d \"{path}\"",
-            reg = tools.reg,
-        )),
-        checked_reg_add(format!(
-            "{reg} add {subkey} /f /v Publisher /t REG_SZ /d \"{app_name}\"",
-            reg = tools.reg,
-        )),
-        checked_reg_add(format!(
-            "{reg} add {subkey} /f /v VersionMajor /t REG_DWORD /d {version_major}",
-            reg = tools.reg,
-        )),
-        checked_reg_add(format!(
-            "{reg} add {subkey} /f /v VersionMinor /t REG_DWORD /d {version_minor}",
-            reg = tools.reg,
-        )),
-        checked_reg_add(format!(
-            "{reg} add {subkey} /f /v VersionBuild /t REG_DWORD /d {version_build}",
-            reg = tools.reg,
-        )),
-        checked_reg_add(format!(
-            "{reg} add {subkey} /f /v UninstallString /t REG_SZ /d \"\\\"{exe}\\\" --uninstall\"",
-            reg = tools.reg,
-        )),
-        checked_reg_add(format!(
-            "{reg} add {subkey} /f /v EstimatedSize /t REG_DWORD /d {size}",
-            reg = tools.reg,
-        )),
-        checked_reg_add(format!(
-            "{reg} add {subkey} /f /v WindowsInstaller /t REG_DWORD /d 0",
-            reg = tools.reg,
-        )),
-    ]
-    .join("\n");
-
-    let cmds = format!(
-        "
-	{uninstall_str}
-		{chcp} 65001
-		{install_dir_cmd}
-		{copy_exe}
-		{install_reg_cmds}
-		{shortcut_cmds}
-	{import_config}
-	{after_install}
-	{sleep}
-	    ",
-        chcp = tools.chcp,
-        after_install = get_after_install(
-            &exe,
-            Some(reg_value_start_menu_shortcuts),
-            Some(reg_value_desktop_shortcuts),
-            &tools,
-        ),
-        sleep = if debug {
-            format!("{} /T 300", tools.timeout)
-        } else {
-            String::new()
-        },
-        import_config = get_import_config(&exe),
-        shortcut_cmds = shortcut_cmds,
-    );
-    run_cmds(cmds, debug, "install")?;
-    run_after_elevated_service_cmds(&exe, silent)?;
-    Ok(())
-}
-
-pub fn run_after_install() -> ResultType<()> {
-    let tools = WindowsSystemTools::resolve()?;
-    let (_, exe) = fixed_service_install_dir_and_exe()?;
-    run_cmds(
-        get_after_install(&exe, None, None, &tools),
-        true,
-        "after_install",
-    )
-}
-
-pub fn run_before_uninstall() -> ResultType<()> {
-    let tools = WindowsSystemTools::resolve()?;
-    run_cmds(get_before_uninstall(true, &tools), true, "before_install")
-}
-
-fn get_before_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> String {
-    let app_name = crate::get_app_name();
-    let ext = app_name.to_lowercase();
-    let filter = if kill_self {
-        "".to_string()
-    } else {
-        format!(" /FI \"PID ne {}\"", get_current_pid())
-    };
-    let delete_service = delete_service_absent_ok(
-        &tools.sc,
-        &tools.timeout,
-        &app_name,
-        "rustdesk_service_deleted_before_uninstall",
-    );
-    let delete_hkcr_ext =
-        delete_reg_key_absent_ok(&tools.reg, &format!("HKEY_CLASSES_ROOT\\.{ext}"));
-    let delete_hkcr_protocol =
-        delete_reg_key_absent_ok(&tools.reg, &format!("HKEY_CLASSES_ROOT\\{ext}"));
-    let delete_firewall_rule =
-        delete_firewall_rule_absent_ok(&tools.netsh, &format!("{app_name} Service"));
-    format!(
-        "
-    {chcp} 65001
-    {sc} stop \"{app_name}\" >nul 2>nul
-    {taskkill} /F /IM {broker_exe}
-    {taskkill} /F /IM {app_name}.exe{filter}
-    {delete_service}
-    {delete_hkcr_ext}
-    {delete_hkcr_protocol}
-    {delete_firewall_rule}
-    ",
-        chcp = tools.chcp,
-        sc = tools.sc,
-        taskkill = tools.taskkill,
-        broker_exe = WIN_TOPMOST_INJECTED_PROCESS_EXE,
-    )
-}
-
-/// Constructs the uninstall command string for the application.
-///
-/// # Parameters
-/// - `kill_self`: The command will kill the process of current app name. If `true`, it will kill
-///   the current process as well. If `false`, it will exclude the current process from the kill
-///   command.
-fn split_windows_command_tokens(command: &str) -> ResultType<Vec<String>> {
-    let mut tokens = Vec::new();
-    let mut token = String::new();
-    let mut in_quotes = false;
-
-    for ch in command.chars() {
-        match ch {
-            '"' => in_quotes = !in_quotes,
-            '\0' | '\r' | '\n' => bail!("MSI uninstall string contains a control character"),
-            ch if ch.is_whitespace() && !in_quotes => {
-                if !token.is_empty() {
-                    tokens.push(std::mem::take(&mut token));
-                }
-            }
-            ch => token.push(ch),
-        }
-    }
-
-    if in_quotes {
-        bail!("MSI uninstall string contains an unterminated quote");
-    }
-    if !token.is_empty() {
-        tokens.push(token);
-    }
-    Ok(tokens)
-}
-
-fn normalize_msi_product_code(value: &str) -> ResultType<String> {
-    let value = value.trim();
-    let bytes = value.as_bytes();
-    if bytes.len() != 38 || bytes.first() != Some(&b'{') || bytes.last() != Some(&b'}') {
-        bail!("MSI product code is not a braced GUID");
-    }
-
-    for (idx, byte) in bytes.iter().enumerate() {
-        let valid = match idx {
-            0 => *byte == b'{',
-            37 => *byte == b'}',
-            9 | 14 | 19 | 24 => *byte == b'-',
-            _ => byte.is_ascii_hexdigit(),
-        };
-        if !valid {
-            bail!("MSI product code is not a braced GUID");
-        }
-    }
-
-    Ok(value.to_ascii_uppercase())
-}
-
-fn is_msiexec_token(token: &str, trusted_msiexec_path: &Path) -> bool {
-    if token.eq_ignore_ascii_case("msiexec.exe") {
-        return true;
-    }
-    let token = token.replace('/', "\\");
-    let trusted = trusted_msiexec_path.to_string_lossy().replace('/', "\\");
-    token.eq_ignore_ascii_case(&trusted)
-}
-
-fn take_prior_msi_product_code(slot: &mut Option<String>, raw: &str) -> ResultType<()> {
-    let product_code = normalize_msi_product_code(raw)?;
-    if slot.replace(product_code).is_some() {
-        bail!("MSI uninstall string contains more than one product code");
-    }
-    Ok(())
-}
-
-fn prior_msi_uninstall_product_code(
-    command: &str,
-    trusted_msiexec_path: &Path,
-) -> ResultType<String> {
-    let tokens = split_windows_command_tokens(command)?;
-    if tokens.is_empty() {
-        bail!("MSI uninstall string is empty");
-    }
-    if !is_msiexec_token(&tokens[0], trusted_msiexec_path) {
-        bail!("MSI uninstall string does not start with trusted msiexec.exe");
-    }
-
-    let mut product_code = None;
-    let mut index = 1usize;
-    while index < tokens.len() {
-        let token = &tokens[index];
-        let lower = token.to_ascii_lowercase();
-        if lower == "/x" || lower == "-x" {
-            index += 1;
-            let Some(raw_product_code) = tokens.get(index) else {
-                bail!("MSI uninstall flag is missing a product code");
-            };
-            take_prior_msi_product_code(&mut product_code, raw_product_code)?;
-        } else if lower.starts_with("/x") || lower.starts_with("-x") {
-            take_prior_msi_product_code(&mut product_code, &token[2..])?;
-        } else if matches!(lower.as_str(), "/qn" | "/quiet" | "/norestart") {
-            // Accepted only as inert legacy MSI UI flags; the command is reconstructed below.
-        } else {
-            bail!("MSI uninstall string contains unsupported arguments");
-        }
-        index += 1;
-    }
-
-    product_code.ok_or_else(|| anyhow!("MSI uninstall string has no product code"))
-}
-
-fn msi_product_name(product_code: &str) -> ResultType<String> {
-    let product_code = null_terminated_wide(OsStr::new(product_code), "MSI product code")?;
-    let mut len = 0u32;
-    let query = unsafe {
-        MsiGetProductInfoW(
-            PCWSTR(product_code.as_ptr()),
-            INSTALLPROPERTY_PRODUCTNAME,
-            None,
-            Some(&mut len),
-        )
-    };
-    if query != ERROR_MORE_DATA && query != ERROR_SUCCESS {
-        bail!("MsiGetProductInfoW(ProductName) failed before sizing: {query}");
-    }
-    let mut buffer = vec![0u16; len as usize + 1];
-    let status = unsafe {
-        MsiGetProductInfoW(
-            PCWSTR(product_code.as_ptr()),
-            INSTALLPROPERTY_PRODUCTNAME,
-            Some(PWSTR(buffer.as_mut_ptr())),
-            Some(&mut len),
-        )
-    };
-    if status != ERROR_SUCCESS {
-        bail!("MsiGetProductInfoW(ProductName) failed: {status}");
-    }
-    if len == 0 {
-        bail!("MSI ProductName is empty");
-    }
-    Ok(OsString::from_wide(&buffer[..len as usize])
-        .to_string_lossy()
-        .into_owned())
-}
-
-fn trusted_prior_msi_uninstall_command(
-    command: &str,
-    tools: &WindowsSystemTools,
-) -> ResultType<String> {
-    let product_code = prior_msi_uninstall_product_code(command, &tools.msiexec_path)?;
-    let product_name = msi_product_name(&product_code)?;
-    let app_name = crate::get_app_name();
-    if product_name != app_name {
-        bail!(
-            "Refusing prior MSI uninstall for product {product_code}: ProductName {product_name:?} does not match {app_name:?}"
-        );
-    }
-    Ok(checked_msi_uninstall_command(format!(
-        "{} /X {}",
-        tools.msiexec, product_code
-    )))
-}
-
-fn get_uninstall(kill_self: bool, tools: &WindowsSystemTools) -> ResultType<String> {
-    let reg_uninstall_string = get_reg("UninstallString");
-    if reg_uninstall_string.to_lowercase().contains("msiexec.exe") {
-        return trusted_prior_msi_uninstall_command(&reg_uninstall_string, tools);
-    }
-
-    let exe = std::env::current_exe()
-        .map_err(|err| anyhow!("Failed to resolve current exe for EXE uninstall helpers: {err}"))?;
-    let uninstall_cert_cmd =
-        checked_batch_cmd(format!("{} --uninstall-cert", quoted_batch_path(&exe)?));
-    let uninstall_amyuni_idd = checked_batch_cmd(format!(
-        "{} --uninstall-amyuni-idd",
-        quoted_batch_path(&exe)?
-    ));
-    let subkey = get_uninstall_registry_subkey();
-    let install_dir = fixed_service_install_dir_batch_path()?;
-    let start_menu = quoted_batch_path(&common_programs_app_dir()?)?;
-    let public_desktop_shortcut = quoted_batch_path(&public_desktop_app_shortcut_path()?)?;
-    let startup_tray_shortcut = quoted_batch_path(&common_startup_tray_shortcut_path()?)?;
-    let delete_uninstall_key = delete_reg_key_absent_ok(&tools.reg, &subkey);
-    let remove_install_dir = delete_batch_path_absent_ok(
-        format!("if exist {install_dir} rd /s /q {install_dir}"),
-        &install_dir,
-    );
-    let remove_start_menu = delete_batch_path_absent_ok(
-        format!("if exist {start_menu} rd /s /q {start_menu}"),
-        &start_menu,
-    );
-    let remove_public_desktop_shortcut = delete_batch_path_absent_ok(
-        format!("if exist {public_desktop_shortcut} del /f /q {public_desktop_shortcut}"),
-        &public_desktop_shortcut,
-    );
-    let remove_startup_tray_shortcut = delete_batch_path_absent_ok(
-        format!("if exist {startup_tray_shortcut} del /f /q {startup_tray_shortcut}"),
-        &startup_tray_shortcut,
-    );
-    Ok(format!(
-        "
-    {before_uninstall}
-    {uninstall_cert_cmd}
-    {delete_uninstall_key}
-    {uninstall_amyuni_idd}
-    {remove_install_dir}
-    {remove_start_menu}
-    {remove_public_desktop_shortcut}
-    {remove_startup_tray_shortcut}
-    ",
-        before_uninstall = get_before_uninstall(kill_self, tools),
-    ))
-}
-
-pub fn uninstall_me(kill_self: bool) -> ResultType<()> {
-    let tools = WindowsSystemTools::resolve()?;
-    run_cmds(get_uninstall(kill_self, &tools)?, true, "uninstall")
-}
-
-struct InstallerCommandFile {
-    path: PathBuf,
-    file: Option<fs::File>,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct WindowsPathIdentity {
-    volume_serial_number: u32,
-    file_index_high: u32,
-    file_index_low: u32,
-}
-
-impl InstallerCommandFile {
-    fn path_str(&self) -> ResultType<&str> {
-        self.path.to_str().ok_or_else(|| {
-            anyhow!(
-                "installer command file path is not valid UTF-8: {:?}",
-                self.path
-            )
-        })
-    }
-}
-
-fn installer_command_file_identity(file: &fs::File) -> ResultType<WindowsPathIdentity> {
-    path_identity_from_handle(file.as_raw_handle() as HANDLE, "installer command file")
-}
-
-fn installer_command_digest(bytes: &[u8]) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    let digest = hasher.finalize();
-    let mut out = [0u8; 32];
-    out.copy_from_slice(&digest);
-    out
-}
-
-fn reopen_verified_installer_command_file(
-    path: &Path,
-    expected_identity: WindowsPathIdentity,
-    expected_digest: [u8; 32],
-    expected_len: u64,
-) -> ResultType<fs::File> {
-    let mut file = fs::OpenOptions::new()
-        .read(true)
-        .share_mode(FILE_SHARE_READ)
-        .open(path)?;
-    let actual_identity = installer_command_file_identity(&file)?;
-    if actual_identity != expected_identity {
-        bail!(
-            "installer command file identity changed before elevation: {:?}",
-            path
-        );
-    }
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)?;
-    if bytes.len() as u64 != expected_len || installer_command_digest(&bytes) != expected_digest {
-        bail!(
-            "installer command file content changed before elevation: {:?}",
-            path
-        );
-    }
-    Ok(file)
-}
-
-impl Drop for InstallerCommandFile {
-    fn drop(&mut self) {
-        self.file.take();
-        allow_err!(fs::remove_file(&self.path));
-    }
-}
-
-fn push_installer_command_dir(
-    dirs: &mut Vec<PathBuf>,
-    candidate: ResultType<PathBuf>,
-    label: &str,
-) {
-    if let Ok(dir) = candidate.and_then(|dir| {
-        batch_path_text(&dir, label)?;
-        Ok(dir)
-    }) {
-        if !dirs.iter().any(|existing| existing == &dir) {
-            dirs.push(dir);
-        }
-    }
-}
-
-fn installer_command_dirs() -> ResultType<Vec<PathBuf>> {
-    let mut dirs = Vec::new();
-    let tmp = std::env::temp_dir();
-    push_installer_command_dir(&mut dirs, Ok(tmp), "installer command temp directory");
-    push_installer_command_dir(
-        &mut dirs,
-        program_data_dir(),
-        "installer command ProgramData directory",
-    );
-    push_installer_command_dir(
-        &mut dirs,
-        user_accessible_folder(),
-        "installer command user-accessible directory",
-    );
-    if dirs.is_empty() {
-        bail!("no safe installer command directory is available");
-    }
-    Ok(dirs)
-}
-
-fn create_installer_command_file(ext: &str, tip: &str) -> ResultType<InstallerCommandFile> {
-    let mut create_errors = Vec::new();
-    for dir in installer_command_dirs()? {
-        let mut exhausted_names = true;
-        for _ in 0..16 {
-            let path = dir.join(format!(
-                "{}_{}_{}.{}",
-                crate::get_app_name(),
-                tip,
-                uuid::Uuid::new_v4(),
-                ext
-            ));
-            batch_path_text(&path, "installer command file path")?;
-            match fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .share_mode(FILE_SHARE_READ)
-                .custom_flags(FILE_ATTRIBUTE_TEMPORARY)
-                .open(&path)
-            {
-                Ok(file) => {
-                    return Ok(InstallerCommandFile {
-                        path,
-                        file: Some(file),
-                    });
-                }
-                Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
-                Err(err) => {
-                    exhausted_names = false;
-                    create_errors.push(format!("{}: {err}", dir.display()));
-                    break;
-                }
-            }
-        }
-        if exhausted_names {
-            create_errors.push(format!(
-                "{}: generated installer command names already exist",
-                dir.display()
-            ));
-        }
-    }
-    bail!(
-        "failed to create an installer command file: {}",
-        create_errors.join("; ")
-    )
-}
-
-fn write_cmds(cmds: String, ext: &str, tip: &str) -> ResultType<InstallerCommandFile> {
-    let mut cmds = cmds;
-    let mut command_file = create_installer_command_file(ext, tip)?;
-    if ext == "bat" {
-        let tmp2 = get_undone_file(&command_file.path)?;
-        let tmp2_quoted = quoted_batch_path(&tmp2)?;
-        fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp2)?;
-        cmds = format!(
-            "
-{cmds}
-if exist {path} del /f /q {path}
-",
-            path = tmp2_quoted
-        );
-    }
-    // in case cmds mixed with \r\n and \n, make sure all ending with \r\n
-    // in some windows, \r\n required for cmd file to run
-    cmds = cmds.replace("\r\n", "\n").replace("\n", "\r\n");
-    let command_bytes = if ext == "vbs" {
-        let mut v: Vec<u16> = cmds.encode_utf16().collect();
-        // utf8 -> utf16le which vbs support it only
-        to_le(&mut v).to_vec()
-    } else {
-        cmds.as_bytes().to_vec()
-    };
-    let file = command_file
-        .file
-        .as_mut()
-        .ok_or_else(|| anyhow!("installer command file closed before write"))?;
-    file.write_all(&command_bytes)?;
-    file.sync_all()?;
-    let identity = installer_command_file_identity(file)?;
-    let digest = installer_command_digest(&command_bytes);
-    let len = command_bytes.len() as u64;
-    command_file.file.take();
-    command_file.file = Some(reopen_verified_installer_command_file(
-        &command_file.path,
-        identity,
-        digest,
-        len,
-    )?);
-    Ok(command_file)
-}
-
-fn installer_script_literal(value: &str, label: &str) -> ResultType<String> {
-    if value.contains('"') || value.contains('\r') || value.contains('\n') {
-        bail!("{label} contains characters unsafe for an installer script literal");
-    }
-    Ok(value.to_owned())
-}
-
-fn installer_path_literal(path: &Path, label: &str) -> ResultType<String> {
-    let text = path
-        .to_str()
-        .ok_or_else(|| anyhow!("{label} is not valid UTF-8: {:?}", path))?;
-    installer_script_literal(text, label)
-}
-
-fn shortcut_icon_assignment(install_dir: &str, exe: &str) -> ResultType<String> {
-    if exe.is_empty() {
-        return Ok(String::new());
-    }
-    let Some(icon_path) = get_custom_icon(install_dir, exe) else {
-        return Ok(String::new());
-    };
-    let icon_path = installer_script_literal(&icon_path, "shortcut icon path")?;
-    Ok(format!("    oLink.IconLocation = \"{icon_path}\""))
-}
-
-fn create_shortcut_command_file(
-    shortcut_path: &Path,
-    target_path: &str,
-    arguments: Option<&str>,
-    explicit_icon: Option<&str>,
-    icon_install_dir: &str,
-    icon_source_exe: &str,
-    tip: &str,
-) -> ResultType<InstallerCommandFile> {
-    let shortcut_path = installer_path_literal(shortcut_path, "shortcut path")?;
-    let target_path = installer_script_literal(target_path, "shortcut target path")?;
-    let arguments = match arguments {
-        Some(arguments) if !arguments.is_empty() => {
-            let arguments = installer_script_literal(arguments, "shortcut arguments")?;
-            format!("    oLink.Arguments = \"{arguments}\"")
-        }
-        _ => String::new(),
-    };
-    let shortcut_icon_location = if let Some(icon_path) = explicit_icon {
-        let icon_path = installer_script_literal(icon_path, "shortcut icon path")?;
-        format!("    oLink.IconLocation = \"{icon_path}\"")
-    } else {
-        shortcut_icon_assignment(icon_install_dir, icon_source_exe)?
-    };
-    write_cmds(
-        format!(
-            "
-Set oWS = WScript.CreateObject(\"WScript.Shell\")
-sLinkFile = \"{shortcut_path}\"
-Set oLink = oWS.CreateShortcut(sLinkFile)
-    oLink.TargetPath = \"{target_path}\"
-{arguments}
-{shortcut_icon_location}
-oLink.Save
-        "
-        ),
-        "vbs",
-        tip,
-    )
-}
-
-fn run_shortcut_script_cmd(
-    script_path: &str,
-    shortcut_path: &Path,
-    tools: &WindowsSystemTools,
-) -> ResultType<String> {
-    batch_literal_text(script_path, "shortcut script path")?;
-    let shortcut_path = quoted_batch_path(shortcut_path)?;
-    Ok(format!(
-        "
-{}
-{}
-",
-        checked_batch_cmd(format!("{} //NoLogo \"{script_path}\"", tools.cscript)),
-        require_batch_path_exists(&shortcut_path),
-    ))
-}
-
-fn to_le(v: &mut [u16]) -> &[u8] {
-    for b in v.iter_mut() {
-        *b = b.to_le()
-    }
-    unsafe { v.align_to().1 }
-}
-
-fn get_undone_file(tmp: &Path) -> ResultType<PathBuf> {
-    Ok(tmp.with_file_name(format!(
-        "{}.undone",
-        tmp.file_name()
-            .ok_or(anyhow!("Failed to get filename of {:?}", tmp))?
-            .to_string_lossy()
-    )))
-}
-
-fn run_cmds(cmds: String, show: bool, tip: &str) -> ResultType<()> {
-    let tmp = write_cmds(cmds, "bat", tip)?;
-    let tmp2 = get_undone_file(&tmp.path)?;
-    let tmp_fn = batch_path_text(&tmp.path, "installer command file path")?;
-    let cmd = trusted_system_cmd_path()?;
-    let already_elevated = match is_elevated(None) {
-        Ok(elevated) => elevated,
-        Err(err) => {
-            log::warn!("Failed to determine installer command elevation state: {err}");
-            false
-        }
-    };
-    let status = if already_elevated {
-        let mut command = std::process::Command::new(&cmd);
-        command.args(["/D", "/V:OFF", "/S", "/C", tmp_fn.as_str()]);
-        if !show {
-            command.creation_flags(CREATE_NO_WINDOW);
-        }
-        command.status()?
-    } else {
-        runas::Command::new(cmd)
-            .args(&["/D", "/V:OFF", "/S", "/C", tmp_fn.as_str()])
-            .show(show)
-            .force_prompt(true)
-            .status()?
-    };
-    let marker_left = tmp2.exists();
-    if marker_left {
-        allow_err!(std::fs::remove_file(tmp2));
-    }
-    if !status.success() || marker_left {
-        bail!(
-            "{} failed: elevated command status {}, completion marker {}",
-            tip,
-            status,
-            if marker_left {
-                "left behind"
-            } else {
-                "cleared"
-            }
-        );
-    }
-    Ok(())
 }
 
 pub fn toggle_blank_screen(v: bool) {
@@ -4441,26 +3130,6 @@ pub fn user_accessible_folder() -> ResultType<PathBuf> {
 }
 
 #[inline]
-pub fn uninstall_cert() -> ResultType<()> {
-    cert::uninstall_cert()
-}
-
-mod cert {
-    use hbb_common::{anyhow::anyhow, ResultType};
-    use winapi::shared::minwindef::BOOL;
-
-    extern "C" {
-        fn DeleteRustDeskTestCertsW() -> BOOL;
-    }
-    pub fn uninstall_cert() -> ResultType<()> {
-        if unsafe { DeleteRustDeskTestCertsW() } == 0 {
-            return Err(anyhow!("Failed to delete RustDesk test certificates"));
-        }
-        Ok(())
-    }
-}
-
-#[inline]
 pub fn get_char_from_vk(vk: u32) -> Option<char> {
     get_char_from_unicode(get_unicode_from_vk(vk)?)
 }
@@ -4641,260 +3310,6 @@ impl Drop for WakeLock {
     }
 }
 
-pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
-    log::info!("Uninstalling service...");
-    let tools = match WindowsSystemTools::resolve() {
-        Ok(tools) => tools,
-        Err(err) => {
-            log::error!("Failed to resolve Windows system tools: {err}");
-            return false;
-        }
-    };
-    let (_, exe) = match fixed_service_install_dir_and_exe() {
-        Ok(info) => info,
-        Err(err) => {
-            log::error!("Failed to resolve fixed Windows service executable: {err}");
-            return false;
-        }
-    };
-    let filter = format!(" /FI \"PID ne {}\"", get_current_pid());
-    let startup_tray_shortcut =
-        match common_startup_tray_shortcut_path().and_then(|path| quoted_batch_path(&path)) {
-            Ok(path) => path,
-            Err(err) => {
-                log::error!("Failed to resolve common startup shortcut path: {err}");
-                return false;
-            }
-        };
-    let app_name = crate::get_app_name();
-    let delete_service = delete_service_absent_ok(
-        &tools.sc,
-        &tools.timeout,
-        &app_name,
-        "rustdesk_service_deleted_service_uninstall",
-    );
-    let remove_startup_tray_shortcut = delete_batch_path_absent_ok(
-        format!("if exist {startup_tray_shortcut} del /f /q {startup_tray_shortcut}"),
-        &startup_tray_shortcut,
-    );
-    let cmds = format!(
-        "
-    {chcp} 65001
-    {sc} stop \"{app_name}\" >nul 2>nul
-    {taskkill} /F /IM {broker_exe}
-    {taskkill} /F /IM {app_name}.exe{filter}
-    {delete_service}
-    {remove_startup_tray_shortcut}
-    ",
-        chcp = tools.chcp,
-        sc = tools.sc,
-        taskkill = tools.taskkill,
-        broker_exe = WIN_TOPMOST_INJECTED_PROCESS_EXE,
-    );
-    if let Err(err) = run_cmds(cmds, false, "uninstall") {
-        log::error!("{err}");
-        return false;
-    }
-    if let Err(err) = run_after_elevated_service_cmds(&exe, !show_new_window) {
-        log::error!("{err}");
-        return false;
-    }
-    std::process::exit(0);
-}
-
-pub fn install_service() -> bool {
-    log::info!("Installing service...");
-    let tools = match WindowsSystemTools::resolve() {
-        Ok(tools) => tools,
-        Err(err) => {
-            log::error!("Failed to resolve Windows system tools: {err}");
-            return false;
-        }
-    };
-    let _installing = crate::platform::InstallingService::new();
-    let (path, exe) = match fixed_service_install_dir_and_exe() {
-        Ok(info) => info,
-        Err(err) => {
-            log::error!("Failed to resolve fixed Windows service install path: {err}");
-            return false;
-        }
-    };
-    if !Path::new(&exe).exists() {
-        log::error!("Fixed Windows service executable does not exist: {exe}");
-        return false;
-    }
-    let tray_shortcut_path = match common_startup_tray_shortcut_path() {
-        Ok(path) => path,
-        Err(err) => {
-            log::error!("Failed to resolve common startup shortcut path: {err}");
-            return false;
-        }
-    };
-    let tray_shortcut = match create_shortcut_command_file(
-        &tray_shortcut_path,
-        &exe,
-        Some("--tray"),
-        None,
-        &path,
-        &exe,
-        "tray_shortcut",
-    ) {
-        Ok(shortcut) => shortcut,
-        Err(err) => {
-            log::error!("Failed to create tray shortcut command file: {err}");
-            return false;
-        }
-    };
-    let tray_shortcut_command_path = match tray_shortcut.path_str() {
-        Ok(path) => path.to_owned(),
-        Err(err) => {
-            log::error!("Failed to resolve tray shortcut command path: {err}");
-            return false;
-        }
-    };
-    let run_tray_shortcut =
-        match run_shortcut_script_cmd(&tray_shortcut_command_path, &tray_shortcut_path, &tools) {
-            Ok(cmd) => cmd,
-            Err(err) => {
-                log::error!("Failed to prepare tray shortcut command: {err}");
-                return false;
-            }
-        };
-    let filter = format!(" /FI \"PID ne {}\"", get_current_pid());
-    crate::ipc::EXIT_RECV_CLOSE.store(false, Ordering::Relaxed);
-    let cmds = format!(
-        "
-			{chcp} 65001
-			{taskkill} /F /IM {app_name}.exe{filter}
-			{run_tray_shortcut}
-			{import_config}
-			{create_service}
-			    ",
-        chcp = tools.chcp,
-        taskkill = tools.taskkill,
-        app_name = crate::get_app_name(),
-        import_config = get_import_config(&exe),
-        create_service = get_create_service(&exe, &tools),
-    );
-    if let Err(err) = run_cmds(cmds, false, "install") {
-        crate::ipc::EXIT_RECV_CLOSE.store(true, Ordering::Relaxed);
-        log::error!("{err}");
-        return false;
-    }
-    if let Err(err) = run_after_elevated_service_cmds(&exe, false) {
-        log::error!("{err}");
-        return false;
-    }
-    std::process::exit(0);
-}
-
-/// Calculate the total size of a directory in KB
-/// Does not follow symlinks to prevent directory traversal attacks.
-fn get_directory_size_kb(path: &str) -> u64 {
-    let mut total_size = 0u64;
-    let mut stack = vec![PathBuf::from(path)];
-
-    while let Some(current_path) = stack.pop() {
-        let entries = match std::fs::read_dir(&current_path) {
-            Ok(entries) => entries,
-            Err(_) => continue,
-        };
-
-        for entry in entries {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(_) => continue,
-            };
-
-            let metadata = match std::fs::symlink_metadata(entry.path()) {
-                Ok(metadata) => metadata,
-                Err(_) => continue,
-            };
-
-            if metadata.is_symlink() {
-                continue;
-            }
-
-            if metadata.is_dir() {
-                stack.push(entry.path());
-            } else {
-                total_size = total_size.saturating_add(metadata.len());
-            }
-        }
-    }
-
-    total_size / 1024
-}
-
-fn get_import_config(_exe: &str) -> String {
-    // R-X4: `--import-config` is excised from core_main (its arg-arm overwrote the entire config —
-    // trust anchor + servers — from an attacker-suppliable file). The upstream installer's
-    // service-recreation dance that ran `rustdesk --import-config <path>` is therefore a no-op, so it
-    // is dropped here entirely — carrying no such literal into the shipped installer.
-    String::new()
-}
-
-fn get_create_service(exe: &str, tools: &WindowsSystemTools) -> String {
-    if config::is_outgoing_only() {
-        return "".to_string();
-    }
-    // R-X9: the installed service is ALWAYS created + auto-start; the runtime-writable stop-service
-    // toggle that could suppress it (a local --option/IPC write) is excised — the key stays pinned
-    // "N" in PINNED_SETTINGS (R-S16) and is not IPC-writable (R-S11).
-    //
-    // T1 / BR-9..BR-12 (Windows service resilience): `sc create ... start= auto` restarts the
-    // `--service` only at BOOT, so a mid-session crash / `panic='abort'` / elevated kill of the
-    // `--service` left the box PERMANENTLY unreachable — the direct listener died with no supervisor
-    // to relaunch it (the cavity-1 wedge), whereas Linux systemd (`Restart=on-failure`) and macOS
-    // launchd (`KeepAlive`) already self-heal the same fault. `sc failure` configures the SCM's OWN
-    // recovery actions so the OS service manager restarts the service on unexpected termination —
-    // exact PARITY with systemd/launchd, and R-X9/R-X10-clean: the OS supervisor restarts ITS OWN
-    // service (no new privilege transition, no GUI/in-process self-restart, no self-escalation; the
-    // single installed-service privilege model is unchanged). With the default failure flag
-    // (SERVICE_CONFIG_FAILURE_ACTIONS_FLAG = 0, guaranteed on a fresh `sc create`) the actions fire
-    // ONLY when the process terminates WITHOUT reporting SERVICE_STOPPED — a crash / abort / Task-
-    // Manager kill — and NOT on a clean `sc stop` / services.msc stop (which reports SERVICE_STOPPED
-    // with exit 0), so a DELIBERATE stop stays stopped (recover from a fault, never fight the
-    // operator). Backoff 5s/10s/30s and then 30s forever (SCM repeats the last action, never gives
-    // up → "always recover", the N3 twin of the systemd start-limit fix); the failure counter resets
-    // after a day of uptime so a genuine one-off does not inherit a stale 30s delay.
-    format!("
-		if not exist \"{exe}\" exit /b 1
-		{sc} create {app_name} binpath= \"\\\"{exe}\\\" --service\" start= auto DisplayName= \"{app_name} Service\"
-		if errorlevel 1 exit /b 1
-		{sc} failure {app_name} reset= 86400 actions= restart/5000/restart/10000/restart/30000
-		if errorlevel 1 exit /b 1
-		{sc} start {app_name}
-		if errorlevel 1 exit /b 1
-		",
-    sc = tools.sc,
-    app_name = crate::get_app_name())
-}
-
-fn run_after_elevated_service_cmds(installed_exe: &str, silent: bool) -> ResultType<()> {
-    let (_, fixed_exe) = fixed_service_install_dir_and_exe()?;
-    if normalized_windows_path_text(Path::new(installed_exe))
-        != normalized_windows_path_text(Path::new(&fixed_exe))
-    {
-        bail!("post-service command executable is not the fixed installed executable");
-    }
-
-    let exe = Path::new(installed_exe);
-    if !exe.is_file() {
-        bail!("fixed installed executable is missing: {installed_exe}");
-    }
-
-    if !silent {
-        log::debug!("Spawn new window");
-        std::process::Command::new(exe).spawn()?;
-    }
-    // R-X9: the stop-service toggle is excised — the tray (re)spawns with the always-present service.
-    std::process::Command::new(exe).arg("--tray").spawn()?;
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    Ok(())
-}
-
-#[inline]
 pub fn try_kill_broker() {
     match terminate_processes_by_exact_process_name(WIN_TOPMOST_INJECTED_PROCESS_EXE) {
         Ok(0) => {}
@@ -5184,46 +3599,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn r_s11d32_installer_command_digest_is_byte_exact() {
-        let first = installer_command_digest(b"echo one\r\n");
-        let same = installer_command_digest(b"echo one\r\n");
-        let second = installer_command_digest(b"echo one\n");
-        assert_eq!(first, same);
-        assert_ne!(first, second);
-    }
-
-    #[test]
-    fn r_s11d32_installer_command_identity_compares_volume_and_index() {
-        let baseline = WindowsPathIdentity {
-            volume_serial_number: 1,
-            file_index_high: 2,
-            file_index_low: 3,
-        };
-        assert_eq!(baseline, baseline);
-        assert_ne!(
-            baseline,
-            WindowsPathIdentity {
-                volume_serial_number: 9,
-                ..baseline
-            }
-        );
-        assert_ne!(
-            baseline,
-            WindowsPathIdentity {
-                file_index_high: 9,
-                ..baseline
-            }
-        );
-        assert_ne!(
-            baseline,
-            WindowsPathIdentity {
-                file_index_low: 9,
-                ..baseline
-            }
-        );
-    }
-
-    #[test]
     fn test_is_process_running_as_system_invalid_pid_errors() {
         assert!(is_process_running_as_system(u32::MAX).is_err());
     }
@@ -5273,11 +3648,6 @@ mod tests {
         };
 
         assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn test_uninstall_cert() {
-        println!("uninstall driver certs: {:?}", cert::uninstall_cert());
     }
 
     #[test]

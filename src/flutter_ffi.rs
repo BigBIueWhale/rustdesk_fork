@@ -1979,11 +1979,6 @@ pub fn main_set_share_rdp(enable: bool) {
     set_share_rdp(enable)
 }
 
-pub fn main_goto_install() -> SyncReturn<bool> {
-    goto_install();
-    SyncReturn(true)
-}
-
 pub fn set_cur_session_id(session_id: SessionID) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         set_cur_session_id_(session_id, &session.get_keyboard_mode())
@@ -1994,26 +1989,6 @@ fn set_cur_session_id_(session_id: SessionID, _keyboard_mode: &str) {
     super::flutter::set_cur_session_id(session_id);
     #[cfg(windows)]
     crate::keyboard::update_grab_get_key_name(_keyboard_mode);
-}
-
-pub fn install_show_run_without_install() -> SyncReturn<bool> {
-    SyncReturn(show_run_without_install())
-}
-
-pub fn install_run_without_install() {
-    run_without_install();
-}
-
-pub fn install_install_me(options: String, path: String) {
-    install_me(options, path, false, false);
-}
-
-pub fn install_install_path() -> SyncReturn<String> {
-    SyncReturn(install_path())
-}
-
-pub fn install_install_options() -> SyncReturn<String> {
-    SyncReturn(install_options())
 }
 
 pub fn main_on_main_window_close() {
@@ -2095,11 +2070,6 @@ pub fn is_disable_settings() -> SyncReturn<bool> {
 // from the front-end and its models, so the `is_disable_ab` / `is_disable_account` /
 // `is_disable_group_panel` FFI resolvers (whose only Dart callers were the now-deleted ab/group
 // models) are removed — the feature is deleted, not runtime-gated behind a disable-* option.
-
-// windows only
-pub fn is_disable_installation() -> SyncReturn<bool> {
-    SyncReturn(config::is_disable_installation())
-}
 
 pub fn is_preset_password() -> bool {
     // On desktop, service owns the authoritative config; query it via IPC and return only a boolean.

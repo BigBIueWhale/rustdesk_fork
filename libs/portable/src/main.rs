@@ -20,19 +20,45 @@ const APP_METADATA_CONFIG: &str = "meta.toml";
 const META_LINE_PREFIX_TIMESTAMP: &str = "timestamp = ";
 const APP_PREFIX: &str = "rustdesk";
 const APPNAME_RUNTIME_ENV_KEY: &str = "RUSTDESK_APPNAME";
-#[cfg(windows)]
 const ELEVATED_INSTALL_ARG: &str = "--rustdesk-protected-install";
-#[cfg(windows)]
 const ELEVATED_SILENT_INSTALL_ARG: &str = "--rustdesk-protected-silent-install";
 #[cfg(windows)]
-const PROTECTED_INSTALL_ENV_KEY: &str = "RUSTDESK_PROTECTED_INSTALL";
-#[cfg(windows)]
 const SET_FOREGROUND_WINDOW_ENV_KEY: &str = "SET_FOREGROUND_WINDOW";
+const SETUP_EXE_NAME: &str = "rustdesk-setup.exe";
+#[cfg(windows)]
+const INSTALLER_MSI_NAME: &str = "rustdesk-installer.msi";
+
+fn is_installer_filename(exe: &str) -> bool {
+    let filename = exe.rsplit(['/', '\\']).next().unwrap_or_default();
+    filename.eq_ignore_ascii_case(SETUP_EXE_NAME)
+}
+
+#[cfg(windows)]
+fn current_exe_is_installer() -> Result<bool, String> {
+    let path = std::env::current_exe()
+        .map_err(|err| format!("failed to resolve current executable: {err}"))?;
+    Ok(path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(is_installer_filename))
+}
+
+fn parse_installer_invocation(args: &[String]) -> Result<(bool, bool), String> {
+    match args {
+        [] => Ok((false, false)),
+        [arg] if arg == "--silent-install" => Ok((true, false)),
+        [arg] if arg == ELEVATED_INSTALL_ARG => Ok((false, true)),
+        [arg] if arg == ELEVATED_SILENT_INSTALL_ARG => Ok((true, true)),
+        _ => Err("invalid setup command line".to_owned()),
+    }
+}
+
+fn is_accepted_msi_exit_code(code: i32) -> bool {
+    matches!(code, 0 | 3010)
+}
 
 struct ExtractedPayload {
     exe: PathBuf,
-    #[cfg_attr(not(windows), allow(dead_code))]
-    files: Vec<PathBuf>,
 }
 
 fn is_timestamp_matches(dir: &Path, ts: &mut u64) -> bool {
@@ -105,13 +131,11 @@ fn has_reparse_point(_: &fs::Metadata) -> bool {
 }
 
 fn extract_payload(reader: &BinaryReader, dir: &Path) -> Result<ExtractedPayload, String> {
-    let mut files = Vec::with_capacity(reader.files.len());
     for file in reader.files.iter() {
-        files.push(file.write_to_file(dir)?);
+        file.write_to_file(dir)?;
     }
     Ok(ExtractedPayload {
         exe: dir.join(relative_payload_path(&reader.exe)?),
-        files,
     })
 }
 
@@ -244,36 +268,45 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
 }
 
 fn main() {
-    let mut args = Vec::new();
-    let mut arg_exe = Default::default();
-    let mut i = 0;
-    for arg in std::env::args() {
-        if i == 0 {
-            arg_exe = arg.clone();
-        } else {
-            args.push(arg);
+    let mut process_args = std::env::args();
+    #[cfg(windows)]
+    let arg_exe = process_args.next().unwrap_or_default();
+    #[cfg(not(windows))]
+    let _ = process_args.next();
+    let mut args = process_args.collect::<Vec<_>>();
+    #[cfg(windows)]
+    let installer_mode = match current_exe_is_installer() {
+        Ok(installer_mode) => installer_mode,
+        Err(err) => {
+            eprintln!("{err}");
+            std::process::exit(1);
         }
-        i += 1;
-    }
-    let click_setup = args.is_empty() && arg_exe.to_lowercase().ends_with("install.exe");
+    };
     #[cfg(windows)]
-    let silent_install = args.iter().any(|arg| arg == "--silent-install");
-    #[cfg(windows)]
-    let protected_install = args.len() == 1
-        && (args[0] == ELEVATED_INSTALL_ARG || args[0] == ELEVATED_SILENT_INSTALL_ARG);
-    #[cfg(windows)]
-    if click_setup || silent_install || protected_install {
+    if installer_mode {
+        let (silent, protected) = match parse_installer_invocation(&args) {
+            Ok(invocation) => invocation,
+            Err(err) => {
+                eprintln!("{err}");
+                std::process::exit(1);
+            }
+        };
         let reader = BinaryReader::default();
-        let silent = silent_install
-            || (protected_install
-                && args
-                    .first()
-                    .is_some_and(|arg| arg == ELEVATED_SILENT_INSTALL_ARG));
-        if let Err(err) = win::run_protected_installer(reader, silent) {
+        if let Err(err) = win::run_protected_installer(reader, silent, protected) {
             eprintln!("{err}");
             std::process::exit(1);
         }
         return;
+    }
+    #[cfg(windows)]
+    if args.iter().any(|arg| {
+        matches!(
+            arg.as_str(),
+            "--silent-install" | ELEVATED_INSTALL_ARG | ELEVATED_SILENT_INSTALL_ARG
+        )
+    }) {
+        eprintln!("installer-only argument requires {SETUP_EXE_NAME}");
+        std::process::exit(1);
     }
     #[cfg(windows)]
     let quick_support = args.is_empty() && win::is_quick_support_exe(&arg_exe);
@@ -282,16 +315,8 @@ fn main() {
 
     let mut ui = false;
     let reader = BinaryReader::default();
-    if let Some(exe) = setup(
-        reader,
-        None,
-        click_setup || args.contains(&"--silent-install".to_owned()),
-        &args,
-        &mut ui,
-    ) {
-        if click_setup {
-            args = vec!["--install".to_owned()];
-        } else if quick_support {
+    if let Some(exe) = setup(reader, None, false, &args, &mut ui) {
+        if quick_support {
             args = vec!["--quick_support".to_owned()];
         }
         execute(exe, args, ui);
@@ -333,8 +358,8 @@ mod win {
     };
 
     use crate::{
-        extract_payload, write_meta, BinaryReader, ELEVATED_INSTALL_ARG,
-        ELEVATED_SILENT_INSTALL_ARG, PROTECTED_INSTALL_ENV_KEY,
+        is_accepted_msi_exit_code, relative_payload_path, BinaryReader, ELEVATED_INSTALL_ARG,
+        ELEVATED_SILENT_INSTALL_ARG, INSTALLER_MSI_NAME,
     };
 
     const APP_INSTALL_DIR_NAME: &str = "RustDesk";
@@ -345,7 +370,7 @@ mod win {
     pub const WIN_TOPMOST_INJECTED_PROCESS_EXE: &'static str = "RuntimeBroker_rustdesk.exe";
 
     fn trusted_system_dir() -> Result<PathBuf, String> {
-        let mut buffer = [0u16; 260];
+        let mut buffer = vec![0u16; 32768];
         let len = unsafe { GetSystemDirectoryW(Some(&mut buffer)) } as usize;
         if len == 0 {
             return Err(format!(
@@ -364,8 +389,20 @@ mod win {
             return Err(format!("invalid trusted system tool name: {tool}"));
         }
         let path = trusted_system_dir()?.join(tool);
-        if !path.is_file() {
-            return Err(format!("trusted system tool not found: {}", path.display()));
+        let metadata = fs::symlink_metadata(&path).map_err(|err| {
+            format!(
+                "failed to inspect trusted system tool {}: {err}",
+                path.display()
+            )
+        })?;
+        if !metadata.is_file()
+            || metadata.file_type().is_symlink()
+            || crate::has_reparse_point(&metadata)
+        {
+            return Err(format!(
+                "trusted system tool is not a regular non-reparse file: {}",
+                path.display()
+            ));
         }
         Ok(path)
     }
@@ -467,6 +504,7 @@ mod win {
 
     fn create_staging_dir() -> Result<StagingDir, String> {
         let root = program_files_dir()?;
+        ensure_non_reparse_dir(&root)?;
         for attempt in 0..32 {
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -582,13 +620,6 @@ mod win {
         Ok(())
     }
 
-    fn current_launcher_name() -> OsString {
-        std::env::current_exe()
-            .ok()
-            .and_then(|path| path.file_name().map(|name| name.to_os_string()))
-            .unwrap_or_else(|| OsString::from(APP_INSTALL_DIR_NAME))
-    }
-
     fn ensure_non_reparse_dir(path: &Path) -> Result<(), String> {
         let metadata = fs::symlink_metadata(path)
             .map_err(|err| format!("failed to inspect {}: {err}", path.display()))?;
@@ -661,37 +692,65 @@ mod win {
                 .then_with(|| right.cmp(left))
         });
         dirs.dedup();
+        let mut errors = Vec::new();
         for dir in dirs {
-            ensure_non_reparse_dir(&dir)?;
+            match fs::symlink_metadata(&dir) {
+                Ok(metadata)
+                    if metadata.is_dir()
+                        && !metadata.file_type().is_symlink()
+                        && !crate::has_reparse_point(&metadata) => {}
+                Ok(_) => {
+                    errors.push(format!(
+                        "refusing to remove non-directory or reparse payload path {}",
+                        dir.display()
+                    ));
+                    continue;
+                }
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(err) => {
+                    errors.push(format!("failed to inspect {}: {err}", dir.display()));
+                    continue;
+                }
+            }
             match fs::remove_dir(&dir) {
                 Ok(()) => {}
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-                Err(err) => {
-                    return Err(format!(
-                        "failed to remove payload dir {}: {err}",
-                        dir.display()
-                    ))
-                }
+                Err(err) => errors.push(format!(
+                    "failed to remove payload dir {}: {err}",
+                    dir.display()
+                )),
             }
         }
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
+        }
     }
 
     fn cleanup_extracted_payload(root: &Path, files: &[PathBuf]) -> Result<(), String> {
-        let mut files = files.to_vec();
-        files.push(root.join(WIN_TOPMOST_INJECTED_PROCESS_EXE));
+        let mut errors = Vec::new();
         for file in files.iter().rev() {
-            remove_payload_file(root, file)?;
+            if let Err(err) = remove_payload_file(root, file) {
+                errors.push(err);
+            }
         }
-        remove_empty_payload_dirs(root, &files)
+        if let Err(err) = remove_empty_payload_dirs(root, files) {
+            errors.push(err);
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
+        }
     }
 
-    fn finish_with_payload_cleanup(
+    fn finish_with_manifest_cleanup(
         staging: &StagingDir,
-        payload: &crate::ExtractedPayload,
+        files: &[PathBuf],
         result: Result<(), String>,
     ) -> Result<(), String> {
-        let cleanup = cleanup_extracted_payload(&staging.path, &payload.files);
+        let cleanup = cleanup_extracted_payload(&staging.path, files);
         match (result, cleanup) {
             (Ok(()), Ok(())) => Ok(()),
             (Err(err), Ok(())) => Err(err),
@@ -700,51 +759,98 @@ mod win {
         }
     }
 
+    fn installer_manifest_paths(
+        reader: &BinaryReader,
+        staging: &Path,
+    ) -> Result<Vec<PathBuf>, String> {
+        reader
+            .files
+            .iter()
+            .map(|file| relative_payload_path(&file.path).map(|path| staging.join(path)))
+            .collect()
+    }
+
+    fn extract_installer_payload(reader: &BinaryReader, staging: &Path) -> Result<(), String> {
+        for file in &reader.files {
+            file.write_to_new_file(staging)?;
+        }
+        Ok(())
+    }
+
+    fn installer_msi_from_manifest(staging: &Path, files: &[PathBuf]) -> Result<PathBuf, String> {
+        let msi = staging.join(INSTALLER_MSI_NAME);
+        if files.len() != 1 || files.first() != Some(&msi) {
+            return Err(format!(
+                "embedded setup payload must contain only root {INSTALLER_MSI_NAME}"
+            ));
+        }
+        Ok(msi)
+    }
+
+    fn validate_staged_installer_msi(staging: &Path, msi: &Path) -> Result<(), String> {
+        ensure_clean_parent_chain(staging, msi)?;
+        let metadata = fs::symlink_metadata(msi)
+            .map_err(|err| format!("failed to inspect staged MSI {}: {err}", msi.display()))?;
+        if !metadata.is_file()
+            || metadata.file_type().is_symlink()
+            || crate::has_reparse_point(&metadata)
+        {
+            return Err(format!(
+                "staged MSI is not a regular non-reparse file: {}",
+                msi.display()
+            ));
+        }
+        Ok(())
+    }
+
+    fn run_staged_msi(msi: &Path, silent: bool) -> Result<(), String> {
+        let msiexec = trusted_system_tool_path("msiexec.exe")?;
+        let mut cmd = Command::new(&msiexec);
+        cmd.arg("/i").arg(msi).arg("/norestart");
+        if silent {
+            cmd.arg("/qn");
+        }
+        cmd.creation_flags(winapi::um::winbase::CREATE_NO_WINDOW);
+        let mut child = cmd.spawn().map_err(|err| {
+            format!(
+                "failed to start trusted Windows Installer {}: {err}",
+                msiexec.display()
+            )
+        })?;
+        let status = child
+            .wait()
+            .map_err(|err| format!("failed to wait for Windows Installer: {err}"))?;
+        let code = status
+            .code()
+            .ok_or_else(|| "Windows Installer exited without a status code".to_owned())?;
+        if is_accepted_msi_exit_code(code) {
+            Ok(())
+        } else {
+            Err(format!("Windows Installer exited with code {code}"))
+        }
+    }
+
     pub(super) fn run_protected_installer(
         reader: BinaryReader,
         silent: bool,
+        protected: bool,
     ) -> Result<(), String> {
         if !current_process_is_elevated()? {
+            if protected {
+                return Err(
+                    "protected installer invocation requires an elevated process".to_owned(),
+                );
+            }
             return relaunch_self_for_protected_install(silent);
         }
 
         let staging = create_staging_dir()?;
-        let payload = extract_payload(&reader, &staging.path)?;
-        let prepare = write_meta(&staging.path, 0).and_then(|_| copy_runtime_broker(&staging.path));
-        if let Err(err) = prepare {
-            return finish_with_payload_cleanup(&staging, &payload, Err(err));
-        }
-
-        let mut cmd = Command::new(&payload.exe);
-        let install_arg = if silent {
-            "--silent-install"
-        } else {
-            "--install"
-        };
-        cmd.arg(install_arg)
-            .env(super::APPNAME_RUNTIME_ENV_KEY, current_launcher_name())
-            .env(PROTECTED_INSTALL_ENV_KEY, "1")
-            .env(super::SET_FOREGROUND_WINDOW_ENV_KEY, "1")
-            .creation_flags(winapi::um::winbase::CREATE_NO_WINDOW);
-        let mut child = match cmd.spawn() {
-            Ok(child) => child,
-            Err(err) => {
-                return finish_with_payload_cleanup(
-                    &staging,
-                    &payload,
-                    Err(format!("failed to start protected installer UI: {err}")),
-                );
-            }
-        };
-        unsafe {
-            winapi::um::winuser::AllowSetForegroundWindow(child.id());
-        }
-        let result = match child.wait() {
-            Ok(status) if status.success() => Ok(()),
-            Ok(status) => Err(format!("protected installer UI exited with {status}")),
-            Err(err) => Err(format!("failed to wait for protected installer UI: {err}")),
-        };
-        finish_with_payload_cleanup(&staging, &payload, result)
+        let files = installer_manifest_paths(&reader, &staging.path)?;
+        let result = installer_msi_from_manifest(&staging.path, &files)
+            .and_then(|msi| extract_installer_payload(&reader, &staging.path).map(|_| msi))
+            .and_then(|msi| validate_staged_installer_msi(&staging.path, &msi).map(|_| msi))
+            .and_then(|msi| run_staged_msi(&msi, silent));
+        finish_with_manifest_cleanup(&staging, &files, result)
     }
 
     pub(super) fn copy_runtime_broker(dir: &Path) -> Result<(), String> {
@@ -790,5 +896,60 @@ mod win {
     pub(super) fn is_quick_support_exe(exe: &str) -> bool {
         let exe = exe.to_lowercase();
         exe.contains("-qs-") || exe.contains("-qs.exe") || exe.contains("_qs.exe")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        is_accepted_msi_exit_code, is_installer_filename, parse_installer_invocation,
+        ELEVATED_INSTALL_ARG, ELEVATED_SILENT_INSTALL_ARG,
+    };
+
+    #[test]
+    fn classifies_only_supported_installer_filenames() {
+        assert!(is_installer_filename("rustdesk-setup.exe"));
+        assert!(is_installer_filename(r"C:\\release\\RUSTDESK-SETUP.EXE"));
+        assert!(!is_installer_filename("rustdesk-1.4.7-install.exe"));
+        assert!(!is_installer_filename("install.exe"));
+        assert!(!is_installer_filename("rustdeskinstall.exe"));
+        assert!(!is_installer_filename("rustdesk-uninstall.exe"));
+        assert!(!is_installer_filename("rustdesk-setup.exe.bak"));
+        assert!(!is_installer_filename("rustdesk.exe"));
+    }
+
+    #[test]
+    fn accepts_only_windows_installer_success_statuses() {
+        for code in [0, 3010] {
+            assert!(is_accepted_msi_exit_code(code), "rejected {code}");
+        }
+        for code in [-1, 1, 1603, 1641, 3011] {
+            assert!(!is_accepted_msi_exit_code(code), "accepted {code}");
+        }
+    }
+
+    #[test]
+    fn setup_command_line_is_closed() {
+        let args = |values: &[&str]| {
+            values
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(parse_installer_invocation(&args(&[])), Ok((false, false)));
+        assert_eq!(
+            parse_installer_invocation(&args(&["--silent-install"])),
+            Ok((true, false))
+        );
+        assert_eq!(
+            parse_installer_invocation(&args(&[ELEVATED_INSTALL_ARG])),
+            Ok((false, true))
+        );
+        assert_eq!(
+            parse_installer_invocation(&args(&[ELEVATED_SILENT_INSTALL_ARG])),
+            Ok((true, true))
+        );
+        assert!(parse_installer_invocation(&args(&["--unknown"])).is_err());
+        assert!(parse_installer_invocation(&args(&["--silent-install", "--unknown"])).is_err());
     }
 }

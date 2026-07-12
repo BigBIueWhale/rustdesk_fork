@@ -1278,29 +1278,8 @@ class RustdeskImpl {
     throw UnimplementedError("mainSetShareRdp");
   }
 
-  bool mainGotoInstall({dynamic hint}) {
-    throw UnimplementedError("mainGotoInstall");
-  }
-
   Future<void> setCurSessionId({required UuidValue sessionId, dynamic hint}) {
     throw UnimplementedError("setCurSessionId");
-  }
-
-  bool installShowRunWithoutInstall({dynamic hint}) {
-    throw UnimplementedError("installShowRunWithoutInstall");
-  }
-
-  Future<void> installRunWithoutInstall({dynamic hint}) {
-    throw UnimplementedError("installRunWithoutInstall");
-  }
-
-  Future<void> installInstallMe(
-      {required String options, required String path, dynamic hint}) {
-    throw UnimplementedError("installInstallMe");
-  }
-
-  String installInstallPath({dynamic hint}) {
-    throw UnimplementedError("installInstallPath");
   }
 
   Future<void> mainOnMainWindowClose({dynamic hint}) {
@@ -1365,10 +1344,6 @@ class RustdeskImpl {
 
   // R-G4 / R-SV6 (§19): isDisableAb / isDisableGroupPanel / isDisableAccount web stubs removed with
   // the excised account / address-book / group front-end (orphaned inert stubs).
-
-  bool isDisableInstallation({dynamic hint}) {
-    return false;
-  }
 
   Future<bool> isPresetPassword({dynamic hint}) {
     return Future.value(false);
@@ -1438,10 +1413,6 @@ class RustdeskImpl {
 
   String mainGetBuildinOption({required String key, dynamic hint}) {
     return mainGetLocalOption(key: key, hint: hint);
-  }
-
-  String installInstallOptions({dynamic hint}) {
-    throw UnimplementedError("installInstallOptions");
   }
 
   int mainMaxEncryptLen({dynamic hint}) {

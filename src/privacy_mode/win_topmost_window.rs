@@ -189,39 +189,21 @@ impl PrivacyModeImpl {
             return Ok(());
         }
 
-        log::info!("Start privacy mode window broker, check_update_broker_process");
-        if let Err(e) = crate::platform::windows::check_update_broker_process() {
-            log::warn!(
-                "Failed to check update broker process. Privacy mode may not work properly. {}",
-                e
-            );
-        }
-
-        let exe_file = std::env::current_exe()?;
-        let Some(cur_dir) = exe_file.parent() else {
-            bail!("Cannot get parent of current exe file");
+        let broker_file = crate::platform::windows::check_update_broker_process()?;
+        let Some(cur_dir) = broker_file.parent() else {
+            bail!("Privacy broker has no parent directory");
         };
 
         let dll_file = cur_dir.join("WindowInjection.dll");
-        if !dll_file.is_file() {
-            bail!(
-                "Failed to find required file {}",
-                dll_file.to_string_lossy().as_ref()
-            );
-        }
+        crate::platform::windows::require_existing_file_no_reparse(
+            &dll_file,
+            "privacy injection DLL",
+        )?;
 
         let hwnd = wait_find_privacy_hwnd(1_000)?;
         if !hwnd.is_null() {
             log::info!("Privacy window is ready");
             return Ok(());
-        }
-
-        let broker_file = cur_dir.join(INJECTED_PROCESS_EXE);
-        if !broker_file.is_file() {
-            bail!(
-                "Failed to find required file {}",
-                broker_file.to_string_lossy().as_ref()
-            );
         }
 
         unsafe {

@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/widgets/overlay.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';
-import 'package:flutter_hbb/desktop/pages/install_page.dart';
 import 'package:flutter_hbb/desktop/pages/server_page.dart';
 import 'package:flutter_hbb/desktop/screen/desktop_file_transfer_screen.dart';
 import 'package:flutter_hbb/desktop/screen/desktop_view_camera_screen.dart';
@@ -103,8 +102,6 @@ Future<void> main(List<String> args) async {
     desktopType = DesktopType.cm;
     await windowManager.ensureInitialized();
     runConnectionManagerScreen();
-  } else if (args.contains('--install')) {
-    runInstallPage();
   } else {
     desktopType = DesktopType.main;
     await windowManager.ensureInitialized();
@@ -378,20 +375,6 @@ void _runApp(
       },
     ),
   ));
-}
-
-void runInstallPage() async {
-  await windowManager.ensureInitialized();
-  await initEnv(kAppTypeMain);
-  _runApp('', const InstallPage(), MyTheme.currentThemeMode());
-  WindowOptions windowOptions =
-      getHiddenTitleBarWindowOptions(size: Size(800, 600), center: true);
-  windowManager.waitUntilReadyToShow(windowOptions, () async {
-    windowManager.show();
-    windowManager.focus();
-    windowManager.setOpacity(1);
-    windowManager.setAlignment(Alignment.center); // ensure
-  });
 }
 
 WindowOptions getHiddenTitleBarWindowOptions(

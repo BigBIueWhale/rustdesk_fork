@@ -87,6 +87,21 @@ impl BinaryData {
         })?;
         Ok(p)
     }
+
+    #[cfg(windows)]
+    pub fn write_to_new_file(&self, prefix: &Path) -> Result<PathBuf, String> {
+        let path = prefix.join(relative_payload_path(&self.path)?);
+        let parent = path
+            .parent()
+            .ok_or_else(|| format!("payload path has no parent: {}", path.display()))?;
+        if !parent.exists() {
+            fs::create_dir_all(parent)
+                .map_err(|err| format!("failed to create {}: {err}", parent.display()))?;
+        }
+        let content = self.decompress()?;
+        write_new_file(&path, &content)?;
+        Ok(path)
+    }
 }
 
 pub(crate) fn relative_payload_path(path: &str) -> Result<PathBuf, String> {

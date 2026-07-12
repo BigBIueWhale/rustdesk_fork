@@ -35,6 +35,7 @@ function Preflight {
     if (-not (Test-Path $SRC)) { Die "repo not found at $SRC" }
     if (Test-Path (Join-Path $SRC '.gitmodules')) { Die "hbb_common must be absorbed in-tree, not a submodule (R-R1)" }
     Assert-Version $RUST_VERSION    (rustc --version)              'rustc'
+    Assert-Version $RUST_VERSION    (cargo --version)              'cargo'
     Assert-Version $FLUTTER_VERSION (flutter --version)            'flutter'
     Assert-Version $LLVM_VERSION    (clang --version)              'clang/LLVM'
     # WiX, MSVC and vcpkg are provisioned by provision-windows-vm.sh to the pins.
@@ -134,6 +135,13 @@ if /I "%~1"=="build" (
     # canary's probe connect fails (no-op) and the build proceeds; if the VM ever had network during a
     # build, the canary panics rather than risk a leaked compile-time fetch breaking R-B2 reproducibility.
     $env:RUSTDESK_CANARY_OFFLINE = '1'
+
+    # Authoritative native-Windows runtime gate for the terminal-focused Rust library suite. Use the
+    # same pinned cargo, offline vendor map, lockfile, and flutter feature set as the artifact build;
+    # the broad terminal_ filter includes both terminal_helper and terminal_service tests.
+    Write-Host "[harness] testing terminal Rust library suite -- Windows x64, cargo $RUST_VERSION, offline/locked, features flutter"
+    cargo test --offline --locked --lib --features flutter --color never terminal_
+    if ($LASTEXITCODE -ne 0) { Die "terminal Rust library suite failed (exit $LASTEXITCODE) -- Windows runtime tests must pass before build.py --flutter" }
 
     # --- the sec3.2 x64-windows build: CPU-only software codec, no hwcodec/vram (R-R2b) ---
     # Under $ErrorActionPreference='Stop' a NATIVE command's non-zero exit does NOT auto-throw, so check

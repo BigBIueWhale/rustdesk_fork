@@ -14,6 +14,8 @@ use crate::platform::WallPaperRemover;
 // R-X9 (slices 2-4): the `portable_service::client as portable_client` import is excised
 // with the portable run-mode (the CM RequestStart->start_portable_service trigger and the
 // portable_check running-state probe are removed below).
+#[cfg(windows)]
+use crate::virtual_display_manager;
 use crate::{
     client::{
         native_opus_format_admission, native_opus_format_key, native_opus_format_within_limit,
@@ -56,11 +58,6 @@ use std::{
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use system_shutdown;
-#[cfg(target_os = "windows")]
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
-
-#[cfg(windows)]
-use crate::virtual_display_manager;
 pub type Sender = mpsc::UnboundedSender<(Instant, Arc<Message>)>;
 // R-F1/R-D6/R-S5/R-A9: port-forward/RDP relay tuning. The R-T3 writer-task refactor removed the old
 // SEND_TIMEOUT_*/H1 consts, so the sealed tunnel loop carries its own. SEND bounds a write to the
@@ -292,22 +289,23 @@ impl AuthConnType {
     }
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[derive(Clone, Debug)]
-enum TerminalUserToken {
-    SelfUser,
-    #[cfg(target_os = "windows")]
-    CurrentLogonUser(crate::terminal_service::UserToken),
+#[cfg(any(target_os = "windows", test))]
+#[derive(Debug, Eq, PartialEq)]
+enum WindowsTerminalProcessAuthority {
+    ProcessOwner,
+    ActiveSessionUser,
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-impl TerminalUserToken {
-    fn to_terminal_service_token(&self) -> Option<crate::terminal_service::UserToken> {
-        match self {
-            TerminalUserToken::SelfUser => None,
-            #[cfg(target_os = "windows")]
-            TerminalUserToken::CurrentLogonUser(token) => Some(*token),
-        }
+#[cfg(any(target_os = "windows", test))]
+fn windows_terminal_process_authority(
+    service_owned: bool,
+    local_system: bool,
+) -> Result<WindowsTerminalProcessAuthority, &'static str> {
+    match (service_owned, local_system) {
+        (true, true) => Ok(WindowsTerminalProcessAuthority::ActiveSessionUser),
+        (false, false) => Ok(WindowsTerminalProcessAuthority::ProcessOwner),
+        (true, false) => Err("Service-owned Windows terminal server is not LocalSystem."),
+        (false, true) => Err("Unclassified LocalSystem server cannot provide a terminal."),
     }
 }
 pub struct Connection {
@@ -410,12 +408,8 @@ pub struct Connection {
     peer_text_gate: crate::peer_text::PeerTextGate,
     terminal_service_id: String,
     terminal_persistent: bool,
-    // The user token must be set when terminal is enabled.
-    // 0 indicates SYSTEM user
-    // other values indicate current user
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    terminal_user_token: Option<TerminalUserToken>,
-    terminal_generic_service: Option<Box<GenericService>>,
+    terminal_service_lease: Option<terminal_service::TerminalServiceLease>,
     display_control_reject_log: DisplayControlRejectLog,
 }
 
@@ -594,8 +588,7 @@ impl Connection {
             terminal_service_id: "".to_owned(),
             terminal_persistent: false,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            terminal_user_token: None,
-            terminal_generic_service: None,
+            terminal_service_lease: None,
             display_control_reject_log: Default::default(),
         };
         let addr = hbb_common::try_into_v4(addr);
@@ -957,6 +950,23 @@ impl Connection {
                 _ = second_timer.tick() => {
                     #[cfg(windows)]
                     conn.portable_check();
+                    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                    if let Some(lease) = conn.terminal_service_lease.as_ref() {
+                        if let Err(err) = lease.ensure_attached_authority() {
+                            log::warn!(
+                                "Closing terminal connection after asynchronous authority revocation: ip={} conn_id={} err='{}'",
+                                conn.ip,
+                                conn.inner.id(),
+                                err
+                            );
+                            conn.send_close_reason_no_retry(
+                                "Terminal authority is no longer valid",
+                            )
+                            .await;
+                            conn.on_close("terminal authority revoked", false).await;
+                            break;
+                        }
+                    }
                     raii::AuthedConnID::check_wake_lock_on_setting_changed();
                     if let Some((instant, minute)) = conn.auto_disconnect_timer.as_ref() {
                         if instant.elapsed().as_secs() > minute * 60 {
@@ -1167,7 +1177,7 @@ impl Connection {
         // was already removed in R-SV7; the viewer-side `send2fa` sender, the `Auth2FA` proto
         // field, src/auth_2fa.rs, the totp-rs dep, and the Sciter 2FA UI are now excised too —
         // R-X7 complete: no 2FA path survives on either side or on the wire.)
-        if let Some(keep_alive) = self.prepare_terminal_session_user_for_authorization().await {
+        if let Some(keep_alive) = self.prepare_terminal_authority_for_authorization().await {
             return keep_alive;
         }
         // R-F1/R-D6/R-S5: dial the peer-named LOCAL target of a port-forward/RDP tunnel NOW (the
@@ -1225,7 +1235,7 @@ impl Connection {
         let mut username = crate::platform::get_active_username();
         // On a headless unix box there is no logind/console session for `get_active_username` to
         // resolve, so it returns empty. File transfer runs in the CM process as the `--server` owner
-        // (the same SelfUser the terminal reports — R-F1), so report that real user rather than an
+        // (the same process owner used by the terminal — R-F1), so report that real user rather than an
         // empty console user. Windows/Android keep their WTS/console-session semantics untouched.
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         if username.is_empty() {
@@ -1351,9 +1361,9 @@ impl Connection {
         // The pre-logon SYSTEM session has no interactive user or reachable profile, so a Windows
         // file-transfer login there reports no console user — the viewer's matching Windows-only gate
         // then refuses it. On unix, file transfer serves at the CM service privilege regardless of any
-        // console session (like the terminal's SelfUser, R-F1), so the process-owner username above
+        // console session (like the terminal process owner, R-F1), so the process-owner username above
         // stands with no prelogin blanking. Mirrors the terminal's Windows-only is_prelogin handling
-        // (fill_terminal_user_token); on a headless unix box is_prelogin() is true (no seat0), which
+        // (select_terminal_launch_authority); on a headless unix box is_prelogin() is true (no seat0), which
         // must NOT blank the file-transfer user.
         #[cfg(target_os = "windows")]
         if self.file_transfer.is_some() && crate::platform::is_prelogin() {
@@ -1462,11 +1472,49 @@ impl Connection {
             }
             self.on_remote_authorized();
         }
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        if self.terminal {
+            let Some(lease) = self.terminal_service_lease.as_ref() else {
+                log::error!("Terminal service lease is missing before login response");
+                return false;
+            };
+            if let Err(err) = lease.validate_for_activation() {
+                log::warn!(
+                    "Terminal authority validation failed before login response: ip={} conn_id={} err='{}'",
+                    self.ip,
+                    self.inner.id(),
+                    err
+                );
+                return false;
+            }
+        }
         let mut msg_out = Message::new();
         msg_out.set_login_response(res);
-        self.send(msg_out).await;
+        if let Err(err) = self.send_checked(msg_out).await {
+            log::warn!(
+                "Failed to send login response: ip={} conn_id={} err='{}'",
+                self.ip,
+                self.inner.id(),
+                err
+            );
+            return false;
+        }
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        if self.terminal {
+            let Some(lease) = self.terminal_service_lease.as_mut() else {
+                log::error!("Terminal service lease is missing after authorization");
+                return false;
+            };
+            if let Err(err) = lease.activate(self.inner.clone()) {
+                log::error!("Failed to activate terminal service lease: {}", err);
+                return false;
+            }
+        }
         if let Some(o) = self.options_in_login.take() {
-            self.update_options(&o).await;
+            if let Err(err) = self.update_options(&o).await {
+                log::error!("Failed to apply login options: {}", err);
+                return false;
+            }
         }
         if let Some((dir, show_hidden)) = self.file_transfer.clone() {
             // R-S19 (CVE-2026-58056 / CWE-863, Appendix C #24): capability confinement for FileTransfer
@@ -1487,9 +1535,7 @@ impl Connection {
                 self.delayed_read_dir = Some((dir.to_owned(), show_hidden));
             }
         } else if self.terminal {
-            // keyboard/clipboard/file/audio confined in confine_capabilities_to_conn_type above (R-S19).
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            self.init_terminal_service().await;
+            // Terminal activation completed immediately after the checked login-response write.
         } else if self.view_camera {
             if !wait_session_id_confirm {
                 self.try_sub_camera_displays();
@@ -2893,7 +2939,15 @@ impl Connection {
                         self.update_auto_disconnect_timer();
                     }
                     Some(misc::Union::Option(o)) => {
-                        self.update_options(&o).await;
+                        if let Err(err) = self.update_options(&o).await {
+                            log::warn!(
+                                "Closing connection after option authority failure: ip={} conn_id={} err='{}'",
+                                self.ip,
+                                self.inner.id(),
+                                err
+                            );
+                            return false;
+                        }
                     }
                     Some(misc::Union::RefreshVideo(r)) => {
                         if r {
@@ -3109,12 +3163,19 @@ impl Connection {
                     // R-X8/R-D8: the handler stays compiled into the one binary (§14) and is gated
                     // by platform. On the desktop box the terminal is GRANTED (enable-terminal=Y,
                     // full access — the one mode), so an authorized Terminal session sets
-                    // self.terminal and a terminal_user_token (SelfUser — the service user's shell,
+                    // self.terminal and a terminal service lease (the service user's shell,
                     // no second credential, R-X14/R-S18) and handle_terminal_action drives the
-                    // owner's PTY. It still bails fail-closed if no Terminal session was authorized
-                    // (token None).
+                    // owner's PTY. It fails closed if no Terminal service lease was authorized.
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                    allow_err!(self.handle_terminal_action(action).await);
+                    if let Err(err) = self.handle_terminal_action(action).await {
+                        log::warn!(
+                            "Closing terminal connection after authority failure: ip={} conn_id={} err='{}'",
+                            self.ip,
+                            self.inner.id(),
+                            err
+                        );
+                        return false;
+                    }
                     #[cfg(any(target_os = "android", target_os = "ios"))]
                     {
                         // Terminal is unsupported on mobile — a TerminalAction is ignored.
@@ -3131,64 +3192,53 @@ impl Connection {
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    fn fill_terminal_user_token(&mut self) -> Option<&'static str> {
-        self.terminal_user_token = Some(TerminalUserToken::SelfUser);
-        None
+    fn select_terminal_launch_authority(
+        &self,
+    ) -> ResultType<terminal_service::TerminalLaunchAuthority> {
+        Ok(terminal_service::process_owner_launch_authority())
     }
 
-    // Fill the terminal user token from the CURRENT session (R-X8: SessionUser only —
-    // no peer-supplied OS credential / administrator logon; LogonUserW excised).
     #[cfg(target_os = "windows")]
-    fn fill_terminal_user_token(&mut self) -> Option<&'static str> {
-        if crate::platform::is_prelogin() {
-            self.terminal_user_token = None;
-            return Some("No active console user logged on, please connect and logon first.");
+    fn select_terminal_launch_authority(
+        &self,
+    ) -> ResultType<terminal_service::TerminalLaunchAuthority> {
+        match windows_terminal_process_authority(
+            crate::common::is_service_owned_server_process(),
+            crate::platform::is_root(),
+        ) {
+            Ok(WindowsTerminalProcessAuthority::ProcessOwner) => {
+                Ok(terminal_service::process_owner_launch_authority())
+            }
+            Ok(WindowsTerminalProcessAuthority::ActiveSessionUser) => {
+                self.windows_service_session_launch_authority()
+            }
+            Err(message) => bail!(message),
         }
-
-        if crate::platform::is_installed() {
-            return self.handle_installed_user();
-        }
-
-        self.terminal_user_token = Some(TerminalUserToken::SelfUser);
-        None
     }
 
-    // R-X8: handle_administrator_check (peer OS-credential admin logon via LogonUserW) removed.
-
     #[cfg(target_os = "windows")]
-    fn handle_installed_user(&mut self) -> Option<&'static str> {
-        let session_id = crate::platform::get_current_session_id(true);
-        if session_id == 0xFFFFFFFF {
-            return Some("Failed to get current session id.");
+    fn windows_service_session_launch_authority(
+        &self,
+    ) -> ResultType<terminal_service::TerminalLaunchAuthority> {
+        let session_id = crate::platform::get_current_process_session_id().ok_or_else(|| {
+            hbb_common::anyhow::anyhow!("Failed to get server process session ID")
+        })?;
+        if session_id == 0 {
+            bail!("Service-owned terminal server is not in a user session");
         }
         let token = crate::platform::get_user_token(session_id, true);
-        if !token.is_null() {
-            match crate::platform::ensure_primary_token(token) {
-                Ok(t) => {
-                    self.terminal_user_token = Some(TerminalUserToken::CurrentLogonUser(
-                        crate::terminal_service::UserToken::new(t as usize),
-                    ));
-                }
-                Err(e) => {
-                    log::error!("Failed to ensure primary token: {}", e);
-                    self.terminal_user_token = Some(TerminalUserToken::CurrentLogonUser(
-                        crate::terminal_service::UserToken::new(token as usize),
-                    ));
-                }
-            }
-            None
-        } else {
-            log::error!(
-                "Failed to get user token for terminal action, {}",
+        if token.is_null() {
+            bail!(
+                "Failed to get terminal user token for the served session: {}",
                 std::io::Error::last_os_error()
             );
-            Some("Failed to get user token.")
         }
+        terminal_service::windows_session_launch_authority(session_id, token as usize)
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    async fn prepare_terminal_session_user_for_authorization(&mut self) -> Option<bool> {
-        if !self.terminal || self.terminal_user_token.is_some() {
+    async fn prepare_terminal_authority_for_authorization(&mut self) -> Option<bool> {
+        if !self.terminal || self.terminal_service_lease.is_some() {
             return None;
         }
         // R-X8: terminal authorization is SessionUser-only — the terminal runs as the
@@ -3196,44 +3246,23 @@ impl Connection {
         // second-credential mode (peer os_login username/password -> LogonUserW -> admin
         // check) and its rate-limit + concurrency machinery are excised; CPace's
         // GUESS_FAILURES (R-P14c) is the sole online-guess limiter.
-        if let Some(msg) = self.fill_terminal_user_token() {
+        if let Err(err) = self.prepare_terminal_service() {
             log::warn!(
-                "Terminal session-user authorization failed: ip={} conn_id={} msg='{}'",
+                "Terminal service authorization failed: ip={} conn_id={} err='{}'",
                 self.ip,
                 self.inner.id(),
-                msg
+                err
             );
-            self.send_login_error(msg).await;
+            self.send_login_error("Failed to establish terminal authority.")
+                .await;
             sleep(1.).await;
             return Some(false);
-        }
-
-        if let Some(is_user) =
-            terminal_service::is_service_specified_user(&self.terminal_service_id)
-        {
-            if let Some(user_token) = &self.terminal_user_token {
-                let has_service_token = user_token.to_terminal_service_token().is_some();
-                if is_user != has_service_token {
-                    log::error!(
-                        "Terminal service user mismatch: ip={} conn_id={} service_is_user={} has_service_token={}. The service ID may have been manually changed in the configuration, causing validation to fail.",
-                        self.ip,
-                        self.inner.id(),
-                        is_user,
-                        has_service_token
-                    );
-                    // No need to translate the following message, because it is in an abnormal case.
-                    self.send_login_error("Terminal service user mismatch detected.")
-                        .await;
-                    sleep(1.).await;
-                    return Some(false);
-                }
-            }
         }
         None
     }
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
-    async fn prepare_terminal_session_user_for_authorization(&mut self) -> Option<bool> {
+    async fn prepare_terminal_authority_for_authorization(&mut self) -> Option<bool> {
         None
     }
 
@@ -3748,7 +3777,7 @@ impl Connection {
         true
     }
 
-    async fn update_options(&mut self, o: &OptionMessage) {
+    async fn update_options(&mut self, o: &OptionMessage) -> ResultType<()> {
         log::info!("Option update: {:?}", o);
         if let Ok(q) = o.image_quality.enum_value() {
             let image_quality;
@@ -3958,7 +3987,7 @@ impl Connection {
             // conn type drive terminal state — the non-Terminal apply is inert (empty service_id) but
             // confining it structurally keeps the capability a function of the AuthConnType.
             if self.terminal && q != BoolOption::NotSet {
-                self.update_terminal_persistence(q == BoolOption::Yes).await;
+                self.update_terminal_persistence(q == BoolOption::Yes)?;
             }
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -4007,6 +4036,7 @@ impl Connection {
                 }
             }
         }
+        Ok(())
     }
 
     async fn turn_on_privacy(&mut self, impl_key: String) {
@@ -4536,6 +4566,11 @@ impl Connection {
         allow_err!(self.stream.send(&msg).await);
     }
 
+    #[inline]
+    async fn send_checked(&mut self, msg: Message) -> ResultType<()> {
+        self.stream.send(&msg).await
+    }
+
     pub fn alive_conns() -> Vec<i32> {
         ALIVE_CONNS.lock().unwrap().clone()
     }
@@ -4784,62 +4819,46 @@ impl Connection {
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    async fn update_terminal_persistence(&mut self, persistent: bool) {
+    fn update_terminal_persistence(&mut self, persistent: bool) -> ResultType<()> {
         self.terminal_persistent = persistent;
-        terminal_service::set_persistent(&self.terminal_service_id, persistent).ok();
+        let Some(lease) = &self.terminal_service_lease else {
+            bail!("Terminal service lease is not set while updating persistence");
+        };
+        lease.set_persistent(persistent)
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    async fn init_terminal_service(&mut self) {
-        debug_assert!(self.terminal_user_token.is_some());
-        let Some(user_token) = self.terminal_user_token.clone() else {
-            // unreachable, but keep it for safety
-            log::error!("Terminal user token is not set.");
-            return;
-        };
+    fn prepare_terminal_service(&mut self) -> ResultType<()> {
         if self.terminal_service_id.is_empty() {
             self.terminal_service_id = terminal_service::generate_service_id();
         }
-        let s = Box::new(terminal_service::new(
+        let launch_authority = self.select_terminal_launch_authority()?;
+        let lease = terminal_service::prepare(
             self.terminal_service_id.clone(),
             self.terminal_persistent,
-            user_token.to_terminal_service_token(),
-        ));
-        s.on_subscribe(self.inner.clone());
-        self.terminal_generic_service = Some(s);
+            launch_authority,
+        )?;
+        self.terminal_service_id = lease.service_id().to_owned();
+        self.terminal_service_lease = Some(lease);
+        Ok(())
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     async fn handle_terminal_action(&mut self, action: TerminalAction) -> ResultType<()> {
-        debug_assert!(self.terminal_user_token.is_some());
-        let Some(user_token) = self.terminal_user_token.clone() else {
-            // unreacheable, but keep it for safety
-            bail!("Terminal user token is not set.");
+        let Some(lease) = &self.terminal_service_lease else {
+            bail!("Terminal service lease is not set.");
         };
-        let mut proxy = terminal_service::TerminalServiceProxy::new(
-            self.terminal_service_id.clone(),
-            Some(self.terminal_persistent),
-            user_token.to_terminal_service_token(),
-        );
-
-        match proxy.handle_action(&action) {
-            Ok(Some(response)) => {
-                let mut msg_out = Message::new();
-                msg_out.set_terminal_response(response);
-                self.send(msg_out).await;
+        if let Err(err) = lease.enqueue_action(action) {
+            if terminal_service::is_fatal_authority_error(&err) {
+                return Err(err);
             }
-            Ok(None) => {
-                // No response needed
-            }
-            Err(err) => {
-                let mut response = TerminalResponse::new();
-                let mut error = TerminalError::new();
-                error.message = format!("Failed to handle action: {}", err);
-                response.set_error(error);
-                let mut msg_out = Message::new();
-                msg_out.set_terminal_response(response);
-                self.send(msg_out).await;
-            }
+            let mut response = TerminalResponse::new();
+            let mut error = TerminalError::new();
+            error.message = "Failed to queue terminal action".to_owned();
+            response.set_error(error);
+            let mut msg_out = Message::new();
+            msg_out.set_terminal_response(response);
+            self.send(msg_out).await;
         }
 
         Ok(())
@@ -4943,7 +4962,7 @@ async fn start_ipc(
     // headless direct-`--server` box there is no seat0/console user and none will ever arrive, so
     // this wait would spin forever and the CM (which serves file transfer, host audio, chat/voice)
     // would never start. In that case run the CM as the `--server` process owner — the service user,
-    // the same `SelfUser` the terminal and screen-capture already use (R-S8/R-F1) — instead of
+    // the same process owner the terminal and screen-capture already use (R-S8/R-F1) — instead of
     // waiting. `headless_service_user` records which case we took so the spawn below picks the
     // matching launcher (service-user `run_me` vs. console-user `run_as_user`).
     let headless_service_user = loop {
@@ -5480,18 +5499,8 @@ impl Drop for Connection {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         self.release_pressed_modifiers();
 
-        if let Some(s) = self.terminal_generic_service.as_ref() {
-            s.join();
-        }
-
-        #[cfg(target_os = "windows")]
-        if let Some(TerminalUserToken::CurrentLogonUser(token)) = self.terminal_user_token.take() {
-            if token.as_raw() != 0 {
-                unsafe {
-                    hbb_common::allow_err!(CloseHandle(HANDLE(token.as_raw() as _)));
-                };
-            }
-        }
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        drop(self.terminal_service_lease.take());
     }
 }
 
@@ -5867,6 +5876,20 @@ mod raii {
 mod test {
     #[allow(unused)]
     use super::*;
+
+    #[test]
+    fn windows_terminal_process_authority_is_role_exact() {
+        assert_eq!(
+            windows_terminal_process_authority(true, true),
+            Ok(WindowsTerminalProcessAuthority::ActiveSessionUser)
+        );
+        assert_eq!(
+            windows_terminal_process_authority(false, false),
+            Ok(WindowsTerminalProcessAuthority::ProcessOwner)
+        );
+        assert!(windows_terminal_process_authority(true, false).is_err());
+        assert!(windows_terminal_process_authority(false, true).is_err());
+    }
 
     #[cfg(target_os = "macos")]
     #[test]

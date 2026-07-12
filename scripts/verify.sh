@@ -545,15 +545,16 @@ echo "== (3b-iii-a4) Windows terminal helper pipes bind to launched helper PID (
 r_s11c12=
 grep -q 'GetNamedPipeClientProcessId' src/server/terminal_helper.rs || r_s11c12="$r_s11c12 client-pid-query-missing"
 grep -q 'fn ensure_named_pipe_client_pid' src/server/terminal_helper.rs || r_s11c12="$r_s11c12 client-pid-gate-missing"
-grep -q 'expected_client_pid: u32' src/server/terminal_helper.rs || r_s11c12="$r_s11c12 expected-pid-parameter-missing"
+grep -q 'let expected_client_pid = helper.pid();' src/server/terminal_helper.rs || r_s11c12="$r_s11c12 expected-pid-owner-missing"
 grep -q 'client_pid != expected_client_pid' src/server/terminal_helper.rs || r_s11c12="$r_s11c12 client-pid-match-missing"
 grep -q 'FILE_FLAG_FIRST_PIPE_INSTANCE' src/server/terminal_helper.rs || r_s11c12="$r_s11c12 first-pipe-instance-flag-missing"
 grep -q 'PIPE_REJECT_REMOTE_CLIENTS' src/server/terminal_helper.rs || r_s11c12="$r_s11c12 reject-remote-clients-flag-missing"
-grep -q 'HelperProcessGuard::new(helper_process_info.handle, helper_process_info.pid)' src/server/terminal_service.rs || r_s11c12="$r_s11c12 helper-pid-source-missing"
-terminal_helper_pipe_connects=$(awk '/wait_for_pipe_connection\(/,/\)\?;/' src/server/terminal_service.rs | grep -c 'helper_pid' || true)
+grep -q 'let helper_process = launch_terminal_helper_with_token(' src/server/terminal_service.rs || r_s11c12="$r_s11c12 helper-process-owner-missing"
+terminal_helper_pipe_connects=$(awk '/wait_for_pipe_connection\(/,/\)\?;/' src/server/terminal_service.rs | grep -c '&helper_process' || true)
 if [ "$terminal_helper_pipe_connects" -ne 2 ]; then
-  r_s11c12="$r_s11c12 helper-pid-not-passed-to-both-pipes"
+  r_s11c12="$r_s11c12 helper-owner-not-passed-to-both-pipes"
 fi
+grep -q 'session.helper_process = Some(helper_process);' src/server/terminal_service.rs || r_s11c12="$r_s11c12 helper-owner-not-transferred-to-session"
 if grep -q 'Creating pipes: input={}, output={}' src/server/terminal_service.rs; then
   r_s11c12="$r_s11c12 service-logs-terminal-pipe-names"
 fi
@@ -563,7 +564,387 @@ fi
 grep -q 'R-S11c-12 — Windows terminal helper pipe binding' HARDENING_STATUS.md || r_s11c12="$r_s11c12 hardening-ledger-missing"
 grep -q 'R-S11c-12 closes the Windows terminal helper pipe-binding class' requirements.html || r_s11c12="$r_s11c12 requirements-disposition-missing"
 if [ -n "$r_s11c12" ]; then echo "  FAIL R-S11c-12 Windows terminal helper pipe binding:$r_s11c12"; rc=1; else
-  echo "  ok  R-S11c-12 Windows terminal helper pipes are first-instance/local-only and accept only the helper PID returned by CreateProcessAsUserW"; fi
+  echo "  ok  R-S11c-12 Windows terminal helper pipes are first-instance/local-only and bind both endpoints to the retained helper process object and PID returned by CreateProcessAsUserW"; fi
+
+echo "== (3b-iii-a4a) Windows terminal authority is process-role and exact-principal bound (R-S11c-25) =="
+r_s11c25=
+"${RUN[@]}" cargo test --lib --features linux-pkg-config terminal_ --color never
+if ! python3 - src/server/connection.rs src/server/terminal_service.rs src/server/terminal_helper.rs src/core_main.rs scripts/build-windows.ps1 <<'PY'
+import pathlib
+import sys
+
+connection = pathlib.Path(sys.argv[1]).read_text()
+service = pathlib.Path(sys.argv[2]).read_text()
+helper = pathlib.Path(sys.argv[3]).read_text()
+core_main = pathlib.Path(sys.argv[4]).read_text()
+windows_build = pathlib.Path(sys.argv[5]).read_text()
+
+def rust_block(source: str, marker: str) -> str:
+    start = source.index(marker)
+    brace = source.index("{", start)
+    depth = 0
+    for index in range(brace, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start:index + 1]
+    raise ValueError(f"unterminated Rust block: {marker}")
+
+selector = rust_block(
+    connection,
+    '#[cfg(target_os = "windows")]\n    fn select_terminal_launch_authority'
+)
+for required in (
+    "windows_terminal_process_authority(",
+    "crate::common::is_service_owned_server_process()",
+    "crate::platform::is_root()",
+    "self.windows_service_session_launch_authority()",
+):
+    if required not in selector:
+        raise SystemExit(f"Windows terminal selector missing {required}")
+if "is_installed" in selector:
+    raise SystemExit("Windows terminal selector still trusts installation metadata")
+
+session_authority = rust_block(connection, "fn windows_service_session_launch_authority")
+if "get_current_process_session_id()" not in session_authority:
+    raise SystemExit("Windows terminal authority is not bound to the server process session")
+if "get_current_session_id" in session_authority:
+    raise SystemExit("Windows terminal authority reselects a globally active session")
+
+prepare = rust_block(connection, "async fn prepare_terminal_authority_for_authorization")
+if "self.prepare_terminal_service()" not in prepare:
+    raise SystemExit("terminal service is not established during authorization preparation")
+
+authorize = rust_block(connection, "async fn send_logon_response_and_keep_alive")
+if authorize.index("prepare_terminal_authority_for_authorization().await") > authorize.index(
+    "self.authorized = true"
+):
+    raise SystemExit("terminal authority is established after authorization succeeds")
+pre_response_validation = authorize.index("lease.validate_for_activation()")
+login_response = authorize.index("msg_out.set_login_response(res)")
+login_send = authorize.index("self.send_checked(msg_out).await", login_response)
+activation = authorize.index("lease.activate(self.inner.clone())")
+option_apply = authorize.index("self.update_options(&o).await")
+if pre_response_validation > login_send:
+    raise SystemExit("terminal activation checkpoint is established after login response write")
+if activation < login_send:
+    raise SystemExit("terminal output is activated before login success is sent")
+if option_apply < activation:
+    raise SystemExit("login option processing intervenes between checked success and activation")
+
+checked_send = rust_block(connection, "async fn send_checked")
+if "self.stream.send(&msg).await" not in checked_send or "allow_err!" in checked_send:
+    raise SystemExit("checked login-response send does not propagate stream errors")
+
+connection_start = rust_block(connection, "pub async fn start")
+if "lease.ensure_attached_authority()" not in connection_start:
+    raise SystemExit("attached connection does not observe asynchronous terminal revocation")
+
+terminal_action = rust_block(connection, "async fn handle_terminal_action")
+if "lease.enqueue_action(action)" not in terminal_action:
+    raise SystemExit("terminal actions are not admitted through the bounded worker queue")
+if "proxy.handle_action" in terminal_action:
+    raise SystemExit("terminal construction still runs on the async connection task")
+if "is_fatal_authority_error(&err)" not in terminal_action or "return Err(err)" not in terminal_action:
+    raise SystemExit("fatal queued-action authority errors do not close the connection")
+
+persistence = rust_block(connection, "fn update_terminal_persistence")
+if "-> ResultType<()>" not in persistence or "lease.set_persistent(persistent)" not in persistence:
+    raise SystemExit("terminal persistence authority errors are not propagated")
+
+lease_activate = rust_block(service, "pub(crate) fn activate")
+for required in (
+    "state.validate_attachment(",
+    "self.worker_state.ensure_authoritative()?",
+    "state.commit_attachment(",
+    ".subscriber_id",
+    ".on_subscribe(subscriber)",
+):
+    if required not in lease_activate:
+        raise SystemExit(f"terminal activation missing {required}")
+
+revoke = rust_block(service, "fn revoke_service_authority")
+for required in (
+    "state.authority_epoch =",
+    "worker_state.mark_fatal_authority()",
+    "opening.cancel()",
+    "state.launch_authority.take()",
+    "state.sessions.drain()",
+    "take_registry_entry_exact(&service_id, service)",
+    "enqueue_sessions_for_teardown(sessions)",
+):
+    if required not in revoke:
+        raise SystemExit(f"terminal revocation missing {required}")
+if "session.lock()" in revoke or ".join()" in revoke:
+    raise SystemExit("terminal authority monitor waits on session teardown")
+
+opening = rust_block(service, "struct OpeningReservation")
+if "cancelled: Arc<AtomicBool>" not in opening:
+    raise SystemExit("opening reservation lacks a shared cancellation capability")
+opening_guard = rust_block(service, "impl OpeningGuard")
+if "same_identity" not in opening_guard or "ensure_not_cancelled" not in opening_guard:
+    raise SystemExit("opening guard does not bind identity and cancellation")
+helper_open = rust_block(service, "fn handle_open_with_helper")
+if "Result<Option<TerminalActionResponse>>" not in helper_open:
+    raise SystemExit("Windows helper open does not return the ordered action response type")
+if helper_open.count("&opening.reservation.cancelled") != 2:
+    raise SystemExit("both helper pipe waits must observe the opening cancellation capability")
+direct_open = rust_block(service, "fn handle_open(&self, open: &OpenTerminal)")
+for required in (
+    "let portable_pty::PtyPair { master, slave } = pty_pair",
+    "drop(slave)",
+    "session.pty_master = Some(master)",
+):
+    if required not in direct_open:
+        raise SystemExit(f"direct PTY lifecycle missing {required}")
+if "session.pty_pair" in direct_open or "pty_pair: Option<portable_pty::PtyPair>" in service:
+    raise SystemExit("direct terminal retains the parent PTY slave after spawn")
+
+action_worker = rust_block(service, "fn run_action_worker")
+if "actions.recv()" not in action_worker or "proxy.handle_action(&action)" not in action_worker:
+    raise SystemExit("terminal action construction is not confined to its ordered worker")
+queue = rust_block(service, "fn try_enqueue_terminal_action")
+if "sender.try_send(action)" not in queue or "TrySendError::Full" not in queue:
+    raise SystemExit("terminal action admission is not bounded and nonblocking")
+
+output_condition = rust_block(service, "impl TerminalOutputCondition")
+if "Arc::ptr_eq(current, expected)" not in output_condition:
+    raise SystemExit("terminal output does not retain exact session identity")
+if "SessionAbsent" in service:
+    raise SystemExit("terminal close dispatch reverted to ID-absence authority")
+output_dispatch = rust_block(service, "fn send_terminal_response_if_authoritative")
+if "TerminalOutputCondition::SessionRemove" not in output_dispatch:
+    raise SystemExit("terminal close response and exact removal are not one dispatch transaction")
+action_dispatch = rust_block(service, "fn send_terminal_action_response_if_authoritative")
+if action_dispatch.index("service.send_to") > action_dispatch.index("output_visible.store(true"):
+    raise SystemExit("terminal output is published before TerminalOpened is enqueued")
+if "Arc::ptr_eq(current, &publication.expected)" not in action_dispatch:
+    raise SystemExit("terminal opened publication is not exact-session bound")
+output_read = rust_block(service, "fn read_outputs")
+for required in (
+    "let mut remaining_output_chunks = MAX_OUTPUT_CHUNKS_PER_POLL",
+    "let mut remaining_output_bytes = MAX_OUTPUT_BYTES_PER_POLL",
+    "output_poll_cursor",
+    "chunks_per_session",
+    "bytes_per_session",
+    "remaining_output_chunks.min(chunks_per_session)",
+    "remaining_output_bytes.min(bytes_per_session)",
+    "remaining_output_chunks -= initial_session_chunks - session_output_chunks",
+    "remaining_output_bytes -= initial_session_bytes - session_output_bytes",
+    "session.pending_exit",
+    "session.output_is_exhausted()",
+):
+    if required not in output_read:
+        raise SystemExit(f"terminal output poll missing global bound {required}")
+if "while let Ok(data) = output_rx.try_recv()" in output_read:
+    raise SystemExit("terminal output poll retains an unbounded channel drain")
+teardown_enqueue = rust_block(service, "fn enqueue_teardown_task")
+if "TERMINAL_TEARDOWN_EXECUTOR.enqueue(task)" not in teardown_enqueue or ".spawn(" in teardown_enqueue:
+    raise SystemExit("terminal teardown admission is not queue-only")
+teardown_workers = rust_block(service, "fn ensure_teardown_workers")
+if "TERMINAL_TEARDOWN_WORKER_COUNT" not in teardown_workers or ".spawn(" not in teardown_workers:
+    raise SystemExit("terminal teardown workers are not prestarted before admission")
+teardown_executor = rust_block(service, "impl TerminalTeardownExecutor")
+if "TERMINAL_TEARDOWN_CAPACITY" not in teardown_executor or "ready.notify_one()" not in teardown_executor:
+    raise SystemExit("terminal teardown queue is not bounded and worker-notified")
+permit_pool = rust_block(service, "impl TerminalTeardownPermitPool")
+if "Terminal teardown capacity is exhausted" not in permit_pool:
+    raise SystemExit("terminal teardown ownership is not permit-bounded")
+permit_drop = rust_block(service, "impl Drop for TerminalTeardownPermit")
+if ".expect(" in permit_drop or "std::process::abort()" not in permit_drop:
+    raise SystemExit("terminal teardown permit invariant is not explicit and fail-stop")
+if "pending.pop_front().unwrap()" in teardown_executor:
+    raise SystemExit("terminal teardown worker assumes queue readiness without an explicit invariant check")
+session_entry = rust_block(service, "impl TerminalSessionEntry")
+if (
+    "self.exiting.store(true" not in session_entry
+    or "terminator.terminate()" not in session_entry
+    or "std::process::abort()" not in session_entry
+):
+    raise SystemExit("terminal revocation lacks out-of-lock session/job cancellation")
+opening_reservation = rust_block(service, "struct OpeningReservation")
+if "teardown_permit: Arc<TerminalTeardownPermit>" not in opening_reservation:
+    raise SystemExit("terminal openings do not reserve bounded teardown ownership")
+if service.count("session._teardown_permit = Some(opening.reservation.teardown_permit.clone())") < 2:
+    raise SystemExit("terminal session construction can outlive its teardown permit")
+lease_drop = rust_block(service, "impl Drop for TerminalServiceLease")
+if ".spawn(" in lease_drop or ".join()" in lease_drop:
+    raise SystemExit("terminal lease Drop can spawn or synchronously join teardown")
+if "TERMINAL_TEARDOWN_TASKS" in service or "start_pending_teardown_tasks" in service:
+    raise SystemExit("terminal teardown retains the old unbounded spawned-task path")
+detached_monitor = rust_block(service, "fn monitor_detached_sessions_once")
+if "session.try_lock()" not in detached_monitor or "remove_session_if_current" not in detached_monitor:
+    raise SystemExit("detached dead-session cleanup is not nonblocking and exact-Arc bound")
+session_exit = rust_block(service, "fn exit_status_if_exited")
+if session_exit.count(".is_finished()") < 2 or "reader_thread" not in session_exit or "writer_thread" not in session_exit:
+    raise SystemExit("terminal session liveness does not observe both transport workers")
+if "transport_failure_is_reportable(" not in session_exit or "helper.exit_code_if_exited()" not in session_exit:
+    raise SystemExit("helper transport completion can preempt the retained process status")
+session_liveness = rust_block(service, "fn has_exited")
+if session_liveness.count(".is_finished()") < 2 or "return true;" not in session_liveness:
+    raise SystemExit("dead terminal transport remains reconnectable during exit-status grace")
+transport_failure = rust_block(service, "fn transport_failure_is_reportable")
+if "HELPER_EXIT_STATUS_GRACE" not in transport_failure or "DIRECT_EXIT_STATUS_GRACE" not in transport_failure:
+    raise SystemExit("terminal reader completion lacks bounded helper/direct process-status grace")
+if "if writer_finished" not in transport_failure or "return true;" not in transport_failure:
+    raise SystemExit("terminal writer failure is not immediately reportable")
+output_run = rust_block(service, "fn run(sp: TerminalService)")
+if "TerminalOutputPoll::Quiescent" not in output_run or "continue" not in output_run:
+    raise SystemExit("fatal terminal output does not remain permanently quiescent")
+
+pipe_rights = rust_block(helper, "fn pipe_access_rights")
+client_rights = pipe_rights[pipe_rights.index("let client_access"):]
+for required in ("FILE_WRITE_DATA.0 | SYNCHRONIZE.0", "FILE_READ_DATA.0 | SYNCHRONIZE.0"):
+    if required not in client_rights:
+        raise SystemExit(f"terminal helper client rights missing {required}")
+if "FILE_GENERIC_WRITE" in client_rights or "FILE_APPEND_DATA" in client_rights:
+    raise SystemExit("terminal helper logon SID retains generic-write/append authority")
+pipe_create = rust_block(helper, "fn create_named_pipe_server_for_principals")
+if "PIPE_ACCESS_DUPLEX" not in pipe_create:
+    raise SystemExit("terminal helper server handle lacks mode-change-capable duplex access")
+if "PIPE_ACCESS_INBOUND" in pipe_create or "PIPE_ACCESS_OUTBOUND" in pipe_create:
+    raise SystemExit("terminal helper server reverted to a read-only/write-only mode-change handle")
+pipe_open = rust_block(helper, "fn open_pipe")
+if "FILE_GENERIC_READ" in pipe_open or "FILE_GENERIC_WRITE" in pipe_open:
+    raise SystemExit("terminal helper client requests generic pipe rights")
+pipe_wait = rust_block(helper, "pub fn wait_for_pipe_connection")
+if "opening_cancelled: &Arc<AtomicBool>" not in pipe_wait:
+    raise SystemExit("terminal helper pipe wait lacks external authority cancellation")
+helper_shutdown = rust_block(helper, "fn shutdown_helper_io_threads")
+if helper_shutdown.count("cancel_pending_synchronous_io") != 2:
+    raise SystemExit("terminal helper shutdown does not cancel both synchronous I/O workers")
+if "std::process::exit(1)" not in helper_shutdown:
+    raise SystemExit("terminal helper cancellation failure can detach workers and continue")
+cancel_io = rust_block(helper, "fn cancel_pending_synchronous_io")
+if "worker.is_finished()" not in cancel_io or "Ok(()) => return Ok(())" in cancel_io:
+    raise SystemExit("terminal helper cancellation returns before the worker is observably finished")
+framed_read = rust_block(helper, "fn read_exact_or_eof")
+if "exiting.load(Ordering::Acquire)" not in framed_read:
+    raise SystemExit("terminal helper framed input can issue another read after shutdown")
+helper_status = rust_block(helper, "pub fn run_terminal_helper")
+if "status.exit_code() as i32" not in helper_status or "Ok(exit_code)" not in helper_status:
+    raise SystemExit("terminal helper discards the shell exit status")
+helper_entry = rust_block(core_main, 'else if args[0] == "--terminal-helper"')
+if "std::process::exit(exit_code)" not in helper_entry or "Err(err)" not in helper_entry:
+    raise SystemExit("dedicated terminal helper entrypoint does not preserve failure status")
+
+native_test = "cargo test --offline --locked --lib --features flutter --color never terminal_"
+if native_test not in windows_build:
+    raise SystemExit("native Windows build does not execute the terminal runtime suite")
+artifact_build = "\n    python build.py --flutter"
+if artifact_build not in windows_build or windows_build.index(native_test) > windows_build.index(artifact_build):
+    raise SystemExit("native Windows terminal tests run after artifact compilation")
+PY
+then
+  r_s11c25="$r_s11c25 integrated-authority-structure-failed"
+fi
+grep -Fq 'pub(crate) enum TerminalPrincipal' src/server/terminal_service.rs || r_s11c25="$r_s11c25 principal-type-missing"
+grep -Fq 'authentication_id_low: u32' src/server/terminal_service.rs || r_s11c25="$r_s11c25 logon-session-low-id-missing"
+grep -Fq 'authentication_id_high: i32' src/server/terminal_service.rs || r_s11c25="$r_s11c25 logon-session-high-id-missing"
+grep -Fq 'if service_state.principal != principal' src/server/terminal_service.rs || r_s11c25="$r_s11c25 atomic-principal-bind-missing"
+grep -Fq 'if service_state.attached' src/server/terminal_service.rs || r_s11c25="$r_s11c25 concurrent-attachment-denial-missing"
+grep -Fq 'attachment_generation: u64' src/server/terminal_service.rs || r_s11c25="$r_s11c25 attachment-generation-missing"
+grep -Fq 'authority_epoch: u64' src/server/terminal_service.rs || r_s11c25="$r_s11c25 authority-epoch-missing"
+grep -Fq 'Arc::ptr_eq(current, service)' src/server/terminal_service.rs || r_s11c25="$r_s11c25 aba-entry-identity-check-missing"
+grep -Fq 'pub(crate) struct TerminalServiceLease' src/server/terminal_service.rs || r_s11c25="$r_s11c25 opaque-lease-missing"
+grep -Fq 'activation_checkpoint: Mutex<Option<TerminalActivationCheckpoint>>' src/server/terminal_service.rs || r_s11c25="$r_s11c25 activation-transaction-missing"
+grep -Fq 'created_entry: bool' src/server/terminal_service.rs || r_s11c25="$r_s11c25 preauthorization-rollback-origin-missing"
+grep -Fq 'state.commit_attachment(self.requested_persistent.load(Ordering::SeqCst));' src/server/terminal_service.rs || r_s11c25="$r_s11c25 activation-commit-missing"
+grep -Fq 'opening_sessions: HashMap<i32, OpeningReservation>' src/server/terminal_service.rs || r_s11c25="$r_s11c25 opening-reservation-missing"
+grep -Fq 'if !sp.has_subscribes()' src/server/terminal_service.rs || r_s11c25="$r_s11c25 preauthorization-output-barrier-missing"
+grep -Fq 'validate_launch_authority_value(&authority)?;' src/server/terminal_service.rs || r_s11c25="$r_s11c25 sink-authority-validation-missing"
+grep -Fq 'crate::common::is_service_owned_server_process() || crate::platform::is_root()' src/server/terminal_service.rs || r_s11c25="$r_s11c25 localsystem-direct-pty-denial-missing"
+grep -Fq 'TerminalLaunchAuthorityKind::WindowsSession { token }' src/server/terminal_service.rs || r_s11c25="$r_s11c25 helper-selection-not-authority-based"
+grep -Fq 'pub struct OwnedPrimaryToken' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 owned-primary-token-missing"
+grep -Fq 'impl Drop for OwnedPrimaryToken' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 primary-token-close-owner-missing"
+grep -Fq 'TokenSessionId' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 token-session-query-missing"
+grep -Fq 'TokenStatistics' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 token-statistics-query-missing"
+grep -Fq 'statistics.TokenType != TokenPrimary' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 primary-token-validation-missing"
+grep -Fq 'statistics.AuthenticationId.LowPart' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 authentication-id-binding-missing"
+grep -Fq 'statistics.TokenId.LowPart' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 token-object-id-missing"
+grep -Fq 'statistics.ModifiedId.LowPart' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 token-modification-id-missing"
+grep -Fq 'token.validate_unchanged()' src/server/terminal_service.rs || r_s11c25="$r_s11c25 immutable-launch-token-check-missing"
+grep -Fq 'WTSWaitSystemEvent' src/server/terminal_service.rs || r_s11c25="$r_s11c25 logoff-event-monitor-missing"
+grep -Fq 'monitor_all_service_authorities();' src/server/terminal_service.rs || r_s11c25="$r_s11c25 detached-authority-monitor-missing"
+grep -Fq 'state.launch_authority.take()' src/server/terminal_service.rs || r_s11c25="$r_s11c25 logoff-token-revocation-missing"
+grep -Fq 'state.sessions.drain()' src/server/terminal_service.rs || r_s11c25="$r_s11c25 logoff-shell-revocation-missing"
+grep -Fq '.try_send(message)' src/server/terminal_service.rs || r_s11c25="$r_s11c25 nonblocking-terminal-input-missing"
+grep -Fq 'if crate::platform::is_root()' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 helper-localsystem-sink-denial-missing"
+grep -Fq 'fn canonical_service_id(service_id: &str) -> bool' src/server/terminal_service.rs || r_s11c25="$r_s11c25 canonical-service-id-gate-missing"
+grep -Fq 'TokenGroups' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 token-groups-query-missing"
+grep -Fq 'SE_GROUP_LOGON_ID_VALUE' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 logon-sid-binding-missing"
+grep -Fq 'PIPE_NOWAIT' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 synchronous-pipe-connect-mode-missing"
+grep -Fq 'SetNamedPipeHandleState' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 blocking-pipe-io-restore-missing"
+grep -Fq 'CancelSynchronousIo' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 synchronous-io-cancellation-missing"
+grep -Fq 'CreateEnvironmentBlock(&mut environment, Some(token), false)' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 isolated-user-environment-missing"
+grep -Fq 'GetUserProfileDirectoryW' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 user-profile-working-directory-missing"
+grep -Fq 'CREATE_SUSPENDED' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 suspended-helper-launch-missing"
+grep -Fq 'JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 kill-on-close-job-missing"
+grep -Fq 'assign_process_to_job_object' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 helper-job-assignment-missing"
+grep -Fq 'validate_helper_process_principal' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 helper-principal-validation-missing"
+grep -Fq 'struct AlignedTokenInformation' src/server/terminal_helper.rs || r_s11c25="$r_s11c25 aligned-token-storage-missing"
+if grep -qE 'is_service_specified_user|is_specified_user|allow_err!\(get_or_create_service|ensure_primary_token|DuplicateToken\(|pub fn get_service\(' \
+  src/server/connection.rs src/server/terminal_service.rs src/platform/windows.rs; then
+  r_s11c25="$r_s11c25 obsolete-terminal-authority-path-present"
+fi
+if grep -Fq 'FILE_FLAG_OVERLAPPED' src/server/terminal_helper.rs || grep -Eq 'CreateEnvironmentBlock\([^;]*true\)' src/server/terminal_helper.rs; then
+  r_s11c25="$r_s11c25 obsolete-overlapped-or-environment-fallback-present"
+fi
+if grep -qE 'input_tx\.send\(|SyncSender[^;]*\.send\(' src/server/terminal_service.rs; then
+  r_s11c25="$r_s11c25 blocking-terminal-input-present"
+fi
+if grep -Fq 'proxy.handle_action(&action)' src/server/connection.rs || grep -Fq 'allow_err!(self.handle_terminal_action(action).await)' src/server/connection.rs; then
+  r_s11c25="$r_s11c25 terminal-action-runs-on-connection-or-error-swallowed"
+fi
+for test_name in \
+  persistent_service_binds_exact_terminal_principal \
+  preactivation_rollback_preserves_existing_committed_service \
+  detached_monitor_revokes_authority_and_sessions \
+  stale_proxy_and_opening_are_rejected_after_epoch_change \
+  simultaneous_opening_reservation_is_exclusive \
+  terminal_session_limit_includes_opening_reservations \
+  lease_timer_detects_monitor_revocation_while_attached \
+  terminal_input_backpressure_is_nonblocking \
+  revocation_cancels_in_flight_opening_at_barrier \
+  revoked_registry_entry_is_immediately_replaceable \
+  authority_monitor_does_not_wait_for_held_session_mutex \
+  activation_does_not_wait_for_held_session_mutex \
+  activation_rejects_worker_failure_after_checkpoint \
+  generic_output_stays_quiescent_after_fatal_authority \
+  closed_session_arc_aba_preserves_replacement \
+  terminal_action_queue_backpressure_is_nonblocking \
+  fatal_authority_propagates_through_persistence_and_action_admission \
+  detached_dead_session_is_removed_and_reaped \
+  detached_broken_writer_is_removed_and_reaped \
+  helper_reader_completion_waits_for_process_status \
+  direct_reader_completion_requeries_child_status_before_close \
+  direct_reader_status_grace_expires_as_failure \
+  writer_completion_is_immediate_transport_failure \
+  opened_response_publication_precedes_session_output \
+  direct_pty_exit_drains_real_output_before_close \
+  orderly_exit_drains_all_output_before_close \
+  output_poll_batch_is_bounded_during_continuous_refill \
+  output_poll_is_fair_across_continuous_sessions \
+  teardown_admission_does_not_wait_for_session_cleanup \
+  teardown_permit_pool_is_bounded_and_released \
+  dead_reconnect_preserves_surviving_session_sync; do
+  grep -Fq "fn $test_name" src/server/terminal_service.rs || r_s11c25="$r_s11c25 test-$test_name-missing"
+done
+for test_name in \
+  pipe_acl_rights_are_directional \
+  synchronous_pipe_directions_restore_blocking_io \
+  external_opening_cancellation_stops_pipe_polling \
+  synchronous_read_is_cancelled_before_join \
+  repeated_synchronous_reads_are_cancelled_before_join; do
+  grep -Fq "fn $test_name" src/server/terminal_helper.rs || r_s11c25="$r_s11c25 test-$test_name-missing"
+done
+grep -Fq 'cargo test --offline --locked --lib --features flutter --color never terminal_' scripts/build-windows.ps1 || r_s11c25="$r_s11c25 native-windows-runtime-gate-missing"
+grep -Fq 'R-S11c-25 — Windows terminal service principal authority' HARDENING_STATUS.md || r_s11c25="$r_s11c25 hardening-ledger-missing"
+grep -Fq 'Windows terminal service principal authority' requirements.html || r_s11c25="$r_s11c25 requirements-disposition-missing"
+if [ -n "$r_s11c25" ]; then echo "  FAIL R-S11c-25 Windows terminal service principal authority:$r_s11c25"; rc=1; else
+  echo "  ok  R-S11c-25 Windows service terminals use a served-session token, transactional epoch lease, detached logoff revocation, logon-scoped synchronous pipes, isolated user environment, and kill-on-close helper job; LocalSystem direct PTY is denied"; fi
 
 echo "== (3b-iii-a5) Windows installer service root is fixed and shell fallbacks are absent (R-S11d) =="
 r_s11d=
@@ -5557,7 +5938,7 @@ fi
 # logind/console session, get_active_username() resolves empty and windows_sessions is always empty,
 # so the inherited viewer gate ("No active console user logged on") mis-fired and blocked file
 # transfer even though file I/O runs in the CM process at the --server owner's privilege (like the
-# terminal's SelfUser, R-F1). Two coordinated guards restore it, both asserted here:
+# terminal's process-owner authority, R-F1). Two coordinated guards restore it, both asserted here:
 #  (1) SERVER: PeerInfo.username falls back to the --server PROCESS OWNER (hbb_common::whoami::
 #      username) when get_active_username() is empty — a truthful non-empty username. Scoped to unix
 #      desktops (linux+macos) and empty-guarded, so Windows/Android WTS/console semantics are untouched.
@@ -5577,7 +5958,7 @@ echo "$ftu_block" | grep -q 'username = hbb_common::whoami::username()'         
 #      box is_prelogin() is TRUE (no seat0 -> `getent passwd ` lists every user, matching nologin
 #      shells), so a unix-broad re-clear (the inherited cfg(not(android/ios))) would UNDO the
 #      process-owner fallback above. It MUST sit under cfg(windows) — mirroring the terminal's
-#      Windows-only is_prelogin handling (fill_terminal_user_token) — so unix keeps the real user.
+#      Windows-only prelogin handling — so unix keeps the real user.
 if grep -B1 'if self.file_transfer.is_some() && crate::platform::is_prelogin()' "$conn" | grep -q 'cfg(target_os = "windows")'; then :; else ftx="$ftx ft-prelogin-reclear-not-windows-gated"; fi
 if grep -A1 'if self.file_transfer.is_some() {' "$conn" | grep -q 'if crate::platform::is_prelogin'; then ftx="$ftx ft-prelogin-reclear-old-unix-nested-form-remains"; fi
 # (2) both viewer refusal sites are Windows-peer-gated; the old ungated username-only refusal is gone

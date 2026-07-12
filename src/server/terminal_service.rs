@@ -3,15 +3,15 @@ use hbb_common::{
     anyhow::{anyhow, Context, Result},
     compress,
 };
-use portable_pty::{Child, CommandBuilder, PtySize};
+use portable_pty::{Child, CommandBuilder, MasterPty, PtySize};
 use std::{
     collections::{HashMap, VecDeque},
     io::{Read, Write},
     ops::{Deref, DerefMut},
     sync::{
-        atomic::{AtomicBool, Ordering},
-        mpsc::{self, Receiver, SyncSender},
-        Arc, Mutex,
+        atomic::{AtomicBool, AtomicI32, Ordering},
+        mpsc::{self, Receiver, SyncSender, TrySendError},
+        Arc, Condvar, Mutex, Weak,
     },
     thread,
     time::{Duration, Instant},
@@ -28,21 +28,28 @@ use std::{
 #[cfg(target_os = "windows")]
 use super::terminal_helper::{
     configure_utf8_shell_command, create_named_pipe_server, encode_helper_message,
-    encode_resize_message, is_helper_process_running, launch_terminal_helper_with_token,
-    wait_for_pipe_connection, HelperProcessGuard, OwnedHandle, SendableHandle, WinCloseHandle,
-    WinTerminateProcess, WinWaitForSingleObject, MSG_TYPE_DATA, PIPE_CONNECTION_TIMEOUT_MS,
-    WIN_WAIT_OBJECT_0,
+    encode_resize_message, launch_terminal_helper_with_token, wait_for_pipe_connection,
+    HelperProcessTerminator, HelperProcessTree, OwnedHandle, OwnedPrimaryToken, MSG_TYPE_DATA,
+    PIPE_CONNECTION_TIMEOUT_MS,
 };
 
 const MAX_OUTPUT_BUFFER_SIZE: usize = 1024 * 1024; // 1MB per terminal
 const MAX_BUFFER_LINES: usize = 10000;
 const MAX_SERVICES: usize = 100; // Maximum number of persistent terminal services
+const MAX_SESSIONS_PER_SERVICE: usize = 64;
 const SERVICE_IDLE_TIMEOUT: Duration = Duration::from_secs(3600); // 1 hour idle timeout
 const CHANNEL_BUFFER_SIZE: usize = 500; // Channel buffer size. Max per-message size ~4KB (reader buffer), so worst case ~500*4KB ≈ 2MB/terminal. Increased from 100 to reduce data loss during disconnects.
 const COMPRESS_THRESHOLD: usize = 512; // Compress terminal data larger than this
                                        // Default max bytes for reconnection buffer replay.
 const DEFAULT_RECONNECT_BUFFER_BYTES: usize = 8 * 1024;
 const MAX_SIGWINCH_PHASE_ATTEMPTS: u8 = 3; // Max attempts per SIGWINCH phase before giving up
+const TERMINAL_ACTION_QUEUE_CAPACITY: usize = 64;
+const MAX_OUTPUT_CHUNKS_PER_POLL: usize = 64;
+const MAX_OUTPUT_BYTES_PER_POLL: usize = 256 * 1024;
+const HELPER_EXIT_STATUS_GRACE: Duration = Duration::from_secs(3);
+const DIRECT_EXIT_STATUS_GRACE: Duration = Duration::from_secs(1);
+const TERMINAL_TEARDOWN_WORKER_COUNT: usize = 4;
+const TERMINAL_TEARDOWN_CAPACITY: usize = MAX_SERVICES * (MAX_SESSIONS_PER_SERVICE + 1);
 
 #[cfg(target_os = "android")]
 const UNIX_TERMINAL_SHELLS: [&str; 1] = ["/system/bin/sh"];
@@ -100,9 +107,19 @@ enum SessionState {
     /// pending_buffer: historical buffer to send before real-time data (set on reconnection).
     /// sigwinch: two-phase SIGWINCH trigger state for TUI app redraw.
     Active {
+        attachment_generation: u64,
         pending_buffer: Option<Vec<u8>>,
         sigwinch: SigwinchPhase,
     },
+}
+
+impl SessionState {
+    fn active_pending_buffer(&self) -> Option<&Vec<u8>> {
+        match self {
+            Self::Active { pending_buffer, .. } => pending_buffer.as_ref(),
+            Self::Closed => None,
+        }
+    }
 }
 
 lazy_static::lazy_static! {
@@ -115,7 +132,35 @@ lazy_static::lazy_static! {
 
     // List of terminal child processes to check for zombies
     static ref TERMINAL_TASKS: Arc<Mutex<Vec<Box<dyn Child + Send + Sync>>>> = Arc::new(Mutex::new(Vec::new()));
+
+    static ref TERMINAL_TEARDOWN_EXECUTOR: Arc<TerminalTeardownExecutor> =
+        Arc::new(TerminalTeardownExecutor::new());
+
+    static ref TERMINAL_TEARDOWN_WORKERS: Mutex<Vec<std::thread::JoinHandle<()>>> =
+        Mutex::new(Vec::new());
+
+    static ref TERMINAL_TEARDOWN_PERMIT_POOL: Arc<TerminalTeardownPermitPool> =
+        Arc::new(TerminalTeardownPermitPool::new(TERMINAL_TEARDOWN_CAPACITY));
 }
+
+#[cfg(target_os = "windows")]
+lazy_static::lazy_static! {
+    static ref AUTHORITY_EVENT_TASK: Arc<Mutex<Option<std::thread::JoinHandle<()>>>> =
+        Arc::new(Mutex::new(None));
+}
+
+#[cfg(target_os = "windows")]
+#[link(name = "Wtsapi32")]
+extern "system" {
+    fn WTSWaitSystemEvent(
+        server: *mut std::ffi::c_void,
+        event_mask: u32,
+        event_flags: *mut u32,
+    ) -> i32;
+}
+
+#[cfg(target_os = "windows")]
+const WTS_EVENT_LOGOFF: u32 = 0x0000_0040;
 
 /// Service metadata that is sent to clients
 #[derive(Clone, Debug)]
@@ -222,62 +267,603 @@ fn should_force_process_utf8_ctype() -> bool {
     true
 }
 
-pub fn is_service_specified_user(service_id: &str) -> Option<bool> {
-    get_service(service_id).map(|s| s.lock().unwrap().is_specified_user)
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum TerminalPrincipal {
+    ProcessOwner,
+    WindowsSession {
+        session_id: u32,
+        user_sid: Vec<u8>,
+        authentication_id_low: u32,
+        authentication_id_high: i32,
+    },
 }
 
-/// Get or create a persistent terminal service
-fn get_or_create_service(
-    service_id: String,
-    is_persistent: bool,
-    is_specified_user: bool,
-) -> Result<Arc<Mutex<PersistentTerminalService>>> {
-    let mut services = TERMINAL_SERVICES.lock().unwrap();
+#[derive(Clone)]
+pub(crate) struct TerminalLaunchAuthority {
+    principal: TerminalPrincipal,
+    kind: TerminalLaunchAuthorityKind,
+}
 
-    // Check service limit
-    if !services.contains_key(&service_id) && services.len() >= MAX_SERVICES {
-        return Err(anyhow!(
-            "Maximum number of terminal services ({}) reached",
-            MAX_SERVICES
-        ));
+#[derive(Clone)]
+enum TerminalLaunchAuthorityKind {
+    ProcessOwner,
+    #[cfg(target_os = "windows")]
+    WindowsSession {
+        token: Arc<OwnedPrimaryToken>,
+    },
+    #[cfg(test)]
+    TestPrincipal {
+        valid: Arc<AtomicBool>,
+    },
+}
+
+#[derive(Debug)]
+struct TerminalAuthorityError(&'static str);
+
+impl std::fmt::Display for TerminalAuthorityError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.0)
     }
-
-    let service = services
-        .entry(service_id.clone())
-        .or_insert_with(|| {
-            log::info!(
-                "Creating new terminal service: {} (persistent: {})",
-                service_id,
-                is_persistent
-            );
-            Arc::new(Mutex::new(PersistentTerminalService::new(
-                service_id.clone(),
-                is_persistent,
-                is_specified_user,
-            )))
-        })
-        .clone();
-
-    // Ensure cleanup task is running
-    ensure_cleanup_task();
-
-    service.lock().unwrap().reset_status(is_persistent);
-
-    Ok(service)
 }
 
-/// Remove a service from the global registry
-fn remove_service(service_id: &str) {
-    let mut services = TERMINAL_SERVICES.lock().unwrap();
-    if let Some(service) = services.remove(service_id) {
-        log::info!("Removed service: {}", service_id);
-        // Close all terminals in the service
-        let sessions = service.lock().unwrap().sessions.clone();
-        for (_, session) in sessions.iter() {
-            let mut session = session.lock().unwrap();
-            session.stop();
+impl std::error::Error for TerminalAuthorityError {}
+
+fn authority_error(message: &'static str) -> hbb_common::anyhow::Error {
+    TerminalAuthorityError(message).into()
+}
+
+pub(crate) fn is_fatal_authority_error(error: &hbb_common::anyhow::Error) -> bool {
+    error.downcast_ref::<TerminalAuthorityError>().is_some()
+}
+
+struct TerminalWorkerState {
+    fatal_authority: AtomicBool,
+    subscriber_id: AtomicI32,
+}
+
+impl TerminalWorkerState {
+    fn new() -> Self {
+        Self {
+            fatal_authority: AtomicBool::new(false),
+            subscriber_id: AtomicI32::new(-1),
         }
     }
+
+    fn mark_fatal_authority(&self) {
+        self.fatal_authority.store(true, Ordering::Release);
+    }
+
+    fn ensure_authoritative(&self) -> Result<()> {
+        if self.fatal_authority.load(Ordering::Acquire) {
+            Err(authority_error(
+                "Terminal action worker observed revoked authority",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn subscriber_id(&self) -> Option<i32> {
+        let id = self.subscriber_id.load(Ordering::Acquire);
+        (id >= 0).then_some(id)
+    }
+}
+
+fn try_enqueue_terminal_action(
+    sender: &SyncSender<TerminalAction>,
+    worker_state: &TerminalWorkerState,
+    action: TerminalAction,
+) -> Result<()> {
+    worker_state.ensure_authoritative()?;
+    match sender.try_send(action) {
+        Ok(()) => Ok(()),
+        Err(TrySendError::Full(_)) => Err(anyhow!("Terminal action queue is full")),
+        Err(TrySendError::Disconnected(_)) => {
+            worker_state.mark_fatal_authority();
+            Err(authority_error("Terminal action worker stopped"))
+        }
+    }
+}
+
+impl TerminalLaunchAuthority {
+    fn principal(&self) -> TerminalPrincipal {
+        self.principal.clone()
+    }
+}
+
+pub(crate) fn process_owner_launch_authority() -> TerminalLaunchAuthority {
+    TerminalLaunchAuthority {
+        principal: TerminalPrincipal::ProcessOwner,
+        kind: TerminalLaunchAuthorityKind::ProcessOwner,
+    }
+}
+
+fn canonical_service_id(service_id: &str) -> bool {
+    let Some(value) = service_id.strip_prefix("ts_") else {
+        return false;
+    };
+    uuid::Uuid::parse_str(value)
+        .map(|uuid| uuid.to_string() == value)
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn windows_session_launch_authority(
+    expected_session_id: u32,
+    raw_token: usize,
+) -> Result<TerminalLaunchAuthority> {
+    let token = Arc::new(OwnedPrimaryToken::from_raw(raw_token)?);
+    let identity = token.identity();
+    if identity.session_id != expected_session_id {
+        return Err(anyhow!("Windows terminal token session mismatch"));
+    }
+    Ok(TerminalLaunchAuthority {
+        principal: TerminalPrincipal::WindowsSession {
+            session_id: identity.session_id,
+            user_sid: identity.user_sid.clone(),
+            authentication_id_low: identity.authentication_id_low,
+            authentication_id_high: identity.authentication_id_high,
+        },
+        kind: TerminalLaunchAuthorityKind::WindowsSession { token },
+    })
+}
+
+fn reserve_service_attachment(
+    service_id: String,
+    launch_authority: TerminalLaunchAuthority,
+) -> Result<ServiceReservation> {
+    if !canonical_service_id(&service_id) {
+        return Err(anyhow!("Invalid terminal service ID"));
+    }
+    ensure_cleanup_task()?;
+    let mut services = TERMINAL_SERVICES.lock().unwrap();
+    let principal = launch_authority.principal();
+
+    let reservation = if let Some(service) = services.get(&service_id) {
+        let service = service.clone();
+        let (generation, authority_epoch) = {
+            let mut service_state = service.lock().unwrap();
+            if service_state.principal != principal {
+                return Err(anyhow!("Terminal service principal mismatch"));
+            }
+            if service_state.launch_authority.is_none() {
+                return Err(authority_error(
+                    "Terminal service launch authority was revoked",
+                ));
+            }
+            if service_state.attached {
+                return Err(anyhow!("Terminal service is already attached"));
+            }
+            service_state.attachment_generation = service_state
+                .attachment_generation
+                .checked_add(1)
+                .ok_or_else(|| anyhow!("Terminal attachment generation exhausted"))?;
+            service_state.attached = true;
+            service_state.attachment_worker_state = None;
+            (
+                service_state.attachment_generation,
+                service_state.authority_epoch,
+            )
+        };
+        ServiceReservation {
+            service,
+            attachment_generation: generation,
+            authority_epoch,
+            created_entry: false,
+        }
+    } else {
+        if services.len() >= MAX_SERVICES {
+            return Err(anyhow!(
+                "Maximum number of terminal services ({}) reached",
+                MAX_SERVICES
+            ));
+        }
+        let service = Arc::new(Mutex::new(PersistentTerminalService::new(
+            service_id.clone(),
+            principal,
+            launch_authority,
+        )));
+        services.insert(service_id.clone(), service.clone());
+        log::info!("Creating new terminal service reservation: {}", service_id);
+        ServiceReservation {
+            service,
+            attachment_generation: 1,
+            authority_epoch: 1,
+            created_entry: true,
+        }
+    };
+    Ok(reservation)
+}
+
+struct ServiceReservation {
+    service: Arc<Mutex<PersistentTerminalService>>,
+    attachment_generation: u64,
+    authority_epoch: u64,
+    created_entry: bool,
+}
+
+#[cfg(test)]
+fn test_principal(session_id: u32, sid: &[u8], authentication_id_low: u32) -> TerminalPrincipal {
+    TerminalPrincipal::WindowsSession {
+        session_id,
+        user_sid: sid.to_vec(),
+        authentication_id_low,
+        authentication_id_high: 0,
+    }
+}
+
+#[cfg(test)]
+fn test_launch_authority(principal: TerminalPrincipal) -> TerminalLaunchAuthority {
+    TerminalLaunchAuthority {
+        principal,
+        kind: TerminalLaunchAuthorityKind::TestPrincipal {
+            valid: Arc::new(AtomicBool::new(true)),
+        },
+    }
+}
+
+#[cfg(test)]
+fn controlled_test_launch_authority(
+    principal: TerminalPrincipal,
+) -> (TerminalLaunchAuthority, Arc<AtomicBool>) {
+    let valid = Arc::new(AtomicBool::new(true));
+    (
+        TerminalLaunchAuthority {
+            principal,
+            kind: TerminalLaunchAuthorityKind::TestPrincipal {
+                valid: valid.clone(),
+            },
+        },
+        valid,
+    )
+}
+
+fn validate_launch_authority_value(authority: &TerminalLaunchAuthority) -> Result<()> {
+    match &authority.kind {
+        TerminalLaunchAuthorityKind::ProcessOwner => {
+            #[cfg(target_os = "windows")]
+            if crate::common::is_service_owned_server_process() || crate::platform::is_root() {
+                return Err(authority_error(
+                    "Refusing a direct terminal in a service-owned or LocalSystem process",
+                ));
+            }
+            Ok(())
+        }
+        #[cfg(target_os = "windows")]
+        TerminalLaunchAuthorityKind::WindowsSession { token } => {
+            token.validate_unchanged().map_err(|err| {
+                log::warn!("Windows terminal token changed: {}", err);
+                authority_error("Windows terminal token changed")
+            })?;
+            let session_id = match &authority.principal {
+                TerminalPrincipal::WindowsSession { session_id, .. } => *session_id,
+                TerminalPrincipal::ProcessOwner => {
+                    return Err(authority_error(
+                        "Windows terminal launch authority has an invalid principal",
+                    ));
+                }
+            };
+            let current_token = crate::platform::get_user_token(session_id, true);
+            if current_token.is_null() {
+                return Err(authority_error(
+                    "Windows terminal logon session is no longer active",
+                ));
+            }
+            let current = windows_session_launch_authority(session_id, current_token as usize)
+                .map_err(|err| {
+                    log::warn!("Windows terminal logon validation failed: {}", err);
+                    authority_error("Windows terminal logon validation failed")
+                })?;
+            if current.principal() != authority.principal {
+                return Err(authority_error("Windows terminal logon principal changed"));
+            }
+            Ok(())
+        }
+        #[cfg(test)]
+        TerminalLaunchAuthorityKind::TestPrincipal { valid } => {
+            if valid.load(Ordering::SeqCst) {
+                Ok(())
+            } else {
+                Err(authority_error(
+                    "Test terminal launch authority was revoked",
+                ))
+            }
+        }
+    }
+}
+
+struct TerminalTeardownPermitPool {
+    available: Mutex<usize>,
+    capacity: usize,
+}
+
+impl TerminalTeardownPermitPool {
+    fn new(capacity: usize) -> Self {
+        Self {
+            available: Mutex::new(capacity),
+            capacity,
+        }
+    }
+
+    fn acquire(self: &Arc<Self>) -> Result<Arc<TerminalTeardownPermit>> {
+        let mut available = self.available.lock().unwrap();
+        if *available == 0 {
+            return Err(anyhow!("Terminal teardown capacity is exhausted"));
+        }
+        *available -= 1;
+        Ok(Arc::new(TerminalTeardownPermit { pool: self.clone() }))
+    }
+}
+
+struct TerminalTeardownPermit {
+    pool: Arc<TerminalTeardownPermitPool>,
+}
+
+impl Drop for TerminalTeardownPermit {
+    fn drop(&mut self) {
+        let mut available = self.pool.available.lock().unwrap();
+        let Some(released) = (*available).checked_add(1) else {
+            log::error!("Terminal teardown permit count overflow");
+            std::process::abort();
+        };
+        if released > self.pool.capacity {
+            log::error!("Terminal teardown permit capacity invariant failed");
+            std::process::abort();
+        }
+        *available = released;
+    }
+}
+
+fn acquire_teardown_permit() -> Result<Arc<TerminalTeardownPermit>> {
+    TERMINAL_TEARDOWN_PERMIT_POOL.acquire()
+}
+
+enum TerminalTeardownTask {
+    Session(SharedTerminalSession),
+    Lease {
+        service: GenericService,
+        action_worker: thread::JoinHandle<()>,
+        _permit: Arc<TerminalTeardownPermit>,
+    },
+}
+
+impl TerminalTeardownTask {
+    fn signal_shutdown(&self) {
+        if let Self::Session(session) = self {
+            session.signal_shutdown();
+        }
+    }
+
+    fn run(self) {
+        match self {
+            Self::Session(session) => session.stop_for_teardown(),
+            Self::Lease {
+                service,
+                action_worker,
+                _permit,
+            } => {
+                if action_worker.join().is_err() {
+                    log::error!("Terminal action worker panicked during teardown");
+                }
+                service.join();
+            }
+        }
+    }
+}
+
+struct TerminalTeardownExecutor {
+    pending: Mutex<VecDeque<TerminalTeardownTask>>,
+    ready: Condvar,
+}
+
+impl TerminalTeardownExecutor {
+    fn new() -> Self {
+        Self {
+            pending: Mutex::new(VecDeque::new()),
+            ready: Condvar::new(),
+        }
+    }
+
+    fn enqueue(&self, task: TerminalTeardownTask) {
+        task.signal_shutdown();
+        let mut pending = self.pending.lock().unwrap();
+        if pending.len() >= TERMINAL_TEARDOWN_CAPACITY {
+            log::error!("Terminal teardown queue capacity invariant failed");
+            std::process::abort();
+        }
+        pending.push_back(task);
+        self.ready.notify_one();
+    }
+
+    fn run(self: Arc<Self>) {
+        loop {
+            let task = {
+                let mut pending = self.pending.lock().unwrap();
+                while pending.is_empty() {
+                    pending = self.ready.wait(pending).unwrap();
+                }
+                let Some(task) = pending.pop_front() else {
+                    log::error!("Terminal teardown queue readiness invariant failed");
+                    std::process::abort();
+                };
+                task
+            };
+            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| task.run())).is_err() {
+                log::error!("Terminal teardown task panicked");
+            }
+        }
+    }
+}
+
+fn ensure_teardown_workers() -> Result<()> {
+    let mut workers = TERMINAL_TEARDOWN_WORKERS.lock().unwrap();
+    if workers.iter().any(|worker| worker.is_finished()) {
+        return Err(anyhow!("Terminal teardown worker stopped unexpectedly"));
+    }
+    while workers.len() < TERMINAL_TEARDOWN_WORKER_COUNT {
+        let executor = TERMINAL_TEARDOWN_EXECUTOR.clone();
+        let worker_index = workers.len();
+        let worker = thread::Builder::new()
+            .name(format!("terminal-teardown-{worker_index}"))
+            .spawn(move || executor.run())
+            .map_err(|err| anyhow!("Failed to start terminal teardown worker: {err}"))?;
+        workers.push(worker);
+    }
+    Ok(())
+}
+
+fn enqueue_teardown_task(task: TerminalTeardownTask) {
+    TERMINAL_TEARDOWN_EXECUTOR.enqueue(task);
+}
+
+fn enqueue_session_teardown(session: SharedTerminalSession) {
+    enqueue_teardown_task(TerminalTeardownTask::Session(session));
+}
+
+fn enqueue_sessions_for_teardown(sessions: Vec<SharedTerminalSession>) {
+    for session in sessions {
+        enqueue_session_teardown(session);
+    }
+}
+
+fn take_registry_entry_exact(
+    service_id: &str,
+    service: &Arc<Mutex<PersistentTerminalService>>,
+) -> Option<Arc<Mutex<PersistentTerminalService>>> {
+    let mut services = TERMINAL_SERVICES.lock().unwrap();
+    let current = services.get(service_id)?;
+    if Arc::ptr_eq(current, service) {
+        services.remove(service_id)
+    } else {
+        None
+    }
+}
+
+fn revoke_service_authority(
+    service: &Arc<Mutex<PersistentTerminalService>>,
+    expected_epoch: u64,
+) -> bool {
+    let (service_id, authority, sessions) = {
+        let mut state = service.lock().unwrap();
+        if state.authority_epoch != expected_epoch || state.launch_authority.is_none() {
+            return false;
+        }
+        state.authority_epoch = state.authority_epoch.checked_add(1).unwrap_or(u64::MAX);
+        let authority = state.launch_authority.take();
+        if let Some(worker_state) = state
+            .attachment_worker_state
+            .take()
+            .and_then(|state| state.upgrade())
+        {
+            worker_state.mark_fatal_authority();
+        }
+        for opening in state.opening_sessions.values() {
+            opening.cancel();
+        }
+        state.opening_sessions.clear();
+        let sessions = state.sessions.drain().map(|(_, session)| session).collect();
+        (state.service_id.clone(), authority, sessions)
+    };
+    take_registry_entry_exact(&service_id, service);
+    drop(authority);
+    enqueue_sessions_for_teardown(sessions);
+    true
+}
+
+fn monitor_service_authority_once(service: &Arc<Mutex<PersistentTerminalService>>) -> bool {
+    let (authority, epoch) = {
+        let state = service.lock().unwrap();
+        let Some(authority) = state.launch_authority.clone() else {
+            return false;
+        };
+        (authority, state.authority_epoch)
+    };
+    if validate_launch_authority_value(&authority).is_ok() {
+        false
+    } else {
+        revoke_service_authority(service, epoch)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn monitor_all_service_authorities() {
+    let services = TERMINAL_SERVICES
+        .lock()
+        .unwrap()
+        .values()
+        .cloned()
+        .collect::<Vec<_>>();
+    for service in services {
+        monitor_service_authority_once(&service);
+    }
+}
+
+fn stop_service(service_id: &str, service: Arc<Mutex<PersistentTerminalService>>) {
+    log::info!("Removed terminal service: {}", service_id);
+    let (authority, sessions) = {
+        let mut state = service.lock().unwrap();
+        for opening in state.opening_sessions.values() {
+            opening.cancel();
+        }
+        state.opening_sessions.clear();
+        let authority = state.launch_authority.take();
+        if let Some(worker_state) = state
+            .attachment_worker_state
+            .take()
+            .and_then(|state| state.upgrade())
+        {
+            worker_state.mark_fatal_authority();
+        }
+        let sessions = state.sessions.drain().map(|(_, session)| session).collect();
+        (authority, sessions)
+    };
+    drop(authority);
+    enqueue_sessions_for_teardown(sessions);
+}
+
+fn release_service_attachment(
+    service_id: &str,
+    service: &Arc<Mutex<PersistentTerminalService>>,
+    attachment_generation: u64,
+    created_entry: bool,
+    activated: bool,
+) -> Result<()> {
+    let should_remove = {
+        let mut state = service.lock().unwrap();
+        if !state.attached || state.attachment_generation != attachment_generation {
+            return Err(anyhow!("Terminal service attachment generation mismatch"));
+        }
+        for opening in state.opening_sessions.values() {
+            if opening.attachment_generation == attachment_generation {
+                opening.cancel();
+            }
+        }
+        state
+            .opening_sessions
+            .retain(|_, opening| opening.attachment_generation != attachment_generation);
+        state.attached = false;
+        if let Some(worker_state) = state
+            .attachment_worker_state
+            .take()
+            .and_then(|state| state.upgrade())
+        {
+            worker_state.mark_fatal_authority();
+        }
+        state.update_activity();
+        if state.launch_authority.is_none() {
+            true
+        } else if activated {
+            !state.is_persistent
+        } else {
+            created_entry
+        }
+    };
+    if should_remove {
+        if let Some(removed) = take_registry_entry_exact(service_id, service) {
+            stop_service(service_id, removed);
+        }
+    }
+    Ok(())
 }
 
 /// List all active terminal services
@@ -296,12 +882,6 @@ pub fn list_services() -> Vec<ServiceMetadata> {
         .collect()
 }
 
-/// Get service by ID
-pub fn get_service(service_id: &str) -> Option<Arc<Mutex<PersistentTerminalService>>> {
-    let services = TERMINAL_SERVICES.lock().unwrap();
-    services.get(service_id).cloned()
-}
-
 /// Clean up inactive services
 pub fn cleanup_inactive_services() {
     let services = TERMINAL_SERVICES.lock().unwrap();
@@ -310,26 +890,46 @@ pub fn cleanup_inactive_services() {
 
     for (service_id, service) in services.iter() {
         if let Ok(svc) = service.lock() {
-            // Remove non-persistent services after idle timeout
-            if !svc.is_persistent && now.duration_since(svc.last_activity) > SERVICE_IDLE_TIMEOUT {
-                to_remove.push(service_id.clone());
-                log::info!("Cleaning up idle non-persistent service: {}", service_id);
-            }
-            // Remove persistent services with no active terminals after longer timeout
-            else if svc.is_persistent
-                && svc.sessions.is_empty()
-                && now.duration_since(svc.last_activity) > SERVICE_IDLE_TIMEOUT * 2
+            if !svc.attached
+                && ((!svc.is_persistent
+                    && now.duration_since(svc.last_activity) > SERVICE_IDLE_TIMEOUT)
+                    || (svc.is_persistent
+                        && svc.sessions.is_empty()
+                        && now.duration_since(svc.last_activity) > SERVICE_IDLE_TIMEOUT * 2))
             {
-                to_remove.push(service_id.clone());
-                log::info!("Cleaning up empty persistent service: {}", service_id);
+                to_remove.push((service_id.clone(), service.clone()));
             }
         }
     }
 
-    // Remove outside of iteration to avoid deadlock
     drop(services);
-    for id in to_remove {
-        remove_service(&id);
+    for (service_id, expected) in to_remove {
+        let removed = {
+            let mut services = TERMINAL_SERVICES.lock().unwrap();
+            let Some(current) = services.get(&service_id) else {
+                continue;
+            };
+            if !Arc::ptr_eq(current, &expected) {
+                continue;
+            }
+            let removable = {
+                let state = current.lock().unwrap();
+                !state.attached
+                    && ((!state.is_persistent
+                        && now.duration_since(state.last_activity) > SERVICE_IDLE_TIMEOUT)
+                        || (state.is_persistent
+                            && state.sessions.is_empty()
+                            && now.duration_since(state.last_activity) > SERVICE_IDLE_TIMEOUT * 2))
+            };
+            if removable {
+                services.remove(&service_id)
+            } else {
+                None
+            }
+        };
+        if let Some(removed) = removed {
+            stop_service(&service_id, removed);
+        }
     }
 }
 
@@ -371,28 +971,144 @@ fn check_zombie_terminals() {
     }
 }
 
-/// Ensure the cleanup task is running
-fn ensure_cleanup_task() {
-    let mut task_handle = CLEANUP_TASK.lock().unwrap();
-    if task_handle.is_none() {
-        let handle = std::thread::spawn(|| {
-            log::info!("Started cleanup task");
-            let mut last_service_cleanup = Instant::now();
-            loop {
-                // Check for zombie processes every 100ms
-                check_zombie_terminals();
+fn remove_session_if_current(
+    service: &Arc<Mutex<PersistentTerminalService>>,
+    terminal_id: i32,
+    expected: &SharedTerminalSession,
+) -> Option<SharedTerminalSession> {
+    let mut state = service.lock().unwrap();
+    let current = state.sessions.get(&terminal_id)?;
+    if Arc::ptr_eq(current, expected) {
+        state.sessions.remove(&terminal_id)
+    } else {
+        None
+    }
+}
 
-                // Check for inactive services every 5 minutes
-                if last_service_cleanup.elapsed() > Duration::from_secs(300) {
-                    cleanup_inactive_services();
-                    last_service_cleanup = Instant::now();
-                }
-
-                std::thread::sleep(Duration::from_millis(100));
+fn monitor_detached_sessions_once() {
+    let services = TERMINAL_SERVICES
+        .lock()
+        .unwrap()
+        .values()
+        .cloned()
+        .collect::<Vec<_>>();
+    for service in services {
+        let sessions = {
+            let state = service.lock().unwrap();
+            if state.attached {
+                continue;
             }
-        });
+            state
+                .sessions
+                .iter()
+                .map(|(id, session)| (*id, session.clone()))
+                .collect::<Vec<_>>()
+        };
+        for (terminal_id, session) in sessions {
+            let removed = {
+                let Ok(mut session_state) = session.try_lock() else {
+                    continue;
+                };
+                if !session_state.has_exited() {
+                    continue;
+                }
+                let removed = remove_session_if_current(&service, terminal_id, &session);
+                drop(session_state);
+                removed
+            };
+            if let Some(removed) = removed {
+                enqueue_session_teardown(removed);
+            }
+        }
+    }
+}
+
+/// Ensure the cleanup task is running
+fn ensure_cleanup_task() -> Result<()> {
+    ensure_teardown_workers()?;
+    let mut task_handle = CLEANUP_TASK.lock().unwrap();
+    if task_handle
+        .as_ref()
+        .map(|handle| handle.is_finished())
+        .unwrap_or(false)
+    {
+        if let Some(handle) = task_handle.take() {
+            handle
+                .join()
+                .map_err(|_| anyhow!("Terminal cleanup task panicked"))?;
+        }
+    }
+    if task_handle.is_none() {
+        let handle = thread::Builder::new()
+            .name("terminal-cleanup".to_owned())
+            .spawn(|| {
+                log::info!("Started cleanup task");
+                let mut last_service_cleanup = Instant::now();
+                #[cfg(target_os = "windows")]
+                let mut last_authority_check = Instant::now() - Duration::from_secs(2);
+                loop {
+                    check_zombie_terminals();
+                    monitor_detached_sessions_once();
+
+                    if last_service_cleanup.elapsed() > Duration::from_secs(300) {
+                        cleanup_inactive_services();
+                        last_service_cleanup = Instant::now();
+                    }
+
+                    #[cfg(target_os = "windows")]
+                    if last_authority_check.elapsed() >= Duration::from_secs(1) {
+                        monitor_all_service_authorities();
+                        last_authority_check = Instant::now();
+                    }
+
+                    thread::sleep(Duration::from_millis(100));
+                }
+            })
+            .map_err(|err| anyhow!("Failed to start terminal cleanup task: {err}"))?;
         *task_handle = Some(handle);
     }
+    drop(task_handle);
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut event_task = AUTHORITY_EVENT_TASK.lock().unwrap();
+        if event_task
+            .as_ref()
+            .map(|handle| handle.is_finished())
+            .unwrap_or(false)
+        {
+            if let Some(handle) = event_task.take() {
+                handle
+                    .join()
+                    .map_err(|_| anyhow!("Terminal authority event task panicked"))?;
+            }
+        }
+        if event_task.is_none() {
+            *event_task = Some(
+                thread::Builder::new()
+                    .name("terminal-authority-events".to_owned())
+                    .spawn(|| loop {
+                        let mut event_flags = 0u32;
+                        let succeeded = unsafe {
+                            WTSWaitSystemEvent(
+                                std::ptr::null_mut(),
+                                WTS_EVENT_LOGOFF,
+                                &mut event_flags,
+                            )
+                        } != 0;
+                        if succeeded && event_flags & WTS_EVENT_LOGOFF != 0 {
+                            monitor_all_service_authorities();
+                        } else if !succeeded {
+                            thread::sleep(Duration::from_secs(1));
+                        }
+                    })
+                    .map_err(|err| {
+                        anyhow!("Failed to start terminal authority event task: {err}")
+                    })?,
+            );
+        }
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]
@@ -404,35 +1120,13 @@ pub fn get_terminal_session_count(include_zombie_tasks: bool) -> usize {
     c
 }
 
-/// User token wrapper for cross-module use.
-///
-/// # Design Note
-/// On Windows, this type is defined in terminal_helper.rs and re-exported here.
-/// On non-Windows platforms, it's defined here directly.
-/// This design avoids circular dependencies while keeping the API consistent.
-/// Both definitions MUST have identical public API (new, as_raw methods).
-#[cfg(not(target_os = "windows"))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct UserToken(pub usize);
-
-#[cfg(not(target_os = "windows"))]
-impl UserToken {
-    pub fn new(handle: usize) -> Self {
-        Self(handle)
-    }
-
-    pub fn as_raw(&self) -> usize {
-        self.0
-    }
-}
-
-#[cfg(target_os = "windows")]
-pub use super::terminal_helper::UserToken;
-
 #[derive(Clone)]
 pub struct TerminalService {
     sp: GenericService,
-    user_token: Option<UserToken>,
+    service: Arc<Mutex<PersistentTerminalService>>,
+    attachment_generation: u64,
+    authority_epoch: u64,
+    worker_state: Arc<TerminalWorkerState>,
 }
 
 impl Deref for TerminalService {
@@ -453,47 +1147,521 @@ pub fn get_service_name(source: VideoSource, idx: usize) -> String {
     format!("{}{}", source.service_name_prefix(), idx)
 }
 
-pub fn new(
+pub(crate) struct TerminalServiceLease {
     service_id: String,
-    is_persistent: bool,
-    user_token: Option<UserToken>,
-) -> GenericService {
-    // Create the service with initial persistence setting
-    allow_err!(get_or_create_service(
-        service_id.clone(),
-        is_persistent,
-        user_token.is_some()
-    ));
-    let svc = TerminalService {
-        sp: GenericService::new(service_id.clone(), false),
-        user_token,
-    };
-    GenericService::run(&svc.clone(), move |sp| run(sp, service_id.clone()));
-    svc.sp
+    service: Arc<Mutex<PersistentTerminalService>>,
+    attachment_generation: u64,
+    authority_epoch: u64,
+    created_entry: bool,
+    requested_persistent: AtomicBool,
+    activation_checkpoint: Mutex<Option<TerminalActivationCheckpoint>>,
+    sp: GenericService,
+    worker_state: Arc<TerminalWorkerState>,
+    action_tx: Option<SyncSender<TerminalAction>>,
+    action_worker: Option<thread::JoinHandle<()>>,
+    teardown_permit: Option<Arc<TerminalTeardownPermit>>,
+    activated: bool,
 }
 
-fn run(sp: TerminalService, service_id: String) -> ResultType<()> {
-    while sp.ok() {
-        let responses = TerminalServiceProxy::new(service_id.clone(), None, sp.user_token.clone())
-            .read_outputs();
+struct TerminalActivationCheckpoint {
+    attachment_generation: u64,
+    authority_epoch: u64,
+}
+
+impl TerminalServiceLease {
+    pub(crate) fn service_id(&self) -> &str {
+        &self.service_id
+    }
+
+    pub(crate) fn validate_for_activation(&self) -> Result<()> {
+        self.validate_current_authority()?;
+        *self.activation_checkpoint.lock().unwrap() = Some(TerminalActivationCheckpoint {
+            attachment_generation: self.attachment_generation,
+            authority_epoch: self.authority_epoch,
+        });
+        Ok(())
+    }
+
+    pub(crate) fn ensure_attached_authority(&self) -> Result<()> {
+        self.worker_state.ensure_authoritative()?;
+        self.validate_attachment().map(|_| ())
+    }
+
+    pub(crate) fn activate(&mut self, subscriber: ConnInner) -> Result<()> {
+        if self.activated {
+            return Err(anyhow!("Terminal service lease is already active"));
+        }
+        let checkpoint = self
+            .activation_checkpoint
+            .lock()
+            .unwrap()
+            .take()
+            .ok_or_else(|| authority_error("Terminal activation was not validated"))?;
+        if checkpoint.attachment_generation != self.attachment_generation
+            || checkpoint.authority_epoch != self.authority_epoch
+        {
+            return Err(authority_error("Terminal activation checkpoint is stale"));
+        }
+        let mut state = self.service.lock().unwrap();
+        state.validate_attachment(checkpoint.attachment_generation, checkpoint.authority_epoch)?;
+        self.worker_state.ensure_authoritative()?;
+        state.commit_attachment(self.requested_persistent.load(Ordering::SeqCst));
+        self.worker_state
+            .subscriber_id
+            .store(subscriber.id(), Ordering::Release);
+        self.sp.on_subscribe(subscriber);
+        drop(state);
+        self.activated = true;
+        Ok(())
+    }
+
+    pub(crate) fn set_persistent(&self, is_persistent: bool) -> Result<()> {
+        self.worker_state.ensure_authoritative()?;
+        self.validate_attachment()?;
+        self.requested_persistent
+            .store(is_persistent, Ordering::SeqCst);
+        if self.activated {
+            let mut state = self.service.lock().unwrap();
+            state.validate_attachment(self.attachment_generation, self.authority_epoch)?;
+            state.is_persistent = is_persistent;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn enqueue_action(&self, action: TerminalAction) -> Result<()> {
+        if !self.activated {
+            return Err(authority_error("Terminal service lease is not active"));
+        }
+        self.worker_state.ensure_authoritative()?;
+        let sender = self
+            .action_tx
+            .as_ref()
+            .ok_or_else(|| authority_error("Terminal action worker is unavailable"))?;
+        try_enqueue_terminal_action(sender, &self.worker_state, action)
+    }
+
+    fn validate_attachment(&self) -> Result<Arc<Mutex<PersistentTerminalService>>> {
+        let service = self.service.clone();
+        {
+            let state = service.lock().unwrap();
+            state.validate_attachment(self.attachment_generation, self.authority_epoch)?;
+        }
+        Ok(service)
+    }
+
+    fn validate_current_authority(&self) -> Result<()> {
+        let service = self.validate_attachment()?;
+        let authority = service
+            .lock()
+            .unwrap()
+            .launch_authority
+            .clone()
+            .ok_or_else(|| authority_error("Terminal service launch authority was revoked"))?;
+        validate_launch_authority_value(&authority)?;
+        let result = service
+            .lock()
+            .unwrap()
+            .validate_attachment(self.attachment_generation, self.authority_epoch);
+        result
+    }
+}
+
+impl Drop for TerminalServiceLease {
+    fn drop(&mut self) {
+        if let Err(err) = release_service_attachment(
+            &self.service_id,
+            &self.service,
+            self.attachment_generation,
+            self.created_entry,
+            self.activated,
+        ) {
+            log::error!("Failed to release terminal service attachment: {}", err);
+        }
+        {
+            let _state = self.service.lock().unwrap();
+            if let Some(subscriber_id) = self.worker_state.subscriber_id() {
+                self.worker_state.subscriber_id.store(-1, Ordering::Release);
+                self.sp.on_unsubscribe(subscriber_id);
+            }
+        }
+        drop(self.action_tx.take());
+        match (self.action_worker.take(), self.teardown_permit.take()) {
+            (Some(action_worker), Some(permit)) => {
+                enqueue_teardown_task(TerminalTeardownTask::Lease {
+                    service: self.sp.clone(),
+                    action_worker,
+                    _permit: permit,
+                });
+            }
+            _ => {
+                log::error!("Terminal lease lost teardown ownership");
+                std::process::abort();
+            }
+        }
+    }
+}
+
+pub(crate) fn prepare(
+    service_id: String,
+    is_persistent: bool,
+    launch_authority: TerminalLaunchAuthority,
+) -> Result<TerminalServiceLease> {
+    let reservation = reserve_service_attachment(service_id.clone(), launch_authority)?;
+    let teardown_permit = match acquire_teardown_permit() {
+        Ok(permit) => permit,
+        Err(err) => {
+            release_service_attachment(
+                &service_id,
+                &reservation.service,
+                reservation.attachment_generation,
+                reservation.created_entry,
+                false,
+            )?;
+            return Err(err);
+        }
+    };
+    let worker_state = Arc::new(TerminalWorkerState::new());
+    {
+        let mut state = reservation.service.lock().unwrap();
+        state.validate_attachment(
+            reservation.attachment_generation,
+            reservation.authority_epoch,
+        )?;
+        state.attachment_worker_state = Some(Arc::downgrade(&worker_state));
+    }
+    let svc = TerminalService {
+        sp: GenericService::new(service_id.clone(), false),
+        service: reservation.service.clone(),
+        attachment_generation: reservation.attachment_generation,
+        authority_epoch: reservation.authority_epoch,
+        worker_state: worker_state.clone(),
+    };
+    let proxy = TerminalServiceProxy {
+        service: reservation.service.clone(),
+        attachment_generation: reservation.attachment_generation,
+        authority_epoch: reservation.authority_epoch,
+    };
+    let (action_tx, action_rx) = mpsc::sync_channel(TERMINAL_ACTION_QUEUE_CAPACITY);
+    let action_service = svc.sp.clone();
+    let action_worker_state = worker_state.clone();
+    let action_worker_latch = worker_state.clone();
+    let action_worker = match thread::Builder::new()
+        .name(format!("terminal-actions-{}", service_id))
+        .spawn(move || {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                run_action_worker(proxy, action_service, action_worker_state, action_rx)
+            }));
+            action_worker_latch.mark_fatal_authority();
+            if result.is_err() {
+                log::error!("Terminal action worker panicked");
+            }
+        }) {
+        Ok(worker) => worker,
+        Err(err) => {
+            release_service_attachment(
+                &service_id,
+                &reservation.service,
+                reservation.attachment_generation,
+                reservation.created_entry,
+                false,
+            )?;
+            return Err(anyhow!("Failed to start terminal action worker: {}", err));
+        }
+    };
+    let output_worker_state = worker_state.clone();
+    let output_start = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        GenericService::run(&svc.clone(), move |service| match std::panic::catch_unwind(
+            std::panic::AssertUnwindSafe(|| run(service)),
+        ) {
+            Ok(result) => result,
+            Err(_) => {
+                output_worker_state.mark_fatal_authority();
+                Err(anyhow!("Terminal output worker panicked"))
+            }
+        });
+    }));
+    if output_start.is_err() {
+        drop(action_tx);
+        if action_worker.join().is_err() {
+            log::error!("Terminal action worker panicked during startup rollback");
+        }
+        release_service_attachment(
+            &service_id,
+            &reservation.service,
+            reservation.attachment_generation,
+            reservation.created_entry,
+            false,
+        )?;
+        return Err(anyhow!("Failed to start terminal output worker"));
+    }
+    Ok(TerminalServiceLease {
+        service_id,
+        service: reservation.service,
+        attachment_generation: reservation.attachment_generation,
+        authority_epoch: reservation.authority_epoch,
+        created_entry: reservation.created_entry,
+        requested_persistent: AtomicBool::new(is_persistent),
+        activation_checkpoint: Mutex::new(None),
+        sp: svc.sp,
+        worker_state,
+        action_tx: Some(action_tx),
+        action_worker: Some(action_worker),
+        teardown_permit: Some(teardown_permit),
+        activated: false,
+    })
+}
+
+enum TerminalOutputPoll {
+    Responses(Vec<TerminalOutputResponse>),
+    Quiescent,
+}
+
+struct TerminalOutputResponse {
+    response: TerminalResponse,
+    condition: TerminalOutputCondition,
+}
+
+struct TerminalSessionPublication {
+    terminal_id: i32,
+    expected: SharedTerminalSession,
+    output_visible: Arc<AtomicBool>,
+}
+
+struct TerminalActionResponse {
+    response: TerminalResponse,
+    publication: Option<TerminalSessionPublication>,
+}
+
+impl TerminalActionResponse {
+    fn immediate(response: TerminalResponse) -> Self {
+        Self {
+            response,
+            publication: None,
+        }
+    }
+}
+
+enum TerminalOutputCondition {
+    SessionCurrent {
+        terminal_id: i32,
+        expected: SharedTerminalSession,
+    },
+    SessionRemove {
+        terminal_id: i32,
+        expected: SharedTerminalSession,
+    },
+}
+
+impl TerminalOutputCondition {
+    fn matches(&self, service: &PersistentTerminalService) -> bool {
+        match self {
+            Self::SessionCurrent {
+                terminal_id,
+                expected,
+            } => service
+                .sessions
+                .get(terminal_id)
+                .map(|current| Arc::ptr_eq(current, expected))
+                .unwrap_or(false),
+            Self::SessionRemove {
+                terminal_id,
+                expected,
+            } => service
+                .sessions
+                .get(terminal_id)
+                .map(|current| Arc::ptr_eq(current, expected))
+                .unwrap_or(false),
+        }
+    }
+}
+
+fn poll_terminal_outputs(
+    proxy: &TerminalServiceProxy,
+    worker_state: &TerminalWorkerState,
+) -> Result<TerminalOutputPoll> {
+    if worker_state.fatal_authority.load(Ordering::Acquire) {
+        return Ok(TerminalOutputPoll::Quiescent);
+    }
+    match proxy.read_outputs() {
+        Ok(responses) => Ok(TerminalOutputPoll::Responses(responses)),
+        Err(err) if is_fatal_authority_error(&err) => {
+            worker_state.mark_fatal_authority();
+            Ok(TerminalOutputPoll::Quiescent)
+        }
+        Err(err) => Err(err),
+    }
+}
+
+fn send_terminal_response_if_authoritative(
+    proxy: &TerminalServiceProxy,
+    service: &GenericService,
+    worker_state: &TerminalWorkerState,
+    response: TerminalResponse,
+    condition: Option<&TerminalOutputCondition>,
+) -> Result<bool> {
+    worker_state.ensure_authoritative()?;
+    let mut state = proxy.service.lock().unwrap();
+    state.validate_attachment(proxy.attachment_generation, proxy.authority_epoch)?;
+    worker_state.ensure_authoritative()?;
+    if condition
+        .map(|condition| !condition.matches(&state))
+        .unwrap_or(false)
+    {
+        return Ok(true);
+    }
+    let Some(subscriber_id) = worker_state.subscriber_id() else {
+        return Ok(false);
+    };
+    let mut msg_out = Message::new();
+    msg_out.set_terminal_response(response);
+    service.send_to(msg_out, subscriber_id);
+    let removed = match condition {
+        Some(TerminalOutputCondition::SessionRemove {
+            terminal_id,
+            expected,
+        }) if state
+            .sessions
+            .get(terminal_id)
+            .map(|current| Arc::ptr_eq(current, expected))
+            .unwrap_or(false) =>
+        {
+            state.sessions.remove(terminal_id)
+        }
+        _ => None,
+    };
+    drop(state);
+    if let Some(removed) = removed {
+        enqueue_session_teardown(removed);
+    }
+    Ok(true)
+}
+
+fn send_terminal_action_response_if_authoritative(
+    proxy: &TerminalServiceProxy,
+    service: &GenericService,
+    worker_state: &TerminalWorkerState,
+    action_response: TerminalActionResponse,
+) -> Result<()> {
+    worker_state.ensure_authoritative()?;
+    let state = proxy.service.lock().unwrap();
+    state.validate_attachment(proxy.attachment_generation, proxy.authority_epoch)?;
+    worker_state.ensure_authoritative()?;
+    if let Some(publication) = &action_response.publication {
+        let current = state
+            .sessions
+            .get(&publication.terminal_id)
+            .ok_or_else(|| authority_error("Opened terminal session was removed before publish"))?;
+        if !Arc::ptr_eq(current, &publication.expected) {
+            return Err(authority_error(
+                "Opened terminal session changed before publish",
+            ));
+        }
+    }
+    let subscriber_id = worker_state
+        .subscriber_id()
+        .ok_or_else(|| authority_error("Terminal subscriber detached before response"))?;
+    let mut msg_out = Message::new();
+    msg_out.set_terminal_response(action_response.response);
+    service.send_to(msg_out, subscriber_id);
+    if let Some(publication) = action_response.publication {
+        publication.output_visible.store(true, Ordering::Release);
+    }
+    drop(state);
+    Ok(())
+}
+
+fn run(sp: TerminalService) -> ResultType<()> {
+    let proxy = TerminalServiceProxy {
+        service: sp.service.clone(),
+        attachment_generation: sp.attachment_generation,
+        authority_epoch: sp.authority_epoch,
+    };
+    while sp.active() {
+        if !sp.has_subscribes() {
+            thread::sleep(Duration::from_millis(30));
+            continue;
+        }
+        let responses = match poll_terminal_outputs(&proxy, &sp.worker_state)? {
+            TerminalOutputPoll::Responses(responses) => responses,
+            TerminalOutputPoll::Quiescent => {
+                thread::sleep(Duration::from_millis(30));
+                continue;
+            }
+        };
         for response in responses {
-            let mut msg_out = Message::new();
-            msg_out.set_terminal_response(response);
-            sp.send(msg_out);
+            match send_terminal_response_if_authoritative(
+                &proxy,
+                &sp.sp,
+                &sp.worker_state,
+                response.response,
+                Some(&response.condition),
+            ) {
+                Ok(true) => {}
+                Ok(false) => break,
+                Err(err) if is_fatal_authority_error(&err) => {
+                    sp.worker_state.mark_fatal_authority();
+                    break;
+                }
+                Err(err) => return Err(err),
+            }
         }
 
         thread::sleep(Duration::from_millis(30)); // Read at ~33fps for responsive terminal
     }
+    Ok(())
+}
 
-    // Clean up non-persistent service when loop exits
-    if let Some(service) = get_service(&service_id) {
-        let should_remove = !service.lock().unwrap().is_persistent;
-        if should_remove {
-            remove_service(&service_id);
+fn run_action_worker(
+    mut proxy: TerminalServiceProxy,
+    service: GenericService,
+    worker_state: Arc<TerminalWorkerState>,
+    actions: Receiver<TerminalAction>,
+) {
+    while let Ok(action) = actions.recv() {
+        if worker_state.ensure_authoritative().is_err() {
+            break;
+        }
+        match proxy.handle_action(&action) {
+            Ok(Some(response)) => {
+                if let Err(err) = send_terminal_action_response_if_authoritative(
+                    &proxy,
+                    &service,
+                    &worker_state,
+                    response,
+                ) {
+                    if !is_fatal_authority_error(&err) {
+                        log::error!("Terminal response dispatch failed: {}", err);
+                    }
+                    worker_state.mark_fatal_authority();
+                    break;
+                }
+            }
+            Ok(None) => {}
+            Err(err) if is_fatal_authority_error(&err) => {
+                worker_state.mark_fatal_authority();
+                break;
+            }
+            Err(err) => {
+                log::warn!("Terminal action failed: {}", err);
+                let mut response = TerminalResponse::new();
+                let mut error = TerminalError::new();
+                error.message = "Failed to handle terminal action".to_owned();
+                response.set_error(error);
+                if let Err(dispatch_err) = send_terminal_action_response_if_authoritative(
+                    &proxy,
+                    &service,
+                    &worker_state,
+                    TerminalActionResponse::immediate(response),
+                ) {
+                    if !is_fatal_authority_error(&dispatch_err) {
+                        log::error!("Terminal error response dispatch failed: {}", dispatch_err);
+                    }
+                    worker_state.mark_fatal_authority();
+                    break;
+                }
+            }
         }
     }
-
-    Ok(())
 }
 
 /// Output buffer for terminal session
@@ -782,59 +1950,201 @@ fn try_send_output(
     }
 }
 
-pub struct TerminalSession {
-    pub created_at: Instant,
+fn take_bounded_output_batch(
+    output_rx: &Receiver<Vec<u8>>,
+    deferred_output: &mut VecDeque<Vec<u8>>,
+    remaining_chunks: &mut usize,
+    remaining_bytes: &mut usize,
+) -> Vec<Vec<u8>> {
+    let mut batch = Vec::new();
+    while *remaining_chunks > 0 && *remaining_bytes > 0 {
+        let mut data = match deferred_output.pop_front() {
+            Some(data) => data,
+            None => match output_rx.try_recv() {
+                Ok(data) => data,
+                Err(_) => break,
+            },
+        };
+        if data.len() > *remaining_bytes {
+            let tail = data.split_off(*remaining_bytes);
+            deferred_output.push_front(tail);
+        }
+        *remaining_chunks -= 1;
+        *remaining_bytes -= data.len();
+        batch.push(data);
+    }
+    batch
+}
+
+fn take_bounded_replay(
+    pending_buffer: &mut Option<Vec<u8>>,
+    remaining_chunks: &mut usize,
+    remaining_bytes: &mut usize,
+) -> Option<Vec<u8>> {
+    if *remaining_chunks == 0 || *remaining_bytes == 0 {
+        return None;
+    }
+    let mut data = pending_buffer.take()?;
+    if data.is_empty() {
+        return None;
+    }
+    if data.len() > *remaining_bytes {
+        let tail = data.split_off(*remaining_bytes);
+        *pending_buffer = Some(tail);
+    }
+    *remaining_chunks -= 1;
+    *remaining_bytes -= data.len();
+    Some(data)
+}
+
+fn transport_failure_is_reportable(
+    reader_finished: bool,
+    writer_finished: bool,
+    helper_mode: bool,
+    reader_finished_at: &mut Option<Instant>,
+    now: Instant,
+) -> bool {
+    if writer_finished {
+        return true;
+    }
+    if !reader_finished {
+        return false;
+    }
+    let first_seen = reader_finished_at.get_or_insert(now);
+    let grace = if helper_mode {
+        HELPER_EXIT_STATUS_GRACE
+    } else {
+        DIRECT_EXIT_STATUS_GRACE
+    };
+    now.duration_since(*first_seen) >= grace
+}
+
+#[derive(Clone, Copy)]
+struct PendingTerminalExit {
+    exit_code: i32,
+    drain_output: bool,
+}
+
+type SharedTerminalSession = Arc<TerminalSessionEntry>;
+
+struct TerminalSessionEntry {
+    state: Mutex<TerminalSession>,
+    exiting: Arc<AtomicBool>,
+    #[cfg(target_os = "windows")]
+    helper_terminator: Option<HelperProcessTerminator>,
+}
+
+impl TerminalSessionEntry {
+    fn new(session: TerminalSession) -> SharedTerminalSession {
+        let exiting = session.exiting.clone();
+        #[cfg(target_os = "windows")]
+        let helper_terminator = session
+            .helper_process
+            .as_ref()
+            .map(HelperProcessTree::terminator);
+        Arc::new(Self {
+            state: Mutex::new(session),
+            exiting,
+            #[cfg(target_os = "windows")]
+            helper_terminator,
+        })
+    }
+
+    fn signal_shutdown(&self) {
+        self.exiting.store(true, Ordering::Release);
+        #[cfg(target_os = "windows")]
+        if let Some(terminator) = &self.helper_terminator {
+            if let Err(err) = terminator.terminate() {
+                log::error!("Failed to terminate terminal helper job: {err}");
+                std::process::abort();
+            }
+        }
+    }
+
+    fn stop_for_teardown(&self) {
+        self.signal_shutdown();
+        let (workers, permit) = {
+            let mut state = self
+                .state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let workers = state.stop_resources();
+            let permit = state._teardown_permit.take();
+            (workers, permit)
+        };
+        for worker in workers {
+            if worker.join().is_err() {
+                log::error!("Terminal I/O worker panicked during teardown");
+            }
+        }
+        drop(permit);
+    }
+}
+
+impl Deref for TerminalSessionEntry {
+    type Target = Mutex<TerminalSession>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.state
+    }
+}
+
+struct TerminalSession {
     last_activity: Instant,
-    pty_pair: Option<portable_pty::PtyPair>,
+    pty_master: Option<Box<dyn MasterPty + Send>>,
     child: Option<Box<dyn Child + std::marker::Send + Sync>>,
     // Channel for sending input to the writer thread
     input_tx: Option<SyncSender<Vec<u8>>>,
     // Channel for receiving output from the reader thread
     output_rx: Option<Receiver<Vec<u8>>>,
+    deferred_output: VecDeque<Vec<u8>>,
     exiting: Arc<AtomicBool>,
     // Thread handles
     reader_thread: Option<thread::JoinHandle<()>>,
     writer_thread: Option<thread::JoinHandle<()>>,
     output_buffer: OutputBuffer,
-    title: String,
     pid: u32,
     rows: u16,
     cols: u16,
-    // Track if we've already sent the closed message
-    closed_message_sent: bool,
+    pending_exit: Option<PendingTerminalExit>,
+    output_visible: Arc<AtomicBool>,
+    reader_finished_at: Option<Instant>,
+    _teardown_permit: Option<Arc<TerminalTeardownPermit>>,
     // Session state machine for reconnection handling
     state: SessionState,
     // Helper mode: PTY is managed by helper process, communication via message protocol
     #[cfg(target_os = "windows")]
     is_helper_mode: bool,
-    // Handle to helper process for termination when session closes
+    // Kill-on-close owner for the helper and every process in its job.
     #[cfg(target_os = "windows")]
-    helper_process_handle: Option<SendableHandle>,
+    helper_process: Option<HelperProcessTree>,
 }
 
 impl TerminalSession {
-    fn new(terminal_id: i32, rows: u16, cols: u16) -> Self {
+    fn new(rows: u16, cols: u16) -> Self {
         Self {
-            created_at: Instant::now(),
             last_activity: Instant::now(),
-            pty_pair: None,
+            pty_master: None,
             child: None,
             input_tx: None,
             output_rx: None,
+            deferred_output: VecDeque::new(),
             exiting: Arc::new(AtomicBool::new(false)),
             reader_thread: None,
             writer_thread: None,
             output_buffer: OutputBuffer::new(),
-            title: format!("Terminal {}", terminal_id),
             pid: 0,
             rows,
             cols,
-            closed_message_sent: false,
+            pending_exit: None,
+            output_visible: Arc::new(AtomicBool::new(false)),
+            reader_finished_at: None,
+            _teardown_permit: None,
             state: SessionState::Closed,
             #[cfg(target_os = "windows")]
             is_helper_mode: false,
             #[cfg(target_os = "windows")]
-            helper_process_handle: None,
+            helper_process: None,
         }
     }
 
@@ -842,133 +2152,303 @@ impl TerminalSession {
         self.last_activity = Instant::now();
     }
 
-    // This helper function is to ensure that the threads are joined before the child process is dropped.
-    // Though this is not strictly necessary on macOS.
-    fn stop(&mut self) {
+    fn exit_status_if_exited(&mut self) -> Option<PendingTerminalExit> {
+        #[cfg(target_os = "windows")]
+        if let Some(helper) = self.helper_process.as_ref() {
+            match helper.exit_code_if_exited() {
+                Ok(Some(exit_code)) => {
+                    return Some(PendingTerminalExit {
+                        exit_code: exit_code as i32,
+                        drain_output: true,
+                    });
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    log::error!("Failed to query terminal helper status: {err}");
+                    return Some(PendingTerminalExit {
+                        exit_code: -1,
+                        drain_output: false,
+                    });
+                }
+            }
+        }
+        let reader_finished = self
+            .reader_thread
+            .as_ref()
+            .map(|thread| thread.is_finished())
+            .unwrap_or(false);
+        let writer_finished = self
+            .writer_thread
+            .as_ref()
+            .map(|thread| thread.is_finished())
+            .unwrap_or(false);
+        #[cfg(target_os = "windows")]
+        let helper_mode = self.is_helper_mode;
+        #[cfg(not(target_os = "windows"))]
+        let helper_mode = false;
+        if transport_failure_is_reportable(
+            reader_finished,
+            writer_finished,
+            helper_mode,
+            &mut self.reader_finished_at,
+            Instant::now(),
+        ) {
+            return Some(match self.child.as_mut() {
+                Some(child) => match child.try_wait() {
+                    Ok(Some(status)) => PendingTerminalExit {
+                        exit_code: status.exit_code() as i32,
+                        drain_output: true,
+                    },
+                    Ok(None) => PendingTerminalExit {
+                        exit_code: -1,
+                        drain_output: !writer_finished,
+                    },
+                    Err(err) => {
+                        log::error!("Failed to query terminal child status: {err}");
+                        PendingTerminalExit {
+                            exit_code: -1,
+                            drain_output: false,
+                        }
+                    }
+                },
+                None => PendingTerminalExit {
+                    exit_code: -1,
+                    drain_output: !writer_finished,
+                },
+            });
+        }
+        match self.child.as_mut() {
+            Some(child) => match child.try_wait() {
+                Ok(status) => status.map(|status| PendingTerminalExit {
+                    exit_code: status.exit_code() as i32,
+                    drain_output: true,
+                }),
+                Err(err) => {
+                    log::error!("Failed to query terminal child status: {err}");
+                    Some(PendingTerminalExit {
+                        exit_code: -1,
+                        drain_output: false,
+                    })
+                }
+            },
+            None => None,
+        }
+    }
+
+    fn has_exited(&mut self) -> bool {
+        if self
+            .reader_thread
+            .as_ref()
+            .map(|thread| thread.is_finished())
+            .unwrap_or(false)
+            || self
+                .writer_thread
+                .as_ref()
+                .map(|thread| thread.is_finished())
+                .unwrap_or(false)
+        {
+            return true;
+        }
+        self.exit_status_if_exited().is_some()
+    }
+
+    fn output_is_exhausted(&mut self) -> bool {
+        if self
+            .state
+            .active_pending_buffer()
+            .map(|buffer| !buffer.is_empty())
+            .unwrap_or(false)
+            || !self.deferred_output.is_empty()
+        {
+            return false;
+        }
+        if self
+            .reader_thread
+            .as_ref()
+            .map(|thread| !thread.is_finished())
+            .unwrap_or(false)
+        {
+            return false;
+        }
+        let Some(output_rx) = self.output_rx.as_ref() else {
+            return true;
+        };
+        match output_rx.try_recv() {
+            Err(mpsc::TryRecvError::Disconnected) => true,
+            Err(mpsc::TryRecvError::Empty) => false,
+            Ok(data) => {
+                self.deferred_output.push_back(data);
+                false
+            }
+        }
+    }
+
+    fn stop_resources(&mut self) -> Vec<thread::JoinHandle<()>> {
         self.state = SessionState::Closed;
         self.exiting.store(true, Ordering::SeqCst);
-
-        // Drop the input channel to signal writer thread to exit
-        if let Some(input_tx) = self.input_tx.take() {
-            // Send a final newline to ensure the reader can read some data, and then exit.
-            // This is required on Windows and Linux.
-            // Although `self.pty_pair = None;` is called below, we can still send a final newline here.
-            #[cfg(target_os = "windows")]
-            let final_msg = if self.is_helper_mode {
-                encode_helper_message(MSG_TYPE_DATA, b"\r\n")
-            } else {
-                b"\r\n".to_vec()
-            };
-            #[cfg(not(target_os = "windows"))]
-            let final_msg = b"\r\n".to_vec();
-
-            if let Err(e) = input_tx.send(final_msg) {
-                log::warn!("Failed to send final newline to the terminal: {}", e);
-            }
-            drop(input_tx);
-        }
+        self.input_tx = None;
         self.output_rx = None;
 
-        // CRITICAL: In helper mode, we must terminate the helper process BEFORE joining threads!
-        // The reader thread is blocking on output_pipe.read(), which only returns EOF when
-        // the helper process exits. If we try to join the reader thread first, we deadlock.
-        //
-        // Sequence for helper mode:
-        // 1. Signal exiting and close input channel (done above)
-        // 2. Terminate helper process (causes output pipe EOF)
-        // 3. Join reader thread (now unblocked due to EOF)
-        // 4. Join writer thread
         #[cfg(target_os = "windows")]
-        if self.is_helper_mode {
-            if let Some(helper_handle) = self.helper_process_handle.take() {
-                let handle = helper_handle.as_raw();
-                log::debug!("Helper mode: terminating helper process before joining threads...");
-
-                // Give helper a very short time to exit gracefully (it should detect pipe close)
-                // But don't wait too long - we need to unblock the reader thread
-                let wait_result = unsafe { WinWaitForSingleObject(handle, 100) };
-
-                if wait_result == WIN_WAIT_OBJECT_0 {
-                    log::debug!("Helper process exited gracefully");
-                } else {
-                    // Force terminate to unblock reader thread
-                    log::debug!("Force terminating helper process to unblock reader thread");
-                    unsafe {
-                        let _ = WinTerminateProcess(handle, 0);
-                    }
-                }
-
-                unsafe {
-                    let _ = WinCloseHandle(handle);
-                }
-            }
-        }
-
-        // 1. Windows (non-helper mode)
-        //    `pty_pair` uses pipe. https://github.com/rustdesk-org/wezterm/blob/80174f8009f41565f0fa8c66dab90d4f9211ae16/pty/src/win/conpty.rs#L16
-        //     `read()` may stuck at https://github.com/rustdesk-org/wezterm/blob/80174f8009f41565f0fa8c66dab90d4f9211ae16/filedescriptor/src/windows.rs#L345
-        //     We can close the pipe to signal the reader thread to exit.
-        //     After https://github.com/rustdesk-org/wezterm/blob/80174f8009f41565f0fa8c66dab90d4f9211ae16/pty/src/win/psuedocon.rs#L86, the reader reads `[27, 91, 63, 57, 48, 48, 49, 108, 27, 91, 63, 49, 48, 48, 52, 108]` in my tests.
-        // 2. Linux
-        //    `pty_pair` uses `libc::openpty`. https://github.com/rustdesk-org/wezterm/blob/80174f8009f41565f0fa8c66dab90d4f9211ae16/pty/src/unix.rs#L32
-        //    We can also call the drop method first. https://github.com/rustdesk-org/wezterm/blob/80174f8009f41565f0fa8c66dab90d4f9211ae16/pty/src/unix.rs#L352
-        //    The reader will get [13, 10] after dropping the `pty_pair`.
-        // 3. macOS
-        //    No stuck cases have been found so far, more testing is needed.
-        #[cfg(any(target_os = "windows", target_os = "linux"))]
-        {
-            self.pty_pair = None;
-        }
-
-        // Wait for threads to finish
-        // The reader thread should join before the writer thread on Windows.
-        if let Some(reader_thread) = self.reader_thread.take() {
-            let _ = reader_thread.join();
-        }
-
-        // The read can read the last "\r\n" after the writer thread (not the child process) exits
-        // on Linux in my tests.
-        // But we still send "\r\n" to the writer thread and let the reader thread exit first for safety.
-        if let Some(writer_thread) = self.writer_thread.take() {
-            let _ = writer_thread.join();
-        }
+        drop(self.helper_process.take());
 
         if let Some(mut child) = self.child.take() {
-            // Kill the process
-            let _ = child.kill();
+            if let Err(err) = child.kill() {
+                log::warn!("Failed to terminate terminal child {}: {}", self.pid, err);
+            }
             add_to_reaper(child);
         }
+        self.pty_master = None;
+
+        let mut workers = Vec::with_capacity(2);
+        if let Some(reader_thread) = self.reader_thread.take() {
+            workers.push(reader_thread);
+        }
+        if let Some(writer_thread) = self.writer_thread.take() {
+            workers.push(writer_thread);
+        }
+        workers
     }
 }
 
 impl Drop for TerminalSession {
     fn drop(&mut self) {
-        // Ensure child process is properly handled when session is dropped
-        self.stop();
+        let workers = self.stop_resources();
+        for worker in workers {
+            if worker.join().is_err() {
+                log::error!("Terminal I/O worker panicked during rollback teardown");
+            }
+        }
     }
 }
 
 /// Persistent terminal service that can survive connection drops
-pub struct PersistentTerminalService {
+struct PersistentTerminalService {
     service_id: String,
-    sessions: HashMap<i32, Arc<Mutex<TerminalSession>>>,
+    sessions: HashMap<i32, SharedTerminalSession>,
+    opening_sessions: HashMap<i32, OpeningReservation>,
     pub created_at: Instant,
     last_activity: Instant,
     pub is_persistent: bool,
     needs_session_sync: bool,
-    is_specified_user: bool,
+    principal: TerminalPrincipal,
+    launch_authority: Option<TerminalLaunchAuthority>,
+    attachment_worker_state: Option<Weak<TerminalWorkerState>>,
+    authority_epoch: u64,
+    attachment_generation: u64,
+    opening_generation: u64,
+    output_poll_cursor: usize,
+    attached: bool,
+}
+
+#[derive(Clone)]
+struct OpeningReservation {
+    attachment_generation: u64,
+    authority_epoch: u64,
+    opening_generation: u64,
+    cancelled: Arc<AtomicBool>,
+    teardown_permit: Arc<TerminalTeardownPermit>,
+}
+
+impl OpeningReservation {
+    fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
+
+    fn ensure_not_cancelled(&self) -> Result<()> {
+        if self.cancelled.load(Ordering::Acquire) {
+            Err(authority_error("Terminal opening was cancelled"))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn same_identity(&self, other: &Self) -> bool {
+        self.attachment_generation == other.attachment_generation
+            && self.authority_epoch == other.authority_epoch
+            && self.opening_generation == other.opening_generation
+            && Arc::ptr_eq(&self.cancelled, &other.cancelled)
+    }
+}
+
+struct OpeningGuard {
+    service: Arc<Mutex<PersistentTerminalService>>,
+    terminal_id: i32,
+    reservation: OpeningReservation,
+    committed: bool,
+}
+
+impl OpeningGuard {
+    fn new(
+        service: Arc<Mutex<PersistentTerminalService>>,
+        terminal_id: i32,
+        reservation: OpeningReservation,
+    ) -> Self {
+        Self {
+            service,
+            terminal_id,
+            reservation,
+            committed: false,
+        }
+    }
+
+    fn ensure_current(&self) -> Result<()> {
+        self.reservation.ensure_not_cancelled()?;
+        let state = self.service.lock().unwrap();
+        state.validate_attachment(
+            self.reservation.attachment_generation,
+            self.reservation.authority_epoch,
+        )?;
+        let current = state
+            .opening_sessions
+            .get(&self.terminal_id)
+            .ok_or_else(|| authority_error("Terminal opening reservation was removed"))?;
+        if !current.same_identity(&self.reservation) {
+            return Err(authority_error("Terminal opening reservation is stale"));
+        }
+        self.reservation.ensure_not_cancelled()
+    }
+}
+
+impl Drop for OpeningGuard {
+    fn drop(&mut self) {
+        if self.committed {
+            return;
+        }
+        let mut state = self.service.lock().unwrap();
+        if state
+            .opening_sessions
+            .get(&self.terminal_id)
+            .map(|current| current.same_identity(&self.reservation))
+            .unwrap_or(false)
+        {
+            state.opening_sessions.remove(&self.terminal_id);
+        }
+    }
 }
 
 impl PersistentTerminalService {
-    pub fn new(service_id: String, is_persistent: bool, is_specified_user: bool) -> Self {
+    fn new(
+        service_id: String,
+        principal: TerminalPrincipal,
+        launch_authority: TerminalLaunchAuthority,
+    ) -> Self {
         Self {
             service_id,
             sessions: HashMap::new(),
+            opening_sessions: HashMap::new(),
             created_at: Instant::now(),
             last_activity: Instant::now(),
-            is_persistent,
+            is_persistent: false,
             needs_session_sync: false,
-            is_specified_user,
+            principal,
+            launch_authority: Some(launch_authority),
+            attachment_worker_state: None,
+            authority_epoch: 1,
+            attachment_generation: 1,
+            opening_generation: 0,
+            output_poll_cursor: 0,
+            attached: true,
         }
     }
 
@@ -976,141 +2456,127 @@ impl PersistentTerminalService {
         self.last_activity = Instant::now();
     }
 
-    /// Get list of terminal metadata
-    pub fn list_terminals(&self) -> Vec<(i32, String, u32, Instant)> {
-        self.sessions
-            .iter()
-            .map(|(id, session)| {
-                let s = session.lock().unwrap();
-                (*id, s.title.clone(), s.pid, s.created_at)
-            })
-            .collect()
-    }
-
-    /// Get buffered output for a terminal
-    pub fn get_terminal_buffer(&self, terminal_id: i32, max_bytes: usize) -> Option<Vec<u8>> {
-        self.sessions.get(&terminal_id).map(|session| {
-            let session = session.lock().unwrap();
-            session.output_buffer.get_recent(max_bytes)
-        })
-    }
-
-    /// Get terminal info for recovery
-    pub fn get_terminal_info(&self, terminal_id: i32) -> Option<(u16, u16, Vec<u8>)> {
-        self.sessions.get(&terminal_id).map(|session| {
-            let session = session.lock().unwrap();
-            (
-                session.rows,
-                session.cols,
-                session
-                    .output_buffer
-                    .get_recent(DEFAULT_RECONNECT_BUFFER_BYTES),
-            )
-        })
-    }
-
-    /// Check if service has active terminals
-    pub fn has_active_terminals(&self) -> bool {
-        !self.sessions.is_empty()
-    }
-
-    fn reset_status(&mut self, is_persistent: bool) {
+    fn commit_attachment(&mut self, is_persistent: bool) {
         self.is_persistent = is_persistent;
         self.needs_session_sync = true;
-        for session in self.sessions.values() {
-            let mut session = session.lock().unwrap();
-            session.state = SessionState::Closed;
+    }
+
+    fn validate_attachment(&self, attachment_generation: u64, authority_epoch: u64) -> Result<()> {
+        if !self.attached || self.attachment_generation != attachment_generation {
+            return Err(authority_error(
+                "Terminal service attachment is no longer authoritative",
+            ));
         }
-    }
-}
-
-pub struct TerminalServiceProxy {
-    service_id: String,
-    is_persistent: bool,
-    #[cfg(target_os = "windows")]
-    user_token: Option<UserToken>,
-}
-
-pub fn set_persistent(service_id: &str, is_persistent: bool) -> Result<()> {
-    if let Some(service) = get_service(service_id) {
-        service.lock().unwrap().is_persistent = is_persistent;
+        if self.launch_authority.is_none() || self.authority_epoch != authority_epoch {
+            return Err(authority_error(
+                "Terminal service launch authority was revoked",
+            ));
+        }
         Ok(())
-    } else {
-        Err(anyhow!("Service {} not found", service_id))
     }
+
+    fn reserve_opening(
+        &mut self,
+        terminal_id: i32,
+        attachment_generation: u64,
+        authority_epoch: u64,
+    ) -> Result<OpeningReservation> {
+        self.validate_attachment(attachment_generation, authority_epoch)?;
+        if self.opening_sessions.contains_key(&terminal_id) {
+            return Err(anyhow!("Terminal is already opening"));
+        }
+        let reserved = self
+            .sessions
+            .len()
+            .checked_add(self.opening_sessions.len())
+            .ok_or_else(|| anyhow!("Terminal session count overflow"))?;
+        if reserved >= MAX_SESSIONS_PER_SERVICE {
+            return Err(anyhow!(
+                "Maximum number of terminal sessions ({MAX_SESSIONS_PER_SERVICE}) reached"
+            ));
+        }
+        self.opening_generation = self
+            .opening_generation
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("Terminal opening generation exhausted"))?;
+        let teardown_permit = acquire_teardown_permit()?;
+        let reservation = OpeningReservation {
+            attachment_generation,
+            authority_epoch,
+            opening_generation: self.opening_generation,
+            cancelled: Arc::new(AtomicBool::new(false)),
+            teardown_permit,
+        };
+        self.opening_sessions
+            .insert(terminal_id, reservation.clone());
+        Ok(reservation)
+    }
+}
+
+pub(crate) struct TerminalServiceProxy {
+    service: Arc<Mutex<PersistentTerminalService>>,
+    attachment_generation: u64,
+    authority_epoch: u64,
 }
 
 impl TerminalServiceProxy {
-    pub fn new(
-        service_id: String,
-        is_persistent: Option<bool>,
-        _user_token: Option<UserToken>,
-    ) -> Self {
-        // Get persistence from the service if it exists
-        let is_persistent =
-            is_persistent.unwrap_or(if let Some(service) = get_service(&service_id) {
-                service.lock().unwrap().is_persistent
-            } else {
-                false
-            });
-        TerminalServiceProxy {
-            service_id,
-            is_persistent,
-            #[cfg(target_os = "windows")]
-            user_token: _user_token,
+    fn service_for_attachment(&self) -> Result<Arc<Mutex<PersistentTerminalService>>> {
+        let service = self.service.clone();
+        {
+            let state = service.lock().unwrap();
+            state.validate_attachment(self.attachment_generation, self.authority_epoch)?;
         }
+        Ok(service)
     }
 
-    pub fn get_service_id(&self) -> &str {
-        &self.service_id
+    fn validate_current_authority(&self) -> Result<()> {
+        let service = self.service_for_attachment()?;
+        let authority = service
+            .lock()
+            .unwrap()
+            .launch_authority
+            .clone()
+            .ok_or_else(|| authority_error("Terminal service launch authority was revoked"))?;
+        validate_launch_authority_value(&authority)?;
+        let result = service
+            .lock()
+            .unwrap()
+            .validate_attachment(self.attachment_generation, self.authority_epoch);
+        result
     }
 
-    pub fn handle_action(&mut self, action: &TerminalAction) -> Result<Option<TerminalResponse>> {
-        let service = match get_service(&self.service_id) {
-            Some(s) => s,
-            None => {
-                let mut response = TerminalResponse::new();
-                let mut error = TerminalError::new();
-                error.message = format!("Terminal service {} not found", self.service_id);
-                response.set_error(error);
-                return Ok(Some(response));
-            }
-        };
-        service.lock().unwrap().update_activity();
-        match &action.union {
-            Some(terminal_action::Union::Open(open)) => {
-                self.handle_open(&mut service.lock().unwrap(), open)
-            }
-            Some(terminal_action::Union::Resize(resize)) => {
-                let session = service
-                    .lock()
-                    .unwrap()
-                    .sessions
-                    .get(&resize.terminal_id)
-                    .cloned();
-                self.handle_resize(session, resize)
-            }
-            Some(terminal_action::Union::Data(data)) => {
-                let session = service
-                    .lock()
-                    .unwrap()
-                    .sessions
-                    .get(&data.terminal_id)
-                    .cloned();
-                self.handle_data(session, data)
-            }
-            Some(terminal_action::Union::Close(close)) => {
-                self.handle_close(&mut service.lock().unwrap(), close)
-            }
+    fn handle_action(&mut self, action: &TerminalAction) -> Result<Option<TerminalActionResponse>> {
+        self.validate_current_authority()?;
+        let result = match &action.union {
+            Some(terminal_action::Union::Open(open)) => self.handle_open(open),
+            Some(terminal_action::Union::Resize(resize)) => self
+                .handle_resize(resize)
+                .map(|response| response.map(TerminalActionResponse::immediate)),
+            Some(terminal_action::Union::Data(data)) => self
+                .handle_data(data)
+                .map(|response| response.map(TerminalActionResponse::immediate)),
+            Some(terminal_action::Union::Close(close)) => self
+                .handle_close(close)
+                .map(|response| response.map(TerminalActionResponse::immediate)),
             _ => Ok(None),
+        };
+        match result {
+            Err(err) => {
+                if is_fatal_authority_error(&err) {
+                    return Err(err);
+                }
+                self.validate_current_authority()?;
+                Err(err)
+            }
+            ok => ok,
         }
     }
 
-    fn handle_open(
-        &self,
-        service: &mut PersistentTerminalService,
-        open: &OpenTerminal,
-    ) -> Result<Option<TerminalResponse>> {
+    fn handle_open(&self, open: &OpenTerminal) -> Result<Option<TerminalActionResponse>> {
+        let service_arc = self.service_for_attachment()?;
+        let mut service = service_arc.lock().unwrap();
+        service.validate_attachment(self.attachment_generation, self.authority_epoch)?;
+        service.update_activity();
         let mut response = TerminalResponse::new();
 
         // When the client requests a terminal_id that doesn't exist but there are
@@ -1140,9 +2606,49 @@ impl TerminalServiceProxy {
         }
 
         // Check if terminal already exists
-        if let Some(session_arc) = service.sessions.get(&open.terminal_id) {
-            // Reconnect to existing terminal
+        if let Some(session_arc) = service.sessions.get(&open.terminal_id).cloned() {
+            drop(service);
             let mut session = session_arc.lock().unwrap();
+            if session.has_exited() {
+                drop(session);
+                if let Some(removed) =
+                    remove_session_if_current(&service_arc, open.terminal_id, &session_arc)
+                {
+                    enqueue_session_teardown(removed);
+                }
+                return Err(anyhow!("Terminal session has exited"));
+            }
+            let (service_id, persistent_sessions, needs_session_sync) = {
+                let mut service = service_arc.lock().unwrap();
+                service.validate_attachment(self.attachment_generation, self.authority_epoch)?;
+                let current = service
+                    .sessions
+                    .get(&open.terminal_id)
+                    .ok_or_else(|| anyhow!("Terminal session changed during reconnect"))?;
+                if !Arc::ptr_eq(current, &session_arc) {
+                    return Err(anyhow!("Terminal session changed during reconnect"));
+                }
+                service.update_activity();
+                let needs_session_sync = service.needs_session_sync;
+                let persistent_sessions = if needs_session_sync {
+                    service
+                        .sessions
+                        .keys()
+                        .filter(|&id| *id != open.terminal_id)
+                        .cloned()
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                if needs_session_sync {
+                    service.needs_session_sync = false;
+                }
+                (
+                    service.service_id.clone(),
+                    persistent_sessions,
+                    needs_session_sync,
+                )
+            };
             // Directly enter Active state with pending replay for immediate streaming.
             // The replay combines output_buffer history and the channel backlog that was
             // already pending at reconnect time so the client can suppress stale xterm
@@ -1174,6 +2680,7 @@ impl TerminalServiceProxy {
             }
             let has_pending = !buffer.is_empty();
             session.state = SessionState::Active {
+                attachment_generation: self.attachment_generation,
                 pending_buffer: if has_pending { Some(buffer) } else { None },
                 // Always trigger two-phase SIGWINCH on reconnect to force TUI app redraw,
                 // regardless of whether there's pending buffer data. This avoids edge cases
@@ -1191,43 +2698,66 @@ impl TerminalServiceProxy {
                 "Reconnected to existing terminal".to_string()
             };
             opened.pid = session.pid;
-            opened.service_id = self.service_id.clone();
+            opened.service_id = service_id;
             opened.replay_terminal_output = has_pending;
-            if service.needs_session_sync {
-                if service.sessions.len() > 1 {
-                    // No need to include the current terminal in the list.
-                    // Because the `persistent_sessions` is used to restore the other sessions.
-                    opened.persistent_sessions = service
-                        .sessions
-                        .keys()
-                        .filter(|&id| *id != open.terminal_id)
-                        .cloned()
-                        .collect();
-                }
-                service.needs_session_sync = false;
+            if needs_session_sync {
+                opened.persistent_sessions = persistent_sessions;
             }
             response.set_opened(opened);
-
-            return Ok(Some(response));
+            session.output_visible.store(false, Ordering::Release);
+            let publication = TerminalSessionPublication {
+                terminal_id: open.terminal_id,
+                expected: session_arc.clone(),
+                output_visible: session.output_visible.clone(),
+            };
+            drop(session);
+            self.service_for_attachment()?;
+            return Ok(Some(TerminalActionResponse {
+                response,
+                publication: Some(publication),
+            }));
         }
 
-        // Windows with user_token: use helper process to run shell as the logged-in user
+        let opening = service.reserve_opening(
+            open.terminal_id,
+            self.attachment_generation,
+            self.authority_epoch,
+        )?;
+        #[cfg(target_os = "windows")]
+        let launch_authority = service
+            .launch_authority
+            .clone()
+            .ok_or_else(|| authority_error("Terminal service launch authority was revoked"))?;
+        let service_id = service.service_id.clone();
+        drop(service);
+        let opening = OpeningGuard::new(service_arc, open.terminal_id, opening);
+        opening.ensure_current()?;
+
+        // Windows service-session authority uses a helper process as the logged-in user.
         // This solves the ConPTY + CreateProcessAsUserW incompatibility issue where
         // vim, Claude Code, and other TUI applications hang when ConPTY is created
         // by SYSTEM service but shell runs as user via CreateProcessAsUserW.
         #[cfg(target_os = "windows")]
-        if self.user_token.is_some() {
-            return self.handle_open_with_helper(service, open);
+        match &launch_authority.kind {
+            TerminalLaunchAuthorityKind::WindowsSession { token } => {
+                let token = token.clone();
+                return self.handle_open_with_helper(open, &token, opening);
+            }
+            TerminalLaunchAuthorityKind::ProcessOwner => {}
+            #[cfg(test)]
+            TerminalLaunchAuthorityKind::TestPrincipal { .. } => {
+                return Err(anyhow!("Test terminal authority cannot launch a shell"));
+            }
         }
 
         // Create new terminal session
         log::info!(
             "Creating new terminal {} for service {}",
             open.terminal_id,
-            service.service_id
+            service_id
         );
-        let mut session =
-            TerminalSession::new(open.terminal_id, open.rows as u16, open.cols as u16);
+        let mut session = TerminalSession::new(open.rows as u16, open.cols as u16);
+        session._teardown_permit = Some(opening.reservation.teardown_permit.clone());
 
         let pty_size = PtySize {
             rows: open.rows as u16,
@@ -1237,8 +2767,10 @@ impl TerminalServiceProxy {
         };
 
         log::debug!("Opening PTY with size: {}x{}", open.rows, open.cols);
+        opening.ensure_current()?;
         let pty_system = portable_pty::native_pty_system();
         let pty_pair = pty_system.openpty(pty_size).context("Failed to open PTY")?;
+        let portable_pty::PtyPair { master, slave } = pty_pair;
 
         // Use default shell for the platform
         let shell = get_default_shell()?;
@@ -1278,142 +2810,129 @@ impl TerminalServiceProxy {
             }
         }
 
-        // Note: On Windows with user_token, we use helper mode (handle_open_with_helper)
-        // which is dispatched earlier in this function. This code path is only reached
-        // when user_token is None (e.g., running directly as user, not as SYSTEM service).
+        // Windows service-session launches were dispatched to the helper above. This path is the
+        // direct process-owner authority.
 
         log::debug!("Spawning shell process...");
-        let child = pty_pair
-            .slave
+        opening.ensure_current()?;
+        let child = slave
             .spawn_command(cmd)
             .context("Failed to spawn command")?;
-
-        let writer = pty_pair
-            .master
-            .take_writer()
-            .context("Failed to get writer")?;
-
-        let reader = pty_pair
-            .master
-            .try_clone_reader()
-            .context("Failed to get reader")?;
-
+        drop(slave);
         session.pid = child.process_id().unwrap_or(0) as u32;
+        session.child = Some(child);
+        opening.ensure_current()?;
+
+        let writer = master.take_writer().context("Failed to get writer")?;
+
+        let reader = master.try_clone_reader().context("Failed to get reader")?;
 
         // Create channels for input/output
         let (input_tx, input_rx) = mpsc::sync_channel::<Vec<u8>>(CHANNEL_BUFFER_SIZE);
         let (output_tx, output_rx) = mpsc::sync_channel::<Vec<u8>>(CHANNEL_BUFFER_SIZE);
+        session.input_tx = Some(input_tx);
+        session.output_rx = Some(output_rx);
 
         // Spawn writer thread
         let terminal_id = open.terminal_id;
-        let writer_thread = thread::spawn(move || {
-            let mut writer = writer;
-            while let Ok(data) = input_rx.recv() {
-                if let Err(e) = writer.write_all(&data) {
-                    log::error!("Terminal {} write error: {}", terminal_id, e);
-                    break;
+        let writer_thread = thread::Builder::new()
+            .name(format!("terminal-writer-{}", terminal_id))
+            .spawn(move || {
+                let mut writer = writer;
+                while let Ok(data) = input_rx.recv() {
+                    if let Err(e) = writer.write_all(&data) {
+                        log::error!("Terminal {} write error: {}", terminal_id, e);
+                        break;
+                    }
+                    if let Err(e) = writer.flush() {
+                        log::error!("Terminal {} flush error: {}", terminal_id, e);
+                    }
                 }
-                if let Err(e) = writer.flush() {
-                    log::error!("Terminal {} flush error: {}", terminal_id, e);
-                }
-            }
-            log::debug!("Terminal {} writer thread exiting", terminal_id);
-        });
+                log::debug!("Terminal {} writer thread exiting", terminal_id);
+            })
+            .context("Failed to start terminal writer")?;
+        session.writer_thread = Some(writer_thread);
 
         let exiting = session.exiting.clone();
         // Spawn reader thread
         let terminal_id = open.terminal_id;
-        let reader_thread = thread::spawn(move || {
-            let mut reader = reader;
-            let mut buf = vec![0u8; 4096];
-            let mut utf8_chunks = Utf8ChunkAccumulator::default();
-            let mut drop_count: u64 = 0;
-            // Initialize to > 5s ago so the first drop triggers a warning immediately.
-            let mut last_drop_warn = Instant::now() - Duration::from_secs(6);
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) => {
-                        // EOF
-                        // This branch can be reached when the child process exits on macOS.
-                        // But not on Linux and Windows in my tests.
-                        if let Some(data) = utf8_chunks.finish() {
-                            let _ = try_send_output(
+        let reader_thread = thread::Builder::new()
+            .name(format!("terminal-reader-{}", terminal_id))
+            .spawn(move || {
+                let mut reader = reader;
+                let mut buf = vec![0u8; 4096];
+                let mut utf8_chunks = Utf8ChunkAccumulator::default();
+                let mut drop_count: u64 = 0;
+                // Initialize to > 5s ago so the first drop triggers a warning immediately.
+                let mut last_drop_warn = Instant::now() - Duration::from_secs(6);
+                loop {
+                    match reader.read(&mut buf) {
+                        Ok(0) => {
+                            // EOF
+                            // This branch can be reached when the child process exits on macOS.
+                            // But not on Linux and Windows in my tests.
+                            if let Some(data) = utf8_chunks.finish() {
+                                let _ = try_send_output(
+                                    &output_tx,
+                                    data,
+                                    terminal_id,
+                                    "",
+                                    &mut drop_count,
+                                    &mut last_drop_warn,
+                                );
+                            }
+                            break;
+                        }
+                        Ok(n) => {
+                            if exiting.load(Ordering::SeqCst) {
+                                break;
+                            }
+                            let Some(data) = utf8_chunks.push_chunk(buf[..n].to_vec()) else {
+                                continue;
+                            };
+                            // Use try_send to avoid blocking the reader thread when channel is full.
+                            // During disconnect, the run loop (sp.ok()) stops and read_outputs() is
+                            // no longer called, so the channel won't be drained. Blocking send would
+                            // deadlock the reader thread in that case.
+                            // Note: data produced during disconnect may be lost if channel fills up,
+                            // since output_buffer is only updated in read_outputs(). The buffer will
+                            // contain history from before the disconnect, not data produced after it.
+                            if try_send_output(
                                 &output_tx,
                                 data,
                                 terminal_id,
                                 "",
                                 &mut drop_count,
                                 &mut last_drop_warn,
-                            );
+                            ) {
+                                break;
+                            }
                         }
-                        break;
-                    }
-                    Ok(n) => {
-                        if exiting.load(Ordering::SeqCst) {
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            // This branch is not reached in my tests, but we still add `exiting` check to ensure we can exit.
+                            if exiting.load(Ordering::SeqCst) {
+                                break;
+                            }
+                            // For non-blocking I/O, sleep briefly
+                            thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(e) => {
+                            log::error!("Terminal {} read error: {}", terminal_id, e);
                             break;
                         }
-                        let Some(data) = utf8_chunks.push_chunk(buf[..n].to_vec()) else {
-                            continue;
-                        };
-                        // Use try_send to avoid blocking the reader thread when channel is full.
-                        // During disconnect, the run loop (sp.ok()) stops and read_outputs() is
-                        // no longer called, so the channel won't be drained. Blocking send would
-                        // deadlock the reader thread in that case.
-                        // Note: data produced during disconnect may be lost if channel fills up,
-                        // since output_buffer is only updated in read_outputs(). The buffer will
-                        // contain history from before the disconnect, not data produced after it.
-                        if try_send_output(
-                            &output_tx,
-                            data,
-                            terminal_id,
-                            "",
-                            &mut drop_count,
-                            &mut last_drop_warn,
-                        ) {
-                            break;
-                        }
-                    }
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        // This branch is not reached in my tests, but we still add `exiting` check to ensure we can exit.
-                        if exiting.load(Ordering::SeqCst) {
-                            break;
-                        }
-                        // For non-blocking I/O, sleep briefly
-                        thread::sleep(Duration::from_millis(10));
-                    }
-                    Err(e) => {
-                        log::error!("Terminal {} read error: {}", terminal_id, e);
-                        break;
                     }
                 }
-            }
-            log::debug!("Terminal {} reader thread exiting", terminal_id);
-        });
-
-        session.pty_pair = Some(pty_pair);
-        session.child = Some(child);
-        session.input_tx = Some(input_tx);
-        session.output_rx = Some(output_rx);
+                log::debug!("Terminal {} reader thread exiting", terminal_id);
+            })
+            .context("Failed to start terminal reader")?;
         session.reader_thread = Some(reader_thread);
-        session.writer_thread = Some(writer_thread);
+
+        session.pty_master = Some(master);
         session.state = SessionState::Active {
+            attachment_generation: self.attachment_generation,
             pending_buffer: None,
             sigwinch: SigwinchPhase::Idle,
         };
-
-        let mut opened = TerminalOpened::new();
-        opened.terminal_id = open.terminal_id;
-        opened.success = true;
-        opened.message = "Terminal opened".to_string();
-        opened.pid = session.pid;
-        opened.service_id = service.service_id.clone();
-        if service.needs_session_sync {
-            if !service.sessions.is_empty() {
-                opened.persistent_sessions = service.sessions.keys().cloned().collect();
-            }
-            service.needs_session_sync = false;
-        }
-        response.set_opened(opened);
 
         log::info!(
             "Terminal {} opened successfully with PID {}",
@@ -1421,12 +2940,7 @@ impl TerminalServiceProxy {
             session.pid
         );
 
-        // Store the session
-        service
-            .sessions
-            .insert(open.terminal_id, Arc::new(Mutex::new(session)));
-
-        Ok(Some(response))
+        self.commit_opened_session(open, session, opening, "Terminal opened")
     }
 
     /// Windows-only: Open terminal using helper process pattern
@@ -1436,19 +2950,18 @@ impl TerminalServiceProxy {
     #[cfg(target_os = "windows")]
     fn handle_open_with_helper(
         &self,
-        service: &mut PersistentTerminalService,
         open: &OpenTerminal,
-    ) -> Result<Option<TerminalResponse>> {
-        let mut response = TerminalResponse::new();
-
+        user_token: &Arc<OwnedPrimaryToken>,
+        opening: OpeningGuard,
+    ) -> Result<Option<TerminalActionResponse>> {
+        opening.ensure_current()?;
         log::info!(
-            "Creating new terminal {} using helper process for service: {}",
-            open.terminal_id,
-            service.service_id
+            "Creating new terminal {} using helper process",
+            open.terminal_id
         );
 
-        let mut session =
-            TerminalSession::new(open.terminal_id, open.rows as u16, open.cols as u16);
+        let mut session = TerminalSession::new(open.rows as u16, open.cols as u16);
+        session._teardown_permit = Some(opening.reservation.teardown_permit.clone());
 
         // Generate unique pipe names for this terminal
         let pipe_id = uuid::Uuid::new_v4();
@@ -1460,186 +2973,205 @@ impl TerminalServiceProxy {
             open.terminal_id
         );
 
-        // Get user_token early - needed for both DACL creation and helper launch
-        let user_token = self
-            .user_token
-            .ok_or_else(|| anyhow!("user_token is required for helper mode"))?;
-
         // Create pipes (server side, don't wait for connection yet)
         // input_pipe: service WRITES to this, helper READS from this
         // output_pipe: service READS from this, helper WRITES to this
         // Using OwnedHandle for RAII - handles are automatically closed on error
-        // Pass user_token to create restricted DACL (only SYSTEM + user can access)
+        // Pass user_token to create a DACL restricted to SYSTEM and this exact logon session.
+        opening.ensure_current()?;
         let input_pipe_handle = OwnedHandle::new(create_named_pipe_server(
             &input_pipe_name,
             false,
-            user_token,
+            user_token.as_ref(),
         )?);
+        opening.ensure_current()?;
         let output_pipe_handle = OwnedHandle::new(create_named_pipe_server(
             &output_pipe_name,
             true,
-            user_token,
+            user_token.as_ref(),
         )?);
 
-        let helper_process_info = launch_terminal_helper_with_token(
-            user_token,
+        opening.ensure_current()?;
+        let helper_process = launch_terminal_helper_with_token(
+            user_token.as_ref(),
             &input_pipe_name,
             &output_pipe_name,
             open.terminal_id,
             open.rows as u16,
             open.cols as u16,
         )?;
+        opening.ensure_current()?;
 
-        // Use HelperProcessGuard for RAII cleanup - terminates process on error
-        // Unlike OwnedHandle which only closes the handle, this guard ensures
-        // the helper process is terminated if pipe connection fails or other errors occur.
-        let helper_process_guard =
-            HelperProcessGuard::new(helper_process_info.handle, helper_process_info.pid);
-        let helper_pid = helper_process_guard.pid();
+        let helper_pid = helper_process.pid();
 
         // Wait for the launched helper process to connect to both pipes.
-        // If this fails, HelperProcessGuard will terminate the helper process
         let mut input_pipe = wait_for_pipe_connection(
             input_pipe_handle,
             "input",
             PIPE_CONNECTION_TIMEOUT_MS,
-            helper_pid,
+            &opening.reservation.cancelled,
+            &helper_process,
+            user_token.as_ref(),
         )?;
+        opening.ensure_current()?;
         let mut output_pipe = wait_for_pipe_connection(
             output_pipe_handle,
             "output",
             PIPE_CONNECTION_TIMEOUT_MS,
-            helper_pid,
+            &opening.reservation.cancelled,
+            &helper_process,
+            user_token.as_ref(),
         )?;
 
-        // Check if helper process is still running after pipe connection
-        // This provides early detection if helper crashed during startup
-        if !is_helper_process_running(helper_process_guard.as_raw()) {
-            return Err(anyhow!(
-                "Helper process (PID {}) exited unexpectedly after pipe connection",
-                helper_pid
-            ));
-        }
-
-        // Disarm the guard and transfer ownership to session
-        // From this point, the session is responsible for terminating the helper
-        let helper_raw_handle = helper_process_guard.disarm();
+        helper_process.ensure_running()?;
+        opening.ensure_current()?;
 
         // Use helper process PID for session tracking
         // Note: This is the helper process PID, not the actual shell PID.
         // The real shell runs inside the helper process but its PID is not exposed here.
         // For process management (termination, status), the helper PID is what we need.
         session.pid = helper_pid;
+        session.is_helper_mode = true;
+        session.helper_process = Some(helper_process);
 
         // Create channels for input/output (same as direct PTY mode)
         let (input_tx, input_rx) = mpsc::sync_channel::<Vec<u8>>(CHANNEL_BUFFER_SIZE);
         let (output_tx, output_rx) = mpsc::sync_channel::<Vec<u8>>(CHANNEL_BUFFER_SIZE);
+        session.input_tx = Some(input_tx);
+        session.output_rx = Some(output_rx);
 
         // Spawn writer thread: reads from channel, writes to input pipe
         let terminal_id = open.terminal_id;
-        let writer_thread = thread::spawn(move || {
-            while let Ok(data) = input_rx.recv() {
-                if let Err(e) = input_pipe.write_all(&data) {
-                    log::error!("Terminal {} pipe write error: {}", terminal_id, e);
-                    break;
+        let writer_thread = thread::Builder::new()
+            .name(format!("terminal-helper-writer-{}", terminal_id))
+            .spawn(move || {
+                while let Ok(data) = input_rx.recv() {
+                    if let Err(e) = input_pipe.write_all(&data) {
+                        log::error!("Terminal {} pipe write error: {}", terminal_id, e);
+                        break;
+                    }
+                    if let Err(e) = input_pipe.flush() {
+                        log::error!("Terminal {} pipe flush error: {}", terminal_id, e);
+                    }
                 }
-                if let Err(e) = input_pipe.flush() {
-                    log::error!("Terminal {} pipe flush error: {}", terminal_id, e);
-                }
-            }
-            log::debug!(
-                "Terminal {} writer thread (helper mode) exiting",
-                terminal_id
-            );
-        });
+                log::debug!(
+                    "Terminal {} writer thread (helper mode) exiting",
+                    terminal_id
+                );
+            })
+            .context("Failed to start terminal helper writer")?;
+        session.writer_thread = Some(writer_thread);
 
-        // Spawn reader thread: reads from output pipe, sends to channel
-        // Note: The output pipe was created with FILE_FLAG_OVERLAPPED for timeout support
-        // during ConnectNamedPipe. However, once converted to a File handle, reads are
-        // performed synchronously. The WouldBlock handling below is defensive but may
-        // not be triggered in practice since File::read() blocks until data is available.
+        // Spawn reader thread: reads from output pipe, sends to channel.
         let exiting = session.exiting.clone();
         let terminal_id = open.terminal_id;
-        let reader_thread = thread::spawn(move || {
-            let mut buf = vec![0u8; 4096];
-            let mut utf8_chunks = Utf8ChunkAccumulator::default();
-            let mut drop_count: u64 = 0;
-            // Initialize to > 5s ago so the first drop triggers a warning immediately.
-            let mut last_drop_warn = Instant::now() - Duration::from_secs(6);
-            loop {
-                match output_pipe.read(&mut buf) {
-                    Ok(0) => {
-                        if let Some(data) = utf8_chunks.finish() {
-                            let _ = try_send_output(
+        let reader_thread = thread::Builder::new()
+            .name(format!("terminal-helper-reader-{}", terminal_id))
+            .spawn(move || {
+                let mut buf = vec![0u8; 4096];
+                let mut utf8_chunks = Utf8ChunkAccumulator::default();
+                let mut drop_count: u64 = 0;
+                // Initialize to > 5s ago so the first drop triggers a warning immediately.
+                let mut last_drop_warn = Instant::now() - Duration::from_secs(6);
+                loop {
+                    match output_pipe.read(&mut buf) {
+                        Ok(0) => {
+                            if let Some(data) = utf8_chunks.finish() {
+                                let _ = try_send_output(
+                                    &output_tx,
+                                    data,
+                                    terminal_id,
+                                    " (helper)",
+                                    &mut drop_count,
+                                    &mut last_drop_warn,
+                                );
+                            }
+                            // EOF - helper process exited
+                            log::debug!("Terminal {} helper output EOF", terminal_id);
+                            break;
+                        }
+                        Ok(n) => {
+                            if exiting.load(Ordering::SeqCst) {
+                                break;
+                            }
+                            let Some(data) = utf8_chunks.push_chunk(buf[..n].to_vec()) else {
+                                continue;
+                            };
+                            // Use try_send to avoid blocking the reader thread (same as direct PTY mode)
+                            if try_send_output(
                                 &output_tx,
                                 data,
                                 terminal_id,
                                 " (helper)",
                                 &mut drop_count,
                                 &mut last_drop_warn,
-                            );
+                            ) {
+                                break;
+                            }
                         }
-                        // EOF - helper process exited
-                        log::debug!("Terminal {} helper output EOF", terminal_id);
-                        break;
-                    }
-                    Ok(n) => {
-                        if exiting.load(Ordering::SeqCst) {
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            if exiting.load(Ordering::SeqCst) {
+                                break;
+                            }
+                            thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(e) => {
+                            log::error!("Terminal {} pipe read error: {}", terminal_id, e);
                             break;
                         }
-                        let Some(data) = utf8_chunks.push_chunk(buf[..n].to_vec()) else {
-                            continue;
-                        };
-                        // Use try_send to avoid blocking the reader thread (same as direct PTY mode)
-                        if try_send_output(
-                            &output_tx,
-                            data,
-                            terminal_id,
-                            " (helper)",
-                            &mut drop_count,
-                            &mut last_drop_warn,
-                        ) {
-                            break;
-                        }
-                    }
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        // Defensive: WouldBlock is unlikely with synchronous File::read(),
-                        // but handle it gracefully just in case.
-                        if exiting.load(Ordering::SeqCst) {
-                            break;
-                        }
-                        thread::sleep(Duration::from_millis(10));
-                    }
-                    Err(e) => {
-                        log::error!("Terminal {} pipe read error: {}", terminal_id, e);
-                        break;
                     }
                 }
-            }
-            log::debug!(
-                "Terminal {} reader thread (helper mode) exiting",
-                terminal_id
-            );
-        });
-
-        // In helper mode, we don't have pty_pair or child - helper manages those
-        session.pty_pair = None;
-        session.child = None;
-        session.input_tx = Some(input_tx);
-        session.output_rx = Some(output_rx);
+                log::debug!(
+                    "Terminal {} reader thread (helper mode) exiting",
+                    terminal_id
+                );
+            })
+            .context("Failed to start terminal helper reader")?;
         session.reader_thread = Some(reader_thread);
-        session.writer_thread = Some(writer_thread);
+
+        session.pty_master = None;
+        session.child = None;
         session.state = SessionState::Active {
+            attachment_generation: self.attachment_generation,
             pending_buffer: None,
             sigwinch: SigwinchPhase::Idle,
         };
-        session.is_helper_mode = true;
-        session.helper_process_handle = Some(SendableHandle::new(helper_raw_handle));
+        opening.ensure_current()?;
+
+        log::info!(
+            "Terminal {} opened successfully using helper process (PID {})",
+            open.terminal_id,
+            session.pid
+        );
+
+        self.commit_opened_session(open, session, opening, "Terminal opened (helper mode)")
+    }
+
+    fn commit_opened_session(
+        &self,
+        open: &OpenTerminal,
+        mut session: TerminalSession,
+        mut opening: OpeningGuard,
+        message: &str,
+    ) -> Result<Option<TerminalActionResponse>> {
+        opening.ensure_current()?;
+        let mut service = opening.service.lock().unwrap();
+        service.validate_attachment(self.attachment_generation, self.authority_epoch)?;
+        opening.reservation.ensure_not_cancelled()?;
+        if !service
+            .opening_sessions
+            .get(&open.terminal_id)
+            .map(|current| current.same_identity(&opening.reservation))
+            .unwrap_or(false)
+        {
+            return Err(authority_error("Terminal opening reservation is stale"));
+        }
+        service.opening_sessions.remove(&open.terminal_id);
 
         let mut opened = TerminalOpened::new();
         opened.terminal_id = open.terminal_id;
         opened.success = true;
-        opened.message = "Terminal opened (helper mode)".to_string();
+        opened.message = message.to_string();
         opened.pid = session.pid;
         opened.service_id = service.service_id.clone();
         if service.needs_session_sync {
@@ -1648,72 +3180,73 @@ impl TerminalServiceProxy {
             }
             service.needs_session_sync = false;
         }
+        session._teardown_permit = Some(opening.reservation.teardown_permit.clone());
+        session.output_visible.store(false, Ordering::Release);
+        let output_visible = session.output_visible.clone();
+        let session = TerminalSessionEntry::new(session);
+        service.sessions.insert(open.terminal_id, session.clone());
+        drop(service);
+        opening.committed = true;
+
+        let mut response = TerminalResponse::new();
         response.set_opened(opened);
-
-        log::info!(
-            "Terminal {} opened successfully using helper process (PID {})",
-            open.terminal_id,
-            session.pid
-        );
-
-        service
-            .sessions
-            .insert(open.terminal_id, Arc::new(Mutex::new(session)));
-
-        Ok(Some(response))
+        Ok(Some(TerminalActionResponse {
+            response,
+            publication: Some(TerminalSessionPublication {
+                terminal_id: open.terminal_id,
+                expected: session,
+                output_visible,
+            }),
+        }))
     }
 
-    fn handle_resize(
-        &self,
-        session: Option<Arc<Mutex<TerminalSession>>>,
-        resize: &ResizeTerminal,
-    ) -> Result<Option<TerminalResponse>> {
-        if let Some(session_arc) = session {
+    fn handle_resize(&self, resize: &ResizeTerminal) -> Result<Option<TerminalResponse>> {
+        let session_arc = {
+            let service = self.service.lock().unwrap();
+            service.validate_attachment(self.attachment_generation, self.authority_epoch)?;
+            service.sessions.get(&resize.terminal_id).cloned()
+        };
+        if let Some(session_arc) = session_arc {
             let mut session = session_arc.lock().unwrap();
-            session.update_activity();
-            session.rows = resize.rows as u16;
-            session.cols = resize.cols as u16;
-
-            // Note: we do NOT clear the sigwinch phase here. The server-side two-phase
-            // SIGWINCH mechanism in read_outputs() is self-contained (temp resize → restore
-            // across two polling cycles), so client resize is purely a dimension sync and
-            // doesn't affect it.
-
-            // Windows: handle helper mode vs direct PTY mode
+            let mut service = self.service.lock().unwrap();
+            service.validate_attachment(self.attachment_generation, self.authority_epoch)?;
+            let Some(current) = service.sessions.get(&resize.terminal_id) else {
+                return Ok(None);
+            };
+            if !Arc::ptr_eq(current, &session_arc) {
+                return Ok(None);
+            }
+            service.update_activity();
             #[cfg(target_os = "windows")]
             {
                 if session.is_helper_mode {
-                    // Helper mode: send resize command via message protocol
-                    if let Some(input_tx) = &session.input_tx {
-                        let msg = encode_resize_message(resize.rows as u16, resize.cols as u16);
-                        if let Err(e) = input_tx.send(msg) {
-                            log::error!("Failed to send resize to helper: {}", e);
-                        }
-                    } else {
-                        log::warn!(
-                            "Terminal {} is in helper mode but input_tx is None, cannot send resize",
-                            resize.terminal_id
-                        );
-                    }
+                    let input_tx = session
+                        .input_tx
+                        .as_ref()
+                        .ok_or_else(|| anyhow!("Terminal helper input channel is closed"))?;
+                    input_tx
+                        .try_send(encode_resize_message(
+                            resize.rows as u16,
+                            resize.cols as u16,
+                        ))
+                        .map_err(|err| anyhow!("Failed to queue terminal resize: {}", err))?;
                 } else {
-                    // Direct PTY mode
                     Self::resize_pty(&session, resize)?;
                 }
             }
-
-            // Non-Windows: always direct PTY mode
             #[cfg(not(target_os = "windows"))]
-            {
-                Self::resize_pty(&session, resize)?;
-            }
+            Self::resize_pty(&session, resize)?;
+            session.rows = resize.rows as u16;
+            session.cols = resize.cols as u16;
+            session.update_activity();
         }
         Ok(None)
     }
 
     /// Resize PTY directly (used for non-helper mode)
     fn resize_pty(session: &TerminalSession, resize: &ResizeTerminal) -> Result<()> {
-        if let Some(pty_pair) = &session.pty_pair {
-            pty_pair.master.resize(PtySize {
+        if let Some(pty_master) = &session.pty_master {
+            pty_master.resize(PtySize {
                 rows: resize.rows as u16,
                 cols: resize.cols as u16,
                 pixel_width: 0,
@@ -1723,68 +3256,56 @@ impl TerminalServiceProxy {
         Ok(())
     }
 
-    fn handle_data(
-        &self,
-        session: Option<Arc<Mutex<TerminalSession>>>,
-        data: &TerminalData,
-    ) -> Result<Option<TerminalResponse>> {
-        if let Some(session_arc) = session {
-            let input = {
-                let mut session = session_arc.lock().unwrap();
-                session.update_activity();
-                if let Some(input_tx) = session.input_tx.clone() {
-                    // Encode data for helper mode or send raw for direct PTY mode
-                    #[cfg(target_os = "windows")]
-                    let msg = if session.is_helper_mode {
-                        encode_helper_message(MSG_TYPE_DATA, &data.data)
-                    } else {
-                        data.data.to_vec()
-                    };
-                    #[cfg(not(target_os = "windows"))]
-                    let msg = data.data.to_vec();
-
-                    Some((input_tx, msg))
-                } else {
-                    None
-                }
+    fn handle_data(&self, data: &TerminalData) -> Result<Option<TerminalResponse>> {
+        let session_arc = {
+            let service = self.service.lock().unwrap();
+            service.validate_attachment(self.attachment_generation, self.authority_epoch)?;
+            service.sessions.get(&data.terminal_id).cloned()
+        };
+        if let Some(session_arc) = session_arc {
+            let mut session = session_arc.lock().unwrap();
+            let mut service = self.service.lock().unwrap();
+            service.validate_attachment(self.attachment_generation, self.authority_epoch)?;
+            let Some(current) = service.sessions.get(&data.terminal_id) else {
+                return Ok(None);
             };
-
-            if let Some((input_tx, msg)) = input {
-                // Send outside the session lock; SyncSender::send can block when full.
-                if let Err(e) = input_tx.send(msg) {
-                    log::error!(
-                        "Failed to send data to terminal {}: {}",
-                        data.terminal_id,
-                        e
-                    );
-                }
+            if !Arc::ptr_eq(current, &session_arc) {
+                return Ok(None);
             }
+            service.update_activity();
+            #[cfg(target_os = "windows")]
+            let message = if session.is_helper_mode {
+                encode_helper_message(MSG_TYPE_DATA, &data.data)
+            } else {
+                data.data.to_vec()
+            };
+            #[cfg(not(target_os = "windows"))]
+            let message = data.data.to_vec();
+            let input_tx = session
+                .input_tx
+                .as_ref()
+                .ok_or_else(|| anyhow!("Terminal input channel is closed"))?;
+            input_tx
+                .try_send(message)
+                .map_err(|err| anyhow!("Failed to queue terminal input: {}", err))?;
+            session.update_activity();
         }
-
         Ok(None)
     }
 
-    fn handle_close(
-        &self,
-        service: &mut PersistentTerminalService,
-        close: &CloseTerminal,
-    ) -> Result<Option<TerminalResponse>> {
-        let mut response = TerminalResponse::new();
-
-        // Always close and remove the terminal
-        if let Some(session_arc) = service.sessions.remove(&close.terminal_id) {
-            let mut session = session_arc.lock().unwrap();
-            let exit_code = if let Some(mut child) = session.child.take() {
-                child.kill()?;
-                add_to_reaper(child);
-                -1 // -1 indicates forced termination
-            } else {
-                0
-            };
-
+    fn handle_close(&self, close: &CloseTerminal) -> Result<Option<TerminalResponse>> {
+        let session = {
+            let mut service = self.service.lock().unwrap();
+            service.validate_attachment(self.attachment_generation, self.authority_epoch)?;
+            service.update_activity();
+            service.sessions.remove(&close.terminal_id)
+        };
+        if let Some(session_arc) = session {
+            enqueue_session_teardown(session_arc);
+            let mut response = TerminalResponse::new();
             let mut closed = TerminalClosed::new();
             closed.terminal_id = close.terminal_id;
-            closed.exit_code = exit_code;
+            closed.exit_code = -1;
             response.set_closed(closed);
             Ok(Some(response))
         } else {
@@ -1801,7 +3322,7 @@ impl TerminalServiceProxy {
         terminal_id: i32,
         rows: u16,
         cols: u16,
-        pty_pair: &Option<portable_pty::PtyPair>,
+        pty_master: &Option<Box<dyn MasterPty + Send>>,
         input_tx: &Option<SyncSender<Vec<u8>>>,
         _is_helper_mode: bool,
         action: &SigwinchAction,
@@ -1859,8 +3380,8 @@ impl TerminalServiceProxy {
                 let _ = (input_tx, phase_name);
                 false
             }
-        } else if let Some(pty_pair) = pty_pair {
-            if let Err(e) = pty_pair.master.resize(PtySize {
+        } else if let Some(pty_master) = pty_master {
+            if let Err(e) = pty_master.resize(PtySize {
                 rows: target_rows,
                 cols,
                 pixel_width: 0,
@@ -1902,120 +3423,141 @@ impl TerminalServiceProxy {
         response
     }
 
-    pub fn read_outputs(&self) -> Vec<TerminalResponse> {
-        let service = match get_service(&self.service_id) {
-            Some(s) => s,
-            None => {
-                return vec![];
-            }
-        };
+    fn current_session_output(
+        terminal_id: i32,
+        expected: &SharedTerminalSession,
+        response: TerminalResponse,
+    ) -> TerminalOutputResponse {
+        TerminalOutputResponse {
+            response,
+            condition: TerminalOutputCondition::SessionCurrent {
+                terminal_id,
+                expected: expected.clone(),
+            },
+        }
+    }
 
-        // Get session references with minimal service lock time
-        let sessions: Vec<(i32, Arc<Mutex<TerminalSession>>)> = {
-            let service = service.lock().unwrap();
-            service
+    fn read_outputs(&self) -> Result<Vec<TerminalOutputResponse>> {
+        let service = self.service_for_attachment()?;
+
+        let sessions: Vec<(i32, SharedTerminalSession)> = {
+            let mut service = service.lock().unwrap();
+            let mut sessions = service
                 .sessions
                 .iter()
                 .map(|(id, session)| (*id, session.clone()))
-                .collect()
+                .collect::<Vec<_>>();
+            sessions.sort_unstable_by_key(|(terminal_id, _)| *terminal_id);
+            if !sessions.is_empty() {
+                let start = service.output_poll_cursor % sessions.len();
+                sessions.rotate_left(start);
+                service.output_poll_cursor = (start + 1) % sessions.len();
+            }
+            sessions
         };
 
         let mut responses = Vec::new();
-        let mut closed_terminals = Vec::new();
+        let mut closed_sessions = Vec::new();
+        let mut remaining_output_chunks = MAX_OUTPUT_CHUNKS_PER_POLL;
+        let mut remaining_output_bytes = MAX_OUTPUT_BYTES_PER_POLL;
+        let session_count = sessions.len().max(1);
+        let chunks_per_session = (MAX_OUTPUT_CHUNKS_PER_POLL / session_count).max(1);
+        let bytes_per_session = (MAX_OUTPUT_BYTES_PER_POLL / session_count).max(1);
 
         // Process each session with its own lock
         for (terminal_id, session_arc) in sessions {
             if let Ok(mut session) = session_arc.try_lock() {
-                // Check if reader thread is still alive and we haven't sent closed message yet
-                let mut should_send_closed = false;
-                if !session.closed_message_sent {
-                    if let Some(thread) = &session.reader_thread {
-                        if thread.is_finished() {
-                            should_send_closed = true;
-                            session.closed_message_sent = true;
-                        }
-                    }
+                if !session.output_visible.load(Ordering::Acquire) {
+                    continue;
                 }
-                // It's Ok to put the closed message here.
-                // Because the `reader_thread` is joined in `stop()`,
-                // and `stop()` is called before the session is dropped.
-                if should_send_closed {
-                    closed_terminals.push(terminal_id);
+                if session.pending_exit.is_none() {
+                    session.pending_exit = session.exit_status_if_exited();
                 }
+                let mut session_output_chunks = remaining_output_chunks.min(chunks_per_session);
+                let mut session_output_bytes = remaining_output_bytes.min(bytes_per_session);
+                let initial_session_chunks = session_output_chunks;
+                let initial_session_bytes = session_output_bytes;
 
-                // Always drain the output channel regardless of session state.
-                // When Active: data is sent to client. When Closed (within the same
-                // connection): data is buffered in output_buffer for reconnection replay.
-                // Note: during actual disconnect, the run loop exits and read_outputs()
-                // is not called, so channel data produced after disconnect may be lost.
-                let mut has_activity = false;
-                let mut received_data = Vec::new();
-                if let Some(output_rx) = &session.output_rx {
-                    // Try to read all available data
-                    while let Ok(data) = output_rx.try_recv() {
-                        has_activity = true;
-                        received_data.push(data);
+                let (is_active, replay_buffer, sigwinch_action) = {
+                    match &mut session.state {
+                        SessionState::Active {
+                            attachment_generation,
+                            pending_buffer,
+                            sigwinch,
+                        } if *attachment_generation == self.attachment_generation => {
+                            let replay_buffer = take_bounded_replay(
+                                pending_buffer,
+                                &mut session_output_chunks,
+                                &mut session_output_bytes,
+                            );
+                            let sigwinch_action = match sigwinch {
+                                SigwinchPhase::TempResize { retries } => {
+                                    if *retries == 0 {
+                                        log::warn!(
+                                            "Terminal {} SIGWINCH phase 1 (temp resize) failed after {} attempts, giving up",
+                                            terminal_id, MAX_SIGWINCH_PHASE_ATTEMPTS
+                                        );
+                                        *sigwinch = SigwinchPhase::Idle;
+                                        None
+                                    } else {
+                                        *retries -= 1;
+                                        Some(SigwinchAction::TempResize)
+                                    }
+                                }
+                                SigwinchPhase::Restore { retries } => {
+                                    if *retries == 0 {
+                                        log::warn!(
+                                            "Terminal {} SIGWINCH phase 2 (restore) failed after {} attempts, giving up",
+                                            terminal_id, MAX_SIGWINCH_PHASE_ATTEMPTS
+                                        );
+                                        *sigwinch = SigwinchPhase::Idle;
+                                        None
+                                    } else {
+                                        *retries -= 1;
+                                        Some(SigwinchAction::Restore)
+                                    }
+                                }
+                                SigwinchPhase::Idle => None,
+                            };
+                            (true, replay_buffer, sigwinch_action)
+                        }
+                        _ => (false, None, None),
                     }
-                }
+                };
+
+                let received_data = match session.output_rx.take() {
+                    Some(output_rx) => {
+                        let batch = take_bounded_output_batch(
+                            &output_rx,
+                            &mut session.deferred_output,
+                            &mut session_output_chunks,
+                            &mut session_output_bytes,
+                        );
+                        session.output_rx = Some(output_rx);
+                        batch
+                    }
+                    None => Vec::new(),
+                };
+                remaining_output_chunks -= initial_session_chunks - session_output_chunks;
+                remaining_output_bytes -= initial_session_bytes - session_output_bytes;
+                let has_activity = !received_data.is_empty();
 
                 // Update buffer (always buffer for reconnection support)
                 for data in &received_data {
                     session.output_buffer.append(data);
                 }
 
-                // Skip sending responses if session is not Active.
-                // Data is already buffered above and will be sent on next reconnection.
-                // Use a scoped block to limit the mutable borrow of session.state,
-                // so we can immutably borrow other session fields afterwards.
-                let (replay_buffer, sigwinch_action) = {
-                    let (pending_buffer, sigwinch) = match &mut session.state {
-                        SessionState::Active {
-                            pending_buffer,
-                            sigwinch,
-                        } => (pending_buffer, sigwinch),
-                        _ => continue,
-                    };
-
-                    let replay_buffer = pending_buffer.take();
-
-                    // Two-phase SIGWINCH: see SigwinchPhase doc comments for rationale.
-                    // Each phase is a single PTY resize, spaced ~30ms apart by the polling
-                    // interval, ensuring the TUI app sees a real size change on each signal.
-                    let sigwinch_action = match sigwinch {
-                        SigwinchPhase::TempResize { retries } => {
-                            if *retries == 0 {
-                                log::warn!(
-                                    "Terminal {} SIGWINCH phase 1 (temp resize) failed after {} attempts, giving up",
-                                    terminal_id, MAX_SIGWINCH_PHASE_ATTEMPTS
-                                );
-                                *sigwinch = SigwinchPhase::Idle;
-                                None
-                            } else {
-                                *retries -= 1;
-                                Some(SigwinchAction::TempResize)
-                            }
-                        }
-                        SigwinchPhase::Restore { retries } => {
-                            if *retries == 0 {
-                                log::warn!(
-                                    "Terminal {} SIGWINCH phase 2 (restore) failed after {} attempts, giving up",
-                                    terminal_id, MAX_SIGWINCH_PHASE_ATTEMPTS
-                                );
-                                *sigwinch = SigwinchPhase::Idle;
-                                None
-                            } else {
-                                *retries -= 1;
-                                Some(SigwinchAction::Restore)
-                            }
-                        }
-                        SigwinchPhase::Idle => None,
-                    };
-                    (replay_buffer, sigwinch_action)
-                };
+                if !is_active {
+                    continue;
+                }
 
                 if let Some(buffer) = replay_buffer {
                     if !buffer.is_empty() {
-                        responses.push(Self::create_terminal_data_response(terminal_id, buffer));
+                        responses.push(Self::current_session_output(
+                            terminal_id,
+                            &session_arc,
+                            Self::create_terminal_data_response(terminal_id, buffer),
+                        ));
                     }
                 }
 
@@ -2033,7 +3575,7 @@ impl TerminalServiceProxy {
                         terminal_id,
                         session.rows,
                         session.cols,
-                        &session.pty_pair,
+                        &session.pty_master,
                         &session.input_tx,
                         is_helper,
                         &action,
@@ -2062,74 +3604,1517 @@ impl TerminalServiceProxy {
 
                 // Send real-time data after historical buffer
                 for data in received_data {
-                    responses.push(Self::create_terminal_data_response(terminal_id, data));
+                    responses.push(Self::current_session_output(
+                        terminal_id,
+                        &session_arc,
+                        Self::create_terminal_data_response(terminal_id, data),
+                    ));
+                }
+                let output_exhaustion_is_observable =
+                    session_output_chunks > 0 && session_output_bytes > 0;
+                if let Some(pending_exit) = session.pending_exit {
+                    if !pending_exit.drain_output
+                        || (output_exhaustion_is_observable && session.output_is_exhausted())
+                    {
+                        session.pending_exit = None;
+                        closed_sessions.push((
+                            terminal_id,
+                            session_arc.clone(),
+                            pending_exit.exit_code,
+                        ));
+                    }
                 }
             }
         }
 
-        // Clean up closed terminals (requires service lock briefly)
-        if !closed_terminals.is_empty() {
-            let mut sessions = service.lock().unwrap().sessions.clone();
-            for terminal_id in closed_terminals {
-                let mut exit_code = 0;
-
-                if !self.is_persistent {
-                    if let Some(session_arc) = sessions.remove(&terminal_id) {
-                        service.lock().unwrap().sessions.remove(&terminal_id);
-                        let mut session = session_arc.lock().unwrap();
-                        // Take the child and add to zombie reaper
-                        if let Some(mut child) = session.child.take() {
-                            // Try to get exit code if available
-                            if let Ok(Some(status)) = child.try_wait() {
-                                exit_code = status.exit_code() as i32;
-                            }
-                            add_to_reaper(child);
-                        }
-                    }
-                } else {
-                    // For persistent sessions, just clear the child reference
-                    if let Some(session_arc) = sessions.get(&terminal_id) {
-                        let mut session = session_arc.lock().unwrap();
-                        if let Some(mut child) = session.child.take() {
-                            // Try to get exit code if available
-                            if let Ok(Some(status)) = child.try_wait() {
-                                exit_code = status.exit_code() as i32;
-                            }
-                            add_to_reaper(child);
-                        }
-                    }
-                }
-
-                let mut response = TerminalResponse::new();
-                let mut closed = TerminalClosed::new();
-                closed.terminal_id = terminal_id;
-                closed.exit_code = exit_code;
-                response.set_closed(closed);
-                responses.push(response);
-            }
+        // Close dispatch and exact removal share the service lock, so the terminal ID cannot be
+        // reused between the response and removal.
+        for (terminal_id, expected, exit_code) in closed_sessions {
+            let mut response = TerminalResponse::new();
+            let mut closed = TerminalClosed::new();
+            closed.terminal_id = terminal_id;
+            closed.exit_code = exit_code;
+            response.set_closed(closed);
+            responses.push(TerminalOutputResponse {
+                response,
+                condition: TerminalOutputCondition::SessionRemove {
+                    terminal_id,
+                    expected,
+                },
+            });
         }
 
-        responses
-    }
-
-    /// Cleanup when connection drops
-    pub fn on_disconnect(&self) {
-        if !self.is_persistent {
-            // Remove non-persistent service
-            remove_service(&self.service_id);
-        }
+        self.service_for_attachment()?;
+        Ok(responses)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{find_utf8_split_point, OutputBuffer, Utf8ChunkAccumulator, MAX_BUFFER_LINES};
+    use super::{
+        canonical_service_id, controlled_test_launch_authority, find_utf8_split_point,
+        generate_service_id, is_fatal_authority_error, monitor_detached_sessions_once,
+        monitor_service_authority_once, poll_terminal_outputs, prepare, release_service_attachment,
+        remove_session_if_current, reserve_service_attachment, revoke_service_authority,
+        run as run_terminal_service, test_launch_authority, test_principal,
+        try_enqueue_terminal_action, ConnInner, GenericService, OpenTerminal, OpeningGuard,
+        OutputBuffer, Service, SessionState, TerminalAction, TerminalData, TerminalOutputCondition,
+        TerminalOutputPoll, TerminalPrincipal, TerminalService, TerminalServiceProxy,
+        TerminalSession, TerminalSessionEntry, TerminalWorkerState, Utf8ChunkAccumulator,
+        MAX_BUFFER_LINES, TERMINAL_SERVICES,
+    };
     #[cfg(not(target_os = "windows"))]
     use super::{
         trusted_unix_terminal_shell_path, unix_path_is_clean_absolute, UNIX_TERMINAL_SHELLS,
     };
     #[cfg(not(target_os = "windows"))]
     use std::path::Path;
+
+    fn wait_for_session_teardown(session: &super::SharedTerminalSession) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while std::sync::Arc::strong_count(session) > 1 {
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(session
+            .lock()
+            .unwrap()
+            .exiting
+            .load(std::sync::atomic::Ordering::Acquire));
+    }
+
+    #[derive(Debug)]
+    struct ControlledChild {
+        remaining_running_polls: usize,
+        exit_code: Option<u32>,
+    }
+
+    #[derive(Debug)]
+    struct ControlledChildKiller;
+
+    impl portable_pty::ChildKiller for ControlledChildKiller {
+        fn kill(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn clone_killer(&self) -> Box<dyn portable_pty::ChildKiller + Send + Sync> {
+            Box::new(Self)
+        }
+    }
+
+    impl portable_pty::ChildKiller for ControlledChild {
+        fn kill(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn clone_killer(&self) -> Box<dyn portable_pty::ChildKiller + Send + Sync> {
+            Box::new(ControlledChildKiller)
+        }
+    }
+
+    impl portable_pty::Child for ControlledChild {
+        fn try_wait(&mut self) -> std::io::Result<Option<portable_pty::ExitStatus>> {
+            if self.remaining_running_polls > 0 {
+                self.remaining_running_polls -= 1;
+                return Ok(None);
+            }
+            Ok(self.exit_code.map(portable_pty::ExitStatus::with_exit_code))
+        }
+
+        fn wait(&mut self) -> std::io::Result<portable_pty::ExitStatus> {
+            self.exit_code
+                .map(portable_pty::ExitStatus::with_exit_code)
+                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::WouldBlock, "running"))
+        }
+
+        fn process_id(&self) -> Option<u32> {
+            Some(1)
+        }
+
+        #[cfg(windows)]
+        fn as_raw_handle(&self) -> Option<std::os::windows::io::RawHandle> {
+            None
+        }
+    }
+
+    #[test]
+    fn terminal_service_id_requires_canonical_generated_form() {
+        let service_id = generate_service_id();
+        assert!(canonical_service_id(&service_id));
+        assert!(!canonical_service_id(""));
+        assert!(!canonical_service_id("terminal"));
+        assert!(!canonical_service_id("ts_not-a-uuid"));
+        assert!(!canonical_service_id(&service_id.to_ascii_uppercase()));
+    }
+
+    #[test]
+    fn persistent_service_binds_exact_terminal_principal() {
+        let service_id = generate_service_id();
+        let principal = test_principal(7, &[1, 2, 3], 11);
+        let same_principal = principal.clone();
+        let other_session = test_principal(8, &[1, 2, 3], 11);
+        let other_user = test_principal(7, &[1, 2, 4], 11);
+        let other_logon = test_principal(7, &[1, 2, 3], 12);
+
+        let first =
+            reserve_service_attachment(service_id.clone(), test_launch_authority(principal))
+                .unwrap();
+        assert!(reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(same_principal.clone()),
+        )
+        .is_err());
+        first.service.lock().unwrap().commit_attachment(true);
+        release_service_attachment(
+            &service_id,
+            &first.service,
+            first.attachment_generation,
+            first.created_entry,
+            true,
+        )
+        .unwrap();
+
+        for mismatched in [other_session, other_user, other_logon] {
+            assert!(reserve_service_attachment(
+                service_id.clone(),
+                test_launch_authority(mismatched),
+            )
+            .is_err());
+        }
+
+        let same =
+            reserve_service_attachment(service_id.clone(), test_launch_authority(same_principal))
+                .unwrap();
+        assert!(std::sync::Arc::ptr_eq(&first.service, &same.service));
+        assert!(same.attachment_generation > first.attachment_generation);
+        same.service.lock().unwrap().is_persistent = false;
+        release_service_attachment(
+            &service_id,
+            &same.service,
+            same.attachment_generation,
+            same.created_entry,
+            true,
+        )
+        .unwrap();
+        assert!(!TERMINAL_SERVICES.lock().unwrap().contains_key(&service_id));
+
+        let replacement_principal = TerminalPrincipal::ProcessOwner;
+        let replacement = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(replacement_principal),
+        )
+        .unwrap();
+        assert!(release_service_attachment(
+            &service_id,
+            &first.service,
+            first.attachment_generation,
+            first.created_entry,
+            true,
+        )
+        .is_err());
+        assert!(TERMINAL_SERVICES.lock().unwrap().contains_key(&service_id));
+        release_service_attachment(
+            &service_id,
+            &replacement.service,
+            replacement.attachment_generation,
+            replacement.created_entry,
+            false,
+        )
+        .unwrap();
+        assert!(!TERMINAL_SERVICES.lock().unwrap().contains_key(&service_id));
+    }
+
+    #[test]
+    fn preactivation_rollback_preserves_existing_committed_service() {
+        let service_id = generate_service_id();
+        let principal = test_principal(9, &[4, 5, 6], 17);
+        let first = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(principal.clone()),
+        )
+        .unwrap();
+        {
+            let mut state = first.service.lock().unwrap();
+            state.commit_attachment(true);
+            let mut session = TerminalSession::new(24, 80);
+            session.state = SessionState::Active {
+                attachment_generation: first.attachment_generation,
+                pending_buffer: None,
+                sigwinch: super::SigwinchPhase::Idle,
+            };
+            state
+                .sessions
+                .insert(41, TerminalSessionEntry::new(session));
+        }
+        release_service_attachment(
+            &service_id,
+            &first.service,
+            first.attachment_generation,
+            first.created_entry,
+            true,
+        )
+        .unwrap();
+
+        let reconnect = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(principal.clone()),
+        )
+        .unwrap();
+        {
+            let state = reconnect.service.lock().unwrap();
+            assert!(state.is_persistent);
+            assert!(matches!(
+                state.sessions.get(&41).unwrap().lock().unwrap().state,
+                SessionState::Active { .. }
+            ));
+        }
+        release_service_attachment(
+            &service_id,
+            &reconnect.service,
+            reconnect.attachment_generation,
+            reconnect.created_entry,
+            false,
+        )
+        .unwrap();
+        let state = first.service.lock().unwrap();
+        assert!(state.is_persistent);
+        assert!(state.sessions.contains_key(&41));
+        drop(state);
+
+        let committed =
+            reserve_service_attachment(service_id.clone(), test_launch_authority(principal))
+                .unwrap();
+        {
+            let mut state = committed.service.lock().unwrap();
+            state.commit_attachment(false);
+            assert!(!state.is_persistent);
+            assert!(state.needs_session_sync);
+            assert!(matches!(
+                state.sessions.get(&41).unwrap().lock().unwrap().state,
+                SessionState::Active {
+                    attachment_generation,
+                    ..
+                } if attachment_generation == first.attachment_generation
+                    && attachment_generation != committed.attachment_generation
+            ));
+        }
+        release_service_attachment(
+            &service_id,
+            &committed.service,
+            committed.attachment_generation,
+            committed.created_entry,
+            true,
+        )
+        .unwrap();
+        assert!(!TERMINAL_SERVICES.lock().unwrap().contains_key(&service_id));
+
+        let uncommitted_id = generate_service_id();
+        let uncommitted = reserve_service_attachment(
+            uncommitted_id.clone(),
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        release_service_attachment(
+            &uncommitted_id,
+            &uncommitted.service,
+            uncommitted.attachment_generation,
+            uncommitted.created_entry,
+            false,
+        )
+        .unwrap();
+        assert!(!TERMINAL_SERVICES
+            .lock()
+            .unwrap()
+            .contains_key(&uncommitted_id));
+    }
+
+    #[test]
+    fn detached_monitor_revokes_authority_and_sessions() {
+        let service_id = generate_service_id();
+        let (authority, valid) = controlled_test_launch_authority(test_principal(3, &[8, 8], 21));
+        let reservation = reserve_service_attachment(service_id.clone(), authority).unwrap();
+        {
+            let mut state = reservation.service.lock().unwrap();
+            state.commit_attachment(true);
+            state
+                .sessions
+                .insert(1, TerminalSessionEntry::new(TerminalSession::new(24, 80)));
+        }
+        release_service_attachment(
+            &service_id,
+            &reservation.service,
+            reservation.attachment_generation,
+            reservation.created_entry,
+            true,
+        )
+        .unwrap();
+        let old_epoch = reservation.authority_epoch;
+        valid.store(false, std::sync::atomic::Ordering::SeqCst);
+        assert!(monitor_service_authority_once(&reservation.service));
+        let state = reservation.service.lock().unwrap();
+        assert!(state.launch_authority.is_none());
+        assert!(state.sessions.is_empty());
+        assert!(state.authority_epoch > old_epoch);
+        assert!(!state.attached);
+        drop(state);
+        TERMINAL_SERVICES.lock().unwrap().remove(&service_id);
+    }
+
+    #[test]
+    fn stale_proxy_and_opening_are_rejected_after_epoch_change() {
+        let service_id = generate_service_id();
+        let reservation = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        let opening = {
+            let mut state = reservation.service.lock().unwrap();
+            state
+                .reserve_opening(
+                    5,
+                    reservation.attachment_generation,
+                    reservation.authority_epoch,
+                )
+                .unwrap()
+        };
+        let opening_guard = OpeningGuard::new(reservation.service.clone(), 5, opening);
+        let proxy = TerminalServiceProxy {
+            service: reservation.service.clone(),
+            attachment_generation: reservation.attachment_generation,
+            authority_epoch: reservation.authority_epoch,
+        };
+        assert!(revoke_service_authority(
+            &reservation.service,
+            reservation.authority_epoch
+        ));
+        let error = match proxy.service_for_attachment() {
+            Ok(_) => panic!("stale proxy unexpectedly retained authority"),
+            Err(error) => error,
+        };
+        assert!(is_fatal_authority_error(&error));
+        drop(opening_guard);
+        assert!(reservation
+            .service
+            .lock()
+            .unwrap()
+            .opening_sessions
+            .is_empty());
+        TERMINAL_SERVICES.lock().unwrap().remove(&service_id);
+    }
+
+    #[test]
+    fn simultaneous_opening_reservation_is_exclusive() {
+        let service_id = generate_service_id();
+        let reservation = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        let mut state = reservation.service.lock().unwrap();
+        let first = state
+            .reserve_opening(
+                7,
+                reservation.attachment_generation,
+                reservation.authority_epoch,
+            )
+            .unwrap();
+        assert!(state
+            .reserve_opening(
+                7,
+                reservation.attachment_generation,
+                reservation.authority_epoch,
+            )
+            .is_err());
+        assert!(state
+            .opening_sessions
+            .get(&7)
+            .map(|current| current.same_identity(&first))
+            .unwrap_or(false));
+        drop(state);
+        release_service_attachment(
+            &service_id,
+            &reservation.service,
+            reservation.attachment_generation,
+            reservation.created_entry,
+            false,
+        )
+        .unwrap();
+        assert!(!TERMINAL_SERVICES.lock().unwrap().contains_key(&service_id));
+    }
+
+    #[test]
+    fn terminal_session_limit_includes_opening_reservations() {
+        let service_id = generate_service_id();
+        let reservation = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        let mut state = reservation.service.lock().unwrap();
+        for terminal_id in 0..(super::MAX_SESSIONS_PER_SERVICE - 1) as i32 {
+            state.sessions.insert(
+                terminal_id,
+                TerminalSessionEntry::new(TerminalSession::new(24, 80)),
+            );
+        }
+        state
+            .reserve_opening(
+                1000,
+                reservation.attachment_generation,
+                reservation.authority_epoch,
+            )
+            .unwrap();
+        assert!(state
+            .reserve_opening(
+                1001,
+                reservation.attachment_generation,
+                reservation.authority_epoch,
+            )
+            .is_err());
+        drop(state);
+        release_service_attachment(
+            &service_id,
+            &reservation.service,
+            reservation.attachment_generation,
+            reservation.created_entry,
+            false,
+        )
+        .unwrap();
+        assert!(!TERMINAL_SERVICES.lock().unwrap().contains_key(&service_id));
+    }
+
+    #[test]
+    fn lease_timer_detects_monitor_revocation_while_attached() {
+        let service_id = generate_service_id();
+        let (authority, valid) =
+            controlled_test_launch_authority(test_principal(12, &[3, 1, 4], 29));
+        let lease = prepare(service_id.clone(), true, authority).unwrap();
+        lease.validate_for_activation().unwrap();
+        valid.store(false, std::sync::atomic::Ordering::SeqCst);
+        assert!(monitor_service_authority_once(&lease.service));
+        let error = lease.ensure_attached_authority().unwrap_err();
+        assert!(is_fatal_authority_error(&error));
+        drop(lease);
+        assert!(!TERMINAL_SERVICES.lock().unwrap().contains_key(&service_id));
+    }
+
+    #[test]
+    fn terminal_input_backpressure_is_nonblocking() {
+        let service_id = generate_service_id();
+        let reservation = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        let (input_tx, _input_rx) = std::sync::mpsc::sync_channel(0);
+        {
+            let mut session = TerminalSession::new(24, 80);
+            session.input_tx = Some(input_tx);
+            reservation
+                .service
+                .lock()
+                .unwrap()
+                .sessions
+                .insert(15, TerminalSessionEntry::new(session));
+        }
+        let proxy = TerminalServiceProxy {
+            service: reservation.service.clone(),
+            attachment_generation: reservation.attachment_generation,
+            authority_epoch: reservation.authority_epoch,
+        };
+        let mut data = TerminalData::new();
+        data.terminal_id = 15;
+        data.data = bytes::Bytes::from_static(b"full");
+        let error = proxy.handle_data(&data).unwrap_err();
+        assert!(error.to_string().contains("Failed to queue terminal input"));
+        release_service_attachment(
+            &service_id,
+            &reservation.service,
+            reservation.attachment_generation,
+            reservation.created_entry,
+            false,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn revocation_cancels_in_flight_opening_at_barrier() {
+        let service_id = generate_service_id();
+        let reservation = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        let opening = reservation
+            .service
+            .lock()
+            .unwrap()
+            .reserve_opening(
+                51,
+                reservation.attachment_generation,
+                reservation.authority_epoch,
+            )
+            .unwrap();
+        let worker_opening = opening.clone();
+        let (started_tx, started_rx) = std::sync::mpsc::sync_channel(0);
+        let (continue_tx, continue_rx) = std::sync::mpsc::sync_channel(0);
+        let (result_tx, result_rx) = std::sync::mpsc::sync_channel(0);
+        let worker = std::thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            continue_rx.recv().unwrap();
+            result_tx
+                .send(worker_opening.ensure_not_cancelled())
+                .unwrap();
+        });
+        started_rx.recv().unwrap();
+        assert!(revoke_service_authority(
+            &reservation.service,
+            reservation.authority_epoch
+        ));
+        continue_tx.send(()).unwrap();
+        let error = result_rx.recv().unwrap().unwrap_err();
+        assert!(is_fatal_authority_error(&error));
+        worker.join().unwrap();
+        release_service_attachment(
+            &service_id,
+            &reservation.service,
+            reservation.attachment_generation,
+            reservation.created_entry,
+            false,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn revoked_registry_entry_is_immediately_replaceable() {
+        let service_id = generate_service_id();
+        let old = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(test_principal(4, &[1, 4], 7)),
+        )
+        .unwrap();
+        assert!(revoke_service_authority(&old.service, old.authority_epoch));
+        assert!(!TERMINAL_SERVICES.lock().unwrap().contains_key(&service_id));
+
+        let replacement = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(test_principal(5, &[1, 4], 8)),
+        )
+        .unwrap();
+        release_service_attachment(
+            &service_id,
+            &old.service,
+            old.attachment_generation,
+            old.created_entry,
+            false,
+        )
+        .unwrap();
+        let current = TERMINAL_SERVICES
+            .lock()
+            .unwrap()
+            .get(&service_id)
+            .cloned()
+            .unwrap();
+        assert!(std::sync::Arc::ptr_eq(&current, &replacement.service));
+        release_service_attachment(
+            &service_id,
+            &replacement.service,
+            replacement.attachment_generation,
+            replacement.created_entry,
+            false,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn authority_monitor_does_not_wait_for_held_session_mutex() {
+        let service_id = generate_service_id();
+        let (authority, valid) = controlled_test_launch_authority(test_principal(6, &[2, 5], 9));
+        let reservation = reserve_service_attachment(service_id.clone(), authority).unwrap();
+        let session = TerminalSessionEntry::new(TerminalSession::new(24, 80));
+        reservation
+            .service
+            .lock()
+            .unwrap()
+            .sessions
+            .insert(61, session.clone());
+        let session_guard = session.lock().unwrap();
+        valid.store(false, std::sync::atomic::Ordering::SeqCst);
+        let monitored = reservation.service.clone();
+        let (done_tx, done_rx) = std::sync::mpsc::sync_channel(0);
+        let monitor = std::thread::spawn(move || {
+            done_tx
+                .send(monitor_service_authority_once(&monitored))
+                .unwrap();
+        });
+        assert!(done_rx
+            .recv_timeout(std::time::Duration::from_millis(250))
+            .unwrap());
+        monitor.join().unwrap();
+        drop(session_guard);
+        release_service_attachment(
+            &service_id,
+            &reservation.service,
+            reservation.attachment_generation,
+            reservation.created_entry,
+            false,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn activation_does_not_wait_for_held_session_mutex() {
+        let service_id = generate_service_id();
+        let mut lease = prepare(
+            service_id.clone(),
+            false,
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        let session = TerminalSessionEntry::new(TerminalSession::new(24, 80));
+        lease
+            .service
+            .lock()
+            .unwrap()
+            .sessions
+            .insert(62, session.clone());
+        lease.validate_for_activation().unwrap();
+        let session_guard = session.lock().unwrap();
+        let (done_tx, done_rx) = std::sync::mpsc::sync_channel(0);
+        let activation = std::thread::spawn(move || {
+            let result = lease.activate(ConnInner::default());
+            done_tx.send((result, lease)).unwrap();
+        });
+        let (result, lease) = done_rx
+            .recv_timeout(std::time::Duration::from_millis(250))
+            .unwrap();
+        result.unwrap();
+        drop(session_guard);
+        activation.join().unwrap();
+        drop(lease);
+        assert!(!TERMINAL_SERVICES.lock().unwrap().contains_key(&service_id));
+    }
+
+    #[test]
+    fn activation_rejects_worker_failure_after_checkpoint() {
+        let service_id = generate_service_id();
+        let mut lease = prepare(
+            service_id.clone(),
+            false,
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        lease.validate_for_activation().unwrap();
+        lease.worker_state.mark_fatal_authority();
+        let error = lease.activate(ConnInner::default()).unwrap_err();
+        assert!(is_fatal_authority_error(&error));
+        assert!(!lease.service.lock().unwrap().needs_session_sync);
+        drop(lease);
+        assert!(!TERMINAL_SERVICES.lock().unwrap().contains_key(&service_id));
+    }
+
+    #[test]
+    fn generic_output_stays_quiescent_after_fatal_authority() {
+        let service_id = generate_service_id();
+        let reservation = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        let proxy = TerminalServiceProxy {
+            service: reservation.service.clone(),
+            attachment_generation: reservation.attachment_generation,
+            authority_epoch: reservation.authority_epoch,
+        };
+        let worker_state = TerminalWorkerState::new();
+        assert!(revoke_service_authority(
+            &reservation.service,
+            reservation.authority_epoch
+        ));
+        assert!(matches!(
+            poll_terminal_outputs(&proxy, &worker_state).unwrap(),
+            TerminalOutputPoll::Quiescent
+        ));
+        assert!(worker_state
+            .fatal_authority
+            .load(std::sync::atomic::Ordering::Acquire));
+        assert!(matches!(
+            poll_terminal_outputs(&proxy, &worker_state).unwrap(),
+            TerminalOutputPoll::Quiescent
+        ));
+
+        let service = TerminalService {
+            sp: GenericService::new(service_id.clone(), false),
+            service: reservation.service.clone(),
+            attachment_generation: reservation.attachment_generation,
+            authority_epoch: reservation.authority_epoch,
+            worker_state: std::sync::Arc::new(TerminalWorkerState::new()),
+        };
+        service.sp.on_subscribe(ConnInner::default());
+        let (entry_tx, entry_rx) = std::sync::mpsc::channel();
+        GenericService::run(&service.clone(), move |service| {
+            entry_tx.send(()).unwrap();
+            run_terminal_service(service)
+        });
+        entry_rx
+            .recv_timeout(std::time::Duration::from_millis(250))
+            .unwrap();
+        assert!(entry_rx
+            .recv_timeout(std::time::Duration::from_millis(250))
+            .is_err());
+        service.sp.join();
+
+        release_service_attachment(
+            &service_id,
+            &reservation.service,
+            reservation.attachment_generation,
+            reservation.created_entry,
+            false,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn closed_session_arc_aba_preserves_replacement() {
+        let service_id = generate_service_id();
+        let reservation = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        let stale = TerminalSessionEntry::new(TerminalSession::new(24, 80));
+        let replacement = TerminalSessionEntry::new(TerminalSession::new(30, 100));
+        {
+            let mut state = reservation.service.lock().unwrap();
+            state.sessions.insert(71, stale.clone());
+            state.sessions.insert(71, replacement.clone());
+        }
+        assert!(remove_session_if_current(&reservation.service, 71, &stale).is_none());
+        let current = reservation
+            .service
+            .lock()
+            .unwrap()
+            .sessions
+            .get(&71)
+            .cloned()
+            .unwrap();
+        assert!(std::sync::Arc::ptr_eq(&current, &replacement));
+        let current_condition = TerminalOutputCondition::SessionCurrent {
+            terminal_id: 71,
+            expected: stale.clone(),
+        };
+        let remove_condition = TerminalOutputCondition::SessionRemove {
+            terminal_id: 71,
+            expected: stale.clone(),
+        };
+        let state = reservation.service.lock().unwrap();
+        assert!(!current_condition.matches(&state));
+        assert!(!remove_condition.matches(&state));
+        drop(state);
+        reservation.service.lock().unwrap().sessions.remove(&71);
+        let state = reservation.service.lock().unwrap();
+        assert!(!remove_condition.matches(&state));
+        drop(state);
+        release_service_attachment(
+            &service_id,
+            &reservation.service,
+            reservation.attachment_generation,
+            reservation.created_entry,
+            false,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn opened_response_publication_precedes_session_output() {
+        let service_id = generate_service_id();
+        let reservation = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        let (output_tx, output_rx) = std::sync::mpsc::sync_channel(1);
+        output_tx.send(b"ready".to_vec()).unwrap();
+        let mut session = TerminalSession::new(24, 80);
+        session.output_rx = Some(output_rx);
+        session.state = SessionState::Active {
+            attachment_generation: reservation.attachment_generation,
+            pending_buffer: None,
+            sigwinch: super::SigwinchPhase::Idle,
+        };
+        let output_visible = session.output_visible.clone();
+        let session = TerminalSessionEntry::new(session);
+        reservation
+            .service
+            .lock()
+            .unwrap()
+            .sessions
+            .insert(72, session.clone());
+        let proxy = TerminalServiceProxy {
+            service: reservation.service.clone(),
+            attachment_generation: reservation.attachment_generation,
+            authority_epoch: reservation.authority_epoch,
+        };
+        assert!(proxy.read_outputs().unwrap().is_empty());
+
+        let generic = GenericService::new(service_id.clone(), false);
+        generic.on_subscribe(ConnInner::default());
+        let worker_state = TerminalWorkerState::new();
+        worker_state
+            .subscriber_id
+            .store(0, std::sync::atomic::Ordering::Release);
+        super::send_terminal_action_response_if_authoritative(
+            &proxy,
+            &generic,
+            &worker_state,
+            super::TerminalActionResponse {
+                response: super::TerminalResponse::new(),
+                publication: Some(super::TerminalSessionPublication {
+                    terminal_id: 72,
+                    expected: session,
+                    output_visible: output_visible.clone(),
+                }),
+            },
+        )
+        .unwrap();
+        assert!(output_visible.load(std::sync::atomic::Ordering::Acquire));
+        assert_eq!(proxy.read_outputs().unwrap().len(), 1);
+        release_service_attachment(
+            &service_id,
+            &reservation.service,
+            reservation.attachment_generation,
+            reservation.created_entry,
+            false,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn output_poll_batch_is_bounded_during_continuous_refill() {
+        let (tx, rx) = std::sync::mpsc::sync_channel(super::CHANNEL_BUFFER_SIZE);
+        for _ in 0..super::MAX_OUTPUT_CHUNKS_PER_POLL {
+            tx.send(vec![7; 4096]).unwrap();
+        }
+        let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let producer_running = running.clone();
+        let producer = std::thread::spawn(move || {
+            while producer_running.load(std::sync::atomic::Ordering::Acquire) {
+                let _ = tx.try_send(vec![9; 4096]);
+                std::thread::yield_now();
+            }
+        });
+        let mut deferred = std::collections::VecDeque::new();
+        let mut remaining_chunks = super::MAX_OUTPUT_CHUNKS_PER_POLL;
+        let mut remaining_bytes = super::MAX_OUTPUT_BYTES_PER_POLL;
+        let started = std::time::Instant::now();
+        let batch = super::take_bounded_output_batch(
+            &rx,
+            &mut deferred,
+            &mut remaining_chunks,
+            &mut remaining_bytes,
+        );
+        running.store(false, std::sync::atomic::Ordering::Release);
+        producer.join().unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_millis(250));
+        assert!(batch.len() <= super::MAX_OUTPUT_CHUNKS_PER_POLL);
+        assert!(batch.iter().map(Vec::len).sum::<usize>() <= super::MAX_OUTPUT_BYTES_PER_POLL);
+
+        let (oversized_tx, oversized_rx) = std::sync::mpsc::sync_channel(1);
+        oversized_tx
+            .send(vec![1; super::MAX_OUTPUT_BYTES_PER_POLL + 17])
+            .unwrap();
+        let mut remaining_chunks = super::MAX_OUTPUT_CHUNKS_PER_POLL;
+        let mut remaining_bytes = super::MAX_OUTPUT_BYTES_PER_POLL;
+        let first = super::take_bounded_output_batch(
+            &oversized_rx,
+            &mut deferred,
+            &mut remaining_chunks,
+            &mut remaining_bytes,
+        );
+        assert_eq!(
+            first.iter().map(Vec::len).sum::<usize>(),
+            super::MAX_OUTPUT_BYTES_PER_POLL
+        );
+        assert_eq!(deferred.front().map(Vec::len), Some(17));
+    }
+
+    #[test]
+    fn output_poll_is_fair_across_continuous_sessions() {
+        let service_id = generate_service_id();
+        let reservation = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        let (first_tx, first_rx) = std::sync::mpsc::sync_channel(super::CHANNEL_BUFFER_SIZE);
+        for _ in 0..super::MAX_OUTPUT_CHUNKS_PER_POLL {
+            first_tx.send(vec![1; 4096]).unwrap();
+        }
+        let producer_running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let producer_flag = producer_running.clone();
+        let producer = std::thread::spawn(move || {
+            while producer_flag.load(std::sync::atomic::Ordering::Acquire) {
+                let _ = first_tx.try_send(vec![2; 4096]);
+                std::thread::yield_now();
+            }
+        });
+        let (second_tx, second_rx) = std::sync::mpsc::sync_channel(1);
+        second_tx.send(b"second".to_vec()).unwrap();
+
+        let mut first = TerminalSession::new(24, 80);
+        first.output_rx = Some(first_rx);
+        first
+            .output_visible
+            .store(true, std::sync::atomic::Ordering::Release);
+        first.state = SessionState::Active {
+            attachment_generation: reservation.attachment_generation,
+            pending_buffer: None,
+            sigwinch: super::SigwinchPhase::Idle,
+        };
+        let first = TerminalSessionEntry::new(first);
+        let mut second = TerminalSession::new(24, 80);
+        second.output_rx = Some(second_rx);
+        second
+            .output_visible
+            .store(true, std::sync::atomic::Ordering::Release);
+        second.state = SessionState::Active {
+            attachment_generation: reservation.attachment_generation,
+            pending_buffer: None,
+            sigwinch: super::SigwinchPhase::Idle,
+        };
+        let second = TerminalSessionEntry::new(second);
+        {
+            let mut state = reservation.service.lock().unwrap();
+            state.sessions.insert(1, first);
+            state.sessions.insert(2, second.clone());
+        }
+        let proxy = TerminalServiceProxy {
+            service: reservation.service.clone(),
+            attachment_generation: reservation.attachment_generation,
+            authority_epoch: reservation.authority_epoch,
+        };
+        proxy.read_outputs().unwrap();
+        producer_running.store(false, std::sync::atomic::Ordering::Release);
+        producer.join().unwrap();
+        assert!(second.lock().unwrap().output_buffer.total_size > 0);
+        release_service_attachment(
+            &service_id,
+            &reservation.service,
+            reservation.attachment_generation,
+            reservation.created_entry,
+            false,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn orderly_exit_drains_all_output_before_close() {
+        let service_id = generate_service_id();
+        let reservation = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        let (output_tx, output_rx) = std::sync::mpsc::sync_channel(100);
+        for _ in 0..100 {
+            output_tx.send(vec![3; 4096]).unwrap();
+        }
+        drop(output_tx);
+        let finished_reader = std::thread::spawn(|| {});
+        while !finished_reader.is_finished() {
+            std::thread::yield_now();
+        }
+        let mut session = TerminalSession::new(24, 80);
+        session.output_rx = Some(output_rx);
+        session.reader_thread = Some(finished_reader);
+        session.pending_exit = Some(super::PendingTerminalExit {
+            exit_code: 7,
+            drain_output: true,
+        });
+        session
+            .output_visible
+            .store(true, std::sync::atomic::Ordering::Release);
+        session.state = SessionState::Active {
+            attachment_generation: reservation.attachment_generation,
+            pending_buffer: None,
+            sigwinch: super::SigwinchPhase::Idle,
+        };
+        let session = TerminalSessionEntry::new(session);
+        reservation
+            .service
+            .lock()
+            .unwrap()
+            .sessions
+            .insert(73, session);
+        let proxy = TerminalServiceProxy {
+            service: reservation.service.clone(),
+            attachment_generation: reservation.attachment_generation,
+            authority_epoch: reservation.authority_epoch,
+        };
+        let first = proxy.read_outputs().unwrap();
+        assert!(!first.iter().any(|response| {
+            matches!(
+                response.response.union,
+                Some(super::terminal_response::Union::Closed(_))
+            )
+        }));
+        let second = proxy.read_outputs().unwrap();
+        assert!(second.iter().any(|response| {
+            matches!(
+                response.response.union,
+                Some(super::terminal_response::Union::Closed(ref closed)) if closed.exit_code == 7
+            )
+        }));
+        release_service_attachment(
+            &service_id,
+            &reservation.service,
+            reservation.attachment_generation,
+            reservation.created_entry,
+            false,
+        )
+        .unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn direct_pty_exit_drains_real_output_before_close() {
+        let service_id = generate_service_id();
+        let reservation = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        let pair = portable_pty::native_pty_system()
+            .openpty(super::PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
+        let portable_pty::PtyPair { master, slave } = pair;
+        let mut command = super::CommandBuilder::new("/bin/sh");
+        command.arg("-c");
+        command.arg(
+            "i=0; while [ \"$i\" -lt 4096 ]; do printf '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'; i=$((i+1)); done",
+        );
+        let child = slave.spawn_command(command).unwrap();
+        drop(slave);
+        let mut reader = master.try_clone_reader().unwrap();
+        let (output_tx, output_rx) = std::sync::mpsc::sync_channel(super::CHANNEL_BUFFER_SIZE);
+        let reader_thread = std::thread::spawn(move || {
+            let mut buffer = vec![0u8; 4096];
+            loop {
+                match reader.read(&mut buffer) {
+                    Ok(0) => break,
+                    Ok(read) => output_tx.send(buffer[..read].to_vec()).unwrap(),
+                    Err(_) => break,
+                }
+            }
+        });
+        let mut session = TerminalSession::new(24, 80);
+        session.pid = child.process_id().unwrap_or(0) as u32;
+        session.child = Some(child);
+        session.output_rx = Some(output_rx);
+        session.reader_thread = Some(reader_thread);
+        session.pty_master = Some(master);
+        session
+            .output_visible
+            .store(true, std::sync::atomic::Ordering::Release);
+        session.state = SessionState::Active {
+            attachment_generation: reservation.attachment_generation,
+            pending_buffer: None,
+            sigwinch: super::SigwinchPhase::Idle,
+        };
+        reservation
+            .service
+            .lock()
+            .unwrap()
+            .sessions
+            .insert(74, TerminalSessionEntry::new(session));
+        let proxy = TerminalServiceProxy {
+            service: reservation.service.clone(),
+            attachment_generation: reservation.attachment_generation,
+            authority_epoch: reservation.authority_epoch,
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut data_responses = 0usize;
+        let mut saw_close = false;
+        while !saw_close {
+            assert!(std::time::Instant::now() < deadline);
+            for response in proxy.read_outputs().unwrap() {
+                match response.response.union.as_ref() {
+                    Some(super::terminal_response::Union::Data(_)) => {
+                        assert!(!saw_close);
+                        data_responses += 1;
+                    }
+                    Some(super::terminal_response::Union::Closed(closed)) => {
+                        assert_eq!(closed.exit_code, 0);
+                        saw_close = true;
+                    }
+                    _ => {}
+                }
+            }
+            if !saw_close {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+        assert!(data_responses > super::MAX_OUTPUT_CHUNKS_PER_POLL);
+        release_service_attachment(
+            &service_id,
+            &reservation.service,
+            reservation.attachment_generation,
+            reservation.created_entry,
+            false,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn helper_reader_completion_waits_for_process_status() {
+        let now = std::time::Instant::now();
+        let mut first_seen = None;
+        assert!(!super::transport_failure_is_reportable(
+            true,
+            false,
+            true,
+            &mut first_seen,
+            now,
+        ));
+        assert!(!super::transport_failure_is_reportable(
+            true,
+            false,
+            true,
+            &mut first_seen,
+            now + super::HELPER_EXIT_STATUS_GRACE - std::time::Duration::from_millis(1),
+        ));
+        assert!(super::transport_failure_is_reportable(
+            true,
+            false,
+            true,
+            &mut first_seen,
+            now + super::HELPER_EXIT_STATUS_GRACE,
+        ));
+        let mut writer_first_seen = None;
+        assert!(super::transport_failure_is_reportable(
+            false,
+            true,
+            true,
+            &mut writer_first_seen,
+            now,
+        ));
+    }
+
+    #[test]
+    fn direct_reader_completion_requeries_child_status_before_close() {
+        let service_id = generate_service_id();
+        let reservation = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        let reader = std::thread::spawn(|| {});
+        while !reader.is_finished() {
+            std::thread::yield_now();
+        }
+        let (output_tx, output_rx) = std::sync::mpsc::sync_channel(1);
+        drop(output_tx);
+        let mut session = TerminalSession::new(24, 80);
+        session.reader_thread = Some(reader);
+        session.output_rx = Some(output_rx);
+        session.child = Some(Box::new(ControlledChild {
+            remaining_running_polls: 1,
+            exit_code: Some(0),
+        }));
+        session
+            .output_visible
+            .store(true, std::sync::atomic::Ordering::Release);
+        session.state = SessionState::Active {
+            attachment_generation: reservation.attachment_generation,
+            pending_buffer: None,
+            sigwinch: super::SigwinchPhase::Idle,
+        };
+        reservation
+            .service
+            .lock()
+            .unwrap()
+            .sessions
+            .insert(75, TerminalSessionEntry::new(session));
+        let proxy = TerminalServiceProxy {
+            service: reservation.service.clone(),
+            attachment_generation: reservation.attachment_generation,
+            authority_epoch: reservation.authority_epoch,
+        };
+        let first = proxy.read_outputs().unwrap();
+        assert!(!first.iter().any(|response| {
+            matches!(
+                response.response.union,
+                Some(super::terminal_response::Union::Closed(_))
+            )
+        }));
+        let second = proxy.read_outputs().unwrap();
+        assert!(second.iter().any(|response| {
+            matches!(
+                response.response.union,
+                Some(super::terminal_response::Union::Closed(ref closed)) if closed.exit_code == 0
+            )
+        }));
+        release_service_attachment(
+            &service_id,
+            &reservation.service,
+            reservation.attachment_generation,
+            reservation.created_entry,
+            false,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn direct_reader_status_grace_expires_as_failure() {
+        let reader = std::thread::spawn(|| {});
+        while !reader.is_finished() {
+            std::thread::yield_now();
+        }
+        let mut session = TerminalSession::new(24, 80);
+        session.reader_thread = Some(reader);
+        session.reader_finished_at =
+            Some(std::time::Instant::now() - super::DIRECT_EXIT_STATUS_GRACE);
+        session.child = Some(Box::new(ControlledChild {
+            remaining_running_polls: usize::MAX,
+            exit_code: None,
+        }));
+        let status = session.exit_status_if_exited().unwrap();
+        assert_eq!(status.exit_code, -1);
+        assert!(status.drain_output);
+    }
+
+    #[test]
+    fn writer_completion_is_immediate_transport_failure() {
+        let writer = std::thread::spawn(|| {});
+        while !writer.is_finished() {
+            std::thread::yield_now();
+        }
+        let mut session = TerminalSession::new(24, 80);
+        session.writer_thread = Some(writer);
+        session.child = Some(Box::new(ControlledChild {
+            remaining_running_polls: usize::MAX,
+            exit_code: None,
+        }));
+        let status = session.exit_status_if_exited().unwrap();
+        assert_eq!(status.exit_code, -1);
+        assert!(!status.drain_output);
+    }
+
+    #[test]
+    fn teardown_permit_pool_is_bounded_and_released() {
+        let pool = std::sync::Arc::new(super::TerminalTeardownPermitPool::new(1));
+        let permit = pool.acquire().unwrap();
+        assert!(pool.acquire().is_err());
+        drop(permit);
+        assert!(pool.acquire().is_ok());
+    }
+
+    #[test]
+    fn teardown_admission_does_not_wait_for_session_cleanup() {
+        super::ensure_teardown_workers().unwrap();
+        let pool = std::sync::Arc::new(super::TerminalTeardownPermitPool::new(1));
+        let mut blocked_state = TerminalSession::new(24, 80);
+        blocked_state._teardown_permit = Some(pool.acquire().unwrap());
+        let blocked = TerminalSessionEntry::new(blocked_state);
+        let blocked_guard = blocked.lock().unwrap();
+        super::enqueue_session_teardown(blocked.clone());
+        assert!(pool.acquire().is_err());
+
+        let independent = TerminalSessionEntry::new(TerminalSession::new(24, 80));
+        let started = std::time::Instant::now();
+        super::enqueue_session_teardown(independent.clone());
+        assert!(started.elapsed() < std::time::Duration::from_millis(250));
+        wait_for_session_teardown(&independent);
+
+        drop(blocked_guard);
+        wait_for_session_teardown(&blocked);
+        assert!(pool.acquire().is_ok());
+    }
+
+    #[test]
+    fn terminal_action_queue_backpressure_is_nonblocking() {
+        let worker_state = TerminalWorkerState::new();
+        let (tx, _rx) = std::sync::mpsc::sync_channel(1);
+        try_enqueue_terminal_action(&tx, &worker_state, TerminalAction::new()).unwrap();
+        let error =
+            try_enqueue_terminal_action(&tx, &worker_state, TerminalAction::new()).unwrap_err();
+        assert!(error.to_string().contains("queue is full"));
+        assert!(!is_fatal_authority_error(&error));
+
+        let disconnected_state = TerminalWorkerState::new();
+        let (disconnected_tx, disconnected_rx) = std::sync::mpsc::sync_channel(1);
+        drop(disconnected_rx);
+        let error = try_enqueue_terminal_action(
+            &disconnected_tx,
+            &disconnected_state,
+            TerminalAction::new(),
+        )
+        .unwrap_err();
+        assert!(is_fatal_authority_error(&error));
+        assert!(disconnected_state
+            .fatal_authority
+            .load(std::sync::atomic::Ordering::Acquire));
+    }
+
+    #[test]
+    fn fatal_authority_propagates_through_persistence_and_action_admission() {
+        let service_id = generate_service_id();
+        let mut lease = prepare(
+            service_id.clone(),
+            true,
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        lease.activated = true;
+        assert!(revoke_service_authority(
+            &lease.service,
+            lease.authority_epoch
+        ));
+        let persistence_error = lease.set_persistent(false).unwrap_err();
+        assert!(is_fatal_authority_error(&persistence_error));
+        let action_error = lease.enqueue_action(TerminalAction::new()).unwrap_err();
+        assert!(is_fatal_authority_error(&action_error));
+        drop(lease);
+        assert!(!TERMINAL_SERVICES.lock().unwrap().contains_key(&service_id));
+    }
+
+    #[test]
+    fn detached_dead_session_is_removed_and_reaped() {
+        let service_id = generate_service_id();
+        let reservation = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        let finished_reader = std::thread::spawn(|| {});
+        while !finished_reader.is_finished() {
+            std::thread::yield_now();
+        }
+        let mut session = TerminalSession::new(24, 80);
+        session.reader_thread = Some(finished_reader);
+        session.child = Some(Box::new(ControlledChild {
+            remaining_running_polls: usize::MAX,
+            exit_code: None,
+        }));
+        let session = TerminalSessionEntry::new(session);
+        reservation
+            .service
+            .lock()
+            .unwrap()
+            .sessions
+            .insert(81, session.clone());
+        reservation.service.lock().unwrap().commit_attachment(true);
+        release_service_attachment(
+            &service_id,
+            &reservation.service,
+            reservation.attachment_generation,
+            reservation.created_entry,
+            true,
+        )
+        .unwrap();
+        monitor_detached_sessions_once();
+        assert!(reservation.service.lock().unwrap().sessions.is_empty());
+        wait_for_session_teardown(&session);
+        TERMINAL_SERVICES.lock().unwrap().remove(&service_id);
+    }
+
+    #[test]
+    fn detached_broken_writer_is_removed_and_reaped() {
+        let service_id = generate_service_id();
+        let reservation = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        let finished_writer = std::thread::spawn(|| {});
+        while !finished_writer.is_finished() {
+            std::thread::yield_now();
+        }
+        let mut session = TerminalSession::new(24, 80);
+        session.writer_thread = Some(finished_writer);
+        let session = TerminalSessionEntry::new(session);
+        reservation
+            .service
+            .lock()
+            .unwrap()
+            .sessions
+            .insert(82, session.clone());
+        reservation.service.lock().unwrap().commit_attachment(true);
+        release_service_attachment(
+            &service_id,
+            &reservation.service,
+            reservation.attachment_generation,
+            reservation.created_entry,
+            true,
+        )
+        .unwrap();
+        monitor_detached_sessions_once();
+        assert!(reservation.service.lock().unwrap().sessions.is_empty());
+        wait_for_session_teardown(&session);
+        TERMINAL_SERVICES.lock().unwrap().remove(&service_id);
+    }
+
+    #[test]
+    fn dead_reconnect_preserves_surviving_session_sync() {
+        let service_id = generate_service_id();
+        let reservation = reserve_service_attachment(
+            service_id.clone(),
+            test_launch_authority(TerminalPrincipal::ProcessOwner),
+        )
+        .unwrap();
+        let finished_reader = std::thread::spawn(|| {});
+        while !finished_reader.is_finished() {
+            std::thread::yield_now();
+        }
+        let mut dead = TerminalSession::new(24, 80);
+        dead.reader_thread = Some(finished_reader);
+        dead.child = Some(Box::new(ControlledChild {
+            remaining_running_polls: usize::MAX,
+            exit_code: None,
+        }));
+        let dead = TerminalSessionEntry::new(dead);
+        let surviving = TerminalSessionEntry::new(TerminalSession::new(24, 80));
+        {
+            let mut state = reservation.service.lock().unwrap();
+            state.sessions.insert(91, dead);
+            state.sessions.insert(92, surviving.clone());
+            state.commit_attachment(true);
+        }
+        let proxy = TerminalServiceProxy {
+            service: reservation.service.clone(),
+            attachment_generation: reservation.attachment_generation,
+            authority_epoch: reservation.authority_epoch,
+        };
+        let mut open = OpenTerminal::new();
+        open.terminal_id = 91;
+        open.rows = 24;
+        open.cols = 80;
+        assert!(proxy.handle_open(&open).is_err());
+        {
+            let state = reservation.service.lock().unwrap();
+            assert!(state.needs_session_sync);
+            assert!(state
+                .sessions
+                .get(&92)
+                .map(|current| std::sync::Arc::ptr_eq(current, &surviving))
+                .unwrap_or(false));
+        }
+        release_service_attachment(
+            &service_id,
+            &reservation.service,
+            reservation.attachment_generation,
+            reservation.created_entry,
+            true,
+        )
+        .unwrap();
+        TERMINAL_SERVICES.lock().unwrap().remove(&service_id);
+    }
 
     #[cfg(not(target_os = "windows"))]
     #[test]

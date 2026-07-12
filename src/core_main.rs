@@ -494,9 +494,15 @@ pub fn core_main() -> Option<Vec<String>> {
             #[cfg(target_os = "windows")]
             {
                 let helper_args: Vec<String> = args[1..].to_vec();
-                if let Err(e) = crate::server::terminal_helper::run_terminal_helper(&helper_args) {
-                    log::error!("Terminal helper failed: {}", e);
-                }
+                let exit_code =
+                    match crate::server::terminal_helper::run_terminal_helper(&helper_args) {
+                        Ok(exit_code) => exit_code,
+                        Err(err) => {
+                            log::error!("Terminal helper failed: {}", err);
+                            1
+                        }
+                    };
+                std::process::exit(exit_code);
             }
             return None;
         } else if args[0] == "--cm" {

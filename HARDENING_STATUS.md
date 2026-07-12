@@ -681,6 +681,103 @@ unreachable and a source/test/AST gate prevents reintroduction.
   closure: `scripts/verify.sh` gates the executable-directory helper, resolved-executable use,
   executable-relative Linux/Windows library paths, Android/macOS exceptions, init helper use, absence of bare
   desktop `librustdesk` opens, and requirements disposition.
+- **R-S11c-25 — Windows terminal service principal authority — CLOSED 2026-07-12.** Platform: Windows
+  installed-service and direct server modes. Endpoint/action: an authenticated remote Terminal login creating or
+  reconnecting a persistent PTY. Boundary: service-owned LocalSystem server process ↔ its served Windows
+  logon-session user. Attack surface closed: the terminal no longer decides whether to launch as a user from uninstall
+  registry metadata. A stale compatibility uninstall key could make `is_installed()` false while the fixed-root
+  `--server --service-owned-server` child was positively running as LocalSystem; the resulting no-token branch
+  opened the shell directly in the service process. The authority now comes only from the proved process role.
+  A service-owned LocalSystem server derives the served session from its own process token, obtains that session's
+  `WTSQueryUserToken` token, proves that it is primary, and derives the reconnect principal from token session ID,
+  user SID, and
+  `TOKEN_STATISTICS.AuthenticationId`; any failure rejects Terminal before the connection's authorization-success
+  edge. A direct non-LocalSystem server uses its process owner. The LocalSystem-without-session-token and
+  service-owned direct-PTY states are rejected again at the terminal sink, and the helper itself refuses to run as
+  LocalSystem. Persistent service IDs require canonical `ts_<UUID>` form and are atomically bound to the exact
+  reconnect principal. Each entry owns the original primary token through a non-`Copy`, single-close RAII owner;
+  reconnects never replace it with another token merely because the logon principal matches. Token object ID and
+  modification ID are revalidated before launch. An exclusive opaque attachment lease carries entry identity,
+  attachment generation, and authority epoch through every action, output read, persistence mutation, and cleanup;
+  concurrent attachment is rejected and conditional `Arc` identity prevents stale-connection ABA removal. Same SID
+  in another session or another logon session cannot attach to an existing PTY. Preparation reserves only attachment
+  ownership before `authorized = true`; persistence and reconnect state remain staged, so failed preauthorization
+  preserves an existing service and removes only a newly reserved entry. A current-authority checkpoint precedes the
+  checked login-response write. With no option processing in between, activation consumes that checkpoint under the
+  service lock, commits the staged persistence state, installs the exact subscriber, and makes output eligible; a
+  concurrent revocation fails that minimal post-write transition and closes the connection. Opening records an
+  epoch-bound reservation with a shared cancellation capability. A bounded ordered action worker, reached only by
+  nonblocking `try_send`, creates the PTY/helper outside the Tokio connection task and service lock; revocation signals
+  that same capability, helper pipe polling observes it, and a constructed direct child or helper job is already under
+  `TerminalSession` ownership before later fallible work. Commit still requires the exact generation, epoch,
+  reservation identity, and uncancelled capability. A committed or reconnected session remains output-invisible until
+  its exact `TerminalOpened` response is enqueued under the service lock. Natural close response and exact-Arc removal
+  share that lock, so neither output nor a delayed close can cross an ID reuse. Input and resize use nonblocking sends
+  and linearize against the exact session Arc plus lease generation. Services are limited to 64 sessions, and each
+  output poll has one shared 64-chunk/256-KiB budget across all sessions and replay; split tails remain owned for later
+  polls. Sorted session IDs, a persistent rotating start cursor, and per-session quanta prevent a continuous producer
+  from starving another terminal. Orderly exit becomes pending state and emits `TerminalClosed` only after replay,
+  deferred tails, and the disconnected reader channel are exhausted across bounded polls. Direct PTY launch drops the
+  parent's slave descriptor immediately after spawn and retains only the master, so child exit can end the blocking
+  reader and complete that barrier. For an attached session's close response, reader-only completion starts a bounded
+  direct-child status grace and re-queries the retained child on each poll; a real status wins, grace expiry is
+  reported as `-1`, and writer failure remains immediate. Transport-worker completion is nevertheless immediate for
+  reconnect admission and detached cleanup, so a dead persistent session is never republished during that grace.
+  A service-entry monitor revalidates the served WTS principal after logoff
+  events and every second even while detached. Revocation advances the epoch, marks action/output authority fatal,
+  signals openings, takes the token, and drains exact session Arcs in one service-lock critical section; it then removes
+  only that registry Arc and enqueues session teardown without waiting for a session mutex or join. Teardown admission
+  transfers ownership to a bounded queue serviced by four fixed workers created before service admission. Every lease
+  and opening reserves a global teardown permit before it can create resources; the permit remains owned through
+  rollback or complete action/output/session-worker joins, so repeated replacement cannot grow pending teardown
+  without bound. Queue insertion shares no mutex with worker cleanup. Session entries expose the shutdown atomic and,
+  on Windows, a shared `TerminateJobObject` capability outside the session mutex, so revocation stops the helper job
+  before deferred cleanup; an unexpected termination failure aborts the service so process teardown closes the sole
+  service-owned job handle and activates kill-on-close rather than continuing with a revoked shell. The old revoked Arc
+  cannot remove or mutate a replacement entry, so the opaque ID is immediately reusable by a new logon principal.
+  Detached monitoring removes naturally exited direct/helper sessions by exact Arc identity and releases all live
+  process, pipe, and job ownership rather than preserving a dead session as reconnectable. An attached connection observes the fatal latch on its
+  one-second timer, and fatal persistence/action authority errors close it instead of becoming remote terminal
+  diagnostics. The boolean `is_specified_user`, bare service-ID lookup,
+  ignored service-creation error, registry selector, token-presence helper dispatch, and `ensure_primary_token` fallback are
+  deleted. Microsoft documents that
+  `WTSQueryUserToken` returns a primary token; the removed fallback called `DuplicateToken`, which produces an
+  impersonation token that cannot be used by `CreateProcessAsUser`. The helper boundary is logon-scoped too: its
+  pipe DACL names only SYSTEM and the token's enabled logon SID. The service owns a duplex server handle so
+  `SetNamedPipeHandleState` has the documented mode-change access; the logon SID receives and requests only
+  `FILE_WRITE_DATA|SYNCHRONIZE` for helper-to-service flow or `FILE_READ_DATA|SYNCHRONIZE` for service-to-helper flow,
+  never generic-write/append/pipe-instance rights. The service then checks the connected client PID while retaining
+  that process object and rechecks the helper process token's session, user SID, logon SID, and `AuthenticationId`.
+  Pipe connection uses non-overlapped `PIPE_NOWAIT` polling with a timeout-and-authority-cancellable joined worker,
+  then restores `PIPE_WAIT` before synchronous I/O; no pending stack `OVERLAPPED` exists. On helper shutdown,
+  `CancelSynchronousIo` repeatedly targets both retained worker thread handles until each worker is observably
+  finished before join, with only the documented `ERROR_NOT_FOUND` no-pending-operation race accepted; every framed
+  input read also checks the shutdown latch before issuing another synchronous operation. An unexpected cancellation
+  failure terminates the dedicated helper process while both join handles remain owned; it never detaches a worker and
+  continues. The helper receives a
+  non-inherited user environment and the same token's
+  validated profile directory, with no service environment/current-directory fallback. It is created suspended,
+  assigned before resume to a `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` job, and transferred as one RAII process-tree
+  owner so revocation terminates the helper, ConPTY shell, and descendants before tracked join reaping. The retained
+  helper process handle supplies its real exit status; the dedicated helper entrypoint exits with the shell code or
+  status 1 on helper infrastructure failure, while transport/status-query failure is reported as `-1`, never clean zero.
+  Helper output EOF receives a three-second status grace, longer than the two-second I/O cancellation deadline, before
+  it is classified as transport failure; writer failure remains immediate.
+  Verification closure: the Linux-visible 47-test terminal suite covers process-role combinations, canonical IDs,
+  exact session/SID/logon-ID binding, exclusive attachment, generation/epoch advance, replacement-entry and
+  closed-session ABA, dead-reconnect sync preservation, preactivation rollback, post-checkpoint worker-failure rejection,
+  in-flight opening cancellation, detached revocation, and reader- or writer-terminated dead-session removal, stale
+  opening/proxy/output rejection, opened-response publication, second-generation close ABA, held-session-mutex
+  monitor/activation bounds, committed-plus-opening session limits, fair bounded continuous-refill output polling,
+  synthetic and real-PTY multi-poll final-output-before-close ordering, bounded permit release, nonblocking teardown admission, completed
+  detached teardown, helper/direct reader-status grace and direct status re-query, immediate writer-failure classification,
+  permanent fatal-output quiescence, fatal persistence/action propagation, and nonblocking
+  input/action backpressure. Windows-only helper
+  tests create both real pipe directions, prove blocking round trips after `PIPE_WAIT` restoration, exercise external
+  opening cancellation and pending synchronous-read cancellation across read re-entry, and cover exact client masks, principal comparison,
+  and job ABI layout. `scripts/build-windows.ps1` runs the terminal suite natively, offline and locked, before every
+  artifact build; `scripts/verify.sh` runs the Linux-visible suite and gates that native-Windows step plus the source
+  contracts above. The committed Windows VM double build remains the platform runtime and deterministic-artifact proof.
 - **R-S11c-5 — macOS privileged service packaging — CLOSED 2026-07-09; tightened 2026-07-11.** Platform: macOS
   source-conformance and any future macOS artifact. Surfaces: `src/platform/privileges_scripts/daemon.plist`,
   `install.scpt`, deleted `update.scpt`, `uninstall.scpt`, and their `osascript` call sites in
@@ -2185,12 +2282,12 @@ unreachable and a source/test/AST gate prevents reintroduction.
 surfaces remain contained by manifest/exported-permission shape; iOS has no controlled-side/root IPC surface
 in scope; Unix IPC parent/socket hardening remains a prerequisite and is not the failing layer; FileTransfer
 authorization, file-transfer symlink TOCTOU, port-forward plaintext, decompression amplification,
-OS-login/PAM/LogonUser, deep-link password/config/import, and Windows terminal-helper SYSTEM-shell concerns
-are tracked by their existing requirements/fixes, not reopened here. Dependency advisories are the separate
+OS-login/PAM/LogonUser and deep-link password/config/import concerns are tracked by their existing
+requirements/fixes; the newly proven Windows service-terminal principal flaw is closed by R-S11c-25. Dependency advisories are the separate
 R-R3/Appendix D gated class: Rust and Dart package advisories are checked by the pinned advisory gates, while
 native vcpkg codec advisories remain the Appendix C #2b watch/residual.
 
-Current implementation is compliant with this R-S11b/R-S11c stronger requirement as of 2026-07-09. No
+Current implementation is compliant with this R-S11b/R-S11c stronger requirement as of 2026-07-12. No
 release or prerelease should be promoted on that fact alone; the separate live-QA, build, dependency, and
 release-readiness items below still govern promotion.
 
@@ -2457,7 +2554,7 @@ Shared un-cfg'd reap loop (`connection.rs`) + writer task (`tcp.rs`) → the ≤
 **DRILL F — sweep (other leak/linger paths).**
 - **`--cm` orphan on Windows-root (CONFIRMED):** `run_as_user`→`run_exe_in_session` returns `Ok(None)` (`windows.rs:894`) → the `if let Some(task)` push is skipped (`connection.rs:4892`) → the `--cm` handle is untracked, never reaped by `check_zombie` (`server.rs:707-722`). Ghost CM window if it fails to self-exit. Not a listener wedge. (Linux/non-root path IS tracked, `:4904`.)
 - **Windows clean-stop skips the R-T9 drain (CONFIRMED):** the SIGTERM drain is Unix-only (`direct_service.rs:355-377`); a Windows `--server` stop is IPC `Data::Close`→`exit(-1)` → an in-flight file block truncates on a Windows service stop/upgrade (cleanliness, not a wedge). Conversely macOS `exit(0)` would NOT restart the agent (`SuccessfulExit=false`) → the `exit(-1)` design is load-bearing there.
-- Persistent terminal holds a root PTY but is bounded (`MAX_SERVICES=100` + `cleanup_inactive_services`, `terminal_service.rs`); port-forward 3600 s idle-timer (bounded to ~60 s by keepalive); `terminal_generic_service.join()` in `Drop` (~30–60 ms) — all LOW/by-design. No pre-auth connection leak.
+- Persistent terminal holds a root PTY but is bounded (`MAX_SERVICES=100` + `cleanup_inactive_services`, `terminal_service.rs`); port-forward 3600 s idle-timer (bounded to ~60 s by keepalive); the generation-bound terminal lease joins its inactive output pump in `Drop` (~30–60 ms). Terminal preparation reserves authority before authorization but has no subscriber/output path until login success, so no pre-auth content leak exists. All are LOW/by-design.
 
 **Blast radius (all CONFIRMED-from-source).** BR-9/10/11/12 + persistent root of BR-6 = the Windows `--service`-death wedge (Drill A/E); BR-10 intermittency also from the 16-cap transient (B) + the session-change sub-second gap. BR-5 = the CM `Data::Disconnected` lingering row (`connection.rs:4059-4066`, `ui_cm_interface.rs:302-311`). BR-4 = cosmetic `stop-service` label + the empty-PRS park (D) both show green "Listening" while unable to accept. **BR-6 connection→settings link REFUTED** (the `videoConnCount>0` gate is dead — `canBeBlocked()` always false under pinned `access-mode=full` + no direct `control_permissions`) → real cause is cavity #2.
 
@@ -3249,7 +3346,7 @@ The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-0dadf7781250d6d7dddb4ab3b97e491711117a0faadafa4474c41acd276a73dd  requirements.html
+eab38b0d4fd58cbf029d10de9b9af2034914f206e750812d5b6c5ac2a8acf44e  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

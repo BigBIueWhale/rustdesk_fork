@@ -53,17 +53,16 @@ use winapi::{
             GetCurrentProcess, GetCurrentProcessId, GetExitCodeProcess, OpenProcess,
             OpenProcessToken, ProcessIdToSessionId,
         },
-        securitybaseapi::{DuplicateToken, GetTokenInformation},
+        securitybaseapi::GetTokenInformation,
         shellapi::ShellExecuteW,
         sysinfoapi::{GetNativeSystemInfo, SYSTEM_INFO},
         winbase::*,
         wingdi::*,
         winnt::{
-            SecurityImpersonation, TokenElevation, TokenImpersonation, TokenType,
-            ES_AWAYMODE_REQUIRED, ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED,
-            FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_TEMPORARY, FILE_READ_ATTRIBUTES,
-            FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, HANDLE,
-            PROCESS_QUERY_LIMITED_INFORMATION, TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_TYPE,
+            TokenElevation, ES_AWAYMODE_REQUIRED, ES_CONTINUOUS, ES_DISPLAY_REQUIRED,
+            ES_SYSTEM_REQUIRED, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_TEMPORARY,
+            FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, HANDLE,
+            PROCESS_QUERY_LIMITED_INFORMATION, TOKEN_ELEVATION, TOKEN_QUERY,
         },
         winreg::HKEY_CURRENT_USER,
         winuser::*,
@@ -3821,50 +3820,6 @@ pub fn wide_string(s: &str) -> Vec<u16> {
 }
 
 // R-X8: get_logon_user_token (LogonUserW — the terminal OS second-credential logon) removed.
-
-// Ensure the token returned is a primary token.
-// If the provided token is an impersonation token, it duplicates it to a primary token.
-// If the provided token is already a primary token, it returns it as is.
-// The caller is responsible for closing the returned token handle.
-pub fn ensure_primary_token(user_token: HANDLE) -> ResultType<HANDLE> {
-    if user_token.is_null() || user_token == INVALID_HANDLE_VALUE {
-        bail!("Invalid user token provided");
-    }
-
-    unsafe {
-        let mut token_type: TOKEN_TYPE = 0;
-        let mut return_length: DWORD = 0;
-
-        if GetTokenInformation(
-            user_token,
-            TokenType,
-            &mut token_type as *mut _ as *mut _,
-            std::mem::size_of::<TOKEN_TYPE>() as DWORD,
-            &mut return_length,
-        ) == FALSE
-        {
-            bail!(
-                "Failed to get token type, error {}",
-                io::Error::last_os_error()
-            );
-        }
-
-        if token_type == TokenImpersonation {
-            let mut duplicate_token: HANDLE = std::ptr::null_mut();
-            let dup_res = DuplicateToken(user_token, SecurityImpersonation, &mut duplicate_token);
-            CloseHandle(user_token);
-            if dup_res == FALSE {
-                bail!(
-                    "Failed to duplicate token, error {}",
-                    io::Error::last_os_error()
-                );
-            }
-            Ok(duplicate_token)
-        } else {
-            Ok(user_token)
-        }
-    }
-}
 
 // R-X8: is_user_token_admin removed with handle_administrator_check (its only caller).
 

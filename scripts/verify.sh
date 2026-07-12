@@ -6031,7 +6031,7 @@ echo "$voice_close_body" | grep -q 'pub async fn close_voice_call(&mut self) -> 
 echo "$voice_close_body" | grep -q 'if !self.can_drive_voice_call()'    || rs19="$rs19 voice-close-not-authtype-gated"
 echo "$voice_close_body" | grep -q 'self.voice_call_request_timestamp.is_none()' || rs19="$rs19 voice-close-not-state-owned"
 echo "$voice_close_body" | grep -q 'if self.voice_calling {'            || rs19="$rs19 voice-close-global-reset-not-owner-gated"
-ipc_voice_close_body=$(awk '/ipc::Data::CloseVoiceCall/,/ipc::Data::CmFileResponse/' "$conn")
+ipc_voice_close_body=$(awk '/ipc::Data::CloseVoiceCall\(_reason\)/,/_ => \{\}/' "$conn")
 echo "$ipc_voice_close_body" | grep -q 'if conn.close_voice_call().await' || rs19="$rs19 cm-voice-close-not-result-gated"
 on_close_voice_reset=$(awk '/async fn on_close/,/log::info!/' "$conn")
 echo "$on_close_voice_reset" | grep -q 'if self.voice_calling {'        || rs19="$rs19 connection-close-global-voice-reset-not-owner-gated"

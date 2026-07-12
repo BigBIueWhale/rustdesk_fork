@@ -793,7 +793,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   service connection. Windows `_service` uses the same capped constructor and moves one-request handling into a
   four-slot bounded worker; the service loop remains available for session maintenance, while close still requires
   the LocalSystem pipe-client token and password/RDP requests still require the existing elevated-client checks.
-  Linux, macOS, and Windows now share `SERVICE_OWNED_PASSWORD_MAX_BYTES = 4096`, checked before polkit,
+  Linux, macOS, and Windows now share `UNATTENDED_PASSWORD_MAX_BYTES = 4096`, checked before polkit,
   Authorization Services verification, named-pipe elevation checks, hashing, or service-to-main password forwarding.
   Verification closure: `scripts/verify.sh` runs the codec over-cap rejection test plus IPC constructor/envelope/value
   cap tests and gates protected service client/server constructor wiring, one-shot read-timeout shape, Unix and Windows
@@ -2031,6 +2031,22 @@ unreachable and a source/test/AST gate prevents reintroduction.
   same-executable accept proof, trusted fixed `pkcheck`, `auth_admin` policy, and service-owned receiver commit proof.
   Verification closure: `scripts/verify.sh` gates the live peer-identity subject, the start-time accessor, the
   requirements/ledger disposition, and absence of the old direct `linux_proc_start_time(peer_pid)` subject assembly.
+- **R-S11e-16 — permanent-password provisioning ingress — CLOSED 2026-07-12.** Platforms: Linux, macOS,
+  and Windows desktop CLI, including installed-service and user-owned headless operation. Endpoint/action:
+  `rustdesk --password` and the value passed into the existing typed owner-aware password setter. Boundary:
+  operator-entered CPace owner credential ↔ OS process metadata, shell history, and local process observers.
+  Attack surface closed: the permanent password is no longer accepted as a positional process argument. Bare
+  `--password` reads and confirms the value with echo disabled from the controlling terminal;
+  `--password-stdin` is the only noninteractive ingress, refuses a terminal stdin, and reads one bounded UTF-8
+  line. Both command forms require exact command shape, preserve an explicit empty value as credential removal,
+  and enforce the common 4096-byte unattended-password ceiling before the password reaches IPC or Argon2id.
+  A positional value on either command is a nonzero usage failure and never reaches
+  `ipc::set_permanent_password`; no argv, environment-variable, compatibility, or local-persistence fallback
+  remains. The user-owned/service-owned routing and receiver-side authorization model is unchanged. Verification
+  closure: `core_main::tests` covers exact command parsing, positional-secret rejection, empty/CRLF/no-newline
+  stdin handling, UTF-8 rejection, and the byte ceiling; `scripts/verify.sh` gates the prompt/confirmation,
+  noninteractive TTY refusal, bounded reader, no positional extraction, safe deployment/smoke commands, and
+  Appendix C #121; `scripts/apple-conform-check.sh` mirrors the desktop CLI source and documentation gates.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -3376,14 +3392,15 @@ LaunchAgent plist command-shape proof, R-S11e-2 client-side `_service` server au
   authorization-before-password service requests with no pending plaintext cache; the Linux helper-provenance
   follow-up added R-S11e-3 canonical target binding for fixed helper launches; the Windows elevated command-file
   follow-up added R-S11d-32 identity and content binding across the close/reopen handoff; the 2026-07-12
-  service-resource follow-up added R-S11c-26's bounded one-request protected service IPC envelope. The other
+  service-resource follow-up added R-S11c-26's bounded one-request protected service IPC envelope; the password-input
+  follow-up added R-S11e-16's no-argv hidden-terminal/bounded-stdin provisioning contract. The other
 requirements.html edits are disclosure/inventory updates, and the
 native-codec-watch ledger is re-confirmed valid against each.
 The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-2760a4128510a283236533412ad89c50760208e472038290dc9a440a1fc8def9  requirements.html
+8e481c65aa576818c71f760c9b8a79007186a70479ba72b5545abb34d9e3dee0  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

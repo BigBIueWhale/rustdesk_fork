@@ -108,8 +108,8 @@ const MACOS_OPEN: &str = "/usr/bin/open";
 const MACOS_LAUNCHCTL: &str = "/bin/launchctl";
 pub(crate) const SERVICE_IPC_MAX_FRAME_BYTES: usize = 32 * 1024;
 pub(crate) const SERVICE_IPC_REQUEST_TIMEOUT_MS: u64 = 1_000;
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-const SERVICE_OWNED_PASSWORD_MAX_BYTES: usize = 4096;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) const UNATTENDED_PASSWORD_MAX_BYTES: usize = 4096;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 const SERVICE_IPC_TRANSACTION_BUDGET: usize = 4;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -1848,7 +1848,7 @@ async fn commit_service_owned_unattended_password_change(value: String) -> Resul
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn service_owned_password_value_is_valid(platform: &str, password: &str) -> bool {
-    if password.len() > SERVICE_OWNED_PASSWORD_MAX_BYTES {
+    if password.len() > UNATTENDED_PASSWORD_MAX_BYTES {
         log::warn!(
             "Rejected {platform} service-owned password request with oversized password value"
         );
@@ -4276,7 +4276,7 @@ mod test {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     #[test]
     fn protected_service_frame_cap_covers_escaped_password_request() {
-        let password = "\u{0001}".repeat(SERVICE_OWNED_PASSWORD_MAX_BYTES);
+        let password = "\u{0001}".repeat(UNATTENDED_PASSWORD_MAX_BYTES);
         let frame =
             serde_json::to_vec(&Data::RequestServiceOwnedUnattendedPasswordChange(password))
                 .unwrap();
@@ -4287,7 +4287,7 @@ mod test {
     #[cfg(target_os = "macos")]
     #[test]
     fn protected_service_frame_cap_covers_macos_password_request() {
-        let password = "\u{0001}".repeat(SERVICE_OWNED_PASSWORD_MAX_BYTES);
+        let password = "\u{0001}".repeat(UNATTENDED_PASSWORD_MAX_BYTES);
         let frame = serde_json::to_vec(&Data::RequestMacosServiceOwnedUnattendedPasswordChange {
             password,
             authorization: vec![255; 1024],
@@ -4302,11 +4302,11 @@ mod test {
     fn service_owned_password_value_limit_is_common() {
         assert!(service_owned_password_value_is_valid(
             "test",
-            &"a".repeat(SERVICE_OWNED_PASSWORD_MAX_BYTES)
+            &"a".repeat(UNATTENDED_PASSWORD_MAX_BYTES)
         ));
         assert!(!service_owned_password_value_is_valid(
             "test",
-            &"a".repeat(SERVICE_OWNED_PASSWORD_MAX_BYTES + 1)
+            &"a".repeat(UNATTENDED_PASSWORD_MAX_BYTES + 1)
         ));
     }
 

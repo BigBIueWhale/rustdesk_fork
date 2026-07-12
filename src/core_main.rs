@@ -7,8 +7,88 @@ use crate::platform::breakdown_callback;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::platform::register_breakdown_handler;
 use hbb_common::{config, log};
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use std::io::{BufRead, IsTerminal, Read as _};
 #[cfg(windows)]
 use tauri_winrt_notification::{Duration, Sound, Toast};
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const PASSWORD_CLI_USAGE: &str = "usage: rustdesk --password | rustdesk --password-stdin";
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PasswordCliInput {
+    Terminal,
+    Stdin,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn password_cli_input(args: &[String]) -> Result<PasswordCliInput, &'static str> {
+    match args.first().map(String::as_str) {
+        Some("--password") if args.len() == 1 => Ok(PasswordCliInput::Terminal),
+        Some("--password-stdin") if args.len() == 1 => Ok(PasswordCliInput::Stdin),
+        _ => Err(PASSWORD_CLI_USAGE),
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn validate_unattended_password_input(password: String) -> Result<String, String> {
+    if password.len() > crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES {
+        return Err(format!(
+            "permanent password exceeds {} bytes",
+            crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES
+        ));
+    }
+    Ok(password)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn read_unattended_password_line(reader: &mut impl BufRead) -> Result<String, String> {
+    let mut bytes = Vec::with_capacity(crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES + 2);
+    let mut bounded = reader.take((crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES + 2) as u64);
+    let read = bounded
+        .read_until(b'\n', &mut bytes)
+        .map_err(|err| format!("failed to read permanent password from stdin: {err}"))?;
+    if read == 0 {
+        return Err("stdin ended before a permanent password line was read".to_owned());
+    }
+    if bytes.last() == Some(&b'\n') {
+        bytes.pop();
+        if bytes.last() == Some(&b'\r') {
+            bytes.pop();
+        }
+    }
+    if bytes.len() > crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES {
+        return Err(format!(
+            "permanent password exceeds {} bytes",
+            crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES
+        ));
+    }
+    String::from_utf8(bytes).map_err(|_| "permanent password is not valid UTF-8".to_owned())
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn read_unattended_password_from_stdin() -> Result<String, String> {
+    let stdin = std::io::stdin();
+    if stdin.is_terminal() {
+        return Err("--password-stdin requires redirected standard input".to_owned());
+    }
+    read_unattended_password_line(&mut stdin.lock())
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn prompt_unattended_password() -> Result<String, String> {
+    let password = rpassword::prompt_password("New permanent password: ")
+        .map_err(|err| format!("failed to read permanent password from the terminal: {err}"))?;
+    let password = validate_unattended_password_input(password)?;
+    let confirmation = rpassword::prompt_password("Confirm permanent password: ")
+        .map_err(|err| format!("failed to read password confirmation from the terminal: {err}"))?;
+    let confirmation = validate_unattended_password_input(confirmation)?;
+    if password != confirmation {
+        return Err("permanent password confirmation does not match".to_owned());
+    }
+    Ok(password)
+}
 
 /// shared by flutter and sciter main function
 ///
@@ -339,23 +419,38 @@ pub fn core_main() -> Option<Vec<String>> {
             return None;
         // R-X4: `--import-config <path>` overwrote the entire config (trust anchor +
         // servers) from an attacker-suppliable file with no is_root gate — excised.
-        } else if args[0] == "--password" {
+        } else if matches!(args[0].as_str(), "--password" | "--password-stdin") {
+            let input = match password_cli_input(&args) {
+                Ok(input) => input,
+                Err(err) => {
+                    eprintln!("{err}");
+                    std::process::exit(2);
+                }
+            };
             if is_cli_setting_change_disabled() {
-                println!("Settings are disabled!");
-                return None;
+                eprintln!("Settings are disabled!");
+                std::process::exit(1);
             }
             if config::Config::is_disable_change_permanent_password() {
-                println!("Changing permanent password is disabled!");
-                return None;
+                eprintln!("Changing permanent password is disabled!");
+                std::process::exit(1);
             }
-            if args.len() == 2 {
-                let password = args[1].to_owned();
-                if let Err(err) = crate::ipc::set_permanent_password(password) {
-                    println!("{err}");
-                } else {
-                    println!("Done!");
+            let password = match input {
+                PasswordCliInput::Terminal => prompt_unattended_password(),
+                PasswordCliInput::Stdin => read_unattended_password_from_stdin(),
+            };
+            let password = match password {
+                Ok(password) => password,
+                Err(err) => {
+                    eprintln!("{err}");
+                    std::process::exit(1);
                 }
+            };
+            if let Err(err) = crate::ipc::set_permanent_password(password) {
+                eprintln!("{err}");
+                std::process::exit(1);
             }
+            println!("Done!");
             return None;
         } else if args[0] == "--get-id" {
             println!("{}", crate::ipc::get_id());
@@ -661,10 +756,67 @@ mod tests {
             "--tray",
             "--cm",
             "--password",
+            "--password-stdin",
             "--connect",
         ] {
             assert!(!is_user_main_ipc_scope_cli_command(&args(&[command])));
         }
+    }
+
+    #[test]
+    fn password_cli_rejects_positional_secrets() {
+        assert_eq!(
+            password_cli_input(&args(&["--password"])),
+            Ok(PasswordCliInput::Terminal)
+        );
+        assert_eq!(
+            password_cli_input(&args(&["--password-stdin"])),
+            Ok(PasswordCliInput::Stdin)
+        );
+        assert_eq!(
+            password_cli_input(&args(&["--password", "secret"])),
+            Err(PASSWORD_CLI_USAGE)
+        );
+        assert_eq!(
+            password_cli_input(&args(&["--password-stdin", "secret"])),
+            Err(PASSWORD_CLI_USAGE)
+        );
+    }
+
+    #[test]
+    fn password_stdin_reader_is_line_bounded_and_utf8_only() {
+        use std::io::Cursor;
+
+        assert_eq!(
+            read_unattended_password_line(&mut Cursor::new(b"secret\n")).unwrap(),
+            "secret"
+        );
+        assert_eq!(
+            read_unattended_password_line(&mut Cursor::new(b"secret\r\n")).unwrap(),
+            "secret"
+        );
+        assert_eq!(
+            read_unattended_password_line(&mut Cursor::new(b"secret")).unwrap(),
+            "secret"
+        );
+        assert_eq!(
+            read_unattended_password_line(&mut Cursor::new(b"\n")).unwrap(),
+            ""
+        );
+        assert!(read_unattended_password_line(&mut Cursor::new(Vec::<u8>::new())).is_err());
+        assert!(read_unattended_password_line(&mut Cursor::new(vec![0xff, b'\n'])).is_err());
+
+        let maximum = "a".repeat(crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES);
+        assert_eq!(
+            read_unattended_password_line(&mut Cursor::new(format!("{maximum}\n").into_bytes()))
+                .unwrap(),
+            maximum
+        );
+        let oversized = "a".repeat(crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES + 1);
+        assert!(read_unattended_password_line(&mut Cursor::new(
+            format!("{oversized}\n").into_bytes()
+        ))
+        .is_err());
     }
 }
 

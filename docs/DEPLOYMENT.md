@@ -59,10 +59,10 @@ not listen until you complete step 2.
 ### 2a. Set the host password (the CPace credential)
 
 ```sh
-sudo rustdesk --password '<a-strong-password>'
+sudo rustdesk --password
 ```
 
-This is the shared secret a viewer must know. It is stored only as a salted
+Enter and confirm the shared secret at the hidden terminal prompts. It is stored only as a salted
 password-equivalent, never in cleartext. Without it the service **parks** — it stays
 up but binds no listener (logging *"no permanent password set — the direct listener is
 PARKED"*) and refuses every connection until a password is set.
@@ -147,7 +147,7 @@ A correctly-deployed host shows a single `0.0.0.0:21118` TCP LISTEN line and no 
   logged at error level with its R-ID.
 - **Do not clone/migrate the box to different hardware:** the permanent-password credential is
   encrypted at rest under the machine's UUID, so a disk clone / VM migration / hardware swap makes it
-  unreadable and the host fail-closes (refuses to listen) until you re-run `sudo rustdesk --password ...`
+  unreadable and the host fail-closes (refuses to listen) until you re-run `sudo rustdesk --password`
   on the new hardware. This is intentional — the at-rest credential is bound to the box.
 - **Android/Windows clients** connect to the same `<host-ip>:21118` with the same
   password (no fingerprint to pin). Using an **Android phone as the controlled host** is a

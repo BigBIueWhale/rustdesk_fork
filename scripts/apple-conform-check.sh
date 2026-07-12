@@ -294,8 +294,8 @@ fi
 if grep -qE 'MACOS_SERVICE_OWNED_PASSWORD_PENDING|MACOS_SERVICE_OWNED_PASSWORD_MAX_PENDING|MacosServiceOwnedPasswordRequest|macos_store_service_owned_password_request|macos_take_service_owned_password_request|macos_schedule_service_owned_password_request_expiry|MACOS_SERVICE_OWNED_PASSWORD_REQUEST_TTL|password: Option<String>' "$REPO/src/ipc.rs"; then
   r_s11b2="$r_s11b2 macos-service-password-pending-cache-present"
 fi
-grep -q 'const SERVICE_OWNED_PASSWORD_MAX_BYTES: usize = 4096;' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 service-password-value-cap-missing"
-grep -q 'password.len() > SERVICE_OWNED_PASSWORD_MAX_BYTES' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 service-password-value-cap-not-enforced"
+grep -q 'const UNATTENDED_PASSWORD_MAX_BYTES: usize = 4096;' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 service-password-value-cap-missing"
+grep -q 'password.len() > UNATTENDED_PASSWORD_MAX_BYTES' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 service-password-value-cap-not-enforced"
 grep -q 'service_owned_password_value_is_valid("macOS", &password)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-value-cap-not-wired"
 grep -q 'handle_macos_service_owned_unattended_password_request' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-request-handler-missing"
 grep -q 'Config::set_permanent_password(&password)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-request-not-writing-root-store"
@@ -615,6 +615,30 @@ if [ -n "$r_s11b2" ]; then
   rc=1
 else
   note "ok  R-S11b-2/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password config writes are absent; typed user-owned password/options writes are denied by source policy; trust-anchor/proxy credential option keys are pinned empty; trusted-device/key-confirmation writers are absent; macOS service-owned password provisioning admits _service only for the audit-token trusted installed app talking to the audit-token trusted PrivilegedHelperTools helper, offloads budgeted receiver-side blocking proof from the _service accept loop before the first read, client-authenticates the connected _service server as the root trusted helper, obtains the custom nonshared timeout-zero Authorization Services right before sending the password, verifies the external form noninteractively in the LaunchDaemon, writes the authorized value directly into the root LaunchDaemon credential store without a pending secret cache, rejects the old main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after audit-token app proof, exact live argv, and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied"
+fi
+
+echo "== (2b-ii-a) R-S11e-16 macOS password provisioning secret is not accepted in argv =="
+r_s11e16=
+pw_cli_helpers=$(awk '/const PASSWORD_CLI_USAGE/,/pub fn core_main\(\)/' "$REPO/src/core_main.rs")
+pw_arm=$(awk '/matches!\(args\[0\]\.as_str\(\), "--password"/,/args\[0\] == "--get-id"/' "$REPO/src/core_main.rs" | grep -vE '^[[:space:]]*//')
+echo "$pw_cli_helpers" | grep -Fq 'Some("--password") if args.len() == 1 => Ok(PasswordCliInput::Terminal)' || r_s11e16="$r_s11e16 terminal-command-not-exact"
+echo "$pw_cli_helpers" | grep -Fq 'Some("--password-stdin") if args.len() == 1 => Ok(PasswordCliInput::Stdin)' || r_s11e16="$r_s11e16 stdin-command-not-exact"
+echo "$pw_cli_helpers" | grep -Fq '_ => Err(PASSWORD_CLI_USAGE)' || r_s11e16="$r_s11e16 extra-argument-rejection-missing"
+[ "$(echo "$pw_cli_helpers" | grep -c 'rpassword::prompt_password')" -eq 2 ] || r_s11e16="$r_s11e16 hidden-prompt-confirmation-missing"
+echo "$pw_cli_helpers" | grep -Fq 'if stdin.is_terminal()' || r_s11e16="$r_s11e16 password-stdin-terminal-refusal-missing"
+echo "$pw_cli_helpers" | grep -Fq 'reader.take((crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES + 2) as u64)' || r_s11e16="$r_s11e16 password-stdin-bounded-read-missing"
+echo "$pw_cli_helpers" | grep -Eq 'std::env|var_os|var\(' && r_s11e16="$r_s11e16 password-environment-input-present"
+echo "$pw_arm" | grep -Eq 'args\[[[:space:]]*1[[:space:]]*\]' && r_s11e16="$r_s11e16 positional-password-read-present"
+grep -q 'fn password_cli_rejects_positional_secrets' "$REPO/src/core_main.rs" || r_s11e16="$r_s11e16 positional-secret-test-missing"
+grep -Fq 'sudo rustdesk --password' "$REPO/docs/DEPLOYMENT.md" || r_s11e16="$r_s11e16 safe-deployment-command-missing"
+grep -Eq -- 'sudo rustdesk --password[[:space:]]+[^`[:space:]]' "$REPO/docs/DEPLOYMENT.md" && r_s11e16="$r_s11e16 password-valued-deployment-command-present"
+grep -Fq 'Permanent-password provisioning through visible process arguments' "$REPO/requirements.html" || r_s11e16="$r_s11e16 requirements-disposition-missing"
+grep -Fq 'R-S11e-16 — permanent-password provisioning ingress' "$REPO/HARDENING_STATUS.md" || r_s11e16="$r_s11e16 ledger-disposition-missing"
+if [ -n "$r_s11e16" ]; then
+  echo "  FAIL R-S11e-16 macOS password provisioning ingress:$r_s11e16"
+  rc=1
+else
+  note "ok  R-S11e-16 macOS password provisioning uses hidden TTY confirmation or bounded redirected stdin; positional secrets are rejected"
 fi
 
 echo "== (2b-iii) R-S11c-4a macOS CM pre-login filesystem IPC rejected =="

@@ -20,7 +20,7 @@
 #     listener on the pinned port (21118) and ZERO UDP — the §17 direct-IP/no-UDP thesis, empirical;
 #   - R-A4 (runtime socket self-check) : `assert_socket_surface` confirms the same from inside;
 #   - R-T9 : SIGTERM -> "graceful shutdown initiated" -> "complete — exiting 0";
-#   - R-D8 / R-D2 (real --password provisioning) : the PRODUCTION `--password` CLI run against a
+#   - R-D8 / R-D2 (real password provisioning) : the production `--password-stdin` CLI run against a
 #     user-owned live --server (2b root-owned, 2c non-root same-uid) provisions over uid-scoped
 #     main IPC and CLEANLY set-and-exits (no hang); the IPC-provisioned credential then keys a
 #     session and the old one is rejected (the headless deploy contract haggai's setup.sh leans on);
@@ -28,8 +28,8 @@
 #     appears in a tcpdump of the loopback — the keyed session bytes carry no recoverable plaintext.
 #
 # Most stages seed the permanent password via the TEST-ONLY `examples/seed_password` (a direct Config
-# write) for speed; stage (2b) additionally exercises the PRODUCTION `--password` CLI end-to-end by
-# installing the binary to the .deb path (/usr/share/rustdesk) so its install-privilege gate is met.
+# write) for speed; stage (2b) additionally exercises the production `--password-stdin` CLI end-to-end by
+# installing the binary at the same path used by the Debian package.
 #
 # Usage:  scripts/smoke-server.sh           (the fast default path)
 #         SMOKE_DECAY=1 scripts/smoke-server.sh   (also runs stage 10 — the R-A8 limiter-DECAY proof,
@@ -108,11 +108,11 @@ echo "$out2" | grep -q 'socket surface verified — exactly one TCP v4:21118, ze
 echo "$out2" | grep -q 'R-T9: graceful shutdown complete — exiting 0' \
   || { echo "  FAIL R-T9: no graceful SIGTERM shutdown"; rc=1; }
 
-echo "== (2b) R-D8/R-D2: the REAL 'rustdesk --password' CLI provisions over user-owned uid-scoped IPC and cleanly set-and-exits =="
+echo "== (2b) R-D8/R-D2: the REAL 'rustdesk --password-stdin' CLI provisions over user-owned uid-scoped IPC and cleanly set-and-exits =="
 # R-D8 MUST: "R-B4's smoke-test MUST add a provisioning check on the .deb run headless: a clean
-# --password set-and-exit, then a keyed Direct-IP session." The other stages seed via the test-only
+# password set-and-exit, then a keyed Direct-IP session." The other stages seed via the test-only
 # examples/seed_password (a direct Config write) for speed, which BYPASSES the production path. This
-# stage runs the REAL `--password` CLI as root against a root-owned manual --server
+# stage runs the REAL noninteractive `--password-stdin` CLI as root against a root-owned manual --server
 # (the non-root same-uid path is stage 2c) — so it exercises the typed user-owned password IPC END-TO-END:
 # SetUserOwnedPermanentPassword, the 1s ACK wait, user-owned storage sync, and the
 # current-thread-runtime CLEAN TEARDOWN — the "set-and-exit" stock RustDesk lacked.
@@ -125,7 +125,7 @@ out2b=$("${RUN[@]}" bash -c '
   LD_PRELOAD=/work/target/smoke-bind-loopback.so /usr/share/rustdesk/rustdesk --server >/tmp/srv.log 2>&1 & SRV=$!
   sleep 8
   # timeout so a HANG (the stock "never returns" regression R-D2 fixes) FAILS the test, not wedges it.
-  timeout 15 /usr/share/rustdesk/rustdesk --password "Changed-Via-Ipc-Pw-9" >/tmp/pw.out 2>&1
+  printf "%s\n" "Changed-Via-Ipc-Pw-9" | timeout 15 /usr/share/rustdesk/rustdesk --password-stdin >/tmp/pw.out 2>&1
   echo "PW_EXIT=$?"
   echo "PW_OUT=[$(tr -d "\n" </tmp/pw.out)]"
   # Proof the round-trip reached the daemon, which APPLIED + PERSISTED it: the NEW credential keys a
@@ -136,18 +136,18 @@ out2b=$("${RUN[@]}" bash -c '
 ' || true)
 echo "$out2b"
 echo "$out2b" | grep -q 'PW_EXIT=0' \
-  || { echo "  FAIL R-D2: the real --password CLI did not cleanly exit 0 within the timeout (hang/error — the stock never-returns regression)"; rc=1; }
+  || { echo "  FAIL R-D2: the real --password-stdin CLI did not cleanly exit 0 within the timeout (hang/error — the stock never-returns regression)"; rc=1; }
 echo "$out2b" | grep -q 'Done!' \
-  || { echo "  FAIL R-D2: --password did not confirm success (no 'Done!') — the daemon did not ACK the IPC set"; rc=1; }
+  || { echo "  FAIL R-D2: --password-stdin did not confirm success (no 'Done!') — the daemon did not ACK the IPC set"; rc=1; }
 echo "$out2b" | grep -q 'KEYED_NEW: keying ok=true' \
   || { echo "  FAIL R-D8: the IPC-provisioned password is not usable — a CPace probe could not key with it"; rc=1; }
 echo "$out2b" | grep -q 'KEYED_OLD: keying ok=false' \
-  || { echo "  FAIL R-D8: the old password still keys — the --password change did not take effect over the daemon IPC"; rc=1; }
+  || { echo "  FAIL R-D8: the old password still keys — the --password-stdin change did not take effect over the daemon IPC"; rc=1; }
 
-echo "== (2c) R-D8: 'rustdesk --password' provisions over SAME-UID user-owned IPC as a NON-ROOT owner (no root, no /proc scan, no CAP_SYS_PTRACE) =="
-# R-D8: production --password is a user-owned IPC request, not a root/install-path authority check. An unprivileged
+echo "== (2c) R-D8: 'rustdesk --password-stdin' provisions over SAME-UID user-owned IPC as a NON-ROOT owner (no root, no /proc scan, no CAP_SYS_PTRACE) =="
+# R-D8: production --password-stdin is a user-owned IPC request, not a root/install-path authority check. An unprivileged
 # owner (uid 4000 here, like haggai_computer's uid-1000 supervisord `user`) runs BOTH --server and
-# --password as ITSELF: set_user_owned_permanent_password connects to its OWN per-uid IPC (/tmp/<app>-<uid>/ipc)
+# --password-stdin as ITSELF: set_user_owned_permanent_password connects to its OWN per-uid IPC (/tmp/<app>-<uid>/ipc)
 # directly — no geteuid()==0 /proc scan, hence no CAP_SYS_PTRACE. The IPC's per-uid 0600 + SO_PEERCRED
 # (R-S11) is the real authorization for this user-owned mode. (Incidentally
 # also proves the B1 RLIMIT_NOFILE self-enforcement runs cleanly under a non-root --server.)
@@ -162,7 +162,7 @@ echo "UID=$(id -u)"
 ./target/debug/examples/seed_password Initial-Seed-Pw-000 >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
 LD_PRELOAD=/work/target/smoke-bind-loopback.so /usr/share/rustdesk/rustdesk --server >/tmp/srv2c.log 2>&1 &
 sleep 8
-timeout 15 /usr/share/rustdesk/rustdesk --password Changed-Same-Uid-Pw-9 >/tmp/pw2c.out 2>&1
+printf "%s\n" Changed-Same-Uid-Pw-9 | timeout 15 /usr/share/rustdesk/rustdesk --password-stdin >/tmp/pw2c.out 2>&1
 echo "PW_EXIT=$?"
 echo "PW_OUT=[$(tr -d "\n" </tmp/pw2c.out)]"
 echo "KEYED_NEW: $(./target/debug/examples/probe_client 127.0.0.1:21118 Changed-Same-Uid-Pw-9 ok 2>&1 | grep -oE "keying ok=(true|false)")"
@@ -176,9 +176,9 @@ echo "$out2c"
 echo "$out2c" | grep -q 'UID=4000' \
   || { echo "  FAIL R-D8: stage (2c) did not run as the intended non-root uid (4000)"; rc=1; }
 echo "$out2c" | grep -q 'PW_EXIT=0' \
-  || { echo "  FAIL R-D8: same-uid --password did not cleanly exit 0"; rc=1; }
+  || { echo "  FAIL R-D8: same-uid --password-stdin did not cleanly exit 0"; rc=1; }
 echo "$out2c" | grep -q 'Done!' \
-  || { echo "  FAIL R-D8: same-uid --password did not confirm 'Done!' — the daemon did not ACK the non-root IPC set"; rc=1; }
+  || { echo "  FAIL R-D8: same-uid --password-stdin did not confirm 'Done!' — the daemon did not ACK the non-root IPC set"; rc=1; }
 echo "$out2c" | grep -q 'KEYED_NEW: keying ok=true' \
   || { echo "  FAIL R-D8: the same-uid-provisioned password is not usable — a CPace probe could not key with it"; rc=1; }
 echo "$out2c" | grep -q 'KEYED_OLD: keying ok=false' \
@@ -418,7 +418,7 @@ DECAY_NOTE=" + R-A8 limiter-decay (tripped block self-heals after the 60s window
 fi
 
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 user-owned --password IPC provisioning (clean set-and-exit; root-owned + non-root same-uid) + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S6 keyed-edge authorization (full session) + R-F1/R-D6/R-S5 port-forward/RDP tunnel relays end-to-end inside the seal + R-F1/R-F2 file transfer (keyed FileTransfer login -> non-empty process-owner PeerInfo.username on a headless unix box, never the 'No active console user' refusal) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
+  echo "SMOKE OK: R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 user-owned --password-stdin IPC provisioning (clean set-and-exit; root-owned + non-root same-uid) + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S6 keyed-edge authorization (full session) + R-F1/R-D6/R-S5 port-forward/RDP tunnel relays end-to-end inside the seal + R-F1/R-F2 file transfer (keyed FileTransfer login -> non-empty process-owner PeerInfo.username on a headless unix box, never the 'No active console user' refusal) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

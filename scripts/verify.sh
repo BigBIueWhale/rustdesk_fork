@@ -2277,8 +2277,8 @@ fi
 if grep -qE 'MACOS_SERVICE_OWNED_PASSWORD_PENDING|MACOS_SERVICE_OWNED_PASSWORD_MAX_PENDING|MacosServiceOwnedPasswordRequest|macos_store_service_owned_password_request|macos_take_service_owned_password_request|macos_schedule_service_owned_password_request_expiry|MACOS_SERVICE_OWNED_PASSWORD_REQUEST_TTL|password: Option<String>' src/ipc.rs; then
   r_s11b2="$r_s11b2 macos-service-password-pending-cache-present"
 fi
-grep -q 'const SERVICE_OWNED_PASSWORD_MAX_BYTES: usize = 4096;' src/ipc.rs         || r_s11b2="$r_s11b2 service-password-value-cap-missing"
-grep -q 'password.len() > SERVICE_OWNED_PASSWORD_MAX_BYTES' src/ipc.rs             || r_s11b2="$r_s11b2 service-password-value-cap-not-enforced"
+grep -q 'const UNATTENDED_PASSWORD_MAX_BYTES: usize = 4096;' src/ipc.rs            || r_s11b2="$r_s11b2 service-password-value-cap-missing"
+grep -q 'password.len() > UNATTENDED_PASSWORD_MAX_BYTES' src/ipc.rs                || r_s11b2="$r_s11b2 service-password-value-cap-not-enforced"
 grep -q 'service_owned_password_value_is_valid("Linux", &value)' src/ipc.rs        || r_s11b2="$r_s11b2 linux-service-password-value-cap-not-wired"
 grep -q 'service_owned_password_value_is_valid("macOS", &password)' src/ipc.rs     || r_s11b2="$r_s11b2 macos-service-password-value-cap-not-wired"
 grep -q 'service_owned_password_value_is_valid("Windows", &value)' src/ipc.rs      || r_s11b2="$r_s11b2 windows-service-password-value-cap-not-wired"
@@ -3864,15 +3864,44 @@ else
   echo "  ok  R-S11/R-A6 handle() has only typed permanent-password config writes with explicit authority; generic Config writes, Socks IPC, and whole-config IPC are absent"
 fi
 
-# R-D8/R-S11b: the --password CLI remains a typed headless automation path, but path/root checks are not
-# authority. It dispatches to the same owner-aware permanent-password operation as the GUI: user-owned servers
-# accept the user-owned typed request; Linux installed-service mode goes through polkit + root-service commit;
-# Windows installed-service mode goes through elevated pipe-client proof + LocalSystem service commit.
-pw_arm=$(awk '/args\[0\] == "--password"/,/args\[0\] == "--get-id"/' src/core_main.rs | grep -vE '^[[:space:]]*//')
+# R-D8/R-S11b: both safe password-input modes dispatch to the same owner-aware permanent-password operation as
+# the GUI. Path/root checks are not authority: user-owned servers accept the user-owned typed request; installed
+# service mode uses the platform-specific privileged operation.
+pw_arm=$(awk '/matches!\(args\[0\]\.as_str\(\), "--password"/,/args\[0\] == "--get-id"/' src/core_main.rs | grep -vE '^[[:space:]]*//')
 if echo "$pw_arm" | grep -q 'set_permanent_password' && ! echo "$pw_arm" | grep -q 'is_root' && ! echo "$pw_arm" | grep -q 'is_installed'; then
-  echo "  ok  R-D8/R-S11b --password uses the owner-aware typed password operation, not root-gated or install-path-gated"
+  echo "  ok  R-D8/R-S11b safe password input uses the owner-aware typed operation, not root-gated or install-path-gated"
 else
-  echo "  FAIL R-D8/R-S11b: the --password arm is missing set_permanent_password or still uses root/install-path authority"; rc=1
+  echo "  FAIL R-D8/R-S11b: password CLI dispatch is missing set_permanent_password or still uses root/install-path authority"; rc=1
+fi
+
+echo "== (3b-v) R-S11e-16 permanent-password CLI never accepts a secret in argv =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config core_main::tests --color never
+r_s11e16=
+pw_cli_helpers=$(awk '/const PASSWORD_CLI_USAGE/,/pub fn core_main\(\)/' src/core_main.rs)
+grep -Fq 'usage: rustdesk --password | rustdesk --password-stdin' src/core_main.rs || r_s11e16="$r_s11e16 exact-safe-command-usage-missing"
+echo "$pw_cli_helpers" | grep -Fq 'Some("--password") if args.len() == 1 => Ok(PasswordCliInput::Terminal)' || r_s11e16="$r_s11e16 terminal-command-not-exact"
+echo "$pw_cli_helpers" | grep -Fq 'Some("--password-stdin") if args.len() == 1 => Ok(PasswordCliInput::Stdin)' || r_s11e16="$r_s11e16 stdin-command-not-exact"
+echo "$pw_cli_helpers" | grep -Fq '_ => Err(PASSWORD_CLI_USAGE)' || r_s11e16="$r_s11e16 extra-argument-rejection-missing"
+[ "$(echo "$pw_cli_helpers" | grep -c 'rpassword::prompt_password')" -eq 2 ] || r_s11e16="$r_s11e16 hidden-prompt-confirmation-missing"
+echo "$pw_cli_helpers" | grep -Fq 'if stdin.is_terminal()' || r_s11e16="$r_s11e16 password-stdin-terminal-refusal-missing"
+echo "$pw_cli_helpers" | grep -Fq 'reader.take((crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES + 2) as u64)' || r_s11e16="$r_s11e16 password-stdin-bounded-read-missing"
+echo "$pw_cli_helpers" | grep -Fq 'String::from_utf8(bytes)' || r_s11e16="$r_s11e16 password-stdin-utf8-validation-missing"
+echo "$pw_cli_helpers" | grep -Eq 'std::env|var_os|var\(' && r_s11e16="$r_s11e16 password-environment-input-present"
+echo "$pw_arm" | grep -Fq 'PasswordCliInput::Terminal => prompt_unattended_password()' || r_s11e16="$r_s11e16 terminal-input-not-dispatched"
+echo "$pw_arm" | grep -Fq 'PasswordCliInput::Stdin => read_unattended_password_from_stdin()' || r_s11e16="$r_s11e16 stdin-input-not-dispatched"
+echo "$pw_arm" | grep -Eq 'args\[[[:space:]]*1[[:space:]]*\]' && r_s11e16="$r_s11e16 positional-password-read-present"
+grep -q 'fn password_cli_rejects_positional_secrets' src/core_main.rs || r_s11e16="$r_s11e16 positional-secret-test-missing"
+grep -q 'fn password_stdin_reader_is_line_bounded_and_utf8_only' src/core_main.rs || r_s11e16="$r_s11e16 bounded-stdin-test-missing"
+grep -Fq 'sudo rustdesk --password' docs/DEPLOYMENT.md || r_s11e16="$r_s11e16 safe-deployment-command-missing"
+grep -Eq -- 'sudo rustdesk --password[[:space:]]+[^`[:space:]]' docs/DEPLOYMENT.md && r_s11e16="$r_s11e16 password-valued-deployment-command-present"
+[ "$(grep -c -- '--password-stdin' scripts/smoke-server.sh)" -ge 4 ] || r_s11e16="$r_s11e16 safe-headless-smoke-input-missing"
+grep -Eq -- 'rustdesk --password[[:space:]]+[^|[:space:]]' scripts/smoke-server.sh && r_s11e16="$r_s11e16 password-valued-smoke-command-present"
+grep -Fq 'Permanent-password provisioning through visible process arguments' requirements.html || r_s11e16="$r_s11e16 requirements-disposition-missing"
+grep -Fq 'R-S11e-16 — permanent-password provisioning ingress' HARDENING_STATUS.md || r_s11e16="$r_s11e16 ledger-disposition-missing"
+if [ -n "$r_s11e16" ]; then
+  echo "  FAIL R-S11e-16 password provisioning ingress:$r_s11e16"; rc=1
+else
+  echo "  ok  R-S11e-16 password provisioning uses hidden TTY confirmation or bounded redirected stdin; positional secrets are rejected"
 fi
 
 # (3c) File-transfer write-path safety (R-S8/R-A5): the receive-write opens are NO-FOLLOW

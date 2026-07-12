@@ -103,7 +103,6 @@ pub fn core_main() -> Option<Vec<String>> {
         return None;
     }
     let mut args = Vec::new();
-    let flutter_args = Vec::new();
     let mut i = 0;
     // R-X9 (slices 2-4): the --elevate / --run-as-system / --quick_support flags are
     // excised — the portable run-mode and interactive/token-theft elevation they drove
@@ -549,7 +548,7 @@ pub fn core_main() -> Option<Vec<String>> {
     }
     //_async_logger_holder.map(|x| x.flush());
     #[cfg(feature = "flutter")]
-    return Some(flutter_args);
+    return Some(Vec::new());
     #[cfg(not(feature = "flutter"))]
     return Some(args);
 }

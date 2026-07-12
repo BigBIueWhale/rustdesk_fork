@@ -304,4 +304,18 @@ mod tests {
         assert!(matches!(codec.decode(&mut buf), Ok(None)));
         assert!(buf.capacity() <= MAX_REASONABLE_CAPACITY);
     }
+
+    #[test]
+    fn decode_rejects_frame_over_max_packet_length_before_reserve() {
+        let mut codec = BytesCodec::new();
+        let mut buf = BytesMut::new();
+
+        codec.set_max_packet_length(8);
+        buf.put_u8(9 << 2);
+
+        let err = codec.decode(&mut buf).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(err.to_string(), "Too big packet");
+        assert!(buf.capacity() < MAX_PREALLOCATED_PAYLOAD_LEN);
+    }
 }

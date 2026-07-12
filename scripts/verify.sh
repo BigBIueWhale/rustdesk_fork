@@ -265,7 +265,7 @@ grep -B1 'pub(crate) fn main_channel_admits_state_mutation' src/ipc.rs | grep -q
 windows_main_peer_authority_block=$(awk '/let peer_authority = match &data/,/_ => MainIpcPeerAuthority::Ordinary/' src/ipc.rs)
 echo "$windows_main_peer_authority_block" | grep -q 'Data::Close' || r_s11="$r_s11 windows-close-peer-token-not-resolved"
 echo "$windows_main_peer_authority_block" | grep -q 'MainIpcPeerAuthority::for_windows_main_pipe(&stream)' || r_s11="$r_s11 windows-main-peer-token-helper-not-used"
-windows_service_close_block=$(awk '/ipc::Data::Close => \{/,/ipc::Data::Test =>/' src/platform/windows.rs)
+windows_service_close_block=$(awk '/ipc::Data::Close =>/,/ipc::Data::Test =>/' src/platform/windows.rs)
 echo "$windows_service_close_block" | grep -q 'windows_pipe_client_token_is_local_system' || r_s11="$r_s11 windows-service-close-not-localsystem-gated"
 echo "$windows_service_close_block" | grep -q 'Rejected Windows _service close: caller is not LocalSystem' || r_s11="$r_s11 windows-service-close-rejection-missing"
 linux_service_server_client_auth_block=$(awk '/pub\(crate\) fn ensure_linux_service_server_is_trusted/,/^}/' src/ipc/auth.rs)
@@ -2060,7 +2060,11 @@ if [ -n "$r_s11d29" ]; then echo "  FAIL R-S11d-29 Windows service-adjacent path
 # typed receiver-authorized traffic; it MUST NOT accept/return whole config, and stale-socket probing
 # must not read config.
 echo "== (3b-iii-b) IPC _service has no whole-config bus (R-S11b-1) =="
+"${RUN[@]}" cargo test -p hbb_common --lib bytes_codec::tests::decode_rejects_frame_over_max_packet_length_before_reserve --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::service_channel_rejects_config_bus --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::protected_service_connection_uses_bounded_frame_codec --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::protected_service_frame_cap_covers_escaped_password_request --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::service_owned_password_value_limit_is_common --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::macos_service_owned_launch_agent_plist_validation --color never
 r_s11b=
 grep -q 'pub(crate) fn service_channel_admits_message' src/ipc.rs || r_s11b="$r_s11b no-service-message-gate"
@@ -2070,11 +2074,29 @@ service_message_gate=$(awk '/pub\(crate\) fn service_channel_admits_message/,/^}
 echo "$service_message_gate" | grep -q 'Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. }' || r_s11b="$r_s11b macos-service-password-authorized-request-not-typed"
 echo "$service_message_gate" | grep -q 'Data::MacosServiceOwnedPasswordRightReadyRequest' || r_s11b="$r_s11b macos-service-password-right-readiness-request-not-typed"
 echo "$service_message_gate" | grep -q 'Data::MacosServiceOwnedPermanentPasswordSnapshotRequest' || r_s11b="$r_s11b macos-service-password-runtime-snapshot-not-typed"
-service_dispatch_block=$(awk '/service_channel_admits_message\(&data\)/,/continue;/' src/ipc.rs)
+service_dispatch_block=$(awk '/stream.next_timeout\(SERVICE_IPC_REQUEST_TIMEOUT_MS\)\.await/{flag=1} flag{print} flag && /return;/{exit}' src/ipc.rs)
 echo "$service_dispatch_block" | grep -q 'service_channel_admits_message(&data)' || r_s11b="$r_s11b service-loop-not-wired"
+echo "$service_dispatch_block" | grep -q 'stream.next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)' || r_s11b="$r_s11b service-read-not-deadline-bound"
+if echo "$service_dispatch_block" | grep -q 'loop {'; then
+  r_s11b="$r_s11b protected-service-still-persistent-loop"
+fi
 if echo "$service_dispatch_block" | grep -q 'Data::SyncConfig'; then
   r_s11b="$r_s11b service-loop-still-admits-syncconfig"
 fi
+grep -q 'pub(crate) const SERVICE_IPC_MAX_FRAME_BYTES: usize = 32 \* 1024;' src/ipc.rs || r_s11b="$r_s11b service-frame-cap-constant-missing"
+grep -q 'pub(crate) const SERVICE_IPC_REQUEST_TIMEOUT_MS: u64 = 1_000;' src/ipc.rs || r_s11b="$r_s11b service-read-timeout-constant-missing"
+grep -q 'fn try_acquire_service_ipc_transaction_slot' src/ipc.rs || r_s11b="$r_s11b unix-service-transaction-budget-missing"
+grep -q 'Connection::new_protected_service(stream)' src/ipc.rs || r_s11b="$r_s11b unix-service-accept-not-capped"
+grep -q 'ConnectionTmpl::new_protected_service(client)' src/ipc.rs || r_s11b="$r_s11b service-client-connect-not-capped"
+grep -q 'pub(crate) fn new_protected_service' src/ipc.rs || r_s11b="$r_s11b protected-service-constructor-missing"
+grep -q 'codec.set_max_packet_length(max_packet_length)' src/ipc.rs || r_s11b="$r_s11b protected-service-constructor-not-setting-codec-cap"
+grep -q 'ipc::Connection::new_protected_service(stream)' src/platform/windows.rs || r_s11b="$r_s11b windows-service-accept-not-capped"
+grep -q 'fn try_acquire_windows_service_ipc_transaction_slot' src/platform/windows.rs || r_s11b="$r_s11b windows-service-transaction-budget-missing"
+grep -q 'handle_windows_service_ipc_request' src/platform/windows.rs || r_s11b="$r_s11b windows-service-one-shot-handler-missing"
+grep -q 'next_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)' src/platform/windows.rs || r_s11b="$r_s11b windows-service-read-not-deadline-bound"
+grep -q 'service_stop_requested.store(true, Ordering::Release)' src/platform/windows.rs || r_s11b="$r_s11b windows-service-close-not-signal-bound"
+grep -Fq 'Protected service IPC resource boundary' requirements.html || r_s11b="$r_s11b service-resource-requirements-missing"
+grep -Fq 'R-S11c-26 — protected service IPC resource boundary' HARDENING_STATUS.md || r_s11b="$r_s11b service-resource-ledger-missing"
 if grep -q 'SyncConfig' src/ipc.rs; then
   r_s11b="$r_s11b whole-config-ipc-variant-present"
 fi
@@ -2194,7 +2216,7 @@ connect_start = src.index("async fn connect_with_path")
 connect_end = src.index("\n}\n\n#[cfg(windows)]\nasync fn connect_windows_named_pipe", connect_start) + 2
 connect_body = src[connect_start:connect_end]
 auth = connect_body.find("ensure_linux_service_server_is_trusted(&connection)?")
-ok = connect_body.find("Ok(connection)")
+ok = connect_body.find("Ok(connection)", auth)
 password_start = src.index("async fn set_service_owned_unattended_password_with_ack")
 password_end = src.index("#[cfg(target_os = \"windows\")]", password_start)
 password_body = src[password_start:password_end]
@@ -2255,9 +2277,11 @@ fi
 if grep -qE 'MACOS_SERVICE_OWNED_PASSWORD_PENDING|MACOS_SERVICE_OWNED_PASSWORD_MAX_PENDING|MacosServiceOwnedPasswordRequest|macos_store_service_owned_password_request|macos_take_service_owned_password_request|macos_schedule_service_owned_password_request_expiry|MACOS_SERVICE_OWNED_PASSWORD_REQUEST_TTL|password: Option<String>' src/ipc.rs; then
   r_s11b2="$r_s11b2 macos-service-password-pending-cache-present"
 fi
-grep -q 'MACOS_SERVICE_OWNED_PASSWORD_MAX_BYTES' src/ipc.rs                        || r_s11b2="$r_s11b2 macos-service-password-value-cap-missing"
-grep -q 'password.len() > MACOS_SERVICE_OWNED_PASSWORD_MAX_BYTES' src/ipc.rs       || r_s11b2="$r_s11b2 macos-service-password-value-cap-not-enforced"
-grep -q 'macos_service_owned_password_value_is_valid(&password)' src/ipc.rs       || r_s11b2="$r_s11b2 macos-service-password-value-cap-not-wired"
+grep -q 'const SERVICE_OWNED_PASSWORD_MAX_BYTES: usize = 4096;' src/ipc.rs         || r_s11b2="$r_s11b2 service-password-value-cap-missing"
+grep -q 'password.len() > SERVICE_OWNED_PASSWORD_MAX_BYTES' src/ipc.rs             || r_s11b2="$r_s11b2 service-password-value-cap-not-enforced"
+grep -q 'service_owned_password_value_is_valid("Linux", &value)' src/ipc.rs        || r_s11b2="$r_s11b2 linux-service-password-value-cap-not-wired"
+grep -q 'service_owned_password_value_is_valid("macOS", &password)' src/ipc.rs     || r_s11b2="$r_s11b2 macos-service-password-value-cap-not-wired"
+grep -q 'service_owned_password_value_is_valid("Windows", &value)' src/ipc.rs      || r_s11b2="$r_s11b2 windows-service-password-value-cap-not-wired"
 grep -q 'handle_macos_service_owned_unattended_password_request' src/ipc.rs        || r_s11b2="$r_s11b2 macos-service-password-request-handler-missing"
 grep -q 'Config::set_permanent_password(&password)' src/ipc.rs                    || r_s11b2="$r_s11b2 macos-service-password-request-not-writing-root-store"
 if grep -q 'commit_service_owned_unattended_password_change(password).await' src/ipc.rs; then
@@ -2335,13 +2359,14 @@ src = Path("src/ipc.rs").read_text()
 start = src.index("async fn set_service_owned_unattended_password_with_ack")
 end = src.index("#[cfg(target_os = \"windows\")]", start)
 body = src[start:end]
-ready = body.find("macos_service_owned_password_authorization_right_ready(&mut c, ms_timeout).await?")
+ready = body.find("macos_service_owned_password_authorization_right_ready(ms_timeout).await?")
 auth = body.find("service_owned_unattended_password_authorization()")
+connect_after_auth = body.find("let mut c = connect_service(ms_timeout).await?", auth)
 send = body.find("Data::RequestMacosServiceOwnedUnattendedPasswordChange")
-raise SystemExit(0 if ready != -1 and auth != -1 and send != -1 and ready < auth < send else 1)
+raise SystemExit(0 if ready != -1 and auth != -1 and connect_after_auth != -1 and send != -1 and ready < auth < connect_after_auth < send else 1)
 PY
 then
-  r_s11b2="$r_s11b2 macos-service-password-ui-skips-right-readiness-or-sends-before-authorization"
+  r_s11b2="$r_s11b2 macos-service-password-ui-skips-right-readiness-or-reuses-readiness-connection"
 fi
 if grep -qE 'macos_service_owned_unattended_password_digest|MACOS_SERVICE_OWNED_PASSWORD_REQUEST_CONTEXT|password_digest' src/ipc.rs; then
   r_s11b2="$r_s11b2 macos-service-password-stale-digest-binding"
@@ -2456,10 +2481,10 @@ spawn = body.find("tokio::spawn(async move")
 mac_slot = body.find("let macos_service_ipc_authorization_slot")
 slot_acquire = body.find("try_acquire_macos_service_ipc_authorization_slot()", 0, spawn)
 task_auth = body.find("authorize_macos_service_scoped_ipc_connection_for_task", spawn)
-first_read = body.find("stream.next().await", spawn)
+first_read = body.find("stream.next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS).await", spawn)
 direct = body.find("authorize_service_scoped_ipc_connection(&stream, &postfix)")
 linux_cfg = body.rfind('#[cfg(target_os = "linux")]', 0, direct)
-old_cfg = '#[cfg(any(target_os = "linux", target_os = "macos"))]' in body[:spawn]
+old_joint_cfg = body.rfind('#[cfg(any(target_os = "linux", target_os = "macos"))]', 0, direct)
 macos_auth_before_spawn = body.find("authorize_macos_service_scoped_ipc_connection_for_task", 0, spawn) != -1
 macos_snapshot_before_spawn = body.find("service_scoped_ipc_authorization_snapshot", 0, spawn) != -1
 ok = (
@@ -2473,7 +2498,7 @@ ok = (
     and direct != -1
     and linux_cfg != -1
     and linux_cfg < direct
-    and not old_cfg
+    and (old_joint_cfg == -1 or old_joint_cfg < linux_cfg)
     and not macos_auth_before_spawn
     and not macos_snapshot_before_spawn
 )

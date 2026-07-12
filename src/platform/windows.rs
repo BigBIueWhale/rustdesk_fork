@@ -12,7 +12,11 @@ use hbb_common::{
     log,
     message_proto::{DisplayInfo, Resolution, WindowsSession},
     sha2::{Digest, Sha256},
-    sleep, timeout, tokio,
+    sleep, timeout,
+    tokio::{
+        self,
+        sync::{OwnedSemaphorePermit, Semaphore},
+    },
 };
 use std::{
     collections::HashMap,
@@ -32,7 +36,10 @@ use std::{
     },
     path::*,
     ptr::null_mut,
-    sync::{atomic::Ordering, Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, OnceLock,
+    },
     time::{Duration, Instant},
 };
 use wallpaper;
@@ -656,6 +663,77 @@ async fn refresh_service_ipc_listener(
     ipc::new_listener(crate::POSTFIX_SERVICE).await
 }
 
+const WINDOWS_SERVICE_IPC_TRANSACTION_BUDGET: usize = 4;
+static WINDOWS_SERVICE_IPC_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+
+fn try_acquire_windows_service_ipc_transaction_slot() -> Option<OwnedSemaphorePermit> {
+    let semaphore = WINDOWS_SERVICE_IPC_TRANSACTION_SLOTS
+        .get_or_init(|| Arc::new(Semaphore::new(WINDOWS_SERVICE_IPC_TRANSACTION_BUDGET)))
+        .clone();
+    match semaphore.try_acquire_owned() {
+        Ok(permit) => Some(permit),
+        Err(_) => {
+            log::debug!(
+                "Rejected Windows _service IPC connection because service work is at capacity"
+            );
+            None
+        }
+    }
+}
+
+async fn handle_windows_service_ipc_request(
+    mut stream: ipc::Connection,
+    service_stop_requested: Arc<AtomicBool>,
+    _transaction_slot: OwnedSemaphorePermit,
+) {
+    match stream
+        .next_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)
+        .await
+    {
+        Err(err) => {
+            log::trace!(
+                "protected Windows _service IPC request closed before a bounded request frame: {}",
+                err
+            );
+        }
+        Ok(None) => {
+            log::warn!("Rejected malformed data on protected Windows _service IPC channel");
+        }
+        Ok(Some(data)) => match data {
+            ipc::Data::Close => match stream.windows_pipe_client_token_is_local_system() {
+                Ok(true) => {
+                    log::info!("close received");
+                    service_stop_requested.store(true, Ordering::Release);
+                }
+                Ok(false) => {
+                    log::warn!("Rejected Windows _service close: caller is not LocalSystem");
+                }
+                Err(err) => {
+                    log::warn!(
+                        "Rejected Windows _service close: failed to verify caller token: {err}"
+                    );
+                }
+            },
+            ipc::Data::Test => {
+                allow_err!(stream.send(&ipc::Data::Test).await);
+            }
+            ipc::Data::RequestServiceOwnedUnattendedPasswordChange(value) => {
+                ipc::handle_windows_service_owned_unattended_password_request(value, &mut stream)
+                    .await;
+            }
+            ipc::Data::RequestServiceOwnedShareRdp(enable) => {
+                ipc::handle_windows_service_owned_share_rdp_request(enable, &mut stream).await;
+            }
+            _ => {
+                log::warn!(
+                    "Rejected unauthorized data on protected Windows _service IPC channel: data_kind={:?}",
+                    std::mem::discriminant(&data)
+                );
+            }
+        },
+    }
+}
+
 extern "system" {
     fn BlockInput(v: BOOL) -> BOOL;
 }
@@ -700,7 +778,11 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
     log::info!("session id {}", session_id);
     let mut h_process = launch_server(session_id, true).await.unwrap_or(NULL);
     let mut incoming = ipc::new_listener(crate::POSTFIX_SERVICE).await?;
+    let service_stop_requested = Arc::new(AtomicBool::new(false));
     loop {
+        if service_stop_requested.load(Ordering::Acquire) {
+            break;
+        }
         let sids: Vec<_> = get_available_sessions(false)
             .iter()
             .map(|e| e.sid)
@@ -721,7 +803,7 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
         match res {
             Ok(res) => match res {
                 Some(Ok(stream)) => {
-                    let mut stream = ipc::Connection::new(stream);
+                    let stream = ipc::Connection::new_protected_service(stream);
                     // Keep IPC authorization consistent with the session we are currently serving.
                     // Recompute expected session right before authorization to avoid using a stale
                     // session_id after awaiting incoming.next().
@@ -731,51 +813,19 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                     {
                         continue;
                     }
-                    if let Ok(Some(data)) = stream.next_timeout(1000).await {
-                        match data {
-                            ipc::Data::Close => {
-                                match stream.windows_pipe_client_token_is_local_system() {
-                                    Ok(true) => {
-                                        log::info!("close received");
-                                        break;
-                                    }
-                                    Ok(false) => {
-                                        log::warn!(
-                                            "Rejected Windows _service close: caller is not LocalSystem"
-                                        );
-                                    }
-                                    Err(err) => {
-                                        log::warn!(
-                                            "Rejected Windows _service close: failed to verify caller token: {err}"
-                                        );
-                                    }
-                                }
-                            }
-                            ipc::Data::Test => {
-                                allow_err!(stream.send(&ipc::Data::Test).await);
-                            }
-                            ipc::Data::RequestServiceOwnedUnattendedPasswordChange(value) => {
-                                ipc::handle_windows_service_owned_unattended_password_request(
-                                    value,
-                                    &mut stream,
-                                )
-                                .await;
-                            }
-                            ipc::Data::RequestServiceOwnedShareRdp(enable) => {
-                                ipc::handle_windows_service_owned_share_rdp_request(
-                                    enable,
-                                    &mut stream,
-                                )
-                                .await;
-                            }
-                            _ => {
-                                log::warn!(
-                                    "Rejected unauthorized data on protected Windows _service IPC channel: data_kind={:?}",
-                                    std::mem::discriminant(&data)
-                                );
-                            }
-                        }
-                    }
+                    let Some(transaction_slot) = try_acquire_windows_service_ipc_transaction_slot()
+                    else {
+                        continue;
+                    };
+                    let service_stop_requested = Arc::clone(&service_stop_requested);
+                    tokio::spawn(async move {
+                        handle_windows_service_ipc_request(
+                            stream,
+                            service_stop_requested,
+                            transaction_slot,
+                        )
+                        .await;
+                    });
                 }
                 _ => {}
             },

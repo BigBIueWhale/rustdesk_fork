@@ -72,7 +72,7 @@ pub(crate) fn authorize_url_ipc_sender(stream: &Connection) -> bool {
 pub(crate) fn authorize_url_ipc_sender(stream: &Connection) -> bool {
     authorize_windows_url_ipc_connection(stream, "_url")
 }
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use hbb_common::tokio::sync::{OwnedSemaphorePermit, Semaphore};
 #[cfg(target_os = "linux")]
 use ipc_fs::terminal_count_candidate_uids;
@@ -89,7 +89,7 @@ use serde_derive::{Deserialize, Serialize};
 use std::cell::Cell;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::fs::PermissionsExt;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::sync::{Arc, OnceLock};
 use std::{
     collections::HashMap,
@@ -106,6 +106,14 @@ use std::{
 const MACOS_OPEN: &str = "/usr/bin/open";
 #[cfg(target_os = "macos")]
 const MACOS_LAUNCHCTL: &str = "/bin/launchctl";
+pub(crate) const SERVICE_IPC_MAX_FRAME_BYTES: usize = 32 * 1024;
+pub(crate) const SERVICE_IPC_REQUEST_TIMEOUT_MS: u64 = 1_000;
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+const SERVICE_OWNED_PASSWORD_MAX_BYTES: usize = 4096;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+const SERVICE_IPC_TRANSACTION_BUDGET: usize = 4;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+static SERVICE_IPC_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
 #[cfg(target_os = "macos")]
 const MACOS_SERVICE_IPC_AUTHORIZATION_BUDGET: usize = 4;
 #[cfg(target_os = "macos")]
@@ -174,6 +182,20 @@ fn try_acquire_macos_service_ipc_authorization_slot() -> Option<OwnedSemaphorePe
             log::debug!(
                 "Rejected macOS _service IPC connection because service authorization work is at capacity"
             );
+            None
+        }
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn try_acquire_service_ipc_transaction_slot() -> Option<OwnedSemaphorePermit> {
+    let semaphore = SERVICE_IPC_TRANSACTION_SLOTS
+        .get_or_init(|| Arc::new(Semaphore::new(SERVICE_IPC_TRANSACTION_BUDGET)))
+        .clone();
+    match semaphore.try_acquire_owned() {
+        Ok(permit) => Some(permit),
+        Err(_) => {
+            log::debug!("Rejected _service IPC connection because service work is at capacity");
             None
         }
     }
@@ -669,25 +691,37 @@ pub async fn start(postfix: &str) -> ResultType<()> {
         if let Some(result) = incoming.next().await {
             match result {
                 Ok(stream) => {
-                    let mut stream = Connection::new(stream);
                     let postfix = postfix.to_owned();
+                    let is_protected_service_ipc = config::is_service_ipc_postfix(&postfix);
+                    let mut stream = if is_protected_service_ipc {
+                        Connection::new_protected_service(stream)
+                    } else {
+                        Connection::new(stream)
+                    };
                     #[cfg(target_os = "linux")]
-                    if config::is_service_ipc_postfix(&postfix) {
+                    if is_protected_service_ipc {
                         if !authorize_service_scoped_ipc_connection(&stream, &postfix) {
                             continue;
                         }
                     }
-                    #[cfg(target_os = "macos")]
-                    let macos_service_ipc_authorization_slot =
-                        if config::is_service_ipc_postfix(&postfix) {
-                            let Some(slot) = try_acquire_macos_service_ipc_authorization_slot()
-                            else {
-                                continue;
-                            };
-                            Some(slot)
-                        } else {
-                            None
+                    #[cfg(any(target_os = "linux", target_os = "macos"))]
+                    let service_ipc_transaction_slot = if is_protected_service_ipc {
+                        let Some(slot) = try_acquire_service_ipc_transaction_slot() else {
+                            continue;
                         };
+                        Some(slot)
+                    } else {
+                        None
+                    };
+                    #[cfg(target_os = "macos")]
+                    let macos_service_ipc_authorization_slot = if is_protected_service_ipc {
+                        let Some(slot) = try_acquire_macos_service_ipc_authorization_slot() else {
+                            continue;
+                        };
+                        Some(slot)
+                    } else {
+                        None
+                    };
                     #[cfg(windows)]
                     if postfix.is_empty() {
                         // Windows main IPC (`postfix == ""`) is authorized here.
@@ -698,6 +732,8 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                         }
                     }
                     tokio::spawn(async move {
+                        #[cfg(any(target_os = "linux", target_os = "macos"))]
+                        let _service_ipc_transaction_slot = service_ipc_transaction_slot;
                         #[cfg(target_os = "macos")]
                         if let Some(authorization_slot) = macos_service_ipc_authorization_slot {
                             if !authorize_macos_service_scoped_ipc_connection_for_task(
@@ -710,6 +746,37 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                 return;
                             }
                         }
+                        #[cfg(any(target_os = "linux", target_os = "macos"))]
+                        if is_protected_service_ipc {
+                            match stream.next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS).await {
+                                Err(err) => {
+                                    log::trace!(
+                                        "protected _service IPC request closed before a bounded request frame: {}",
+                                        err
+                                    );
+                                }
+                                Ok(Some(data)) => {
+                                    if service_channel_admits_message(&data) {
+                                        handle(data, &mut stream, IpcChannel::Service).await;
+                                    } else {
+                                        log::warn!(
+                                            "Rejected unauthorized data on protected _service IPC channel: postfix={}, data_kind={:?}, peer_uid={:?}",
+                                            postfix,
+                                            std::mem::discriminant(&data),
+                                            stream.peer_uid()
+                                        );
+                                    }
+                                }
+                                Ok(None) => {
+                                    log::warn!(
+                                        "Rejected malformed data on protected _service IPC channel: postfix={}, peer_uid={:?}",
+                                        postfix,
+                                        stream.peer_uid()
+                                    );
+                                }
+                            }
+                            return;
+                        }
                         loop {
                             match stream.next().await {
                                 Err(err) => {
@@ -717,26 +784,6 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                     break;
                                 }
                                 Ok(Some(data)) => {
-                                    // On Linux/macOS, `_service` is a service-control channel, not a
-                                    // config bus. Keep the world-connectable socket to narrow
-                                    // receiver-authorized messages only.
-                                    #[cfg(any(target_os = "linux", target_os = "macos"))]
-                                    if postfix == crate::POSTFIX_SERVICE {
-                                        if service_channel_admits_message(&data) {
-                                            handle(data, &mut stream, IpcChannel::Service).await;
-                                        } else {
-                                            log::warn!(
-                                                "Rejected unauthorized data on protected _service IPC channel: postfix={}, data_kind={:?}, peer_uid={:?}",
-                                                postfix,
-                                                std::mem::discriminant(&data),
-                                                stream.peer_uid()
-                                            );
-                                            // Close the connection to avoid keeping a protected channel
-                                            // alive while repeatedly receiving invalid traffic.
-                                            break;
-                                        }
-                                        continue;
-                                    }
                                     // R-S11 / R-S11b / Appendix C #15/#25: the main channel is a
                                     // state-mutation boundary. Reject ordinary service-owned
                                     // policy/credential mutations before the handler reaches Config setters.
@@ -798,13 +845,7 @@ pub async fn start(postfix: &str) -> ResultType<()> {
                                     // `Ok(None)` means a complete frame arrived but did not
                                     // deserialize into `Data`. Peer close/reset is returned as
                                     // `Err` by `ConnectionTmpl::next()`. Keep the historical
-                                    // ignore behavior except on the protected `_service` channel.
-                                    #[cfg(any(target_os = "linux", target_os = "macos"))]
-                                    {
-                                        if postfix == crate::POSTFIX_SERVICE {
-                                            break;
-                                        }
-                                    }
+                                    // ignore behavior for non-service IPC.
                                 }
                             }
                         }
@@ -1805,13 +1846,12 @@ async fn commit_service_owned_unattended_password_change(value: String) -> Resul
     }
 }
 
-#[cfg(target_os = "macos")]
-const MACOS_SERVICE_OWNED_PASSWORD_MAX_BYTES: usize = 4096;
-
-#[cfg(target_os = "macos")]
-fn macos_service_owned_password_value_is_valid(password: &str) -> bool {
-    if password.len() > MACOS_SERVICE_OWNED_PASSWORD_MAX_BYTES {
-        log::warn!("Rejected macOS service-owned password request with oversized password value");
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn service_owned_password_value_is_valid(platform: &str, password: &str) -> bool {
+    if password.len() > SERVICE_OWNED_PASSWORD_MAX_BYTES {
+        log::warn!(
+            "Rejected {platform} service-owned password request with oversized password value"
+        );
         return false;
     }
     true
@@ -1824,6 +1864,7 @@ async fn handle_linux_service_owned_unattended_password_request(
     stream: &mut Connection,
 ) {
     let accepted = channel == IpcChannel::Service
+        && service_owned_password_value_is_valid("Linux", &value)
         && linux_peer_is_authorized_for_service_owned_password_change(stream).await
         && match commit_service_owned_unattended_password_change(value).await {
             Ok(committed) => committed,
@@ -2214,7 +2255,7 @@ async fn handle_macos_service_owned_unattended_password_request(
 ) {
     let accepted = channel == IpcChannel::Service
         && macos_service_owned_password_authorization_right_is_ready()
-        && macos_service_owned_password_value_is_valid(&password)
+        && service_owned_password_value_is_valid("macOS", &password)
         && macos_peer_is_authorized_for_service_owned_password_change(&authorization)
         && {
             let committed = Config::set_permanent_password(&password);
@@ -2240,7 +2281,8 @@ pub(crate) async fn handle_windows_service_owned_unattended_password_request(
     value: String,
     stream: &mut Connection,
 ) {
-    let accepted = windows_peer_is_authorized_for_service_owned_password_change(stream)
+    let accepted = service_owned_password_value_is_valid("Windows", &value)
+        && windows_peer_is_authorized_for_service_owned_password_change(stream)
         && match commit_service_owned_unattended_password_change(value).await {
             Ok(committed) => committed,
             Err(err) => {
@@ -2681,12 +2723,21 @@ async fn connect_with_path(
     {
         let client = timeout(ms_timeout, connect_windows_named_pipe(path)).await??;
         ensure_windows_ipc_server_matches_current(&client, postfix)?;
-        return Ok(ConnectionTmpl::new(client));
+        let connection = if config::is_service_ipc_postfix(postfix) {
+            ConnectionTmpl::new_protected_service(client)
+        } else {
+            ConnectionTmpl::new(client)
+        };
+        return Ok(connection);
     }
     #[cfg(not(windows))]
     {
         let client = timeout(ms_timeout, Endpoint::connect(path)).await??;
-        let connection = ConnectionTmpl::new(client);
+        let connection = if config::is_service_ipc_postfix(postfix) {
+            ConnectionTmpl::new_protected_service(client)
+        } else {
+            ConnectionTmpl::new(client)
+        };
         #[cfg(target_os = "linux")]
         if postfix == crate::POSTFIX_SERVICE {
             ensure_linux_service_server_is_trusted(&connection)?;
@@ -3030,6 +3081,18 @@ where
         }
     }
 
+    fn new_with_max_packet_length(conn: T, max_packet_length: usize) -> Self {
+        let mut codec = BytesCodec::new();
+        codec.set_max_packet_length(max_packet_length);
+        Self {
+            inner: Framed::new(conn, codec),
+        }
+    }
+
+    pub(crate) fn new_protected_service(conn: T) -> Self {
+        Self::new_with_max_packet_length(conn, SERVICE_IPC_MAX_FRAME_BYTES)
+    }
+
     pub async fn send(&mut self, data: &Data) -> ResultType<()> {
         let v = serde_json::to_vec(data)?;
         self.inner.send(bytes::Bytes::from(v)).await?;
@@ -3317,9 +3380,9 @@ pub fn set_service_owned_unattended_password(v: String) -> ResultType<()> {
 
 #[cfg(target_os = "macos")]
 async fn macos_service_owned_password_authorization_right_ready(
-    c: &mut ConnectionTmpl<ConnClient>,
     ms_timeout: u64,
 ) -> ResultType<bool> {
+    let mut c = connect_service(ms_timeout).await?;
     c.send(&Data::MacosServiceOwnedPasswordRightReadyRequest)
         .await?;
     match c.next_timeout(ms_timeout).await? {
@@ -3332,15 +3395,21 @@ async fn macos_service_owned_password_authorization_right_ready(
 #[tokio::main(flavor = "current_thread")]
 async fn set_service_owned_unattended_password_with_ack(v: String) -> ResultType<bool> {
     let ms_timeout = 1_000;
-    let mut c = connect_service(ms_timeout).await?;
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     {
+        let mut c = connect_service(ms_timeout).await?;
         c.send(&Data::RequestServiceOwnedUnattendedPasswordChange(v))
             .await?;
+        if let Some(Data::ServiceOwnedUnattendedPasswordChangeResult(ok)) =
+            c.next_timeout(ms_timeout).await?
+        {
+            return Ok(ok);
+        }
+        return Ok(false);
     }
     #[cfg(target_os = "macos")]
     {
-        if !macos_service_owned_password_authorization_right_ready(&mut c, ms_timeout).await? {
+        if !macos_service_owned_password_authorization_right_ready(ms_timeout).await? {
             return Ok(false);
         }
         let authorization = match crate::platform::service_owned_unattended_password_authorization()
@@ -3348,17 +3417,20 @@ async fn set_service_owned_unattended_password_with_ack(v: String) -> ResultType
             Ok(authorization) => authorization,
             Err(err) => return Err(err),
         };
+        let mut c = connect_service(ms_timeout).await?;
         c.send(&Data::RequestMacosServiceOwnedUnattendedPasswordChange {
             password: v,
             authorization,
         })
         .await?;
+        if let Some(Data::ServiceOwnedUnattendedPasswordChangeResult(ok)) =
+            c.next_timeout(ms_timeout).await?
+        {
+            return Ok(ok);
+        }
+        return Ok(false);
     }
-    if let Some(Data::ServiceOwnedUnattendedPasswordChangeResult(ok)) =
-        c.next_timeout(ms_timeout).await?
-    {
-        return Ok(ok);
-    }
+    #[allow(unreachable_code)]
     Ok(false)
 }
 
@@ -4185,6 +4257,57 @@ mod test {
             !service_channel_admits_message(&Data::MacosServiceOwnedPasswordRightReadyResult(true)),
             "R-S11c-1: _service clients cannot send readiness result frames"
         );
+    }
+
+    #[test]
+    fn protected_service_connection_uses_bounded_frame_codec() {
+        let (service_end, _peer_end) = tokio::io::duplex(SERVICE_IPC_MAX_FRAME_BYTES * 2);
+        let service = ConnectionTmpl::new_protected_service(service_end);
+        assert_eq!(
+            service.inner.codec().max_packet_length(),
+            SERVICE_IPC_MAX_FRAME_BYTES
+        );
+
+        let (generic_end, _peer_end) = tokio::io::duplex(SERVICE_IPC_MAX_FRAME_BYTES * 2);
+        let generic = ConnectionTmpl::new(generic_end);
+        assert_eq!(generic.inner.codec().max_packet_length(), usize::MAX);
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[test]
+    fn protected_service_frame_cap_covers_escaped_password_request() {
+        let password = "\u{0001}".repeat(SERVICE_OWNED_PASSWORD_MAX_BYTES);
+        let frame =
+            serde_json::to_vec(&Data::RequestServiceOwnedUnattendedPasswordChange(password))
+                .unwrap();
+
+        assert!(frame.len() <= SERVICE_IPC_MAX_FRAME_BYTES);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn protected_service_frame_cap_covers_macos_password_request() {
+        let password = "\u{0001}".repeat(SERVICE_OWNED_PASSWORD_MAX_BYTES);
+        let frame = serde_json::to_vec(&Data::RequestMacosServiceOwnedUnattendedPasswordChange {
+            password,
+            authorization: vec![255; 1024],
+        })
+        .unwrap();
+
+        assert!(frame.len() <= SERVICE_IPC_MAX_FRAME_BYTES);
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn service_owned_password_value_limit_is_common() {
+        assert!(service_owned_password_value_is_valid(
+            "test",
+            &"a".repeat(SERVICE_OWNED_PASSWORD_MAX_BYTES)
+        ));
+        assert!(!service_owned_password_value_is_valid(
+            "test",
+            &"a".repeat(SERVICE_OWNED_PASSWORD_MAX_BYTES + 1)
+        ));
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]

@@ -778,6 +778,27 @@ unreachable and a source/test/AST gate prevents reintroduction.
   and job ABI layout. `scripts/build-windows.ps1` runs the terminal suite natively, offline and locked, before every
   artifact build; `scripts/verify.sh` runs the Linux-visible suite and gates that native-Windows step plus the source
   contracts above. The committed Windows VM double build remains the platform runtime and deterministic-artifact proof.
+- **R-S11c-26 — protected service IPC resource boundary — CLOSED 2026-07-12.** Platforms: Linux, macOS,
+  and Windows installed-service IPC. Endpoint/action: the protected `_service` channel for liveness, service-owned
+  unattended-password requests, macOS password snapshots/readiness, Windows RDP sharing, and Windows service close.
+  Boundary: local peer admitted by transport identity ↔ root/LaunchDaemon/LocalSystem service resources before
+  receiver-authorized action dispatch. Attack surface closed: `_service` no longer uses the generic uncapped IPC
+  frame envelope or a persistent Unix service bus. Service clients and service receivers construct
+  `ConnectionTmpl::new_protected_service`, which sets `BytesCodec::max_packet_length` to
+  `SERVICE_IPC_MAX_FRAME_BYTES` before any service frame is read. Linux/macOS service tasks are admitted only under
+  `SERVICE_IPC_TRANSACTION_SLOTS`, read exactly one request with `SERVICE_IPC_REQUEST_TIMEOUT_MS`, dispatch only
+  `service_channel_admits_message` traffic, and close after that operation's response. The macOS password setter no
+  longer keeps readiness and password submission on the same service connection: readiness is a no-secret one-shot
+  RPC, local Authorization Services runs after readiness, and the password-bearing request opens a fresh bounded
+  service connection. Windows `_service` uses the same capped constructor and moves one-request handling into a
+  four-slot bounded worker; the service loop remains available for session maintenance, while close still requires
+  the LocalSystem pipe-client token and password/RDP requests still require the existing elevated-client checks.
+  Linux, macOS, and Windows now share `SERVICE_OWNED_PASSWORD_MAX_BYTES = 4096`, checked before polkit,
+  Authorization Services verification, named-pipe elevation checks, hashing, or service-to-main password forwarding.
+  Verification closure: `scripts/verify.sh` runs the codec over-cap rejection test plus IPC constructor/envelope/value
+  cap tests and gates protected service client/server constructor wiring, one-shot read-timeout shape, Unix and Windows
+  transaction semaphores, Windows stop-flag close signaling, common password-cap wiring, and this requirements/ledger
+  disposition. `scripts/apple-conform-check.sh` mirrors the macOS source gates.
 - **R-S11c-5 — macOS privileged service packaging — CLOSED 2026-07-09; tightened 2026-07-11.** Platform: macOS
   source-conformance and any future macOS artifact. Surfaces: `src/platform/privileges_scripts/daemon.plist`,
   `install.scpt`, deleted `update.scpt`, `uninstall.scpt`, and their `osascript` call sites in
@@ -3352,16 +3373,17 @@ second normative closure in this area: R-S16's read funnel now explicitly includ
 (`Config::get_options` / UI cache / CLI `--option` / IPC `Data::Options(None)`), with pinned policy
 overlaid last. The 2026-07-11 macOS service-owned-password hardening added parsed
 LaunchAgent plist command-shape proof, R-S11e-2 client-side `_service` server authentication, and direct
-authorization-before-password service requests with no pending plaintext cache; the Linux helper-provenance
-follow-up added R-S11e-3 canonical target binding for fixed helper launches; the Windows elevated command-file
-follow-up added R-S11d-32 identity and content binding across the close/reopen handoff. The other
+  authorization-before-password service requests with no pending plaintext cache; the Linux helper-provenance
+  follow-up added R-S11e-3 canonical target binding for fixed helper launches; the Windows elevated command-file
+  follow-up added R-S11d-32 identity and content binding across the close/reopen handoff; the 2026-07-12
+  service-resource follow-up added R-S11c-26's bounded one-request protected service IPC envelope. The other
 requirements.html edits are disclosure/inventory updates, and the
 native-codec-watch ledger is re-confirmed valid against each.
 The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-4327a9c1e6265b55d3333144f3460f46a7ea0e983d791e73d099676c47a5cdc6  requirements.html
+2760a4128510a283236533412ad89c50760208e472038290dc9a440a1fc8def9  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

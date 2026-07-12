@@ -50,7 +50,7 @@ use serde_json::{json, value::Value};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use std::sync::atomic::Ordering;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fmt,
     num::NonZeroI64,
     path::PathBuf,
@@ -69,6 +69,9 @@ const PORT_FORWARD_IDLE_TIMEOUT: Duration = Duration::from_secs(3600);
 const MAX_PEER_DISPLAY_DIMENSION: i32 = 16_384;
 const MAX_PEER_CAPTURE_DISPLAY_ENTRIES: usize = 32;
 const DISPLAY_CONTROL_LOG_INTERVAL: Duration = Duration::from_secs(5);
+const MAX_CM_FILE_ERROR_BYTES: usize = 4096;
+const MAX_PENDING_CM_FILE_REQUESTS: usize = 32;
+const CM_FILE_BLOCK_READ_TIMEOUT_MS: u64 = 5_000;
 
 #[derive(Default)]
 struct DisplayControlRejectLog {
@@ -88,6 +91,64 @@ impl DisplayControlRejectLog {
         self.last_log_at = Some(now);
         Some(std::mem::take(&mut self.suppressed))
     }
+}
+
+#[derive(Debug)]
+enum CmReadPhase {
+    Initializing,
+    Reading { file_num: i32 },
+    AwaitingPeerConfirm { file_num: i32 },
+}
+
+#[derive(Debug)]
+struct CmReadAuthority {
+    generation: u64,
+    phase: CmReadPhase,
+    path: String,
+    first_file_num: i32,
+    file_count: Option<usize>,
+}
+
+#[derive(Debug)]
+enum CmWritePhase {
+    Active,
+    CheckingDigest {
+        request_id: u64,
+        file_num: i32,
+    },
+    AwaitingPeerConfirm {
+        file_num: i32,
+    },
+    Finalizing {
+        file_num: i32,
+        peer_error: Option<String>,
+    },
+}
+
+#[derive(Debug)]
+struct CmWriteAuthority {
+    generation: u64,
+    phase: CmWritePhase,
+}
+
+#[derive(Debug)]
+enum CmFileRequestAuthority {
+    ReadDirectory {
+        id: i32,
+        path: String,
+    },
+    ReadEmptyDirectories {
+        path: String,
+    },
+    AllFiles {
+        id: i32,
+        path: String,
+    },
+    Operation {
+        id: i32,
+        file_num: i32,
+        operation: ipc::CmFileOperation,
+    },
 }
 
 // R-T1(a) (§20): a self-enforced hard cap on concurrent AUTHORIZED sessions — the post-key
@@ -192,9 +253,6 @@ pub(crate) fn expected_cm_peer_identity_for_conn_ids(
     Ok(expected_peer_identity)
 }
 
-#[cfg(target_os = "windows")]
-// R-X8: TERMINAL_OS_LOGIN_FAILED_MSG removed with the OS-credential terminal login.
-
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
@@ -205,6 +263,104 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
         x |= a[i] ^ b[i];
     }
     x == 0
+}
+
+fn cm_file_response_session_authorized(
+    authorized: bool,
+    is_file_transfer: bool,
+    expected_conn_id: i32,
+    expected_token: &str,
+    response_conn_id: i32,
+    response_token: &str,
+) -> bool {
+    authorized
+        && is_file_transfer
+        && cm_file_response_matches_connection(
+            expected_conn_id,
+            expected_token,
+            response_conn_id,
+            response_token,
+        )
+}
+
+fn cm_file_response_matches_connection(
+    expected_conn_id: i32,
+    expected_token: &str,
+    response_conn_id: i32,
+    response_token: &str,
+) -> bool {
+    !expected_token.is_empty()
+        && response_conn_id == expected_conn_id
+        && constant_time_eq(response_token.as_bytes(), expected_token.as_bytes())
+}
+
+fn cm_read_file_num_authorized(
+    authority: &CmReadAuthority,
+    file_num: i32,
+    allow_terminal_index: bool,
+) -> bool {
+    if file_num < authority.first_file_num {
+        return false;
+    }
+    let Some(file_count) = authority.file_count else {
+        return false;
+    };
+    let Ok(file_num) = usize::try_from(file_num) else {
+        return false;
+    };
+    file_num < file_count || (allow_terminal_index && file_num == file_count)
+}
+
+fn cm_read_progress_authorized(authority: &CmReadAuthority, file_num: i32) -> bool {
+    if !cm_read_file_num_authorized(authority, file_num, false) {
+        return false;
+    }
+    matches!(
+        authority.phase,
+        CmReadPhase::Reading {
+            file_num: current_file_num,
+        } if file_num == current_file_num
+            || current_file_num.checked_add(1) == Some(file_num)
+    )
+}
+
+fn cm_read_terminal_authorized(authority: &CmReadAuthority, file_num: i32, done: bool) -> bool {
+    if !cm_read_file_num_authorized(authority, file_num, true) {
+        return false;
+    }
+    match authority.phase {
+        CmReadPhase::Reading {
+            file_num: _current_file_num,
+        } if done => authority.file_count == usize::try_from(file_num).ok(),
+        CmReadPhase::Reading {
+            file_num: current_file_num,
+        } => file_num == current_file_num || current_file_num.checked_add(1) == Some(file_num),
+        CmReadPhase::AwaitingPeerConfirm {
+            file_num: expected_file_num,
+        } => !done && expected_file_num == file_num,
+        CmReadPhase::Initializing => false,
+    }
+}
+
+fn active_cm_write_authority_generation(
+    jobs: &HashMap<i32, CmWriteAuthority>,
+    id: i32,
+) -> Option<u64> {
+    let authority = jobs.get(&id)?;
+    if matches!(authority.phase, CmWritePhase::Active) {
+        Some(authority.generation)
+    } else {
+        None
+    }
+}
+
+fn cm_write_finalization_authorized(phase: &CmWritePhase, is_peer_error: bool) -> bool {
+    matches!(phase, CmWritePhase::Active)
+        || (is_peer_error
+            && matches!(
+                phase,
+                CmWritePhase::CheckingDigest { .. } | CmWritePhase::AwaitingPeerConfirm { .. }
+            ))
 }
 
 // R-X14 / R-T15 (line 254): the Linux-headless OS-auth limiter helpers
@@ -261,6 +417,7 @@ pub struct SessionKey {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct StartCmIpcPara {
     conn_id: i32,
+    cm_auth_token: String,
     rx_to_cm: mpsc::UnboundedReceiver<ipc::Data>,
     tx_from_cm: mpsc::UnboundedSender<ipc::Data>,
     rx_desktop_ready: mpsc::Receiver<()>,
@@ -396,15 +553,11 @@ pub struct Connection {
     follow_remote_cursor: bool,
     follow_remote_window: bool,
     multi_ui_session: bool,
-    // Tracks read job IDs delegated to CM process.
-    // When a read job is delegated to CM (via FS::ReadFile), the job id is added here.
-    // Used to filter stale responses (FileBlockFromCM, FileReadDone, etc.) for
-    // cancelled or unknown jobs.
-    cm_read_job_ids: HashSet<i32>,
-    // Tracks write job IDs this connection created in the CM/FS worker.
-    // FileResponse carries only a peer-chosen job id, so gate it here before
-    // forwarding to the shared worker and pair it with conn_id in IPC.
-    write_job_ids: HashSet<i32>,
+    cm_file_authority_counter: u64,
+    cm_read_jobs: HashMap<i32, CmReadAuthority>,
+    cm_write_jobs: HashMap<i32, CmWriteAuthority>,
+    cm_file_job_ids_seen: HashSet<i32>,
+    cm_file_requests: HashMap<u64, CmFileRequestAuthority>,
     peer_text_gate: crate::peer_text::PeerTextGate,
     terminal_service_id: String,
     terminal_persistent: bool,
@@ -507,6 +660,7 @@ impl Connection {
 
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let tx_cloned = tx.clone();
+        let cm_auth_token = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
         let mut conn = Self {
             inner: ConnInner::new(id, Some(tx), Some(tx_video)),
             display_idx: *display_service::PRIMARY_DISPLAY_IDX,
@@ -568,12 +722,13 @@ impl Connection {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             start_cm_ipc_para: Some(StartCmIpcPara {
                 conn_id: id,
+                cm_auth_token: cm_auth_token.clone(),
                 rx_to_cm,
                 tx_from_cm,
                 rx_desktop_ready,
                 tx_cm_stream_ready,
             }),
-            cm_auth_token: crate::encode64(hbb_common::rand::random::<[u8; 32]>()),
+            cm_auth_token,
             auto_disconnect_timer: None,
             authed_conn_id: None,
             file_remove_log_control: FileRemoveLogControl::new(id),
@@ -582,8 +737,11 @@ impl Connection {
             delayed_read_dir: None,
             #[cfg(target_os = "macos")]
             retina: Retina::default(),
-            cm_read_job_ids: HashSet::new(),
-            write_job_ids: HashSet::new(),
+            cm_file_authority_counter: 0,
+            cm_read_jobs: HashMap::new(),
+            cm_write_jobs: HashMap::new(),
+            cm_file_job_ids_seen: HashSet::new(),
+            cm_file_requests: HashMap::new(),
             peer_text_gate: Default::default(),
             terminal_service_id: "".to_owned(),
             terminal_persistent: false,
@@ -716,8 +874,8 @@ impl Connection {
                         // headless `--service` has no CM to send one anyway. R-A6 asserts the widener is
                         // absent. (The peer's inbound `disable_*` overlays only ever RESTRICT the cached
                         // booleans, so they are unaffected — R-S16(d)(ii).)
-                        ipc::Data::RawMessage(bytes) => {
-                            allow_err!(conn.stream.send_raw(bytes).await);
+                        ipc::Data::CmFileResponse(response) => {
+                            conn.handle_cm_file_response(response).await;
                         }
                         #[cfg(target_os = "windows")]
                         ipc::Data::ClipboardFile(clip) => {
@@ -768,48 +926,6 @@ impl Connection {
                             if conn.close_voice_call().await {
                                 let msg = new_voice_call_request(false);
                                 conn.send(msg).await;
-                            }
-                        }
-                        ipc::Data::ReadJobInitResult { id, file_num, include_hidden, conn_id, result } => {
-                            if conn_id == conn.inner.id() {
-                                conn.handle_read_job_init_result(id, file_num, include_hidden, result).await;
-                            }
-                        }
-                        ipc::Data::FileBlockFromCM { id, file_num, data, compressed, conn_id } => {
-                            if conn_id == conn.inner.id() {
-                                conn.handle_file_block_from_cm(id, file_num, data, compressed).await;
-                            }
-                        }
-                        ipc::Data::FileReadDone { id, file_num, conn_id } => {
-                            if conn_id == conn.inner.id() {
-                                conn.handle_file_read_done(id, file_num).await;
-                            }
-                        }
-                        ipc::Data::FileReadError { id, file_num, err, conn_id } => {
-                            if conn_id == conn.inner.id() {
-                                conn.handle_file_read_error(id, file_num, err).await;
-                            }
-                        }
-                        ipc::Data::FileDigestFromCM { id, file_num, last_modified, file_size, is_resume, conn_id } => {
-                            if conn_id == conn.inner.id() {
-                                conn.handle_file_digest_from_cm(id, file_num, last_modified, file_size, is_resume).await;
-                            }
-                        }
-                        ipc::Data::AllFilesResult { id, conn_id, path, result } => {
-                            if conn_id == conn.inner.id() {
-                                conn.handle_all_files_result(id, path, result).await;
-                            }
-                        }
-                        ipc::Data::WriteJobRejected { id, conn_id, err } => {
-                            if conn_id == conn.inner.id() {
-                                let removed = conn.write_job_ids.remove(&id);
-                                log::warn!(
-                                    "CM rejected write job id={} for conn_id={} (reserved_removed={}): {}",
-                                    id,
-                                    conn_id,
-                                    removed,
-                                    err
-                                );
                             }
                         }
                         _ => {}
@@ -1207,11 +1323,7 @@ impl Connection {
         // derivation is the ONLY real session-type confinement.
         self.confine_capabilities_to_conn_type(auth_conn_type);
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        let cm_file = self.file
-            && matches!(
-                auth_conn_type,
-                AuthConnType::Remote | AuthConnType::FileTransfer
-            );
+        let cm_file = self.file && auth_conn_type == AuthConnType::FileTransfer;
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let cm_clipboard =
             auth_conn_type == AuthConnType::Remote && self.can_sub_clipboard_service();
@@ -1530,7 +1642,13 @@ impl Connection {
                 ""
             };
             if !wait_session_id_confirm {
-                self.read_dir(dir, show_hidden);
+                if let Err(error) = self.read_dir(dir, show_hidden) {
+                    log::error!(
+                        "Failed to reserve initial file directory request: {}",
+                        error
+                    );
+                    return false;
+                }
             } else {
                 self.delayed_read_dir = Some((dir.to_owned(), show_hidden));
             }
@@ -1737,14 +1855,17 @@ impl Connection {
     }
 
     #[inline]
-    fn send_fs(&mut self, data: ipc::FS) {
+    fn send_fs(&mut self, data: ipc::FS) -> Result<(), String> {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        self.send_to_cm(ipc::Data::AuthorizedFS {
+        let data = ipc::Data::AuthorizedFS {
             cm_auth_token: self.cm_auth_token.clone(),
             fs: data,
-        });
+        };
         #[cfg(any(target_os = "android", target_os = "ios"))]
-        self.send_to_cm(ipc::Data::FS(data));
+        let data = ipc::Data::FS(data);
+        self.tx_to_cm
+            .send(data)
+            .map_err(|_| "connection manager IPC is unavailable".to_owned())
     }
 
     async fn send_login_error<T: std::string::ToString>(&mut self, err: T) {
@@ -2001,6 +2122,7 @@ impl Connection {
                     p.rx_desktop_ready,
                     p.tx_cm_stream_ready,
                     p.conn_id,
+                    p.cm_auth_token,
                 )
                 .await
                 {
@@ -2602,19 +2724,42 @@ impl Connection {
                         }
                         match fa.union {
                             Some(file_action::Union::ReadEmptyDirs(rd)) => {
-                                self.read_empty_dirs(&rd.path, rd.include_hidden);
+                                if let Err(error) =
+                                    self.read_empty_dirs(&rd.path, rd.include_hidden)
+                                {
+                                    self.send(fs::new_error(0, error, 0)).await;
+                                }
                             }
                             Some(file_action::Union::ReadDir(rd)) => {
-                                self.read_dir(&rd.path, rd.include_hidden);
+                                if let Err(error) = self.read_dir(&rd.path, rd.include_hidden) {
+                                    self.send(fs::new_error(0, error, 0)).await;
+                                }
                             }
                             Some(file_action::Union::AllFiles(f)) => {
                                 if crate::common::need_fs_cm_send_files() {
-                                    self.send_fs(ipc::FS::ReadAllFiles {
+                                    let request_id = match self.reserve_cm_file_request(
+                                        CmFileRequestAuthority::AllFiles {
+                                            id: f.id,
+                                            path: f.path.clone(),
+                                        },
+                                    ) {
+                                        Ok(request_id) => request_id,
+                                        Err(error) => {
+                                            self.send(fs::new_error(f.id, error, -1)).await;
+                                            return true;
+                                        }
+                                    };
+                                    if let Err(error) = self.send_fs(ipc::FS::ReadAllFiles {
                                         path: f.path,
                                         id: f.id,
                                         include_hidden: f.include_hidden,
                                         conn_id: self.inner.id(),
-                                    });
+                                        request_id,
+                                    }) {
+                                        self.cm_file_requests.remove(&request_id);
+                                        self.send(fs::new_error(f.id, error, -1)).await;
+                                        return true;
+                                    }
                                 } else {
                                     let _metadata_scan_permit =
                                         match crate::ui_cm_interface::try_acquire_file_metadata_scan(
@@ -2657,6 +2802,11 @@ impl Connection {
                             Some(file_action::Union::Send(s)) => {
                                 // server to client
                                 let id = s.id;
+                                if s.file_num < 0 {
+                                    self.send(fs::new_error(id, "invalid file number", s.file_num))
+                                        .await;
+                                    return true;
+                                }
                                 let path = s.path.clone();
                                 let job_type = JobType::from_proto(s.file_type);
                                 match job_type {
@@ -2666,18 +2816,31 @@ impl Connection {
                                         );
                                         if crate::common::need_fs_cm_send_files() {
                                             // Delegate file reading to CM on Windows
-                                            if let Err(msg) = self.reserve_cm_read_job(id) {
-                                                self.send(fs::new_error(id, msg, -1)).await;
-                                                return true;
-                                            }
-                                            self.send_fs(ipc::FS::ReadFile {
+                                            let generation = match self.reserve_cm_read_job(
+                                                id,
+                                                path.clone(),
+                                                s.file_num,
+                                            ) {
+                                                Ok(generation) => generation,
+                                                Err(msg) => {
+                                                    self.send(fs::new_error(id, msg, -1)).await;
+                                                    return true;
+                                                }
+                                            };
+                                            if let Err(error) = self.send_fs(ipc::FS::ReadFile {
                                                 path,
                                                 id,
                                                 file_num: s.file_num,
                                                 include_hidden: s.include_hidden,
                                                 conn_id: self.inner.id(),
                                                 overwrite_detection: od,
-                                            });
+                                                generation,
+                                            }) {
+                                                self.cm_read_jobs.remove(&id);
+                                                self.send(fs::new_error(id, error, s.file_num))
+                                                    .await;
+                                                return true;
+                                            }
                                         } else {
                                             // Handle file reading in Connection on non-Windows
                                             let data_source =
@@ -2721,11 +2884,14 @@ impl Connection {
                                     self.send(fs::new_error(r.id, err, r.file_num)).await;
                                     return true;
                                 }
-                                if let Err(msg) = self.reserve_write_job(r.id) {
-                                    self.send(fs::new_error(r.id, msg, r.file_num)).await;
-                                    return true;
-                                }
-                                self.send_fs(ipc::FS::NewWrite {
+                                let generation = match self.reserve_write_job(r.id) {
+                                    Ok(generation) => generation,
+                                    Err(msg) => {
+                                        self.send(fs::new_error(r.id, msg, r.file_num)).await;
+                                        return true;
+                                    }
+                                };
+                                if let Err(error) = self.send_fs(ipc::FS::NewWrite {
                                     path: r.path.clone(),
                                     id: r.id,
                                     file_num: r.file_num,
@@ -2736,30 +2902,99 @@ impl Connection {
                                     overwrite_detection: od,
                                     total_size: r.total_size,
                                     conn_id: self.inner.id(),
-                                });
+                                    generation,
+                                }) {
+                                    self.cm_write_jobs.remove(&r.id);
+                                    self.send(fs::new_error(r.id, error, r.file_num)).await;
+                                    return true;
+                                }
                                 self.file_transferred = true;
                             }
                             Some(file_action::Union::RemoveDir(d)) => {
-                                self.send_fs(ipc::FS::RemoveDir {
+                                let operation = ipc::CmFileOperation::RemoveDirectory {
+                                    path: d.path.clone(),
+                                    recursive: d.recursive,
+                                };
+                                let request_id = match self.reserve_cm_file_request(
+                                    CmFileRequestAuthority::Operation {
+                                        id: d.id,
+                                        file_num: 0,
+                                        operation,
+                                    },
+                                ) {
+                                    Ok(request_id) => request_id,
+                                    Err(error) => {
+                                        self.send(fs::new_error(d.id, error, 0)).await;
+                                        return true;
+                                    }
+                                };
+                                if let Err(error) = self.send_fs(ipc::FS::RemoveDir {
                                     path: d.path.clone(),
                                     id: d.id,
                                     recursive: d.recursive,
-                                });
+                                    request_id,
+                                }) {
+                                    self.cm_file_requests.remove(&request_id);
+                                    self.send(fs::new_error(d.id, error, 0)).await;
+                                    return true;
+                                }
                                 self.file_remove_log_control.on_remove_dir(d);
                             }
                             Some(file_action::Union::RemoveFile(f)) => {
-                                self.send_fs(ipc::FS::RemoveFile {
+                                let operation = ipc::CmFileOperation::RemoveFile {
+                                    path: f.path.clone(),
+                                };
+                                let request_id = match self.reserve_cm_file_request(
+                                    CmFileRequestAuthority::Operation {
+                                        id: f.id,
+                                        file_num: f.file_num,
+                                        operation,
+                                    },
+                                ) {
+                                    Ok(request_id) => request_id,
+                                    Err(error) => {
+                                        self.send(fs::new_error(f.id, error, f.file_num)).await;
+                                        return true;
+                                    }
+                                };
+                                if let Err(error) = self.send_fs(ipc::FS::RemoveFile {
                                     path: f.path.clone(),
                                     id: f.id,
                                     file_num: f.file_num,
-                                });
+                                    request_id,
+                                }) {
+                                    self.cm_file_requests.remove(&request_id);
+                                    self.send(fs::new_error(f.id, error, f.file_num)).await;
+                                    return true;
+                                }
                                 self.file_remove_log_control.on_remove_file(f);
                             }
                             Some(file_action::Union::Create(c)) => {
-                                self.send_fs(ipc::FS::CreateDir {
+                                let operation = ipc::CmFileOperation::CreateDirectory {
+                                    path: c.path.clone(),
+                                };
+                                let request_id = match self.reserve_cm_file_request(
+                                    CmFileRequestAuthority::Operation {
+                                        id: c.id,
+                                        file_num: 0,
+                                        operation,
+                                    },
+                                ) {
+                                    Ok(request_id) => request_id,
+                                    Err(error) => {
+                                        self.send(fs::new_error(c.id, error, 0)).await;
+                                        return true;
+                                    }
+                                };
+                                if let Err(error) = self.send_fs(ipc::FS::CreateDir {
                                     path: c.path.clone(),
                                     id: c.id,
-                                });
+                                    request_id,
+                                }) {
+                                    self.cm_file_requests.remove(&request_id);
+                                    self.send(fs::new_error(c.id, error, 0)).await;
+                                    return true;
+                                }
                                 self.send_to_cm(ipc::Data::FileTransferLog((
                                     "create_dir".to_string(),
                                     serde_json::to_string(&FileActionLog {
@@ -2772,13 +3007,32 @@ impl Connection {
                                 )));
                             }
                             Some(file_action::Union::Cancel(c)) => {
-                                self.send_fs(ipc::FS::CancelWrite { id: c.id });
-                                let _ = self.cm_read_job_ids.remove(&c.id);
-                                let _ = self.write_job_ids.remove(&c.id);
-                                self.send_fs(ipc::FS::CancelRead {
-                                    id: c.id,
-                                    conn_id: self.inner.id(),
-                                });
+                                if let Some(authority) = self.cm_write_jobs.remove(&c.id) {
+                                    if let Err(error) = self.send_fs(ipc::FS::CancelWrite {
+                                        id: c.id,
+                                        conn_id: self.inner.id(),
+                                        generation: authority.generation,
+                                    }) {
+                                        log::warn!(
+                                            "Failed to cancel CM write job {}: {}",
+                                            c.id,
+                                            error
+                                        );
+                                    }
+                                }
+                                if let Some(authority) = self.cm_read_jobs.remove(&c.id) {
+                                    if let Err(error) = self.send_fs(ipc::FS::CancelRead {
+                                        id: c.id,
+                                        conn_id: self.inner.id(),
+                                        generation: authority.generation,
+                                    }) {
+                                        log::warn!(
+                                            "Failed to cancel CM read job {}: {}",
+                                            c.id,
+                                            error
+                                        );
+                                    }
+                                }
                                 if let Some(job) = fs::remove_job(c.id, &mut self.read_jobs) {
                                     self.send_to_cm(ipc::Data::FileTransferLog((
                                         "transfer".to_string(),
@@ -2789,27 +3043,66 @@ impl Connection {
                             Some(file_action::Union::SendConfirm(r)) => {
                                 if let Some(job) = fs::get_job(r.id, &mut self.read_jobs) {
                                     job.confirm(&r).await;
-                                } else if self.cm_read_job_ids.contains(&r.id) {
-                                    // Forward to CM for CM-read jobs
-                                    self.send_fs(ipc::FS::SendConfirmForRead {
+                                } else if let Some(generation) =
+                                    self.consume_cm_read_confirmation(r.id, r.file_num, r.skip())
+                                {
+                                    if let Err(error) = self.send_fs(ipc::FS::SendConfirmForRead {
                                         id: r.id,
                                         file_num: r.file_num,
                                         skip: r.skip(),
                                         offset_blk: r.offset_blk(),
                                         conn_id: self.inner.id(),
-                                    });
-                                } else {
-                                    if let Ok(sc) = r.write_to_bytes() {
-                                        self.send_fs(ipc::FS::SendConfirm(sc));
+                                        generation,
+                                    }) {
+                                        self.cm_read_jobs.remove(&r.id);
+                                        self.send(fs::new_error(r.id, error, r.file_num)).await;
+                                    }
+                                } else if self.cm_read_jobs.contains_key(&r.id) {
+                                    return true;
+                                } else if let Some(generation) =
+                                    self.consume_cm_write_confirmation(r.id, r.file_num)
+                                {
+                                    if let Err(error) = self.send_fs(ipc::FS::SendConfirm {
+                                        id: r.id,
+                                        file_num: r.file_num,
+                                        skip: r.skip(),
+                                        offset_blk: r.offset_blk(),
+                                        conn_id: self.inner.id(),
+                                        generation,
+                                    }) {
+                                        self.cm_write_jobs.remove(&r.id);
+                                        self.send(fs::new_error(r.id, error, r.file_num)).await;
                                     }
                                 }
                             }
                             Some(file_action::Union::Rename(r)) => {
-                                self.send_fs(ipc::FS::Rename {
+                                let operation = ipc::CmFileOperation::Rename {
+                                    path: r.path.clone(),
+                                    new_name: r.new_name.clone(),
+                                };
+                                let request_id = match self.reserve_cm_file_request(
+                                    CmFileRequestAuthority::Operation {
+                                        id: r.id,
+                                        file_num: 0,
+                                        operation,
+                                    },
+                                ) {
+                                    Ok(request_id) => request_id,
+                                    Err(error) => {
+                                        self.send(fs::new_error(r.id, error, 0)).await;
+                                        return true;
+                                    }
+                                };
+                                if let Err(error) = self.send_fs(ipc::FS::Rename {
                                     id: r.id,
                                     path: r.path.clone(),
                                     new_name: r.new_name.clone(),
-                                });
+                                    request_id,
+                                }) {
+                                    self.cm_file_requests.remove(&request_id);
+                                    self.send(fs::new_error(r.id, error, 0)).await;
+                                    return true;
+                                }
                                 self.send_to_cm(ipc::Data::FileTransferLog((
                                     "rename".to_string(),
                                     serde_json::to_string(&FileRenameLog {
@@ -2826,33 +3119,65 @@ impl Connection {
                 }
                 Some(message::Union::FileResponse(fr)) => match fr.union {
                     Some(file_response::Union::Block(block)) => {
-                        if !self.accepts_file_response_write_job(block.id, "Block") {
-                            return true;
-                        }
-                        self.send_fs(ipc::FS::WriteBlock {
+                        let generation = match self.active_cm_write_generation(block.id, "Block") {
+                            Some(generation) => generation,
+                            None => return true,
+                        };
+                        if let Err(error) = self.send_fs(ipc::FS::WriteBlock {
                             id: block.id,
                             file_num: block.file_num,
                             conn_id: self.inner.id(),
                             data: block.data,
                             compressed: block.compressed,
-                        });
+                            generation,
+                        }) {
+                            self.cm_write_jobs.remove(&block.id);
+                            self.send(fs::new_error(block.id, error, block.file_num))
+                                .await;
+                        }
                     }
                     Some(file_response::Union::Done(d)) => {
-                        if !self.accepts_file_response_write_job(d.id, "Done") {
-                            return true;
-                        }
-                        let _ = self.write_job_ids.remove(&d.id);
-                        self.send_fs(ipc::FS::WriteDone {
+                        let generation = match self
+                            .begin_cm_write_finalization(d.id, d.file_num, None, "Done")
+                        {
+                            Some(generation) => generation,
+                            None => return true,
+                        };
+                        if let Err(error) = self.send_fs(ipc::FS::WriteDone {
                             id: d.id,
                             file_num: d.file_num,
                             conn_id: self.inner.id(),
-                        });
+                            generation,
+                        }) {
+                            self.cm_write_jobs.remove(&d.id);
+                            self.send(fs::new_error(d.id, error, d.file_num)).await;
+                        }
                     }
                     Some(file_response::Union::Digest(d)) => {
-                        if !self.accepts_file_response_write_job(d.id, "Digest") {
+                        let generation = match self.active_cm_write_generation(d.id, "Digest") {
+                            Some(generation) => generation,
+                            None => return true,
+                        };
+                        let request_id = match self.next_cm_file_authority() {
+                            Ok(request_id) => request_id,
+                            Err(error) => {
+                                self.send(fs::new_error(d.id, error, d.file_num)).await;
+                                return true;
+                            }
+                        };
+                        let Some(authority) = self.cm_write_jobs.get_mut(&d.id) else {
+                            return true;
+                        };
+                        if authority.generation != generation
+                            || !matches!(authority.phase, CmWritePhase::Active)
+                        {
                             return true;
                         }
-                        self.send_fs(ipc::FS::CheckDigest {
+                        authority.phase = CmWritePhase::CheckingDigest {
+                            request_id,
+                            file_num: d.file_num,
+                        };
+                        if let Err(error) = self.send_fs(ipc::FS::CheckDigest {
                             id: d.id,
                             file_num: d.file_num,
                             conn_id: self.inner.id(),
@@ -2860,19 +3185,38 @@ impl Connection {
                             last_modified: d.last_modified,
                             is_upload: true,
                             is_resume: d.is_resume,
-                        });
+                            generation,
+                            request_id,
+                        }) {
+                            self.cm_write_jobs.remove(&d.id);
+                            self.send(fs::new_error(d.id, error, d.file_num)).await;
+                        }
                     }
                     Some(file_response::Union::Error(e)) => {
-                        if !self.accepts_file_response_write_job(e.id, "Error") {
-                            return true;
-                        }
-                        let _ = self.write_job_ids.remove(&e.id);
-                        self.send_fs(ipc::FS::WriteError {
+                        let peer_error = if e.error.len() <= MAX_CM_FILE_ERROR_BYTES {
+                            e.error
+                        } else {
+                            "peer file transfer error exceeded limit".to_owned()
+                        };
+                        let generation = match self.begin_cm_write_finalization(
+                            e.id,
+                            e.file_num,
+                            Some(peer_error.clone()),
+                            "Error",
+                        ) {
+                            Some(generation) => generation,
+                            None => return true,
+                        };
+                        if let Err(error) = self.send_fs(ipc::FS::WriteError {
                             id: e.id,
                             file_num: e.file_num,
                             conn_id: self.inner.id(),
-                            err: e.error,
-                        });
+                            err: peer_error,
+                            generation,
+                        }) {
+                            self.cm_write_jobs.remove(&e.id);
+                            self.send(fs::new_error(e.id, error, e.file_num)).await;
+                        }
                     }
                     _ => {}
                 },
@@ -3075,7 +3419,9 @@ impl Connection {
                             }
                             if self.file_transfer.is_some() {
                                 if let Some((dir, show_hidden)) = self.delayed_read_dir.take() {
-                                    self.read_dir(&dir, show_hidden);
+                                    if let Err(error) = self.read_dir(&dir, show_hidden) {
+                                        self.send(fs::new_error(0, error, 0)).await;
+                                    }
                                 }
                             } else if self.view_camera {
                                 self.try_sub_camera_displays();
@@ -4228,64 +4574,727 @@ impl Connection {
         }
     }
 
-    async fn handle_read_job_init_result(
+    fn next_cm_file_authority(&mut self) -> Result<u64, String> {
+        self.cm_file_authority_counter = self
+            .cm_file_authority_counter
+            .checked_add(1)
+            .ok_or_else(|| "connection file authority exhausted".to_owned())?;
+        Ok(self.cm_file_authority_counter)
+    }
+
+    fn reserve_cm_file_request(
+        &mut self,
+        authority: CmFileRequestAuthority,
+    ) -> Result<u64, String> {
+        if self.cm_file_requests.len() >= MAX_PENDING_CM_FILE_REQUESTS {
+            return Err(format!(
+                "too many pending connection file requests (limit {})",
+                MAX_PENDING_CM_FILE_REQUESTS
+            ));
+        }
+        let request_id = self.next_cm_file_authority()?;
+        if self
+            .cm_file_requests
+            .insert(request_id, authority)
+            .is_some()
+        {
+            return Err("duplicate connection file request authority".to_owned());
+        }
+        Ok(request_id)
+    }
+
+    fn valid_cm_file_error(error: String) -> String {
+        if error.len() <= MAX_CM_FILE_ERROR_BYTES {
+            error
+        } else {
+            "connection manager error exceeded limit".to_owned()
+        }
+    }
+
+    fn cm_file_directory_to_proto(
+        directory: ipc::CmFileDirectory,
+        allow_windows_virtual_drives: bool,
+    ) -> Result<FileDirectory, String> {
+        crate::ui_cm_interface::check_file_count_limit(directory.entries.len())?;
+        let entries: Vec<FileEntry> = directory
+            .entries
+            .into_iter()
+            .map(|entry| {
+                let entry_type = match entry.entry_type {
+                    ipc::CmFileEntryType::Directory => FileType::Dir,
+                    ipc::CmFileEntryType::DirectoryLink => FileType::DirLink,
+                    ipc::CmFileEntryType::DirectoryDrive => FileType::DirDrive,
+                    ipc::CmFileEntryType::File => FileType::File,
+                    ipc::CmFileEntryType::FileLink => FileType::FileLink,
+                };
+                FileEntry {
+                    entry_type: entry_type.into(),
+                    name: entry.name,
+                    is_hidden: entry.is_hidden,
+                    size: entry.size,
+                    modified_time: entry.modified_time,
+                    ..Default::default()
+                }
+            })
+            .collect();
+        if allow_windows_virtual_drives {
+            for entry in &entries {
+                let entry_type = entry
+                    .entry_type
+                    .enum_value()
+                    .map_err(|value| format!("invalid connection manager entry type {value}"))?;
+                if entry_type == FileType::DirDrive {
+                    let bytes = entry.name.as_bytes();
+                    if !cfg!(windows)
+                        || directory.path != "/"
+                        || bytes.len() != 2
+                        || !bytes[0].is_ascii_uppercase()
+                        || bytes[1] != b':'
+                    {
+                        return Err("invalid connection manager drive entry".to_owned());
+                    }
+                } else {
+                    if entry.name.is_empty() {
+                        return Err("invalid empty connection manager directory entry".to_owned());
+                    }
+                    fs::validate_file_name_no_traversal(&entry.name).map_err(|error| {
+                        format!("invalid connection manager directory: {}", error)
+                    })?;
+                }
+            }
+        } else {
+            if entries
+                .iter()
+                .any(|entry| entry.entry_type.enum_value().ok() == Some(FileType::DirDrive))
+            {
+                return Err("unexpected connection manager drive entry".to_owned());
+            }
+            fs::validate_transfer_file_list(
+                None,
+                &entries,
+                crate::ui_cm_interface::get_max_validated_files(),
+            )
+            .map_err(|error| format!("invalid connection manager directory: {}", error))?;
+        }
+        let directory = FileDirectory {
+            id: directory.id,
+            path: directory.path,
+            entries,
+            ..Default::default()
+        };
+        let serialized_len = directory
+            .write_to_bytes()
+            .map_err(|error| format!("invalid connection manager directory: {}", error))?
+            .len();
+        if serialized_len > fs::MAX_FILE_ENUM_SERIALIZED_BYTES {
+            return Err(format!(
+                "connection manager directory exceeds {} serialized bytes",
+                fs::MAX_FILE_ENUM_SERIALIZED_BYTES
+            ));
+        }
+        Ok(directory)
+    }
+
+    fn active_cm_write_generation(&self, id: i32, kind: &str) -> Option<u64> {
+        if self.authorized && self.file_transfer.is_some() {
+            if let Some(generation) = active_cm_write_authority_generation(&self.cm_write_jobs, id)
+            {
+                return Some(generation);
+            }
+        }
+        log::debug!(
+            "Dropping FileResponse::{} for non-file, unknown, or inactive write job id={}, conn_id={}",
+            kind,
+            id,
+            self.inner.id()
+        );
+        None
+    }
+
+    fn begin_cm_write_finalization(
         &mut self,
         id: i32,
-        _file_num: i32,
-        _include_hidden: bool,
-        result: Result<Vec<u8>, String>,
-    ) {
-        // Check if this response is still expected (not stale/cancelled)
-        if !self.cm_read_job_ids.contains(&id) {
-            log::warn!(
-                "Received ReadJobInitResult for unknown or stale job id={}, ignoring",
-                id
+        file_num: i32,
+        peer_error: Option<String>,
+        kind: &str,
+    ) -> Option<u64> {
+        if !self.authorized || self.file_transfer.is_none() {
+            return None;
+        }
+        let conn_id = self.inner.id();
+        let authority = self.cm_write_jobs.get_mut(&id)?;
+        if !cm_write_finalization_authorized(&authority.phase, peer_error.is_some()) {
+            log::debug!(
+                "Dropping FileResponse::{} for out-of-phase write job id={}, conn_id={}",
+                kind,
+                id,
+                conn_id
             );
+            return None;
+        }
+        let generation = authority.generation;
+        authority.phase = CmWritePhase::Finalizing {
+            file_num,
+            peer_error,
+        };
+        Some(generation)
+    }
+
+    fn consume_cm_write_confirmation(&mut self, id: i32, file_num: i32) -> Option<u64> {
+        let authority = self.cm_write_jobs.get_mut(&id)?;
+        if !matches!(
+            authority.phase,
+            CmWritePhase::AwaitingPeerConfirm {
+                file_num: expected_file_num,
+            } if expected_file_num == file_num
+        ) {
+            return None;
+        }
+        authority.phase = CmWritePhase::Active;
+        Some(authority.generation)
+    }
+
+    async fn handle_cm_file_response(&mut self, envelope: ipc::CmFileResponse) {
+        if !cm_file_response_session_authorized(
+            self.authorized,
+            self.file_transfer.is_some(),
+            self.inner.id(),
+            &self.cm_auth_token,
+            envelope.conn_id,
+            &envelope.cm_auth_token,
+        ) {
+            log::warn!("Rejected connection-manager file response without exact session authority");
             return;
         }
 
-        match result {
-            Err(error) => {
-                self.cm_read_job_ids.remove(&id);
-                self.send(fs::new_error(id, error, 0)).await;
-            }
-            Ok(dir_bytes) => {
-                // Deserialize FileDirectory from protobuf bytes
-                let dir = match FileDirectory::parse_from_bytes(&dir_bytes) {
-                    Ok(d) => d,
-                    Err(e) => {
-                        log::error!("Failed to parse FileDirectory: {}", e);
-                        self.cm_read_job_ids.remove(&id);
-                        self.send(fs::new_error(id, "internal error".to_string(), 0))
-                            .await;
-                        return;
-                    }
+        match *envelope.response {
+            ipc::CmFileResponseKind::ReadDirectory {
+                request_id,
+                path,
+                result,
+            } => {
+                if !matches!(
+                    self.cm_file_requests.get(&request_id),
+                    Some(CmFileRequestAuthority::ReadDirectory { .. })
+                ) {
+                    return;
+                }
+                let Some(CmFileRequestAuthority::ReadDirectory {
+                    id,
+                    path: expected_path,
+                }) = self.cm_file_requests.remove(&request_id)
+                else {
+                    return;
                 };
-
-                let path_str = dir.path.clone();
-                let file_entries: Vec<FileEntry> = dir.entries.into();
-
-                // Send file directory to client
-                self.send(fs::new_dir(id, path_str.clone(), file_entries.clone()))
+                if path != expected_path {
+                    self.send(fs::new_error(
+                        id,
+                        "connection manager response path mismatch",
+                        0,
+                    ))
                     .await;
-
-                // CM will handle the actual file reading and send blocks via IPC
-                self.file_transferred = true;
+                    return;
+                }
+                let expected_result_path = (!expected_path.is_empty())
+                    .then(|| fs::get_string(&fs::get_path(&expected_path)));
+                match result.and_then(|directory| {
+                    if expected_result_path
+                        .as_ref()
+                        .is_some_and(|expected| directory.path != *expected)
+                    {
+                        return Err("connection manager directory path mismatch".to_owned());
+                    }
+                    Self::cm_file_directory_to_proto(directory, expected_path == "/")
+                }) {
+                    Ok(directory) if directory.id == id => {
+                        let mut response = FileResponse::new();
+                        response.set_dir(directory);
+                        let mut message = Message::new();
+                        message.set_file_response(response);
+                        self.send(message).await;
+                    }
+                    Ok(_) => {
+                        self.send(fs::new_error(
+                            id,
+                            "connection manager response id mismatch",
+                            0,
+                        ))
+                        .await
+                    }
+                    Err(error) => {
+                        self.send(fs::new_error(id, Self::valid_cm_file_error(error), 0))
+                            .await
+                    }
+                }
+            }
+            ipc::CmFileResponseKind::ReadEmptyDirectories {
+                request_id,
+                path,
+                result,
+            } => {
+                if !matches!(
+                    self.cm_file_requests.get(&request_id),
+                    Some(CmFileRequestAuthority::ReadEmptyDirectories { .. })
+                ) {
+                    return;
+                }
+                let Some(CmFileRequestAuthority::ReadEmptyDirectories {
+                    path: expected_path,
+                }) = self.cm_file_requests.remove(&request_id)
+                else {
+                    return;
+                };
+                if path != expected_path {
+                    self.send(fs::new_error(
+                        0,
+                        "connection manager response path mismatch",
+                        0,
+                    ))
+                    .await;
+                    return;
+                }
+                match result.and_then(|directories| {
+                    crate::ui_cm_interface::check_file_count_limit(directories.len())?;
+                    directories
+                        .into_iter()
+                        .map(|directory| Self::cm_file_directory_to_proto(directory, false))
+                        .collect::<Result<Vec<_>, _>>()
+                }) {
+                    Ok(empty_dirs) => {
+                        let mut response = FileResponse::new();
+                        response.set_empty_dirs(ReadEmptyDirsResponse {
+                            path,
+                            empty_dirs,
+                            ..Default::default()
+                        });
+                        let mut message = Message::new();
+                        message.set_file_response(response);
+                        self.send(message).await;
+                    }
+                    Err(error) => {
+                        self.send(fs::new_error(0, Self::valid_cm_file_error(error), 0))
+                            .await
+                    }
+                }
+            }
+            ipc::CmFileResponseKind::Operation {
+                request_id,
+                operation,
+                result,
+            } => {
+                if !matches!(
+                    self.cm_file_requests.get(&request_id),
+                    Some(CmFileRequestAuthority::Operation {
+                        operation: expected_operation,
+                        ..
+                    }) if expected_operation == &operation
+                ) {
+                    return;
+                }
+                let Some(CmFileRequestAuthority::Operation {
+                    id,
+                    file_num,
+                    operation: _,
+                }) = self.cm_file_requests.remove(&request_id)
+                else {
+                    return;
+                };
+                match result {
+                    Ok(()) => self.send(fs::new_done(id, file_num)).await,
+                    Err(error) => {
+                        self.send(fs::new_error(
+                            id,
+                            Self::valid_cm_file_error(error),
+                            file_num,
+                        ))
+                        .await
+                    }
+                }
+            }
+            ipc::CmFileResponseKind::AllFiles { request_id, result } => {
+                if !matches!(
+                    self.cm_file_requests.get(&request_id),
+                    Some(CmFileRequestAuthority::AllFiles { .. })
+                ) {
+                    return;
+                }
+                let Some(CmFileRequestAuthority::AllFiles { id, path }) =
+                    self.cm_file_requests.remove(&request_id)
+                else {
+                    return;
+                };
+                match result
+                    .and_then(|directory| Self::cm_file_directory_to_proto(directory, false))
+                {
+                    Ok(directory) if directory.id == id && directory.path == path => {
+                        let mut response = FileResponse::new();
+                        response.set_dir(directory);
+                        let mut message = Message::new();
+                        message.set_file_response(response);
+                        self.send(message).await;
+                    }
+                    Ok(_) => {
+                        self.send(fs::new_error(
+                            id,
+                            "connection manager response id mismatch",
+                            -1,
+                        ))
+                        .await
+                    }
+                    Err(error) => {
+                        self.send(fs::new_error(id, Self::valid_cm_file_error(error), -1))
+                            .await
+                    }
+                }
+            }
+            ipc::CmFileResponseKind::ReadJobInit {
+                id,
+                generation,
+                result,
+            } => {
+                let Some(authority) = self.cm_read_jobs.get_mut(&id) else {
+                    return;
+                };
+                if authority.generation != generation
+                    || !matches!(authority.phase, CmReadPhase::Initializing)
+                {
+                    return;
+                }
+                match result
+                    .and_then(|directory| Self::cm_file_directory_to_proto(directory, false))
+                {
+                    Ok(directory)
+                        if directory.id == id
+                            && directory.path == authority.path
+                            && usize::try_from(authority.first_file_num)
+                                .map(|file_num| file_num <= directory.entries.len())
+                                .unwrap_or(false) =>
+                    {
+                        authority.file_count = Some(directory.entries.len());
+                        authority.phase = CmReadPhase::Reading {
+                            file_num: authority.first_file_num,
+                        };
+                        self.send(fs::new_dir(id, directory.path, directory.entries))
+                            .await;
+                        self.file_transferred = true;
+                    }
+                    Ok(_) => {
+                        self.cm_read_jobs.remove(&id);
+                        self.send(fs::new_error(
+                            id,
+                            "connection manager read job metadata mismatch",
+                            0,
+                        ))
+                        .await;
+                    }
+                    Err(error) => {
+                        self.cm_read_jobs.remove(&id);
+                        self.send(fs::new_error(id, Self::valid_cm_file_error(error), 0))
+                            .await;
+                    }
+                }
+            }
+            ipc::CmFileResponseKind::ReadBlock {
+                id,
+                generation,
+                file_num,
+                data,
+                compressed,
+            } => {
+                if !self.advance_cm_read(id, generation, file_num) {
+                    return;
+                }
+                if data.len() > ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES {
+                    self.cm_read_jobs.remove(&id);
+                    self.send(fs::new_error(
+                        id,
+                        "connection manager file block exceeded limit",
+                        file_num,
+                    ))
+                    .await;
+                    return;
+                }
+                let mut block = FileTransferBlock::new();
+                block.id = id;
+                block.file_num = file_num;
+                block.data = data.to_vec().into();
+                block.compressed = compressed;
+                self.send(fs::new_block(block)).await;
+            }
+            ipc::CmFileResponseKind::ReadDone {
+                id,
+                generation,
+                file_num,
+            } => {
+                if !self.remove_cm_read_authority(id, generation, file_num, true) {
+                    return;
+                }
+                self.send(fs::new_done(id, file_num)).await;
+            }
+            ipc::CmFileResponseKind::ReadError {
+                id,
+                generation,
+                file_num,
+                error,
+            } => {
+                if !self.remove_cm_read_authority(id, generation, file_num, false) {
+                    return;
+                }
+                self.send(fs::new_error(
+                    id,
+                    Self::valid_cm_file_error(error),
+                    file_num,
+                ))
+                .await;
+            }
+            ipc::CmFileResponseKind::ReadDigest {
+                id,
+                generation,
+                file_num,
+                last_modified,
+                file_size,
+                is_resume,
+            } => {
+                if !self.begin_cm_read_confirmation(id, generation, file_num) {
+                    return;
+                }
+                let digest = FileTransferDigest {
+                    id,
+                    file_num,
+                    last_modified,
+                    file_size,
+                    is_upload: false,
+                    is_resume,
+                    ..Default::default()
+                };
+                let mut response = FileResponse::new();
+                response.set_digest(digest);
+                let mut message = Message::new();
+                message.set_file_response(response);
+                self.send(message).await;
+            }
+            ipc::CmFileResponseKind::WriteFailed {
+                id,
+                generation,
+                file_num,
+                error,
+            } => {
+                if !self.remove_active_cm_write_authority(id, generation) {
+                    return;
+                }
+                self.send(fs::new_error(
+                    id,
+                    Self::valid_cm_file_error(error),
+                    file_num,
+                ))
+                .await;
+            }
+            ipc::CmFileResponseKind::WriteFinalized {
+                id,
+                generation,
+                result,
+            } => {
+                let Some(authority) = self.cm_write_jobs.get(&id) else {
+                    return;
+                };
+                if authority.generation != generation {
+                    return;
+                }
+                let CmWritePhase::Finalizing {
+                    file_num,
+                    peer_error,
+                } = &authority.phase
+                else {
+                    return;
+                };
+                let file_num = *file_num;
+                let peer_error = peer_error.clone();
+                self.cm_write_jobs.remove(&id);
+                match (result, peer_error) {
+                    (Ok(()), None) => self.send(fs::new_done(id, file_num)).await,
+                    (Ok(()), Some(error)) => self.send(fs::new_error(id, error, file_num)).await,
+                    (Err(error), _) => {
+                        self.send(fs::new_error(
+                            id,
+                            Self::valid_cm_file_error(error),
+                            file_num,
+                        ))
+                        .await
+                    }
+                }
+            }
+            ipc::CmFileResponseKind::WriteDigest {
+                id,
+                generation,
+                request_id,
+                file_num,
+                result,
+            } => {
+                let Some(authority) = self.cm_write_jobs.get_mut(&id) else {
+                    return;
+                };
+                if authority.generation != generation
+                    || !matches!(
+                        authority.phase,
+                        CmWritePhase::CheckingDigest {
+                            request_id: expected_request_id,
+                            file_num: expected_file_num,
+                        } if expected_request_id == request_id && expected_file_num == file_num
+                    )
+                {
+                    return;
+                }
+                match result {
+                    ipc::CmWriteDigestResult::SendConfirm { skip } => {
+                        authority.phase = CmWritePhase::Active;
+                        let request = FileTransferSendConfirmRequest {
+                            id,
+                            file_num,
+                            union: if skip {
+                                Some(file_transfer_send_confirm_request::Union::Skip(true))
+                            } else {
+                                Some(file_transfer_send_confirm_request::Union::OffsetBlk(0))
+                            },
+                            ..Default::default()
+                        };
+                        self.send(fs::new_send_confirm(request)).await;
+                    }
+                    ipc::CmWriteDigestResult::Digest {
+                        last_modified,
+                        file_size,
+                        is_identical,
+                        transferred_size,
+                    } => {
+                        authority.phase = CmWritePhase::AwaitingPeerConfirm { file_num };
+                        let digest = FileTransferDigest {
+                            id,
+                            file_num,
+                            last_modified,
+                            file_size,
+                            is_upload: true,
+                            is_identical,
+                            transferred_size,
+                            ..Default::default()
+                        };
+                        let mut response = FileResponse::new();
+                        response.set_digest(digest);
+                        let mut message = Message::new();
+                        message.set_file_response(response);
+                        self.send(message).await;
+                    }
+                    ipc::CmWriteDigestResult::Error(error) => {
+                        self.cm_write_jobs.remove(&id);
+                        if let Err(cancel_error) = self.send_fs(ipc::FS::CancelWrite {
+                            id,
+                            conn_id: self.inner.id(),
+                            generation,
+                        }) {
+                            log::warn!("Failed to cancel CM write job {}: {}", id, cancel_error);
+                        }
+                        self.send(fs::new_error(
+                            id,
+                            Self::valid_cm_file_error(error),
+                            file_num,
+                        ))
+                        .await;
+                    }
+                }
             }
         }
     }
 
+    fn advance_cm_read(&mut self, id: i32, generation: u64, file_num: i32) -> bool {
+        let Some(authority) = self.cm_read_jobs.get_mut(&id) else {
+            return false;
+        };
+        if authority.generation != generation || !cm_read_progress_authorized(authority, file_num) {
+            return false;
+        }
+        authority.phase = CmReadPhase::Reading { file_num };
+        true
+    }
+
+    fn begin_cm_read_confirmation(&mut self, id: i32, generation: u64, file_num: i32) -> bool {
+        if !self.advance_cm_read(id, generation, file_num) {
+            return false;
+        }
+        let Some(authority) = self.cm_read_jobs.get_mut(&id) else {
+            return false;
+        };
+        authority.phase = CmReadPhase::AwaitingPeerConfirm { file_num };
+        true
+    }
+
+    fn consume_cm_read_confirmation(&mut self, id: i32, file_num: i32, skip: bool) -> Option<u64> {
+        let authority = self.cm_read_jobs.get_mut(&id)?;
+        if !matches!(
+            authority.phase,
+            CmReadPhase::AwaitingPeerConfirm {
+                file_num: expected_file_num,
+            } if expected_file_num == file_num
+        ) {
+            return None;
+        }
+        let next_file_num = if skip {
+            file_num.checked_add(1)?
+        } else {
+            file_num
+        };
+        if !cm_read_file_num_authorized(authority, next_file_num, true) {
+            return None;
+        }
+        authority.phase = CmReadPhase::Reading {
+            file_num: next_file_num,
+        };
+        Some(authority.generation)
+    }
+
+    fn remove_cm_read_authority(
+        &mut self,
+        id: i32,
+        generation: u64,
+        file_num: i32,
+        done: bool,
+    ) -> bool {
+        let Some(authority) = self.cm_read_jobs.get(&id) else {
+            return false;
+        };
+        if authority.generation != generation
+            || !cm_read_terminal_authorized(authority, file_num, done)
+        {
+            return false;
+        }
+        self.cm_read_jobs.remove(&id);
+        true
+    }
+
+    fn remove_active_cm_write_authority(&mut self, id: i32, generation: u64) -> bool {
+        if !matches!(
+            self.cm_write_jobs.get(&id),
+            Some(authority)
+                if authority.generation == generation
+                    && matches!(authority.phase, CmWritePhase::Active)
+        ) {
+            return false;
+        }
+        self.cm_write_jobs.remove(&id);
+        true
+    }
+
     fn active_read_job_count(&self) -> usize {
-        self.cm_read_job_ids.len() + self.read_jobs.iter().filter(|job| !job.is_last_job).count()
+        self.cm_read_jobs.len() + self.read_jobs.iter().filter(|job| !job.is_last_job).count()
     }
 
     fn has_read_job_id(&self, id: i32) -> bool {
-        self.cm_read_job_ids.contains(&id) || self.read_jobs.iter().any(|job| job.id() == id)
+        self.cm_read_jobs.contains_key(&id) || self.read_jobs.iter().any(|job| job.id() == id)
     }
 
     fn ensure_can_start_read_job(&self, id: i32) -> Result<(), String> {
-        if self.has_read_job_id(id) {
-            return Err(format!("duplicate read job id {}", id));
+        if self.cm_file_job_ids_seen.contains(&id)
+            || self.has_read_job_id(id)
+            || self.cm_write_jobs.contains_key(&id)
+        {
+            return Err(format!("duplicate file transfer job id {}", id));
         }
         if self.active_read_job_count() >= fs::MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN {
             return Err(format!(
@@ -4296,144 +5305,67 @@ impl Connection {
         Ok(())
     }
 
-    fn reserve_cm_read_job(&mut self, id: i32) -> Result<(), String> {
+    fn reserve_cm_read_job(
+        &mut self,
+        id: i32,
+        path: String,
+        first_file_num: i32,
+    ) -> Result<u64, String> {
         self.ensure_can_start_read_job(id)?;
-        if !self.cm_read_job_ids.insert(id) {
+        let generation = self.next_cm_file_authority()?;
+        if !self.cm_file_job_ids_seen.insert(id) {
+            return Err(format!("reused read job id {}", id));
+        }
+        if self
+            .cm_read_jobs
+            .insert(
+                id,
+                CmReadAuthority {
+                    generation,
+                    phase: CmReadPhase::Initializing,
+                    path,
+                    first_file_num,
+                    file_count: None,
+                },
+            )
+            .is_some()
+        {
             return Err(format!("duplicate read job id {}", id));
         }
-        Ok(())
+        Ok(generation)
     }
 
-    fn reserve_write_job(&mut self, id: i32) -> Result<(), String> {
-        if self.write_job_ids.contains(&id) {
-            return Err(format!("duplicate write job id {}", id));
+    fn reserve_write_job(&mut self, id: i32) -> Result<u64, String> {
+        if self.cm_file_job_ids_seen.contains(&id)
+            || self.cm_write_jobs.contains_key(&id)
+            || self.has_read_job_id(id)
+        {
+            return Err(format!("duplicate file transfer job id {}", id));
         }
-        if self.write_job_ids.len() >= fs::MAX_ACTIVE_FILE_TRANSFER_WRITE_JOBS_PER_CONN {
+        if self.cm_write_jobs.len() >= fs::MAX_ACTIVE_FILE_TRANSFER_WRITE_JOBS_PER_CONN {
             return Err(format!(
                 "too many active write jobs for connection (limit {})",
                 fs::MAX_ACTIVE_FILE_TRANSFER_WRITE_JOBS_PER_CONN
             ));
         }
-        if !self.write_job_ids.insert(id) {
+        let generation = self.next_cm_file_authority()?;
+        if !self.cm_file_job_ids_seen.insert(id) {
+            return Err(format!("reused write job id {}", id));
+        }
+        if self
+            .cm_write_jobs
+            .insert(
+                id,
+                CmWriteAuthority {
+                    generation,
+                    phase: CmWritePhase::Active,
+                },
+            )
+            .is_some()
+        {
             return Err(format!("duplicate write job id {}", id));
         }
-        Ok(())
-    }
-
-    fn accepts_file_response_write_job(&self, id: i32, kind: &str) -> bool {
-        if self.file_transfer.is_some() && self.write_job_ids.contains(&id) {
-            return true;
-        }
-        log::debug!(
-            "Dropping FileResponse::{} for non-file or unknown write job id={}, conn_id={}",
-            kind,
-            id,
-            self.inner.id()
-        );
-        false
-    }
-
-    async fn handle_file_block_from_cm(
-        &mut self,
-        id: i32,
-        file_num: i32,
-        data: bytes::Bytes,
-        compressed: bool,
-    ) {
-        // Check if the job is still valid (not cancelled)
-        if !self.cm_read_job_ids.contains(&id) {
-            log::debug!(
-                "Dropping file block for cancelled/unknown job id={}, file_num={}",
-                id,
-                file_num
-            );
-            return;
-        }
-
-        // Forward file block to client
-        let mut block = FileTransferBlock::new();
-        block.id = id;
-        block.file_num = file_num;
-        block.data = data.to_vec().into();
-        block.compressed = compressed;
-
-        let mut msg = Message::new();
-        let mut fr = FileResponse::new();
-        fr.set_block(block);
-        msg.set_file_response(fr);
-        self.send(msg).await;
-    }
-
-    async fn handle_file_read_done(&mut self, id: i32, file_num: i32) {
-        // Drop stale completions for cancelled/unknown jobs
-        if !self.cm_read_job_ids.remove(&id) {
-            log::debug!(
-                "Dropping FileReadDone for cancelled/unknown job id={}, file_num={}",
-                id,
-                file_num
-            );
-            return;
-        }
-
-        // Forward done message to client
-        let mut done = FileTransferDone::new();
-        done.id = id;
-        done.file_num = file_num;
-
-        let mut msg = Message::new();
-        let mut fr = FileResponse::new();
-        fr.set_done(done);
-        msg.set_file_response(fr);
-        self.send(msg).await;
-    }
-
-    async fn handle_file_read_error(&mut self, id: i32, file_num: i32, err: String) {
-        // Drop stale errors for cancelled/unknown jobs
-        if !self.cm_read_job_ids.remove(&id) {
-            log::debug!(
-                "Dropping FileReadError for cancelled/unknown job id={}, file_num={}",
-                id,
-                file_num
-            );
-            return;
-        }
-
-        // Forward error to client
-        self.send(fs::new_error(id, err, file_num)).await;
-    }
-
-    async fn handle_file_digest_from_cm(
-        &mut self,
-        id: i32,
-        file_num: i32,
-        last_modified: u64,
-        file_size: u64,
-        is_resume: bool,
-    ) {
-        // Check if the job is still valid (not cancelled)
-        if !self.cm_read_job_ids.contains(&id) {
-            log::debug!(
-                "Dropping digest for cancelled/unknown job id={}, file_num={}",
-                id,
-                file_num
-            );
-            return;
-        }
-
-        // Forward digest to client for overwrite detection
-        let mut digest = FileTransferDigest::new();
-        digest.id = id;
-        digest.file_num = file_num;
-        digest.last_modified = last_modified;
-        digest.file_size = file_size;
-        digest.is_upload = false; // Server sending to client
-        digest.is_resume = is_resume;
-
-        let mut msg = Message::new();
-        let mut fr = FileResponse::new();
-        fr.set_digest(digest);
-        msg.set_file_response(fr);
-        self.send(msg).await;
+        Ok(generation)
     }
 
     async fn process_new_read_job(&mut self, mut job: fs::TransferJob, path: String) {
@@ -4446,53 +5378,38 @@ impl Connection {
         self.file_timer = crate::rustdesk_interval(time::interval(MILLI1));
     }
 
-    async fn handle_all_files_result(
-        &mut self,
-        id: i32,
-        path: String,
-        result: Result<Vec<u8>, String>,
-    ) {
-        match result {
-            Err(err) => {
-                self.send(fs::new_error(id, err, -1)).await;
-            }
-            Ok(bytes) => {
-                // Deserialize FileDirectory from protobuf bytes and send as FileResponse
-                match FileDirectory::parse_from_bytes(&bytes) {
-                    Ok(fd) => {
-                        let mut msg = Message::new();
-                        let mut fr = FileResponse::new();
-                        fr.set_dir(fd);
-                        msg.set_file_response(fr);
-                        self.send(msg).await;
-                    }
-                    Err(e) => {
-                        self.send(fs::new_error(
-                            id,
-                            format!("deserialize failed for {}: {}", path, e),
-                            -1,
-                        ))
-                        .await;
-                    }
-                }
-            }
+    fn read_empty_dirs(&mut self, dir: &str, include_hidden: bool) -> Result<(), String> {
+        let dir = dir.to_string();
+        let request_id =
+            self.reserve_cm_file_request(CmFileRequestAuthority::ReadEmptyDirectories {
+                path: dir.clone(),
+            })?;
+        if let Err(error) = self.send_fs(ipc::FS::ReadEmptyDirs {
+            dir,
+            include_hidden,
+            request_id,
+        }) {
+            self.cm_file_requests.remove(&request_id);
+            return Err(error);
         }
+        Ok(())
     }
 
-    fn read_empty_dirs(&mut self, dir: &str, include_hidden: bool) {
+    fn read_dir(&mut self, dir: &str, include_hidden: bool) -> Result<(), String> {
+        let request_id = self.reserve_cm_file_request(CmFileRequestAuthority::ReadDirectory {
+            id: 0,
+            path: dir.to_owned(),
+        })?;
         let dir = dir.to_string();
-        self.send_fs(ipc::FS::ReadEmptyDirs {
+        if let Err(error) = self.send_fs(ipc::FS::ReadDir {
             dir,
             include_hidden,
-        });
-    }
-
-    fn read_dir(&mut self, dir: &str, include_hidden: bool) {
-        let dir = dir.to_string();
-        self.send_fs(ipc::FS::ReadDir {
-            dir,
-            include_hidden,
-        });
+            request_id,
+        }) {
+            self.cm_file_requests.remove(&request_id);
+            return Err(error);
+        }
+        Ok(())
     }
 
     /// Create a new read job and start processing it (Connection-side).
@@ -4865,6 +5782,152 @@ impl Connection {
     }
 }
 
+#[cfg(test)]
+mod cm_file_response_authority_tests {
+    use super::*;
+
+    #[test]
+    fn session_binding_requires_exact_file_transfer_connection_and_token() {
+        assert!(cm_file_response_session_authorized(
+            true,
+            true,
+            7,
+            "session-token",
+            7,
+            "session-token"
+        ));
+        assert!(!cm_file_response_session_authorized(
+            false,
+            true,
+            7,
+            "session-token",
+            7,
+            "session-token"
+        ));
+        assert!(!cm_file_response_session_authorized(
+            true,
+            false,
+            7,
+            "session-token",
+            7,
+            "session-token"
+        ));
+        assert!(!cm_file_response_session_authorized(
+            true,
+            true,
+            7,
+            "session-token",
+            8,
+            "session-token"
+        ));
+        assert!(!cm_file_response_session_authorized(
+            true,
+            true,
+            7,
+            "session-token",
+            7,
+            "stale-token"
+        ));
+    }
+
+    #[test]
+    fn read_response_requires_monotonic_file_and_confirmation_phases() {
+        let mut authority = CmReadAuthority {
+            generation: 10,
+            phase: CmReadPhase::Initializing,
+            path: "/source".to_owned(),
+            first_file_num: 1,
+            file_count: Some(3),
+        };
+        assert!(!cm_read_progress_authorized(&authority, 1));
+
+        authority.phase = CmReadPhase::Reading { file_num: 1 };
+        assert!(cm_read_progress_authorized(&authority, 1));
+        assert!(cm_read_progress_authorized(&authority, 2));
+        assert!(!cm_read_progress_authorized(&authority, 0));
+        assert!(!cm_read_progress_authorized(&authority, 3));
+        assert!(!cm_read_terminal_authorized(&authority, 2, true));
+        assert!(cm_read_terminal_authorized(&authority, 3, true));
+        assert!(cm_read_terminal_authorized(&authority, 2, false));
+
+        authority.phase = CmReadPhase::AwaitingPeerConfirm { file_num: 1 };
+        assert!(!cm_read_progress_authorized(&authority, 1));
+        assert!(!cm_read_terminal_authorized(&authority, 3, true));
+        assert!(cm_read_terminal_authorized(&authority, 1, false));
+        assert!(!cm_read_terminal_authorized(&authority, 2, false));
+    }
+
+    #[test]
+    fn write_response_requires_active_matching_generation() {
+        let mut jobs = HashMap::new();
+        jobs.insert(
+            4,
+            CmWriteAuthority {
+                generation: 20,
+                phase: CmWritePhase::Active,
+            },
+        );
+        assert_eq!(active_cm_write_authority_generation(&jobs, 4), Some(20));
+
+        jobs.get_mut(&4).unwrap().phase = CmWritePhase::AwaitingPeerConfirm { file_num: 1 };
+        assert_eq!(active_cm_write_authority_generation(&jobs, 4), None);
+
+        jobs.get_mut(&4).unwrap().phase = CmWritePhase::CheckingDigest {
+            request_id: 9,
+            file_num: 1,
+        };
+        assert_eq!(active_cm_write_authority_generation(&jobs, 4), None);
+
+        jobs.get_mut(&4).unwrap().phase = CmWritePhase::Finalizing {
+            file_num: 1,
+            peer_error: None,
+        };
+        assert_eq!(active_cm_write_authority_generation(&jobs, 4), None);
+
+        jobs.insert(
+            4,
+            CmWriteAuthority {
+                generation: 21,
+                phase: CmWritePhase::Active,
+            },
+        );
+        assert_eq!(active_cm_write_authority_generation(&jobs, 4), Some(21));
+    }
+
+    #[test]
+    fn write_finalization_accepts_error_while_confirmation_is_pending() {
+        assert!(cm_write_finalization_authorized(
+            &CmWritePhase::Active,
+            false
+        ));
+        let awaiting = CmWritePhase::AwaitingPeerConfirm { file_num: 2 };
+        assert!(!cm_write_finalization_authorized(&awaiting, false));
+        assert!(cm_write_finalization_authorized(&awaiting, true));
+        let checking = CmWritePhase::CheckingDigest {
+            request_id: 3,
+            file_num: 2,
+        };
+        assert!(!cm_write_finalization_authorized(&checking, false));
+        assert!(cm_write_finalization_authorized(&checking, true));
+        assert!(!cm_write_finalization_authorized(
+            &CmWritePhase::Finalizing {
+                file_num: 2,
+                peer_error: None,
+            },
+            true
+        ));
+    }
+
+    #[test]
+    fn cm_error_text_is_bounded_before_network_construction() {
+        assert_eq!(Connection::valid_cm_file_error("short".to_owned()), "short");
+        assert_eq!(
+            Connection::valid_cm_file_error("x".repeat(MAX_CM_FILE_ERROR_BYTES + 1)),
+            "connection manager error exceeded limit"
+        );
+    }
+}
+
 #[cfg(target_os = "linux")]
 fn current_euid() -> u32 {
     unsafe { hbb_common::libc::geteuid() as u32 }
@@ -4954,6 +6017,7 @@ async fn start_ipc(
     mut _rx_desktop_ready: mpsc::Receiver<()>,
     tx_stream_ready: mpsc::Sender<()>,
     conn_id: i32,
+    cm_auth_token: String,
 ) -> ResultType<()> {
     use hbb_common::anyhow::anyhow;
 
@@ -5202,6 +6266,7 @@ async fn start_ipc(
         cm_peer_identity.ok_or_else(|| anyhow!("missing authenticated _cm peer identity"))?,
     )?;
     let _res = tx_stream_ready.send(()).await;
+    let mut cm_file_response_enabled = false;
     loop {
         tokio::select! {
             res = stream.next() => {
@@ -5216,22 +6281,35 @@ async fn start_ipc(
                                 let data = ipc::Data::ClickTime(ct);
                                 stream.send(&data).await?;
                             }
-                            // FileBlockFromCM: data is always sent separately via send_raw.
-                            // The data field has #[serde(skip)], so it's empty after deserialization.
-                            // Read the raw data bytes following this message.
-                            //
-                            // Note: Empty data (for empty files) is correctly handled. BytesCodec with
-                            // raw=false adds a length prefix, so next_raw() returns empty BytesMut for
-                            // zero-length frames. This mirrors the WriteBlock pattern below.
-                            ipc::Data::FileBlockFromCM { id, file_num, data: _, compressed, conn_id } => {
-                                let raw_data = stream.next_raw().await?;
-                                tx_from_cm.send(ipc::Data::FileBlockFromCM {
-                                    id,
-                                    file_num,
-                                    data: raw_data.into(),
-                                    compressed,
-                                    conn_id,
-                                })?;
+                            ipc::Data::CmFileResponse(mut envelope)
+                                if matches!(
+                                    envelope.response.as_ref(),
+                                    ipc::CmFileResponseKind::ReadBlock { .. }
+                                ) =>
+                            {
+                                if !cm_file_response_enabled
+                                    || !cm_file_response_matches_connection(
+                                        conn_id,
+                                        &cm_auth_token,
+                                        envelope.conn_id,
+                                        &envelope.cm_auth_token,
+                                    )
+                                {
+                                    bail!("connection-manager read block lacks exact connection authority");
+                                }
+                                stream.set_max_packet_length(ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES);
+                                let raw_data = timeout(
+                                    CM_FILE_BLOCK_READ_TIMEOUT_MS,
+                                    stream.next_raw(),
+                                )
+                                .await??;
+                                stream.set_max_packet_length(ipc::CM_IPC_MAX_FRAME_BYTES);
+                                if let ipc::CmFileResponseKind::ReadBlock { data, .. } =
+                                    envelope.response.as_mut()
+                                {
+                                    *data = raw_data.into();
+                                }
+                                tx_from_cm.send(ipc::Data::CmFileResponse(envelope))?;
                             }
                             _ => {
                                 tx_from_cm.send(data)?;
@@ -5244,14 +6322,26 @@ async fn start_ipc(
             res = rx_to_cm.recv() => {
                 match res {
                     Some(data) => {
+                        if let Data::Login {
+                            authorized,
+                            conn_type,
+                            file,
+                            ..
+                        } = &data
+                        {
+                            cm_file_response_enabled = *authorized
+                                && *file
+                                && conn_type.allows_file_authority();
+                        }
                         if let Data::AuthorizedFS { cm_auth_token, fs: ipc::FS::WriteBlock{id,
                             file_num,
                             conn_id,
                             data,
-                            compressed} } = data {
+                            compressed,
+                            generation} } = data {
                                 stream.send(&Data::AuthorizedFS {
                                     cm_auth_token,
-                                    fs: ipc::FS::WriteBlock{id, file_num, conn_id, data: Bytes::new(), compressed},
+                                    fs: ipc::FS::WriteBlock{id, file_num, conn_id, data: Bytes::new(), compressed, generation},
                                 }).await?;
                                 stream.send_raw(data).await?;
                         } else {

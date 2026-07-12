@@ -630,7 +630,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   client state is created. Desktop file operations are accepted only as `Data::AuthorizedFS` carrying
   the same token on the already validated CM stream; legacy desktop `Data::FS` is reject-only and is
   closed before `WriteBlock` raw bytes or `handle_fs`. File authority is additionally limited to
-  server-validated Remote/FileTransfer sessions with server-validated file capability, so ViewCamera,
+  server-validated FileTransfer sessions with server-validated file capability, so Remote, ViewCamera,
   Terminal, PortForward, unauthorized, id-zero, and no-file-capability sessions do not create CM file
   authority. Android remains an in-process channel and keeps the same receiver-side `CmFileAuthority`
   derivation before `handle_fs`. Verification closure: `scripts/verify.sh` runs `cm_file_authority_*`
@@ -2016,7 +2016,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   restart, recording, and host-audio; Unix headless FileTransfer reports the process owner while the "no active console
   user" refusal remains Windows-peer-only; and the R-S8 no-follow/budget/job-provenance gates continue to cover the
   actual filesystem operations. Verification closure: `scripts/verify.sh` gates this requirements/ledger disposition,
-  the FileTransfer login shape, CM `Remote`/`FileTransfer` file-authority binding, Unix headless username/refusal
+  the FileTransfer login shape, CM FileTransfer-only file-authority binding, Unix headless username/refusal
   guards, and the FileTransfer capability confinement set. No runtime behavior changed in this slice.
 - **R-S11e-15 — Linux pkcheck request-time peer identity binding — CLOSED 2026-07-11.**
   Platform: Linux `.deb` installed-service mode. Endpoint/action: local admin-authorized
@@ -2047,6 +2047,30 @@ unreachable and a source/test/AST gate prevents reintroduction.
   stdin handling, UTF-8 rejection, and the byte ceiling; `scripts/verify.sh` gates the prompt/confirmation,
   noninteractive TTY refusal, bounded reader, no positional extraction, safe deployment/smoke commands, and
   Appendix C #121; `scripts/apple-conform-check.sh` mirrors the desktop CLI source and documentation gates.
+- **R-S11e-17 — typed connection-manager file response authority — CLOSED 2026-07-12.** Platforms:
+  Linux, Windows, macOS, and Android controlled-side file operations; retained iOS source types. Endpoint/action:
+  CM file results crossing back into an authenticated `Connection` and then onto the keyed peer stream. Boundary:
+  local CM/file worker result authority ↔ authenticated network message construction. Attack surface closed:
+  `Data::RawMessage`, raw protobuf directory/result blobs, raw serialized `FS::SendConfirm`, and the legacy
+  ID-only CM result variants are deleted. CM returns only the closed serde-native `CmFileResponseKind` DTO set
+  in a `CmFileResponse` envelope bound to exact `conn_id` plus the connection's random `cm_auth_token`.
+  `Connection` mints monotonic generations for read/write jobs and bounded one-shot requests; mutation results
+  echo an exact typed operation descriptor. CM job IDs are never reused during a connection. Reads track the
+  current file and exact digest-confirmation phase. Writes use exclusive active, digest-checking,
+  peer-confirmation, and finalizing phases; an unresolved digest admits neither blocks nor successful completion,
+  while a peer error remains terminally admissible. Every response is checked against authenticated FileTransfer
+  mode, session token, generation, operation kind/path, phase, expected ID/path/file number, metadata limits, and
+  bounded error text. Windows drive descriptors are accepted only for an authorized virtual-root listing; transfer
+  manifests retain strict relative-name validation. Finalizing authority remains until CM acknowledgement, and
+  stale/cross-kind responses do not consume current authority. A failed helper-channel enqueue retires its pending
+  authority and returns a peer error instead of leaving advanced state live. CM filesystem authority is FileTransfer-only;
+  Remote clipboard authority is separate and Remote-only. `Connection` alone constructs peer protobuf messages.
+  Structured `_cm` frames have a 128 MiB decoder ceiling. Before a split typed `ReadBlock` payload is read, the
+  bridge checks FileTransfer mode/connection/token, reduces the decoder ceiling to 256 KiB, and applies a five-second
+  deadline; generation/current-file phase is checked before peer message construction. Verification closure:
+  `cm_file_response_authority_*`, `cm_file_authority_*`, typed directory/block tests, `scripts/verify.sh`, and
+  `scripts/apple-conform-check.sh` gate the complete session/generation/phase/size model and absence of every raw or
+  legacy response surface; Appendix C #122 records CWE-441/CWE-863 and the all-platform impact.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -3393,14 +3417,16 @@ LaunchAgent plist command-shape proof, R-S11e-2 client-side `_service` server au
   follow-up added R-S11e-3 canonical target binding for fixed helper launches; the Windows elevated command-file
   follow-up added R-S11d-32 identity and content binding across the close/reopen handoff; the 2026-07-12
   service-resource follow-up added R-S11c-26's bounded one-request protected service IPC envelope; the password-input
-  follow-up added R-S11e-16's no-argv hidden-terminal/bounded-stdin provisioning contract. The other
+  follow-up added R-S11e-16's no-argv hidden-terminal/bounded-stdin provisioning contract; the CM-response
+  authority follow-up added R-S11e/R-S11e-17's typed session/generation/operation-bound result contract and
+  Appendix C #122. The other
 requirements.html edits are disclosure/inventory updates, and the
 native-codec-watch ledger is re-confirmed valid against each.
 The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-8e481c65aa576818c71f760c9b8a79007186a70479ba72b5545abb34d9e3dee0  requirements.html
+8848e1a65c84906e892f08e4d44ece13d84582a795bf700bbd894a17da838248  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

@@ -2719,6 +2719,10 @@ if [ -n "$r_s11c23" ]; then echo "  FAIL R-S11c-2/R-S11c-3 Windows _service raw 
 # file-capability derivation.
 echo "== (3b-iii-f) CM filesystem IPC requires connection-bound authority (R-S11c-4a/R-S11c-4b) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config cm_file_authority --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config cm_file_response_authority --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config cm_read_block_serialization --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config cm_operation_serialization --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config cm_connection_codec --color never
 r_s11c4=
 grep -q 'struct CmFileAuthority' src/ui_cm_interface.rs || r_s11c4="$r_s11c4 no-cm-file-authority-type"
 grep -q 'file_authority: CmFileAuthority' src/ui_cm_interface.rs || r_s11c4="$r_s11c4 desktop-runner-has-no-authority-state"
@@ -2737,8 +2741,8 @@ grep -q 'conn_type.allows_file_authority()' src/server/connection.rs || r_s11c4=
 grep -q 'cm_file: bool' src/server/connection.rs || r_s11c4="$r_s11c4 cm-server-file-capability-not-recorded"
 grep -Fq 'pub enum CmAuthConnType' src/ipc.rs || r_s11c4="$r_s11c4 cm-auth-conn-type-missing"
 cm_auth_type_block=$(awk '/impl CmAuthConnType/,/^}/' src/ipc.rs)
-echo "$cm_auth_type_block" | grep -Fq 'Self::Remote' || r_s11c4="$r_s11c4 cm-auth-conn-type-not-keyed-to-remote"
 echo "$cm_auth_type_block" | grep -Fq 'Self::FileTransfer' || r_s11c4="$r_s11c4 cm-auth-conn-type-not-keyed-to-filetransfer"
+echo "$cm_auth_type_block" | grep -Fq 'matches!(self, Self::FileTransfer)' || r_s11c4="$r_s11c4 cm-file-authority-not-filetransfer-only"
 cm_file_authority_block=$(awk '/fn from_login/,/fn allows_fs/' src/ui_cm_interface.rs)
 echo "$cm_file_authority_block" | grep -Fq 'conn_type.allows_file_authority()' || r_s11c4="$r_s11c4 cm-file-authority-not-keyed-to-conn-type"
 echo "$cm_file_authority_block" | grep -Fq 'authority.valid' || r_s11c4="$r_s11c4 cm-file-authority-not-bound-to-validated-connection"
@@ -2767,6 +2771,55 @@ if [ -z "$android_gate_line" ] || [ -z "$android_handle_line" ] || [ "$android_g
 fi
 if [ -n "$r_s11c4" ]; then echo "  FAIL R-S11c-4 CM file IPC authority closure:$r_s11c4"; rc=1; else
   echo "  ok  R-S11c-4 CM rejects forged desktop login/FS unless the main server validates the active connection id/type/token; Android in-process FS remains login-gated"; fi
+
+echo "== (3b-iii-f0) CM cannot select authenticated peer message types (R-S11e-17) =="
+r_s11e17=
+if rg -n 'RawMessage|ReadJobInitResult|FileBlockFromCM|FileReadDone|FileReadError|FileDigestFromCM|AllFilesResult|WriteJobRejected' src/ipc.rs src/ui_cm_interface.rs src/server/connection.rs >"$VERIFY_TMP/r_s11e17_forbidden.txt"; then
+  r_s11e17="$r_s11e17 legacy-untyped-response-surface-present:$(tr '\n' ';' <"$VERIFY_TMP/r_s11e17_forbidden.txt")"
+fi
+if rg -n 'digest_request' src/server/connection.rs >"$VERIFY_TMP/r_s11e17_aux_digest_state.txt"; then
+  r_s11e17="$r_s11e17 digest-authority-remains-auxiliary-state:$(tr '\n' ';' <"$VERIFY_TMP/r_s11e17_aux_digest_state.txt")"
+fi
+if rg -n 'Message::new|write_to_bytes|parse_from_bytes' src/ui_cm_interface.rs >"$VERIFY_TMP/r_s11e17_cm_proto.txt"; then
+  r_s11e17="$r_s11e17 cm-still-constructs-or-parses-network-protobuf:$(tr '\n' ';' <"$VERIFY_TMP/r_s11e17_cm_proto.txt")"
+fi
+grep -Fq 'CmFileResponse(CmFileResponse)' src/ipc.rs || r_s11e17="$r_s11e17 typed-envelope-not-in-data"
+grep -Fq 'pub enum CmFileResponseKind' src/ipc.rs || r_s11e17="$r_s11e17 closed-response-enum-missing"
+grep -Fq 'cm_auth_token: String' src/ipc.rs || r_s11e17="$r_s11e17 session-token-missing"
+grep -Fq 'generation: u64' src/ipc.rs || r_s11e17="$r_s11e17 generation-missing"
+grep -Fq 'request_id: u64' src/ipc.rs || r_s11e17="$r_s11e17 request-generation-missing"
+grep -Fq 'fn cm_file_response_session_authorized' src/server/connection.rs || r_s11e17="$r_s11e17 exact-session-gate-missing"
+grep -Fq 'self.file_transfer.is_some()' src/server/connection.rs || r_s11e17="$r_s11e17 filetransfer-type-gate-missing"
+grep -Fq 'CmWritePhase::Finalizing' src/server/connection.rs || r_s11e17="$r_s11e17 write-finalization-phase-missing"
+grep -Fq 'CmWritePhase::AwaitingPeerConfirm' src/server/connection.rs || r_s11e17="$r_s11e17 write-confirmation-phase-missing"
+grep -Fq 'CmWritePhase::CheckingDigest' src/server/connection.rs || r_s11e17="$r_s11e17 exclusive-digest-phase-missing"
+grep -Fq 'CmReadPhase::AwaitingPeerConfirm' src/server/connection.rs || r_s11e17="$r_s11e17 read-confirmation-phase-missing"
+grep -Fq 'MAX_PENDING_CM_FILE_REQUESTS' src/server/connection.rs || r_s11e17="$r_s11e17 one-shot-authority-budget-missing"
+grep -Fq 'CM_IPC_MAX_FRAME_BYTES' src/ipc.rs || r_s11e17="$r_s11e17 aggregate-cm-frame-limit-missing"
+grep -Fq 'CM_FILE_BLOCK_MAX_FRAME_BYTES' src/ipc.rs || r_s11e17="$r_s11e17 read-block-frame-limit-missing"
+grep -Fq 'CM_FILE_BLOCK_READ_TIMEOUT_MS' src/server/connection.rs || r_s11e17="$r_s11e17 read-block-timeout-missing"
+grep -Fq 'stream.set_max_packet_length(ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES)' src/server/connection.rs || r_s11e17="$r_s11e17 read-block-limit-not-engaged-before-read"
+grep -Fq 'if !cm_file_response_enabled' src/server/connection.rs || r_s11e17="$r_s11e17 bridge-filetransfer-gate-missing"
+grep -Fq 'file_count: Option<usize>' src/server/connection.rs || r_s11e17="$r_s11e17 read-file-number-authority-missing"
+grep -Fq 'expected_request_id == request_id && expected_file_num == file_num' src/server/connection.rs || r_s11e17="$r_s11e17 digest-response-exact-phase-match-missing"
+grep -Fq 'cm_file_job_ids_seen: HashSet<i32>' src/server/connection.rs || r_s11e17="$r_s11e17 peer-job-id-lifetime-nonreuse-missing"
+grep -Fq 'pub enum CmFileOperation' src/ipc.rs || r_s11e17="$r_s11e17 typed-operation-descriptor-missing"
+grep -Fq 'expected_operation == &operation' src/server/connection.rs || r_s11e17="$r_s11e17 operation-descriptor-match-missing"
+grep -Fq 'expected_result_path' src/server/connection.rs || r_s11e17="$r_s11e17 directory-result-path-binding-missing"
+grep -Fq 'unexpected connection manager drive entry' src/server/connection.rs || r_s11e17="$r_s11e17 transfer-manifest-drive-rejection-missing"
+grep -Fq 'fn send_fs(&mut self, data: ipc::FS) -> Result<(), String>' src/server/connection.rs || r_s11e17="$r_s11e17 helper-enqueue-result-missing"
+grep -Fq 'connection manager IPC is unavailable' src/server/connection.rs || r_s11e17="$r_s11e17 helper-enqueue-failure-not-explicit"
+grep -Fq 'matches!(self, Self::FileTransfer)' src/ipc.rs || r_s11e17="$r_s11e17 fs-authority-not-filetransfer-only"
+grep -Fq 'conn.handle_cm_file_response(response).await' src/server/connection.rs || r_s11e17="$r_s11e17 typed-response-handler-not-wired"
+grep -Fq 'Data::CmFileResponse(mut envelope)' src/server/connection.rs || r_s11e17="$r_s11e17 typed-binary-bridge-missing"
+grep -Fq 'ipc::CmFileResponseKind::ReadBlock { data, .. }' src/server/connection.rs || r_s11e17="$r_s11e17 binary-bridge-not-readblock-only"
+grep -Fq 'R-S11e-17 — typed connection-manager file response authority' HARDENING_STATUS.md || r_s11e17="$r_s11e17 hardening-ledger-missing"
+grep -Fq 'Typed connection-manager file response authority' requirements.html || r_s11e17="$r_s11e17 requirements-disposition-missing"
+if [ -n "$r_s11e17" ]; then
+  echo "  FAIL R-S11e-17 CM typed file response authority:$r_s11e17"; rc=1
+else
+  echo "  ok  R-S11e-17 CM returns only session/generation-bound file DTOs; Connection alone constructs authenticated peer protobuf messages"
+fi
 
 echo "== (3b-iii-f1) Windows CM non-file clipboard requires connection-bound authority (R-S11c-22) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config cm_clipboard_authority --color never
@@ -5978,7 +6031,7 @@ echo "$voice_close_body" | grep -q 'pub async fn close_voice_call(&mut self) -> 
 echo "$voice_close_body" | grep -q 'if !self.can_drive_voice_call()'    || rs19="$rs19 voice-close-not-authtype-gated"
 echo "$voice_close_body" | grep -q 'self.voice_call_request_timestamp.is_none()' || rs19="$rs19 voice-close-not-state-owned"
 echo "$voice_close_body" | grep -q 'if self.voice_calling {'            || rs19="$rs19 voice-close-global-reset-not-owner-gated"
-ipc_voice_close_body=$(awk '/ipc::Data::CloseVoiceCall/,/ipc::Data::ReadJobInitResult/' "$conn")
+ipc_voice_close_body=$(awk '/ipc::Data::CloseVoiceCall/,/ipc::Data::CmFileResponse/' "$conn")
 echo "$ipc_voice_close_body" | grep -q 'if conn.close_voice_call().await' || rs19="$rs19 cm-voice-close-not-result-gated"
 on_close_voice_reset=$(awk '/async fn on_close/,/log::info!/' "$conn")
 echo "$on_close_voice_reset" | grep -q 'if self.voice_calling {'        || rs19="$rs19 connection-close-global-voice-reset-not-owner-gated"
@@ -6065,9 +6118,9 @@ if echo "$ft_login_block" | grep -Eq 'is_root|is_prelogin|run_as_user|is_headles
 fi
 auth_conn_type_block=$(awk '/let auth_conn_type = if self\.file_transfer\.is_some\(\)/,/self\.authed_conn_id = Some/' "$conn")
 echo "$auth_conn_type_block" | grep -qF 'AuthConnType::FileTransfer' || r_s11e14="$r_s11e14 auth-conn-type-not-filetransfer"
-echo "$auth_conn_type_block" | grep -qF 'AuthConnType::Remote | AuthConnType::FileTransfer' || r_s11e14="$r_s11e14 cm-file-not-remote-or-filetransfer"
+echo "$auth_conn_type_block" | grep -qF 'self.file && auth_conn_type == AuthConnType::FileTransfer' || r_s11e14="$r_s11e14 cm-file-not-filetransfer-only"
 cm_auth_type_block=$(awk '/impl CmAuthConnType/,/^}/' src/ipc.rs)
-echo "$cm_auth_type_block" | grep -qF 'Self::Remote | Self::FileTransfer' || r_s11e14="$r_s11e14 cm-auth-type-not-filetransfer-capable"
+echo "$cm_auth_type_block" | grep -qF 'matches!(self, Self::FileTransfer)' || r_s11e14="$r_s11e14 cm-auth-type-not-filetransfer-only"
 cm_file_authority_block=$(awk '/fn from_login/,/fn allows_fs/' src/ui_cm_interface.rs)
 echo "$cm_file_authority_block" | grep -qF 'conn_type.allows_file_authority()' || r_s11e14="$r_s11e14 cm-file-authority-not-conn-type-bound"
 echo "$cm_file_authority_block" | grep -qF 'authority.file' || r_s11e14="$r_s11e14 cm-file-authority-not-server-file-bound"
@@ -6937,10 +6990,10 @@ grep -q 'has_job_for_connection(write_jobs, id, conn_id)' src/ui_cm_interface.rs
   r_fsbudget_missing="$r_fsbudget_missing cm-write-duplicate"
 grep -q 'active_jobs_for_connection(write_jobs, conn_id)' src/ui_cm_interface.rs ||
   r_fsbudget_missing="$r_fsbudget_missing cm-write-active-count"
-grep -q 'WriteJobRejected {' src/ipc.rs ||
-  r_fsbudget_missing="$r_fsbudget_missing write-reject-ipc"
-grep -q 'conn.write_job_ids.remove(&id)' src/server/connection.rs ||
-  r_fsbudget_missing="$r_fsbudget_missing write-reject-release"
+grep -q 'CmFileResponseKind::WriteFailed' src/ui_cm_interface.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing typed-write-reject-ipc"
+grep -q 'remove_active_cm_write_authority' src/server/connection.rs ||
+  r_fsbudget_missing="$r_fsbudget_missing typed-write-reject-release"
 grep -q 'fs::validate_transfer_file_list' src/server/connection.rs ||
   r_fsbudget_missing="$r_fsbudget_missing conn-write-list-validator"
 grep -q 'job.set_files_with_limit(file_entries, get_max_validated_files())' src/ui_cm_interface.rs ||
@@ -6965,32 +7018,30 @@ if [ -n "$r_fsbudget_missing" ]; then
 else
   echo "  ok  R-S8/R-T0 peer-triggered file-transfer metadata scans and read/write jobs are budgeted before traversal/allocation"
 fi
-# R-S8/R-S11 defense-in-depth: incoming FileResponse carries peer-chosen write data for a CM/FS write
-# job. FileAction is session-gated, but the shared FS worker historically looked up write_jobs only by
-# peer-chosen id, so a cross-session id collision could target the wrong write job. Gate FileResponse
-# before forwarding and carry conn_id through the write-side FS IPC messages; the worker must match
-# (id, conn_id), not id alone.
+# R-S8/R-S11: file responses carry a connection token plus monotonic generation. The worker and
+# connection both validate exact session/job/phase authority; finalization retains the reservation
+# until the typed worker acknowledgement arrives.
 r_fileresp_missing=
-grep -q 'write_job_ids: HashSet<i32>' src/server/connection.rs                                  || r_fileresp_missing="$r_fileresp_missing connection-write-id-set"
-grep -q 'self.reserve_write_job(r.id)' src/server/connection.rs                                  || r_fileresp_missing="$r_fileresp_missing receive-reserve"
-grep -q 'self.accepts_file_response_write_job(block.id, "Block")' src/server/connection.rs       || r_fileresp_missing="$r_fileresp_missing block-gate"
-grep -q 'self.accepts_file_response_write_job(d.id, "Done")' src/server/connection.rs            || r_fileresp_missing="$r_fileresp_missing done-gate"
-grep -q 'self.accepts_file_response_write_job(d.id, "Digest")' src/server/connection.rs          || r_fileresp_missing="$r_fileresp_missing digest-gate"
-grep -q 'self.accepts_file_response_write_job(e.id, "Error")' src/server/connection.rs           || r_fileresp_missing="$r_fileresp_missing error-gate"
-grep -q 'conn_id: self.inner.id()' src/server/connection.rs                                      || r_fileresp_missing="$r_fileresp_missing file-response-conn-id"
-grep -q 'fn get_write_job_for_connection' src/ui_cm_interface.rs                                 || r_fileresp_missing="$r_fileresp_missing worker-id-conn-helper"
-grep -q 'job.id() == id && job.conn_id == conn_id' src/ui_cm_interface.rs                        || r_fileresp_missing="$r_fileresp_missing worker-id-conn-match"
-grep -q 'remove_write_job_for_connection(write_jobs, id, conn_id)' src/ui_cm_interface.rs         || r_fileresp_missing="$r_fileresp_missing worker-id-conn-remove"
+grep -q 'cm_write_jobs: HashMap<i32, CmWriteAuthority>' src/server/connection.rs || r_fileresp_missing="$r_fileresp_missing connection-write-authority-map"
+grep -q 'self.reserve_write_job(r.id)' src/server/connection.rs || r_fileresp_missing="$r_fileresp_missing receive-reserve"
+grep -q 'self.active_cm_write_generation(block.id, "Block")' src/server/connection.rs || r_fileresp_missing="$r_fileresp_missing block-phase-gate"
+grep -q 'begin_cm_write_finalization' src/server/connection.rs || r_fileresp_missing="$r_fileresp_missing finalization-phase-gate"
+grep -q 'pub struct CmFileResponse' src/ipc.rs || r_fileresp_missing="$r_fileresp_missing typed-response-envelope"
+grep -q 'pub cm_auth_token: String' src/ipc.rs || r_fileresp_missing="$r_fileresp_missing response-session-token"
+grep -q 'fn get_transfer_job_for_connection' src/ui_cm_interface.rs || r_fileresp_missing="$r_fileresp_missing worker-authority-helper"
+grep -q 'job.job.id() == id && job.job.conn_id == conn_id && job.generation == generation' src/ui_cm_interface.rs || r_fileresp_missing="$r_fileresp_missing worker-id-conn-generation-match"
+grep -q 'remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)' src/ui_cm_interface.rs || r_fileresp_missing="$r_fileresp_missing worker-id-conn-generation-remove"
 for variant in 'WriteBlock' 'WriteDone' 'WriteError' 'CheckDigest'; do
   awk "/$variant \\{/,/\\}/" src/ipc.rs | grep -q 'conn_id: i32' || r_fileresp_missing="$r_fileresp_missing ipc-${variant}-conn_id"
+  awk "/$variant \\{/,/\\}/" src/ipc.rs | grep -q 'generation: u64' || r_fileresp_missing="$r_fileresp_missing ipc-${variant}-generation"
 done
 if grep -nE 'FS::Write(Done|Error) \{ id, file_num \}' src/ui_cm_interface.rs src/server/connection.rs | grep -q .; then
   r_fileresp_missing="$r_fileresp_missing done-error-id-only-pattern"
 fi
 if [ -n "$r_fileresp_missing" ]; then
-  echo "  FAIL R-S8/R-S11: FileResponse write forwarding is not same-session/job gated:$r_fileresp_missing"; rc=1
+  echo "  FAIL R-S8/R-S11: FileResponse write forwarding lacks exact typed authority:$r_fileresp_missing"; rc=1
 else
-  echo "  ok  R-S8/R-S11 FileResponse forwarding is gated by same-connection write-job provenance and FS worker matches write jobs by (id, conn_id)"
+  echo "  ok  R-S8/R-S11 FileResponse forwarding is gated by session token, generation, operation phase, and worker-side (id, conn_id, generation) authority"
 fi
 # R-S14 (screen capture bound to a PAKE session — a reused grant must not capture outside one): the
 # controlled-side capture is per-connection — started only in the authorized (CPace-keyed) Connection

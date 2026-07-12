@@ -107,6 +107,8 @@ const MACOS_OPEN: &str = "/usr/bin/open";
 #[cfg(target_os = "macos")]
 const MACOS_LAUNCHCTL: &str = "/bin/launchctl";
 pub(crate) const SERVICE_IPC_MAX_FRAME_BYTES: usize = 32 * 1024;
+pub(crate) const CM_IPC_MAX_FRAME_BYTES: usize = 128 * 1024 * 1024;
+pub(crate) const CM_FILE_BLOCK_MAX_FRAME_BYTES: usize = 256 * 1024;
 pub(crate) const SERVICE_IPC_REQUEST_TIMEOUT_MS: u64 = 1_000;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) const UNATTENDED_PASSWORD_MAX_BYTES: usize = 4096;
@@ -226,30 +228,162 @@ pub async fn connect_service(ms_timeout: u64) -> ResultType<ConnectionTmpl<ConnC
     connect(ms_timeout, crate::POSTFIX_SERVICE).await
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+pub enum CmFileEntryType {
+    Directory,
+    DirectoryLink,
+    DirectoryDrive,
+    File,
+    FileLink,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub struct CmFileEntry {
+    pub entry_type: CmFileEntryType,
+    pub name: String,
+    pub is_hidden: bool,
+    pub size: u64,
+    pub modified_time: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub struct CmFileDirectory {
+    pub id: i32,
+    pub path: String,
+    pub entries: Vec<CmFileEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub enum CmFileOperation {
+    RemoveDirectory { path: String, recursive: bool },
+    RemoveFile { path: String },
+    CreateDirectory { path: String },
+    Rename { path: String, new_name: String },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub enum CmWriteDigestResult {
+    SendConfirm {
+        skip: bool,
+    },
+    Digest {
+        last_modified: u64,
+        file_size: u64,
+        is_identical: bool,
+        transferred_size: u64,
+    },
+    Error(String),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub enum CmFileResponseKind {
+    ReadDirectory {
+        request_id: u64,
+        path: String,
+        result: Result<CmFileDirectory, String>,
+    },
+    ReadEmptyDirectories {
+        request_id: u64,
+        path: String,
+        result: Result<Vec<CmFileDirectory>, String>,
+    },
+    Operation {
+        request_id: u64,
+        operation: CmFileOperation,
+        result: Result<(), String>,
+    },
+    ReadJobInit {
+        id: i32,
+        generation: u64,
+        result: Result<CmFileDirectory, String>,
+    },
+    ReadBlock {
+        id: i32,
+        generation: u64,
+        file_num: i32,
+        #[serde(skip)]
+        data: Bytes,
+        compressed: bool,
+    },
+    ReadDone {
+        id: i32,
+        generation: u64,
+        file_num: i32,
+    },
+    ReadError {
+        id: i32,
+        generation: u64,
+        file_num: i32,
+        error: String,
+    },
+    ReadDigest {
+        id: i32,
+        generation: u64,
+        file_num: i32,
+        last_modified: u64,
+        file_size: u64,
+        is_resume: bool,
+    },
+    AllFiles {
+        request_id: u64,
+        result: Result<CmFileDirectory, String>,
+    },
+    WriteFailed {
+        id: i32,
+        generation: u64,
+        file_num: i32,
+        error: String,
+    },
+    WriteFinalized {
+        id: i32,
+        generation: u64,
+        result: Result<(), String>,
+    },
+    WriteDigest {
+        id: i32,
+        generation: u64,
+        request_id: u64,
+        file_num: i32,
+        result: CmWriteDigestResult,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub struct CmFileResponse {
+    pub conn_id: i32,
+    pub cm_auth_token: String,
+    pub response: Box<CmFileResponseKind>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "t", content = "c")]
 pub enum FS {
     ReadEmptyDirs {
         dir: String,
         include_hidden: bool,
+        request_id: u64,
     },
     ReadDir {
         dir: String,
         include_hidden: bool,
+        request_id: u64,
     },
     RemoveDir {
         path: String,
         id: i32,
         recursive: bool,
+        request_id: u64,
     },
     RemoveFile {
         path: String,
         id: i32,
         file_num: i32,
+        request_id: u64,
     },
     CreateDir {
         path: String,
         id: i32,
+        request_id: u64,
     },
     NewWrite {
         path: String,
@@ -259,9 +393,12 @@ pub enum FS {
         overwrite_detection: bool,
         total_size: u64,
         conn_id: i32,
+        generation: u64,
     },
     CancelWrite {
         id: i32,
+        conn_id: i32,
+        generation: u64,
     },
     WriteBlock {
         id: i32,
@@ -269,22 +406,20 @@ pub enum FS {
         conn_id: i32,
         data: Bytes,
         compressed: bool,
+        generation: u64,
     },
     WriteDone {
         id: i32,
         file_num: i32,
         conn_id: i32,
+        generation: u64,
     },
     WriteError {
         id: i32,
         file_num: i32,
         conn_id: i32,
         err: String,
-    },
-    WriteOffset {
-        id: i32,
-        file_num: i32,
-        offset_blk: u32,
+        generation: u64,
     },
     CheckDigest {
         id: i32,
@@ -294,12 +429,22 @@ pub enum FS {
         last_modified: u64,
         is_upload: bool,
         is_resume: bool,
+        generation: u64,
+        request_id: u64,
     },
-    SendConfirm(Vec<u8>),
+    SendConfirm {
+        id: i32,
+        file_num: i32,
+        skip: bool,
+        offset_blk: u32,
+        conn_id: i32,
+        generation: u64,
+    },
     Rename {
         id: i32,
         path: String,
         new_name: String,
+        request_id: u64,
     },
     // CM-side file reading operations (Windows only)
     // These enable Connection Manager to read files and stream them back to Connection
@@ -310,10 +455,12 @@ pub enum FS {
         include_hidden: bool,
         conn_id: i32,
         overwrite_detection: bool,
+        generation: u64,
     },
     CancelRead {
         id: i32,
         conn_id: i32,
+        generation: u64,
     },
     SendConfirmForRead {
         id: i32,
@@ -321,12 +468,14 @@ pub enum FS {
         skip: bool,
         offset_blk: u32,
         conn_id: i32,
+        generation: u64,
     },
     ReadAllFiles {
         path: String,
         id: i32,
         include_hidden: bool,
         conn_id: i32,
+        request_id: u64,
     },
 }
 
@@ -399,7 +548,7 @@ pub enum CmAuthConnType {
 
 impl CmAuthConnType {
     pub(crate) fn allows_file_authority(self) -> bool {
-        matches!(self, Self::Remote | Self::FileTransfer)
+        matches!(self, Self::FileTransfer)
     }
 
     pub(crate) fn allows_clipboard_authority(self) -> bool {
@@ -520,7 +669,7 @@ pub enum Data {
     #[cfg(target_os = "windows")]
     ServiceOwnedShareRdpResult(bool),
     NatType(Option<i32>),
-    RawMessage(Vec<u8>),
+    CmFileResponse(CmFileResponse),
     #[cfg(target_os = "linux")]
     PulseAudioStart {
         owner: PeerProcessIdentity,
@@ -578,78 +727,6 @@ pub enum Data {
     #[cfg(windows)]
     ControlledSessionCount(usize),
     CmErr(String),
-    // CM-side file reading responses (Windows only)
-    // These are sent from CM back to Connection when CM handles file reading
-    /// Response to ReadFile: contains initial file list or error
-    ReadJobInitResult {
-        id: i32,
-        file_num: i32,
-        include_hidden: bool,
-        conn_id: i32,
-        /// Serialized protobuf bytes of FileDirectory, or error string
-        result: Result<Vec<u8>, String>,
-    },
-    /// File data block read by CM.
-    ///
-    /// The actual data is sent separately via `send_raw()` after this message to avoid
-    /// JSON encoding overhead for large binary data. This mirrors the `WriteBlock` pattern.
-    ///
-    /// **Protocol:**
-    /// - Sender: `send(FileBlockFromCM{...})` then `send_raw(data)`
-    /// - Receiver: `next()` returns `FileBlockFromCM`, then `next_raw()` returns data bytes
-    ///
-    /// **Note on empty data (e.g., empty files):**
-    /// Empty data is supported. The IPC connection uses `BytesCodec` with `raw=false` (default),
-    /// which prefixes each frame with a length header. So `send_raw(Bytes::new())` sends a
-    /// 1-byte frame (length=0), and `next_raw()` correctly returns an empty `BytesMut`.
-    /// See `libs/hbb_common/src/bytes_codec.rs` test `test_codec2` for verification.
-    FileBlockFromCM {
-        id: i32,
-        file_num: i32,
-        /// Data is sent separately via `send_raw()` to avoid JSON encoding overhead.
-        /// This field is skipped during serialization; sender must call `send_raw()` after sending.
-        /// Receiver must call `next_raw()` and populate this field manually.
-        #[serde(skip)]
-        data: bytes::Bytes,
-        compressed: bool,
-        conn_id: i32,
-    },
-    /// File read completed successfully
-    FileReadDone {
-        id: i32,
-        file_num: i32,
-        conn_id: i32,
-    },
-    /// File read failed with error
-    FileReadError {
-        id: i32,
-        file_num: i32,
-        err: String,
-        conn_id: i32,
-    },
-    /// Digest info from CM for overwrite detection
-    FileDigestFromCM {
-        id: i32,
-        file_num: i32,
-        last_modified: u64,
-        file_size: u64,
-        is_resume: bool,
-        conn_id: i32,
-    },
-    /// Response to ReadAllFiles: recursive directory listing
-    AllFilesResult {
-        id: i32,
-        conn_id: i32,
-        path: String,
-        /// Serialized protobuf bytes of FileDirectory, or error string
-        result: Result<Vec<u8>, String>,
-    },
-    /// CM rejected a peer-proposed write job before storing it.
-    WriteJobRejected {
-        id: i32,
-        conn_id: i32,
-        err: String,
-    },
     #[cfg(all(
         feature = "flutter",
         not(any(target_os = "android", target_os = "ios"))
@@ -1170,7 +1247,7 @@ pub(crate) fn main_channel_admits_state_mutation(
         | Data::OptionsSetResult(_)
         | Data::SetUserOwnedPermanentPasswordResult(_)
         | Data::NatType(_)
-        | Data::RawMessage(_)
+        | Data::CmFileResponse(_)
         | Data::FS(_)
         | Data::Test
         | Data::ClipboardFileEnabled(_)
@@ -1184,14 +1261,7 @@ pub(crate) fn main_channel_admits_state_mutation(
         | Data::VoiceCallResponse(_)
         | Data::CloseVoiceCall(_)
         | Data::FileTransferLog(_)
-        | Data::CmErr(_)
-        | Data::ReadJobInitResult { .. }
-        | Data::FileBlockFromCM { .. }
-        | Data::FileReadDone { .. }
-        | Data::FileReadError { .. }
-        | Data::FileDigestFromCM { .. }
-        | Data::AllFilesResult { .. }
-        | Data::WriteJobRejected { .. } => true,
+        | Data::CmErr(_) => true,
         #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         Data::CmEndpointChallenge { .. }
         | Data::CmEndpointProof { .. }
@@ -2723,21 +2793,27 @@ async fn connect_with_path(
     {
         let client = timeout(ms_timeout, connect_windows_named_pipe(path)).await??;
         ensure_windows_ipc_server_matches_current(&client, postfix)?;
-        let connection = if config::is_service_ipc_postfix(postfix) {
+        let mut connection = if config::is_service_ipc_postfix(postfix) {
             ConnectionTmpl::new_protected_service(client)
         } else {
             ConnectionTmpl::new(client)
         };
+        if postfix == "_cm" {
+            connection.set_max_packet_length(CM_IPC_MAX_FRAME_BYTES);
+        }
         return Ok(connection);
     }
     #[cfg(not(windows))]
     {
         let client = timeout(ms_timeout, Endpoint::connect(path)).await??;
-        let connection = if config::is_service_ipc_postfix(postfix) {
+        let mut connection = if config::is_service_ipc_postfix(postfix) {
             ConnectionTmpl::new_protected_service(client)
         } else {
             ConnectionTmpl::new(client)
         };
+        if postfix == "_cm" {
+            connection.set_max_packet_length(CM_IPC_MAX_FRAME_BYTES);
+        }
         #[cfg(target_os = "linux")]
         if postfix == crate::POSTFIX_SERVICE {
             ensure_linux_service_server_is_trusted(&connection)?;
@@ -3097,6 +3173,12 @@ where
         let v = serde_json::to_vec(data)?;
         self.inner.send(bytes::Bytes::from(v)).await?;
         Ok(())
+    }
+
+    pub(crate) fn set_max_packet_length(&mut self, max_packet_length: usize) {
+        self.inner
+            .codec_mut()
+            .set_max_packet_length(max_packet_length);
     }
 
     pub async fn next_timeout(&mut self, ms_timeout: u64) -> ResultType<Option<Data>> {
@@ -3691,6 +3773,87 @@ mod test {
         assert!(!CmAuthConnType::PortForward.allows_clipboard_authority());
     }
 
+    #[test]
+    fn cm_file_authority_is_file_transfer_only() {
+        assert!(!CmAuthConnType::Remote.allows_file_authority());
+        assert!(CmAuthConnType::FileTransfer.allows_file_authority());
+        assert!(!CmAuthConnType::ViewCamera.allows_file_authority());
+        assert!(!CmAuthConnType::Terminal.allows_file_authority());
+        assert!(!CmAuthConnType::PortForward.allows_file_authority());
+    }
+
+    #[test]
+    fn cm_read_block_serialization_keeps_authority_metadata_and_splits_payload() {
+        let data = Data::CmFileResponse(CmFileResponse {
+            conn_id: 7,
+            cm_auth_token: "session-token".to_owned(),
+            response: Box::new(CmFileResponseKind::ReadBlock {
+                id: 3,
+                generation: 11,
+                file_num: 2,
+                data: Bytes::from_static(b"block-payload"),
+                compressed: true,
+            }),
+        });
+        let encoded = serde_json::to_vec(&data).unwrap();
+        assert!(!encoded
+            .windows(b"block-payload".len())
+            .any(|window| window == b"block-payload"));
+
+        let decoded: Data = serde_json::from_slice(&encoded).unwrap();
+        let Data::CmFileResponse(response) = decoded else {
+            panic!("unexpected data variant");
+        };
+        assert_eq!(response.conn_id, 7);
+        assert_eq!(response.cm_auth_token, "session-token");
+        let CmFileResponseKind::ReadBlock {
+            id,
+            generation,
+            file_num,
+            data,
+            compressed,
+        } = *response.response
+        else {
+            panic!("unexpected CM file response");
+        };
+        assert_eq!((id, generation, file_num), (3, 11, 2));
+        assert!(data.is_empty());
+        assert!(compressed);
+    }
+
+    #[test]
+    fn cm_operation_serialization_preserves_exact_descriptor() {
+        let operation = CmFileOperation::Rename {
+            path: "/source/name".to_owned(),
+            new_name: "renamed".to_owned(),
+        };
+        let data = Data::CmFileResponse(CmFileResponse {
+            conn_id: 7,
+            cm_auth_token: "session-token".to_owned(),
+            response: Box::new(CmFileResponseKind::Operation {
+                request_id: 13,
+                operation: operation.clone(),
+                result: Ok(()),
+            }),
+        });
+
+        let decoded: Data = serde_json::from_slice(&serde_json::to_vec(&data).unwrap()).unwrap();
+        let Data::CmFileResponse(response) = decoded else {
+            panic!("unexpected data variant");
+        };
+        let CmFileResponseKind::Operation {
+            request_id,
+            operation: decoded_operation,
+            result,
+        } = *response.response
+        else {
+            panic!("unexpected CM file response");
+        };
+        assert_eq!(request_id, 13);
+        assert_eq!(decoded_operation, operation);
+        assert_eq!(result, Ok(()));
+    }
+
     fn macos_service_owned_launch_agent_test_plist(label: &str, args: &[&str]) -> plist::Value {
         let args_xml = args
             .iter()
@@ -4271,6 +4434,21 @@ mod test {
         let (generic_end, _peer_end) = tokio::io::duplex(SERVICE_IPC_MAX_FRAME_BYTES * 2);
         let generic = ConnectionTmpl::new(generic_end);
         assert_eq!(generic.inner.codec().max_packet_length(), usize::MAX);
+    }
+
+    #[test]
+    fn cm_connection_codec_switches_between_aggregate_and_block_limits() {
+        assert!(CM_FILE_BLOCK_MAX_FRAME_BYTES < CM_IPC_MAX_FRAME_BYTES);
+        let (cm_end, _peer_end) = tokio::io::duplex(CM_FILE_BLOCK_MAX_FRAME_BYTES * 2);
+        let mut cm = ConnectionTmpl::new(cm_end);
+
+        cm.set_max_packet_length(CM_IPC_MAX_FRAME_BYTES);
+        assert_eq!(cm.inner.codec().max_packet_length(), CM_IPC_MAX_FRAME_BYTES);
+        cm.set_max_packet_length(CM_FILE_BLOCK_MAX_FRAME_BYTES);
+        assert_eq!(
+            cm.inner.codec().max_packet_length(),
+            CM_FILE_BLOCK_MAX_FRAME_BYTES
+        );
     }
 
     #[cfg(any(target_os = "linux", target_os = "windows"))]

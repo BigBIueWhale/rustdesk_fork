@@ -208,6 +208,44 @@ apple_absent 'fn elevate\b|bool Elevate\b|AuthorizationExecuteWithPrivileges' \
 apple_absent 'libpam|pam_authenticate|\bpam::' \
   'R-X14 PAM (absent-by-construction on Apple)'
 
+echo "== (2a) R-S11e-17 typed CM file response authority =="
+r_s11e17=
+if rg -n 'RawMessage|ReadJobInitResult|FileBlockFromCM|FileReadDone|FileReadError|FileDigestFromCM|AllFilesResult|WriteJobRejected' \
+  "$REPO/src/ipc.rs" "$REPO/src/ui_cm_interface.rs" "$REPO/src/server/connection.rs" >"$APPLE_CHECK_TMP/r_s11e17_forbidden.txt"; then
+  r_s11e17="$r_s11e17 legacy-untyped-response-surface-present"
+fi
+if rg -n 'digest_request' "$REPO/src/server/connection.rs" >"$APPLE_CHECK_TMP/r_s11e17_aux_digest_state.txt"; then
+  r_s11e17="$r_s11e17 digest-authority-remains-auxiliary-state"
+fi
+if rg -n 'Message::new|write_to_bytes|parse_from_bytes' "$REPO/src/ui_cm_interface.rs" >"$APPLE_CHECK_TMP/r_s11e17_cm_proto.txt"; then
+  r_s11e17="$r_s11e17 cm-still-constructs-or-parses-network-protobuf"
+fi
+grep -Fq 'CmFileResponse(CmFileResponse)' "$REPO/src/ipc.rs" || r_s11e17="$r_s11e17 typed-envelope-missing"
+grep -Fq 'pub enum CmFileResponseKind' "$REPO/src/ipc.rs" || r_s11e17="$r_s11e17 closed-response-enum-missing"
+grep -Fq 'fn cm_file_response_session_authorized' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 exact-session-gate-missing"
+grep -Fq 'CmWritePhase::Finalizing' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 finalization-phase-missing"
+grep -Fq 'CmWritePhase::AwaitingPeerConfirm' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 confirmation-phase-missing"
+grep -Fq 'CmWritePhase::CheckingDigest' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 exclusive-digest-phase-missing"
+grep -Fq 'CmReadPhase::AwaitingPeerConfirm' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 read-confirmation-phase-missing"
+grep -Fq 'CM_IPC_MAX_FRAME_BYTES' "$REPO/src/ipc.rs" || r_s11e17="$r_s11e17 aggregate-frame-limit-missing"
+grep -Fq 'CM_FILE_BLOCK_MAX_FRAME_BYTES' "$REPO/src/ipc.rs" || r_s11e17="$r_s11e17 read-block-frame-limit-missing"
+grep -Fq 'CM_FILE_BLOCK_READ_TIMEOUT_MS' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 read-block-timeout-missing"
+grep -Fq 'cm_file_job_ids_seen: HashSet<i32>' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 job-id-nonreuse-missing"
+grep -Fq 'pub enum CmFileOperation' "$REPO/src/ipc.rs" || r_s11e17="$r_s11e17 operation-descriptor-missing"
+grep -Fq 'expected_operation == &operation' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 operation-descriptor-match-missing"
+grep -Fq 'fn send_fs(&mut self, data: ipc::FS) -> Result<(), String>' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 helper-enqueue-result-missing"
+grep -Fq 'connection manager IPC is unavailable' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 helper-enqueue-failure-not-explicit"
+grep -Fq 'file_count: Option<usize>' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 read-file-number-authority-missing"
+grep -Fq 'matches!(self, Self::FileTransfer)' "$REPO/src/ipc.rs" || r_s11e17="$r_s11e17 file-authority-not-filetransfer-only"
+grep -Fq 'R-S11e-17 — typed connection-manager file response authority' "$REPO/HARDENING_STATUS.md" || r_s11e17="$r_s11e17 hardening-ledger-missing"
+grep -Fq 'Typed connection-manager file response authority' "$REPO/requirements.html" || r_s11e17="$r_s11e17 requirements-disposition-missing"
+if [ -n "$r_s11e17" ]; then
+  echo "  FAIL R-S11e-17 typed CM file response authority:$r_s11e17"
+  rc=1
+else
+  note "ok  R-S11e-17 Apple source accepts only typed, session/generation-bound CM file responses"
+fi
+
 echo "== (2b) R-X12/R-X13 macOS sole-backend assertions =="
 if grep -qE 'pub mod quartz' "$REPO/libs/scrap/src/lib.rs"; then
   note "ok  R-X12 macOS capture = quartz/CGDisplayStream present (sole backend)"

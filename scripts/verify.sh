@@ -2730,7 +2730,7 @@ grep -q 'let file_authority = CmFileAuthority::from_login' src/ui_cm_interface.r
 grep -Eq '^[[:space:]]*file_authority = CmFileAuthority::from_login' src/ui_cm_interface.rs || r_s11c4="$r_s11c4 android-login-does-not-derive-authority"
 grep -q 'authorize_cm_ipc_connection(&stream)' src/ui_cm_interface.rs || r_s11c4="$r_s11c4 desktop-cm-peer-auth-not-wired"
 grep -q 'pub(crate) fn authorize_cm_ipc_connection' src/ipc/auth.rs || r_s11c4="$r_s11c4 cm-peer-auth-helper-missing"
-grep -Fq 'cm_auth_token: crate::encode64(hbb_common::rand::random::<[u8; 32]>())' src/server/connection.rs || r_s11c4="$r_s11c4 cm-token-not-randomly-minted-in-connection"
+grep -Fq 'let cm_auth_token = crate::encode64(hbb_common::rand::random::<[u8; 32]>());' src/server/connection.rs || r_s11c4="$r_s11c4 cm-token-not-randomly-minted-in-connection"
 grep -Fq 'cm_auth_token: self.cm_auth_token.clone()' src/server/connection.rs || r_s11c4="$r_s11c4 cm-token-not-sent-from-connection"
 grep -q 'AuthorizedFS {' src/ipc.rs || r_s11c4="$r_s11c4 authorized-fs-variant-missing"
 grep -q 'ValidateCmConnection {' src/ipc.rs || r_s11c4="$r_s11c4 cm-validation-message-missing"

@@ -1392,7 +1392,7 @@ grep -Fq 'subprocess.run(command, check=True)' libs/portable/generate.py || r_s1
 grep -Fq 'Remove-Item -LiteralPath $setupPayloadDir -Recurse -Force' "$windows_build" || r_s11e20="$r_s11e20 payload-finally-cleanup-missing"
 grep -Fq "\$setup = Join-Path \$SRC 'target\release\rustdesk-portable-packer.exe'" "$windows_build" || r_s11e20="$r_s11e20 exact-setup-output-missing"
 grep -Fq "\$msi = Join-Path \$SRC 'res\msi\Package\bin\x64\Release\en-us\Package.msi'" "$windows_build" || r_s11e20="$r_s11e20 exact-msi-output-missing"
-if rg -n "Get-ChildItem -Path \\$SRC -Filter 'rustdesk-\*install.exe'|Get-ChildItem -Path \\$SRC -Filter '\*\.msi'" "$windows_build" >"$VERIFY_TMP/rd_verify_r_s11e20_discovery"; then
+if rg -n 'Get-ChildItem -Path \$SRC -Filter' "$windows_build" >"$VERIFY_TMP/rd_verify_r_s11e20_discovery"; then
   r_s11e20="$r_s11e20 recursive-artifact-discovery-leftover"
 fi
 

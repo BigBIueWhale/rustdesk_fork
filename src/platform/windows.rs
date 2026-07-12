@@ -12,10 +12,10 @@ use hbb_common::{
     log,
     message_proto::{DisplayInfo, Resolution, WindowsSession},
     sha2::{Digest, Sha256},
-    sleep, timeout,
     tokio::{
         self,
-        sync::{OwnedSemaphorePermit, Semaphore},
+        sync::{mpsc, OwnedSemaphorePermit, Semaphore},
+        task::JoinSet,
     },
 };
 use std::{
@@ -54,22 +54,29 @@ use winapi::{
             CreateFileW, GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, OPEN_EXISTING,
         },
         handleapi::{CloseHandle, INVALID_HANDLE_VALUE},
+        jobapi2::{
+            CreateJobObjectW, QueryInformationJobObject, SetInformationJobObject,
+            TerminateJobObject,
+        },
         libloaderapi::{GetProcAddress, LOAD_LIBRARY_SEARCH_SYSTEM32},
-        minwinbase::STILL_ACTIVE,
         processthreadsapi::{
-            GetCurrentProcess, GetCurrentProcessId, GetExitCodeProcess, OpenProcess,
-            OpenProcessToken, ProcessIdToSessionId,
+            GetCurrentProcess, GetCurrentProcessId, OpenProcess, OpenProcessToken,
+            ProcessIdToSessionId,
         },
         securitybaseapi::GetTokenInformation,
         shellapi::ShellExecuteW,
+        synchapi::WaitForSingleObject,
         sysinfoapi::{GetNativeSystemInfo, SYSTEM_INFO},
         winbase::*,
         wingdi::*,
         winnt::{
-            TokenElevation, ES_AWAYMODE_REQUIRED, ES_CONTINUOUS, ES_DISPLAY_REQUIRED,
-            ES_SYSTEM_REQUIRED, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_TEMPORARY,
-            FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, HANDLE,
-            PROCESS_QUERY_LIMITED_INFORMATION, TOKEN_ELEVATION, TOKEN_QUERY,
+            JobObjectBasicAccountingInformation, JobObjectExtendedLimitInformation, TokenElevation,
+            ES_AWAYMODE_REQUIRED, ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED,
+            FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_TEMPORARY, FILE_READ_ATTRIBUTES,
+            FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, HANDLE,
+            JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, PROCESS_QUERY_LIMITED_INFORMATION, TOKEN_ELEVATION,
+            TOKEN_QUERY,
         },
         winreg::HKEY_CURRENT_USER,
         winuser::*,
@@ -570,6 +577,8 @@ extern "C" {
         as_user: BOOL,
         show: BOOL,
         extra_env: *const u16,
+        job: HANDLE,
+        process_id: LPDWORD,
         token_pid: &mut DWORD,
     ) -> HANDLE;
     fn GetSessionUserTokenWin(
@@ -606,22 +615,9 @@ pub fn get_current_session_id(share_rdp: bool) -> DWORD {
     unsafe { get_current_session(if share_rdp { TRUE } else { FALSE }) }
 }
 
-#[inline]
-fn resolve_expected_active_session_id_for_service(session_id: u32) -> Option<u32> {
-    let share_rdp_enabled = is_share_rdp();
-    if get_available_sessions(false)
-        .iter()
-        .any(|e| e.sid == session_id)
-    {
-        return Some(session_id);
-    }
-    let current_active_session =
-        unsafe { get_current_session(if share_rdp_enabled { TRUE } else { FALSE }) };
-    if current_active_session == u32::MAX {
-        None
-    } else {
-        Some(current_active_session)
-    }
+fn current_service_session_id() -> Option<DWORD> {
+    let session_id = unsafe { get_current_session(share_rdp()) };
+    (session_id != u32::MAX).then_some(session_id)
 }
 
 #[inline]
@@ -683,7 +679,6 @@ fn try_acquire_windows_service_ipc_transaction_slot() -> Option<OwnedSemaphorePe
 
 async fn handle_windows_service_ipc_request(
     mut stream: ipc::Connection,
-    service_stop_requested: Arc<AtomicBool>,
     _transaction_slot: OwnedSemaphorePermit,
 ) {
     match stream
@@ -700,20 +695,6 @@ async fn handle_windows_service_ipc_request(
             log::warn!("Rejected malformed data on protected Windows _service IPC channel");
         }
         Ok(Some(data)) => match data {
-            ipc::Data::Close => match stream.windows_pipe_client_token_is_local_system() {
-                Ok(true) => {
-                    log::info!("close received");
-                    service_stop_requested.store(true, Ordering::Release);
-                }
-                Ok(false) => {
-                    log::warn!("Rejected Windows _service close: caller is not LocalSystem");
-                }
-                Err(err) => {
-                    log::warn!(
-                        "Rejected Windows _service close: failed to verify caller token: {err}"
-                    );
-                }
-            },
             ipc::Data::Test => {
                 allow_err!(stream.send(&ipc::Data::Test).await);
             }
@@ -738,177 +719,652 @@ extern "system" {
     fn BlockInput(v: BOOL) -> BOOL;
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
-    let event_handler = move |control_event| -> ServiceControlHandlerResult {
-        log::info!("Got service control event: {:?}", control_event);
-        match control_event {
-            ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
-            ServiceControl::Stop | ServiceControl::Preshutdown | ServiceControl::Shutdown => {
-                send_close(crate::POSTFIX_SERVICE).ok();
-                ServiceControlHandlerResult::NoError
-            }
-            _ => ServiceControlHandlerResult::NotImplemented,
-        }
-    };
+const WINDOWS_SERVICE_STOP_WAIT_HINT: Duration = Duration::from_secs(10);
+const WINDOWS_SERVICE_GRACEFUL_CHILD_EXIT_TIMEOUT: Duration = Duration::from_secs(3);
+const WINDOWS_SERVICE_FORCED_CHILD_EXIT_TIMEOUT: Duration = Duration::from_secs(3);
+const WINDOWS_SERVICE_CHILD_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const WINDOWS_SERVICE_MAIN_IPC_TIMEOUT_MS: u64 = 1_000;
 
-    // Register system service event handler
-    let status_handle = service_control_handler::register(crate::get_app_name(), event_handler)?;
-
-    let next_status = ServiceStatus {
-        // Should match the one from system service registry
+fn windows_service_status(
+    current_state: ServiceState,
+    controls_accepted: ServiceControlAccept,
+    exit_code: ServiceExitCode,
+    checkpoint: u32,
+    wait_hint: Duration,
+) -> ServiceStatus {
+    ServiceStatus {
         service_type: SERVICE_TYPE,
-        // The new state
-        current_state: ServiceState::Running,
-        // Accept stop events when running
-        controls_accepted: ServiceControlAccept::STOP,
-        // Used to report an error when starting or stopping only, otherwise must be zero
-        exit_code: ServiceExitCode::Win32(0),
-        // Only used for pending states, otherwise must be zero
-        checkpoint: 0,
-        // Only used for pending states, otherwise must be zero
-        wait_hint: Duration::default(),
+        current_state,
+        controls_accepted,
+        exit_code,
+        checkpoint,
+        wait_hint,
         process_id: None,
-    };
-
-    // Tell the system that the service is running now
-    status_handle.set_service_status(next_status)?;
-
-    let mut session_id = unsafe { get_current_session(share_rdp()) };
-    log::info!("session id {}", session_id);
-    let mut h_process = launch_server(session_id, true).await.unwrap_or(NULL);
-    let mut incoming = ipc::new_listener(crate::POSTFIX_SERVICE).await?;
-    let service_stop_requested = Arc::new(AtomicBool::new(false));
-    loop {
-        if service_stop_requested.load(Ordering::Acquire) {
-            break;
-        }
-        let sids: Vec<_> = get_available_sessions(false)
-            .iter()
-            .map(|e| e.sid)
-            .collect();
-        if !sids.contains(&session_id) || !is_share_rdp() {
-            let current_active_session = unsafe { get_current_session(share_rdp()) };
-            if session_id != current_active_session {
-                session_id = current_active_session;
-                incoming = refresh_service_ipc_listener(incoming).await?;
-                // https://github.com/rustdesk/rustdesk/discussions/10039
-                let count = ipc::get_port_forward_session_count(1000).await.unwrap_or(0);
-                if count == 0 {
-                    h_process = launch_server(session_id, true).await.unwrap_or(NULL);
-                }
-            }
-        }
-        let res = timeout(super::SERVICE_INTERVAL, incoming.next()).await;
-        match res {
-            Ok(res) => match res {
-                Some(Ok(stream)) => {
-                    let stream = ipc::Connection::new_protected_service(stream);
-                    // Keep IPC authorization consistent with the session we are currently serving.
-                    // Recompute expected session right before authorization to avoid using a stale
-                    // session_id after awaiting incoming.next().
-                    let expected_active_session_id =
-                        resolve_expected_active_session_id_for_service(session_id);
-                    if !authorize_service_scoped_ipc_connection(&stream, expected_active_session_id)
-                    {
-                        continue;
-                    }
-                    let Some(transaction_slot) = try_acquire_windows_service_ipc_transaction_slot()
-                    else {
-                        continue;
-                    };
-                    let service_stop_requested = Arc::clone(&service_stop_requested);
-                    tokio::spawn(async move {
-                        handle_windows_service_ipc_request(
-                            stream,
-                            service_stop_requested,
-                            transaction_slot,
-                        )
-                        .await;
-                    });
-                }
-                _ => {}
-            },
-            Err(_) => {
-                // timeout
-                unsafe {
-                    let tmp = get_current_session(share_rdp());
-                    if tmp == 0xFFFFFFFF {
-                        continue;
-                    }
-                    let mut close_sent = false;
-                    if tmp != session_id {
-                        log::info!("session changed from {} to {}", session_id, tmp);
-                        session_id = tmp;
-                        incoming = refresh_service_ipc_listener(incoming).await?;
-                        let count = ipc::get_port_forward_session_count(1000).await.unwrap_or(0);
-                        if count == 0 {
-                            send_close_async("").await.ok();
-                            close_sent = true;
-                        }
-                    }
-                    let mut exit_code: DWORD = 0;
-                    if h_process.is_null()
-                        || (GetExitCodeProcess(h_process, &mut exit_code) == TRUE
-                            && exit_code != STILL_ACTIVE
-                            && CloseHandle(h_process) == TRUE)
-                    {
-                        match launch_server(session_id, !close_sent).await {
-                            Ok(ptr) => {
-                                h_process = ptr;
-                            }
-                            Err(err) => {
-                                log::error!("Failed to launch server: {}", err);
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
-
-    if !h_process.is_null() {
-        send_close_async("").await.ok();
-        unsafe { CloseHandle(h_process) };
-    }
-
-    status_handle.set_service_status(ServiceStatus {
-        service_type: SERVICE_TYPE,
-        current_state: ServiceState::Stopped,
-        controls_accepted: ServiceControlAccept::empty(),
-        exit_code: ServiceExitCode::Win32(0),
-        checkpoint: 0,
-        wait_hint: Duration::default(),
-        process_id: None,
-    })?;
-
-    Ok(())
 }
 
-async fn launch_server(session_id: DWORD, close_first: bool) -> ResultType<HANDLE> {
-    if close_first {
-        // in case started some elsewhere
-        send_close_async("").await.ok();
+struct ServiceOwnedWindowsHandle {
+    handle: HANDLE,
+    label: &'static str,
+}
+
+impl ServiceOwnedWindowsHandle {
+    fn new(handle: HANDLE, label: &'static str) -> ResultType<Self> {
+        if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+            bail!("received invalid {label} handle");
+        }
+        Ok(Self { handle, label })
     }
+
+    fn raw(&self) -> HANDLE {
+        self.handle
+    }
+}
+
+impl Drop for ServiceOwnedWindowsHandle {
+    fn drop(&mut self) {
+        if unsafe { CloseHandle(self.handle) } == FALSE {
+            log::error!(
+                "Failed to close {} handle: {}",
+                self.label,
+                io::Error::last_os_error()
+            );
+        }
+    }
+}
+
+struct WindowsServiceProcessTree {
+    job: ServiceOwnedWindowsHandle,
+    process: ServiceOwnedWindowsHandle,
+    process_id: DWORD,
+    session_id: DWORD,
+}
+
+impl WindowsServiceProcessTree {
+    fn main_process_is_running(&self) -> ResultType<bool> {
+        match unsafe { WaitForSingleObject(self.process.raw(), 0) } {
+            WAIT_TIMEOUT => Ok(true),
+            WAIT_OBJECT_0 => Ok(false),
+            WAIT_FAILED => bail!(
+                "WaitForSingleObject failed for service-owned child {}: {}",
+                self.process_id,
+                io::Error::last_os_error()
+            ),
+            status => bail!(
+                "WaitForSingleObject returned unexpected status {status:#x} for service-owned child {}",
+                self.process_id
+            ),
+        }
+    }
+
+    fn active_process_count(&self) -> ResultType<DWORD> {
+        let mut accounting: JOBOBJECT_BASIC_ACCOUNTING_INFORMATION = unsafe { mem::zeroed() };
+        let queried = unsafe {
+            QueryInformationJobObject(
+                self.job.raw(),
+                JobObjectBasicAccountingInformation,
+                &mut accounting as *mut _ as *mut c_void,
+                mem::size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as DWORD,
+                std::ptr::null_mut(),
+            )
+        };
+        if queried == FALSE {
+            bail!(
+                "QueryInformationJobObject failed for service-owned child tree {}: {}",
+                self.process_id,
+                io::Error::last_os_error()
+            );
+        }
+        Ok(accounting.ActiveProcesses)
+    }
+
+    fn terminate(&self) -> ResultType<()> {
+        if unsafe { TerminateJobObject(self.job.raw(), 1) } == FALSE {
+            bail!(
+                "TerminateJobObject failed for service-owned child tree {}: {}",
+                self.process_id,
+                io::Error::last_os_error()
+            );
+        }
+        Ok(())
+    }
+
+    async fn wait_until_empty(&self, timeout: Duration) -> ResultType<bool> {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            if self.active_process_count()? == 0 {
+                return Ok(true);
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return Ok(false);
+            }
+            tokio::time::sleep(WINDOWS_SERVICE_CHILD_POLL_INTERVAL).await;
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WindowsServicePortForwardState {
+    Unknown,
+    Active,
+    Idle,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WindowsServiceProcessDecision {
+    Keep,
+    Launch(DWORD),
+    RetireThenLaunch(Option<DWORD>),
+}
+
+fn windows_service_process_decision(
+    child: Option<(DWORD, bool)>,
+    desired_session_id: Option<DWORD>,
+    port_forward_state: WindowsServicePortForwardState,
+) -> WindowsServiceProcessDecision {
+    let Some((child_session_id, main_process_running)) = child else {
+        return desired_session_id
+            .map(WindowsServiceProcessDecision::Launch)
+            .unwrap_or(WindowsServiceProcessDecision::Keep);
+    };
+    if !main_process_running {
+        return WindowsServiceProcessDecision::RetireThenLaunch(desired_session_id);
+    }
+    if Some(child_session_id) == desired_session_id {
+        return WindowsServiceProcessDecision::Keep;
+    }
+    match port_forward_state {
+        WindowsServicePortForwardState::Idle => {
+            WindowsServiceProcessDecision::RetireThenLaunch(desired_session_id)
+        }
+        WindowsServicePortForwardState::Unknown | WindowsServicePortForwardState::Active => {
+            WindowsServiceProcessDecision::Keep
+        }
+    }
+}
+
+#[cfg(test)]
+mod windows_service_supervision_tests {
+    use super::{
+        windows_service_process_decision, WindowsServicePortForwardState,
+        WindowsServiceProcessDecision,
+    };
+
+    #[test]
+    fn windows_service_launches_only_for_a_current_target_session() {
+        assert_eq!(
+            windows_service_process_decision(
+                None,
+                Some(7),
+                WindowsServicePortForwardState::Unknown,
+            ),
+            WindowsServiceProcessDecision::Launch(7)
+        );
+        assert_eq!(
+            windows_service_process_decision(None, None, WindowsServicePortForwardState::Unknown,),
+            WindowsServiceProcessDecision::Keep
+        );
+    }
+
+    #[test]
+    fn windows_service_preserves_live_port_forwards_during_session_handoff() {
+        for port_forward_state in [
+            WindowsServicePortForwardState::Active,
+            WindowsServicePortForwardState::Unknown,
+        ] {
+            assert_eq!(
+                windows_service_process_decision(Some((3, true)), Some(7), port_forward_state,),
+                WindowsServiceProcessDecision::Keep
+            );
+        }
+    }
+
+    #[test]
+    fn windows_service_retires_idle_child_before_replacement() {
+        assert_eq!(
+            windows_service_process_decision(
+                Some((3, true)),
+                Some(7),
+                WindowsServicePortForwardState::Idle,
+            ),
+            WindowsServiceProcessDecision::RetireThenLaunch(Some(7))
+        );
+        assert_eq!(
+            windows_service_process_decision(
+                Some((3, true)),
+                None,
+                WindowsServicePortForwardState::Idle,
+            ),
+            WindowsServiceProcessDecision::RetireThenLaunch(None)
+        );
+    }
+
+    #[test]
+    fn windows_service_reaps_a_dead_main_process_regardless_of_forward_state() {
+        assert_eq!(
+            windows_service_process_decision(
+                Some((3, false)),
+                Some(9),
+                WindowsServicePortForwardState::Active,
+            ),
+            WindowsServiceProcessDecision::RetireThenLaunch(Some(9))
+        );
+    }
+
+    #[test]
+    fn windows_service_keeps_the_tree_for_its_current_session() {
+        assert_eq!(
+            windows_service_process_decision(
+                Some((7, true)),
+                Some(7),
+                WindowsServicePortForwardState::Idle,
+            ),
+            WindowsServiceProcessDecision::Keep
+        );
+    }
+}
+
+fn create_windows_service_process_job() -> ResultType<ServiceOwnedWindowsHandle> {
+    let raw_job = unsafe { CreateJobObjectW(std::ptr::null_mut(), std::ptr::null()) };
+    let job = ServiceOwnedWindowsHandle::new(raw_job, "service-owned process job")?;
+    let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { mem::zeroed() };
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if unsafe {
+        SetInformationJobObject(
+            job.raw(),
+            JobObjectExtendedLimitInformation,
+            &mut limits as *mut _ as *mut c_void,
+            mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as DWORD,
+        )
+    } == FALSE
+    {
+        bail!(
+            "SetInformationJobObject failed for service-owned process job: {}",
+            io::Error::last_os_error()
+        );
+    }
+    Ok(job)
+}
+
+fn launch_windows_service_server(session_id: DWORD) -> ResultType<WindowsServiceProcessTree> {
+    let job = create_windows_service_process_job()?;
     let exe = require_current_exe_is_fixed_service_runtime()?;
-    let (h, token_pid) = launch_process_in_session_with_env(
+    let launched = launch_process_in_session_with_env(
         &exe,
         &["--server", crate::common::SERVICE_OWNED_SERVER_ARG],
         session_id,
         FALSE,
         FALSE,
         std::iter::empty::<(&str, &str)>(),
+        job.raw(),
     )?;
-    if h.is_null() {
-        log::error!(
-            "Failed to launch privileged process: {}",
+    if launched.process.is_null() {
+        if launched.token_pid == 0 {
+            bail!(
+                "Failed to launch service-owned server in session {session_id}: no trusted LocalSystem session token"
+            );
+        }
+        bail!(
+            "Failed to launch service-owned server in session {session_id}: {}",
             io::Error::last_os_error()
         );
-        if token_pid == 0 {
-            log::error!("No trusted LocalSystem session token");
+    }
+    if launched.process_id == 0 {
+        if unsafe { CloseHandle(launched.process) } == FALSE {
+            log::error!(
+                "Failed to close incomplete service-owned child handle: {}",
+                io::Error::last_os_error()
+            );
+        }
+        bail!("CreateProcessAsUserW returned a service-owned child without a process id");
+    }
+    Ok(WindowsServiceProcessTree {
+        job,
+        process: ServiceOwnedWindowsHandle::new(launched.process, "service-owned child process")?,
+        process_id: launched.process_id,
+        session_id,
+    })
+}
+
+async fn stop_windows_service_process_tree(tree: &WindowsServiceProcessTree) -> ResultType<()> {
+    if tree.active_process_count()? == 0 {
+        return Ok(());
+    }
+    let graceful_close_sent = if tree.main_process_is_running()? {
+        match ipc::close_windows_service_owned_main_server(
+            tree.process_id,
+            WINDOWS_SERVICE_MAIN_IPC_TIMEOUT_MS,
+        )
+        .await
+        {
+            Ok(()) => true,
+            Err(err) => {
+                log::warn!(
+                    "Could not deliver authenticated close to service-owned child {}: {}",
+                    tree.process_id,
+                    err
+                );
+                false
+            }
+        }
+    } else {
+        false
+    };
+    if graceful_close_sent
+        && tree
+            .wait_until_empty(WINDOWS_SERVICE_GRACEFUL_CHILD_EXIT_TIMEOUT)
+            .await?
+    {
+        return Ok(());
+    }
+    tree.terminate()?;
+    if !tree
+        .wait_until_empty(WINDOWS_SERVICE_FORCED_CHILD_EXIT_TIMEOUT)
+        .await?
+    {
+        bail!(
+            "service-owned child tree {} remained active after TerminateJobObject",
+            tree.process_id
+        );
+    }
+    Ok(())
+}
+
+async fn reconcile_windows_service_process(
+    tree: &mut Option<WindowsServiceProcessTree>,
+    desired_session_id: Option<DWORD>,
+    stop_latched: &AtomicBool,
+) -> ResultType<()> {
+    let child = match tree.as_ref() {
+        Some(tree) => Some((tree.session_id, tree.main_process_is_running()?)),
+        None => None,
+    };
+    let port_forward_state = if let (Some((child_session_id, true)), Some(tree)) =
+        (child, tree.as_ref())
+    {
+        if Some(child_session_id) != desired_session_id {
+            match ipc::get_windows_service_owned_port_forward_session_count(
+                tree.process_id,
+                WINDOWS_SERVICE_MAIN_IPC_TIMEOUT_MS,
+            )
+            .await
+            {
+                Ok(0) => WindowsServicePortForwardState::Idle,
+                Ok(_) => WindowsServicePortForwardState::Active,
+                Err(err) => {
+                    log::warn!(
+                        "Preserving service-owned child {} because its port-forward state is unknown: {}",
+                        tree.process_id,
+                        err
+                    );
+                    WindowsServicePortForwardState::Unknown
+                }
+            }
+        } else {
+            WindowsServicePortForwardState::Unknown
+        }
+    } else {
+        WindowsServicePortForwardState::Unknown
+    };
+    match windows_service_process_decision(child, desired_session_id, port_forward_state) {
+        WindowsServiceProcessDecision::Keep => {}
+        WindowsServiceProcessDecision::Launch(session_id) => {
+            if stop_latched.load(Ordering::Acquire) {
+                return Ok(());
+            }
+            match launch_windows_service_server(session_id) {
+                Ok(new_tree) => *tree = Some(new_tree),
+                Err(err) => log::error!(
+                    "Failed to launch service-owned server in session {}: {}",
+                    session_id,
+                    err
+                ),
+            }
+        }
+        WindowsServiceProcessDecision::RetireThenLaunch(next_session_id) => {
+            if let Some(old_tree) = tree.take() {
+                if let Err(err) = stop_windows_service_process_tree(&old_tree).await {
+                    *tree = Some(old_tree);
+                    return Err(err);
+                }
+            }
+            if let Some(session_id) =
+                next_session_id.filter(|_| !stop_latched.load(Ordering::Acquire))
+            {
+                match launch_windows_service_server(session_id) {
+                    Ok(new_tree) => *tree = Some(new_tree),
+                    Err(err) => log::error!(
+                        "Failed to launch replacement service-owned server in session {}: {}",
+                        session_id,
+                        err
+                    ),
+                }
+            }
         }
     }
-    Ok(h)
+    Ok(())
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
+    let (stop_tx, mut stop_rx) = mpsc::unbounded_channel();
+    let stop_latched = Arc::new(AtomicBool::new(false));
+    let status_slot = Arc::new(OnceLock::new());
+    let handler_stop_latched = Arc::clone(&stop_latched);
+    let handler_status_slot = Arc::clone(&status_slot);
+    let event_handler = move |control_event| -> ServiceControlHandlerResult {
+        log::info!("Got service control event: {:?}", control_event);
+        match control_event {
+            ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
+            ServiceControl::Stop | ServiceControl::Preshutdown => {
+                if !handler_stop_latched.swap(true, Ordering::AcqRel) {
+                    if let Some(status_handle) = handler_status_slot.get() {
+                        if let Err(err) = status_handle.set_service_status(windows_service_status(
+                            ServiceState::StopPending,
+                            ServiceControlAccept::empty(),
+                            ServiceExitCode::Win32(0),
+                            1,
+                            WINDOWS_SERVICE_STOP_WAIT_HINT,
+                        )) {
+                            log::error!(
+                                "Failed to report Windows service stop-pending state: {err}"
+                            );
+                        }
+                    }
+                    if stop_tx.send(()).is_err() {
+                        log::warn!("Windows service stop arrived after the service loop ended");
+                    }
+                }
+                ServiceControlHandlerResult::NoError
+            }
+            _ => ServiceControlHandlerResult::NotImplemented,
+        }
+    };
+
+    let status_handle = service_control_handler::register(crate::get_app_name(), event_handler)?;
+    if status_slot.set(status_handle).is_err() {
+        bail!("Windows service status handle was initialized more than once");
+    }
+    status_handle.set_service_status(windows_service_status(
+        ServiceState::StartPending,
+        ServiceControlAccept::empty(),
+        ServiceExitCode::Win32(0),
+        1,
+        WINDOWS_SERVICE_STOP_WAIT_HINT,
+    ))?;
+
+    let mut incoming = match ipc::new_listener(crate::POSTFIX_SERVICE).await {
+        Ok(incoming) => incoming,
+        Err(err) => {
+            status_handle.set_service_status(windows_service_status(
+                ServiceState::Stopped,
+                ServiceControlAccept::empty(),
+                ServiceExitCode::ServiceSpecific(1),
+                0,
+                Duration::default(),
+            ))?;
+            return Err(err);
+        }
+    };
+    let mut desired_session_id = current_service_session_id();
+    let mut process_tree = if stop_latched.load(Ordering::Acquire) {
+        None
+    } else {
+        match desired_session_id {
+            Some(session_id) => match launch_windows_service_server(session_id) {
+                Ok(tree) => Some(tree),
+                Err(err) => {
+                    status_handle.set_service_status(windows_service_status(
+                        ServiceState::Stopped,
+                        ServiceControlAccept::empty(),
+                        ServiceExitCode::ServiceSpecific(1),
+                        0,
+                        Duration::default(),
+                    ))?;
+                    return Err(err);
+                }
+            },
+            None => None,
+        }
+    };
+    if !stop_latched.load(Ordering::Acquire) {
+        status_handle.set_service_status(windows_service_status(
+            ServiceState::Running,
+            ServiceControlAccept::STOP | ServiceControlAccept::PRESHUTDOWN,
+            ServiceExitCode::Win32(0),
+            0,
+            Duration::default(),
+        ))?;
+    }
+
+    let mut transaction_tasks = JoinSet::new();
+    let mut service_tick = tokio::time::interval(Duration::from_millis(super::SERVICE_INTERVAL));
+    service_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    service_tick.tick().await;
+    let loop_result: ResultType<()> = loop {
+        tokio::select! {
+            biased;
+            stop = stop_rx.recv() => {
+                match stop {
+                    Some(()) => break Ok(()),
+                    None => break Err(anyhow!("Windows service control channel closed")),
+                }
+            }
+            completed = transaction_tasks.join_next(), if !transaction_tasks.is_empty() => {
+                if let Some(Err(err)) = completed {
+                    log::error!("Windows _service IPC transaction task failed: {err}");
+                }
+            }
+            _ = service_tick.tick() => {
+                let current_session_id = current_service_session_id();
+                if current_session_id != desired_session_id {
+                    log::info!(
+                        "Windows service target session changed from {:?} to {:?}",
+                        desired_session_id,
+                        current_session_id
+                    );
+                    incoming = match refresh_service_ipc_listener(incoming).await {
+                        Ok(incoming) => incoming,
+                        Err(err) => break Err(err),
+                    };
+                    desired_session_id = current_session_id;
+                }
+                if let Err(err) = reconcile_windows_service_process(
+                    &mut process_tree,
+                    desired_session_id,
+                    &stop_latched,
+                ).await {
+                    break Err(err);
+                }
+            }
+            accepted = incoming.next() => {
+                match accepted {
+                    Some(Ok(stream)) => {
+                        let stream = ipc::Connection::new_protected_service(stream);
+                        let expected_active_session_id = current_service_session_id();
+                        if !authorize_service_scoped_ipc_connection(
+                            &stream,
+                            expected_active_session_id,
+                        ) {
+                            continue;
+                        }
+                        let Some(transaction_slot) = try_acquire_windows_service_ipc_transaction_slot() else {
+                            continue;
+                        };
+                        transaction_tasks.spawn(handle_windows_service_ipc_request(
+                            stream,
+                            transaction_slot,
+                        ));
+                    }
+                    Some(Err(err)) => break Err(anyhow!("Windows _service IPC listener failed: {err}")),
+                    None => break Err(anyhow!("Windows _service IPC listener ended")),
+                }
+            }
+        }
+    };
+
+    let mut shutdown_error = loop_result.err();
+    if !stop_latched.swap(true, Ordering::AcqRel) {
+        if let Err(err) = status_handle.set_service_status(windows_service_status(
+            ServiceState::StopPending,
+            ServiceControlAccept::empty(),
+            ServiceExitCode::Win32(0),
+            1,
+            WINDOWS_SERVICE_STOP_WAIT_HINT,
+        )) {
+            log::error!("Failed to report Windows service stop-pending state: {err}");
+            if shutdown_error.is_none() {
+                shutdown_error = Some(anyhow!(
+                    "Failed to report Windows service stop-pending state: {err}"
+                ));
+            }
+        }
+    }
+    drop(incoming);
+    transaction_tasks.abort_all();
+    while let Some(result) = transaction_tasks.join_next().await {
+        if let Err(err) = result {
+            if !err.is_cancelled() {
+                log::error!("Windows _service IPC transaction did not stop cleanly: {err}");
+            }
+        }
+    }
+    if let Err(err) = status_handle.set_service_status(windows_service_status(
+        ServiceState::StopPending,
+        ServiceControlAccept::empty(),
+        ServiceExitCode::Win32(0),
+        2,
+        WINDOWS_SERVICE_STOP_WAIT_HINT,
+    )) {
+        log::error!("Failed to advance Windows service stop-pending checkpoint: {err}");
+        if shutdown_error.is_none() {
+            shutdown_error = Some(anyhow!(
+                "Failed to advance Windows service stop-pending checkpoint: {err}"
+            ));
+        }
+    }
+    if let Some(tree) = process_tree.take() {
+        if let Err(err) = stop_windows_service_process_tree(&tree).await {
+            return Err(err);
+        }
+    }
+
+    let exit_code = if shutdown_error.is_some() {
+        ServiceExitCode::ServiceSpecific(1)
+    } else {
+        ServiceExitCode::Win32(0)
+    };
+    status_handle.set_service_status(windows_service_status(
+        ServiceState::Stopped,
+        ServiceControlAccept::empty(),
+        exit_code,
+        0,
+        Duration::default(),
+    ))?;
+    match shutdown_error {
+        Some(err) => Err(err),
+        None => Ok(()),
+    }
 }
 
 fn windows_path_identity_from_info(info: &BY_HANDLE_FILE_INFORMATION) -> WindowsPathIdentity {
@@ -1161,6 +1617,12 @@ mod process_launch_tests {
     }
 }
 
+struct WindowsLaunchedProcess {
+    process: HANDLE,
+    process_id: DWORD,
+    token_pid: DWORD,
+}
+
 fn launch_process_in_session_with_env<I, K, V>(
     exe: &Path,
     arg: &[&str],
@@ -1168,7 +1630,8 @@ fn launch_process_in_session_with_env<I, K, V>(
     as_user: BOOL,
     show: BOOL,
     envs: I,
-) -> ResultType<(HANDLE, DWORD)>
+    job: HANDLE,
+) -> ResultType<WindowsLaunchedProcess>
 where
     I: IntoIterator<Item = (K, V)>,
     K: AsRef<OsStr>,
@@ -1188,7 +1651,8 @@ where
         std::ptr::null()
     };
     let mut token_pid = 0;
-    let h = unsafe {
+    let mut process_id = 0;
+    let process = unsafe {
         LaunchProcessWin(
             application.as_ptr(),
             command_line.as_ptr(),
@@ -1197,10 +1661,16 @@ where
             as_user,
             show,
             extra_env,
+            job,
+            &mut process_id,
             &mut token_pid,
         )
     };
-    Ok((h, token_pid))
+    Ok(WindowsLaunchedProcess {
+        process,
+        process_id,
+        token_pid,
+    })
 }
 
 pub fn run_as_user(arg: Vec<&str>) -> ResultType<Option<std::process::Child>> {
@@ -1377,16 +1847,17 @@ where
     K: AsRef<OsStr>,
     V: AsRef<OsStr>,
 {
-    let (h, token_pid) = launch_process_in_session_with_env(
+    let launched = launch_process_in_session_with_env(
         exe,
         &arg,
         session_id,
         TRUE,
         if show { TRUE } else { FALSE },
         envs,
+        NULL,
     )?;
-    if h.is_null() {
-        if token_pid == 0 {
+    if launched.process.is_null() {
+        if launched.token_pid == 0 {
             bail!(
                 "Failed to launch {:?} with session id {}: no trusted logged-on user token",
                 arg,
@@ -1400,22 +1871,13 @@ where
             io::Error::last_os_error()
         );
     }
+    if unsafe { CloseHandle(launched.process) } == FALSE {
+        log::error!(
+            "Failed to release launched Windows helper process handle: {}",
+            io::Error::last_os_error()
+        );
+    }
     Ok(None)
-}
-
-#[tokio::main(flavor = "current_thread")]
-async fn send_close(postfix: &str) -> ResultType<()> {
-    send_close_async(postfix).await
-}
-
-async fn send_close_async(postfix: &str) -> ResultType<()> {
-    ipc::connect(1000, postfix)
-        .await?
-        .send(&ipc::Data::Close)
-        .await?;
-    // sleep a while to wait for closing and exit
-    sleep(0.1).await;
-    Ok(())
 }
 
 const SOFTWARE_SAS_GENERATION_NONE: u32 = 0;

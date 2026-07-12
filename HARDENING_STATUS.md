@@ -548,19 +548,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Verification closure: `scripts/verify.sh` rejects any reintroduced hardware-codec IPC message, handler helper,
   client/server sync helper, core `--check-hwcodec-config` entry, or direct helper-process/probe caller anywhere
   in the application source.
-- **R-S11c-13 — service-owned IPC close is receiver-authorized — CLOSED 2026-07-09.**
-  Platforms: Windows installed service-owned main server and `_service`; Linux/macOS main-channel policy covered
-  by the same source rule. Endpoint/action: `Data::Close` on desktop main IPC and Windows `_service`.
+- **R-S11c-13 — service-owned IPC close is receiver-authorized — CLOSED 2026-07-09; tightened 2026-07-12.**
+  Platforms: Windows installed service-owned main server; Linux/macOS main-channel policy covered by the same
+  source rule. Endpoint/action: `Data::Close` on desktop main IPC. Windows `_service` lifecycle close is deleted.
   Boundary: same-session/same-executable IPC peer ↔ service-owned process-control action. Attack surface
   closed: `Data::Close` is no longer classified as an unconditional main-channel message. User-owned receivers
   still accept user-owned close, but service-owned receivers accept main-channel close only from the owning
   root/LocalSystem service peer. On Windows the main IPC loop resolves the named-pipe client token for
   `Data::Close` before calling `main_channel_admits_state_mutation`, so a normal same-session installed
   executable cannot trigger service-owned server exit/restart through transport identity alone. The Windows
-  `_service` receiver also checks the pipe client token and stops the service loop only for LocalSystem.
+  service authenticates its connected main IPC server as the exact retained child PID before requesting graceful
+  close. Windows `_service` has no close dispatch; SCM stop/preshutdown is the sole service-loop stop authority.
   Verification closure: `scripts/verify.sh` runs the main-channel mutation policy test, asserts the close
   authority helper, the `Data::Close => authority.allows_main_channel_close(peer_authority)` policy arm, the
-  Windows main-pipe token resolution path, the Windows `_service` LocalSystem close gate, absence of an
+  Windows main-pipe token resolution and exact-child client paths, absence of Windows `_service` close and an
   unconditional close bucket, and the Appendix C #31 disposition.
 - **R-S11c-14 — service-owned voice-call input IPC mutation gate — CLOSED 2026-07-10.**
   Platforms: Linux, Windows, and macOS desktop main IPC. Endpoint/action:
@@ -778,9 +779,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   and job ABI layout. `scripts/build-windows.ps1` runs the terminal suite natively, offline and locked, before every
   artifact build; `scripts/verify.sh` runs the Linux-visible suite and gates that native-Windows step plus the source
   contracts above. The committed Windows VM double build remains the platform runtime and deterministic-artifact proof.
-- **R-S11c-26 — protected service IPC resource boundary — CLOSED 2026-07-12.** Platforms: Linux, macOS,
+- **R-S11c-26 — protected service IPC resource boundary — CLOSED 2026-07-12; tightened 2026-07-12.** Platforms: Linux, macOS,
   and Windows installed-service IPC. Endpoint/action: the protected `_service` channel for liveness, service-owned
-  unattended-password requests, macOS password snapshots/readiness, Windows RDP sharing, and Windows service close.
+  unattended-password requests, macOS password snapshots/readiness, and Windows RDP sharing.
   Boundary: local peer admitted by transport identity ↔ root/LaunchDaemon/LocalSystem service resources before
   receiver-authorized action dispatch. Attack surface closed: `_service` no longer uses the generic uncapped IPC
   frame envelope or a persistent Unix service bus. Service clients and service receivers construct
@@ -791,13 +792,13 @@ unreachable and a source/test/AST gate prevents reintroduction.
   longer keeps readiness and password submission on the same service connection: readiness is a no-secret one-shot
   RPC, local Authorization Services runs after readiness, and the password-bearing request opens a fresh bounded
   service connection. Windows `_service` uses the same capped constructor and moves one-request handling into a
-  four-slot bounded worker; the service loop remains available for session maintenance, while close still requires
-  the LocalSystem pipe-client token and password/RDP requests still require the existing elevated-client checks.
+  four-slot bounded tracked worker; service lifecycle close is absent from `_service`, while password/RDP requests
+  still require the existing elevated-client checks. SCM shutdown aborts and drains every tracked transaction.
   Linux, macOS, and Windows now share `UNATTENDED_PASSWORD_MAX_BYTES = 4096`, checked before polkit,
   Authorization Services verification, named-pipe elevation checks, hashing, or service-to-main password forwarding.
   Verification closure: `scripts/verify.sh` runs the codec over-cap rejection test plus IPC constructor/envelope/value
   cap tests and gates protected service client/server constructor wiring, one-shot read-timeout shape, Unix and Windows
-  transaction semaphores, Windows stop-flag close signaling, common password-cap wiring, and this requirements/ledger
+  transaction semaphores, Windows transaction cancellation/drain, common password-cap wiring, and this requirements/ledger
   disposition. `scripts/apple-conform-check.sh` mirrors the macOS source gates.
 - **R-S11c-5 — macOS privileged service packaging — CLOSED 2026-07-09; tightened 2026-07-11.** Platform: macOS
   source-conformance and any future macOS artifact. Surfaces: `src/platform/privileges_scripts/daemon.plist`,
@@ -2086,6 +2087,30 @@ unreachable and a source/test/AST gate prevents reintroduction.
   closure: `scripts/verify.sh` parses the guard and wrapper to require the shared process-fatal primitive,
   explicit-before-return ordering, active unwind fallback, and absence of the old log-and-continue path;
   Appendix C #123 records the Windows-only impact; the repository Windows build gate compiles the target API shape.
+- **R-S11e-19 — Windows service-owned child tree supervision — CLOSED 2026-07-12.** Platform: Windows
+  installed service. Endpoint/action: SCM start, stop, preshutdown, per-session service-owned server launch,
+  liveness, session handoff, and port-forward preservation. Boundary: LocalSystem SCM service ownership ↔ the
+  complete privileged `--server --service-owned-server` process tree and clean service completion. Attack surface
+  closed: the service no longer stores or overwrites a raw child process handle, launches a replacement before old
+  tree absence, treats an unknown port-forward count as zero, lets busy `_service` traffic suppress liveness, or
+  reports stopped after merely closing a process handle. Each launch creates and configures a fresh unnamed,
+  non-inheritable `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` job first; `LaunchProcessWin` uses `STARTUPINFOEXW`, a
+  one-entry `PROC_THREAD_ATTRIBUTE_JOB_LIST`, `EXTENDED_STARTUPINFO_PRESENT`, and disabled handle inheritance so
+  `CreateProcessAsUserW` creates the child under job ownership before its initial thread can run. The service retains
+  RAII job/process handles, exact PID, and served session; job accounting proves aggregate active-process absence.
+  Desired, listener, and served sessions are separate. Active or unknown port-forward state preserves the old child
+  and is re-queried; zero permits retirement; a dead main child retires remaining descendants regardless of the
+  count. Port-forward queries and graceful close authenticate the connected main IPC server as the retained PID.
+  Graceful exit is bounded, remaining descendants are terminated through the exact job, and replacement starts only
+  after zero active processes. SCM Stop/Preshutdown uses a capacity-independent in-process channel, reports
+  StartPending/StopPending checkpoints, and advertises STOP plus PRESHUTDOWN; `_service Data::Close`, nested runtime
+  stop, Shutdown handling, and detached transaction tasks are deleted. Every accepted `_service` transaction is
+  tracked, aborted, and drained. `SERVICE_STOPPED` follows exact-tree absence; cleanup failure returns without a
+  clean-stopped claim. Verification closure: pure `windows_service_` transition tests cover no-target launch,
+  active/unknown deferral, idle replacement, dead-main reaping, and same-session stability; the repository Windows
+  build runs that suite natively before artifacts; `scripts/verify.sh` gates creation-time job assignment, exact-child
+  IPC, job accounting/termination, SCM status ordering, transaction drain, deleted paths, requirements, ledger, and
+  Appendix C #124.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -3441,7 +3466,7 @@ The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-defb467f61db2528b686af1bfc53e02759f952e514f0330289938d85fb49095c  requirements.html
+6d31515fa0825dffd113607fe60484294d28207bdef9d423e2b355b64e3eaa51  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

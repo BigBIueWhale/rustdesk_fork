@@ -143,6 +143,10 @@ if /I "%~1"=="build" (
     cargo test --offline --locked --lib --features flutter --color never terminal_
     if ($LASTEXITCODE -ne 0) { Die "terminal Rust library suite failed (exit $LASTEXITCODE) -- Windows runtime tests must pass before build.py --flutter" }
 
+    Write-Host "[harness] testing Windows service supervision Rust library suite -- Windows x64, cargo $RUST_VERSION, offline/locked, features flutter"
+    cargo test --offline --locked --lib --features flutter --color never windows_service_
+    if ($LASTEXITCODE -ne 0) { Die "Windows service supervision Rust library suite failed (exit $LASTEXITCODE) -- Windows runtime tests must pass before build.py --flutter" }
+
     # --- the sec3.2 x64-windows build: CPU-only software codec, no hwcodec/vram (R-R2b) ---
     # Under $ErrorActionPreference='Stop' a NATIVE command's non-zero exit does NOT auto-throw, so check
     # $LASTEXITCODE explicitly -- otherwise a failed build (e.g. "Python was not found" -> exit 9009) slips

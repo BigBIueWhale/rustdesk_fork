@@ -464,7 +464,7 @@ pub(crate) fn ensure_windows_ipc_server_matches_current(
 #[cfg(target_os = "windows")]
 pub(crate) fn authenticate_windows_service_owned_main_server(
     stream: &ConnectionTmpl<parity_tokio_ipc::ConnectionClient>,
-) -> ResultType<()> {
+) -> ResultType<u32> {
     let server_pid = windows_named_pipe_server_pid(stream.inner.get_ref())?;
     ensure_peer_executable_matches_fixed_windows_service_exe_by_pid(server_pid, "")?;
     let is_system =
@@ -480,7 +480,7 @@ pub(crate) fn authenticate_windows_service_owned_main_server(
     if !peer_process_has_windows_service_owned_server_args(server_pid) {
         bail!("Windows service-owned main IPC server is not the exact --server --service-owned-server process");
     }
-    Ok(())
+    Ok(server_pid)
 }
 
 #[cfg(windows)]

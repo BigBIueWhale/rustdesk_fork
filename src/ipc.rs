@@ -1904,7 +1904,7 @@ async fn commit_service_owned_unattended_password_change(value: String) -> Resul
     #[cfg(target_os = "linux")]
     authenticate_linux_service_owned_main_server(&c)?;
     #[cfg(target_os = "windows")]
-    authenticate_windows_service_owned_main_server(&c)?;
+    let _ = authenticate_windows_service_owned_main_server(&c)?;
     c.send(&Data::CommitServiceOwnedUnattendedPasswordChange(value))
         .await?;
     if let Some(Data::ServiceOwnedUnattendedPasswordChangeResult(ok)) =
@@ -3659,13 +3659,42 @@ pub fn close_all_instances() -> ResultType<bool> {
 }
 
 #[cfg(target_os = "windows")]
-pub async fn get_port_forward_session_count(ms_timeout: u64) -> ResultType<usize> {
-    let mut c = connect(ms_timeout, "").await?;
+async fn connect_exact_windows_service_owned_main_server(
+    expected_pid: u32,
+    ms_timeout: u64,
+) -> ResultType<Connection> {
+    let c = connect(ms_timeout, "").await?;
+    let actual_pid = authenticate_windows_service_owned_main_server(&c)?;
+    if actual_pid != expected_pid {
+        bail!(
+            "Windows service-owned main IPC server pid mismatch: expected {}, got {}",
+            expected_pid,
+            actual_pid
+        );
+    }
+    Ok(c)
+}
+
+#[cfg(target_os = "windows")]
+pub async fn get_windows_service_owned_port_forward_session_count(
+    expected_pid: u32,
+    ms_timeout: u64,
+) -> ResultType<usize> {
+    let mut c = connect_exact_windows_service_owned_main_server(expected_pid, ms_timeout).await?;
     c.send(&Data::PortForwardSessionCount(None)).await?;
     if let Some(Data::PortForwardSessionCount(Some(count))) = c.next_timeout(ms_timeout).await? {
         return Ok(count);
     }
     bail!("Failed to get port forward session count");
+}
+
+#[cfg(target_os = "windows")]
+pub async fn close_windows_service_owned_main_server(
+    expected_pid: u32,
+    ms_timeout: u64,
+) -> ResultType<()> {
+    let mut c = connect_exact_windows_service_owned_main_server(expected_pid, ms_timeout).await?;
+    c.send(&Data::Close).await
 }
 
 #[cfg(all(

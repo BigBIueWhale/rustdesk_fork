@@ -265,9 +265,10 @@ grep -B1 'pub(crate) fn main_channel_admits_state_mutation' src/ipc.rs | grep -q
 windows_main_peer_authority_block=$(awk '/let peer_authority = match &data/,/_ => MainIpcPeerAuthority::Ordinary/' src/ipc.rs)
 echo "$windows_main_peer_authority_block" | grep -q 'Data::Close' || r_s11="$r_s11 windows-close-peer-token-not-resolved"
 echo "$windows_main_peer_authority_block" | grep -q 'MainIpcPeerAuthority::for_windows_main_pipe(&stream)' || r_s11="$r_s11 windows-main-peer-token-helper-not-used"
-windows_service_close_block=$(awk '/ipc::Data::Close =>/,/ipc::Data::Test =>/' src/platform/windows.rs)
-echo "$windows_service_close_block" | grep -q 'windows_pipe_client_token_is_local_system' || r_s11="$r_s11 windows-service-close-not-localsystem-gated"
-echo "$windows_service_close_block" | grep -q 'Rejected Windows _service close: caller is not LocalSystem' || r_s11="$r_s11 windows-service-close-rejection-missing"
+windows_service_request_block=$(awk '/async fn handle_windows_service_ipc_request/,/^}/' src/platform/windows.rs)
+if echo "$windows_service_request_block" | grep -q 'ipc::Data::Close'; then
+  r_s11="$r_s11 windows-service-still-accepts-ipc-close"
+fi
 linux_service_server_client_auth_block=$(awk '/pub\(crate\) fn ensure_linux_service_server_is_trusted/,/^}/' src/ipc/auth.rs)
 macos_service_server_client_auth_block=$(awk '/pub\(crate\) fn ensure_macos_service_server_is_trusted/,/^}/' src/ipc/auth.rs)
 connect_with_path_block=$(awk '/async fn connect_with_path/,/^}/' src/ipc.rs)
@@ -336,7 +337,7 @@ then
   r_s11="$r_s11 user-owned-password-sends-before-main-server-proof-or-service-first-routing"
 fi
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel state-mutation allowlist:$r_s11"; rc=1; else
-  echo "  ok  R-S11/R-S11b/R-S11c main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options are user-owned scoped; user-owned password queries/writes authenticate the same-UID current-exe --server receiver before password traffic; service-owned close is root/LocalSystem-gated on main IPC and Windows _service; Linux _service clients authenticate the connected root --service receiver before service-owned password traffic; macOS _service clients authenticate the connected privileged helper before service-owned password traffic; the policy table is exhaustive with no wildcard fallback; gate binds Linux/macOS AND the Windows main pipe)"; fi
+  echo "  ok  R-S11/R-S11b/R-S11c main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options are user-owned scoped; user-owned password queries/writes authenticate the same-UID current-exe --server receiver before password traffic; service-owned close is root/LocalSystem-gated on main IPC and absent from Windows _service; Linux _service clients authenticate the connected root --service receiver before service-owned password traffic; macOS _service clients authenticate the connected privileged helper before service-owned password traffic; the policy table is exhaustive with no wildcard fallback; gate binds Linux/macOS AND the Windows main pipe)"; fi
 
 echo "== (3b-iii-a1) desktop at-rest wrapper does not mint service identity material (R-S11b-3f) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config pk_fallback --color never
@@ -1342,7 +1343,8 @@ grep -Fq "application == NULL || application[0] == L'\\0' || cmd == NULL || cmd[
 grep -Fq "currentDirectory == NULL || currentDirectory[0] == L'\\0'" src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-current-directory-null-empty-guard-missing"
 grep -Fq 'std::vector<wchar_t> commandLine(wcslen(cmd) + 1)' src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-dynamic-command-buffer-missing"
 grep -Fq 'CreateProcessAsUserW(hToken, application, commandLine.data()' src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-createprocess-not-bound-to-application"
-grep -Fq 'processEnvironment, currentDirectory, &si, &pi)' src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-createprocess-not-bound-to-current-directory"
+grep -Fq 'dwCreationFlags, processEnvironment, currentDirectory,' src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-createprocess-not-bound-to-current-directory"
+grep -Fq 'reinterpret_cast<LPSTARTUPINFOW>(&si), &pi)' src/platform/windows.cc || r_s11d13="$r_s11d13 cpp-startup-info-not-explicitly-bound"
 if grep -Fq 'CreateProcessAsUserW(hToken, NULL' src/platform/windows.cc; then
   r_s11d13="$r_s11d13 cpp-null-application-createprocess-leftover"
 fi
@@ -1360,13 +1362,13 @@ grep -Fq 'fn append_windows_command_arg(command_line: &mut Vec<u16>, arg: &OsStr
 grep -Fq 'backslashes * 2 + 1' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-quote-backslash-before-quote-rule-missing"
 grep -Fq 'backslashes * 2)' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-quote-trailing-backslash-rule-missing"
 grep -Fq 'fn windows_command_line(exe: &Path, arg: &[&str]) -> ResultType<Vec<u16>>' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-command-line-builder-missing"
-launch_server_body=$(awk '/^async fn launch_server\(/,/^}/' src/platform/windows.rs)
+launch_server_body=$(awk '/^fn launch_windows_service_server\(/,/^}/' src/platform/windows.rs)
 echo "$launch_server_body" | grep -Fq 'launch_process_in_session_with_env(' || r_s11d13="$r_s11d13 rust-launch-server-not-using-bound-helper"
 echo "$launch_server_body" | grep -Fq 'SERVICE_OWNED_SERVER_ARG' || r_s11d13="$r_s11d13 rust-launch-server-arg-missing"
 if echo "$launch_server_body" | grep -Fq 'format!'; then
   r_s11d13="$r_s11d13 rust-launch-server-preformatted-command-leftover"
 fi
-run_exe_session_body=$(awk '/^fn run_exe_path_in_session_with_env/,/^#\[tokio::main/' src/platform/windows.rs)
+run_exe_session_body=$(awk '/^fn run_exe_path_in_session_with_env/,/^}/' src/platform/windows.rs)
 echo "$run_exe_session_body" | grep -Fq 'launch_process_in_session_with_env(' || r_s11d13="$r_s11d13 rust-session-launch-not-using-bound-helper"
 grep -Fq 'run_exe_path_in_session_with_env(Path::new(exe), arg, session_id, show, envs)' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-public-session-launch-not-delegated"
 if grep -Fq 'pub fn launch_privileged_process' src/platform/windows.rs || grep -Fq 'launch_privileged_process' src/core_main.rs src/platform/windows.rs requirements.html HARDENING_STATUS.md; then
@@ -2094,7 +2096,8 @@ grep -q 'ipc::Connection::new_protected_service(stream)' src/platform/windows.rs
 grep -q 'fn try_acquire_windows_service_ipc_transaction_slot' src/platform/windows.rs || r_s11b="$r_s11b windows-service-transaction-budget-missing"
 grep -q 'handle_windows_service_ipc_request' src/platform/windows.rs || r_s11b="$r_s11b windows-service-one-shot-handler-missing"
 grep -q 'next_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)' src/platform/windows.rs || r_s11b="$r_s11b windows-service-read-not-deadline-bound"
-grep -q 'service_stop_requested.store(true, Ordering::Release)' src/platform/windows.rs || r_s11b="$r_s11b windows-service-close-not-signal-bound"
+grep -q 'transaction_tasks.spawn(handle_windows_service_ipc_request' src/platform/windows.rs || r_s11b="$r_s11b windows-service-transactions-not-tracked"
+grep -q 'transaction_tasks.abort_all()' src/platform/windows.rs || r_s11b="$r_s11b windows-service-transactions-not-aborted-on-stop"
 grep -Fq 'Protected service IPC resource boundary' requirements.html || r_s11b="$r_s11b service-resource-requirements-missing"
 grep -Fq 'R-S11c-26 — protected service IPC resource boundary' HARDENING_STATUS.md || r_s11b="$r_s11b service-resource-ledger-missing"
 if grep -q 'SyncConfig' src/ipc.rs; then
@@ -2139,7 +2142,7 @@ grep -q 'SERVICE_OWNED_SERVER_ARG' src/common.rs                                
 linux_service_start=$(awk '/fn try_start_server_/,/^}/' src/platform/linux.rs)
 echo "$linux_service_start" | grep -Fq 'vec!["--server", crate::common::SERVICE_OWNED_SERVER_ARG]' || r_s11b2="$r_s11b2 linux-active-user-service-server-not-marked"
 echo "$linux_service_start" | grep -A4 'crate::run_me_with_env' | grep -q 'SERVICE_OWNED_SERVER_ARG' || r_s11b2="$r_s11b2 linux-root-service-server-not-marked"
-windows_launch_server=$(awk '/async fn launch_server/,/^}/' src/platform/windows.rs)
+windows_launch_server=$(awk '/^fn launch_windows_service_server/,/^}/' src/platform/windows.rs)
 echo "$windows_launch_server" | grep -q 'SERVICE_OWNED_SERVER_ARG'                    || r_s11b2="$r_s11b2 windows-service-server-not-marked"
 grep -q -- '<string>--service-owned-server</string>' src/platform/privileges_scripts/agent.plist || r_s11b2="$r_s11b2 macos-agent-server-not-marked"
 grep -q 'MainIpcAuthority::ServiceOwned' src/ipc.rs                                  || r_s11b2="$r_s11b2 service-owned-authority-missing"
@@ -2653,6 +2656,62 @@ fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 service-owned password IPC closure:$r_s11b2"; rc=1; else
   echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux client-authenticates the connected root --service receiver before sending a service-owned password request, then uses polkit/root-service commit with structured policy/package assurance; Windows uses pipe-client token elevation plus sender-side LocalSystem/exact-argv main-receiver proof before LocalSystem service commit; macOS admits _service only for the audit-token trusted installed app talking to the audit-token trusted PrivilegedHelperTools helper, offloads budgeted receiver-side blocking proof from the _service accept loop before the first read, client-authenticates the connected _service server, obtains the custom nonshared timeout-zero Authorization Services right before sending the password, verifies the external form noninteractively in the LaunchDaemon, writes the authorized value directly into the root LaunchDaemon credential store without a pending secret cache, rejects the old macOS main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after audit-token app proof, exact live argv, and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
 
+echo "== (3b-iii-c-1) Windows service-owned child tree supervision (R-S11e-19) =="
+r_s11e19=
+windows_launch_native=$(awk '/HANDLE LaunchProcessWin/,/^    }/' src/platform/windows.cc)
+windows_service_source=$(awk '/const WINDOWS_SERVICE_STOP_WAIT_HINT/,/^fn windows_path_identity_from_info/' src/platform/windows.rs)
+windows_service_run=$(awk '/async fn run_service/,/^}/' src/platform/windows.rs)
+for required in STARTUPINFOEXW InitializeProcThreadAttributeList UpdateProcThreadAttribute PROC_THREAD_ATTRIBUTE_JOB_LIST EXTENDED_STARTUPINFO_PRESENT CreateProcessAsUserW; do
+  echo "$windows_launch_native" | grep -q "$required" || r_s11e19="$r_s11e19 native-launch-$required-missing"
+done
+echo "$windows_launch_native" | grep -q 'jobList, sizeof jobList' || r_s11e19="$r_s11e19 native-job-list-size-not-exact"
+echo "$windows_launch_native" | grep -q 'CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE' || r_s11e19="$r_s11e19 native-child-handle-inheritance-enabled"
+if echo "$windows_launch_native" | grep -Eq 'CREATE_SUSPENDED|AssignProcessToJobObject'; then
+  r_s11e19="$r_s11e19 post-create-job-assignment-path-present"
+fi
+for required in CreateJobObjectW JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE QueryInformationJobObject ActiveProcesses TerminateJobObject WaitForSingleObject; do
+  echo "$windows_service_source" | grep -q "$required" || r_s11e19="$r_s11e19 service-tree-$required-missing"
+done
+echo "$windows_service_source" | grep -q 'get_windows_service_owned_port_forward_session_count' || r_s11e19="$r_s11e19 port-forward-query-not-exact-child-bound"
+echo "$windows_service_source" | grep -q 'close_windows_service_owned_main_server' || r_s11e19="$r_s11e19 graceful-close-not-exact-child-bound"
+echo "$windows_service_source" | grep -q 'WindowsServicePortForwardState::Unknown | WindowsServicePortForwardState::Active' || r_s11e19="$r_s11e19 unknown-port-forward-state-not-preserved"
+echo "$windows_service_source" | grep -q 'RetireThenLaunch' || r_s11e19="$r_s11e19 retire-before-replacement-state-missing"
+echo "$windows_service_source" | grep -q '\*tree = Some(old_tree)' || r_s11e19="$r_s11e19 failed-retirement-loses-tree-ownership"
+echo "$windows_service_source" | grep -q '!stop_latched.load(Ordering::Acquire)' || r_s11e19="$r_s11e19 stop-during-handoff-can-launch-replacement"
+echo "$windows_service_run" | grep -q 'mpsc::unbounded_channel()' || r_s11e19="$r_s11e19 scm-stop-not-capacity-independent"
+echo "$windows_service_run" | grep -q 'ServiceControl::Stop | ServiceControl::Preshutdown' || r_s11e19="$r_s11e19 scm-stop-preshutdown-handler-missing"
+echo "$windows_service_run" | grep -q 'ServiceControlAccept::STOP | ServiceControlAccept::PRESHUTDOWN' || r_s11e19="$r_s11e19 scm-running-controls-incomplete"
+echo "$windows_service_run" | grep -q 'ServiceState::StartPending' || r_s11e19="$r_s11e19 scm-start-pending-missing"
+[ "$(echo "$windows_service_run" | grep -c 'ServiceState::StopPending')" -ge 2 ] || r_s11e19="$r_s11e19 scm-stop-pending-checkpoints-missing"
+echo "$windows_service_run" | grep -q 'transaction_tasks.abort_all()' || r_s11e19="$r_s11e19 service-transactions-not-cancelled"
+echo "$windows_service_run" | grep -q 'while let Some(result) = transaction_tasks.join_next().await' || r_s11e19="$r_s11e19 service-transactions-not-drained"
+if echo "$windows_service_run" | grep -Eq 'ServiceControl::Shutdown|send_close|unwrap_or\(0\)|tokio::spawn'; then
+  r_s11e19="$r_s11e19 obsolete-or-unsafe-service-lifecycle-path-present"
+fi
+if echo "$windows_service_request_block" | grep -q 'ipc::Data::Close'; then
+  r_s11e19="$r_s11e19 service-ipc-close-command-present"
+fi
+if ! python3 - <<'PY'
+from pathlib import Path
+src = Path("src/platform/windows.rs").read_text()
+start = src.index("async fn run_service")
+end = src.index("\nfn windows_path_identity_from_info", start)
+body = src[start:end]
+stop = body.rfind("stop_windows_service_process_tree(&tree).await")
+stopped = body.rfind("ServiceState::Stopped")
+raise SystemExit(0 if stop != -1 and stopped != -1 and stop < stopped else 1)
+PY
+then
+  r_s11e19="$r_s11e19 service-stopped-precedes-child-tree-absence-proof"
+fi
+grep -q 'windows_service_' scripts/build-windows.ps1 || r_s11e19="$r_s11e19 windows-runtime-test-filter-missing"
+grep -Fq 'R-S11e-19 — Windows service-owned child tree supervision' HARDENING_STATUS.md || r_s11e19="$r_s11e19 supervision-ledger-missing"
+grep -Fq 'Windows service-owned child lifetime and SCM completion authority' requirements.html || r_s11e19="$r_s11e19 supervision-requirements-missing"
+grep -Fq '<tr><td>124</td>' requirements.html || r_s11e19="$r_s11e19 supervision-appendix-missing"
+if [ -n "$r_s11e19" ]; then echo "  FAIL R-S11e-19 Windows service-owned child tree supervision:$r_s11e19"; rc=1; else
+  echo "  ok  R-S11e-19 Windows SCM owns one creation-time job-bound server tree; stop, liveness, port-forward deferral, replacement, transaction drain, and SERVICE_STOPPED are tied to exact-tree absence"
+fi
+
 # R-S11b-4: config/PRS secrecy after IPC closure. The balanced-PAKE PRS is
 # connect-equivalent at rest, so the code-owned boundary is:
 #   * no PRS/key material is exported over main IPC;
@@ -2766,7 +2825,7 @@ ipc_data_enum=$(awk '/pub enum Data {/,/^}/' src/ipc.rs)
 if echo "$ipc_data_enum" | grep -Eq '^[[:space:]]*(SAS|UserSid)[[:space:]]*(,|\(|\{)'; then
   r_s11c23="$r_s11c23 raw-service-message-enum-variant-present"
 fi
-windows_service_loop=$(awk '/async fn run_service/,/^async fn launch_server/' src/platform/windows.rs)
+windows_service_loop=$(awk '/async fn run_service/,/^fn windows_path_identity_from_info/' src/platform/windows.rs)
 echo "$windows_service_loop" | grep -q 'ipc::new_listener(crate::POSTFIX_SERVICE)' || r_s11c23="$r_s11c23 service-loop-range-missed-listener"
 echo "$windows_service_loop" | grep -q 'authorize_service_scoped_ipc_connection' || r_s11c23="$r_s11c23 service-loop-range-missed-auth"
 if echo "$windows_service_loop" | grep -Eq 'Data::(SAS|UserSid)|send_sas|SoftwareSASGeneration'; then

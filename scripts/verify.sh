@@ -3630,6 +3630,25 @@ fi
 if [ -n "$r_s11c10s" ]; then echo "  FAIL R-S11c-10s Linux Flutter runner core-library provenance:$r_s11c10s"; rc=1; else
   echo "  ok  R-S11c-10s Linux Flutter runner loads the bundled Rust core by executable-relative path and fails closed"; fi
 
+echo "== (3b-iii-h9c3d2) Debian shipped ELF runtime-library provenance (R-S11c-10y) =="
+r_s11c10y=
+grep -qE '^rpath = false$' Cargo.toml || r_s11c10y="$r_s11c10y cargo-release-rpath-not-false"
+if grep -qE '^rpath = true$' Cargo.toml; then
+  r_s11c10y="$r_s11c10y cargo-release-rpath-true"
+fi
+grep -qF 'os.environ["CARGO_PROFILE_RELEASE_RPATH"] = "false"' build.py || r_s11c10y="$r_s11c10y build.py-no-rpath-env"
+grep -qF 'export CARGO_PROFILE_RELEASE_RPATH=false' scripts/build-debian.sh || r_s11c10y="$r_s11c10y build-debian-no-rpath-env"
+grep -qF 'BUILD_WITH_INSTALL_RPATH TRUE' flutter/linux/CMakeLists.txt || r_s11c10y="$r_s11c10y plugins-not-build-with-install-rpath"
+grep -qF 'INSTALL_RPATH "$ORIGIN"' flutter/linux/CMakeLists.txt || r_s11c10y="$r_s11c10y plugins-no-origin-install-rpath"
+grep -qF 'def validate_elf_runpaths' scripts/verify-debian-package-authority.py || r_s11c10y="$r_s11c10y package-verifier-no-elf-runpath-check"
+grep -qF 'expected_elf_runpath(name)' scripts/verify-debian-package-authority.py || r_s11c10y="$r_s11c10y package-verifier-no-expected-policy"
+grep -qF 'legacy RPATH is forbidden' scripts/verify-debian-package-authority.py || r_s11c10y="$r_s11c10y package-verifier-no-rpath-reject"
+grep -qF '/tmp/rustdesk-bad' scripts/verify-debian-package-authority.py || r_s11c10y="$r_s11c10y package-verifier-no-runpath-negative-test"
+grep -qF 'Linux Debian shipped ELF runtime-library provenance' requirements.html || r_s11c10y="$r_s11c10y requirements-disposition-missing"
+grep -qF 'R-S11c-10y closes the Linux Debian shipped ELF runtime-library provenance' HARDENING_STATUS.md || r_s11c10y="$r_s11c10y hardening-ledger-missing"
+if [ -n "$r_s11c10y" ]; then echo "  FAIL R-S11c-10y Debian shipped ELF runtime-library provenance:$r_s11c10y"; rc=1; else
+  echo "  ok  R-S11c-10y Debian shipped ELFs have source-gated bundle-owned RUNPATH policy and package-artifact validation"; fi
+
 echo "== (3b-iii-h9c3e) Linux XDO loads only trusted absolute libxdo paths (R-S11c-10u) =="
 "${RUN[@]}" cargo test -p libxdo-sys --lib --color never
 r_s11c10u=

@@ -118,6 +118,7 @@ build_one() {
             # feature set has linux-pkg-config OFF, so build.rs find_package needs VCPKG_ROOT).
             export VCPKG_ROOT=/online/vcpkg
             [ -d "$VCPKG_ROOT/installed/x64-linux/lib" ] || { echo "[FATAL] /online/vcpkg/installed/x64-linux missing -- run online-fetch.sh (stage_vcpkg_natives)"; exit 1; }
+            export CARGO_PROFILE_RELEASE_RPATH=false
             # Use a build-time CARGO_HOME so the vendored/offline config does NOT
             # overwrite the repo'\''s TRACKED .cargo/config.toml (which carries the
             # windows/macos rustflags); cargo merges CARGO_HOME/config.toml with it.

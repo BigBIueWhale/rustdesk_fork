@@ -25,6 +25,8 @@ else:
 flutter_build_dir_2 = f'flutter/{flutter_build_dir}'
 skip_cargo = False
 
+os.environ["CARGO_PROFILE_RELEASE_RPATH"] = "false"
+
 
 def get_deb_arch() -> str:
     custom_arch = os.environ.get("DEB_ARCH")

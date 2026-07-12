@@ -2236,6 +2236,21 @@ unreachable and a source/test/AST gate prevents reintroduction.
   in-memory stderr capture. The R-S11c-10x gate uses anchored source-shape
   assertions that cannot satisfy themselves, rejects old host prefixes and every direct public-temp redirection,
   and requires this requirements/ledger disposition.
+  R-S11c-10y closes the Linux Debian shipped ELF runtime-library provenance class. The root-loaded Debian runner
+  already had the intended `$ORIGIN/lib` bundle RUNPATH, but the bundled Rust core inherited Cargo's upstream
+  release `rpath = true` and shipped a build-container RUNPATH that normalized from
+  `/usr/share/rustdesk/lib/librustdesk.so` into `/tmp/tc/rustinstall/lib/rustlib/x86_64-unknown-linux-gnu/lib`;
+  glibc used that RUNPATH for the core's direct dependencies such as `libpulse-simple.so.0` before default system
+  directories. The same package sweep found copied Flutter plugin shared libraries with absolute
+  `/src/flutter/linux/flutter/ephemeral` build RUNPATHs. Cargo release rpath is now pinned off in `Cargo.toml`,
+  `build.py`, and `scripts/build-debian.sh`; Flutter plugin targets are built with install RUNPATH and
+  `$ORIGIN`, so copied plugin artifacts are bundle-relative rather than build-tree-relative. The Debian package
+  authority verifier now extracts each emitted `.deb` data archive, inspects every ELF under
+  `/usr/share/rustdesk`, rejects any legacy RPATH, requires the runner to have exactly `$ORIGIN/lib`, allows only
+  `$ORIGIN` on `libflutter_linux_gtk.so` and Flutter plugin libraries, and requires every other bundled ELF
+  including `librustdesk.so` to have no runtime search path. Its self-test builds synthetic accepted and rejected
+  ELF packages, including a `/tmp/rustdesk-bad` RUNPATH negative case, and `scripts/build-debian.sh` runs the
+  verifier before hashing each release package.
   Remaining closure:
   no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
   root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
@@ -3346,7 +3361,7 @@ The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
 `scripts/native-codec-watch.sh`) is:
 
 ```text
-eab38b0d4fd58cbf029d10de9b9af2034914f206e750812d5b6c5ac2a8acf44e  requirements.html
+4327a9c1e6265b55d3333144f3460f46a7ea0e983d791e73d099676c47a5cdc6  requirements.html
 ```
 
 `requirements.html` is not edited by routine implementation work; the only deliberate

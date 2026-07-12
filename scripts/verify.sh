@@ -2814,7 +2814,7 @@ grep -Fq 'conn.handle_cm_file_response(response).await' src/server/connection.rs
 grep -Fq 'Data::CmFileResponse(mut envelope)' src/server/connection.rs || r_s11e17="$r_s11e17 typed-binary-bridge-missing"
 grep -Fq 'ipc::CmFileResponseKind::ReadBlock { data, .. }' src/server/connection.rs || r_s11e17="$r_s11e17 binary-bridge-not-readblock-only"
 grep -Fq 'R-S11e-17 — typed connection-manager file response authority' HARDENING_STATUS.md || r_s11e17="$r_s11e17 hardening-ledger-missing"
-grep -Fq 'Typed connection-manager file response authority' requirements.html || r_s11e17="$r_s11e17 requirements-disposition-missing"
+grep -Fq 'Helper responses carry exact operation authority' requirements.html || r_s11e17="$r_s11e17 requirements-disposition-missing"
 if [ -n "$r_s11e17" ]; then
   echo "  FAIL R-S11e-17 CM typed file response authority:$r_s11e17"; rc=1
 else

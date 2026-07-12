@@ -238,7 +238,7 @@ grep -Fq 'connection manager IPC is unavailable' "$REPO/src/server/connection.rs
 grep -Fq 'file_count: Option<usize>' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 read-file-number-authority-missing"
 grep -Fq 'matches!(self, Self::FileTransfer)' "$REPO/src/ipc.rs" || r_s11e17="$r_s11e17 file-authority-not-filetransfer-only"
 grep -Fq 'R-S11e-17 — typed connection-manager file response authority' "$REPO/HARDENING_STATUS.md" || r_s11e17="$r_s11e17 hardening-ledger-missing"
-grep -Fq 'Typed connection-manager file response authority' "$REPO/requirements.html" || r_s11e17="$r_s11e17 requirements-disposition-missing"
+grep -Fq 'Helper responses carry exact operation authority' "$REPO/requirements.html" || r_s11e17="$r_s11e17 requirements-disposition-missing"
 if [ -n "$r_s11e17" ]; then
   echo "  FAIL R-S11e-17 typed CM file response authority:$r_s11e17"
   rc=1

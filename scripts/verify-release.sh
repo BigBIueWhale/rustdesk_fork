@@ -33,7 +33,7 @@ GATES=(
   "apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks"
   "audit.sh|cargo-audit + cargo-deny (Rust advisory floor)"
   "dart-audit.sh|osv-scanner (Dart advisory floor)"
-  "test-build-faillo.sh|build-harness fail-loud guards (all enumerated cases die loud, §12.3)"
+  "test-build-faillo.sh|build-harness fail-loud guards + pinned offline reset recovery (§12.3)"
 )
 
 declare -a results

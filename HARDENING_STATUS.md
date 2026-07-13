@@ -9,7 +9,7 @@ history remains the traceability record for that intermediate work.
 
 ## Current Verdict
 
-> **Current `.6` source verdict (2026-07-13): implementation and release-harness closure are tracked here. Artifact and reproducibility proof exists only for an exact clean pushed commit whose complete `scripts/build-release.sh` transaction succeeds and emits the matching `dist/SHA256SUMS`; this source ledger makes no publication claim.** Earlier artifact hashes in this file prove only the older commits named beside them and must not be promoted as evidence for the current source tree.
+> **Current `.6` source verdict (2026-07-13): implementation and release-harness state are tracked here. Artifact and reproducibility proof exists only for an exact clean pushed commit whose complete `scripts/build-release.sh` transaction succeeds and emits the matching `dist/SHA256SUMS`; this source ledger makes no publication claim.** Earlier artifact hashes in this file prove only the older commits named beside them and must not be promoted as evidence for the current source tree.
 
 **Current machine inventory expectation.** `Cargo.lock` has 910 package records: 38 git-sourced records from
 27 unique git source URLs, including 28 rustdesk-org records from 21 unique rustdesk-org URLs.
@@ -2093,6 +2093,86 @@ runner proves the exact portable executable, non-service role, process UID, cred
 termination/reap, and unchanged source inode/mode/content. Structural mutations reject source traversal, a
 missing fixture member, broad process killing, or a release snapshot relaxed from mode 0700.
 
+The first exact-commit transaction at `6cf6719f7d57b01149b161997685a77c618c782f` passed all nine source gates
+inside pass A, including the private non-root smoke, then stopped before Debian compilation at `A before debian`.
+Root-running verification containers had created ignored Cargo and Flutter state; the host-UID `git clean -ffdx`
+correctly refused 8,646 inaccessible removals. That attempt produced no platform artifact, A/B equality result,
+manifest, publication, or release evidence.
+
+Every writable source consumer is enclosed by generated-state resets. A snapshot-scoped normalizer accepts only the
+recorded pass-A or pass-B device/inode identity, rejects descendant mounts, and re-verifies the digest-pinned Debian
+image. A no-network, no-pull, read-only inspector with only DAC_READ_SEARCH and a nonrecursive read-only bind proves
+that every multiply-linked non-directory inode is closed inside the tree. A separate nonrecursive mutation container
+has a read-only root, no-new-privileges, and only CHOWN. Parent-first physical `find` walks temporarily transfer each
+directory to the process before repairing access; non-directories are normalized individually, and a depth-first pass
+restores invoking-user ownership. The walks remove group/world write and do not follow symlinks. Host postconditions
+prove unchanged tree identity, no foreign owner/group, no group/world-writable non-symlink, and no owner-inaccessible
+directory. The snapshot root returns to current-UID mode 0700; Git removes all ignored state, proves an equivalent
+`-nffdx` dry run has no candidate, and re-proves detached HEAD/index/tracked bytes. Normal EXIT applies the same
+boundary to the exact whole workspace. Both exact paths are known before Git runs; cleanup streams Git's complete
+NUL-delimited registry under per-field, total-byte, total-field, and elapsed-time bounds, never through a followable
+workspace file or whole-registry buffer. Exact queries emit `present` or `absent` only after complete parser and producer
+success; expected and unexpected failures return operational status 2. Double-force removes present, absent, or
+initialization-locked exact registrations but never prunes or otherwise mutates unrelated registrations. A missing root
+permits exact absent-path removal; a renamed, linked, or identity-changed root still triggers read-only inspection of
+both exact registrations and cannot emit success with either unresolved. Preflight rejects a preserved worktree in the
+reserved release namespace. Fake-producer fixtures reject partial output followed by failure, oversized and
+unterminated fields, total-byte or field-count excess, duplicate exact paths, a nonterminating producer, an unexpected
+exception, and a stale release path after a multi-chunk ordinary stream. Fail-loud dirty probes use exclusive random files;
+identity, unlink, and absence failure emits status 125 plus a dedicated marker, either of which the result classifier
+rejects. A real removal-failure fixture proves that classification before its outer identity-bound cleanup reconciles
+the retained probe. Every negative lifecycle case requires its exact diagnostic; dirty-tree cases also require a marker
+emitted only after the random probe identity is proved, and missing-workspace cases require a marker emitted only after
+the recorded root is removed. Setup or option-parsing failure therefore cannot satisfy the targeted case.
+The source verifier and release orchestrator install traps before allocation, exclude further signals during cleanup,
+and defer green markers until identity-bound
+removal; every diagnostic is allocated beneath the recorded workspace. A missing closure probe forbids recursive
+removal, and privileged reset fixtures use a nonrecursive bind. Windows uncertain-state preservation remains prior and
+authoritative. Boundary, registration, or cleanup uncertainty retains unresolved state and exits nonzero.
+
+The verifier launches every stateful transaction fixture in a new process session and captures its output under an
+explicit byte bound. Deadline expiry signals the complete process group with `SIGTERM`, preserves a bounded grace
+period for shell EXIT traps, escalates the group to `SIGKILL`, reaps the direct child, and proves that no descendant
+process group remains. The same teardown-owning `try` encloses `Popen` and every post-spawn operation; an AST contract
+and split-`try` mutation enforce that ownership boundary. Behavioral fixtures inject an exception immediately after
+spawn, exercise graceful cleanup, and exercise a `SIGTERM`-resistant descendant. Temporary `SIGHUP`, `SIGINT`, and
+`SIGTERM` handlers span each complete before/command/after transaction; the first signal enters controlled unwinding,
+repeated managed signals remain blocked through teardown and state proof, and prior handlers are restored only after
+the owned process group is absent. Scope entry returns under a blocked mask so its token is locally owned before
+delivery resumes, nested scopes borrow without changing outer ownership, and a signal delivered while `Popen` is
+returning is recorded until the returned process object is assigned under a blocked handoff. Exact pre-assignment and
+nested-parent signal fixtures prove leader and descendant removal plus completed after-state inspection. Git worktree output used for
+before/after fixture-state snapshots is also bounded, and every stateful fixture must leave both the reserved release
+worktree registrations and reserved workspace root identities exactly unchanged, including on execution failure.
+
+The focused Docker regression first requires the production admission to reject an external hardlink without changing
+its outside inode. It then creates a real detached mode-0700 worktree with an internally closed hardlink pair,
+root-owned mode-0000 ignored Cargo and Flutter trees, and an external symlink. Ordinary Git cleanup must fail and
+preserve both hostile trees; the production reset must then remove them without changing the external target or tracked
+snapshot. Exact Docker allowlists and structural mutations reject missing, reordered, broadened, privileged,
+networked, recursively bound, symlink-following, mode-weakening, postcondition-free, or bypassed normalization.
+
+Release verification is reset both before and after its writable consumer, so pass B is re-proved after pass A and no
+ignored state can become verifier input. Final APK certificate verification now precedes the last A/B byte comparison
+and manifest write. Final `dist` installation first proves that the canonical parent has no local writer other than the
+invoking UID, including primary/supplementary group members and extended ACLs, while an advisory lock on the exact Git
+common-directory inode excludes a concurrent release orchestrator. A private transaction payload remains mode 0700 so
+Linux can move it across parent directories; its exact five non-hardlinked mode-0444 files and directory are fsynced
+and then the payload pathname in its exact transaction parent are fsynced before a mode-0600 non-hardlinked transaction
+record is atomically committed and fsynced. That record binds the
+destination, parent/transaction/payload/prior identities, source commit, fork version, epoch, and manifest digest.
+Verified transaction and publication-parent descriptors bind `RENAME_EXCHANGE` for replacement and
+`RENAME_NOREPLACE` for first installation; ordinary replacement rename is absent. Record-bound content
+is proved before the new root is finalized and fsynced at mode 0555. The active transaction is then atomically renamed
+and parent-fsynced as terminal discard before directory-only access repair removes the unpublished or displaced set;
+the parent is fsynced again after removal. Startup recovery runs before source cleanliness, and distinguishes
+recordless initialization, durable pre-exchange, durable post-exchange, and interrupted terminal deletion using only
+on-disk identities. Even an empty recovery scan fsyncs the exact parent, and the locked success path repeats that
+barrier. Invalid, multiple-active, or ambiguous state is retained and rejected. The harness covers first installation,
+no-clobber conflict, recordless, pre-exchange, post-exchange, interrupted discard, and post-removal restart states while
+dropping process memory. `RELEASE OK` is emitted only from signal-excluded EXIT finalization after publication
+reconciliation, exact worktree removal, workspace deletion, and final parent sync succeed.
+
 `docs/RELEASE-VERIFICATION.md` makes the manifest itself an independently authenticated input and rejects
 same-host package/checksum substitution, partial sets, identity mismatch, or any unsigned override.
 `docs/ANDROID-SIGNING-RECOVERY.md` closes the Android break-glass obligation: verified offline backup is the
@@ -2746,8 +2826,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-55e4e176412cdcdceb4e4cf459aa117b979f262e3aa20759656e40347e5246c3  requirements.html
+05b5c7e67236da8dadc80b720c3895a4c27089df8403f19ef03e3f15770f066e  requirements.html
 ```
 
-This hash binds the final normative requirements text, including R-B13 and Appendix C #129. It is a
+This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #129. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

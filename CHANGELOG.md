@@ -104,6 +104,18 @@ release notes.
   status handling and a release preflight that runs before the online closure is copied.
 - Made the non-root portable password smoke stage execute from an immutable owner-scoped fixture, prove
   its portable role and exact process ownership, and leave the mode-0700 release source bind unchanged.
+- Made every release consumer return its private exact-commit snapshot to an empty generated-state baseline,
+  rejecting descendant mounts and externally escaping hardlinks before the pinned offline Debian image uses
+  one read-only inspection capability and one CHOWN-only mutation phase ahead of fail-closed Git cleanup. Cleanup
+  streams Git's exact registry without a workspace temporary, removes initialization-locked registrations, and
+  rejects missing, changed, or preserved private workspace state before proving the whole deletion boundary.
+- Made final `dist` installation identity-bound, failure-atomic, and restartable through a durable fsynced transaction
+  record. Payload-name durability precedes that record; first installation is kernel no-clobber, and every recovery
+  observation plus final success synchronizes the exact publication parent. The prior set is not weakened before
+  exchange; restart recovery conclusively rolls back an unpublished payload or completes a record-proven installed
+  set before a terminal discard is removed.
+- Deferred release success until signal-excluded final cleanup has reconciled publication, removed exact registered
+  worktrees and the private workspace, and completed post-deletion Git pruning.
 - Made the complete release build require one clean committed `HEAD` before verification, after
   verification, and after all cold reproducible target builds. Windows artifacts must be archived from
   that same commit; generated checksums record the exact source commit and fork version.
@@ -118,8 +130,8 @@ release notes.
 - Linux behavior and compile gates, Apple source-conformance checks, and native Windows pre-build suites
   cover platform-specific source contracts. Only the repository's complete clean committed cold release
   build is artifact-level proof for Debian, Android, Windows EXE, and Windows MSI outputs.
-- Native Windows and artifact reproducibility evidence is established only by the complete clean committed
-  `.6` release transaction and its generated manifest; these source notes make no publication claim.
+- These source notes establish no native Windows or artifact reproducibility evidence; only a complete clean
+  committed `.6` release transaction and its generated exact-commit manifest can establish that evidence.
 - This hardening was developed and reviewed with AI assistance and remains single-maintainer security
   engineering, not an independent professional cryptographic or product-security audit.
 

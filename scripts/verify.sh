@@ -39,20 +39,50 @@
 # Usage:  scripts/verify.sh
 set -euo pipefail
 
+VERIFY_WORKSPACE_SELF_TEST=0
+VERIFY_WORKSPACE_MISSING_SELF_TEST=0
+for argument in "$@"; do
+  case "$argument" in
+    --self-test-workspace) VERIFY_WORKSPACE_SELF_TEST=1 ;;
+    --self-test-workspace-missing) VERIFY_WORKSPACE_MISSING_SELF_TEST=1 ;;
+    *) echo "verify: unknown argument: $argument" >&2; exit 1 ;;
+  esac
+done
+[ "$((VERIFY_WORKSPACE_SELF_TEST + VERIFY_WORKSPACE_MISSING_SELF_TEST))" -le 1 ] \
+  || { echo "verify: workspace self-test modes are mutually exclusive" >&2; exit 1; }
+
 cd "$(dirname "$0")/.."
 
 # shellcheck source=scripts/verify-scan.sh
 source scripts/verify-scan.sh
 verify_scan_preflight
 
-VERIFY_TMP=$(umask 077 && mktemp -d /tmp/rustdesk-verify.XXXXXXXXXX)
-readonly VERIFY_TMP
+VERIFY_TMP=""
+VERIFY_TMP_ID=""
+VERIFY_SUCCESS_MESSAGE=""
 cleanup_verify_tmp() {
-  local status=$?
-  trap - EXIT HUP INT TERM
-  if ! rm -rf -- "$VERIFY_TMP"; then
-    echo "verify: failed to remove private workspace: $VERIFY_TMP" >&2
-    status=1
+  local status=$? cleanup_failed=0
+  trap - EXIT
+  trap '' HUP INT TERM
+  if [ -n "$VERIFY_TMP" ]; then
+    if [ -z "$VERIFY_TMP_ID" ] || [ ! -d "$VERIFY_TMP" ] || [ -L "$VERIFY_TMP" ] \
+      || [ "$(stat -c '%d:%i' -- "$VERIFY_TMP" 2>/dev/null)" != "$VERIFY_TMP_ID" ]; then
+      echo "verify: private workspace identity is unavailable or changed: $VERIFY_TMP" >&2
+      cleanup_failed=1
+    elif ! /usr/bin/python3 scripts/verify-private-tree-closure.py --mount-root "$VERIFY_TMP"; then
+      echo "verify: private workspace contains a mount boundary: $VERIFY_TMP" >&2
+      cleanup_failed=1
+    elif ! rm -rf -- "$VERIFY_TMP"; then
+      echo "verify: failed to remove private workspace: $VERIFY_TMP" >&2
+      cleanup_failed=1
+    elif [ -e "$VERIFY_TMP" ] || [ -L "$VERIFY_TMP" ]; then
+      echo "verify: private workspace remains after removal: $VERIFY_TMP" >&2
+      cleanup_failed=1
+    fi
+  fi
+  [ "$cleanup_failed" -eq 0 ] || [ "$status" -ne 0 ] || status=1
+  if [ "$cleanup_failed" -eq 0 ] && [ "$status" -eq 0 ] && [ -n "$VERIFY_SUCCESS_MESSAGE" ]; then
+    echo "$VERIFY_SUCCESS_MESSAGE"
   fi
   exit "$status"
 }
@@ -60,6 +90,9 @@ trap cleanup_verify_tmp EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
+VERIFY_TMP=$(umask 077 && mktemp -d /tmp/rustdesk-verify.XXXXXXXXXX)
+VERIFY_TMP_ID="$(stat -c '%d:%i' -- "$VERIFY_TMP")"
+readonly VERIFY_TMP VERIFY_TMP_ID
 if ! python3 - "$VERIFY_TMP" <<'PY'
 import os
 import stat
@@ -75,6 +108,16 @@ if (
 PY
 then
   exit 1
+fi
+if [ "$VERIFY_WORKSPACE_SELF_TEST" -eq 1 ]; then
+  VERIFY_SUCCESS_MESSAGE="verify workspace self-test: OK"
+  exit 0
+fi
+if [ "$VERIFY_WORKSPACE_MISSING_SELF_TEST" -eq 1 ]; then
+  VERIFY_SUCCESS_MESSAGE="verify workspace missing self-test: INVALID SUCCESS"
+  rm -rf -- "$VERIFY_TMP"
+  echo "verify workspace missing self-test: REACHED" >&2
+  exit 0
 fi
 verify_scan_self_test "$VERIFY_TMP"
 
@@ -6266,7 +6309,7 @@ fi
 # R-R3 / Appendix D native-codec watch: cargo-audit/RustSec and Dart OSV scan do
 # not cover vcpkg C/C++ libraries. Keep this as an offline source/ledger sync
 # gate, not as a live network advisory query and not as a decoder-sandbox claim.
-native_watch_log=$(mktemp)
+native_watch_log=$(mktemp "$VERIFY_TMP/native-watch.XXXXXXXXXX")
 if bash scripts/native-codec-watch.sh >"$native_watch_log" 2>&1; then
   echo "  ok  R-R3 native codec advisory watch is wired for the exact vcpkg native set (separate from Cargo/Dart audits; not the decoder sandbox)"
 else
@@ -6473,7 +6516,7 @@ grep -qF '"native-codec-watch.sh|native-codec advisory ledger + requirements.htm
 grep -qF '"apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks"' "$release_gate" || release_gate_bad="$release_gate_bad missing-apple-conform"
 grep -qF '"audit.sh|cargo-audit + cargo-deny (Rust advisory floor)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-rust-audit"
 grep -qF '"dart-audit.sh|osv-scanner (Dart advisory floor)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-dart-audit"
-grep -qF '"test-build-faillo.sh|build-harness fail-loud guards (all enumerated cases die loud, §12.3)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-build-faillo"
+grep -qF '"test-build-faillo.sh|build-harness fail-loud guards + pinned offline reset recovery (§12.3)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-build-faillo"
 grep -qF 'VERIFY-RELEASE: ALL GATES GREEN' "$release_gate" || release_gate_bad="$release_gate_bad no-success-summary"
 grep -qF 'apple-conform-check.sh' requirements.html || release_gate_bad="$release_gate_bad requirements-no-apple-release-gate"
 stale_release_gate_ledger='ALL 7 source ''gates'
@@ -7208,4 +7251,4 @@ echo "  ok  no pending excisions (R-X4 custom_server removed + hard-gated; R-X8 
 if [ "$rc" -ne 0 ]; then
   echo "VERIFY: FAILED (one or more required gates failed)"; exit 1
 fi
-echo "VERIFY: all required source, behavior, compile, policy, inventory, and excision gates green"
+VERIFY_SUCCESS_MESSAGE="VERIFY: all required source, behavior, compile, policy, inventory, and excision gates green"
